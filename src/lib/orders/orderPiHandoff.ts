@@ -79,8 +79,13 @@ export const ORDER_PI_HANDOFF_COLUMNS = [
   'client_name', 'bill_to_name', 'ship_to_name',
   'creation_date', 'source_created_by',
   // Contact and location — the reason an operations reader opens this at all.
+  // contact_number is the SALESPERSON's number (workbook G22, beside the BOE
+  // GST at B22), not the client's; the client's two are beside it.
   'contact_number', 'bill_to_phone', 'ship_to_phone',
   'billing_address', 'shipping_address',
+  // The client's city (20261225000000). Its own column rather than a line
+  // inside the address, and printed in the billing block.
+  'client_city',
   // The two tax numbers. Read here so the confirmed Excel can carry a corrected
   // one — CONFIRMED_EDITABLE_CELLS maps both to the template cells the parser
   // already reads them from.
@@ -95,6 +100,10 @@ export const ORDER_PI_HANDOFF_COLUMNS = [
   'packing_cost', 'packing_cost_meaning', 'packing_cost_text',
   'transportation_amount', 'transportation_text',
   'total_before_gst', 'gst_amount', 'grand_total',
+  // What the PI says about itself as a commercial document (20261225000000):
+  // what the price covers, and who provides the fabric. Both are printed — the
+  // terms under the totals, the fabric answer beside the fabric cost.
+  'commercial_terms_note', 'fabric_responsibility',
   // The declaration, and the workbook the whole thing was agreed on.
   'billing_percentage',
   'source_workbook_name', 'source_workbook_path',
@@ -114,6 +123,10 @@ export type OrderPiRow = PersistedHeaderSource & PersistedCommercialSource & {
   ship_to_phone: string | null
   billing_address: string | null
   shipping_address: string | null
+  /** Optional so a fixture written before 20261225000000 still types. */
+  client_city?: string | null
+  commercial_terms_note?: string | null
+  fabric_responsibility?: string | null
   /** Optional so a fixture written before this read still types. */
   bill_to_gst?: string | null
   ship_to_gst?: string | null
@@ -235,9 +248,9 @@ export function buildOrderPiHandoff(row: OrderPiRow, order: OrderCommercialFacts
     submissionId: row.id,
     client: buildClientDetails({
       clientName: row.client_name,
+      clientCity: row.client_city ?? null,
       billToName: row.bill_to_name,
       shipToName: row.ship_to_name,
-      contactNumber: row.contact_number,
       billToPhone: row.bill_to_phone,
       shipToPhone: row.ship_to_phone,
       billingAddress: row.billing_address,

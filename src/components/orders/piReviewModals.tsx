@@ -35,6 +35,15 @@ import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import {
+  BOE_STANDARD_COMMERCIAL_TERMS,
+  COMMERCIAL_TERMS_LABEL,
+  COMMERCIAL_TERMS_MAX_LENGTH,
+  FABRIC_RESPONSIBILITY_KEEPS_FIGURES,
+  FABRIC_RESPONSIBILITY_LABEL,
+  FABRIC_RESPONSIBILITY_OPTIONS,
+  fabricResponsibilityNeedsConfirmation,
+} from '@/lib/orders/piTerms'
+import {
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
   type OrderConfirmationDraft,
@@ -1509,7 +1518,11 @@ export function PiClientDetailsModal({ client, onClose }: {
         <ModalHeader title="Client details" subtitle={client.name} onClose={onClose} disabled={false} />
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {row('Client', <span style={{ fontWeight: 600 }}>{client.name}</span>)}
-          {row('Contact number', client.phone
+          {/* WHERE THE CLIENT IS, said next to who they are and before the
+              addresses. It is the one location fact operations needs at a
+              glance, and a PI cannot be submitted without it. */}
+          {row('City', client.city ?? absent)}
+          {row('Client contact number', client.phone
             ? <a href={`tel:${client.phone.tel}`} style={{ color: '#5585e8', textDecoration: 'none' }}>
                 {client.phone.label}
               </a>
@@ -1746,10 +1759,23 @@ export function PiBillingPercentageModal({
 
 // ── Editing the client and party details ──────────────────────────────────────
 
-/** The ten fields this editor owns, in the order they are shown. */
+/**
+ * The eleven fields this editor owns, in the order they are shown.
+ *
+ * THE CITY IS REQUIRED, and it sits in the billing block because that is where
+ * a reader looks for where a client is. A PI cannot be submitted without it —
+ * assert_order_submission_finalizable re-derives that.
+ *
+ * THE CONTACT NUMBER IS THE SALESPERSON'S, and the label now says so. It is
+ * cell G22 of the workbook, beside the BOE GST at B22, and it is what gets
+ * printed on the document a client is sent. It was labelled "Contact number"
+ * in a group headed "Client", which read as the client's own number and is not
+ * what the column holds — the client's numbers are the two phone fields below.
+ */
 export const PI_CLIENT_FIELDS = [
   { key: 'client_name',      label: 'Client name',       group: 'client', required: true,  multiline: false },
-  { key: 'contact_number',   label: 'Contact number',    group: 'client', required: false, multiline: false },
+  { key: 'client_city',      label: 'Client city',       group: 'client', required: true,  multiline: false },
+  { key: 'contact_number',   label: 'Salesperson contact number', group: 'sales', required: true, multiline: false },
   { key: 'bill_to_name',     label: 'Bill to',           group: 'bill',   required: false, multiline: false },
   { key: 'bill_to_phone',    label: 'Billing phone',     group: 'bill',   required: false, multiline: false },
   { key: 'bill_to_gst',      label: 'Billing GST',       group: 'bill',   required: false, multiline: false },
@@ -1832,16 +1858,24 @@ export const PI_CHANGE_PI_ONLY: readonly string[] = [
 ]
 
 /** Which part of the PI an editor is showing. */
-export type PiEditSection = 'client' | 'schedule' | 'products'
+export type PiEditSection = 'client' | 'terms' | 'schedule' | 'products'
 
 export const PI_EDIT_SECTIONS: readonly { key: PiEditSection; title: string }[] = [
   { key: 'client',   title: 'Client and addresses' },
+  { key: 'terms',    title: 'PI terms and fabric' },
   { key: 'schedule', title: 'Dates and terms' },
   { key: 'products', title: 'Product details' },
 ]
 
 const PI_CLIENT_GROUPS = [
-  { key: 'client', title: 'Client' },
+  // "Billing details" rather than "Client", because the client's name and city
+  // are the two mandatory lines of the billing block and a reader looking for
+  // where an order is billed should find them under that heading.
+  { key: 'client', title: 'Billing details' },
+  // BOE's side of the document, kept apart from the client's on purpose: one
+  // undifferentiated "Client" group made the salesperson's number read as the
+  // client's, which is the wrong number to print on a PI.
+  { key: 'sales',  title: 'Salesperson' },
   { key: 'bill',   title: 'Bill to' },
   { key: 'ship',   title: 'Ship to' },
 ] as const
@@ -2285,11 +2319,339 @@ export function PiScheduleTermsEditModal({
   )
 }
 
+// ── Editing what the PI says about itself ────────────────────────────────────
+
+/**
+ * The three fields the PI terms editor owns, and the RPC behind them.
+ *
+ * ITS OWN SECTION AND ITS OWN SAVE, exactly like the client and schedule
+ * editors: one RPC, one transaction, so a save lands whole or not at all.
+ *
+ * WHY NOT IN "DATES AND TERMS". Payment terms and billing terms are the
+ * ARRANGEMENT with the client — when money moves, and how much is billed. These
+ * three are what the DOCUMENT STATES: the day it was drawn up, what its prices
+ * cover, and who buys the fabric. They are also mandatory before the PI can be
+ * submitted, where all five of the schedule fields are optional, and mixing a
+ * required field into an optional form is how a required field gets missed.
+ */
+export const PI_TERMS_FIELDS = [
+  { key: 'creation_date',         label: 'Date of creation' },
+  { key: 'commercial_terms_note', label: COMMERCIAL_TERMS_LABEL },
+  { key: 'fabric_responsibility', label: FABRIC_RESPONSIBILITY_LABEL },
+] as const
+
+export type PiTermsFieldKey = typeof PI_TERMS_FIELDS[number]['key']
+export type PiTermsFieldValues = Partial<Record<PiTermsFieldKey, string | null>>
+
+/**
+ * SUPPLYING WHAT THE PI SAYS ABOUT ITSELF.
+ *
+ * THE FABRIC QUESTION HAS NO PRESELECTED ANSWER. The radio group starts with
+ * nothing chosen whenever the record carries nothing, so the reader has to make
+ * the choice rather than accept one the screen made for them — that is what
+ * "the user must deliberately choose" means in a form, and it is why
+ * fabric_responsibility has no column default either.
+ *
+ * AND IT NEVER DELETES A FIGURE. Moving to client-supplied while the PI carries
+ * a fabric charge asks for a second press first, and says plainly that the
+ * figure stays. Nothing in this dialog, or in the RPC behind it, writes
+ * fabric_cost at all.
+ */
+export function PiTermsEditModal({
+  current, fabricCost, saving, failure, requireReason = false, missingKeys = [],
+  onCancel, onSave,
+}: {
+  current: PiTermsFieldValues
+  /** The stored fabric cost, so the client-supplied choice can warn about it. */
+  fabricCost: number | null
+  saving: boolean
+  failure: string | null
+  requireReason?: boolean
+  /** Fields the readiness check says are missing, marked for the reader. */
+  missingKeys?: readonly string[]
+  onCancel: () => void
+  onSave: (changed: PiTermsFieldValues, reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_TERMS_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const [confirmFabric, setConfirmFabric] = useState(false)
+  const trimmedReason = reason.trim()
+
+  const changed = useMemo(() => {
+    const out: PiTermsFieldValues = {}
+    for (const f of PI_TERMS_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+
+  // The one combination worth a second press: saying the client provides the
+  // fabric while the PI still charges for it. Asked, never acted on — see
+  // fabricResponsibilityNeedsConfirmation.
+  const needsFabricConfirm = fabricResponsibilityNeedsConfirmation({
+    next: 'fabric_responsibility' in changed ? (changed.fabric_responsibility ?? null) : null,
+    fabricCost,
+  })
+
+  const canSave = !saving
+    && changedCount > 0
+    && (!requireReason || trimmedReason !== '')
+    && (!needsFabricConfirm || confirmFabric)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  /** A label that says so when the readiness list is waiting on this field. */
+  const fieldLabel = (text: string, missing: boolean) => (
+    <span style={{ fontSize: '11.5px', fontWeight: 600, color: missing ? '#b3541e' : colors.primary }}>
+      {text}{missing ? ' · needed' : ''}
+    </span>
+  )
+
+  const dateMissing = missingKeys.includes('creation_date')
+    && (values.creation_date ?? '').trim() === ''
+  const fabricMissing = missingKeys.includes('fabric_responsibility')
+    && (values.fabric_responsibility ?? '').trim() === ''
+  const termsMissing = missingKeys.includes('commercial_terms_note')
+    && (values.commercial_terms_note ?? '').trim() === ''
+
+  return (
+    // A backdrop click is inert: this holds typed input, by the BOE form-modal rule.
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit PI terms and fabric responsibility"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '560px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Terms and fabric"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '16px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '220px' }}>
+            {fieldLabel('Date of creation', dateMissing)}
+            <input
+              /* A real date input, so the browser enforces the calendar shape
+                 the RPC insists on. The RPC re-checks it anyway: PostgreSQL
+                 would otherwise accept 'yesterday' and store a relative date. */
+              type="date"
+              value={values.creation_date ?? ''}
+              onChange={e => setValues(v => ({ ...v, creation_date: e.target.value }))}
+              disabled={saving}
+              style={{
+                padding: '7px 10px', fontSize: '13px',
+                border: `1px solid ${dateMissing ? '#e0b089' : colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary,
+              }}
+            />
+          </label>
+
+          {/* ── The fabric question ── */}
+          <fieldset
+            style={{
+              display: 'flex', flexDirection: 'column', gap: '7px',
+              border: `1px solid ${fabricMissing ? '#e0b089' : colors.border}`,
+              borderRadius: '9px', padding: '11px 12px', margin: 0,
+            }}
+          >
+            <legend style={{ padding: '0 4px' }}>
+              {fieldLabel(FABRIC_RESPONSIBILITY_LABEL, fabricMissing)}
+            </legend>
+
+            {/* NOTHING IS PRESELECTED when the record carries no answer: every
+                radio is unchecked until the reader picks one. */}
+            {FABRIC_RESPONSIBILITY_OPTIONS.map(option => (
+              <label
+                key={option.value}
+                style={{
+                  display: 'flex', gap: '8px', alignItems: 'flex-start',
+                  fontSize: '13px', color: colors.primary, cursor: saving ? 'default' : 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="fabric_responsibility"
+                  value={option.value}
+                  checked={values.fabric_responsibility === option.value}
+                  onChange={() => {
+                    setConfirmFabric(false)
+                    setValues(v => ({ ...v, fabric_responsibility: option.value }))
+                  }}
+                  disabled={saving}
+                  style={{ marginTop: '3px' }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                  <span style={{ fontWeight: 600 }}>{option.label}</span>
+                  <span style={{ fontSize: '11.5px', color: colors.muted }}>{option.help}</span>
+                </span>
+              </label>
+            ))}
+
+            {needsFabricConfirm && (
+              <div
+                role="status"
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '6px',
+                  padding: '9px 10px', borderRadius: '7px',
+                  background: '#fdf6ee', color: '#8a4b12', fontSize: '12px',
+                }}
+              >
+                <span>This PI carries a fabric cost. {FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>
+                <label style={{ display: 'flex', gap: '7px', alignItems: 'center', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={confirmFabric}
+                    onChange={e => setConfirmFabric(e.target.checked)}
+                    disabled={saving}
+                  />
+                  I understand — the client provides the fabric
+                </label>
+              </div>
+            )}
+          </fieldset>
+
+          {/* ── The commercial terms ── */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {fieldLabel(COMMERCIAL_TERMS_LABEL, termsMissing)}
+            <textarea
+              value={values.commercial_terms_note ?? ''}
+              onChange={e => setValues(v => ({ ...v, commercial_terms_note: e.target.value }))}
+              disabled={saving}
+              rows={3}
+              maxLength={COMMERCIAL_TERMS_MAX_LENGTH}
+              style={{
+                padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                border: `1px solid ${termsMissing ? '#e0b089' : colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary, fontFamily: 'inherit',
+              }}
+            />
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'baseline',
+              fontSize: '11.5px', color: colors.muted,
+            }}>
+              <span style={{ flex: '1 1 200px', minWidth: 0 }}>
+                Printed on the PI. Change it where the agreement with this client
+                includes fabric, packing or transportation.
+              </span>
+              {/* OFFERED, NEVER APPLIED ON ITS OWN. The standard wording is one
+                  press away for somebody who edited it by mistake, and nothing
+                  restores it behind their back. */}
+              {(values.commercial_terms_note ?? '').trim() !== BOE_STANDARD_COMMERCIAL_TERMS && (
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost"
+                  disabled={saving}
+                  onClick={() => setValues(v => ({
+                    ...v, commercial_terms_note: BOE_STANDARD_COMMERCIAL_TERMS,
+                  }))}
+                >
+                  Use the standard wording
+                </button>
+              )}
+            </div>
+          </label>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── The owner's correction request ───────────────────────────────────────────
 
 /** The sections a correction can be asked about — the editor's own, plus one. */
 export const PI_CORRECTION_SECTIONS = [
   { key: 'client',     label: 'Client and addresses' },
+  { key: 'terms',      label: 'PI terms and fabric' },
   { key: 'schedule',   label: 'Dates and terms' },
   { key: 'products',   label: 'Products' },
   { key: 'commercial', label: 'Commercial values' },

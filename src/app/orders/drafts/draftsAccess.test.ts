@@ -436,6 +436,15 @@ describe('the detail page renders only what it fetched', () => {
       // dialog does not render them as disabled inputs either, which would
       // read as a permission somebody could be granted.
       'update_order_submission_item_details',
+      // What the PI says about ITSELF as a commercial document
+      // (20261225000000): its date of creation, its commercial terms note,
+      // and who provides the fabric. Its own RPC and so its own
+      // transaction, like every other section. Three named columns, no
+      // figure and no column of public.orders — a fabric COST aimed at it
+      // is refused BY NAME, which is what makes "changing who provides the
+      // fabric never removes a figure" a property of the write path rather
+      // than a promise the screen makes.
+      'update_order_submission_pi_terms',
       // The schedule and terms editor (20260929000000): confirm date, due date,
       // dispatch commitment, payment terms, billing terms. Its own RPC and so
       // its own transaction — one dialog per section, because a single button

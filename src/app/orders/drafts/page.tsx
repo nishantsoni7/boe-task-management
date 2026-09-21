@@ -492,7 +492,7 @@ export default function PiDraftsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Client', 'Created by', 'Uploaded by', 'Product value', 'Grand total', 'Status',
+              {['Client', 'Salesperson', 'Uploaded by', 'Product value', 'Grand total', 'Status',
                 ...(showSubmission ? ['Submitted'] : []), ''].map((h, i) => (
                 <th key={h || 'action'} style={{
                   padding: '8px 14px',
@@ -543,7 +543,7 @@ export default function PiDraftsPage() {
                 {showSubmission && (
                   <>
                     {/* WHO SUBMITTED IT, AND WHEN — one stacked cell, the same
-                        shape as Created by and Uploaded by beside it. As two
+                        shape as Salesperson and Uploaded by beside it. As two
                         columns they were what pushed the table past its card. */}
                     <td style={{ padding: '10px 14px', color: colors.secondary, fontSize: '12px', minWidth: '110px' }}>
                       <div>{entry.submitter}</div>
@@ -605,7 +605,7 @@ export default function PiDraftsPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
               <span style={{ color: colors.secondary }}>
-                <span style={{ color: colors.muted }}>Created by </span>{entry.authoredBy}
+                <span style={{ color: colors.muted }}>Salesperson </span>{entry.authoredBy}
               </span>
               <span style={{ color: colors.secondary }}>
                 <span style={{ color: colors.muted }}>Uploaded by </span>{entry.uploader}

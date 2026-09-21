@@ -524,6 +524,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // function, truncates nothing and deletes nothing, so the test-data reset
       // this file is about is unaffected.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
   })
 

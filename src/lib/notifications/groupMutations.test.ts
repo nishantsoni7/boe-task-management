@@ -494,6 +494,7 @@ describe('34/35. no regression into suppressed territory', () => {
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

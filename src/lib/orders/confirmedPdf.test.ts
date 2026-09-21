@@ -55,6 +55,7 @@ import {
 } from './confirmedPdfRender'
 import { buildCommercialRows, formatInr } from '@/lib/pi/previewView'
 import { persistedCommercial } from './draftsView'
+import { BOE_STANDARD_COMMERCIAL_TERMS } from './piTerms'
 import type { PersistedItem } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
 
@@ -148,13 +149,34 @@ describe('the document identifies itself and its client', () => {
     assert.deepEqual(m.shipTo, [], 'an empty block prints its own absence once')
   })
 
-  test('carries the contact number, the PI creator and both dates', () => {
+  test('carries the salesperson, their number and both dates', () => {
     const meta = Object.fromEntries(model().meta.map(f => [f.label, f.value]))
-    assert.equal(meta['Contact'], '+91 98200 11223')
-    assert.equal(meta['PI created by'], 'R. Sharma')
+    // NAMED FOR WHOSE IT IS. contact_number is the BOE-side number the
+    // workbook carries at G22; it was labelled a bare "Contact" beside a
+    // "PI created by" name, which read as the client’s number and is not
+    // what the column holds.
+    assert.equal(meta['Salesperson'], 'R. Sharma')
+    assert.equal(meta['Salesperson contact'], '+91 98200 11223')
+    assert.equal(meta['Contact'], undefined, 'the unqualified label is gone')
+    assert.equal(meta['PI created by'], undefined)
     assert.match(meta['Confirm date'], /Jul 2026/)
     assert.match(meta['Due date'], /15/)
     assert.match(meta['Due date'], /Aug/)
+  })
+
+  test('the salesperson line never falls back to a client’s number', () => {
+    // IT USED TO. `contact_number || bill_to_phone || ship_to_phone` printed
+    // the client's own number under a BOE label, on a document sent to that
+    // client. A PI with no salesperson number now prints no such line, and
+    // submission asks for one before it can be finalized.
+    const meta = Object.fromEntries(model(1, {
+      contact_number: null,
+      bill_to_phone: '+91 90000 44444',
+      ship_to_phone: '+91 90000 55555',
+    }).meta.map(f => [f.label, f.value]))
+    assert.equal(meta['Salesperson contact'], undefined)
+    assert.ok(!Object.values(meta).some(v => v.includes('90000')),
+      'the client’s number must not appear under a BOE label')
   })
 
   test('an absent due date says `Not set` rather than inventing one', () => {
@@ -517,6 +539,79 @@ describe('the rendered PDF', () => {
     assert.ok(text.includes('Grand Total'))
     assert.ok(text.includes('Total before GST'))
     assert.ok(text.includes('GST'))
+  })
+
+  // ── What the PI says about its fabric and its terms ──
+  //
+  // THESE READ THE DRAWN BYTES, not the model. piTerms.test.ts already asserts
+  // that buildConfirmedPdfModel produces the right sentence; what a client
+  // receives is whatever pdfkit actually put on the page, and only extracting
+  // it proves the two agree.
+
+  test('the GENERATED PDF states who provides the fabric', async () => {
+    for (const [answer, sentence] of [
+      ['boe', 'Fabric will be provided by BOE.'],
+      ['client', 'Fabric will be provided by client.'],
+      ['not_selected', 'Fabric not selected yet.'],
+    ] as const) {
+      const buf = await renderConfirmedPdf({
+        model: model(2, { fabric_responsibility: answer }), metadata: METADATA,
+      })
+      assert.ok(pdfText(buf).includes(sentence), `${answer} must print "${sentence}"`)
+    }
+  })
+
+  test('a client-supplied PI does not also say BOE provides it', async () => {
+    const buf = await renderConfirmedPdf({
+      model: model(2, { fabric_responsibility: 'client' }), metadata: METADATA,
+    })
+    const drawn = pdfText(buf)
+    assert.ok(drawn.includes('Fabric will be provided by client.'))
+    assert.ok(!drawn.includes('Fabric will be provided by BOE'),
+      'the document must not present BOE as sourcing the fabric')
+  })
+
+  test('the GENERATED PDF carries the commercial terms', async () => {
+    const standard = await renderConfirmedPdf({
+      model: model(2, { commercial_terms_note: BOE_STANDARD_COMMERCIAL_TERMS }),
+      metadata: METADATA,
+    })
+    assert.ok(pdfText(standard).includes('Given prices are ex-factory.'),
+      'the standard wording is printed, not assumed')
+
+    const edited = 'Prices include fabric and packing. Transport at actual.'
+    const negotiated = await renderConfirmedPdf({
+      model: model(2, { commercial_terms_note: edited }), metadata: METADATA,
+    })
+    const drawn = pdfText(negotiated)
+    assert.ok(drawn.includes(edited), 'an edited note reaches the page verbatim')
+    assert.ok(!drawn.includes('ex-factory'),
+      'and the standard sentence is not printed alongside it')
+  })
+
+  test('A HISTORICAL PI PRINTS NEITHER, because it stated neither', async () => {
+    // No backfill: a PI finalized before this feature carries NULL in all three
+    // columns. Regenerating its documents must produce what it always did.
+    const buf = await renderConfirmedPdf({
+      model: model(2, {
+        fabric_responsibility: null, commercial_terms_note: null, client_city: null,
+      }),
+      metadata: METADATA,
+    })
+    const drawn = pdfText(buf)
+    assert.ok(!drawn.includes('Fabric will be provided'))
+    assert.ok(!drawn.includes('Fabric not selected'))
+    assert.ok(!drawn.includes('ex-factory'))
+    assert.ok(!/\bCity\b/.test(drawn), 'and no empty City line appears in the billing block')
+    // The document is otherwise intact.
+    assert.ok(drawn.includes('BOE/0001'))
+  })
+
+  test('the billing block states the city when the PI has one', async () => {
+    const buf = await renderConfirmedPdf({
+      model: model(2, { client_city: 'Coimbatore' }), metadata: METADATA,
+    })
+    assert.ok(pdfText(buf).includes('Coimbatore'))
   })
 
   test('carries billing and shipping details and the contact number', async () => {

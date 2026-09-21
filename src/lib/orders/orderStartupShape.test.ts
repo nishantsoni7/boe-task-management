@@ -313,7 +313,14 @@ describe('no Order screen waits more than it must', () => {
       // key, one removal of the object this attempt uploaded, and
       // discard_unsaved_order_submission. All three run only AFTER a failure or
       // on leaving the screen; none is on the startup path.
-      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 28 -> 29 (20261225000000): update_order_submission_pi_terms,
+      // the PI terms editor — date of creation, commercial terms note and who
+      // provides the fabric. A SAVE, fired from a dialog, exactly like the
+      // client and schedule editors beside it. The three values arrive with
+      // the record, because their columns are spread into
+      // PI_DRAFT_DETAIL_COLUMNS, so the startup path is unchanged and the
+      // wait test above still requires exactly three.
+      [DRAFTS]: 4, [PI_DETAIL]: 29, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

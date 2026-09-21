@@ -157,6 +157,9 @@ const workbook = (products: PiProduct[], over: Partial<PiWorkbook> = {}): PiWork
   commercial: commercial(),
   representativeImages: products.flatMap(p => (p.representativeImage ? [p.representativeImage] : [])),
   customizationImages: products.flatMap(p => [...p.customizationImages]),
+  // What the workbook said about its own terms. Both null by default, which
+  // is what a template carrying neither produces.
+  piTerms: { fabricResponsibility: null, commercialTermsNote: null },
   ...over,
 })
 

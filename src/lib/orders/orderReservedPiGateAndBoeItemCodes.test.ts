@@ -392,6 +392,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // gate and its four required fields, and no order number is reserved or
       // taken any earlier than it is today.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

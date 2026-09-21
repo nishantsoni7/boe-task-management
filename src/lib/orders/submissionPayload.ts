@@ -29,6 +29,7 @@ import {
 import type { PiAmountOrText, PiImageRole, PiProduct, PiProductImage, PiWorkbook } from '../pi/types'
 import type { PiBlockingIssue, PiWarning } from '../pi/types'
 import { plausibleDueDate } from './dueDate'
+import { creationDateIso } from '../pi/masterSheetParser'
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -329,10 +330,88 @@ export type SubmissionSource = {
   workbookSizeBytes: number
   workbookSha256: string
   templateVersion: string | null
+  /**
+   * THE DAY THIS PARSE IS BEING SAVED, as YYYY-MM-DD, and the fallback for a
+   * workbook that stated no date of creation.
+   *
+   * PASSED IN RATHER THAN READ FROM THE CLOCK. This module is a pure function
+   * over a parse — the same workbook and the same source must produce the same
+   * payload, or the fingerprint that suppresses a replay would change on every
+   * retry and every re-upload would read as an edit. The caller supplies one
+   * date for the whole request; a test supplies a fixed one.
+   *
+   * Optional, so a caller written before this still compiles; absent means the
+   * date of creation stays exactly what the workbook said, null included.
+   */
+  savedOn?: string | null
+  /**
+   * THE SALESPERSON'S CONTACT NUMBER, when the workbook's own cell is empty.
+   *
+   * The PI prints a number and it is BOE's, not the client's — G22, beside the
+   * BOE GST at B22. Where the workbook left it blank the caller resolves one
+   * from what the system already knows (the PI's current value, then the
+   * salesperson's profile) and passes it here. Never overrides a number the
+   * workbook DID carry: the document is the record of what the client was sent.
+   */
+  salespersonContactFallback?: string | null
+}
+
+/**
+ * The Asia/Kolkata calendar date an instant falls on, as YYYY-MM-DD.
+ *
+ * THE COMPANY'S DAY, NOT THE SERVER'S. A PI saved at 9pm in India is saved on
+ * that day, and a server running in UTC would date it the day before — a date
+ * of creation a day out is the kind of wrong nobody notices until a client
+ * queries it. The same +05:30 arithmetic the attendance and credit modules use,
+ * done on the epoch so there is no local-timezone dependency at all.
+ *
+ * Takes the instant rather than reading the clock, so a test can pin it.
+ */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+
+export function savedOnDate(now: Date = new Date()): string {
+  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
 }
 
 const isoOrNull = (value: { iso: string | null } | null | undefined): string | null =>
   value?.iso ?? null
+
+/**
+ * THE CLIENT’S CITY, when the billing address can only be one.
+ *
+ * The BOE template has no city cell. What it has is "Billing Address:" at B28,
+ * and in practice a salesperson fills it with exactly the city: the production
+ * workbook this was checked against holds the single word "Coimbatore". Asking
+ * somebody to retype that on the draft, when the sheet in front of them says
+ * it, is the kind of friction this feature is supposed to remove.
+ *
+ * BUT A STREET ADDRESS IS NOT A CITY, and the same cell legitimately holds one.
+ * So the value is taken ONLY when it cannot be anything else:
+ *
+ *   • one line — a real address wraps onto several
+ *   • no digits — no house number, no unit, no postcode
+ *   • no comma — "Nariman Point, Mumbai" is an address, not a city
+ *   • at most 40 characters
+ *
+ * "Coimbatore" passes. "12 Residency Road\nBengaluru 560025" fails three of
+ * the four. Anything that fails is left for a person to answer, because the
+ * city is required before the PI can be submitted and a WRONG city routes a
+ * delivery to the wrong place — worse than an empty field somebody must fill.
+ *
+ * A GUESS THIS NARROW IS STILL A GUESS, so it only ever fills an EMPTY field:
+ * replace_order_submission_parse writes client_city, and the client-details
+ * editor overwrites it the moment a person says otherwise.
+ */
+export function cityFromBillingAddress(value: string | null | undefined): string | null {
+  const text = (value ?? '').trim()
+  if (text === '') return null
+  if (text.length > 40) return null
+  if (/[\n\r,]/.test(text)) return null
+  if (/\d/.test(text)) return null
+  // A dash or similar placeholder is not a city either.
+  if (!/[a-z]/i.test(text)) return null
+  return text
+}
 
 const textOrNull = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim()
@@ -469,14 +548,38 @@ export function buildSubmissionPlan(input: {
       // The client name is the bill-to name: it is the party the PI is
       // addressed to, and it is what a reviewer scans a list for.
       client_name: textOrNull(header.billToName),
-      creation_date: isoOrNull(header.creationDate),
+      // THE PI'S OWN DATE WHERE IT GAVE ONE, and the day it was saved where it
+      // did not.
+      //
+      // THE PRODUCTION TEMPLATE WRITES G20 AS WORDS, not as an Excel date:
+      // the real workbook holds the string "26th Feb 2026". Reading only the
+      // serial therefore found nothing on a PI that plainly states its date,
+      // and the fallback below would have stamped the IMPORTER'S day on a
+      // document drawn up months earlier. creationDateIso takes the serial
+      // first and then the written form, and refuses anything ambiguous
+      // (02/03/2026) rather than picking a hemisphere's reading.
+      //
+      // The fallback survives for a PI that genuinely states no date. It is
+      // honest because it is not claiming to be the document’s date, it is
+      // correctable through update_order_submission_pi_terms, and without it
+      // an otherwise complete PI could never be submitted at all.
+      creation_date: creationDateIso(header) ?? textOrNull(source.savedOn),
       source_created_by: textOrNull(header.createdBy),
       boe_gst: textOrNull(header.boeGst),
-      contact_number: textOrNull(header.contactNumber),
+      // The workbook's number first, always. The fallback fills a blank cell;
+      // it never replaces a number the document printed.
+      contact_number: textOrNull(header.contactNumber)
+        ?? textOrNull(source.salespersonContactFallback),
       bill_to_name: textOrNull(header.billToName),
       bill_to_phone: textOrNull(header.billToPhone),
       bill_to_gst: textOrNull(header.billToGst),
       billing_address: textOrNull(header.billingAddress),
+      // THE CITY IS NOT WRITTEN HERE. It is a guess read out of the billing
+      // address, and replace_order_submission_parse REPLACES what it writes on
+      // every upload — which would undo a corrected city on a re-import. It
+      // travels through seed_order_submission_pi_terms instead, under the same
+      // fill-a-hole rule as the fabric answer and the terms note.
+      // See cityFromBillingAddress and process-draft step 18b.
       ship_to_name: textOrNull(header.shipToName),
       ship_to_phone: textOrNull(header.shipToPhone),
       ship_to_gst: textOrNull(header.shipToGst),

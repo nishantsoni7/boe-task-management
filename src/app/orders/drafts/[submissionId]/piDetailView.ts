@@ -826,6 +826,12 @@ export const NOT_PROVIDED = 'Not provided'
 export type ClientDetails = {
   /** The resolved client name — the header line, and the dialog's subject. */
   name: string
+  /**
+   * Where the client is. Its own line in the billing block, because a city is
+   * how operations routes an order and it must not be left inside a paragraph.
+   * Null while a draft has not been given one; a PI cannot be submitted so.
+   */
+  city: string | null
   /** A dialable number and the digits to dial, or null when none is dialable. */
   phone: { label: string; tel: string } | null
   /**
@@ -865,23 +871,32 @@ const clean = (value: string | null | undefined): string | null => {
 
 /**
  * Who the client is, and both parties the order names — from columns the save
- * route has always written. No new field, no second read.
+ * route has always written.
  *
  * THE NAME resolves once: the PI's own client name, then the bill-to party,
  * then the absent wording. The card shows this and only this; everything else
  * below is for the dialog the name opens.
  *
- * THE PHONE FALLS BACK IN THE ORDER THE DOCUMENT MEANS IT: the header's own
- * contact number first, then the bill-to phone, then the ship-to phone. The
- * first DIALABLE one wins. A number that exists but cannot be dialled is not
- * discarded — it comes back as `phoneText`, so the reader sees what the
- * document said instead of being told there is no number.
+ * THE PHONE IS THE CLIENT'S, and nobody else's. It falls back from the bill-to
+ * phone to the ship-to phone, and the first DIALABLE one wins. A number that
+ * exists but cannot be dialled is not discarded — it comes back as
+ * `phoneText`, so the reader sees what the document said instead of being told
+ * there is no number.
+ *
+ * `contact_number` IS DELIBERATELY NOT CONSULTED HERE, and that is a
+ * correction rather than an omission. That column is the number the workbook
+ * carries at G22, beside the BOE GST at B22 — it is the SALESPERSON’s number,
+ * the one printed on the PI so a client can reach the person running their
+ * order. Leading the client’s own contact line with it meant a reader who
+ * pressed "call the client" dialled BOE. It is shown under the salesperson
+ * instead, in buildOverviewMeta, where it belongs.
  */
 export function buildClientDetails(input: {
   clientName: string | null
+  /** order_submissions.client_city. Optional so an older fixture still types. */
+  clientCity?: string | null
   billToName: string | null
   shipToName: string | null
-  contactNumber: string | null
   billToPhone: string | null
   shipToPhone: string | null
   billingAddress: string | null
@@ -889,7 +904,7 @@ export function buildClientDetails(input: {
 }): ClientDetails {
   const name = clean(input.clientName) ?? clean(input.billToName) ?? NOT_PROVIDED
 
-  const numbers = [input.contactNumber, input.billToPhone, input.shipToPhone]
+  const numbers = [input.billToPhone, input.shipToPhone]
   const phone = numbers.map(telLink).find(Boolean) ?? null
   // Only when nothing at all was dialable: the first number the document
   // actually carried, shown as the text it is.
@@ -897,6 +912,7 @@ export function buildClientDetails(input: {
 
   return {
     name,
+    city: clean(input.clientCity ?? null),
     phone,
     phoneText,
     billTo: { name: clean(input.billToName), address: clean(input.billingAddress) },
@@ -1239,7 +1255,7 @@ export const SUBMITTED_BY_LABEL = 'PI submitted by'
 export const CREATED_DATE_LABEL = 'Created date'
 
 export type OverviewMetaItem = {
-  key: 'salesperson' | 'submittedBy' | 'created'
+  key: 'salesperson' | 'salespersonPhone' | 'submittedBy' | 'created'
   label: string
   /** null prints `absent`, quietly. */
   value: string | null
@@ -1253,18 +1269,36 @@ export type OverviewMetaItem = {
  * person who prepared the document. It is never filled from the submitter: that
  * is the second item, and borrowing it would print one person under two labels.
  */
+/** Said once, so the strip and the editor cannot name it two ways. */
+export const SALESPERSON_PHONE_LABEL = 'Salesperson contact'
+
 export function buildOverviewMeta(input: {
   salesperson: string | null
+  /**
+   * order_submissions.contact_number — the BOE-side number at workbook cell
+   * G22. It sits under the salesperson because it is THEIR number: it is what
+   * the PI prints so a client can reach the person running their order, and
+   * showing it beside the client used to make it read as the client’s.
+   */
+  salespersonPhone?: string | null
   submitterName: string | null
   /** Already formatted. */
   createdOn: string | null
 }): OverviewMetaItem[] {
-  const clean = (value: string | null) => {
+  const clean = (value: string | null | undefined) => {
     const trimmed = (value ?? '').trim()
     return trimmed === '' || trimmed === '—' ? null : trimmed
   }
   return [
     { key: 'salesperson', label: SALESPERSON_LABEL, value: clean(input.salesperson), absent: 'Not named' },
+    {
+      key: 'salespersonPhone',
+      label: SALESPERSON_PHONE_LABEL,
+      value: clean(input.salespersonPhone),
+      // Said as a request rather than as a shrug: it is required before the PI
+      // can be submitted, and the readiness list says so too.
+      absent: 'Not given',
+    },
     { key: 'submittedBy', label: SUBMITTED_BY_LABEL, value: clean(input.submitterName), absent: NOT_SUBMITTED_TEXT },
     { key: 'created', label: CREATED_DATE_LABEL, value: clean(input.createdOn), absent: NOT_PROVIDED },
   ]

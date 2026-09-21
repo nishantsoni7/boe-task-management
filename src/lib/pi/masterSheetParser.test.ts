@@ -2359,18 +2359,32 @@ describe('unsupported image formats', () => {
   })
 })
 
-// ══ PI header requirements (owner decision 2026-09-18) ═══════════════════════
+// ══ PI header requirements (2026-09-18, revised 2026-09-21) ═════════════════
 //
-// A PI is not taken unless the workbook says who sold it (G21) and the two
-// dates the Order runs on: Date of Order Confirmation (A113) and Dispatch Date
-// Finalized (E113). Blocking, so the browser preview says so before upload and
-// process-draft refuses to save the PI.
+// The workbook is expected to say who sold the order (G21) and the two dates
+// it runs on: Date of Order Confirmation (A113) and Dispatch Date Finalized
+// (E113).
+//
+// WARNINGS, NOT BLOCKING ISSUES. They landed as blocking, which refused the
+// UPLOAD; all three are ordinary editable draft columns, so that told somebody
+// holding an otherwise complete PI that the only way forward was back into
+// Excel. The requirement moved to FINALIZATION, where it is checked against
+// the STORED columns — assert_order_submission_finalizable (20261225000000) —
+// so a draft corrected by hand passes on its own merits.
+//
+// The assertions below are otherwise the ones that landed with the rule: the
+// same cells, the same rows and the same refusals, read off `warnings`.
 
 describe('the PI header requirements', () => {
   const headerCodes = async (extraCells: Record<string, CellSpec | null>) => {
     const wb = buildPiWorkbook({ products: inventProducts(1), anchors: anchorsFor(1), extraCells })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    return result.blockingIssues.filter(i => i.code.startsWith('PI_'))
+    // AND NOTHING BLOCKING CAME OF THEM, checked on every single case rather
+    // than once: the point of the revision is that the upload is never
+    // refused over these three, and one forgotten case would hide that.
+    assert.deepEqual(result.blockingIssues.filter(i => i.code.startsWith('PI_')), [],
+      'a header requirement must never block an upload')
+    return result.warnings.filter(i => i.code.startsWith('PI_'))
   }
 
   test('a complete header raises nothing', async () => {
@@ -2428,16 +2442,122 @@ describe('the PI header requirements', () => {
     assert.deepEqual(issues.map(i => i.cell).sort(), ['A113', 'E113', 'G21'])
   })
 
-  test('the upload route refuses a PI with any blocking issue, header ones included', () => {
+  test('the upload still refuses a PI with a genuine blocking issue', () => {
+    // THE ROUTE STILL HAS ITS GATE. What changed is what reaches it: a
+    // product with no name or no usable image still refuses the upload,
+    // because no editor on the draft can conjure one.
     const route = readFileSync(join(process.cwd(), 'src/app/api/orders/import/process-draft/route.ts'), 'utf8')
     assert.ok(route.includes("if (parsed.blockingIssues.length > 0) {"))
     assert.ok(route.includes("'BLOCKING_ISSUES'"))
   })
 
+  test('a header gap no longer reaches that gate', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: anchorsFor(1),
+      extraCells: { G21: null, A113: null, E113: null },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    // The route would save this PI: the preview is complete, the products
+    // are sound, and what is missing is asked for on the draft instead.
+    assert.deepEqual(result.blockingIssues, [], 'nothing blocks the upload')
+    assert.equal(result.warnings.filter(w => w.code.startsWith('PI_')).length, 3,
+      'and all three are still reported')
+  })
+
   test('the dispatch rule is the save path’s own due-date rule, not a second copy', () => {
     const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
     assert.ok(parser.includes("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'"))
-    const fn = parser.slice(parser.indexOf('export function headerRequirementIssues('))
+    const fn = parser.slice(parser.indexOf('export function headerRequirementWarnings('))
     assert.ok(fn.includes('plausibleDueDate({'))
+  })
+})
+
+// ══ What the PI says about its own terms (owner decision 2026-09-21) ════════
+//
+// The BOE template carries a data-validation dropdown beside the Total Fabric
+// Cost row, and the red "Note:" block that states the standard commercial
+// terms. Both are read as PREFILL: a person who filled them in has already
+// answered, and asking again on screen would be asking twice.
+//
+// NEITHER IS A GATE. No warning, no blocking issue, and a template carrying
+// neither parses exactly as it always did.
+
+describe('the PI terms the workbook itself states', () => {
+  const piTerms = async (extraCells: Record<string, CellSpec | null>) => {
+    const wb = buildPiWorkbook({ products: inventProducts(1), anchors: anchorsFor(1), extraCells })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    assert.deepEqual(result.blockingIssues, [], 'the PI terms never block')
+    return result
+  }
+
+  test('a template with neither reads as unanswered, and warns about nothing', async () => {
+    const result = await piTerms({})
+    assert.equal(result.data.piTerms.fabricResponsibility, null,
+      'nobody has answered, which is not the same as "not selected yet"')
+    assert.equal(result.data.piTerms.commercialTermsNote, null)
+    assert.deepEqual(result.warnings.filter(w => String(w.code).includes('FABRIC')), [])
+  })
+
+  test('each of the template’s three dropdown phrases maps to its answer', async () => {
+    const cases: [string, string][] = [
+      ['Under BOE', 'boe'],
+      ['Client will send Fabric', 'client'],
+      ['Not Selected', 'not_selected'],
+    ]
+    for (const [phrase, expected] of cases) {
+      const result = await piTerms({ J117: text(phrase) })
+      assert.equal(result.data.piTerms.fabricResponsibility, expected, phrase)
+    }
+  })
+
+  test('the wording the sheet displays is recognised too, and case does not matter', async () => {
+    const shown = await piTerms({ J117: text('Fabric will be given by client') })
+    assert.equal(shown.data.piTerms.fabricResponsibility, 'client')
+    const shouty = await piTerms({ J117: text('  UNDER   BOE  ') })
+    assert.equal(shouty.data.piTerms.fabricResponsibility, 'boe')
+  })
+
+  test('the dropdown is found wherever the row merges put it', async () => {
+    // The scan covers the columns right of the amount in I117, so the exact
+    // merge does not decide whether the prefill works.
+    for (const cell of ['J117', 'K117', 'L117', 'M117']) {
+      const result = await piTerms({ [cell]: text('Client will send Fabric') })
+      assert.equal(result.data.piTerms.fabricResponsibility, 'client', cell)
+    }
+  })
+
+  test('a phrase the template does not use is passed over, never guessed at', async () => {
+    // VOCABULARY, NOT POSITION. A cell holding something else must read as
+    // "nobody has answered" — a near-miss accepted here would put a
+    // commercial position on a document nobody took.
+    for (const noise of ['TBC', 'boe to confirm', 'client?', 'Fabric', '12000']) {
+      const result = await piTerms({ J117: text(noise) })
+      assert.equal(result.data.piTerms.fabricResponsibility, null, noise)
+    }
+  })
+
+  test('the standard note is read, and its heading is not carried through', async () => {
+    const note = [
+      'Note:',
+      'Given prices are ex-factory.',
+      'Fabric, Packaging and GST (if not quoted) will be extra as applicable.',
+    ].join('\n')
+    const result = await piTerms({ A115: text(note) })
+    assert.equal(result.data.piTerms.commercialTermsNote,
+      'Given prices are ex-factory.\nFabric, Packaging and GST (if not quoted) will be extra as applicable.',
+      'the sheet’s "Note:" heading is dropped; the terms are otherwise verbatim')
+  })
+
+  test('the note is found wherever the merge anchors it', async () => {
+    for (const cell of ['A114', 'A115', 'A116', 'A117', 'A118', 'A119']) {
+      const result = await piTerms({ [cell]: text('Given prices are ex-factory.') })
+      assert.equal(result.data.piTerms.commercialTermsNote, 'Given prices are ex-factory.', cell)
+    }
+  })
+
+  test('text in the note region that is not the note is left alone', async () => {
+    const result = await piTerms({ A115: text('Dispatch schedule') })
+    assert.equal(result.data.piTerms.commercialTermsNote, null)
   })
 })

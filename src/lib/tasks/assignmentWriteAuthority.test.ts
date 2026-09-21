@@ -819,6 +819,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

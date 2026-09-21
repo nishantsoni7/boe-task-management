@@ -661,6 +661,84 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderStartupShape.test.ts',
   ])
 
+  /**
+   * THE AUTHORIZED DRAFT PI BUSINESS RULES (branch feat/pi-upload-required-fields).
+   *
+   * Owner decision 2026-09-21: a Draft PI must state its date of creation, its
+   * salesperson and their contact number, the client's name and city, who
+   * provides the fabric, and the commercial terms — and may not be finalized
+   * until it does. Same discipline as the list above: every name spelled out,
+   * no prefix, no wildcard.
+   *
+   * THIS ONE LEGITIMATELY TOUCHES FILES THE LIST ABOVE CALLS UNTOUCHABLE, and
+   * that is not a contradiction. A VISUAL PASS over the Upload PI screen has no
+   * business in the saved-draft page or the parser; a change to what a PI must
+   * SAY necessarily reaches both — the parser reads the new cells, the draft
+   * page collects what the workbook did not carry, and the submission door
+   * refuses what is still missing. The two lists are kept separate precisely so
+   * that each branch's reach is readable on its own.
+   *
+   * Still excluded, and asserted below: every Order screen, permission file and
+   * Finance surface this work has no reason to enter.
+   */
+  const ALLOWED_PI_DRAFT_BUSINESS_RULES = new Set([
+    // Production — what a PI says, where it is said, and what refuses it.
+    'src/lib/pi/masterSheetParser.ts',
+    'src/lib/pi/types.ts',
+    'src/lib/pi/previewView.ts',
+    'src/lib/orders/piTerms.ts',
+    'src/lib/orders/piReadiness.ts',
+    'src/lib/orders/draftsView.ts',
+    'src/lib/orders/orderPiHandoff.ts',
+    'src/lib/orders/submissionPayload.ts',
+    'src/lib/orders/confirmedPdf.ts',
+    'src/lib/orders/confirmedPdfRender.ts',
+    'src/app/api/orders/import/process-draft/route.ts',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/page.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/components/ui/MultilineText.tsx',
+    // The suites that hold them to it.
+    'src/lib/pi/masterSheetParser.test.ts',
+    'src/lib/pi/realWorkbook.test.ts',
+    'src/lib/orders/piTerms.test.ts',
+    'src/lib/orders/piFinalizationGate.test.ts',
+    'src/lib/orders/confirmedPdf.test.ts',
+    'src/lib/orders/orderPiHandoff.test.ts',
+    'src/lib/orders/submissionPayload.test.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/import/importAccess.test.ts',
+    'src/app/api/orders/import/salespersonContact.test.ts',
+    'src/lib/orders/submissionReplySchema.test.ts',
+  ])
+
+  test('the Draft PI allowance names files, never a directory', () => {
+    for (const file of ALLOWED_PI_DRAFT_BUSINESS_RULES) {
+      assert.ok(/\.(ts|tsx)$/.test(file), `${file} must be one file, not a directory`)
+      assert.ok(!file.includes('*'), `${file} must not be a pattern`)
+    }
+    // What a change to what a PI SAYS still has no business in.
+    for (const untouchable of [
+      'src/app/orders/[id]/page.tsx',
+      'src/app/orders/all/page.tsx',
+      'src/lib/orders/submissionWorkflow.ts',
+      'src/lib/orders/advanceRequirement.ts',
+      'src/lib/orders/saveDraftFlow.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/permissions/orderApproval.ts',
+      'src/lib/finance/paymentEntry.ts',
+    ]) {
+      assert.equal(ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable), false,
+        `${untouchable} is outside what a PI's own content reaches`)
+      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
+
   test('the PI refinement allowance names files, never a directory', () => {
     // The guard above is only as good as this: a future edit that turns one of
     // these into a prefix would silently readmit every Orders screen.
@@ -682,7 +760,13 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_PI_PREVIEW_REFINEMENT.has(untouchable), false,
         `${untouchable} is an Orders file the visual pass has no business in`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      // AND UNCHANGED, unless another authorized branch legitimately reaches
+      // it. The property this test owns is that the VISUAL PASS did not, which
+      // the membership assertion above is what actually proves; a second
+      // authorized branch changing the file says nothing about this one.
+      if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -700,7 +784,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
+      !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f))
     assert.deepEqual(unexpected, [])
   })
 
@@ -726,7 +811,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
-      assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file),
+      assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
+        || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
@@ -741,7 +827,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
       !ALLOWED_TESTS.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
+      !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f))
     assert.deepEqual(unexpected, [],
       'every other file in the repository is untouched by this branch')
   })

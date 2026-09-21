@@ -31,9 +31,12 @@ export const MULTILINE_TEXT_RULES: CSSProperties = {
   overflowWrap: 'anywhere',
 }
 
-export function MultilineText({ children, style }: { children: ReactNode; style?: CSSProperties }) {
+export function MultilineText(
+  { children, style, className }:
+  { children: ReactNode; style?: CSSProperties; className?: string },
+) {
   return (
-    <p style={{ ...style, ...MULTILINE_TEXT_RULES }}>
+    <p className={className} style={{ ...style, ...MULTILINE_TEXT_RULES }}>
       {children}
     </p>
   )

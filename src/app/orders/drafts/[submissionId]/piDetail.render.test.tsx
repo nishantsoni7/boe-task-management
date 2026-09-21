@@ -23,6 +23,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
+import {
+  BOE_STANDARD_COMMERCIAL_TERMS,
+  COMMERCIAL_TERMS_ABSENT,
+  FABRIC_RESPONSIBILITY_UNANSWERED,
+} from '@/lib/orders/piTerms'
 
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
@@ -526,10 +531,10 @@ const summaryHtml = (over: {
     onOpenClient={() => {}}
     client={buildClientDetails(over.client ?? {
       clientName: 'Kalyan Interiors',
+      clientCity: 'Bengaluru',
       billToName: 'Kalyan Interiors',
       shipToName: 'Kalyan Interiors',
-      contactNumber: '+91 98450 22222',
-      billToPhone: null,
+      billToPhone: '+91 98450 22222',
       shipToPhone: null,
       billingAddress: '12 Residency Road\nBengaluru 560025',
       shippingAddress: null,
@@ -543,36 +548,63 @@ const summaryHtml = (over: {
 )
 
 describe('the overview names each person once, under one established label each', () => {
-  test('Salesperson, PI submitted by, Created date — in that order', () => {
-    const meta = buildOverviewMeta({ salesperson: 'Nishant Soni', submitterName: 'Priya Rao', createdOn: '01 Aug 2026' })
-    assert.deepEqual(meta.map(m => m.label), ['Salesperson', 'PI submitted by', 'Created date'])
-    assert.deepEqual(meta.map(m => m.value), ['Nishant Soni', 'Priya Rao', '01 Aug 2026'])
+  test('Salesperson, their number, PI submitted by, Created date — in that order', () => {
+    const meta = buildOverviewMeta({
+      salesperson: 'Nishant Soni',
+      salespersonPhone: '+91 98200 11223',
+      submitterName: 'Priya Rao',
+      createdOn: '01 Aug 2026',
+    })
+    assert.deepEqual(meta.map(m => m.label),
+      ['Salesperson', 'Salesperson contact', 'PI submitted by', 'Created date'])
+    assert.deepEqual(meta.map(m => m.value),
+      ['Nishant Soni', '+91 98200 11223', 'Priya Rao', '01 Aug 2026'])
+  })
+
+  test('THE NUMBER SITS UNDER THE SALESPERSON, because it is theirs', () => {
+    // order_submissions.contact_number is the BOE-side number at workbook
+    // G22, and the PI prints it so a client can reach the person running
+    // their order. It used to lead the CLIENT’s contact line, which made
+    // "call the client" dial BOE. It is required before the PI can be
+    // submitted, so its absence is said as a request rather than a shrug.
+    const meta = buildOverviewMeta({
+      salesperson: 'Nishant Soni', salespersonPhone: null,
+      submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
+    })
+    assert.equal(meta[1].label, 'Salesperson contact')
+    assert.equal(meta[1].value, null)
+    assert.equal(meta[1].absent, 'Not given')
   })
 
   test('the salesperson is the name the PI carries — never borrowed from the submitter', () => {
     const meta = buildOverviewMeta({ salesperson: null, submitterName: 'Priya Rao', createdOn: '01 Aug 2026' })
     assert.equal(meta[0].value, null)
     assert.equal(meta[0].absent, 'Not named')
-    assert.equal(meta[1].value, 'Priya Rao', 'the submitter is named once, under its own label')
+    assert.equal(meta[2].value, 'Priya Rao', 'the submitter is named once, under its own label')
   })
 
   test('an unsubmitted PI says so, and a dash is never a value', () => {
-    const meta = buildOverviewMeta({ salesperson: '—', submitterName: null, createdOn: '  ' })
-    assert.deepEqual(meta.map(m => m.value), [null, null, null])
-    assert.equal(meta[1].absent, 'Not submitted yet')
+    const meta = buildOverviewMeta({ salesperson: '—', salespersonPhone: '—', submitterName: null, createdOn: '  ' })
+    assert.deepEqual(meta.map(m => m.value), [null, null, null, null])
+    assert.equal(meta[2].absent, 'Not submitted yet')
   })
 
   test('the strip renders every label once, with its icon hidden from assistive technology', () => {
     const html = summaryHtml()
     const t = text(html)
-    for (const label of ['Salesperson', 'PI submitted by', 'Created date']) {
+    // 'Salesperson' is a PREFIX of 'Salesperson contact', so it is counted by
+    // splitting on the longer label first and checking what is left.
+    assert.equal(t.split('Salesperson contact').length - 1, 1, 'Salesperson contact appears once')
+    const withoutPhoneLabel = t.split('Salesperson contact').join('·')
+    assert.equal(withoutPhoneLabel.split('Salesperson').length - 1, 1, 'Salesperson appears once')
+    for (const label of ['PI submitted by', 'Created date']) {
       assert.equal(t.split(label).length - 1, 1, `${label} appears once`)
     }
     for (const retired of ['PI created by', 'Sales candidate', 'Sales Candidate', 'Assignee']) {
       assert.ok(!t.includes(retired), `${retired} is a second word for somebody already named`)
     }
     const strip = html.slice(html.indexOf('class="pi-detail-meta"'), html.indexOf('class="pi-detail-dates"'))
-    assert.equal((strip.match(/aria-hidden="true"/g) ?? []).length, 3)
+    assert.equal((strip.match(/aria-hidden="true"/g) ?? []).length, 4)
   })
 
   test('the workbook is named quietly, and a record with none shows no block', () => {
@@ -670,8 +702,8 @@ describe('the card names the client, and holds the rest behind that name', () =>
 
   test('a client that gave nothing but a name still shows the name', () => {
     const html = text(summaryHtml({ client: {
-      clientName: 'Kalyan Interiors', billToName: null, shipToName: null,
-      contactNumber: null, billToPhone: null, shipToPhone: null,
+      clientName: 'Kalyan Interiors', clientCity: null, billToName: null, shipToName: null,
+      billToPhone: null, shipToPhone: null,
       billingAddress: null, shippingAddress: null,
     } }))
     assert.ok(html.includes('Kalyan Interiors'))
@@ -1138,9 +1170,10 @@ describe('the card’s actions keep their gates and their place', () => {
 
 describe('the client dialog answers billing and shipping separately', () => {
   const both = {
-    clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
-    shipToName: 'Kalyan Interiors', contactNumber: '+91 98450 22222',
-    billToPhone: null, shipToPhone: null,
+    clientName: 'Kalyan Interiors', clientCity: 'Bengaluru',
+    billToName: 'Kalyan Interiors',
+    shipToName: 'Kalyan Interiors',
+    billToPhone: '+91 98450 22222', shipToPhone: null,
     billingAddress: '12 Residency Road\nBengaluru 560025',
     shippingAddress: '12 Residency Road\nBengaluru 560025',
   }
@@ -1160,14 +1193,14 @@ describe('the client dialog answers billing and shipping separately', () => {
   })
 
   test('an absent value says so, in the dialog, rather than leaving a gap', () => {
-    const html = text(dialog({ contactNumber: null, shippingAddress: null }))
+    const html = text(dialog({ billToPhone: null, shippingAddress: null }))
     assert.ok(html.includes('Billing details') && html.includes('Shipping details'))
     assert.ok(html.includes(NOT_PROVIDED))
   })
 
   test('a dialable number is a tel: link; one that is not stays text', () => {
     assert.ok(dialog().includes('href="tel:+919845022222"'))
-    const short = dialog({ contactNumber: '1234', billToPhone: null, shipToPhone: null })
+    const short = dialog({ billToPhone: '1234', shipToPhone: null })
     assert.ok(!short.includes('href="tel:'), 'nothing offers to dial four digits')
     assert.ok(text(short).includes('1234'), 'but what the document said is still shown')
   })
@@ -1536,6 +1569,102 @@ describe('the commercial breakdown leads with the PI total and keeps only lines 
       submission({ grand_total: null })))))
     assert.ok(renderToStaticMarkup(<PiCommercialBreakdown view={missing} />)
       .includes('class="pi-detail-breakdown-total-absent"'))
+  })
+})
+
+// ── 6b. What the card says about the fabric and the terms ────────────────────
+
+describe('the breakdown states who provides the fabric, beside the figure', () => {
+  // A PI THAT ACTUALLY CHARGES FOR FABRIC. The default fixture leaves the
+  // cell not-applicable, which buildBreakdownView correctly drops — and the
+  // whole point of these assertions is where the statement lands RELATIVE TO
+  // the figure, so there has to be a figure.
+  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(
+    submission({ fabric_cost: 40000, fabric_cost_meaning: 'numeric', fabric_cost_text: null }))))
+  const view = buildBreakdownView(rows)
+
+  const card = (over: {
+    fabricResponsibility?: string | null
+    commercialTerms?: string | null
+  } = {}) => renderToStaticMarkup(
+    <PiCommercialBreakdown
+      view={view}
+      fabricResponsibility={'fabricResponsibility' in over ? over.fabricResponsibility : 'boe'}
+      commercialTerms={'commercialTerms' in over ? over.commercialTerms : BOE_STANDARD_COMMERCIAL_TERMS}
+    />)
+
+  test('the sentence sits DIRECTLY under the fabric cost it explains', () => {
+    const html = card({ fabricResponsibility: 'client' })
+    // A figure and the sentence that says what it means have to be read
+    // together. 'Fabric cost Rs. 40,000' six lines above 'Fabric will be
+    // provided by client' is two facts a reader has to assemble, and the
+    // assembly is where they get it wrong.
+    const fabricRow = html.indexOf('Fabric cost')
+    assert.notEqual(fabricRow, -1, 'the fixture must carry a fabric line')
+    const statement = html.indexOf('Fabric will be provided by client.')
+    assert.ok(statement > fabricRow, 'the statement follows its figure')
+    // Nothing else between them: the very next row is the statement.
+    const between = text(html.slice(fabricRow, statement))
+    assert.ok(!/Packing|Transportation|GST|Grand Total/.test(between),
+      'no other line comes between the fabric cost and what it means')
+  })
+
+  test('each of the three answers prints its own sentence', () => {
+    assert.ok(text(card({ fabricResponsibility: 'boe' })).includes('Fabric will be provided by BOE.'))
+    assert.ok(text(card({ fabricResponsibility: 'client' })).includes('Fabric will be provided by client.'))
+    assert.ok(text(card({ fabricResponsibility: 'not_selected' })).includes('Fabric not selected yet.'))
+  })
+
+  test('a client-supplied PI never reads as though BOE will source it', () => {
+    const said = text(card({ fabricResponsibility: 'client' }))
+    assert.ok(!said.includes('Fabric will be provided by BOE'))
+  })
+
+  test('AN UNANSWERED PI SAYS SO, and does not borrow a deliberate answer', () => {
+    const said = text(card({ fabricResponsibility: null }))
+    assert.ok(said.includes(FABRIC_RESPONSIBILITY_UNANSWERED))
+    assert.ok(!said.includes('Fabric not selected yet'),
+      'nobody-has-answered must not print the answer "not selected yet"')
+    assert.ok(!said.includes('provided by'))
+  })
+
+  test('the question is answered even on a PI with no fabric line at all', () => {
+    const noFabric = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(
+      persistedCommercial(submission({ fabric_cost: null })))))
+    const html = renderToStaticMarkup(
+      <PiCommercialBreakdown view={noFabric} fabricResponsibility='client' />)
+    assert.ok(text(html).includes('Fabric will be provided by client.'),
+      'the answer is about the order, not about the line')
+    assert.equal((html.match(/Fabric will be provided by client\./g) ?? []).length, 1,
+      'and it is said exactly once')
+  })
+
+  test('the terms are printed under the figures they qualify', () => {
+    const html = card()
+    assert.ok(text(html).includes(BOE_STANDARD_COMMERCIAL_TERMS))
+    assert.ok(html.indexOf('pi-detail-breakdown-rows') < html.indexOf('pi-detail-breakdown-terms'),
+      'they qualify the amounts, so they come after them')
+  })
+
+  test('edited terms are printed verbatim, standard wording and all', () => {
+    const edited = 'Prices include fabric and packing. Transport at actual.'
+    assert.ok(text(card({ commercialTerms: edited })).includes(edited))
+    assert.ok(!text(card({ commercialTerms: edited })).includes('ex-factory'),
+      'the standard sentence is not printed alongside an edit')
+  })
+
+  test('a PI with no terms says so rather than leaving a gap', () => {
+    assert.ok(text(card({ commercialTerms: null })).includes(COMMERCIAL_TERMS_ABSENT))
+  })
+
+  test('the Edit control appears only where the viewer may edit', () => {
+    const withEdit = renderToStaticMarkup(
+      <PiCommercialBreakdown view={view} fabricResponsibility='boe' onEditTerms={() => {}} />)
+    assert.ok(withEdit.includes('aria-label="Edit PI terms and fabric responsibility"'))
+    const readOnly = renderToStaticMarkup(
+      <PiCommercialBreakdown view={view} fabricResponsibility='boe' onEditTerms={null} />)
+    assert.ok(!readOnly.includes('aria-label="Edit PI terms and fabric responsibility"'),
+      'a control that cannot act must not be offered')
   })
 })
 
@@ -2786,7 +2915,8 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('the commercial breakdown and the activity trail come after them, together', () => {
     assert.ok(at('{/* Products */}') < at('<PiLowerGrid'))
     const grid = page.slice(at('<PiLowerGrid'), at('<PiWarningPanel'))
-    assert.ok(grid.includes('<PiCommercialBreakdown view={breakdown} />'), 'the breakdown is in the grid')
+    assert.ok(grid.includes('<PiCommercialBreakdown'), 'the breakdown is in the grid')
+    assert.ok(grid.includes('view={breakdown}'), 'and it renders the selection, not a rebuild')
     assert.ok(grid.includes('<PiActivityTimeline'), 'and so is the trail')
     assert.ok(grid.indexOf('<PiCommercialBreakdown') < grid.indexOf('<PiActivityTimeline'),
       'breakdown first, which is also the order they stack in on a phone')
@@ -3118,6 +3248,11 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       // total are refused BY NAME with the reason — the workbook's formulas
       // produce them and this system transcribes rather than computes them.
       'update_order_submission_item_details',
+      // The PI terms editor (20261225000000): date of creation, commercial
+      // terms note, fabric responsibility. Three named columns; a fabric
+      // COST aimed at it is refused by name, which is what makes changing
+      // the fabric answer unable to remove a figure.
+      'update_order_submission_pi_terms',
       'update_order_submission_schedule_terms',
       'verify_pi_finance_check',
     ])

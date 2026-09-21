@@ -17,9 +17,10 @@
 // These draw the answers.
 
 import Link from 'next/link'
+import { Fragment } from 'react'
 import {
   AlertTriangle, ArrowRight, Ban, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Copy,
-  FileSpreadsheet, Hash, History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  FileSpreadsheet, Hash, History, Info, Pencil, Percent, Phone, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
   User,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -57,6 +58,14 @@ import {
   type ReservationView,
 } from '@/lib/orders/orderNumberReservation'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
+import {
+  COMMERCIAL_TERMS_ABSENT,
+  COMMERCIAL_TERMS_LABEL,
+  FABRIC_RESPONSIBILITY_LABEL,
+  FABRIC_RESPONSIBILITY_UNANSWERED,
+  commercialTermsNote,
+  fabricResponsibilityStatement,
+} from '@/lib/orders/piTerms'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
   ADVANCE_BAND_TITLE,
@@ -270,6 +279,7 @@ const CONTEXT_DOT: Record<PiDetailTone, string> = {
 /** One icon per metadata item, so the strip scans without reading every label. */
 const META_ICON: Record<OverviewMetaItem['key'], typeof User> = {
   salesperson: User,
+  salespersonPhone: Phone,
   submittedBy: Send,
   created: CalendarDays,
 }
@@ -278,7 +288,8 @@ const META_ICON: Record<OverviewMetaItem['key'], typeof User> = {
  * THE PI OVERVIEW: who it is for and when it moves, beside what it is worth.
  *
  * LEFT — the client (the name opens the contact dialog), a compact metadata
- * strip (Salesperson · PI submitted by · Created date, each said once), and the
+ * strip (Salesperson · Salesperson contact · PI submitted by · Created date,
+ * each said once), and the
  * two dates in a band of their own at a size that reads at a glance.
  *
  * RIGHT — three figures and nothing else: Product value, Total before GST, and
@@ -692,8 +703,54 @@ export const BREAKDOWN_TITLE = 'Commercial breakdown'
  * recomputed. Amounts are right-aligned tabular figures; a worded value
  * ("Included", "as applicable") keeps its words and a lighter weight. Total
  * before GST opens the tax group, the one rule inside the card.
+ *
+ * WHO PROVIDES THE FABRIC IS STATED INSIDE THE ROWS, directly under the fabric
+ * cost, and not appended after the total. A figure and the sentence that says
+ * what it means have to be read together: "Fabric cost Rs. 40,000" with
+ * "Fabric will be provided by client" six lines below it is two facts a reader
+ * has to assemble, and the assembly is where they get it wrong. Where the PI
+ * carries no fabric row at all the statement still appears, at the foot of the
+ * rows, because the answer is about the order and not about the line.
+ *
+ * IT IS NOT A COMMERCIAL ROW and is never built as one. buildCommercialRows
+ * produces the figures the workbook stated; this is a sentence about them, it
+ * carries no amount, and it enters no arithmetic.
  */
-export function PiCommercialBreakdown({ view }: { view: BreakdownView }) {
+export function PiCommercialBreakdown({ view, fabricResponsibility, commercialTerms, onEditTerms }: {
+  view: BreakdownView
+  /** order_submissions.fabric_responsibility, or null when nobody has answered. */
+  fabricResponsibility?: string | null
+  /** The stored commercial terms note, or null. */
+  commercialTerms?: string | null
+  /** Opens the PI terms editor, where the viewer may change these. */
+  onEditTerms?: (() => void) | null
+}) {
+  const fabricStatement = fabricResponsibilityStatement(fabricResponsibility)
+  const terms = commercialTermsNote(commercialTerms)
+
+  /**
+   * The fabric sentence, or the absence of one said out loud.
+   *
+   * AN UNANSWERED PI DOES NOT BORROW A SENTENCE. fabricResponsibilityStatement
+   * returns null for a record nobody has answered, and what is printed then is
+   * "Not chosen yet" in muted type beside the control that asks — never
+   * "Fabric not selected yet", which is one of the three deliberate answers and
+   * would read as a decision that was never taken.
+   */
+  const fabricLine = (
+    <div className="pi-detail-breakdown-row" key="fabric-responsibility">
+      <dt>{FABRIC_RESPONSIBILITY_LABEL}</dt>
+      <dd
+        className="pi-detail-breakdown-word"
+        style={fabricStatement ? undefined : { color: colors.muted }}
+      >
+        {fabricStatement ?? FABRIC_RESPONSIBILITY_UNANSWERED}
+      </dd>
+    </div>
+  )
+
+  const hasFabricRow = view.rows.some(row => row.key === 'fabric')
+
   return (
     <PiCard>
       <section className="pi-detail-breakdown" aria-label={BREAKDOWN_TITLE}>
@@ -712,17 +769,53 @@ export function PiCommercialBreakdown({ view }: { view: BreakdownView }) {
         </div>
         <dl className="pi-detail-breakdown-rows">
           {view.rows.map(row => (
-            <div
-              key={row.key}
-              className={row.groupStart ? 'pi-detail-breakdown-row pi-detail-breakdown-subtotal' : 'pi-detail-breakdown-row'}
-            >
-              <dt>{row.label}</dt>
-              <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
-                {row.value}
-              </dd>
-            </div>
+            <Fragment key={row.key}>
+              <div
+                className={row.groupStart ? 'pi-detail-breakdown-row pi-detail-breakdown-subtotal' : 'pi-detail-breakdown-row'}
+              >
+                <dt>{row.label}</dt>
+                <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
+                  {row.value}
+                </dd>
+              </div>
+              {/* Directly under the figure it explains. */}
+              {row.key === 'fabric' && fabricLine}
+            </Fragment>
           ))}
+          {/* No fabric figure on this PI, and the question still has an answer. */}
+          {!hasFabricRow && fabricLine}
         </dl>
+
+        {/* ── What the prices cover ──
+            Under the figures, because it qualifies all of them. Shown even
+            when it is the standard BOE wording: a reader checking what was
+            quoted needs to see the sentence, not to be told it is standard. */}
+        <div className="pi-detail-breakdown-terms">
+          <div className="pi-detail-breakdown-terms-head">
+            <span>{COMMERCIAL_TERMS_LABEL}</span>
+            {onEditTerms && (
+              <button
+                type="button"
+                onClick={onEditTerms}
+                className="pi-detail-summary-inline-action"
+                aria-haspopup="dialog"
+                aria-label="Edit PI terms and fabric responsibility"
+              >
+                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                Edit
+              </button>
+            )}
+          </div>
+          {terms
+            ? (
+              <MultilineText className="pi-detail-breakdown-terms-body">
+                {terms}
+              </MultilineText>
+            )
+            : (
+              <div className="pi-detail-breakdown-terms-absent">{COMMERCIAL_TERMS_ABSENT}</div>
+            )}
+        </div>
       </section>
     </PiCard>
   )

@@ -54,8 +54,10 @@ function piRow(overrides: Partial<OrderPiRow> = {}): OrderPiRow {
     ship_to_name: 'Marigold Site Office',
     creation_date: '2026-07-01',
     source_created_by: 'R. Sharma',
+    // The SALESPERSON's number (workbook G22), beside the BOE GST at B22.
+    // It is printed under the salesperson, never as the client’s own line.
     contact_number: '+91 98200 11223',
-    bill_to_phone: null,
+    bill_to_phone: '+91 98450 77665',
     ship_to_phone: null,
     billing_address: '14 Nariman Point, Mumbai',
     shipping_address: 'Plot 8, Sector 21, Gurugram',
@@ -97,15 +99,30 @@ const ready = (row: OrderPiRow, order = ORDER_STATES_BOTH) => {
 // ── 1. A PI-linked Order ──────────────────────────────────────────────────────
 
 describe('a Confirmed Order created from an approved PI', () => {
-  test('carries the PI\'s client, both parties and a dialable contact number', () => {
+  test('carries the PI\'s client, both parties and a dialable CLIENT number', () => {
     const { client } = ready(piRow())
     assert.equal(client.name, 'Marigold Interiors')
     assert.equal(client.billTo.name, 'Marigold Interiors Pvt Ltd')
     assert.equal(client.billTo.address, '14 Nariman Point, Mumbai')
     assert.equal(client.shipTo.name, 'Marigold Site Office')
     assert.equal(client.shipTo.address, 'Plot 8, Sector 21, Gurugram')
-    assert.equal(client.phone?.label, '+91 98200 11223')
-    assert.equal(client.phone?.tel, '+919820011223')
+    assert.equal(client.phone?.label, '+91 98450 77665')
+    assert.equal(client.phone?.tel, '+919845077665')
+  })
+
+  test('and never offers the salesperson\'s number as the client\'s', () => {
+    // IT USED TO. contact_number led the fallback, so "call the client"
+    // dialled BOE on every PI where the workbook filled G22 — which is most
+    // of them. That column is the BOE-side contact and belongs under the
+    // salesperson; the client's own numbers are the two party phones.
+    const { client } = ready(piRow({ bill_to_phone: null, ship_to_phone: null }))
+    assert.equal(client.phone, null, 'a PI with no CLIENT number offers no client call')
+    assert.equal(client.phoneText, null, 'and does not quietly show BOE\u2019s instead')
+  })
+
+  test('the client city reaches the Order screen', () => {
+    assert.equal(ready(piRow({ client_city: 'Mumbai' })).client.city, 'Mumbai')
+    assert.equal(ready(piRow({ client_city: null })).client.city, null)
   })
 
   test('states the confirm date and the due date the PI carries', () => {

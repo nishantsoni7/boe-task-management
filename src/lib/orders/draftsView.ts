@@ -229,6 +229,22 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   payment_terms?: string | null
   billing_terms?: string | null
 
+  /**
+   * What a PI says about itself as a commercial document (20261225000000).
+   *
+   * Optional on the TYPE for the same reason as the two GST numbers above: a
+   * fixture written before these columns existed does not carry the keys, and
+   * a missing key must read as "not known here" rather than as a gap. A row
+   * the page actually selected always carries all three.
+   *
+   * fabric_responsibility is 'boe' | 'client' | 'not_selected' | null, and the
+   * null is load-bearing — it means NOBODY HAS ANSWERED, which is a different
+   * fact from the deliberate 'not_selected'. See src/lib/orders/piTerms.ts.
+   */
+  client_city?: string | null
+  commercial_terms_note?: string | null
+  fabric_responsibility?: string | null
+
   /** Optimistic-concurrency counter — see PI_DRAFT_DETAIL_COLUMNS. */
   row_version?: number | null
 
@@ -377,6 +393,16 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // update_order_submission_schedule_terms; read here so the editor can
   // prefill them and the detail page can show them.
   'payment_terms', 'billing_terms',
+  // The client's city, and what the PI says about its own terms and its fabric
+  // (20261225000000). Editable through update_order_submission_client_details
+  // and update_order_submission_pi_terms respectively; read here because every
+  // one of them is both shown on the PI and checked before it can be submitted.
+  //
+  // 20261225000000 MUST BE APPLIED BEFORE THIS SHIPS — a select naming a column
+  // that does not exist fails whole, and this is the page's only read of the
+  // record. The same deployment ordering billing_percentage needed from
+  // 20260923000000, for the same reason.
+  'client_city', 'commercial_terms_note', 'fabric_responsibility',
   // The optimistic-concurrency counter (20260928000000). Read here so an
   // editor can send back the version it opened at; a concurrent edit moves it
   // and the second write is refused rather than silently winning.

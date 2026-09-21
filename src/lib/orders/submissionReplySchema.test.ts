@@ -83,13 +83,55 @@ describe('the reply migration is additive and correctly sequenced', () => {
     // reachable by no role, and Phase B replaces its body with a delegate while
     // keeping its signature byte-identical, which is what lets the two doors
     // above stay untouched.
+    //
+    // ── THE ONE SANCTIONED EXCEPTION (20261225000000) ──────────────────────
+    //
+    // A migration may re-emit these doors to put the FINALIZATION GATE in
+    // front of them, and only for that.
+    //
+    // WHY THE RULE BENDS HERE AND NOWHERE ELSE. What this test protects is the
+    // contract: the name, the signature, the grant, and what the door does with
+    // a PI that is fit to submit. None of those moves. What changes is that a
+    // PI missing its salesperson, its client city or its fabric answer is
+    // refused — and the reason it had to change is that these doors are still
+    // `grant execute … to authenticated`, so PostgREST exposes them. Leaving
+    // them alone would have left a route that finalizes a PI without the
+    // information a finalized PI is required to carry, which is a worse outcome
+    // than a re-emission this test knows about.
+    //
+    // The exception is NARROW AND CHECKED: the re-emitted body must keep its
+    // delegation and must add nothing but the gate. A future migration that
+    // re-emits these doors for any other reason still fails.
+    const GATE = 'assert_order_submission_finalizable'
+    const GATE_MIGRATION = '20261225000000_order_submission_pi_header_terms_and_fabric.sql'
+
     for (const file of files.filter(f => f > REPLY_FILE)) {
       const later = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
-      for (const owned of [
-        'create or replace function public.submit_order_submission(',
-        'create or replace function public.submit_order_submission_with_note(',
+      for (const [owned, delegate] of [
+        ['create or replace function public.submit_order_submission(',
+         'public.submit_order_submission_internal(p_submission_id, null)'],
+        ['create or replace function public.submit_order_submission_with_note(',
+         'public.submit_order_submission_internal(p_submission_id, p_note)'],
       ]) {
-        assert.ok(!later.includes(owned), `${file} must not redefine: ${owned}`)
+        if (!later.includes(owned)) continue
+
+        assert.equal(file, GATE_MIGRATION,
+          `${file} must not redefine: ${owned}`)
+
+        // It re-emits the door only to gate it, and still delegates as before.
+        const body = later.slice(later.indexOf(owned))
+        const end = body.indexOf('\n$$;')
+        assert.ok(end > 0, `${owned} has no body in ${file}`)
+        const fn = body.slice(0, end)
+        assert.ok(fn.includes(GATE), `${owned} is re-emitted without the gate`)
+        assert.ok(fn.includes(delegate),
+          `${owned} no longer delegates to the implementation it always did`)
+        assert.ok(fn.indexOf(GATE) < fn.indexOf(delegate),
+          `${owned} runs the gate after the work it is meant to gate`)
+        // And the contract itself is untouched.
+        assert.ok(later.includes(`grant  execute on function public.${owned.slice(owned.lastIndexOf('.') + 1, -1)}`)
+          || later.includes(`grant execute on function public.${owned.slice(owned.lastIndexOf('.') + 1, -1)}`),
+          `${owned} lost its grant`)
       }
     }
   })

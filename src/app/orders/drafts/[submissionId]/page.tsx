@@ -110,6 +110,7 @@ import {
 import {
   PiBillingPercentageModal,
   PiClientDetailsEditModal,
+  PiTermsEditModal,
   PiProductEditModal,
   PiProductReorderModal,
   PI_CHANGE_PI_ONLY,
@@ -125,6 +126,7 @@ import {
 import { colors } from '@/lib/tokens'
 import type {
   PiClientFieldValues,
+  PiTermsFieldValues,
   PiCorrectionSection,
   PiEditSection,
   PiProductFieldValues,
@@ -1234,6 +1236,45 @@ function PiDraftDetailPageInner() {
   }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
   /**
+   * SAVE WHAT THE PI SAYS ABOUT ITSELF — its date of creation, its commercial
+   * terms and who provides the fabric.
+   *
+   * Its own RPC and therefore its own transaction, like every other section.
+   * It shares the client editor’s in-flight and failure state because only one
+   * section dialog is ever open at a time (`editSection` is a single value), so
+   * two sets of flags would be two ways to describe one condition.
+   *
+   * IT SENDS NO FIGURE. The RPC refuses a fabric COST by name, and the dialog
+   * has no control for one: changing who provides the fabric leaves whatever
+   * the workbook stated exactly where it was.
+   */
+  const savePiTerms = useCallback(async (
+    changed: PiTermsFieldValues,
+    reason: string | null,
+  ) => {
+    if (clientSaving) return
+    setClientSaving(true)
+    setClientFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_pi_terms', {
+        p_submission_id: submissionId,
+        p_fields: changed,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setClientFailure((error as { message?: string }).message
+          ?? 'The PI terms could not be saved.')
+        return
+      }
+      setEditSection(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setClientSaving(false)
+    }
+  }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
    * SAVE THE DATES AND TERMS.
    *
    * Its own RPC and therefore its own transaction, exactly like the client
@@ -1698,6 +1739,17 @@ function PiDraftDetailPageInner() {
       client_name: submission.client_name ?? null,
       source_workbook_path: submission.source_workbook_path ?? null,
       parse_blocking_issues: draft.blocking,
+      // The six a finalized PI must say about itself (20261225000000).
+      // Passed with `?? null` rather than left out: an ABSENT property means
+      // “not known here” and is silently skipped, which is right for the
+      // payment surface below and wrong here — this page read every one of
+      // them and a null is a genuine gap.
+      creation_date:         submission.creation_date ?? null,
+      source_created_by:     submission.source_created_by ?? null,
+      contact_number:        submission.contact_number ?? null,
+      client_city:           submission.client_city ?? null,
+      fabric_responsibility: submission.fabric_responsibility ?? null,
+      commercial_terms_note: submission.commercial_terms_note ?? null,
     },
     products.map(p => ({
       item_sequence: p.itemSequence === null ? null : 1,
@@ -1799,6 +1851,10 @@ function PiDraftDetailPageInner() {
    */
   const overviewMeta = buildOverviewMeta({
     salesperson: documentAuthor,
+    // contact_number — the BOE-side number at workbook G22. Shown under the
+    // salesperson, because it is theirs; the client's own numbers stay in the
+    // client dialog.
+    salespersonPhone: submission.contact_number ?? null,
     submitterName: draft.submitterName,
     createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at),
   })
@@ -1916,9 +1972,9 @@ function PiDraftDetailPageInner() {
 
   const clientDetails = buildClientDetails({
     clientName: submission.client_name,
+    clientCity: submission.client_city ?? null,
     billToName: submission.bill_to_name,
     shipToName: submission.ship_to_name,
-    contactNumber: submission.contact_number,
     billToPhone: submission.bill_to_phone,
     shipToPhone: submission.ship_to_phone,
     billingAddress: submission.billing_address,
@@ -2455,7 +2511,14 @@ function PiDraftDetailPageInner() {
             /* The stored figures, through the shared rows builder, selected by
                buildBreakdownView: the PI total large, then only the lines that
                say something. Nothing on this page recomputes a total. */
-            <PiCommercialBreakdown view={breakdown} />
+            <PiCommercialBreakdown
+              view={breakdown}
+              fabricResponsibility={submission.fabric_responsibility ?? null}
+              commercialTerms={submission.commercial_terms_note ?? null}
+              onEditTerms={canEditSubmission || canAdminAmend
+                ? () => { setClientFailure(null); setEditSection('terms') }
+                : null}
+            />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
         />
@@ -2504,6 +2567,7 @@ function PiDraftDetailPageInner() {
         <PiClientDetailsEditModal
           current={{
             client_name:      submission.client_name ?? null,
+            client_city:      submission.client_city ?? null,
             contact_number:   submission.contact_number ?? null,
             bill_to_name:     submission.bill_to_name ?? null,
             bill_to_phone:    submission.bill_to_phone ?? null,
@@ -2520,9 +2584,38 @@ function PiDraftDetailPageInner() {
              PI the owner can no longer edit — the same condition the database
              applies, asked here so the reader learns it before typing. */
           requireReason={canAdminAmend && !canEditSubmission}
-          missingKeys={paymentReadiness.missing.map(m => m.key)}
+          /* WHAT SUBMISSION IS WAITING ON, not only what a payment needs.
+             The payment list holds one field (the client name); the
+             submission list holds the city and the salesperson's number too,
+             and a form that marked only the first left the other two looking
+             optional right up to the refusal. */
+          missingKeys={submissionReadiness.missing.map(m => m.key)}
           onCancel={() => { if (!clientSaving) setEditSection(null) }}
           onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
+        />
+      )}
+
+      {/* ── What the PI says about itself ──
+          Opened from the commercial breakdown, beside the fabric cost the
+          answer explains, and from the readiness list when submission is
+          waiting on one of these three. */}
+      {editSection === 'terms' && (
+        <PiTermsEditModal
+          current={{
+            creation_date:         submission.creation_date ?? null,
+            commercial_terms_note: submission.commercial_terms_note ?? null,
+            fabric_responsibility: submission.fabric_responsibility ?? null,
+          }}
+          /* So the dialog can warn before the client is named as providing
+             fabric this PI still charges for. It warns; it never clears the
+             figure, and neither does the RPC behind it. */
+          fabricCost={toNumber(submission.fabric_cost)}
+          saving={clientSaving}
+          failure={clientFailure}
+          requireReason={canAdminAmend && !canEditSubmission}
+          missingKeys={submissionReadiness.missing.map(m => m.key)}
+          onCancel={() => { if (!clientSaving) setEditSection(null) }}
+          onSave={(changed, reason) => { void savePiTerms(changed, reason) }}
         />
       )}
 

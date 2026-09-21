@@ -360,6 +360,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
   })
 
