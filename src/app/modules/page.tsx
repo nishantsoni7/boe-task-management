@@ -19,7 +19,8 @@ import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
-import { Image as ImageIcon, Receipt as ReceiptIcon } from 'lucide-react'
+import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
+import { Image as ImageIcon } from 'lucide-react'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -252,6 +253,13 @@ export default function BoeOsHomePage() {
     subjectPermissions.get('finance') ?? [],
   )
   const canQuickAddExpense = permsReady && financeCaps.canCreatePaymentRecord
+
+  // ONE LIST, BOTH PLACEMENTS. The gate above is the only authorization
+  // decision; buildQuickActions turns the flags into the definitions that the
+  // desktop sidebar and the small-screen page both render, so a second action
+  // is an entry in QuickActions.tsx and no layout work here. An unauthorized
+  // viewer gets an empty list and therefore no section in either place.
+  const quickActions = buildQuickActions({ canQuickAddExpense })
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves
@@ -557,27 +565,15 @@ export default function BoeOsHomePage() {
           title="BOE Operating System"
           subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           onSignOut={handleSignOut}
+          quickActions={quickActions}
         >
-          {/* ── Quick actions ──
-              One action, and only where it is authorized. It sits above the
-              module grid because its whole reason for existing is that it must
-              be reachable in one tap from the first screen after sign-in. */}
-          {canQuickAddExpense && (
-            <div style={{ marginBottom: '22px' }}>
-              <div className={styles.sectionLabel}>Quick actions</div>
-              <button
-                onClick={() => router.push('/finance/expenses/new')}
-                className="boe-btn boe-btn-primary"
-                style={{
-                  minHeight: '46px', fontSize: '13.5px', fontWeight: 600,
-                  display: 'inline-flex', alignItems: 'center', gap: '8px',
-                }}
-              >
-                <ReceiptIcon size={16} strokeWidth={1.9} />
-                Quick Add Expense
-              </button>
-            </div>
-          )}
+          {/* ── Quick actions, small screens only ──
+              Above the Modules heading because its whole reason for existing is
+              that it must be reachable in one tap from the first screen after
+              sign-in. Above 767px the permanent sidebar carries this same list
+              and CSS hides the copy below, so it is on screen exactly once at
+              every width. */}
+          <QuickActionList actions={quickActions} variant="page" />
 
           {/* Section label */}
           <div className={styles.sectionLabel}>

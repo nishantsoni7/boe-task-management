@@ -3021,6 +3021,139 @@ body {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   QUICK ACTIONS
+
+   One definition list (src/components/layout/QuickActions.tsx) rendered in two
+   places, with CSS — not JavaScript — deciding which one is on screen. The
+   switch is the SIDEBAR’S OWN BREAKPOINT, 767px, the same one that turns
+   .boe-sidebar into a drawer and reveals .boe-menu-toggle. There is no second
+   breakpoint for quick actions to disagree with.
+
+     >= 768px  permanent sidebar  →  sidebar copy shown, page copy hidden
+     <= 767px  drawer             →  page copy shown, sidebar copy hidden
+
+   The sidebar copy is hidden rather than merely off-screen below 767px: an
+   action you must open a menu to reach is not a quick action, and leaving it
+   in the drawer would also put it on screen twice once the drawer is open.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Shared: a vertical stack, so a second action drops underneath the first with
+   no further layout work on either surface. */
+.boe-quick-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* TINTED, NOT FILLED.
+
+   This button is NOT .boe-btn-primary. A filled #E8A030 slab was the loudest
+   thing in a column of quiet nav items, against "neutral-heavy palette",
+   "minimal bright colours" and "low visual noise" in docs/Reference/UI_RULES.md
+   — and against the note on .boe-record-action above, which already states the
+   rule for this codebase: one dominant primary is the only filled button.
+
+   So it takes the shape .boe-btn-danger already establishes for a coloured but
+   quiet action — low-alpha fill, matching hairline, coloured mark — in amber:
+
+     fill    rgba(232,160,48,0.12), the same tint .boe-nav-badge.amber uses
+     border  the same hue at 0.34, so the edge is real on #F8F9FA and #F4F5F7
+     label   --color-boe-primary, 16.1:1 on that fill
+     icon    #C4831A, the amber foreground .boe-nav-badge.amber already pairs
+             with this exact tint. Decorative and aria-hidden, so it carries
+             the identity while the label carries the contrast.
+
+   Full width on both surfaces, and never below the 44px touch minimum —
+   .boe-btn only reaches that at <= 767px and this has to be tappable at every
+   width. */
+.boe-quick-action {
+  width: 100%;
+  justify-content: center;
+  min-height: 46px;
+  font-size: 13.5px;
+  font-weight: 600;
+  gap: 8px;
+  background: rgba(232, 160, 48, 0.12);
+  color: var(--color-boe-primary);
+  border: 1px solid rgba(232, 160, 48, 0.34);
+}
+
+/* lucide renders stroke="currentColor", so setting colour on the svg is the
+   whole of it — the mark goes amber, the label stays dark. */
+.boe-quick-action svg {
+  color: #C4831A;
+}
+
+/* Deepens the tint rather than changing hue, the way .boe-btn-danger:hover
+   does. Label contrast only improves. */
+.boe-quick-action:hover:not(:disabled) {
+  background: rgba(232, 160, 48, 0.2);
+  border-color: rgba(232, 160, 48, 0.5);
+}
+
+/* Stated here because this button no longer inherits .boe-btn-primary:disabled.
+   Same grey pair that rule supplies, so a disabled quick action looks like
+   every other disabled button in the app. */
+.boe-quick-action:disabled {
+  background: #EEF0F4;
+  color: #8C94A6;
+  border-color: rgba(0, 0, 0, 0.08);
+  cursor: not-allowed;
+}
+.boe-quick-action:disabled svg {
+  color: #8C94A6;
+}
+
+/* The global focus ring is amber at 0.45 alpha, which on an amber-tinted
+   button is very nearly the button. Same reasoning and the same shape as
+   .boe-task-action-submit:focus-visible above; #111318 is the primary text
+   token, so this introduces no new colour. */
+.boe-quick-action:focus-visible {
+  outline: 2px solid #111318;
+  outline-offset: 2px;
+}
+
+/* ── Sidebar copy (>= 768px) ── */
+.boe-quick-actions-sidebar {
+  margin-bottom: 8px;
+}
+
+/* h2 carrying .boe-sidebar-label: the heading is real structure, so it needs
+   its user-agent margin removed rather than its semantics dropped. */
+.boe-quick-actions-sidebar .boe-sidebar-label {
+  margin: 0;
+}
+
+/* ── Page copy (<= 767px) ──
+   SEPARATED BY A RULE, not by a tinted box. The button is itself amber-tinted
+   now, so a tinted container around it was tint on tint — it washed the button
+   out and cost it the prominence the section exists for. A hairline and its
+   spacing do the separating instead, which is quieter and matches how the rest
+   of this UI divides a page. */
+.boe-quick-actions-page {
+  display: none;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* The launcher’s own MODULES label, to the value: the two sit one above the
+   other and any difference between them would read as a mistake. */
+.boe-quick-actions-page-label {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8C94A6;
+}
+
+@media (max-width: 767px) {
+  .boe-quick-actions-sidebar { display: none; }
+  .boe-quick-actions-page    { display: block; }
+}
+
 /* ── Mobile bottom navigation — hidden on desktop, shown on mobile ── */
 .boe-mobile-bottom-nav {
   display: none;
