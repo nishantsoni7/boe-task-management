@@ -4048,9 +4048,10 @@ body {
    bold label and its figure size are still computed from the row's own
    `emphasis`, beside every other row's typography.
 
-   SCOPED TO THE DETAIL PAGE. Only the 'detail' variant of PiCommercialSummary
-   applies this class; /orders/import renders the same component, the same rows
-   and the same Grand Total exactly as it always has. */
+   BOTH PI SCREENS NOW APPLY IT. "Which number is the one that matters" has one
+   answer, and a reviewer who learned where to look on the saved draft must find
+   it in the same place on the upload preview. The declaration is unchanged; only
+   the set of rows that carry the class grew. */
 
 .pi-commercial-grand-total {
   /* The amber token at the alpha the rest of the page uses for a warm ground. */

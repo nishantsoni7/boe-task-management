@@ -625,6 +625,67 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/permissions/imageEditor.test.ts',
   ])
 
+  /**
+   * THE AUTHORIZED PI PREVIEW REFINEMENT (branch feat/pi-preview-refinement).
+   *
+   * WHY A SECOND LIST RATHER THAN A WIDER FILTER. These guards are written as
+   * "this branch changed nothing but expenses", and they run against whatever
+   * branch is checked out — so a later, unrelated, ALSO-authorized branch makes
+   * them fail for a reason that has nothing to do with expenses. The property
+   * worth keeping is the specific one: no Finance surface, no payment module,
+   * no permission file and no Orders file OTHER than the named ones moved.
+   *
+   * So the names are spelled out, one by one, with no prefix match and no
+   * wildcard. `src/app/orders/` as a pattern would let the Order detail page,
+   * the approval controls or the drafts list through; these ten entries cannot.
+   * A visual pass over the Upload PI screen is exactly:
+   *
+   *   the screen itself, the components it shares with the saved-draft screen,
+   *   the view layer that decides what a field SAYS, and the six suites that
+   *   hold all three to their promises.
+   *
+   * src/app/globals.css is already an accounted-for wiring point above; the
+   * refinement's edit to it is a comment on a rule that already existed.
+   */
+  const ALLOWED_PI_PREVIEW_REFINEMENT = new Set([
+    // Production — the Upload PI screen and what it renders with.
+    'src/app/orders/import/page.tsx',
+    'src/components/orders/piPreview.tsx',
+    'src/lib/pi/previewView.ts',
+    // The suites that guard them.
+    'src/app/orders/import/importAccess.test.ts',
+    'src/app/orders/piSectionOrder.test.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/lib/pi/previewView.test.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+  ])
+
+  test('the PI refinement allowance names files, never a directory', () => {
+    // The guard above is only as good as this: a future edit that turns one of
+    // these into a prefix would silently readmit every Orders screen.
+    for (const file of ALLOWED_PI_PREVIEW_REFINEMENT) {
+      assert.ok(/\.(ts|tsx)$/.test(file), `${file} must be one file, not a directory`)
+      assert.ok(!file.includes('*'), `${file} must not be a pattern`)
+    }
+    for (const untouchable of [
+      'src/app/orders/[id]/page.tsx',
+      'src/app/orders/[id]/OrderPiSections.tsx',
+      'src/app/orders/drafts/[submissionId]/page.tsx',
+      'src/app/orders/drafts/page.tsx',
+      'src/lib/orders/submissionWorkflow.ts',
+      'src/lib/orders/advanceRequirement.ts',
+      'src/lib/orders/saveDraftFlow.ts',
+      'src/lib/pi/masterSheetParser.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/permissions/orderApproval.ts',
+    ]) {
+      assert.equal(ALLOWED_PI_PREVIEW_REFINEMENT.has(untouchable), false,
+        `${untouchable} is an Orders file the visual pass has no business in`)
+      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
+
   test('NO PRODUCTION CODE WAS CHANGED EXCEPT THE SIX WIRING POINTS', () => {
     const production = [...touched].filter(f =>
       /\.(ts|tsx|css|json|sql|sh)$/.test(f) && !/\.test\.tsx?$/.test(f))
@@ -638,7 +699,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // the other eleven already use.
       !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
-      !ALLOWED_EXISTING.has(f))
+      !ALLOWED_EXISTING.has(f) &&
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
     assert.deepEqual(unexpected, [])
   })
 
@@ -664,8 +726,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
-      assert.ok(ALLOWED_TESTS.has(file),
-        `${file} was edited and is not an accounted-for migration inventory`)
+      assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file),
+        `${file} was edited and is neither an accounted-for migration inventory `
+        + 'nor one of the named PI preview suites')
     }
   })
 
@@ -677,7 +740,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
-      !ALLOWED_TESTS.has(f))
+      !ALLOWED_TESTS.has(f) &&
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
     assert.deepEqual(unexpected, [],
       'every other file in the repository is untouched by this branch')
   })

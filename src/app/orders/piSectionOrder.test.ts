@@ -119,15 +119,38 @@ describe('the two PI screens put the answer above the product table', () => {
       'the commercial breakdown and Activity stay below the products')
   })
 
-  test('New Order: the ready card and Save Draft sit under the summary, above the products', () => {
+  // ── Upload PI: what stops a submission is read BEFORE the product list ──
+  //
+  // The page order is: order information, what blocks it, the lines, what it
+  // comes to, and only then the control that acts on all four. The blocking
+  // panel used to sit below the commercial summary, where a twelve-line PI put
+  // the one thing a person has to fix underneath a screen and a half of
+  // scrolling — so it was found after the reading rather than before it.
+  //
+  // The ready card moved the other way for the same reason: it is a VERDICT on
+  // the document, and a verdict belongs after what it is a verdict on. It is
+  // still rendered only when nothing blocks, so the two never appear together.
+  test('Upload PI: errors come before the products, and the action comes last', () => {
     const s = stackOf('src/app/orders/import/page.tsx', byAssignment('previewBlock'))
-    assert.equal(at(s, 'READY_TITLE'), at(s, 'buildHeaderRows') + 1,
+    assert.equal(at(s, 'BLOCKING_PANEL_TITLE'), at(s, 'buildOrderInformationRows') + 1,
       'immediately after the order information, with nothing wedged between them')
-    assert.ok(at(s, 'READY_TITLE') < at(s, 'PiProductTableHead'),
-      'the verdict on the PI comes before the lines it is a verdict on')
+    assert.ok(at(s, 'BLOCKING_PANEL_TITLE') < at(s, 'PiProductTableHead'),
+      'a blocked PI says so before the list it would have to be scrolled past')
+    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiCommercialSummary'))
+    assert.ok(at(s, 'PiCommercialSummary') < at(s, 'READY_TITLE'),
+      'the verdict is read after the document it is a verdict on')
     assert.equal(at(s, 'SAVE_BUTTON_LABEL'), at(s, 'READY_TITLE'),
       'and the one control of this screen belongs to that same card')
-    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiCommercialSummary'))
+  })
+
+  test('Upload PI: the blocking panel is rendered once, and only when it has entries', () => {
+    const source = read('src/app/orders/import/page.tsx')
+    assert.equal((source.match(/BLOCKING_PANEL_TITLE/g) ?? []).length, 2,
+      'the import and the one rendering — a second copy is how the two drift')
+    const panelAt = source.indexOf('{BLOCKING_PANEL_TITLE}')
+    const guardAt = source.lastIndexOf('preview.groups.blocking.length > 0 && (', panelAt)
+    assert.ok(guardAt > -1 && guardAt < panelAt,
+      'a clean PI renders no empty "Must be fixed before submission" card')
   })
 
   test('no CSS `order` reaches the page stack, so DOM order is screen order', () => {

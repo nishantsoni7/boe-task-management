@@ -75,7 +75,7 @@ import {
   formatByteLimit,
   formatInr,
   orDash,
-  buildHeaderRows,
+  buildOrderInformationRows,
   buildCommercialRows,
   groupPiDiagnostics,
   createPiImageUrls,
@@ -112,7 +112,7 @@ import {
   type SaveFailure,
   type SaveSuccess,
 } from '@/lib/orders/saveDraftFlow'
-import { draftDetailHref, draftSavedHref } from '@/lib/orders/draftsView'
+import { draftDetailHref, draftSavedHref, formatSavedAt } from '@/lib/orders/draftsView'
 import { CHANGE_PI_PARAM, canReplaceSubmissionPi, readChangePiTarget } from '@/lib/orders/submissionWorkflow'
 
 // ── Screen state ──────────────────────────────────────────────────────────────
@@ -131,6 +131,20 @@ type Preview = {
   /** Every openable picture of both roles, in table order. Indices into this
    *  drive the viewer. */
   viewerItems: readonly PiViewerItem[]
+  /**
+   * When this workbook was taken into the application, formatted for display.
+   *
+   * WHY THIS SCREEN HAS TO CARRY ITS OWN. Order information states an upload
+   * date, and the STORED one — order_submissions.created_at — does not exist
+   * yet: this screen reads the file on the device and writes nothing until the
+   * employee presses Save. So the moment recorded here is the moment the parse
+   * succeeded, which on this screen is the upload event.
+   *
+   * It is a caption and nothing else. Nothing reads it back, the save does not
+   * send it, and the saved draft's own page shows created_at instead — so the
+   * record's timestamp is always the server's, never this one.
+   */
+  readAt: string
 }
 
 type Stage =
@@ -542,6 +556,10 @@ function NewOrderPiImportPageInner() {
           coverage: describeImageCoverage(result.data.products, images.representativeByRow),
           customizationCount: describeCustomizationImageCount(result.data.customizationImages),
           viewerItems: buildImageViewerItems(result.data.products, images),
+          // Read once, here, rather than in render: a clock called during
+          // render would tick on every re-render and the Order information
+          // block would quietly disagree with itself.
+          readAt: formatSavedAt(new Date().toISOString()),
         },
       })
     } catch {
@@ -980,21 +998,297 @@ function NewOrderPiImportPageInner() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
       {/* Order information.
-          B20 / sourceOrderNumber is deliberately absent — see buildHeaderRows. */}
+          B20 / sourceOrderNumber is deliberately absent — see the note on
+          buildHeaderRows, which buildOrderInformationRows inherits.
+
+          THREE GROUPS, NOT EIGHT EQUAL BOXES. The eight facts answer three
+          different questions — who and how much, when it is due, and who put
+          it here — and a single auto-filling grid ran them together into a
+          wall of small labels in which the two dates that are COMMITMENTS read
+          exactly like the upload caption beside them. The rows below are the
+          grouping, stated once:
+
+            1  Client name · Product value · Location
+            2  Confirmed date · Due date
+            3  Salesperson · Uploaded by · Upload date
+
+          Each row is its own grid, so a group never borrows a column from the
+          next one and the dates cannot end up on a line with an upload time.
+          On a phone every group collapses to two columns and they stack in the
+          same order. */}
       <Card>
         <CardHeader title="Order information" />
-        <div style={{ padding: '16px 20px' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
-            gap: '14px',
-          }}>
-            {buildHeaderRows(preview.data.header).map(row => (
-              <FieldRow key={row.key} label={row.label} value={row.value} />
-            ))}
-          </div>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {(() => {
+            const rows = buildOrderInformationRows({
+              header: preview.data.header,
+              // The commercial summary's own first figure, through the same
+              // formatter. This states it; it does not recompute it.
+              grossProductAmount: preview.data.commercial.grossProductAmount,
+              upload: { by: profile?.full_name ?? null, at: preview.readAt },
+            })
+            const byKey = (key: string) => rows.find(row => row.key === key)
+            const group = (keys: readonly string[], columns: number) => (
+              <div
+                key={keys.join('-')}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile
+                    ? '1fr 1fr'
+                    : `repeat(${columns}, minmax(0, 1fr))`,
+                  gap: '14px',
+                }}
+              >
+                {keys.map(key => {
+                  const row = byKey(key)
+                  return row ? <FieldRow key={row.key} label={row.label} value={row.value} /> : null
+                })}
+              </div>
+            )
+            return (
+              <>
+                {group(['client', 'productValue', 'location'], 3)}
+                {/* Two columns, not three: the pair reads as a pair, and the
+                    empty third of the line is what stops the dates being
+                    scanned as part of the group above. */}
+                {group(['confirmed', 'due'], 3)}
+                {group(['salesperson', 'uploadedBy', 'uploadedAt'], 3)}
+              </>
+            )
+          })()}
         </div>
       </Card>
+
+      {/* Blocking issues — SECOND ON THE PAGE, before the product table.
+          Below the table a twelve-line PI put the one thing that stops a
+          submission underneath a screen and a half of rows, so it was read
+          after the scroll rather than before it. The panel itself is
+          unchanged: the same title, the same count, the same entries in the
+          same order, the same row and cell references, and the same closing
+          instruction. Only where it sits has moved. */}
+      {preview.groups.blocking.length > 0 && (
+        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+          <div style={{
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
+            background: colors.redTint,
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}>
+            <AlertTriangle size={15} strokeWidth={2} color={colors.red} />
+            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+              {BLOCKING_PANEL_TITLE}
+            </div>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.red, fontWeight: 600 }}>
+              {preview.groups.blocking.length}
+            </span>
+          </div>
+          <DiagnosticList entries={preview.groups.blocking} tone="red" />
+          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
+            the order must match the document the client was sent.
+          </div>
+        </Card>
+      )}
+
+      {/* Products */}
+      <Card>
+        <CardHeader
+          title="Products"
+          right={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Counted per product ROW. A picture shared by four chairs is
+                  four matched products, not one. */}
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '2px 8px', borderRadius: '5px',
+                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                background: preview.coverage.complete ? colors.greenTint : colors.redTint,
+                color: preview.coverage.complete ? '#2F7A52' : colors.red,
+                border: `1px solid ${preview.coverage.complete ? 'rgba(69,168,112,0.25)' : 'rgba(217,79,79,0.25)'}`,
+              }}>
+                {preview.coverage.complete
+                  ? <CheckCircle2 size={11} strokeWidth={2.2} />
+                  : <ImageOff size={11} strokeWidth={2.2} />}
+                {preview.coverage.label}
+              </span>
+              {/* A PLAIN TOTAL, never "4 of 12". Customization images are
+                  optional, and an "of" would report eight missing files that
+                  were never meant to exist. Neutral styling for the same
+                  reason: none is not a problem. */}
+              {preview.customizationCount.count > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  padding: '2px 8px', borderRadius: '5px',
+                  fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                  background: colors.raised,
+                  color: colors.secondary,
+                  border: `1px solid ${colors.border}`,
+                }}>
+                  <Images size={11} strokeWidth={2.2} />
+                  {preview.customizationCount.label}
+                </span>
+              )}
+              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                {preview.data.products.length} line{preview.data.products.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          }
+        />
+        {isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {preview.data.products.map((p, i) => (
+              <div
+                key={p.row}
+                style={{
+                  padding: '14px 16px',
+                  borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                  borderLeft: preview.blockedRows.has(p.row) ? `3px solid ${colors.red}` : '3px solid transparent',
+                  display: 'flex', flexDirection: 'column', gap: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <ProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
+                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {/* THE CODE IS THE IDENTIFIER; THE NAME DESCRIBES IT.
+                        B001 is what a person reads off a PI, quotes on the
+                        phone and writes on a correction — and at 10px muted it
+                        was the faintest thing on the card while the name it
+                        labels was the boldest. The two have swapped weight.
+                        Neither value changed, and neither moved. */}
+                    <div style={{
+                      fontSize: '14px', fontWeight: 600, color: colors.primary,
+                      fontFamily: 'var(--font-mono)', letterSpacing: '0.01em',
+                    }}>
+                      {orDash(p.itemSequence)}
+                    </div>
+                    <MultilineText style={{ fontSize: '12px', fontWeight: 400, color: colors.secondary, margin: 0 }}>
+                      {orDash(p.productName)}
+                    </MultilineText>
+                    <div style={{ fontSize: '12px', color: colors.secondary }}>
+                      {p.quantity ?? '—'} × {formatInr(p.costPerPiece)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <FieldRow label="Dimensions" value={orDash(p.dimensions)} />
+                  <FieldRow label="Material" value={orDash(p.material)} />
+                </div>
+                {/* Material and customization are separate fields on the PI and
+                    stay separate here — merging them would hide which of the two
+                    a client actually asked for.
+
+                    The heading is the cell's own, so the accent appears on the
+                    label exactly when there is a customization to point at — the
+                    same rule the desktop column heading follows. */}
+                <CustomizationCell
+                  label="Customization"
+                  text={p.customization}
+                  thumbnails={customizationThumbnails(p.row)}
+                  compact
+                />
+
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                  borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
+                }}>
+                  <span style={{ fontSize: '11px', color: colors.muted }}>Line total</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                    {formatInr(p.lineTotal)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              {/* The columns, and the customization accent, come from the shared
+                  definition — the saved-draft table renders the identical head. */}
+              <PiProductTableHead />
+              <tbody>
+                {preview.data.products.map(p => (
+                  <tr key={p.row} style={{
+                    borderBottom: `1px solid ${colors.border}`,
+                    background: preview.blockedRows.has(p.row) ? colors.redTint : 'transparent',
+                  }}>
+                    {/* The code carries the row; see the note on the stacked
+                        card above. `nowrap` stays: B001 must never wrap, and
+                        the column is sized by its own content. */}
+                    <td style={{
+                      padding: '10px 14px', whiteSpace: 'nowrap',
+                      color: colors.primary, fontFamily: 'var(--font-mono)',
+                      fontSize: '14px', fontWeight: 600, letterSpacing: '0.01em',
+                    }}>
+                      {orDash(p.itemSequence)}
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <ProductThumbnail {...representativeThumbnail(p.row)} />
+                    </td>
+                    <td style={{ padding: '10px 14px', minWidth: '160px', maxWidth: '240px' }}>
+                      <MultilineText style={{ fontSize: '12px', fontWeight: 400, color: colors.secondary, margin: 0 }}>
+                        {orDash(p.productName)}
+                      </MultilineText>
+                    </td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
+                      {p.quantity ?? '—'}
+                    </td>
+                    <td style={{ padding: '10px 14px', minWidth: '130px', maxWidth: '200px' }}>
+                      <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
+                        {orDash(p.dimensions)}
+                      </MultilineText>
+                    </td>
+                    <td style={{ padding: '10px 14px', minWidth: '120px', maxWidth: '200px' }}>
+                      <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
+                        {orDash(p.material)}
+                      </MultilineText>
+                    </td>
+                    <td style={{ padding: '10px 14px', minWidth: '140px', maxWidth: '240px' }}>
+                      <CustomizationCell
+                        text={p.customization}
+                        thumbnails={customizationThumbnails(p.row)}
+                        compact={false}
+                      />
+                    </td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                      {formatInr(p.costPerPiece)}
+                    </td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
+                      {formatInr(p.lineTotal)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Commercial summary.
+
+          Constrained and right-aligned by the shared component: full width on a
+          phone, capped on a desktop so the labels and their figures stay close
+          enough to read as pairs. The ROWS are unchanged — buildCommercialRows
+          decides every label, figure and emphasis, here as on the saved draft. */}
+      <PiCommercialSummary rows={buildCommercialRows(preview.data.commercial)} />
+
+      {/* Warnings — shown whether or not anything is blocking. */}
+      {preview.groups.warnings.length > 0 && (
+        <Card>
+          <div style={{
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}>
+            <Info size={15} strokeWidth={2} color={colors.amber} />
+            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+              {WARNING_PANEL_TITLE}
+            </div>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
+              {preview.groups.warnings.length} — these do not stop a submission
+            </span>
+          </div>
+          <DiagnosticList entries={preview.groups.warnings} tone="amber" />
+        </Card>
+      )}
 
       {/* Ready state, and the one action this phase performs. Saving stores a
           PRIVATE DRAFT — it does not submit for approval, take a payment or
@@ -1108,215 +1402,6 @@ function NewOrderPiImportPageInner() {
               )}
             </div>
           </div>
-        </Card>
-      )}
-
-      {/* Products */}
-      <Card>
-        <CardHeader
-          title="Products"
-          right={
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {/* Counted per product ROW. A picture shared by four chairs is
-                  four matched products, not one. */}
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '2px 8px', borderRadius: '5px',
-                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-                background: preview.coverage.complete ? colors.greenTint : colors.redTint,
-                color: preview.coverage.complete ? '#2F7A52' : colors.red,
-                border: `1px solid ${preview.coverage.complete ? 'rgba(69,168,112,0.25)' : 'rgba(217,79,79,0.25)'}`,
-              }}>
-                {preview.coverage.complete
-                  ? <CheckCircle2 size={11} strokeWidth={2.2} />
-                  : <ImageOff size={11} strokeWidth={2.2} />}
-                {preview.coverage.label}
-              </span>
-              {/* A PLAIN TOTAL, never "4 of 12". Customization images are
-                  optional, and an "of" would report eight missing files that
-                  were never meant to exist. Neutral styling for the same
-                  reason: none is not a problem. */}
-              {preview.customizationCount.count > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '2px 8px', borderRadius: '5px',
-                  fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-                  background: colors.raised,
-                  color: colors.secondary,
-                  border: `1px solid ${colors.border}`,
-                }}>
-                  <Images size={11} strokeWidth={2.2} />
-                  {preview.customizationCount.label}
-                </span>
-              )}
-              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                {preview.data.products.length} line{preview.data.products.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-          }
-        />
-        {isMobile ? (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {preview.data.products.map((p, i) => (
-              <div
-                key={p.row}
-                style={{
-                  padding: '14px 16px',
-                  borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-                  borderLeft: preview.blockedRows.has(p.row) ? `3px solid ${colors.red}` : '3px solid transparent',
-                  display: 'flex', flexDirection: 'column', gap: '10px',
-                }}
-              >
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                  <ProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
-                      {orDash(p.itemSequence)}
-                    </div>
-                    <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
-                      {orDash(p.productName)}
-                    </MultilineText>
-                    <div style={{ fontSize: '12px', color: colors.secondary }}>
-                      {p.quantity ?? '—'} × {formatInr(p.costPerPiece)}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <FieldRow label="Dimensions" value={orDash(p.dimensions)} />
-                  <FieldRow label="Material" value={orDash(p.material)} />
-                </div>
-                {/* Material and customization are separate fields on the PI and
-                    stay separate here — merging them would hide which of the two
-                    a client actually asked for.
-
-                    The heading is the cell's own, so the accent appears on the
-                    label exactly when there is a customization to point at — the
-                    same rule the desktop column heading follows. */}
-                <CustomizationCell
-                  label="Customization"
-                  text={p.customization}
-                  thumbnails={customizationThumbnails(p.row)}
-                  compact
-                />
-
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                  borderTop: `1px solid ${colors.border}`, paddingTop: '8px',
-                }}>
-                  <span style={{ fontSize: '11px', color: colors.muted }}>Line total</span>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                    {formatInr(p.lineTotal)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              {/* The columns, and the customization accent, come from the shared
-                  definition — the saved-draft table renders the identical head. */}
-              <PiProductTableHead />
-              <tbody>
-                {preview.data.products.map(p => (
-                  <tr key={p.row} style={{
-                    borderBottom: `1px solid ${colors.border}`,
-                    background: preview.blockedRows.has(p.row) ? colors.redTint : 'transparent',
-                  }}>
-                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                      {orDash(p.itemSequence)}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <ProductThumbnail {...representativeThumbnail(p.row)} />
-                    </td>
-                    <td style={{ padding: '10px 14px', minWidth: '160px', maxWidth: '240px' }}>
-                      <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
-                        {orDash(p.productName)}
-                      </MultilineText>
-                    </td>
-                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
-                      {p.quantity ?? '—'}
-                    </td>
-                    <td style={{ padding: '10px 14px', minWidth: '130px', maxWidth: '200px' }}>
-                      <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-                        {orDash(p.dimensions)}
-                      </MultilineText>
-                    </td>
-                    <td style={{ padding: '10px 14px', minWidth: '120px', maxWidth: '200px' }}>
-                      <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-                        {orDash(p.material)}
-                      </MultilineText>
-                    </td>
-                    <td style={{ padding: '10px 14px', minWidth: '140px', maxWidth: '240px' }}>
-                      <CustomizationCell
-                        text={p.customization}
-                        thumbnails={customizationThumbnails(p.row)}
-                        compact={false}
-                      />
-                    </td>
-                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
-                      {formatInr(p.costPerPiece)}
-                    </td>
-                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
-                      {formatInr(p.lineTotal)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {/* Commercial summary.
-
-          Constrained and right-aligned by the shared component: full width on a
-          phone, capped on a desktop so the labels and their figures stay close
-          enough to read as pairs. The ROWS are unchanged — buildCommercialRows
-          decides every label, figure and emphasis, here as on the saved draft. */}
-      <PiCommercialSummary rows={buildCommercialRows(preview.data.commercial)} />
-
-      {/* Blocking issues — always above the warnings, never merged with them. */}
-      {preview.groups.blocking.length > 0 && (
-        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
-          <div style={{
-            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-            background: colors.redTint,
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <AlertTriangle size={15} strokeWidth={2} color={colors.red} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-              {BLOCKING_PANEL_TITLE}
-            </div>
-            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.red, fontWeight: 600 }}>
-              {preview.groups.blocking.length}
-            </span>
-          </div>
-          <DiagnosticList entries={preview.groups.blocking} tone="red" />
-          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-            Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
-            the order must match the document the client was sent.
-          </div>
-        </Card>
-      )}
-
-      {/* Warnings — shown whether or not anything is blocking. */}
-      {preview.groups.warnings.length > 0 && (
-        <Card>
-          <div style={{
-            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <Info size={15} strokeWidth={2} color={colors.amber} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-              {WARNING_PANEL_TITLE}
-            </div>
-            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
-              {preview.groups.warnings.length} — these do not stop a submission
-            </span>
-          </div>
-          <DiagnosticList entries={preview.groups.warnings} tone="amber" />
         </Card>
       )}
 

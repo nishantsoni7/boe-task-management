@@ -325,6 +325,15 @@ function hasApproveControl(html: string): boolean {
 }
 
 /** Text content, with the tags taken out — for "does it SAY this" checks. */
+/**
+ * What a cell-splitting read of rendered markup uses as its boundary.
+ *
+ * Built with fromCharCode rather than typed as a literal: a real control byte
+ * in this file makes git treat the source as binary, which turns every later
+ * diff of it into a whole-file rewrite.
+ */
+const CELL_SEPARATOR = String.fromCharCode(0)
+
 const text = (html: string): string =>
   html.replace(/<[^>]*>/g, ' ').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ')
 
@@ -2233,28 +2242,97 @@ describe('the import preview keeps the summary it shipped with', () => {
     assert.ok(text(preview).includes(ADVANCE_NOT_A_PAYMENT_NOTE))
   })
 
-  test('none of the detail page’s typography leaked into it', () => {
-    assert.ok(!preview.includes('tabular-nums'),
-      'the preview keeps its proportional figures')
-    assert.ok(detail.includes('font-variant-numeric:tabular-nums'),
-      'and the detail column lines its digits up under the products table')
-    // The grouping hairline is the detail page's too: preview draws exactly one
-    // rule, above the Grand Total, as it always has.
-    assert.equal((preview.match(/border-top:1px solid/g) ?? []).length, 1)
-    assert.equal((detail.match(/border-top:1px solid/g) ?? []).length, 1,
-      'the detail column adds one grouping rule before tax; its Grand Total rule '
-      + 'is heavier and comes from CSS, not from an inline hairline')
+  test('both readings line their digits up and group before tax', () => {
+    // THESE THREE WERE NEVER ABOUT WHICH SCREEN YOU WERE ON. Digits that line
+    // up, a rule that separates the tax group from the costs above it, and a
+    // Grand Total a reader can find are properties of a column of money, and
+    // the upload preview is the same column of the same money. They were once
+    // gated to the detail card only because that card was the thing being
+    // worked on; the upload preview has now caught up to it.
+    //
+    // The detail card's markup did not move to get there — it already had all
+    // three — which is what the paired assertions below hold in place.
+    for (const [name, html] of [['preview', preview], ['detail', detail]] as const) {
+      assert.ok(html.includes('font-variant-numeric:tabular-nums'),
+        `the ${name} lines its digits up`)
+      assert.ok(html.includes('class="pi-commercial-grand-total"'),
+        `the ${name}'s Grand Total takes the one highlight`)
+    }
+    // The Grand Total's own rule is heavier and comes from CSS, so every inline
+    // hairline here is a SEPARATOR and each one is counted. The detail column
+    // has one — the group before tax. The preview has that one and the rule
+    // under which the advance callout sits, and no third.
+    assert.equal((detail.match(/border-top:1px solid/g) ?? []).length, 1)
+    assert.equal((preview.match(/border-top:1px solid/g) ?? []).length, 2)
     // Not even a serialised zero. A falsy-but-PRESENT style value still reaches
-    // the markup — `marginTop: 0` emits `margin-top:0` on every row — and the
-    // preview's markup must come out exactly as it did before the detail page
-    // needed anything of this component. (The one legitimate `margin-top` in
-    // here is the advance note's own 2px, which predates all of this.)
+    // the markup — `marginTop: 0` would emit `margin-top:0` on every row — so
+    // the group's own offset stays `undefined` everywhere it does not apply.
     assert.ok(!preview.includes('margin-top:0'))
-    assert.ok(!preview.includes('padding-top'))
+    assert.ok(!detail.includes('margin-top:0'))
+  })
+
+  test('the advance is a callout below the total, not a tenth row of the sum', () => {
+    // It is a CONSEQUENCE of the grand total, not a term in it, and as a row it
+    // was read as one more addend. The figure, the label and the note are the
+    // builder's own strings either way — this only moves where they sit.
+    assert.ok(text(preview).includes('Required advance (40%)'))
+    assert.ok(text(preview).includes(ADVANCE_NOT_A_PAYMENT_NOTE))
+    const totalAt = preview.indexOf('pi-commercial-grand-total')
+    const advanceAt = preview.indexOf('Required advance')
+    assert.ok(totalAt > -1 && advanceAt > totalAt, 'and it sits below the Grand Total')
+    // The detail card never had one: its own top-of-page snapshot owns the
+    // advance and would contradict this on a PI with an approved exception.
+    assert.ok(!text(detail).includes('Required advance'))
   })
 
   test('its heading is untouched', () => {
     assert.ok(text(preview).includes('Commercial summary'))
+  })
+
+  test('every label and every figure is the builder’s own string, in its own order', () => {
+    // THE VALUE GUARD. The refinement moved things on this card; it must not
+    // have changed, reformatted, merged or dropped one of them. Rather than
+    // pinning a fixture's amounts — which would only prove it for one PI — the
+    // expectation is BUILT FROM THE ROWS the component was handed, so this
+    // holds for any workbook: the ledger in the builder's order, label then
+    // amount, then the advance's label, its amount and its note.
+    const cells = (html: string) => html
+      // A separator that cannot occur in rendered text, built rather than
+      // written: a control character typed into this file would make git treat
+      // the source as binary.
+      .replace(/<[^>]*>/g, CELL_SEPARATOR)
+      .split(CELL_SEPARATOR)
+      .map(s => s.replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').trim())
+      .filter(Boolean)
+
+    const ledger = rows.filter(r => r.emphasis !== 'advance')
+    const advance = rows.find(r => r.emphasis === 'advance')
+    assert.ok(advance, 'the preview is the one place that states a required advance')
+
+    const expected = ['Commercial summary']
+    for (const row of ledger) expected.push(row.label, row.value)
+    expected.push(advance.label, advance.value)
+    if (advance.note) expected.push(advance.note)
+
+    assert.deepEqual(cells(preview), expected,
+      'nothing was added to the card, and nothing was taken off it')
+  })
+
+  test('the detail column renders the same way, minus the advance it never shows', () => {
+    // The same property for the saved-draft card, so the two cannot drift: it
+    // renders exactly the rows it is handed, label then amount, and it is
+    // handed the ledger without the advance.
+    const cells = (html: string) => html
+      .replace(/<[^>]*>/g, CELL_SEPARATOR)
+      .split(CELL_SEPARATOR)
+      .map(s => s.trim())
+      .filter(Boolean)
+
+    const detailRows = commercialBreakdownRows(rows)
+    const expected = ['Commercial breakdown']
+    for (const row of detailRows) expected.push(row.label, row.value)
+    assert.deepEqual(cells(detail), expected)
+    assert.ok(!detailRows.some(r => r.emphasis === 'advance'))
   })
 })
 

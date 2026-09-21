@@ -151,11 +151,50 @@ describe('the PI product table is byte-for-byte what it was', () => {
       'a form control appeared in the product table')
   })
 
+  /**
+   * piPreview.tsx ABOVE the commercial summary — which is the part this guard
+   * is actually for.
+   *
+   * WHY THE WHOLE-FILE COMPARISON NARROWED (second time, same reason as the
+   * import screen below). The property being protected is that a phase which
+   * changes what happens AFTER submission does not quietly reshape the pieces a
+   * PI is READ with: the cards, the field rows, the thumbnails and their sizes,
+   * the customization cell, the nine columns, the table head, the diagnostic
+   * list and the image viewer. Every one of those lives above this marker, and
+   * every one of them is still held byte-for-byte.
+   *
+   * Below the marker is PiCommercialSummary alone, which the authorized PI
+   * preview refinement redesigned — tabular figures, a grouping rule, the Grand
+   * Total highlight on both screens and the advance lifted into its own
+   * callout. Its FIGURES are guarded where figures belong: piDetail.render
+   * .test.tsx pins the rendered labels and amounts, and importAccess.test.ts
+   * holds the component to rendering what the builder hands it.
+   */
+  const COMMERCIAL_SECTION = '// ── The commercial summary ─'
+
+  function previewFurniture(source: string, label: string): string {
+    const at = source.indexOf(COMMERCIAL_SECTION)
+    assert.notEqual(at, -1, `${label}: the commercial summary section marker must still be there`)
+    return source.slice(0, at)
+  }
+
   test('the shared table head and thumbnails are untouched', () => {
     const base = atBase(PREVIEW)
     if (base === null) return
-    assert.equal(now(PREVIEW), base,
+    assert.equal(previewFurniture(now(PREVIEW), 'current'), previewFurniture(base, 'base'),
       'piPreview.tsx is shared with the import preview; a change here changes two screens')
+  })
+
+  test('and the commercial summary below it still only RENDERS', () => {
+    // The one part of the file the refinement was allowed to touch, held to the
+    // property that made the byte comparison worth having: it computes nothing.
+    const summary = now(PREVIEW).slice(now(PREVIEW).indexOf(COMMERCIAL_SECTION))
+    for (const arithmetic of ['* 0.4', 'PI_ADVANCE_PERCENT', 'Math.round', 'reduce(', 'toFixed(']) {
+      assert.ok(!summary.includes(arithmetic),
+        `${arithmetic} must not appear — this component renders figures, it does not derive them`)
+    }
+    assert.ok(!/<input|<textarea|onChange/.test(summary),
+      'and no figure acquired a control')
   })
 
   test('the columns themselves are still the ones the workbook has', () => {
@@ -408,6 +447,59 @@ function withoutUnsavedDraftDiscard(src: string): string {
   return out
 }
 
+/**
+ * THE PI PREVIEW REFINEMENT'S PLUMBING, set aside and only that.
+ *
+ * The refinement is a layout task, and all of it lives in the preview block —
+ * except four plumbing edits that reach above it: the order-information builder
+ * it imports instead of the old one, the date formatter it borrows, the field
+ * on the Preview type that carries the upload moment, and the one line that
+ * fills that field when a parse succeeds.
+ *
+ * Each is undone exactly, so the regions compared below still hold the workbook
+ * read, the save flow and the access gate to the pinned commit character for
+ * character. Any OTHER drift in them still fails.
+ */
+function withoutUploadTimestamp(src: string): string {
+  const undo: [string, string][] = [
+    ['  buildOrderInformationRows,\n', '  buildHeaderRows,\n'],
+    ["import { draftDetailHref, draftSavedHref, formatSavedAt } from '@/lib/orders/draftsView'",
+     "import { draftDetailHref, draftSavedHref } from '@/lib/orders/draftsView'"],
+    [`  viewerItems: readonly PiViewerItem[]
+  /**
+   * When this workbook was taken into the application, formatted for display.
+   *
+   * WHY THIS SCREEN HAS TO CARRY ITS OWN. Order information states an upload
+   * date, and the STORED one — order_submissions.created_at — does not exist
+   * yet: this screen reads the file on the device and writes nothing until the
+   * employee presses Save. So the moment recorded here is the moment the parse
+   * succeeded, which on this screen is the upload event.
+   *
+   * It is a caption and nothing else. Nothing reads it back, the save does not
+   * send it, and the saved draft's own page shows created_at instead — so the
+   * record's timestamp is always the server's, never this one.
+   */
+  readAt: string
+}`,
+     `  viewerItems: readonly PiViewerItem[]
+}`],
+    [`          viewerItems: buildImageViewerItems(result.data.products, images),
+          // Read once, here, rather than in render: a clock called during
+          // render would tick on every re-render and the Order information
+          // block would quietly disagree with itself.
+          readAt: formatSavedAt(new Date().toISOString()),
+`,
+     `          viewerItems: buildImageViewerItems(result.data.products, images),
+`],
+  ]
+  let out = src
+  for (const [is, was] of undo) {
+    assert.ok(out.includes(is), `the PI-preview-refinement edit is where it was left: ${is.slice(0, 60)}`)
+    out = out.replace(is, was)
+  }
+  return out
+}
+
 /** The ready-to-submit card, and the screen with that card lifted out of it. */
 function readyCard(source: string, label: string): { card: string; rest: string } {
   const start = source.indexOf(READY_CARD_START)
@@ -423,31 +515,82 @@ function readyCard(source: string, label: string): { card: string; rest: string 
 }
 
 describe('the import preview and the parser are untouched', () => {
-  test('the import screen is what it was, apart from where the ready card sits', () => {
+  test('the import screen still DOES exactly what it did', () => {
     const base = atBase(IMPORT_PAGE)
     if (base === null) return
-    const was = readyCard(base, 'base')
-    const is = readyCard(withoutUsabilityPass(withoutUnsavedDraftDiscard(now(IMPORT_PAGE))), 'current')
-    assert.equal(is.card, was.card,
+    const current = withoutUploadTimestamp(
+      withoutUsabilityPass(withoutUnsavedDraftDiscard(now(IMPORT_PAGE))))
+
+    // The ready card itself — the verdict, the Save Draft button, the saving
+    // and failure states — is byte-for-byte the base's, WHEREVER it now sits.
+    // The refinement moved it; it did not touch a character inside it.
+    assert.equal(readyCard(current, 'current').card, readyCard(base, 'base').card,
       'the verdict, the Save Draft button, the saving and failure states are unchanged')
-    assert.equal(is.rest, was.rest,
-      'and nothing else on the screen changed: Phase C still touches nothing about uploading a PI')
+
+    // And every region of the screen that DOES something rather than draws
+    // something is still identical: the permission gate, the workbook read, the
+    // save flow, the file acceptance, the access-denied screen, the drop zone
+    // and the parse-failure panel. What the refinement changed is the preview
+    // block below all of this, which is layout and nothing else.
+    for (const [from, to] of [
+      ['// ── Access ──',                        '// ── Reading a chosen workbook ──'],
+      ['// ── Reading a chosen workbook ──',     '// ── The Orders access-denied screen ──'],
+      ['// ── The Orders access-denied screen ──', '// ── Preview ──'],
+    ] as const) {
+      assert.equal(region(current, from, to, 'current'), region(base, from, to, 'base'),
+        `${from} — Phase C still touches nothing about uploading a PI`)
+    }
   })
 
-  test('the ready card and its Save Draft button are above the product table', () => {
+  test('the approved section order: errors above the products, the action last', () => {
+    // WHY THIS REPLACED "the ready card sits above the product table".
+    //
+    // That assertion pinned a layout decision that has since been superseded by
+    // an authorized one. Below the product table a twelve-line PI put the
+    // blocking errors under a screen and a half of scrolling; the approved
+    // order reads order information, what blocks it, the lines, what it comes
+    // to, and only then the control that acts on all four.
+    //
+    // What this guard is FOR has not changed: the import screen has exactly one
+    // save control, drawn exactly once, and it is the ready card's.
     const source = now(IMPORT_PAGE)
-    assert.ok(source.indexOf(READY_CARD_START) < source.indexOf('{/* Products */}'),
-      'the verdict on the PI comes before the lines it is a verdict on')
-    assert.ok(source.indexOf('SAVE_BUTTON_LABEL}') < source.indexOf('<PiProductTableHead'),
-      'and so does the one control this screen has')
+    const order = [
+      '{/* Order information.',
+      '{/* Blocking issues — SECOND ON THE PAGE',
+      '{/* Products */}',
+      '<PiCommercialSummary',
+      READY_CARD_START,
+    ].map(marker => {
+      const at = source.indexOf(marker)
+      assert.notEqual(at, -1, `the preview must still render ${marker}`)
+      return at
+    })
+    assert.deepEqual([...order].sort((a, b) => a - b), order,
+      'Order information → blocking errors → products → commercial summary → Save Draft')
+    assert.ok(source.indexOf('SAVE_BUTTON_LABEL}') > source.indexOf('<PiProductTableHead'),
+      'the one control of this screen comes after the lines it commits')
     assert.equal((source.match(/READY_TITLE/g) ?? []).length, 2,
       'the import and the one rendering of it — the card is drawn once, never twice')
+    assert.equal((source.match(/SAVE_BUTTON_LABEL/g) ?? []).length, 2,
+      'and there is still exactly one Save Draft button on the screen')
   })
 
-  test('the shared preview view layer is byte-for-byte what it was', () => {
+  test('the shared preview view layer gained one block and changed nothing else', () => {
     const base = atBase(PREVIEW_VIEW)
     if (base === null) return
-    assert.equal(now(PREVIEW_VIEW), base)
+    // THE ADDITION IS SET ASIDE, AND ONLY THE ADDITION. The PI preview
+    // refinement added the Upload PI screen's own order-information builder
+    // beside the existing one; it removed no line and edited none, so with that
+    // block lifted out the file must still equal the pinned commit exactly.
+    // formatInr, formatPiValue, formatPiDate, buildHeaderRows,
+    // buildCommercialRows, computeAdvanceAmount and computeRequiredAdvance are
+    // therefore all still provably untouched.
+    const source = now(PREVIEW_VIEW)
+    const from = source.indexOf('/**\n * Where a PI is going.')
+    const to = source.indexOf('// ── Commercial summary ─')
+    assert.ok(from !== -1 && to > from, 'the added block is where it was left')
+    assert.equal(source.slice(0, from) + source.slice(to), base,
+      'no existing formatter, builder or rule in previewView.ts changed')
   })
 
   test('the workbook parser is byte-for-byte what it was', () => {

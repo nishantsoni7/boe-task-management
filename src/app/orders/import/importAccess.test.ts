@@ -883,8 +883,18 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // no advance.
     // The callback gained a body when the detail page's Grand Total needed a
     // class; what it still does is render one row per row it was handed.
-    assert.ok(/rows\.map\(row => \{/.test(source))
+    //
+    // `ledger` is `rows` with the advance taken out — the advance is rendered
+    // below the total as its own callout rather than as a tenth addend — so
+    // every row handed in is still rendered exactly once, by key, and nothing
+    // is dropped, merged or recomputed on the way.
+    assert.ok(/ledger\.map\(row => \{/.test(source))
+    assert.ok(source.includes("const ledger = rows.filter(row => row.emphasis !== 'advance')"))
+    assert.ok(source.includes("const advance = rows.find(row => row.emphasis === 'advance') ?? null"))
     assert.ok(source.includes('key={row.key}'))
+    assert.ok(source.includes('{advance.value}'), 'the advance figure is the builder’s own string')
+    assert.ok(source.includes('{advance.label}'))
+    assert.ok(source.includes('{advance.note}'))
     for (const arithmetic of ['* 0.4', 'PI_ADVANCE_PERCENT', 'Math.round', 'reduce(']) {
       assert.ok(!source.includes(arithmetic),
         `${arithmetic} must not appear — this component renders figures, it does not derive them`)
@@ -923,19 +933,30 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
       'and the summary card picks its two figures out of the same array')
   })
 
-  test('the preview keeps the presentation it shipped with', () => {
-    // A previous pass changed this component's typography and grouping for both
-    // screens at once. Everything the detail page wants is now behind a variant,
-    // and 'preview' is the default — so a screen that asks for nothing gets
-    // exactly what it always got.
+  test('the two screens share the reading of the figures; the variant is chrome only', () => {
+    // WHAT THE VARIANT IS FOR, NOW. It was once the seam that kept the detail
+    // page's typography off the upload preview. Three of those differences were
+    // never about which screen you were on — digits that line up, a rule before
+    // tax, and a Grand Total you can find — so they apply to both and the
+    // detail card's markup is unchanged by that (it already had all three).
+    //
+    // What the flag still decides is CARD CHROME: the width cap and the right
+    // alignment under the product table, the warm border and shallow shadow,
+    // the cream header, and the quieter ledger the preview alone takes.
     const source = read(PI_PARTS)
-    assert.ok(source.includes("variant = 'preview'"), 'the default is the original')
+    assert.ok(source.includes("variant = 'preview'"), 'the default is the upload screen')
     assert.ok(source.includes("const detail = variant === 'detail'"))
     assert.ok(!read(IMPORT_PAGE).includes('variant='),
       'and the preview asks for nothing')
-    for (const gated of ["fontVariantNumeric: detail ? 'tabular-nums' : undefined",
-                         'detail && row.groupStart']) {
-      assert.ok(source.includes(gated), `${gated} must be behind the variant`)
+    for (const shared of ["fontVariantNumeric: 'tabular-nums'",
+                          "row.groupStart ? `1px solid ${colors.borderSoft}`",
+                          "className={grandTotal ? 'pi-commercial-grand-total' : undefined}"]) {
+      assert.ok(source.includes(shared), `${shared} must reach both screens`)
+    }
+    for (const chrome of ['detail ? DETAIL_CARD_STYLE : undefined',
+                          'detail ? DETAIL_HEADER_STYLE : undefined',
+                          'const quiet = !detail && !row.emphasis']) {
+      assert.ok(source.includes(chrome), `${chrome} must stay behind the variant`)
     }
   })
 
@@ -1157,5 +1178,288 @@ describe('the viewer distinguishes the two roles', () => {
     const bagCalls = page.match(/createPiImageUrls\(/g) ?? []
     assert.equal(bagCalls.length, 1)
     assert.ok(!page.includes('createObjectURL'))
+  })
+})
+
+// ── The Order information block ───────────────────────────────────────────────
+//
+// WHAT THE SCREEN OPENS WITH, and where each of the eight facts comes from.
+// buildOrderInformationRows decides the labels and the formatting, and
+// previewView.test.ts holds it to them; what is asserted HERE is the wiring —
+// that the page hands the builder the right three inputs, from the right three
+// places, and renders the result in the three groups it was asked for.
+
+describe('the Order information block', () => {
+  const source = read(IMPORT_PAGE)
+
+  test('the eight fields come from the one builder, not from the page', () => {
+    assert.ok(source.includes('buildOrderInformationRows({'),
+      'the labels and the em-dash rule live in the view layer, with their tests')
+    assert.ok(!source.includes('buildHeaderRows'),
+      'the old seven-field block, with its duplicated Bill to and Ship to, is gone')
+    for (const removed of ['label="Bill to"', 'label="Ship to"', 'label="PI created"',
+                           'label="Created by"']) {
+      assert.ok(!source.includes(removed), `${removed} must not be re-added to the page`)
+    }
+  })
+
+  test('Product value is the commercial summary’s own figure, not a second sum', () => {
+    assert.ok(source.includes('grossProductAmount: preview.data.commercial.grossProductAmount'),
+      'the parsed cell, passed straight through')
+    // The page states the figure; it never derives one. Any arithmetic here
+    // would be a second path to a number the client has already been sent.
+    const wiring = source.slice(source.indexOf('buildOrderInformationRows({'),
+                                source.indexOf('const byKey = (key: string)'))
+    for (const arithmetic of ['+', '*', 'Math.', 'reduce(', 'toFixed(']) {
+      assert.ok(!wiring.includes(arithmetic), `${arithmetic} must not appear in the wiring`)
+    }
+  })
+
+  test('Uploaded by is the signed-in application user', () => {
+    assert.ok(source.includes('upload: { by: profile?.full_name ?? null, at: preview.readAt }'),
+      'the profile this screen already loaded — never a workbook cell, never an id')
+    // G21 is the SALESPERSON and is a different field on the same block, so the
+    // two can never collapse into one another.
+    const view = read(PREVIEW_VIEW)
+    assert.ok(view.includes("label: 'Salesperson',    value: orDash(header.createdBy)"))
+    assert.ok(view.includes("label: 'Uploaded by',    value: orDash(upload.by)"))
+  })
+
+  test('Upload date is read once, when the parse succeeds — never during render', () => {
+    // A clock called while rendering ticks on every re-render: opening the
+    // image viewer, resizing past the mobile breakpoint or starting a save
+    // would each move a timestamp that is supposed to record one moment.
+    const clocks = source.match(/new Date\(\)/g) ?? []
+    assert.equal(clocks.length, 1, 'exactly one clock reading on this screen')
+    assert.ok(source.includes('readAt: formatSavedAt(new Date().toISOString())'),
+      'and it is stored on the preview, through the shared formatter')
+
+    // It is inside the parse-success branch: after the parse returned ok, in
+    // the same object literal as the products and images it belongs with.
+    const readWorkbook = source.slice(source.indexOf('const readWorkbook = useCallback'),
+                                      source.indexOf('const parsing = stage.kind'))
+    assert.ok(readWorkbook.includes('readAt:'), 'the reading happens in readWorkbook')
+    assert.ok(readWorkbook.indexOf('if (!result.ok)') < readWorkbook.indexOf('readAt:'),
+      'a workbook that failed to parse never records an upload moment')
+    assert.ok(readWorkbook.indexOf("kind: 'ready',") < readWorkbook.indexOf('readAt:'),
+      'and it is part of the preview that parse produced')
+
+    // NOTHING BELOW RENDER MAY DERIVE IT. previewBlock reads preview.readAt and
+    // never a clock, so re-rendering the block cannot change what it says.
+    const previewBlock = source.slice(source.indexOf('const previewBlock = preview && ('))
+    assert.ok(!previewBlock.includes('new Date('),
+      'the rendered block takes the stored moment and never asks the clock again')
+    assert.ok(previewBlock.includes('at: preview.readAt'))
+  })
+
+  test('it is not persisted, and the saved record keeps the server’s own timestamp', () => {
+    // The caption is a caption. If it ever reached the save it would become a
+    // browser-supplied timestamp on a business record.
+    const saveDraft = source.slice(source.indexOf('const saveDraft = useCallback'),
+                                   source.indexOf('const acceptFile = useCallback'))
+    assert.ok(!saveDraft.includes('readAt'), 'the save never sends it')
+  })
+
+  test('the three groups are rendered, and the dates are a group of their own', () => {
+    for (const group of ["group(['client', 'productValue', 'location'], 3)",
+                         "group(['confirmed', 'due'], 3)",
+                         "group(['salesperson', 'uploadedBy', 'uploadedAt'], 3)"]) {
+      assert.ok(source.includes(group), `${group} must be the grouping the screen renders`)
+    }
+    assert.ok(source.includes("? '1fr 1fr'"),
+      'and every group collapses to two columns on a phone')
+  })
+})
+
+// ── The product line reads code-first ─────────────────────────────────────────
+
+describe('the product code outranks the product name', () => {
+  const source = read(IMPORT_PAGE)
+
+  /** The nearest style object above a rendered value, as numbers. */
+  function styleOf(marker: string, occurrence: number, label: string) {
+    let at = -1
+    for (let i = 0; i <= occurrence; i++) at = source.indexOf(marker, at + 1)
+    assert.notEqual(at, -1, `${label}: ${marker} must still be rendered`)
+    const block = source.slice(source.lastIndexOf('style={{', at), at)
+    const size = /fontSize: '(\d+)px'/.exec(block)
+    const weight = /fontWeight: (\d+)/.exec(block)
+    const colour = /color: colors\.(\w+)/.exec(block)
+    assert.ok(size && weight && colour, `${label}: size, weight and colour must all be stated`)
+    return { size: Number(size![1]), weight: Number(weight![1]), colour: colour![1] }
+  }
+
+  // Occurrence 0 is the stacked mobile card, occurrence 1 the desktop table:
+  // the page renders the phone layout first in its `isMobile ? … : …`.
+  for (const [layout, i] of [['mobile card', 0], ['desktop table', 1]] as const) {
+    test(`${layout}: the code is larger, heavier and darker than the name`, () => {
+      const code = styleOf('{orDash(p.itemSequence)}', i, `${layout} code`)
+      const name = styleOf('{orDash(p.productName)}', i, `${layout} name`)
+      assert.ok(code.size > name.size, `code ${code.size}px must be larger than name ${name.size}px`)
+      assert.ok(code.weight > name.weight, `code ${code.weight} must be heavier than name ${name.weight}`)
+      assert.equal(code.colour, 'primary', 'the identifier takes the darkest ink')
+      assert.equal(name.colour, 'secondary', 'and the description steps back')
+      // The small faint treatment the code used to have is gone for good.
+      assert.ok(code.size >= 14 && code.weight >= 600, 'and it is genuinely prominent')
+    })
+  }
+
+  test('neither value, nor the ordering, nor any other column moved', () => {
+    assert.ok(source.includes('{orDash(p.itemSequence)}'), 'the code is the workbook’s J column')
+    assert.ok(source.includes('{orDash(p.productName)}'), 'the name is the workbook’s B column')
+    assert.ok(!source.includes('.sort(') && !source.includes('.reverse()'),
+      'the product rows are rendered in the order the workbook carries them')
+    for (const column of ['{p.quantity ?? ', '{orDash(p.dimensions)}', '{orDash(p.material)}',
+                          '{formatInr(p.costPerPiece)}', '{formatInr(p.lineTotal)}']) {
+      assert.ok(source.includes(column), `${column} is still rendered`)
+    }
+  })
+})
+
+// ── The approved section order, as the preview block renders it ───────────────
+
+describe('the Upload PI preview renders its sections in the approved order', () => {
+  const source = read(IMPORT_PAGE)
+  const block = source.slice(source.indexOf('const previewBlock = preview && ('))
+
+  const at = (marker: string) => {
+    const i = block.indexOf(marker)
+    assert.notEqual(i, -1, `${marker} must be rendered in the preview block`)
+    return i
+  }
+
+  test('Order information, blocking errors, products, commercial summary, then the action', () => {
+    const order = [
+      at('buildOrderInformationRows({'),
+      at('{BLOCKING_PANEL_TITLE}'),
+      at('<PiProductTableHead'),
+      at('<PiCommercialSummary'),
+      at('READY_TITLE'),
+    ]
+    assert.deepEqual([...order].sort((a, b) => a - b), order)
+  })
+
+  test('the errors are read before the product list, not after it', () => {
+    assert.ok(at('{BLOCKING_PANEL_TITLE}') < at('<PiProductTableHead'),
+      'a blocked PI says so above the lines somebody would otherwise scroll past')
+  })
+
+  test('the Save Draft control comes after the money it commits', () => {
+    assert.ok(at('<PiCommercialSummary') < at('SAVE_BUTTON_LABEL'))
+  })
+
+  test('a clean PI renders no empty error section', () => {
+    const guard = block.lastIndexOf('preview.groups.blocking.length > 0 && (',
+                                    at('{BLOCKING_PANEL_TITLE}'))
+    assert.notEqual(guard, -1, 'the panel is gated on there being entries')
+    assert.ok(guard < at('{BLOCKING_PANEL_TITLE}'))
+    assert.equal((block.match(/BLOCKING_PANEL_TITLE/g) ?? []).length, 1,
+      'and it is drawn once, never twice')
+  })
+
+  test('the warnings panel keeps its own gate and does not split the required order', () => {
+    // "Worth checking" does not block a submission, and it is read just before
+    // the decision to save — so it sits between the commercial summary and the
+    // ready card. Both of those still hold their approved positions relative to
+    // everything above them; the warnings interrupt nothing.
+    assert.ok(at('<PiCommercialSummary') < at('{WARNING_PANEL_TITLE}'))
+    assert.ok(at('{WARNING_PANEL_TITLE}') < at('READY_TITLE'))
+    assert.ok(block.includes('preview.groups.warnings.length > 0 && ('),
+      'and it is still shown only when there is something to check')
+  })
+})
+
+// ── A product row is red only for a blocking error mapped to that row ─────────
+//
+// WHY THIS IS GUARDED. Red on a product line means "this line stops the
+// submission". If a general commercial warning, a missing picture or anything
+// else could paint it, the signal would stop meaning that — and a reader would
+// start ignoring the rows that really do have to be fixed.
+//
+// The chain is three links, and each is asserted below:
+//
+//   blockingIssues  →  blockedRows  →  the row's ground / left edge
+//
+// so a clean PI, whose blockingIssues list is empty, produces an empty set,
+// and `has()` is false for every product on the page.
+
+describe('a product row is red only where a blocking error is mapped to it', () => {
+  const source = read(IMPORT_PAGE)
+  const productsCard = source.slice(source.indexOf('title="Products"'),
+                                    source.indexOf('<PiCommercialSummary'))
+
+  test('link 1 — the set is built from the blocking issues, and from nothing else', () => {
+    assert.ok(source.includes('blockedRows: new Set(result.blockingIssues.map(issue => issue.row))'),
+      'one row per blocking issue, keyed by the worksheet row the parser pointed at')
+    assert.equal((source.match(/blockedRows:/g) ?? []).length, 2,
+      'the type field and the one assignment — nothing else writes it')
+  })
+
+  test('link 2 — warnings cannot reach it', () => {
+    // groupPiDiagnostics receives both lists; blockedRows receives only one.
+    // A warning names a CELL as often as a row (I117 on the commercial block),
+    // and it never stops a submission, so it must never mark a product.
+    const at = source.indexOf('blockedRows: new Set(')
+    assert.notEqual(at, -1, 'the set is still built where the preview is assembled')
+    const assignment = source.slice(at, source.indexOf('coverage:', at))
+    assert.ok(assignment.includes('result.blockingIssues'), 'from the blocking list')
+    assert.ok(!/warning/i.test(assignment), 'no warning is folded into the blocked set')
+    assert.ok(!/warning/i.test(productsCard),
+      'and the product table never consults the warning list at all')
+  })
+
+  test('link 3 — both layouts ask that set, and ask nothing else', () => {
+    assert.equal((productsCard.match(/preview\.blockedRows\.has\(p\.row\)/g) ?? []).length, 2,
+      'the stacked card’s left edge and the table row’s ground — one each')
+    assert.ok(productsCard.includes(
+      "borderLeft: preview.blockedRows.has(p.row) ? `3px solid ${colors.red}` : '3px solid transparent'"),
+      'the phone card’s red edge is conditional on the mapped row')
+    assert.ok(productsCard.includes(
+      "background: preview.blockedRows.has(p.row) ? colors.redTint : 'transparent'"),
+      'and so is the table row’s pink ground')
+  })
+
+  test('a row without a mapped blocking error is left alone', () => {
+    // The falsy arms are stated, not omitted: an unmarked row is explicitly
+    // transparent rather than inheriting a ground from somewhere above it.
+    assert.ok(productsCard.includes("? colors.redTint : 'transparent'"))
+    assert.ok(productsCard.includes(": '3px solid transparent'"))
+  })
+
+  test('no other red in the products card can paint a row', () => {
+    // Every remaining red token in this card belongs to the image-coverage
+    // chip in the HEADER, which reports how many pictures the PI carries and
+    // is not attached to any row. If a third red appears here, it is new.
+    const reds = [...productsCard.matchAll(/colors\.red(?:Tint)?\b/g)].map(m => m.index!)
+    const rowReds = reds.filter(i => {
+      const line = productsCard.slice(productsCard.lastIndexOf('\n', i) + 1,
+                                      productsCard.indexOf('\n', i))
+      return line.includes('blockedRows')
+    })
+    const chipReds = reds.filter(i => {
+      const line = productsCard.slice(productsCard.lastIndexOf('\n', i) + 1,
+                                      productsCard.indexOf('\n', i))
+      return line.includes('preview.coverage.complete')
+    })
+    assert.equal(rowReds.length, 2, 'the two row highlights')
+    assert.equal(chipReds.length, 2, 'the coverage chip’s ground and its text')
+    assert.equal(reds.length, rowReds.length + chipReds.length,
+      'and no third source of red anywhere in the products card')
+  })
+
+  test('the derivation itself: empty in, nothing marked; a row in, that row marked', () => {
+    // The expression the page runs, run here over the two cases that matter.
+    // It pins the SEMANTICS the three links above pin the wiring of.
+    const blockedRows = (issues: readonly { row: number }[]) => new Set(issues.map(i => i.row))
+
+    const clean = blockedRows([])
+    for (const row of [32, 33, 34]) {
+      assert.equal(clean.has(row), false, `a clean PI must not mark row ${row}`)
+    }
+
+    const blocked = blockedRows([{ row: 34 }])
+    assert.equal(blocked.has(34), true, 'the row the blocking issue names is marked')
+    assert.equal(blocked.has(33), false, 'and its neighbours are not')
+    assert.equal(blocked.has(32), false)
   })
 })

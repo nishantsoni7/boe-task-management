@@ -767,6 +767,40 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
   variant?: PiCommercialVariant
 }) {
   const detail = variant === 'detail'
+
+  // ── THE ADVANCE IS NOT A LINE OF THE CALCULATION ──
+  //
+  // Every other row is an arithmetic step: gross, less discount, plus fabric,
+  // plus tax, equals the Grand Total. The required advance is a CONSEQUENCE of
+  // that total — a condition on the order, not a term in the sum — and as a
+  // tenth near-identical row it was read as one more addend, tinted amber for
+  // no reason a reader could name.
+  //
+  // So it is lifted out of the ledger and given its own block below it. The row
+  // is the builder's, unchanged: same key, same label, same figure, same note,
+  // same em dash when the grand total is not a number.
+  //
+  // THE DETAIL PAGE NEVER HAS ONE. commercialBreakdownRows filters the advance
+  // out before this component sees it, so `advance` is null there and the
+  // detail card's markup is exactly what it was.
+  const ledger = rows.filter(row => row.emphasis !== 'advance')
+  const advance = rows.find(row => row.emphasis === 'advance') ?? null
+
+  /** Shared by the ledger's figures and the callout's, so they cannot drift. */
+  const amountStyle = (row: PiAmountRow): React.CSSProperties => ({
+    whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
+    textAlign: 'right',
+    // Digit under digit, on BOTH screens. A column of rupee figures read at a
+    // glance is a column of columns; proportional digits made ₹1,11,111 and
+    // ₹99,999 the same width and the eye stopped being able to compare them.
+    // The detail card already had this, so nothing there changes.
+    fontVariantNumeric: 'tabular-nums',
+    // The two worded zeroes read as settled facts, like a figure, so they take
+    // the primary colour; italic marks all three non-numeric renderings — and
+    // the worded commitments such as "as applicable" — as words, not amounts.
+    fontStyle: row.kind === 'amount' || row.kind === 'missing' ? 'normal' : 'italic',
+  })
+
   return (
     <div style={detail ? { width: '100%' } : {
       width: '100%',
@@ -776,38 +810,39 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
       <PiCard style={detail ? DETAIL_CARD_STYLE : undefined}>
         <PiCardHeader title={title} style={detail ? DETAIL_HEADER_STYLE : undefined} />
         <div style={{ padding: '8px 0' }}>
-          {rows.map(row => {
+          {ledger.map(row => {
           // THE STRONGEST POINT ON THE CARD, and the only row that gets a class.
           // Its ground and its rule live in CSS (see .pi-commercial-grand-total)
           // rather than inline, so the highlight is one declaration a reviewer
-          // can find, and so this component still renders the preview's Grand
-          // Total exactly as it always has.
-          const detailTotal = detail && row.emphasis === 'total'
+          // can find — and it is the same declaration on both screens, because
+          // "which number is the one that matters" has one answer.
+          const grandTotal = row.emphasis === 'total'
+          // A quiet ledger, so the total has something to be louder THAN. Nine
+          // rows of primary-coloured figures competed with the Grand Total they
+          // add up to. The detail card keeps the treatment it was signed off
+          // with; this is the preview's own.
+          const quiet = !detail && !row.emphasis
           return (
             <div
               key={row.key}
-              className={detailTotal ? 'pi-commercial-grand-total' : undefined}
+              className={grandTotal ? 'pi-commercial-grand-total' : undefined}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
                 padding: row.emphasis ? '11px 18px' : '6px 18px',
-                // A second hairline, on the DETAIL page only, so its column
-                // reads as three groups rather than ten equal lines: what the
-                // products came to, what tax does to it, and what is owed.
-                // `groupStart` is set by the row builder, which is the thing
-                // that knows what a row MEANS.
-                borderTop: detailTotal
+                // A hairline before tax, so the column reads as three groups
+                // rather than nine equal lines: what the products came to, what
+                // tax does to it, and what is owed. `groupStart` is set by the
+                // row builder, which is the thing that knows what a row MEANS.
+                borderTop: grandTotal
                   ? undefined
-                  : row.emphasis === 'total' || (detail && row.groupStart)
-                    ? `1px solid ${colors.borderSoft}`
-                    : 'none',
-                // `undefined`, never 0: a falsy-but-present value would still
-                // be serialised, and the preview's markup must come out exactly
-                // as it did before the detail page needed anything.
-                marginTop: detail && row.groupStart ? '4px' : undefined,
-                paddingTop: detail && row.groupStart ? '10px' : undefined,
-                background: detailTotal
-                  ? undefined
-                  : row.emphasis === 'advance' ? colors.amberTint : 'transparent',
+                  : row.groupStart ? `1px solid ${colors.borderSoft}` : 'none',
+                // `undefined`, never 0: a falsy-but-present value would still be
+                // serialised as `margin-top:0` on every other row.
+                marginTop: row.groupStart ? '4px' : undefined,
+                paddingTop: row.groupStart ? '10px' : undefined,
+                // The Grand Total's ground comes from the class; every other
+                // row states its own, so a row can never inherit one.
+                background: grandTotal ? undefined : 'transparent',
               }}
             >
               <div style={{ minWidth: 0 }}>
@@ -818,6 +853,10 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                 }}>
                   {row.label}
                 </div>
+                {/* buildCommercialRows puts a note on the advance row alone,
+                    and that row is rendered below rather than here — but a row
+                    that carries one still prints it, so the contract between
+                    the builder and this component holds whatever it adds. */}
                 {row.note && (
                   <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
                     {row.note}
@@ -825,22 +864,15 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                 )}
               </div>
               <div style={{
-                whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
-                textAlign: 'right',
-                // Detail page only: its figures line up digit under digit under
-                // the products table's own money columns. The preview keeps the
-                // proportional figures it shipped with.
-                fontVariantNumeric: detail ? 'tabular-nums' : undefined,
+                ...amountStyle(row),
                 // A single step up for the figure the whole card exists to
                 // report. One step, not three: the row's ground and rule are
                 // already doing most of the work.
-                fontSize: detailTotal ? '15px' : row.emphasis ? '14px' : '13px',
+                fontSize: grandTotal ? '15px' : '13px',
                 fontWeight: row.emphasis ? 700 : 500,
-                // The two worded zeroes read as settled facts, like a figure,
-                // so they take the primary colour; italic marks all three
-                // non-numeric renderings as words rather than amounts.
-                color: row.kind === 'text' || row.kind === 'missing' ? colors.secondary : colors.primary,
-                fontStyle: row.kind === 'amount' || row.kind === 'missing' ? 'normal' : 'italic',
+                color: quiet || row.kind === 'text' || row.kind === 'missing'
+                  ? colors.secondary
+                  : colors.primary,
               }}>
                 {row.value}
               </div>
@@ -848,6 +880,45 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
           )
           })}
         </div>
+
+        {/* The advance, below the total it is a percentage of.
+            A secondary callout: warm ground and a rule to separate it from the
+            arithmetic, but a figure one step below the Grand Total's, because
+            this is a condition on the order and that is what the order is
+            worth. The note keeps its own low weight — it is the sentence that
+            stops a REQUIREMENT being read as a RECEIPT, and it has to be there
+            without competing with the number above it. */}
+        {advance && (
+          <div style={{
+            borderTop: `1px solid ${colors.borderSoft}`,
+            background: colors.amberTint,
+            padding: '12px 18px',
+            display: 'flex', flexDirection: 'column', gap: '4px',
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary, minWidth: 0 }}>
+                {advance.label}
+              </div>
+              <div style={{
+                ...amountStyle(advance),
+                fontSize: '14px',
+                fontWeight: 700,
+                color: advance.kind === 'text' || advance.kind === 'missing'
+                  ? colors.secondary
+                  : colors.primary,
+              }}>
+                {advance.value}
+              </div>
+            </div>
+            {advance.note && (
+              <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+                {advance.note}
+              </div>
+            )}
+          </div>
+        )}
       </PiCard>
     </div>
   )
