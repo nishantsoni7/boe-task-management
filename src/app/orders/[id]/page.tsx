@@ -110,10 +110,15 @@ import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
   OrderCommercialBreakdown,
-  OrderPiHistoryCard,
   OrderPiNoSource,
   OrderPiProducts,
 } from './OrderPiSections'
+import {
+  OrderMainPiCard,
+  OrderStatusWorkspace,
+  PiHistoryModal,
+} from './OrderStatusWorkspace'
+import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import {
   ApproveRevisionModal,
   ProductionAlignmentModal,
@@ -683,7 +688,8 @@ export default function OrderDetailPage() {
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
   const [revisionError, setRevisionError] = useState<string | null>(null)
-  const [versionOpening, setVersionOpening] = useState<string | null>(null)
+  const [historyOpen,   setHistoryOpen]   = useState(false)
+  const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
   const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
   const [alignBusy,     setAlignBusy]     = useState(false)
   const [alignError,    setAlignError]    = useState<string | null>(null)
@@ -1288,20 +1294,6 @@ export default function OrderDetailPage() {
 
   // ── PI versions (20261119000000) ──
 
-  /** Any version's file, signed on demand exactly as the current workbook is. */
-  const openVersion = async (version: PiVersionView) => {
-    if (!version.workbookPath || versionOpening) return
-    setVersionOpening(version.id)
-    setRevisionError(null)
-    const { data, error } = await supabase
-      .storage
-      .from(ORDER_FILES_BUCKET)
-      .createSignedUrl(version.workbookPath, ORDER_PI_WORKBOOK_URL_TTL_SECONDS, { download: true })
-    setVersionOpening(null)
-    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-  }
-
   /**
    * Propose a revised PI: the file to private storage under the PI's own
    * original/ folder (the revision insert policy decides), then ONE RPC that
@@ -1402,6 +1394,32 @@ export default function OrderDetailPage() {
     } finally {
       setAlignBusy(false)
     }
+  }
+
+  /**
+   * OPEN OR SAVE ONE PI VERSION'S WORKBOOK.
+   *
+   * SIGNED ON THE PRESS, through the reader's own session, so the order-files
+   * policy decides again at that moment and a key copied out of this page stops
+   * working within the hour. The two differ only in the `download` flag the
+   * signer is given: viewing hands the browser the file to open, saving asks
+   * for it as an attachment. Neither builds a URL into the markup and neither
+   * mints anything for a version nobody named.
+   */
+  const openVersionFile = async (version: PiVersionView, mode: 'view' | 'download') => {
+    if (piFileBusy) return
+    const path = version.workbookPath
+    if (!path) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
+    setPiFileBusy(version.id)
+    setRevisionError(null)
+    const { data, error } = await supabase
+      .storage
+      .from(ORDER_FILES_BUCKET)
+      .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
+        mode === 'download' ? { download: true } : undefined)
+    setPiFileBusy(null)
+    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
   // ── The image viewer ──
@@ -1688,6 +1706,17 @@ export default function OrderDetailPage() {
    * raises a gap in all three, and a reader told "Production not aligned" must
    * be able to find the field that says so.
    */
+  /**
+   * THE PI IN FORCE, AND THE WHOLE TRAIL BEHIND IT.
+   *
+   * Both read piHistory, which is describePiVersionHistory's answer over the
+   * rows public.order_pi_versions returned under this reader's own RLS. The
+   * card states the APPROVED version and the modal states every one; neither
+   * re-derives which is current, so they cannot disagree.
+   */
+  const mainPi = mainPiCard(piHistory)
+  const piTimeline = piVersionTimeline(piHistory)
+
   const recordFacts = orderRecordFacts({
     status: order.status,
     salespersonName: order.assigned_to_name ?? null,
@@ -1923,6 +1952,23 @@ export default function OrderDetailPage() {
           </section>
         )}
 
+        {/* ══ 3. THE STATUS WORKSPACE ══
+            WHAT A READER CHECKS BEFORE THEY LOOK AT A SINGLE PRODUCT LINE: the
+            PI this Order actually runs on, how much of it is paid for, and
+            whether fabric and finish have been signed off. Three cards, one
+            row where the width allows, stacked in the same order where it does
+            not. */}
+        <OrderStatusWorkspace>
+          <OrderMainPiCard
+            card={mainPi}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+          />
+        </OrderStatusWorkspace>
+
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
             columns need the whole width to show every permitted column without
@@ -2141,21 +2187,6 @@ export default function OrderDetailPage() {
                   </div>
                 )}
               </div>
-              {/* THE PI HISTORY (20261119000000): the current PI, a pending
-                  revision and everything before. */}
-              <OrderPiHistoryCard
-                embedded
-                history={piHistory}
-                canPropose={mayProposeRevision}
-                canDecide={mayDecideRevision && piHistory.pending !== null}
-                onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-                onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-                onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-                onOpen={openVersion}
-                opening={versionOpening}
-                busy={revisionBusy}
-                error={revisionDialog === null ? revisionError : null}
-              />
             </div>
           </PiCard>
         )}
@@ -2336,6 +2367,23 @@ export default function OrderDetailPage() {
           parties, spelled out. The same component the PI screen uses. */}
       {clientOpen && piHandoff.kind === 'ready' && (
         <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
+      )}
+
+      {/* ── The PI history, without leaving the Order ── */}
+      {historyOpen && (
+        <PiHistoryModal
+          entries={piTimeline}
+          onClose={() => setHistoryOpen(false)}
+          onView={v => { void openVersionFile(v, 'view') }}
+          onDownload={v => { void openVersionFile(v, 'download') }}
+          busyId={piFileBusy}
+          canPropose={mayProposeRevision}
+          onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+          canDecide={mayDecideRevision}
+          onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
+          onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
+          error={revisionDialog === null ? revisionError : null}
+        />
       )}
 
       {/* ── PI revision and production alignment dialogs (20261119000000) ── */}

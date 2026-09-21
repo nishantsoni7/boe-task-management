@@ -49,6 +49,7 @@ describe('the page reads in one order, with no second summary', () => {
     header:   body.indexOf('className="order-command-header"'),
     summary:  body.indexOf('<OrderSummaryPanel'),
     attention: body.indexOf('<OrderAttentionBar'),
+    workspace: body.indexOf('<OrderStatusWorkspace>'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
     records:  body.indexOf('title="Order records"'),
@@ -65,14 +66,16 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'products', 'payment', 'records',
-      'recordInfo', 'activity',
+      'header', 'summary', 'attention', 'workspace', 'products', 'payment',
+      'records', 'recordInfo', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
     assert.equal((body.match(/<OrderSummaryPanel/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderRecordInformation/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderStatusWorkspace>/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderMainPiCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)
@@ -339,10 +342,30 @@ describe('no Order fact is stated twice', () => {
 describe('Order records holds the documents, the source PI and the history', () => {
   const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('<OrderActivityList'))
 
-  test('both sections are inside it, each embedded rather than a card of its own', () => {
+  test('it holds the SOURCE PI provenance, and no longer the version history', () => {
+    // Source PI is the document this Order was CREATED from — a permanent
+    // provenance record. The PI in force is a different fact once a revision
+    // has been approved, and it has its own card above the products. The
+    // version history moved into the modal that card opens, so no surface
+    // states it twice.
     assert.ok(records.includes('Source PI'))
-    assert.ok(records.includes('<OrderPiHistoryCard'))
-    assert.ok(records.includes('embedded'))
+    assert.equal(records.includes('<OrderPiHistoryCard'), false)
+    assert.equal(page.includes('<OrderPiHistoryCard'), false,
+      'the history card is not drawn anywhere on this page')
+  })
+
+  test('the PI in force is stated by the Main PI card, and once', () => {
+    assert.ok(body.includes('<OrderMainPiCard'))
+    assert.ok(page.includes('const mainPi = mainPiCard(piHistory)'))
+    assert.equal((page.match(/mainPiCard\(/g) ?? []).length, 1)
+  })
+
+  test('the whole version trail is stated by the modal, and once', () => {
+    assert.equal((body.match(/<PiHistoryModal/g) ?? []).length, 1)
+    assert.equal((page.match(/piVersionTimeline\(/g) ?? []).length, 1)
+    // Mounted only while it is open: a closed modal reads no files and signs
+    // nothing.
+    assert.ok(body.includes('{historyOpen && ('))
   })
 
   // ── DOCUMENTS ──
@@ -512,7 +535,7 @@ describe('the critical path to the product table', () => {
   test('the workbook and each PI version are signed ON THE CLICK, not at load', () => {
     // A page that signed every version's file up front would spend a request
     // per archived PI for something nobody opened.
-    for (const handler of ['const downloadWorkbook', 'const openVersion']) {
+    for (const handler of ['const downloadWorkbook', 'const openVersionFile']) {
       const at = page.indexOf(handler)
       assert.ok(at > 0, handler)
       assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), handler + ' signs on demand')
