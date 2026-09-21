@@ -300,3 +300,104 @@ describe('Quotation Requests navigation is untouched', () => {
     assert.ok(DETAIL.includes('taskType:     task?.task_type,'), 'the Back control')
   })
 })
+
+// ─── Behaviour audit ─────────────────────────────────────────────────────────
+// The checklist this branch was reviewed against. Every one of these is a
+// property the performance work had to LEAVE ALONE, pinned here so a later
+// change to the same files cannot quietly take it away.
+
+describe('the rules this branch must not have touched', () => {
+  const modal = DETAIL.slice(DETAIL.indexOf("if (modalStatus === 'waiting') {"))
+
+  test('Waiting still refuses to save without the information it requires', () => {
+    const guard = modal.indexOf("if (!filled) { setWaitingOnError(true); return }")
+    assert.ok(guard > 0, 'the required-information guard is still there')
+    assert.ok(modal.includes("const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()"))
+    assert.ok(guard < modal.indexOf("supabase.from('tasks').update(updates)"),
+      'it refuses BEFORE the write, not after')
+  })
+
+  test('Waiting still records who or what is being waited on', () => {
+    for (const field of [
+      'waiting_on_type:    waitingOnType,',
+      "waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,",
+      "waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,",
+    ]) assert.ok(modal.includes(field), field)
+  })
+
+  test('Blocked still carries its reason, and leaving a status still clears it', () => {
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
+    assert.ok(apply.includes("if (newStatus === 'blocked')   updates.blocker_reason = reason"))
+    assert.ok(apply.includes("if (oldStatus === 'blocked' && newStatus !== 'blocked') updates.blocker_reason = null"))
+    assert.ok(apply.includes("if (oldStatus === 'waiting' && newStatus !== 'waiting') {"))
+  })
+
+  test('every status change still writes its audit row', () => {
+    // The activity log is the accountability record. A performance change that
+    // dropped it, or moved it after the user was told the change succeeded,
+    // would be a correctness regression wearing a speed costume.
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
+    const logAt = apply.indexOf("supabase.from('task_activity_log').insert({")
+    assert.ok(logAt > 0)
+    assert.ok(logAt < apply.indexOf('setTask({ ...task, ...localPatch })'),
+      'the audit row is written before the screen says it worked')
+    assert.ok(logAt < apply.indexOf('router.push(dest)'), 'and before any navigation')
+    assert.ok(modal.includes("action: 'status_changed', from_status: task.status, to_status: 'waiting'"),
+      'the Waiting path keeps its own audit row')
+  })
+
+  test('acknowledgement still writes both rows and is still guarded', () => {
+    const ack = DETAIL.slice(DETAIL.indexOf('const acknowledge = async'), DETAIL.indexOf('const applyStatusChange = async'))
+    assert.ok(ack.includes('if (acknowledgingRef.current) return'))
+    assert.ok(ack.includes("action: 'acknowledged'"))
+    assert.ok(ack.includes("to_status: 'working'"))
+  })
+})
+
+describe('completing returns to the list it was opened from', () => {
+  // Both lists hand Task Detail their own view, so Mark Complete's
+  // returnPathFromSearch resolves to whichever one the reader actually used.
+  // The destination is therefore decided by the opener, not by the task type.
+  for (const [name, code] of [
+    ['/tasks/my', MY],
+    ['/tasks/assigned-by-me', ABM],
+  ] as const) {
+    test(`${name} attaches its own view to the task link`, () => {
+      assert.ok(code.includes('const returnTo = useCurrentReturnPath()'))
+      assert.ok(code.includes('taskDetailHref(selectedTask.id, returnTo)'))
+    })
+  }
+
+  test('Assigned by Me also attaches it to the row action', () => {
+    // My Tasks opens through the drawer only; Assigned by Me has a row button
+    // too, and it must carry the same view or completing from it would land
+    // the creator somewhere else.
+    assert.ok(ABM.includes('onView={() => router.push(taskDetailHref(task.id, returnTo))}'))
+  })
+
+  test('and Mark Complete reads exactly that value back', () => {
+    assert.ok(DETAIL.includes('const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)'))
+  })
+})
+
+describe('the create forms do not navigate — the list they return to is corrected instead', () => {
+  // Neither form pushes a list on save; both show a success banner and stay put,
+  // which is unchanged. What this branch had to get right is that the list is
+  // correct WHENEVER the reader goes back to it, by whatever route.
+  for (const [name, code] of [['create-self', SELF], ['create', CREATE]] as const) {
+    test(`${name} still stays on the page after saving`, () => {
+      const submit = code.slice(code.indexOf('setCreatedId(task.id)'), code.indexOf('setCreatedId(task.id)') + 200)
+      assert.ok(submit.includes('setSuccess(true)'))
+      assert.equal(/router\.push\('\/tasks\//.test(submit), false, 'no automatic navigation was added')
+    })
+  }
+
+  test('a self task corrects My Tasks', () => {
+    assert.ok(SELF.includes("queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })"))
+  })
+
+  test('an assigned task corrects both the assignee’s list and the creator’s', () => {
+    assert.ok(CREATE.includes("queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })"))
+    assert.ok(CREATE.includes('queryClient.invalidateQueries({ queryKey: assignedByMeKey(actorId) })'))
+  })
+})
