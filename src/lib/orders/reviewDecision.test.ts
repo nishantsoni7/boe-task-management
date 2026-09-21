@@ -302,44 +302,64 @@ describe('the approver sees the payment summary beside the PI', () => {
     assert.equal(tiles[7].value, '40%')
   })
 
-  test('the approval dialog prints Order value, approved, pending, attached, the exception reason and the PI decision', () => {
+  test('the approval dialog prints THREE rows: client, product value, confirmed advance', () => {
     const rows = buildApprovalSummary({
-      client: 'Kalyan Interiors', grandTotal: '₹1,00,000', advanceLabel: '₹30,000 · 30%',
-      productCount: 3,
-      payment: {
-        orderValue: '₹1,00,000',
-        approved: '₹30,000.00 · 30%',
-        pending: '₹10,000.00 · 10%',
-        attached: '₹40,000.00 · 40%',
-        exceptionReason: 'Client pays on delivery',
-        exceptionStatus: 'pending',
-      },
-      piApprovedLine: 'PI approved by Ravi Menon · 6 Sep 2026',
+      client: 'Kalyan Interiors',
+      productValue: '₹10,00,000',
+      advanceConfirmed: '₹30,000.00',
+    })
+    assert.deepEqual(rows.map(r => r.key), ['client', 'product_value', 'advance_confirmed'])
+    const byKey = Object.fromEntries(rows.map(r => [r.key, r]))
+    assert.equal(byKey.client.value, 'Kalyan Interiors')
+    assert.equal(byKey.product_value.value, '₹10,00,000')
+    assert.equal(byKey.product_value.strong, true, 'the figure the eye lands on')
+    assert.equal(byKey.advance_confirmed.value, '₹30,000.00')
+  })
+
+  test('THE SEVEN REPEATED ROWS ARE GONE — every one of them is on the page behind it', () => {
+    const rows = buildApprovalSummary({
+      client: 'Kalyan Interiors', productValue: '₹10,00,000', advanceConfirmed: '₹30,000.00',
+    })
+    for (const gone of ['total', 'advance', 'lines', 'approved_payment',
+                        'pending_payment', 'attached_payment', 'pi_decision']) {
+      assert.ok(!rows.some(r => r.key === gone), `${gone} must not be restated here`)
+    }
+    const labels = rows.map(r => r.label).join(' | ')
+    for (const word of ['Grand total', 'Advance condition', 'Product lines',
+                        'Approved payment', 'Pending / unapproved payment',
+                        'Total attached payment', 'PI decision']) {
+      assert.ok(!labels.includes(word), `${word} must not be a row label`)
+    }
+  })
+
+  test('the two dates are NOT read-only rows — the inputs below are the verification', () => {
+    const rows = buildApprovalSummary({
+      client: 'K', productValue: '₹1', advanceConfirmed: '₹0.00',
+    })
+    const labels = rows.map(r => r.label).join(' | ')
+    assert.ok(!/Confirm date/i.test(labels), 'stated once, by its input')
+    assert.ok(!/Due date/i.test(labels), 'stated once, by its input')
+  })
+
+  test('before the payment read lands there is no advance row — never a ₹0 somebody acts on', () => {
+    const rows = buildApprovalSummary({
+      client: 'K', productValue: '₹1', advanceConfirmed: null,
+    })
+    assert.deepEqual(rows.map(r => r.key), ['client', 'product_value'])
+  })
+
+  test('an advance exception is still shown, headed by its state — it is a warning, not a figure', () => {
+    const rows = buildApprovalSummary({
+      client: 'K', productValue: '₹1', advanceConfirmed: '₹0.00',
+      exception: { reason: 'Client pays on delivery', status: 'pending' },
     })
     const byKey = Object.fromEntries(rows.map(r => [r.key, r]))
-    assert.equal(byKey.approved_payment.label, APPROVE_PAYMENT_LABEL.approved)
-    assert.equal(byKey.approved_payment.value, '₹30,000.00 · 30%')
-    assert.equal(byKey.pending_payment.value, '₹10,000.00 · 10%')
-    assert.equal(byKey.attached_payment.value, '₹40,000.00 · 40%')
     assert.equal(byKey.exception.label, `${APPROVE_PAYMENT_LABEL.exception} (pending)`)
     assert.equal(byKey.exception.value, 'Client pays on delivery')
-    assert.equal(byKey.pi_decision.value, 'PI approved by Ravi Menon · 6 Sep 2026')
-  })
-
-  test('without a payment summary the five original rows are exactly what they were', () => {
-    const rows = buildApprovalSummary({
-      client: 'K', grandTotal: '₹1', advanceLabel: 'a', productCount: 1,
-    })
-    assert.deepEqual(rows.map(r => r.key), ['client', 'total', 'advance', 'lines'])
-  })
-
-  test('an attached figure the server did not report prints no attached row, never ₹0', () => {
-    const rows = buildApprovalSummary({
-      client: 'K', grandTotal: '₹1', advanceLabel: 'a', productCount: 1,
-      payment: { orderValue: '₹1', approved: '₹0.00 · 0%', pending: '₹0.00 · 0%', attached: null,
-                 exceptionReason: null, exceptionStatus: null },
-    })
-    assert.ok(!rows.some(r => r.key === 'attached_payment'))
-    assert.ok(!rows.some(r => r.key === 'exception'))
+    // And no exception means no row, never an empty one.
+    assert.ok(!buildApprovalSummary({
+      client: 'K', productValue: '₹1', advanceConfirmed: '₹0.00',
+      exception: { reason: null, status: null },
+    }).some(r => r.key === 'exception'))
   })
 })

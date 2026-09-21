@@ -136,6 +136,7 @@ import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   describeConfirmationFailure,
+  resolveSavedSalesperson,
   validateOrderConfirmation,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
@@ -237,7 +238,6 @@ import {
 // at three breakpoints lives in the CSS module. This file keeps the reads, the
 // permissions and the RPCs, which is the part that has authority behind it.
 import {
-  describeAdvanceForReview,
   buildApprovalSummary,
   buildBillingSummary,
   buildBreakdownView,
@@ -1770,12 +1770,11 @@ function PiDraftDetailPageInner() {
     displayNumber: draft.orderDisplayNumber ?? approval?.displayNumber ?? null,
   })
 
-  /**
-   * The advance condition in one phrase, kept ONLY for records written before
-   * the verified-payment gate. Both dialogs prefer the live verified figure
-   * below; this is the fallback while the summary has not been read.
-   */
-  const advanceLabel = describeAdvanceForReview(advance)
+  // THE ADVANCE CONDITION PHRASE IS NO LONGER READ HERE. It existed for the
+  // approval dialog's "Advance condition" row, and that row is gone: the dialog
+  // now states the CONFIRMED amount instead, which is the figure an approver
+  // actually decides on. describeAdvanceForReview itself is untouched and still
+  // tested — this page simply has nothing left to ask it.
 
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
@@ -1957,6 +1956,16 @@ function PiDraftDetailPageInner() {
    */
   const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
   const summaryFigures = summaryCommercialFigures(commercialRows)
+  /**
+   * THE ONE "Product value" FIGURE, read where the card reads it.
+   *
+   * The confirmation dialog states the same figure the card above it prints, by
+   * taking the SAME element of the SAME array rather than formatting a second
+   * copy from the same column. If the card's figure ever changes, the dialog's
+   * changes with it, because there is only one.
+   */
+  const productValueLabel =
+    summaryFigures.find(figure => figure.key === 'gross')?.value ?? orDash(null)
 
   /**
    * The billing declaration, and what it comes to.
@@ -2213,6 +2222,23 @@ function PiDraftDetailPageInner() {
               approvedOrder={approvedOrder}
               onApprove={() => {
                 setActionFailure(null)
+                /* THE PI'S OWN SALESPERSON, PRESELECTED — never the viewer, the
+                   submitter, the only option or the first one. It is resolved
+                   from source_created_by (the name the document carries, and
+                   the one the summary card prints) by an EXACT, UNIQUE match
+                   against the very list this control offers; anything else
+                   resolves to null and the field opens unselected, where
+                   validateOrderConfirmation still refuses to confirm without
+                   it. Re-derived on every open rather than remembered, so the
+                   dialog always reflects the PI as it stands now. */
+                setConfirmationField(null)
+                setConfirmation(prev => ({
+                  ...prev,
+                  salesperson: resolveSavedSalesperson({
+                    savedName: documentAuthor,
+                    options: salespeople,
+                  }),
+                }))
                 // THE DOOR FOLLOWS THE DECISION, never the other way round: the
                 // PI-only dialog opens only when the payment condition is the one
                 // thing outstanding, and the create-Order dialog only when the PI
@@ -2702,22 +2728,18 @@ function PiDraftDetailPageInner() {
           mode={dialog === 'approve_pi' ? 'approve_pi' : dialog === 'create_order' ? 'create_order' : 'approve_and_create'}
           rows={buildApprovalSummary({
             client: clientLabel,
-            grandTotal: grandTotalLabel,
-            advanceLabel: verifiedPaymentLabel ?? advanceLabel,
-            productCount: products.length,
-            // THE PAYMENT SUMMARY the approver evaluates the PI beside: every
-            // figure the database's, formatted here and computed nowhere.
-            payment: payments === null ? null : {
-              orderValue: formatMoney(payments.grand_total),
-              approved: `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`,
-              pending: `${formatMoney(payments.unverified_amount)} · ${formatPercent(payments.unverified_percent)}`,
-              attached: payments.attached_amount === undefined || payments.attached_amount === null
-                ? null
-                : `${formatMoney(payments.attached_amount)} · ${formatPercent(payments.attached_percent)}`,
-              exceptionReason: payments.exception_status ? (payments.exception_reason ?? null) : null,
-              exceptionStatus: payments.exception_status ?? null,
+            // THE PAGE'S OWN "Product value" FIGURE, passed through. Not
+            // recomputed, and not the grand total: one calculation, two places.
+            productValue: productValueLabel,
+            // CONFIRMED MONEY ONLY — the verified sum, which is exactly what
+            // Finance has approved. Nothing pending, in clarification or
+            // rejected is added to it; that is the database's own figure and
+            // this only formats it.
+            advanceConfirmed: payments === null ? null : formatMoney(payments.verified_amount),
+            exception: payments === null ? null : {
+              reason: payments.exception_status ? (payments.exception_reason ?? null) : null,
+              status: payments.exception_status ?? null,
             },
-            piApprovedLine: piApprovedText,
           })}
           saving={acting}
           failure={actionFailure}

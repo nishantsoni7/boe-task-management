@@ -109,6 +109,66 @@ export function isCalendarDate(value: string | null | undefined): value is strin
   return d.toISOString().slice(0, 10) === s
 }
 
+// ── Preselecting the salesperson the PI already names ─────────────────────────
+//
+// WHAT A PI ACTUALLY STORES ABOUT ITS SALESPERSON, and what it does not.
+//
+// There is NO id-based salesperson association on a PI. order_submissions has
+// an assigned_to column and an index on it, and the RLS policies read it — but
+// nothing in the system has ever WRITTEN it. 20261201000000 says so in its own
+// header ("assigned_to  NOTHING in the entire system ever wrote it"), and
+// 20260915000000 explains why the conversion deliberately leaves it null:
+// "Assignment is an operational decision taken after the Order exists, and
+// inventing one here would put a name on somebody's work without being asked."
+//
+// What a PI DOES carry is order_submissions.source_created_by — the salesperson
+// NAME the workbook itself states, which is the same value the PI detail page
+// prints under "Salesperson". So preselection has one honest source: that name,
+// matched against the people the page is offering.
+//
+// THE MATCH IS EXACT OR IT DOES NOT HAPPEN. Case and surrounding whitespace are
+// normalised, because "dhruv mehta" and "Dhruv Mehta" are one person and a
+// trailing space is a typing artefact rather than a different human. NOTHING
+// ELSE is forgiven: no initials, no first-name-only, no prefix, no nickname, no
+// edit distance. A PI naming "D. Mehta" against an option list holding "Dhruv
+// Mehta" resolves to NOTHING, because putting the wrong person's name on an
+// Order is far worse than asking somebody to pick from a list they are already
+// looking at.
+//
+// AMBIGUITY IS ALSO NOTHING. Two colleagues genuinely called "Dhruv Mehta"
+// resolve to null rather than to whichever the query happened to return first.
+
+/** Trim, collapse inner runs of whitespace, casefold. Nothing else. */
+const matchKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * The option id for the salesperson a PI already names, or null.
+ *
+ * NULL IS A CORRECT ANSWER and the dialog must treat it as one: the field stays
+ * unselected and validateOrderConfirmation still refuses to confirm without it,
+ * exactly as it does today. This function only ever saves somebody a click; it
+ * never makes a choice on their behalf.
+ *
+ * IT NEVER FALLS BACK. Not to the viewer, not to the submitter, not to the only
+ * option, not to the first option. Each of those would put a name on an Order
+ * that nobody chose, which is the one outcome this is written to prevent.
+ */
+export function resolveSavedSalesperson(input: {
+  /** order_submissions.source_created_by — the name the PI document carries. */
+  savedName: string | null | undefined
+  /** The people the dialog is offering. Ids are users.id. */
+  options: readonly { id: string; name: string }[]
+}): string | null {
+  const saved = matchKey(input.savedName ?? '')
+  // An em dash is the workbook's "nothing here", never a person.
+  if (saved === '' || saved === '—') return null
+
+  const matches = input.options.filter(option => matchKey(option.name ?? '') === saved)
+  // Exactly one, or nobody. Two people of the same name is an ambiguity a
+  // machine must not resolve.
+  return matches.length === 1 ? matches[0].id : null
+}
+
 /**
  * The first field that is not ready, in the order they are asked for — so a
  * dialog can focus one field and say one sentence rather than listing four.
