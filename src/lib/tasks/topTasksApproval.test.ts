@@ -264,6 +264,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // here.
     '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
     '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+    // The PI-level finance verification stops being a requirement: two approval
+    // functions re-emitted with one check removed and one added. It reaches
+    // nothing here.
+    '20261226000000_order_submission_finance_verification_no_longer_required.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

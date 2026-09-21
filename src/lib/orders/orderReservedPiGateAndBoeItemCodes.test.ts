@@ -393,6 +393,15 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // taken any earlier than it is today.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // The PI-level finance verification stops being a requirement. It
+      // re-emits approve_pi_review and approve_order_submission from
+      // 20261224000000's text with ONE check deleted from each — the
+      // order_submission_finance_verified() gate — and adds one to
+      // approve_order_submission: no payment attached to the PI may be awaiting
+      // Finance's decision. It adds no column, alters no table, writes no row
+      // and drops nothing, so the reserved-number and BOE-item-code rules this
+      // file asserts are untouched.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

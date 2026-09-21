@@ -1002,6 +1002,10 @@ describe('the applied migrations are frozen', () => {
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // The PI-level finance verification stops being a requirement: two
+      // approval functions re-emitted with one check removed and one added, no
+      // schema change and no DML. It reaches nothing asserted here.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
     ])
   })
 
@@ -1255,6 +1259,10 @@ describe('the applied migrations are frozen', () => {
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // The PI-level finance verification stops being a requirement: two
+      // approval functions re-emitted with one check removed and one added, no
+      // schema change and no DML. It reaches nothing asserted here.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

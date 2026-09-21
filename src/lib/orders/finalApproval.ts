@@ -33,14 +33,26 @@
 //
 //   verify_pi_finance_check    can_verify_pi_finance(), a SUBMITTED record, no
 //                              deletion reservation. Idempotent.
-//   approve_order_submission   orders.approve_order, a SUBMITTED record, a
-//                              CURRENT finance verification, FINANCE-VERIFIED
-//                              PAYMENT of at least 40% of the grand total or an
-//                              APPROVED reduced-payment exception, no blocking
-//                              issues, the workbook and every product image
-//                              still in storage, no deletion reservation, and no
-//                              Order already linked. It also MOVES the PI's
-//                              active allocations onto the new Order.
+//   approve_order_submission   orders.approve_order, a SUBMITTED record,
+//                              FINANCE-VERIFIED PAYMENT of at least 40% of the
+//                              grand total or an APPROVED reduced-payment
+//                              exception, NO PAYMENT STILL AWAITING FINANCE,
+//                              no blocking issues, the workbook and every
+//                              product image still in storage, no deletion
+//                              reservation, and no Order already linked. It
+//                              also MOVES the PI's active allocations onto the
+//                              new Order.
+//
+// THE PI-LEVEL FINANCE VERIFICATION IS NO LONGER REQUIRED (20261226000000).
+// It asked a finance authority to sign the document off while the payment gate
+// below was separately asking Finance to verify each payment — two approvals
+// for one question, and a reviewer holding a fully verified PI still waiting on
+// a second signature. The per-payment verification is the one that decides,
+// because it is the one that counts actual money.
+//
+// WHAT WAS KEPT. verify_pi_finance_check() still exists, the three
+// finance_verified_* columns still exist, and every verification ever recorded
+// is still readable. Nothing reads them as a REQUIREMENT any more.
 //
 // So a hidden control is a courtesy and a defeated one gets a refusal from
 // Postgres.
@@ -293,6 +305,22 @@ export function orderHref(orderId: string): string {
 
 // ── Eligibility: may this reviewer press it, and if not, why ──────────────────
 
+/**
+ * Whether a money figure from the payment summary is greater than zero.
+ *
+ * FAILS OPEN, unlike the payment position beside it, and deliberately: this
+ * figure only ever RAISES a blocker. A null, an empty string or a value that is
+ * not a number means the page cannot say anything is waiting — and must not
+ * invent a blocker out of a reading failure. The database asks the same
+ * question under a row lock and refuses on its own answer, so a browser that
+ * reads nothing here is a browser that offers a control Postgres will decline.
+ */
+function amountIsPositive(amount: string | number | null | undefined): boolean {
+  if (amount === null || amount === undefined) return false
+  const value = typeof amount === 'number' ? amount : Number(String(amount).trim())
+  return Number.isFinite(value) && value > 0
+}
+
 export type ApprovalReadiness = {
   /** True when every precondition the browser can see is satisfied. */
   ready: boolean
@@ -308,8 +336,22 @@ export type ApprovalReadiness = {
 
 export const APPROVAL_BLOCKED_BLOCKING_ISSUES =
   'This PI still has issues that must be fixed in the workbook before it can be approved.'
-export const APPROVAL_BLOCKED_FINANCE =
-  'Finance must verify this PI before it can be approved.'
+/**
+ * A payment attached to this PI is still with Finance.
+ *
+ * REPLACES THE PI-LEVEL FINANCE SIGN-OFF (20261226000000). The old blocker
+ * asked whether a separate, document-level finance verification stood against
+ * this submission — a second approval covering the same ground the per-payment
+ * verification already covers, and one a reviewer had to chase even when every
+ * rupee on the PI was already verified.
+ *
+ * WHAT IS CHECKED INSTEAD is the thing that was actually meant: no payment
+ * attached to this PI may be awaiting Finance's decision. It appears ONLY when
+ * such a payment exists, so a PI whose money is fully verified shows nothing
+ * here at all.
+ */
+export const APPROVAL_BLOCKED_PAYMENT_AWAITING =
+  'A payment on this PI is awaiting Finance verification. It must be verified before the Order can be created.'
 /**
  * The payment position could not be read at all.
  *
@@ -337,8 +379,17 @@ export const approvalBlockedIncomplete = (summary: string): string =>
 
 export type ApprovalReadinessInput = {
   status: string
-  /** Whether a CURRENT finance verification stands. */
-  financeVerified: boolean
+  /**
+   * pi_submission_payment_summary().unverified_amount — the rupees attached to
+   * this PI whose parent payment Finance has not decided yet.
+   *
+   * READ, NEVER DERIVED, exactly as paymentPosition is: the browser has no
+   * opinion about which payments are verified. Zero, null or an unreadable
+   * figure all mean "nothing is waiting", because the amount is only ever used
+   * to RAISE a blocker — approve_order_submission() re-derives it under a row
+   * lock and refuses on its own answer.
+   */
+  awaitingVerificationAmount: string | number | null
   /**
    * Where this PI stands on the verified-payment gate, exactly as
    * pi_submission_payment_summary() reported it — or null when the summary could
@@ -420,7 +471,6 @@ export function describeApprovalReadiness(input: ApprovalReadinessInput): Approv
 
   if (input.status !== 'submitted') return { ready: false, blocker: null }
   if (input.deletionClaimed) return blocked(APPROVAL_BLOCKED_DELETION)
-  if (!input.financeVerified) return blocked(APPROVAL_BLOCKED_FINANCE)
 
   // THE PAYMENT GATE, where the advance declaration used to be.
   //
@@ -432,6 +482,22 @@ export function describeApprovalReadiness(input: ApprovalReadinessInput): Approv
   if (input.paymentPosition === null) return blocked(APPROVAL_BLOCKED_PAYMENT_UNKNOWN)
   const paymentBlocker = paymentApprovalBlocker(input.paymentPosition, input.neededForStandard)
   if (paymentBlocker !== null) return blocked(paymentBlocker)
+
+  // MONEY STILL WITH FINANCE, even though the gate above is satisfied.
+  //
+  // THE CASE THE POSITION CANNOT REPORT. pi_submission_payment_summary()
+  // resolves 'standard_met' and 'exception_approved' BEFORE it looks at
+  // unverified money, so a PI that has met 40% and ALSO carries a payment
+  // Finance has not decided reports 'standard_met' and clears the check above.
+  // Until 20261226000000 that PI could be approved — and the Order created —
+  // while a payment against it was still pending a decision.
+  //
+  // Read separately rather than by reordering the position, because the
+  // position is shown to everybody who opens the PI and 'standard_met' remains
+  // the true answer to the question it asks: the 40% requirement IS met.
+  if (amountIsPositive(input.awaitingVerificationAmount)) {
+    return blocked(APPROVAL_BLOCKED_PAYMENT_AWAITING)
+  }
 
   if (input.hasBlockingIssues) return blocked(APPROVAL_BLOCKED_BLOCKING_ISSUES)
   if (input.productCount === 0) return blocked(APPROVAL_BLOCKED_NO_LINES)
@@ -548,9 +614,14 @@ export function describeReviewDecision(input: {
   // requires must hold, in the RPC's own order, and the payment position must
   // be one of the payment-only ones.
   const position = input.readiness.paymentPosition
+  // NOTE ON THE AWAITING-PAYMENT BLOCKER. It fires while the position is
+  // 'standard_met' or 'exception_approved', and neither is a PAYMENT_ONLY
+  // position — so a PI held up only by money still with Finance reports
+  // 'blocked' and carries the sentence, rather than offering the PI-only
+  // decision. That is deliberate: the rule is that the primary control stays
+  // shut until nothing is awaiting, and a reviewer reads why.
   const paymentOnly =
     !input.readiness.deletionClaimed
-    && input.readiness.financeVerified
     && position !== null
     && PAYMENT_ONLY_POSITIONS.includes(position)
     && !input.readiness.hasBlockingIssues

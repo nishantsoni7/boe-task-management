@@ -24,10 +24,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
+  APPROVAL_BLOCKED_PAYMENT_AWAITING,
   APPROVAL_BLOCKED_PAYMENT_UNKNOWN,
   APPROVAL_BLOCKED_BLOCKING_ISSUES,
   APPROVAL_BLOCKED_DELETION,
-  APPROVAL_BLOCKED_FINANCE,
   APPROVAL_BLOCKED_NO_LINES,
   APPROVE_ORDER_BUTTON_LABEL,
   APPROVE_ORDER_CONFIRM_LABEL,
@@ -212,7 +212,7 @@ describe('what the workflow area says about finance', () => {
 describe('whether the final approval control may be pressed', () => {
   const ready = {
     status: 'submitted',
-    financeVerified: true,
+    awaitingVerificationAmount: 0,
     paymentPosition: 'standard_met' as PaymentPosition,
     neededForStandard: '0.00',
     hasBlockingIssues: false,
@@ -226,10 +226,23 @@ describe('whether the final approval control may be pressed', () => {
     assert.equal(outcome.blocker, null)
   })
 
-  test('approval is blocked before finance has verified', () => {
-    const outcome = describeApprovalReadiness({ ...ready, financeVerified: false })
+  test('approval is blocked while a payment is still with Finance', () => {
+    // WHAT THIS TEST USED TO SAY (before 20261226000000): approval was blocked
+    // until a PI-LEVEL finance verification stood — a second sign-off on the
+    // document, separate from Finance's decision on each payment. That
+    // requirement is gone; the money is what decides.
+    //
+    // WHAT IT SAYS NOW: a PI whose 40% is met in verified money is STILL
+    // blocked while any further payment against it is awaiting a decision.
+    const outcome = describeApprovalReadiness({ ...ready, awaitingVerificationAmount: '50000' })
     assert.equal(outcome.ready, false)
-    assert.equal(outcome.blocker, APPROVAL_BLOCKED_FINANCE)
+    assert.equal(outcome.blocker, APPROVAL_BLOCKED_PAYMENT_AWAITING)
+  })
+
+  test('and nothing else stands between a verified payment and approval', () => {
+    const outcome = describeApprovalReadiness({ ...ready, awaitingVerificationAmount: 0 })
+    assert.equal(outcome.ready, true)
+    assert.equal(outcome.blocker, null)
   })
 
   test('a PENDING reduced-payment exception blocks approval', () => {
@@ -299,7 +312,7 @@ describe('whether the final approval control may be pressed', () => {
 
   test('a deletion reservation blocks approval, ahead of everything else', () => {
     const outcome = describeApprovalReadiness({
-      ...ready, deletionClaimed: true, financeVerified: false, hasBlockingIssues: true,
+      ...ready, deletionClaimed: true, awaitingVerificationAmount: 99, hasBlockingIssues: true,
     })
     assert.equal(outcome.blocker, APPROVAL_BLOCKED_DELETION)
   })
@@ -315,7 +328,7 @@ describe('whether the final approval control may be pressed', () => {
 
   test('every blocker is an actionable task, never a note about the roadmap', () => {
     for (const message of [
-      APPROVAL_BLOCKED_FINANCE, APPROVAL_BLOCKED_PAYMENT_UNKNOWN,
+      APPROVAL_BLOCKED_PAYMENT_AWAITING, APPROVAL_BLOCKED_PAYMENT_UNKNOWN,
       PAYMENT_EXCEPTION_PENDING, PAYMENT_EXCEPTION_REJECTED,
       APPROVAL_BLOCKED_BLOCKING_ISSUES, APPROVAL_BLOCKED_NO_LINES, APPROVAL_BLOCKED_DELETION,
     ]) {
@@ -343,7 +356,7 @@ describe('whether the final approval control may be pressed', () => {
     // refused for something the screen would have mentioned second. This is the
     // order approve_order_submission() applies.
     const source = readFileSync('src/lib/orders/finalApproval.ts', 'utf8')
-    const order = ['deletionClaimed', 'financeVerified', 'paymentPosition', 'hasBlockingIssues', 'productCount']
+    const order = ['deletionClaimed', 'paymentPosition', 'awaitingVerificationAmount', 'hasBlockingIssues', 'productCount']
     let cursor = source.indexOf('export function describeApprovalReadiness')
     for (const step of order) {
       const next = source.indexOf(step, cursor)

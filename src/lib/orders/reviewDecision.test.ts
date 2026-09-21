@@ -55,7 +55,7 @@ import {
 
 const ready: ApprovalReadinessInput = {
   status: 'submitted',
-  financeVerified: true,
+  awaitingVerificationAmount: 0,
   paymentPosition: 'standard_met',
   neededForStandard: '0.00',
   hasBlockingIssues: false,
@@ -123,7 +123,6 @@ describe('which decision the reviewer is offered', () => {
 
   test('anything other than payment blocks the PI decision too', () => {
     for (const over of [
-      { financeVerified: false },
       { hasBlockingIssues: true },
       { productCount: 0 },
       { deletionClaimed: true },
@@ -137,10 +136,18 @@ describe('which decision the reviewer is offered', () => {
     }
   })
 
-  test('the finance CHECK comes before the PI decision, as it does in the RPC', () => {
-    const d = decide({ financeVerified: false, paymentPosition: 'payment_required' })
+  test('money still with Finance blocks the Order even when the 40% is met', () => {
+    // WHAT THIS TEST USED TO SAY (before 20261226000000): the PI-level finance
+    // CHECK came before the PI decision, so an unverified document was blocked
+    // however the money stood. That check is gone.
+    //
+    // WHAT IT SAYS NOW, and it is the stronger rule: the payment route is
+    // SATISFIED here — 'standard_met' — and the PI is still blocked, because a
+    // payment against it has not been decided. No door is offered.
+    const d = decide({ awaitingVerificationAmount: '50000', paymentPosition: 'standard_met' })
     assert.equal(d.mode, 'blocked')
-    assert.ok(/finance must verify/i.test(d.note ?? ''), d.note ?? '')
+    assert.equal(d.rpc, null)
+    assert.ok(/awaiting Finance verification/i.test(d.note ?? ''), d.note ?? '')
   })
 
   test('not a submitted record, or not this viewer\'s decision: nothing', () => {
@@ -298,7 +305,7 @@ describe('the approver sees the payment summary beside the PI', () => {
   test('the approval dialog prints Order value, approved, pending, attached, the exception reason and the PI decision', () => {
     const rows = buildApprovalSummary({
       client: 'Kalyan Interiors', grandTotal: '₹1,00,000', advanceLabel: '₹30,000 · 30%',
-      financeVerified: true, productCount: 3,
+      productCount: 3,
       payment: {
         orderValue: '₹1,00,000',
         approved: '₹30,000.00 · 30%',
@@ -321,14 +328,14 @@ describe('the approver sees the payment summary beside the PI', () => {
 
   test('without a payment summary the five original rows are exactly what they were', () => {
     const rows = buildApprovalSummary({
-      client: 'K', grandTotal: '₹1', advanceLabel: 'a', financeVerified: false, productCount: 1,
+      client: 'K', grandTotal: '₹1', advanceLabel: 'a', productCount: 1,
     })
-    assert.deepEqual(rows.map(r => r.key), ['client', 'total', 'advance', 'finance', 'lines'])
+    assert.deepEqual(rows.map(r => r.key), ['client', 'total', 'advance', 'lines'])
   })
 
   test('an attached figure the server did not report prints no attached row, never ₹0', () => {
     const rows = buildApprovalSummary({
-      client: 'K', grandTotal: '₹1', advanceLabel: 'a', financeVerified: true, productCount: 1,
+      client: 'K', grandTotal: '₹1', advanceLabel: 'a', productCount: 1,
       payment: { orderValue: '₹1', approved: '₹0.00 · 0%', pending: '₹0.00 · 0%', attached: null,
                  exceptionReason: null, exceptionStatus: null },
     })

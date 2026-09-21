@@ -119,7 +119,6 @@ import {
   PiScheduleTermsEditModal,
   PiSubmitConfirmModal,
   PiNoteModal,
-  PiFinanceVerifyModal,
   PiApproveOrderModal,
   type PiNoteIntent,
 } from '@/components/orders/piReviewModals'
@@ -192,9 +191,7 @@ import { asPaymentPosition } from '@/lib/orders/paymentGate'
 import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
-  describeFinanceStatus,
   describeReviewDecision,
-  financeVerificationIsCurrent,
   orderHref,
   piApprovedLine,
   piDecisionIsCurrent,
@@ -469,16 +466,6 @@ function PiDraftDetailPageInner() {
    */
   const [canDecideAdvance, setCanDecideAdvance] = useState(false)
   /**
-   * can_verify_pi_finance() — the SEPARATE finance authority.
-   *
-   * Resolved from the FINANCE module, not from Orders: finance.approve with
-   * Finance module entry, exactly as deriveFinanceCapabilities has it and
-   * exactly as the database's own can_verify_pi_finance() has it. An active
-   * admin holds it either way. orders.approve_order confers nothing here, which
-   * is the whole point of the two-authority rule.
-   */
-  const [canVerifyFinance, setCanVerifyFinance] = useState(false)
-  /**
    * The authority to APPROVE OR REJECT A PENDING PAYMENT — finance.approve with
    * Finance module entry, resolved exactly as the Finance screens resolve it
    * (caps.canApprovePayment).
@@ -495,7 +482,7 @@ function PiDraftDetailPageInner() {
 
   /** Which decision dialog is open, if any. */
   const [dialog, setDialog] = useState<
-    'submit' | 'verify_finance' | 'approve' | 'approve_pi' | 'create_order' | PiNoteIntent | null
+    'submit' | 'approve' | 'approve_pi' | 'create_order' | PiNoteIntent | null
   >(null)
   const [acting, setActing] = useState(false)
   const [actionFailure, setActionFailure] = useState<string | null>(null)
@@ -841,10 +828,6 @@ function PiDraftDetailPageInner() {
       setCanCreate(caps.canCreateOrder)
       setCanReview(caps.canApproveOrderSubmission)
       setCanDecideAdvance(caps.canApproveAdvanceException)
-      // canApprovePayment IS finance.approve gated on Finance module entry —
-      // deriveFinanceCapabilities' withEntry('approve'). The same expression
-      // can_verify_pi_finance() evaluates in the database.
-      setCanVerifyFinance(financeCaps.canApprovePayment)
       // The payment decision controls, from the SAME Finance capability the
       // Finance screens read. Deliberately not derived from any Orders
       // capability, and deliberately granting nothing on the PI itself.
@@ -1452,29 +1435,11 @@ function PiDraftDetailPageInner() {
   }), [runAction, supabase, submissionId])
 
   /**
-   * Finance signs off the commercial figures. NOTHING ELSE HAPPENS.
-   *
-   * No note, because verification is a yes and there is nothing to explain — if
-   * something is wrong with the figures the PI goes back through Needs Changes,
-   * which already asks for words. No payment, request or receipt is created
-   * anywhere in this flow, and the dialog behind the button says so.
-   *
-   * The RPC is idempotent, so a request that survives both the ref guard and the
-   * disabled button records no second verification and writes no second event.
-   */
-  const verifyFinance = useCallback(() => runAction('verify_finance', async () => {
-    const { error } = await supabase.rpc('verify_pi_finance_check', {
-      p_submission_id: submissionId,
-    })
-    return { error }
-  }), [runAction, supabase, submissionId])
-
-  /**
    * The last decision, and the one that creates the Order.
    *
    * ONE RPC CALL, AND IT IS THE AUTHORITY. Every eligibility rule the screen has
-   * just drawn a control from — the status, the permission, the finance
-   * verification, the advance requirement, the diagnostics, the stored workbook
+   * just drawn a control from — the status, the permission, the payment
+   * requirement, any money still awaiting Finance, the diagnostics, the stored workbook
    * and images, the absence of a deletion reservation and of an existing Order —
    * is re-derived inside approve_order_submission() under a row lock, on the
    * values the database holds. A stale screen, a second tab, a replayed request
@@ -1692,23 +1657,19 @@ function PiDraftDetailPageInner() {
   const advanceRejectedNow =
     advance.status === 'rejected' && submission.status === 'needs_changes'
 
-  // ── Finance verification, and whether approval may be pressed ──
+  // ── Whether approval may be pressed ──
   //
-  // ONE ANSWER FROM ONE HELPER for each, shared with their tests, exactly as the
-  // action and advance rules above are. Both mirror a database rule that will be
-  // re-derived under a row lock when the button is actually pressed:
-  // order_submission_finance_verified() and approve_order_submission()'s own
-  // ordered eligibility checks.
-  const financeVerified = financeVerificationIsCurrent(submission, submission.submitted_at)
-  const finance = describeFinanceStatus({
-    status: submission.status,
-    submittedAtIso: submission.submitted_at,
-    verification: submission,
-    canVerifyFinance,
-    verifiedAt: submission.finance_verified_at
-      ? formatSavedAt(submission.finance_verified_at) : null,
-    verifierName: draft.financeVerifierName,
-  })
+  // ONE ANSWER FROM ONE HELPER, shared with its tests, exactly as the action and
+  // advance rules above are. It mirrors a database rule that will be re-derived
+  // under a row lock when the button is actually pressed:
+  // approve_order_submission()'s own ordered eligibility checks.
+  //
+  // NO PI-LEVEL FINANCE STATUS IS READ OR RENDERED (20261226000000). The
+  // document-level sign-off was a second approval for a question the per-payment
+  // verification already answers, so the screen no longer shows it, no longer
+  // offers a control for it, and no longer blocks on it. The
+  // finance_verified_* columns and every verification recorded in them remain
+  // exactly as they were; nothing requires them.
 
   // THE PAYMENT GATE'S ANSWER COMES FROM THE DATABASE, not from this page.
   // pi_submission_payment_summary() resolved the position in numeric, in the
@@ -1760,9 +1721,12 @@ function PiDraftDetailPageInner() {
 
   const readinessInput = {
     status: submission.status,
-    financeVerified,
     paymentPosition: asPaymentPosition(payments?.approval_position),
     neededForStandard: payments?.needed_for_standard ?? null,
+    // The database's own sum of money still with Finance. Blocks approval on
+    // its own, because 'standard_met' is resolved before unverified money is
+    // considered and would otherwise let a pending payment through.
+    awaitingVerificationAmount: payments?.unverified_amount ?? null,
     hasBlockingIssues: draft.blocking.length > 0,
     productCount: products.length,
     deletionClaimed: submission.deletion_claim_token !== null,
@@ -1868,7 +1832,6 @@ function PiDraftDetailPageInner() {
     status: submission.status,
     submitterName: draft.submitterName,
     submittedAt,
-    finance,
     piApprovedLine: piApprovedText,
     rejectedLine: rejectedAt
       ? `Rejected by ${draft.rejectedByName ?? 'a colleague'} · ${rejectedAt}`
@@ -2255,13 +2218,11 @@ function PiDraftDetailPageInner() {
               onSubmit={() => { setActionFailure(null); setDialog('submit') }}
               onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
               onReject={() => { setActionFailure(null); setDialog('reject') }}
-              finance={finance}
               approvalBlocker={readiness.blocker}
               approvalReady={readiness.ready}
               decision={reviewDecision}
               piApprovedLine={piApprovedText}
               approvedOrder={approvedOrder}
-              onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
               onApprove={() => {
                 setActionFailure(null)
                 // THE DOOR FOLLOWS THE DECISION, never the other way round: the
@@ -2747,23 +2708,6 @@ function PiDraftDetailPageInner() {
         />
       )}
 
-      {dialog === 'verify_finance' && (
-        <PiFinanceVerifyModal
-          client={clientLabel}
-          grandTotal={grandTotalLabel}
-          advanceLabel={verifiedPaymentLabel ?? advanceLabel}
-          /* The same list the submit control and the approval control read.
-             Not a refusal — finance signs off on the figures — but the thing
-             that will stop the approval, said before the sign-off rather than
-             after it. */
-          incompleteSummary={submissionReadiness.ready ? null : submissionReadiness.summary}
-          saving={acting}
-          failure={actionFailure}
-          onCancel={closeDialog}
-          onConfirm={verifyFinance}
-        />
-      )}
-
       {(dialog === 'approve' || dialog === 'approve_pi' || dialog === 'create_order') && (
         <PiApproveOrderModal
           client={clientLabel}
@@ -2772,7 +2716,6 @@ function PiDraftDetailPageInner() {
             client: clientLabel,
             grandTotal: grandTotalLabel,
             advanceLabel: verifiedPaymentLabel ?? advanceLabel,
-            financeVerified,
             productCount: products.length,
             // THE PAYMENT SUMMARY the approver evaluates the PI beside: every
             // figure the database's, formatted here and computed nowhere.

@@ -805,6 +805,73 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * needs exactly three files beyond the launcher page and globals.css, which
    * are already accounted for above:
    */
+  /**
+   * THE AUTHORIZED PI FINANCE-VERIFICATION REMOVAL
+   * (branch fix/pi-finance-verification-duplicate).
+   *
+   * Same reasoning as the lists around it: these guards say "this branch
+   * changed nothing but expenses", they run against whatever branch is checked
+   * out, and a later authorized branch trips them for a reason that has nothing
+   * to do with expenses.
+   *
+   * WHAT THIS BRANCH IS. The PI required TWO finance approvals for one
+   * question — a document-level sign-off (verify_pi_finance_check) and
+   * Finance's decision on each payment. The first is removed. Removing it
+   * uncovered a real hole, which is also closed here: a PI that met 40% in
+   * verified money could be approved while a further payment against it was
+   * still undecided, because the payment position resolves 'standard_met'
+   * before it looks at unverified money.
+   *
+   * WHY IT REACHES THESE FILES AND NOT MORE. The rule lives in finalApproval.ts
+   * and is enforced in the migration; the three draft-page files render it; the
+   * rest are the suites that held the removed behaviour and now hold its
+   * absence. NOTHING in Finance's own payment surfaces is touched — who may
+   * verify a payment, and how, is exactly what it was.
+   */
+  const ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL = new Set([
+    // Production — the rule, and the three surfaces that read it.
+    'src/lib/orders/finalApproval.ts',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    // The suites that held the removed step, and now hold its absence.
+    'src/lib/orders/finalApproval.test.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/reviewDecision.test.ts',
+    'src/lib/orders/piReadinessWiring.test.ts',
+    'src/lib/orders/piReadinessWiring.test.tsx',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/components/orders/piApprovalModals.render.test.tsx',
+  ])
+
+  test('the finance-verification removal names files, never a directory', () => {
+    for (const file of ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL) {
+      assert.ok(/\.(ts|tsx)$/.test(file), `${file} must be one file, not a directory`)
+      assert.ok(!file.includes('*'), `${file} must not be a pattern`)
+    }
+    // WHAT REMOVING A DUPLICATE APPROVAL HAS NO BUSINESS IN. Finance's own
+    // payment machinery above all: this branch changes WHETHER a PI-level
+    // sign-off is required, never who may decide a payment or how.
+    for (const untouchable of [
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/permissions/orderApproval.ts',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/finance/paymentDecision.ts',
+      'src/lib/orders/paymentGate.ts',
+      'src/lib/pi/masterSheetParser.ts',
+      'src/lib/orders/piTerms.ts',
+      'src/lib/orders/confirmedPdf.ts',
+    ]) {
+      assert.equal(ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(untouchable), false,
+        `${untouchable} is outside what removing the duplicate approval reaches`)
+      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
+
   const ALLOWED_QUICK_ACTION_PLACEMENT = new Set([
     // The one definition list, and the one component that renders it.
     'src/components/layout/QuickActions.tsx',
@@ -841,7 +908,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_TESTS.has(f) &&
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
-    !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f)
+    !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
+    !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f)
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -980,7 +1048,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
-        || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file),
+        || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
+        || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

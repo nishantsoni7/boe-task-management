@@ -33,8 +33,6 @@ import {
 } from '@/lib/orders/advanceRequirement'
 import {
   APPROVE_SUMMARY_LABEL,
-  FINANCE_SUMMARY_PENDING,
-  FINANCE_SUMMARY_VERIFIED,
   orderHref,
 } from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
@@ -725,7 +723,6 @@ export function buildApprovalSummary(input: {
   grandTotal: string
   /** advance.conditionLabel, or the undeclared label. One source, one wording. */
   advanceLabel: string
-  financeVerified: boolean
   productCount: number
   /** The payment position, when the page has read it. */
   payment?: ApprovalPaymentSummary | null
@@ -736,11 +733,11 @@ export function buildApprovalSummary(input: {
     { key: 'client', label: APPROVE_SUMMARY_LABEL.client, value: input.client },
     { key: 'total', label: APPROVE_SUMMARY_LABEL.grandTotal, value: input.grandTotal, strong: true },
     { key: 'advance', label: APPROVE_SUMMARY_LABEL.advance, value: input.advanceLabel },
-    {
-      key: 'finance',
-      label: APPROVE_SUMMARY_LABEL.finance,
-      value: input.financeVerified ? FINANCE_SUMMARY_VERIFIED : FINANCE_SUMMARY_PENDING,
-    },
+    // NO 'finance' ROW (20261226000000). The approval dialog used to carry a
+    // "Finance verification: Verified/Pending" line for the PI-level sign-off
+    // that is no longer required. The two payment rows below — what Finance has
+    // approved and what is still with them — are the money facts an approver
+    // actually decides on, and they were always the real answer.
     {
       key: 'lines',
       label: APPROVE_SUMMARY_LABEL.lines,
@@ -1209,7 +1206,6 @@ export function buildSubmissionContext(input: {
   status: string
   submitterName: string | null
   submittedAt: string | null
-  finance: { verified: boolean; text: string } | null
   /** "PI approved by X · date", when a current PI decision stands. */
   piApprovedLine: string | null
   /** Already formatted "Rejected by X · date", when the PI was rejected. */
@@ -1231,15 +1227,13 @@ export function buildSubmissionContext(input: {
     }
   })()
 
+  // ONE LINE, NOT TWO (20261226000000). The context row used to carry a
+  // 'Finance' line beside the review line, reporting whether the PI-level
+  // sign-off stood. That sign-off is no longer a step, so the line would only
+  // ever have said "pending" about something nobody is waiting for. What
+  // Finance is actually doing with this PI's money is on the payment card,
+  // where the figures are.
   const lines: ContextLine[] = [review]
-  if (input.finance) {
-    lines.push({
-      key: 'finance',
-      label: 'Finance',
-      text: input.finance.text,
-      tone: input.finance.verified ? 'green' : 'amber',
-    })
-  }
 
   return {
     heading: WORKFLOW_HEADING.submitted,
