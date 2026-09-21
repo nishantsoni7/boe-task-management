@@ -53,7 +53,7 @@ import {
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
-import { formatMoney, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import { formatMoney, formatPercent, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -114,11 +114,25 @@ import {
   OrderPiProducts,
 } from './OrderPiSections'
 import {
+  OrderAdvanceCard,
+  OrderFabricFinishCard,
   OrderMainPiCard,
   OrderStatusWorkspace,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
+import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import { advanceStanding } from '@/lib/orders/orderAdvance'
+import {
+  APPROVAL_EVIDENCE_BUCKET,
+  FABRIC_FINISH_VIEW_AS_NOTE,
+  ORDER_APPROVAL_EVENT_COLUMNS,
+  approvalStanding,
+  canRecordApproval,
+  describeApprovalFailure,
+  evidenceObjectPath,
+  type PersistedApprovalEvent,
+} from '@/lib/orders/orderApprovals'
 import {
   ApproveRevisionModal,
   ProductionAlignmentModal,
@@ -689,6 +703,11 @@ export default function OrderDetailPage() {
   const [revisionBusy,  setRevisionBusy]  = useState(false)
   const [revisionError, setRevisionError] = useState<string | null>(null)
   const [historyOpen,   setHistoryOpen]   = useState(false)
+  const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
+  const [approvalOpen,  setApprovalOpen]  = useState(false)
+  const [approvalBusy,  setApprovalBusy]  = useState(false)
+  const [approvalError, setApprovalError] = useState<string | null>(null)
+  const [proofBusy,     setProofBusy]     = useState<string | null>(null)
   const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
   const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
   const [alignBusy,     setAlignBusy]     = useState(false)
@@ -971,6 +990,32 @@ export default function OrderDetailPage() {
     await reloadActivity()
   }
 
+  /**
+   * The Order's fabric and finish events, as one query — named once so the full
+   * load and the narrow refresh below cannot read or shape it differently.
+   *
+   * NEWEST FIRST, and the whole log: the card folds it to the current state of
+   * each kind and the history reads the rest. Two kinds, a handful of events
+   * each; there is no page to keep.
+   */
+  const approvalsQuery = () =>
+    supabase
+      .from('order_approval_events')
+      .select(ORDER_APPROVAL_EVENT_COLUMNS)
+      .eq('order_id', id)
+      .order('created_at', { ascending: false })
+
+  /**
+   * WHAT RECORDING AN APPROVAL ACTUALLY CHANGED: one appended row. It touches
+   * no Order column, no payment and no PI, so re-running the whole page load
+   * would re-read fourteen things and re-sign every product photograph to show
+   * one new status.
+   */
+  const reloadApprovals = async () => {
+    const { data } = await approvalsQuery()
+    setApprovals((data ?? []) as unknown as PersistedApprovalEvent[])
+  }
+
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
     const { data: o } = await orderRowQuery()
@@ -1009,6 +1054,7 @@ export default function OrderDetailPage() {
       { data: allocData },
       { data: aData },
       { data: cData },
+      { data: apprData },
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -1030,6 +1076,8 @@ export default function OrderDetailPage() {
 
       activityQuery(),
 
+      approvalsQuery(),
+
       supabase
         .from('order_change_requests')
         .select(`
@@ -1044,6 +1092,8 @@ export default function OrderDetailPage() {
         .eq('order_id', id)
         .order('created_at', { ascending: false }),
     ])
+
+    setApprovals((apprData ?? []) as unknown as PersistedApprovalEvent[])
 
     // MERGE, THEN RE-READ THE MONEY EXACTLY.
     //
@@ -1422,6 +1472,78 @@ export default function OrderDetailPage() {
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
+  /**
+   * OPEN ONE ERP SCREENSHOT.
+   *
+   * Signed on the press through the reader's own session, so the evidence
+   * bucket's SELECT policy — which asks can_view_order — decides again at that
+   * moment. No proof is signed at load, and a key never reaches the markup.
+   */
+  const viewEvidence = async (path: string) => {
+    if (proofBusy) return
+    setProofBusy(path)
+    setApprovalError(null)
+    const { data, error } = await supabase
+      .storage
+      .from(APPROVAL_EVIDENCE_BUCKET)
+      .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS)
+    setProofBusy(null)
+    if (error || !data?.signedUrl) { setApprovalError(describeApprovalFailure(error)); return }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  /**
+   * RECORD ONE OR BOTH APPROVALS.
+   *
+   * THE ORDER OF OPERATIONS MATTERS. Each screenshot is uploaded to its own
+   * unique key under this Order and this kind FIRST, because
+   * record_order_approval_event() refuses a recorded path that names no object.
+   * The RPC is then called once per changed kind; it re-derives the authority,
+   * the evidence requirement and the path ownership under a row lock on the
+   * Order, so nothing decided in this browser is trusted.
+   *
+   * A FAILURE IS NEVER DRESSED AS A SUCCESS. The dialog stays open with one
+   * quiet line and the card is re-read either way, so what is on screen is what
+   * the database actually holds.
+   */
+  const recordApprovals = async (changes: ApprovalSubmission[]) => {
+    if (!order || approvalBusy) return
+    setApprovalBusy(true)
+    setApprovalError(null)
+    try {
+      for (const change of changes) {
+        let path: string | null = null
+
+        if (change.file) {
+          path = evidenceObjectPath({
+            orderId: order.id,
+            kind: change.kind,
+            objectId: crypto.randomUUID(),
+            fileName: change.file.name,
+          })
+          const { error: uploadError } = await supabase.storage
+            .from(APPROVAL_EVIDENCE_BUCKET)
+            .upload(path, change.file, { contentType: change.file.type })
+          if (uploadError) { setApprovalError(describeApprovalFailure(uploadError)); return }
+        }
+
+        const { error } = await supabase.rpc('record_order_approval_event', {
+          p_order_id: order.id,
+          p_approval_kind: change.kind,
+          p_status: change.status,
+          p_evidence_path: path,
+        })
+        if (error) { setApprovalError(describeApprovalFailure(error)); return }
+      }
+      setApprovalOpen(false)
+    } finally {
+      setApprovalBusy(false)
+      // Either way: a refusal may still have moved something, and a success
+      // certainly did. The event log alone — nothing else on the page changed.
+      await reloadApprovals()
+    }
+  }
+
   // ── The image viewer ──
   //
   // The same three moves both PI screens make: remember which thumbnail opened
@@ -1717,6 +1839,38 @@ export default function OrderDetailPage() {
   const mainPi = mainPiCard(piHistory)
   const piTimeline = piVersionTimeline(piHistory)
 
+  /**
+   * WHAT THE ADVANCE COMES TO, and whether it reads Risky or Safe.
+   *
+   * `finance` is buildOrderFinancePosition's, unchanged, and its
+   * verifiedPercent is already verified-and-allocated over the final Order
+   * Value. Nothing here recomputes it — see orderAdvance.ts for why, and for
+   * why this label is an indicator rather than the confirmation gate.
+   */
+  const advance = advanceStanding({ finance, formatAmount: formatMoney, formatPercent })
+
+  /** Where fabric and finish stand: the newest event of each kind. */
+  const approvalView = approvalStanding({
+    events: approvals,
+    formatWhen: fmtDateTime,
+    readOnlyNote: viewAsUserId ? FABRIC_FINISH_VIEW_AS_NOTE : undefined,
+  })
+
+  /**
+   * WHETHER TO DRAW THE UPDATE CONTROL.
+   *
+   * The assigned salesperson matched BY USER ID, an active admin or an active
+   * manager, and never under View As. can_record_order_approval() asks exactly
+   * the same question of public.users.role and orders.assigned_to when the RPC
+   * lands, so hiding the button is a courtesy and the refusal is the database's.
+   */
+  const mayRecordApproval = canRecordApproval({
+    viewerId: viewAsUserId ? null : (profile?.id ?? null),
+    role: profile?.role ?? null,
+    assignedTo: order.assigned_to,
+    viewingAs: !!viewAsUserId,
+  })
+
   const recordFacts = orderRecordFacts({
     status: order.status,
     salespersonName: order.assigned_to_name ?? null,
@@ -1966,6 +2120,14 @@ export default function OrderDetailPage() {
             onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
             viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
+          />
+          <OrderAdvanceCard standing={advance} />
+          <OrderFabricFinishCard
+            standing={approvalView}
+            canUpdate={mayRecordApproval}
+            onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
+            onViewEvidence={path => { void viewEvidence(path) }}
+            busyEvidence={proofBusy}
           />
         </OrderStatusWorkspace>
 
@@ -2383,6 +2545,17 @@ export default function OrderDetailPage() {
           onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
           onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
           error={revisionDialog === null ? revisionError : null}
+        />
+      )}
+
+      {/* ── Fabric and finish (20261227000000) ── */}
+      {approvalOpen && (
+        <OrderApprovalModal
+          standing={approvalView}
+          saving={approvalBusy}
+          failure={approvalError}
+          onClose={() => { if (!approvalBusy) setApprovalOpen(false) }}
+          onConfirm={changes => { void recordApprovals(changes) }}
         />
       )}
 

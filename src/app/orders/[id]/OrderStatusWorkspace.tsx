@@ -39,6 +39,21 @@ import {
   type PiVersionTone,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
+import {
+  ADVANCE_AMOUNT_LABEL,
+  ADVANCE_NOT_AVAILABLE,
+  ADVANCE_ORDER_VALUE_LABEL,
+  ADVANCE_TITLE,
+  type AdvanceStanding,
+} from '@/lib/orders/orderAdvance'
+import {
+  APPROVAL_STATUS_LABEL,
+  EVIDENCE_VIEW_LABEL,
+  FABRIC_FINISH_TITLE,
+  FABRIC_FINISH_UPDATE_LABEL,
+  type ApprovalStanding,
+} from '@/lib/orders/orderApprovals'
+
 // ── Shared chrome ─────────────────────────────────────────────────────────────
 
 export type StatusTone = 'green' | 'amber' | 'red' | 'neutral'
@@ -180,6 +195,98 @@ export function OrderMainPiCard({
           {downloading ? 'Preparing…' : MAIN_PI_DOWNLOAD_LABEL}
         </button>
       </div>
+    </CardShell>
+  )
+}
+
+// ── 2. Advance Received ───────────────────────────────────────────────────────
+
+/**
+ * HOW MUCH OF THIS ORDER IS ACTUALLY PAID FOR.
+ *
+ * Every figure is the shared finance position's, unchanged — verified money
+ * allocated to THIS Order, over its final Order Value. See orderAdvance.ts for
+ * why there is no second calculation here, why nothing is capped, and why the
+ * Risky/Safe line is an operational indicator and not the confirmation gate.
+ */
+export function OrderAdvanceCard({ standing }: { standing: AdvanceStanding }) {
+  return (
+    <CardShell title={ADVANCE_TITLE}>
+      <div className="order-status-lead">
+        <span className="order-status-lead-value order-status-lead-value--numeric">
+          {standing.percentLabel}
+        </span>
+        {/* Words as well as colour: a reader who cannot tell red from green
+            still reads "Risky". */}
+        {standing.classification && (
+          <StatusPill label={standing.classification.label} tone={standing.classification.tone} strong />
+        )}
+      </div>
+
+      <dl className="order-status-facts">
+        <Fact label={ADVANCE_AMOUNT_LABEL} value={standing.verifiedAmount} />
+        <Fact label={ADVANCE_ORDER_VALUE_LABEL} value={standing.orderValue ?? ADVANCE_NOT_AVAILABLE} />
+      </dl>
+
+      <p className="order-status-note">{standing.note}</p>
+    </CardShell>
+  )
+}
+
+// ── 3. Fabric & Finish ────────────────────────────────────────────────────────
+
+/**
+ * WHERE THE TWO APPROVALS STAND, AND WHEN EACH LAST MOVED.
+ *
+ * A date is drawn only for a status that HAS one: `Not Approved` is where every
+ * Order starts, and dating it would date an event that never happened.
+ *
+ * THE UPDATE CONTROL IS A COURTESY, NOT THE SECURITY. It is drawn for the
+ * assigned salesperson, an admin or a manager, and never under View As — and
+ * record_order_approval_event() re-derives every bit of that under a row lock,
+ * so a direct call from somebody who never saw the button is refused just the
+ * same.
+ */
+export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence }: {
+  standing: ApprovalStanding
+  canUpdate: boolean
+  onUpdate: () => void
+  onViewEvidence: (path: string) => void
+  /** Which proof is being signed, if any. */
+  busyEvidence: string | null
+}) {
+  return (
+    <CardShell
+      title={FABRIC_FINISH_TITLE}
+      right={canUpdate ? (
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>
+          {FABRIC_FINISH_UPDATE_LABEL}
+        </button>
+      ) : undefined}
+    >
+      <dl className="order-status-approvals">
+        {standing.kinds.map(kind => (
+          <div key={kind.kind} className="order-status-approval">
+            <dt className="order-status-fact-label">{kind.label}</dt>
+            <dd className="order-status-approval-value">
+              <StatusPill label={APPROVAL_STATUS_LABEL[kind.status]} tone={kind.tone} />
+              {/* Only where there is an event to date. */}
+              {kind.at && <span className="order-status-approval-at">{kind.at}</span>}
+              {kind.evidencePath && (
+                <button
+                  type="button"
+                  className="order-status-proof"
+                  onClick={() => onViewEvidence(kind.evidencePath as string)}
+                  disabled={busyEvidence === kind.evidencePath}
+                >
+                  {busyEvidence === kind.evidencePath ? 'Opening…' : EVIDENCE_VIEW_LABEL}
+                </button>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {!canUpdate && <p className="order-status-note">{standing.readOnlyNote}</p>}
     </CardShell>
   )
 }

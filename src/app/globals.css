@@ -2496,6 +2496,95 @@ body {
   .order-status-workspace > .order-status-card:nth-child(3) { grid-column: auto; }
 }
 
+/* A proof, opened on the press. Quiet: it sits beside a status, not above
+   it, and a card full of buttons would bury the statuses they belong to. */
+.order-status-proof {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #3A7ABE;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.order-status-proof:disabled { color: #8C94A6; cursor: default; text-decoration: none; }
+.order-status-proof:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+
+/* ── The Fabric & Finish update dialog ── */
+.order-approval-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.order-approval-field {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 9px;
+  padding: 10px 12px 12px;
+  margin: 0;
+  min-width: 0;
+}
+.order-approval-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111318;
+}
+/* WHICH FIELD CHANGED, in a word rather than only a colour. */
+.order-approval-changed {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9A6A12;
+  background: rgba(190,140,40,0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.order-approval-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 4px;
+}
+.order-approval-select {
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: #111318;
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 7px;
+}
+.order-approval-select:focus-visible,
+.order-approval-file:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
+.order-approval-evidence { margin-top: 10px; }
+.order-approval-file { width: 100%; font-size: 12px; color: #4A5160; }
+.order-approval-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #B42318;
+  line-height: 1.5;
+}
+.order-approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .order-approval-actions { flex-direction: column-reverse; }
+  .order-approval-actions .order-status-action { width: 100%; justify-content: center; min-height: 42px; }
+}
+
 /* ── The modal shell ──
    One dialog treatment for PI history and the Fabric & Finish update. It is
    a real dialog: labelled, modal to assistive technology, focus moved in on

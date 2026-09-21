@@ -484,9 +484,26 @@ describe('every finance verification ever recorded is left exactly as it is', ()
     // The correction is a NEW file. Rewriting 20261224000000 in place would
     // change a migration production has already run.
     const applied = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-    const last = applied[applied.length - 1]
-    assert.equal(last, MIGRATION_FILE,
-      'this migration sorts last, so it applies after everything already applied')
+    const at = applied.indexOf(MIGRATION_FILE)
+    assert.ok(at >= 0, 'the migration is on disk')
+
+    // WHAT THIS GUARD IS ACTUALLY FOR: this migration must apply AFTER
+    // everything that was already applied when it was written. It used to say
+    // so by requiring that it sorted LAST, which was true then and stopped
+    // being true the moment a later feature added a file. The purpose did not
+    // change; only the wording had to.
+    //
+    // So everything sorting after it is NAMED instead, which still refuses a
+    // migration slipping in between this one and the state it was written
+    // against — and still refuses this one being renumbered.
+    assert.deepEqual(applied.slice(at), [
+      MIGRATION_FILE,
+      // The Confirmed Order's fabric and finish approvals. One new table, one
+      // new private bucket, one write RPC. It neither re-emits
+      // approve_order_submission nor reads a finance verification, so nothing
+      // this file asserts is reachable from it.
+      '20261227000000_order_fabric_finish_approvals.sql',
+    ])
 
     const previous = lf(readFileSync(
       join(MIGRATIONS, '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql'),

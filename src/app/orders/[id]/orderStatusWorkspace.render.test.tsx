@@ -15,10 +15,32 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
+  OrderAdvanceCard,
+  OrderFabricFinishCard,
   OrderMainPiCard,
   OrderStatusWorkspace,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
+import { OrderApprovalModal } from './OrderApprovalModal'
+import {
+  ADVANCE_NOT_AVAILABLE,
+  ADVANCE_RISKY_LABEL,
+  ADVANCE_SAFE_LABEL,
+  advanceStanding,
+} from '@/lib/orders/orderAdvance'
+import {
+  EVIDENCE_SAME_FILE_MESSAGE,
+  FABRIC_FINISH_READ_ONLY,
+  FABRIC_FINISH_UPDATE_LABEL,
+  approvalStanding,
+  type PersistedApprovalEvent,
+} from '@/lib/orders/orderApprovals'
+import {
+  buildOrderFinancePosition,
+  withExactAmounts,
+  type OrderFinancePaymentRow,
+} from '@/lib/finance/orderFinancePosition'
+import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_AWAITING,
@@ -151,6 +173,197 @@ describe('the Main PI card', () => {
 
   test('the card is labelled for a reader who is not seeing it', () => {
     assert.match(card(), /aria-label="Main PI"/)
+  })
+})
+
+
+// ── Advance Received ───────────────────────────────────────────────
+
+/** A real finance position, built the way the page builds one. */
+function advance(verifiedAmount: number, orderValue: number | null) {
+  const rows = verifiedAmount > 0 ? [{ id: 'p1', client_name: 'Kalyan', amount: verifiedAmount,
+    payment_date: '2026-09-09', payment_mode: 'neft', order_number: '0524',
+    status: 'approved_linked', allocatedAmount: verifiedAmount, source: 'allocation' }] : []
+  const exact = withExactAmounts(rows as unknown as readonly OrderFinancePaymentRow[], {
+    linked: [],
+    allocations: rows.map(r => ({ allocated_amount: r.amount, payment: { id: r.id, amount: r.amount } })),
+    allocationTotals: new Map(rows.map(r => [r.id, r.amount])),
+  } as never)
+  return advanceStanding({
+    finance: buildOrderFinancePosition(exact, orderValue),
+    formatAmount: formatMoney, formatPercent,
+  })
+}
+
+const advanceCard = (verifiedAmount: number, orderValue: number | null) =>
+  renderToStaticMarkup(<OrderAdvanceCard standing={advance(verifiedAmount, orderValue)} />)
+
+describe('the Advance Received card', () => {
+  test('leads with the percentage and states both amounts', () => {
+    const body = text(advanceCard(500000, 1000000))
+    assert.ok(body.includes('Advance Received'))
+    assert.ok(body.includes(formatPercent('50.00')))
+    assert.ok(body.includes(formatMoney(500000)))
+    assert.ok(body.includes(formatMoney(1000000)))
+  })
+
+  test('EXACTLY 35% READS RISKY, in words as well as colour', () => {
+    const body = text(advanceCard(350000, 1000000))
+    assert.ok(body.includes(ADVANCE_RISKY_LABEL))
+    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
+  })
+
+  test('just above it reads Safe', () => {
+    assert.ok(text(advanceCard(350100, 1000000)).includes(ADVANCE_SAFE_LABEL))
+  })
+
+  test('an overpayment prints its real figure rather than a capped one', () => {
+    const body = text(advanceCard(1200000, 1000000))
+    assert.ok(body.includes(formatPercent('120.00')))
+    assert.equal(body.includes('100.00%'), false)
+  })
+
+  test('A ZERO ORDER VALUE SAYS `Not available` AND CLAIMS NOTHING', () => {
+    const body = text(advanceCard(100000, 0))
+    assert.ok(body.includes(ADVANCE_NOT_AVAILABLE))
+    assert.equal(body.includes(ADVANCE_RISKY_LABEL), false)
+    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
+  })
+
+  test('and says WHY, rather than leaving a blank', () => {
+    assert.match(text(advanceCard(100000, 0)), /no value/i)
+  })
+})
+
+// ── Fabric & Finish ────────────────────────────────────────────────
+
+const ORDER = '11111111-2222-3333-4444-555555555555'
+
+const approvalEvent = (over: Partial<PersistedApprovalEvent> = {}): PersistedApprovalEvent => ({
+  id: 'e1', order_id: ORDER, approval_kind: 'fabric', status: 'partially_approved',
+  evidence_path: `orders/${ORDER}/fabric/secret-proof.png`,
+  actor_id: 'u1', created_at: '2026-09-10T05:00:00Z',
+  ...over,
+})
+
+const approvals = (events: PersistedApprovalEvent[]) =>
+  approvalStanding({ events, formatWhen: (iso: string) => iso.slice(0, 10) })
+
+const fabricCard = (events: PersistedApprovalEvent[], canUpdate = false) =>
+  renderToStaticMarkup(
+    <OrderFabricFinishCard
+      standing={approvals(events)}
+      canUpdate={canUpdate}
+      onUpdate={noop}
+      onViewEvidence={noop}
+      busyEvidence={null}
+    />,
+  )
+
+describe('the Fabric & Finish card', () => {
+  test('states both kinds, each with its status in words', () => {
+    const body = text(fabricCard([]))
+    for (const s of ['Fabric', 'Finish', 'Not Approved']) assert.ok(body.includes(s), s)
+  })
+
+  test('NOT APPROVED CARRIES NO DATE', () => {
+    const html = fabricCard([])
+    assert.equal(/order-status-approval-at/.test(html), false)
+  })
+
+  test('a Partial and a Full status each carry their date', () => {
+    const html = fabricCard([
+      approvalEvent(),
+      approvalEvent({ id: 'e2', approval_kind: 'finish', status: 'fully_approved',
+                      evidence_path: `orders/${ORDER}/finish/b.png` }),
+    ])
+    const body = text(html)
+    assert.ok(body.includes('Partially Approved'))
+    assert.ok(body.includes('Fully Approved'))
+    assert.equal((html.match(/order-status-approval-at/g) ?? []).length, 2)
+  })
+
+  test('THE UPDATE CONTROL IS DRAWN ONLY FOR SOMEBODY WHO MAY PRESS IT', () => {
+    assert.equal(text(fabricCard([])).includes(FABRIC_FINISH_UPDATE_LABEL), false)
+    assert.ok(text(fabricCard([], true)).includes(FABRIC_FINISH_UPDATE_LABEL))
+  })
+
+  test('a read-only reader is told why, rather than shown a dead button', () => {
+    assert.ok(text(fabricCard([])).includes(FABRIC_FINISH_READ_ONLY))
+    assert.equal(text(fabricCard([], true)).includes(FABRIC_FINISH_READ_ONLY), false)
+  })
+
+  test('NO EVIDENCE PATH REACHES THE MARKUP — a proof is signed on the press', () => {
+    assertNoFileReference(fabricCard([approvalEvent()]), 'the Fabric & Finish card')
+    assert.equal(fabricCard([approvalEvent()]).includes('secret-proof'), false)
+  })
+
+  test('but a proof that exists is offered', () => {
+    assert.ok(text(fabricCard([approvalEvent()])).includes('View proof'))
+    assert.equal(text(fabricCard([])).includes('View proof'), false)
+  })
+})
+
+// ── The update dialog ────────────────────────────────────────────
+
+const approvalModal = (events: PersistedApprovalEvent[] = [], over: Partial<{
+  saving: boolean; failure: string | null
+}> = {}) => renderToStaticMarkup(
+  <OrderApprovalModal
+    standing={approvals(events)}
+    saving={over.saving ?? false}
+    failure={over.failure ?? null}
+    onClose={noop}
+    onConfirm={noop}
+  />,
+)
+
+describe('the Fabric & Finish update dialog', () => {
+  test('is a real dialog, labelled and closable', () => {
+    const html = approvalModal()
+    assert.match(html, /role="dialog"/)
+    assert.match(html, /aria-modal="true"/)
+    assert.match(html, /aria-label="Update Fabric &amp; Finish"/)
+    assert.match(html, /aria-label="Close"/)
+  })
+
+  test('SEPARATE SELECTORS, one per kind, each labelled and pre-filled', () => {
+    const html = approvalModal([approvalEvent({ status: 'fully_approved' })])
+    assert.match(html, /id="approval-fabric"/)
+    assert.match(html, /id="approval-finish"/)
+    assert.match(html, /for="approval-fabric"/)
+    assert.match(html, /for="approval-finish"/)
+    // Pre-filled with where each kind actually stands.
+    // React marks the controlled value with selected on the matching option.
+    const fabric = html.slice(html.indexOf('id="approval-fabric"'), html.indexOf('</select>'))
+    assert.match(fabric, /<option value="fully_approved" selected="">/)
+  })
+
+  test('NO EVIDENCE INPUT UNTIL A CHANGE NEEDS ONE', () => {
+    // Nothing has been changed yet, so neither kind is asking for a file.
+    assert.equal(/type="file"/.test(approvalModal()), false)
+  })
+
+  test('SAVE IS DISABLED WHILE NOTHING HAS CHANGED', () => {
+    const html = approvalModal()
+    assert.match(html, /aria-disabled="true"/)
+  })
+
+  test('while saving, every control is held and the button says so', () => {
+    const html = approvalModal([], { saving: true })
+    assert.ok(text(html).includes('Saving…'))
+    assert.ok((html.match(/disabled/g) ?? []).length >= 3, 'no double submission')
+  })
+
+  test('a server refusal is one quiet line, announced', () => {
+    const html = approvalModal([], { failure: EVIDENCE_SAME_FILE_MESSAGE })
+    assert.match(html, /role="alert"/)
+    assert.ok(text(html).includes(EVIDENCE_SAME_FILE_MESSAGE))
+  })
+
+  test('THERE IS NO MANDATORY REASON BOX — no existing rule asks for one', () => {
+    const html = approvalModal()
+    assert.equal(/<textarea/.test(html), false)
   })
 })
 
