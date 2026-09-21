@@ -6,15 +6,17 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { assignedByMeKey } from '@/hooks/queries/useAssignedByMe'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { createDuplicateCandidateCache, findSimilarTitle, runTaskCreation, SESSION_EXPIRED_MESSAGE } from '@/lib/tasks/taskCreateFlow'
 import { perfTrack } from '@/lib/perf'
@@ -25,7 +27,25 @@ type CreatedTask = { id: string; title: string; assigned_to: string }
 
 export default function CreateTaskPage() {
   const { viewAsUserId } = useViewAs()
-  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+
+  // ── Identity and directory, from caches the page already shares ───────────
+  //
+  // This form used to open its own session, read its own `users` row and read
+  // the whole active-user directory before it would draw anything, behind
+  // `if (!initDone) return <LoadingScreen />`. All three were already in hand:
+  // ModuleGuard's permission context resolves the signed-in id from the STORED
+  // session (no request) and publishes the profile row into useProfile's cache
+  // entry, and the directory is the same ['users','active'] entry the task
+  // lists beside this page fill. So pressing Create Task blanked the screen for
+  // an auth hop and two round trips that returned data it already had.
+  //
+  // Only `id` and `team` are read from the profile, and only `id`, `full_name`
+  // and `team` from the directory — all columns these two hooks select.
+  const { data: signedInUserId, isPending: idPending } = useSignedInUserId()
+  const { data: profile = null, isPending: profilePending } = useProfile(signedInUserId)
+  const { data: users = [], isPending: usersPending } = useActiveUsers()
+  const initDone = !idPending && (!signedInUserId || !profilePending) && !usersPending
+
   const [title,          setTitle]          = useState('')
   const [description,    setDescription]    = useState('')
   const [priority,       setPriority]       = useState('')
@@ -36,10 +56,11 @@ export default function CreateTaskPage() {
   const [dateDirty,      setDateDirty]      = useState(false)
   const [priorityDirty,  setPriorityDirty]  = useState(false)
   const [assigneeId,     setAssigneeId]     = useState('')
-  const [team,           setTeam]           = useState('sales')
-  const [users,          setUsers]          = useState<UserProfile[]>([])
+  // Derived, not stored: the old init effect copied it out of the profile row
+  // once. 'sales' remains the value used before a profile has resolved, exactly
+  // as the old initial state was.
+  const team = profile?.team ?? 'sales'
   const [loading,        setLoading]        = useState(false)
-  const [initDone,       setInitDone]       = useState(false)
   const [success,        setSuccess]        = useState(false)
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [submitError,    setSubmitError]    = useState<string | null>(null)
@@ -80,31 +101,13 @@ export default function CreateTaskPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // The two redirects the old init effect performed, unchanged. Each waits for
+  // a resolved answer: an unresolved context reports a null user, which is not
+  // the same thing as "there is no session".
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) { router.push('/login'); return }
-        if (viewAsUserId) { router.push('/dashboard'); return }
-
-        const [{ data: profileData }, { data: allUsers }] = await Promise.all([
-          supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-          supabase.from('users')
-            .select('id, full_name, team, role, email, phone, is_active, created_at')
-            .eq('is_active', true).order('full_name'),
-        ])
-
-        if (profileData) {
-          setProfile(profileData as UserProfile)
-          setTeam(profileData.team)
-        }
-        if (allUsers) setUsers(allUsers as UserProfile[])
-      } finally {
-        setInitDone(true)
-      }
-    }
-    init()
-  }, [viewAsUserId, router, supabase])
+    if (!idPending && !signedInUserId) { router.push('/login'); return }
+    if (viewAsUserId) router.push('/dashboard')
+  }, [idPending, signedInUserId, viewAsUserId, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -260,6 +263,11 @@ export default function CreateTaskPage() {
       // Every list, count and report this task appears in refreshes in the
       // background. Nothing here waits for them.
       queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+      // The creator's OWN list of delegated work. It is now cached, so without
+      // this a task assigned here would be missing from Assigned By Me for the
+      // whole 30-second stale window — the exact list the creator goes to next
+      // to check the assignment landed.
+      queryClient.invalidateQueries({ queryKey: assignedByMeKey(actorId) })
       queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
       queryClient.invalidateQueries({ queryKey: ['task-report', 'created', actorId] })
 

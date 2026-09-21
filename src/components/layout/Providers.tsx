@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
+import { noteDocumentEntry } from '@/lib/navigation/appHistory'
 
 export function Providers({ children }: { children: ReactNode }) {
   // One QueryClient per browser session — created once, never recreated on re-render
@@ -30,6 +31,15 @@ export function Providers({ children }: { children: ReactNode }) {
         },
       })
   )
+
+  // The history length this document arrived with, sampled before the reader
+  // can navigate anywhere. Task Detail's Back control compares it against the
+  // live length to tell "I walked here from a list" apart from "I am the first
+  // page in this tab" — and so whether popping history returns the reader into
+  // BOE or does nothing at all. See src/lib/navigation/appHistory.ts, a
+  // dependency-free module, deliberately: this provider is in the bundle that
+  // every route loads.
+  useEffect(() => { noteDocumentEntry(window.history.length) }, [])
 
   return (
     <QueryClientProvider client={queryClient}>

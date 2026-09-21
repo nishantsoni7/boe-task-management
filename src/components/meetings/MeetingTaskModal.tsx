@@ -3,7 +3,9 @@
 import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
 import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { assignedByMeKey } from '@/hooks/queries/useAssignedByMe'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { MeetingModal, MeetingField, MeetingModalActions, MeetingModalError } from './MeetingModal'
@@ -62,6 +64,25 @@ export function MeetingTaskModal({
   // Its presence also disables Create, so the still-filled form cannot be
   // submitted a second time and produce a duplicate task.
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  /**
+   * The cached Task Management lists a newly created task belongs to.
+   *
+   * A meeting-born task is an ordinary task: it appears in the assignee's My
+   * Tasks and, when it was assigned to somebody else, in this creator's
+   * Assigned By Me. Both are cached lists and nothing here marked them, so the
+   * task could be missing from the list its creator opened straight afterwards
+   * to check it had landed. /tasks/my papered over this by invalidating itself
+   * on every mount — a request on every arrival, and no help to Assigned By Me
+   * at all. These are the keys /tasks/create already marks after the same
+   * insert.
+   */
+  const invalidateTaskLists = (assignee: string, creator: string) => {
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', assignee] })
+    queryClient.invalidateQueries({ queryKey: assignedByMeKey(creator) })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+  }
 
   useEffect(() => {
     let active = true
@@ -115,6 +136,8 @@ export function MeetingTaskModal({
       setSaving(false)
       return
     }
+
+    invalidateTaskLists(assigneeId, profile.id)
 
     // The activity entry and the assignee's notification depend only on the new
     // id and not on each other — the same pair /tasks/create writes, in the same

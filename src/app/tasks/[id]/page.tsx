@@ -38,7 +38,10 @@ import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
-import { defaultTaskListPath, returnPathFromSearch } from '@/lib/tasks/taskReturnPath'
+import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { ASSIGNED_BY_ME_KEY } from '@/hooks/queries/useAssignedByMe'
+import { hasInAppHistory } from '@/lib/navigation/appHistory'
+import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 
@@ -170,7 +173,15 @@ export default function TaskDetailPage() {
   const [cancelling,       setCancelling]      = useState(false)
   const [modalOpen,        setModalOpen]       = useState(false)
   const [modalStatus,      setModalStatus]     = useState<string>('')
-  const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
+  // THE SAME ACTIVE-USER LIST EVERY TASK OPEN USED TO RE-READ. It was one of
+  // four queries in the batch below and the only one whose answer does not
+  // depend on the task: the identical rows came back on every open, and every
+  // return to a list, while the list pages beside it already held them under
+  // this very cache key. Reading it through the shared hook makes opening a
+  // task three round trips instead of four, and a second open within the ten
+  // minute window costs nothing at all.
+  const { data: activeUsers = [] } = useActiveUsers()
+  const teamMembers = activeUsers
 
   // Creator-approval workflow. One in-flight flag covers all three actions —
   // they are mutually exclusive on one task — with the usual ref/state pair, so
@@ -331,6 +342,11 @@ export default function TaskDetailPage() {
     // tab only ever holds the signed-in user's entry, so a prefix cannot reach
     // anyone else's data and cannot miss theirs.
     queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
+    // And Assigned By Me, which holds the same rows from the creator's side and
+    // is the list a delegated task is opened from — so it is the one that would
+    // otherwise send a creator back to a stale status, or to a task they have
+    // just completed. Same key-prefix reasoning as above.
+    queryClient.invalidateQueries({ queryKey: ASSIGNED_BY_ME_KEY })
   }
 
 
@@ -352,12 +368,10 @@ export default function TaskDetailPage() {
       // profile is not among them: useProfile above already holds it.
       const [
         { data: taskData },
-        { data: members },
         { data: activityLogData },
         { data: allAttachments },
       ] = await Promise.all([
         supabase.from('tasks').select('*, creator:created_by(full_name)').eq('id', taskId).single(),
-        supabase.from('users').select('id, full_name').eq('is_active', true).order('full_name'),
         supabase.from('task_activity_log')
           .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
           .eq('task_id', taskId)
@@ -369,8 +383,6 @@ export default function TaskDetailPage() {
       ])
 
       perf.mark('queries')
-
-      if (members) setTeamMembers(members)
 
       if (taskData) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -589,8 +601,22 @@ export default function TaskDetailPage() {
     }
     perf.mark('append-activity')
     if (newStatus === 'completed') {
-      const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
-      setTimeout(() => router.push(dest), 800)
+      // BACK TO THE LIST THIS TASK WAS OPENED FROM, AT ONCE.
+      //
+      // Two things were wrong here. The destination was one of two fixed
+      // addresses, so a creator who completed a task they had opened from
+      // Assigned By Me — or from Today's Focus, or from a notification — was
+      // put on /tasks/my, a list that task need never have been on. `returnTo`
+      // is the view they actually left and every internal entry point attaches
+      // it; the task's own list stays the fallback for a pasted URL.
+      //
+      // And the navigation waited 800ms for a toast that this path never shows.
+      // Nothing was drawn in that time and nothing was being awaited — it was
+      // dead time after a click, on the one action people perform most. The
+      // list itself is the confirmation: the task is gone from it.
+      const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)
+      noteListReturn()
+      router.push(dest)
     }
     } finally {
       statusUpdatingRef.current = false
@@ -1337,7 +1363,21 @@ export default function TaskDetailPage() {
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
-            onClick={() => router.back()}
+            onClick={() => {
+              // Pop when this document has an entry of its own to pop, which is
+              // every ordinary walk in from a list — same page, same scroll,
+              // no extra history entry. Otherwise navigate: a task opened from
+              // a notification in a NEW TAB has nothing behind it, and this
+              // button simply did nothing there.
+              const target = taskBackTarget({
+                inAppHistory: hasInAppHistory(),
+                returnTo:     returnPathFromSearch(window.location.search),
+                taskType:     task?.task_type,
+              })
+              if (target.kind === 'history') { router.back(); return }
+              noteListReturn()
+              router.push(target.path)
+            }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '4px',
               fontSize: '13px', fontWeight: 600,

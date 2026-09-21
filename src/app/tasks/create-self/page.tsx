@@ -4,15 +4,15 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { createDuplicateCandidateCache, findSimilarTitle, runTaskCreation, SESSION_EXPIRED_MESSAGE } from '@/lib/tasks/taskCreateFlow'
 import { perfTrack } from '@/lib/perf'
@@ -23,7 +23,25 @@ type CreatedTask = { id: string; title: string; assigned_to: string }
 
 export default function CreateSelfTaskPage() {
   const { viewAsUserId } = useViewAs()
-  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+
+  // ── Identity, from the cache the module shell already filled ──────────────
+  //
+  // This form used to open its own session and read its own `users` row before
+  // it would draw anything, behind `if (!initDone) return <LoadingScreen />`.
+  // Both answers were already in hand: /tasks/create-self sits under
+  // src/app/tasks/layout.tsx's ModuleGuard, whose permission context resolves
+  // the signed-in id from the STORED session (no request) and publishes the
+  // profile row into useProfile's cache entry on the same navigation. So the
+  // form blanked the screen for an auth hop and a round trip that returned
+  // data it already had — every time anyone pressed Create Self Task.
+  //
+  // Only `id` and `team` are read from the profile below, and both are columns
+  // useProfile selects, so nothing here needs the wider USER_PROFILE_COLUMNS
+  // set the old read asked for.
+  const { data: signedInUserId, isPending: idPending } = useSignedInUserId()
+  const { data: profile = null, isPending: profilePending } = useProfile(signedInUserId)
+  const initDone = !idPending && (!signedInUserId || !profilePending)
+
   const [title,          setTitle]          = useState('')
   const [description,    setDescription]    = useState('')
   const [priority,       setPriority]       = useState('')
@@ -34,7 +52,6 @@ export default function CreateSelfTaskPage() {
   const [dateDirty,      setDateDirty]      = useState(false)
   const [priorityDirty,  setPriorityDirty]  = useState(false)
   const [loading,        setLoading]        = useState(false)
-  const [initDone,       setInitDone]       = useState(false)
   const [success,        setSuccess]        = useState(false)
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [isMobile,       setIsMobile]       = useState(false)
@@ -72,20 +89,13 @@ export default function CreateSelfTaskPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // The two redirects the old init effect performed, unchanged. Each waits for
+  // a resolved answer: an unresolved context reports a null user, which is not
+  // the same thing as "there is no session".
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) { router.push('/login'); return }
-        if (viewAsUserId) { router.push('/dashboard'); return }
-        const { data } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
-        if (data) setProfile(data as UserProfile)
-      } finally {
-        setInitDone(true)
-      }
-    }
-    init()
-  }, [viewAsUserId, router, supabase])
+    if (!idPending && !signedInUserId) { router.push('/login'); return }
+    if (viewAsUserId) router.push('/dashboard')
+  }, [idPending, signedInUserId, viewAsUserId, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
