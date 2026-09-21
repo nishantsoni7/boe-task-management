@@ -35,14 +35,33 @@
  *   line completeness  submit_pi_for_review       -> ORDER_SUBMISSION_INCOMPLETE
  *   parse issues       submit_pi_for_review       -> ORDER_SUBMISSION_BLOCKED
  *
+ * and, from 20261225000000, the six things a PI must say about itself before
+ * it is finalized — every one of them re-derived by
+ * assert_order_submission_finalizable, which submit_pi_for_review runs first:
+ *
+ *   creation date      assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *   salesperson        assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *   salesperson phone  assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *   client city        assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *   fabric answer      assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *   commercial terms   assert_order_submission_finalizable -> ORDER_SUBMISSION_INCOMPLETE
+ *
  * THIS IS NOT THE ENFORCEMENT and must never be mistaken for it. The database
  * re-derives every one of these under a row lock. What this buys is that the
  * reader learns the whole list before they start, instead of one item per
  * refusal.
  *
- * Optional fields are NOT listed. A contact number, a shipping address and a
+ * Optional fields are NOT listed. The CLIENT's phone number, either GST
+ * number, the full billing and shipping addresses, the ship-to party and the
  * billing percentage are all legitimately absent, and a screen that nags about
  * them teaches people to ignore it.
+ *
+ * THE CONTACT NUMBER MOVED SIDES, and it is worth saying why rather than
+ * leaving the change to look like a reversal. order_submissions.contact_number
+ * is the BOE-side number the workbook carries at G22, beside the BOE GST at
+ * B22 — it is the SALESPERSON's number, not the client's, and a PI is sent out
+ * with it printed on. The client's own numbers are bill_to_phone and
+ * ship_to_phone, and those stay optional exactly as they were.
  */
 
 /** What a surface is about to do, which decides how much has to be true. */
@@ -119,7 +138,7 @@ export type PiRequirement = {
    * Which editor section supplies it, so "Add client details" can open at the
    * right place instead of at the top of a long form.
    */
-  section: 'client' | 'schedule' | 'products' | 'workbook'
+  section: 'client' | 'terms' | 'schedule' | 'products' | 'workbook'
   /**
    * True when no editor can fix this — the workbook itself has to be corrected
    * and re-imported. Telling somebody to edit a field that no form owns is
@@ -135,11 +154,26 @@ export type PiReadiness = {
   summary: string | null
 }
 
-/** The subset of a PI this module reads. Deliberately small. */
+/**
+ * The subset of a PI this module reads. Deliberately small.
+ *
+ * The six finalization columns are OPTIONAL properties, so a caller that
+ * legitimately holds fewer — the payment surface, which asks only about the
+ * client name — still type-checks. An ABSENT property means "not known here"
+ * and is never reported as missing; only a property that IS present and blank
+ * is. Anything else would have the payment card inventing requirements out of
+ * columns it never read.
+ */
 export type PiReadinessSource = {
   client_name: string | null
   source_workbook_path: string | null
   parse_blocking_issues?: unknown
+  creation_date?: string | null
+  source_created_by?: string | null
+  contact_number?: string | null
+  client_city?: string | null
+  fabric_responsibility?: string | null
+  commercial_terms_note?: string | null
 }
 
 /** The subset of a product line this module reads. */
@@ -156,6 +190,28 @@ export const PI_CLIENT_NAME_REQUIREMENT: PiRequirement = {
   label: 'Client name',
   section: 'client',
 }
+
+/**
+ * WHAT A PI MUST SAY ABOUT ITSELF BEFORE IT IS FINALIZED (20261225000000).
+ *
+ * In the order the form shows them, so somebody clearing them one at a time
+ * moves down the page rather than around it. Each names the section that can
+ * supply it, so "Add details" opens where the field actually is rather than at
+ * the top of a long form.
+ *
+ * NONE OF THESE NEEDS A RE-IMPORT, and that is the whole reason they are here
+ * rather than among the parse issues. Every one is an ordinary editable column;
+ * the workbook is where they usually come from, not the only place they can.
+ */
+export const PI_FINALIZATION_REQUIREMENTS: readonly PiRequirement[] = [
+  { key: 'creation_date',         label: 'Date of creation',           section: 'terms'  },
+  { key: 'source_created_by',     label: 'Salesperson',                section: 'terms'  },
+  { key: 'contact_number',        label: 'Salesperson contact number', section: 'client' },
+  PI_CLIENT_NAME_REQUIREMENT,
+  { key: 'client_city',           label: 'Client city',                section: 'client' },
+  { key: 'fabric_responsibility', label: 'Fabric responsibility',      section: 'terms'  },
+  { key: 'commercial_terms_note', label: 'Commercial terms',           section: 'terms'  },
+]
 
 /**
  * The whole answer, for one purpose.
@@ -178,6 +234,24 @@ export function piReadiness(
   if (blank(submission.client_name)) missing.push(PI_CLIENT_NAME_REQUIREMENT)
 
   if (purpose === 'submission') {
+    // ── The six a finalized PI must say about itself ──
+    //
+    // Read in the requirement list's own order, and the client name is skipped
+    // here because it was already added above for BOTH purposes — listing it
+    // twice would print it twice.
+    //
+    // A field is missing only when the caller PASSED it and it is empty. An
+    // absent property is silence, not a gap; see PiReadinessSource.
+    for (const requirement of PI_FINALIZATION_REQUIREMENTS) {
+      if (requirement.key === 'client_name') continue
+      const value = submission[requirement.key as keyof PiReadinessSource]
+      if (value === undefined) continue
+      // fabric_responsibility is the one that is refused for being NULL rather
+      // than for being empty, and blank() answers both the same way: a record
+      // nobody has answered carries null, and null is blank.
+      if (blank(value as string | null)) missing.push(requirement)
+    }
+
     if (blank(submission.source_workbook_path)) {
       missing.push({
         key: 'source_workbook',

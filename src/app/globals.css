@@ -5042,6 +5042,44 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
 }
 
 /* ─────────────────────────────────────────────────────
+   WHAT THE PRICES COVER
+   Additive only — nothing above is modified.
+
+   The commercial terms note, under the figures it qualifies. A hairline
+   above it rather than a card of its own: it belongs to the breakdown, and
+   a second card would make it a separate subject the reader has to connect
+   back to the amounts.
+───────────────────────────────────────────────────── */
+.pi-detail-breakdown-terms {
+  padding: 11px 18px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pi-detail-breakdown-terms-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7384;
+}
+
+.pi-detail-breakdown-terms-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #2b313c;
+}
+
+.pi-detail-breakdown-terms-absent {
+  font-size: 12.5px;
+  color: #8c94a6;
+}
+
+/* ─────────────────────────────────────────────────────
    ROW OVERFLOW MENU ITEMS
    Additive only — nothing above is modified.
 

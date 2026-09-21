@@ -260,7 +260,7 @@ export function buildHeaderRows(header: PiHeader): PiSummaryRow[] {
   return [
     { key: 'client',     label: 'Client',              value: orDash(header.billToName) },
     { key: 'created',    label: 'PI created',          value: formatPiDate(header.creationDate) },
-    { key: 'createdBy',  label: 'Created by',          value: orDash(header.createdBy) },
+    { key: 'createdBy',  label: 'Salesperson',         value: orDash(header.createdBy) },
     { key: 'billTo',     label: 'Bill to',             value: orDash(header.billToName) },
     { key: 'shipTo',     label: 'Ship to',             value: orDash(header.shipToName) },
     { key: 'confirmed',  label: 'Order confirmed',     value: formatPiDate(header.orderConfirmationDate) },

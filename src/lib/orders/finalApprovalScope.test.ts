@@ -575,39 +575,125 @@ describe('the import preview and the parser are untouched', () => {
       'and there is still exactly one Save Draft button on the screen')
   })
 
-  test('the shared preview view layer gained one block and changed nothing else', () => {
+  test('the shared preview view layer gained one block, renamed one label, and changed nothing else', () => {
     const base = atBase(PREVIEW_VIEW)
     if (base === null) return
-    // THE ADDITION IS SET ASIDE, AND ONLY THE ADDITION. The PI preview
-    // refinement added the Upload PI screen's own order-information builder
-    // beside the existing one; it removed no line and edited none, so with that
-    // block lifted out the file must still equal the pinned commit exactly.
-    // formatInr, formatPiValue, formatPiDate, buildHeaderRows,
-    // buildCommercialRows, computeAdvanceAmount and computeRequiredAdvance are
-    // therefore all still provably untouched.
+
+    // TWO SET-ASIDES, AND ONLY TWO.
+    //
+    //   1. THE ADDED BLOCK. The PI preview refinement added the Upload PI
+    //      screen's own order-information builder beside the existing one; it
+    //      removed no line and edited none.
+    //
+    //   2. ONE LABEL, RENAMED ON PURPOSE (owner decision 2026-09-21).
+    //      buildHeaderRows said 'Created by' for source_created_by — the
+    //      SALESPERSON, and a second word for somebody the Order flow already
+    //      names once (see SALESPERSON_LABEL in lib/orders/orderConfirmation).
+    //      The guard existed to stop this file drifting, not to preserve a
+    //      word the business has since replaced, so the rename is admitted
+    //      here explicitly rather than by weakening the comparison.
+    //
+    // Everything else must still equal the pinned commit exactly: formatInr,
+    // formatPiValue, formatPiDate, buildCommercialRows, computeAdvanceAmount
+    // and computeRequiredAdvance are all still provably untouched, and so is
+    // every other row buildHeaderRows returns.
     const source = now(PREVIEW_VIEW)
     const from = source.indexOf('/**\n * Where a PI is going.')
     const to = source.indexOf('// ── Commercial summary ─')
     assert.ok(from !== -1 && to > from, 'the added block is where it was left')
-    assert.equal(source.slice(0, from) + source.slice(to), base,
-      'no existing formatter, builder or rule in previewView.ts changed')
+
+    const RENAMED =
+      "    { key: 'createdBy',  label: 'Salesperson',         value: orDash(header.createdBy) },"
+    const WAS =
+      "    { key: 'createdBy',  label: 'Created by',          value: orDash(header.createdBy) },"
+    assert.ok(source.includes(RENAMED),
+      'the set-aside rename is the one this test admits')
+
+    const undone = (source.slice(0, from) + source.slice(to)).replace(RENAMED, WAS)
+    assert.equal(undone, base, 'nothing else in previewView.ts changed')
+  })
+
+  test('no screen still calls the salesperson anything else', () => {
+    // ONE WORD FOR ONE PERSON. source_created_by is the salesperson, and the
+    // three surfaces that render it must agree — the Upload PI preview, the
+    // Drafts list and the PI detail strip. "Created by" beside "Uploaded by"
+    // read as two versions of one idea and hid that they are two people.
+    for (const file of [PREVIEW_VIEW, 'src/app/orders/drafts/page.tsx']) {
+      assert.ok(!/Created by/.test(now(file)),
+        `${file} still calls the salesperson "Created by"`)
+    }
+    assert.ok(now(IMPORT_PAGE).includes("'salesperson'"),
+      'the Upload PI preview names the salesperson by that key')
   })
 
   test('the workbook parser is byte-for-byte what it was', () => {
     const base = atBase(PARSER)
     if (base === null) return
-    // ONE LATER, DELIBERATE CHANGE is set aside, and only that one: the PI
-    // header requirements (Sales Person G21, the two dates A113/E113 — owner
-    // decision 2026-09-18). Everything else must still equal the starting
-    // commit, so any other drift in the parser still fails here.
-    const withoutHeaderRequirements = (src: string) => src
-      .replace(/\n\/\*\*\n \* The three header cells a PI must fill[\s\S]*?\n {2}return issues\n\}\n/, '')
-      .replace('  blockingIssues.push(...headerRequirementIssues(header))\n', '')
+
+    // TWO LATER, DELIBERATE CHANGES are set aside, and only those two.
+    // Everything else must still equal the starting commit, so any other
+    // drift in the parser still fails here.
+    //
+    //   1. THE PI HEADER REQUIREMENTS (Sales Person G21, the two dates
+    //      A113/E113 — owner decision 2026-09-18, revised 2026-09-21). They
+    //      landed as BLOCKING ISSUES, which refused the upload; they are now
+    //      WARNINGS, and the requirement is enforced at finalization against
+    //      the stored columns instead. See PiWarningCode.
+    //
+    //   2. THE PI'S OWN TERMS AND ITS WRITTEN DATE (owner decision
+    //      2026-09-21). One contiguous stretch between readDateValue and the
+    //      header reader, holding: the fabric-
+    //      responsibility dropdown beside the fabric cost, and the standard
+    //      commercial-terms note. Both are PREFILL and neither produces a
+    //      diagnostic, so neither can change what the parser accepts.
+    //
+    // Undoing both must yield the original file line for line. A changed cell
+    // address, a changed tolerance, a dropped warning or a reworded diagnostic
+    // all survive the undo and show up here.
+    const undo = (src: string) => src
+      .replace(/\n\/\*\*\n \* A DATE THE TEMPLATE WROTE AS WORDS[\s\S]*?\n\/\/ ── Header /, '\n// ── Header ')
+      .replace(/\n {6}\/\/ What the workbook itself said about its terms[\s\S]*?\n {6}\},\n/, '\n')
+      .replace(/\n\/\*\*\n \* The three header cells a PI is expected to fill[\s\S]*?\n {2}return issues\n\}\n/, '')
+      .replace('  warnings.push(...headerRequirementWarnings(header))\n', '')
       .replace("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'\n", '')
-    assert.ok(now(PARSER).includes('export function headerRequirementIssues('),
-      'the set-aside block is the header-requirement rule')
-    assert.equal(withoutHeaderRequirements(now(PARSER)), base,
+
+    const source = now(PARSER)
+    assert.ok(source.includes('export function headerRequirementWarnings('),
+      'the first set-aside block is the header-requirement rule')
+    assert.ok(source.includes('export function readFabricResponsibility('),
+      'the second set-aside block reads the PI terms')
+    assert.ok(source.includes('export function readCommercialTermsNote('),
+      'and the terms note with it')
+    assert.ok(source.includes('export function creationDateIso('),
+      'and the written date of creation the production template actually uses')
+
+    assert.equal(undo(source), base,
       'no cell, no header rule and no diagnostic changed')
+  })
+
+  test('the header requirements no longer refuse an upload', () => {
+    // THE PROPERTY, not the wording. Whatever these three say, they must
+    // reach `warnings` and never `blockingIssues`: a blocking issue means
+    // "no editor can fix this, correct the workbook and import it again", and
+    // all three land in ordinary editable draft columns.
+    const source = now(PARSER)
+    assert.ok(source.includes('warnings.push(...headerRequirementWarnings(header))'),
+      'the header requirements must be warnings')
+    assert.ok(!source.includes('blockingIssues.push(...headerRequirement'),
+      'a missing salesperson or date must not refuse the upload')
+
+    // And the type system agrees: the three codes are warning codes now.
+    const types = now('src/lib/pi/types.ts')
+    const warningBlock = region(
+      types, 'export type PiWarningCode =', 'export type PiError = ', 'warning codes')
+    for (const code of ['PI_SALESPERSON_MISSING', 'PI_CONFIRMATION_DATE_MISSING', 'PI_DISPATCH_DATE_MISSING']) {
+      assert.ok(warningBlock.includes(code), `${code} must be a warning code`)
+    }
+    const blockingBlock = region(
+      types, 'export type PiBlockingIssueCode =', 'export type PiWarningCode =', 'blocking codes')
+    for (const code of ['PI_SALESPERSON_MISSING', 'PI_CONFIRMATION_DATE_MISSING', 'PI_DISPATCH_DATE_MISSING']) {
+      assert.ok(!blockingBlock.includes(code), `${code} must no longer be a blocking code`)
+    }
   })
 })
 

@@ -1001,6 +1001,7 @@ describe('the applied migrations are frozen', () => {
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
   })
 
@@ -1253,6 +1254,7 @@ describe('the applied migrations are frozen', () => {
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

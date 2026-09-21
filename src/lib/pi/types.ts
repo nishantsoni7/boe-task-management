@@ -99,9 +99,13 @@ export type PiBlockingIssueCode =
    * to be said out loud. The message names the format and the replacement.
    */
   | 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'
+
+/** Things a reviewer should see. None of these stops a submission. */
+export type PiWarningCode =
   /**
-   * HEADER REQUIREMENTS (owner decision 2026-09-18). A PI is not taken unless
-   * the workbook itself says who sold it and the two dates the Order runs on:
+   * HEADER REQUIREMENTS (owner decision 2026-09-18, revised 2026-09-21). A
+   * confirmed Order cannot be built without the person who sold it and the two
+   * dates it runs on:
    *
    *   G21   Sales Person — not blank, not a dash.
    *   A113  Date of Order Confirmation from Client — a real date.
@@ -110,13 +114,26 @@ export type PiBlockingIssueCode =
    * A real date means an Excel date: order_confirmation_date is stored only
    * from one, so "TBC", "45 days" or a blank would reach the Order as nothing.
    * Lead source is not in the workbook and is asked on screen instead.
+   *
+   * WHY THESE ARE WARNINGS AND NOT BLOCKING ISSUES. They were blocking when
+   * they landed, which refused the UPLOAD outright. That was the wrong door.
+   * All three are ordinary editable columns on the draft — source_created_by,
+   * order_confirmation_date, due_date — so somebody with the workbook in front
+   * of them can supply what it left out without going back to Excel; and a PI
+   * whose only fault is a missing salesperson still carries the products, the
+   * figures and the client, every one of which is worth keeping. A BLOCKING
+   * issue means "no editor can fix this, correct the workbook and import it
+   * again", and that is simply not true of these three.
+   *
+   * THE REQUIREMENT ITSELF DID NOT GO AWAY. It moved to the FINALIZATION gate,
+   * where it is checked against the STORED COLUMNS rather than against the
+   * cells — see submit_pi_for_review and piReadiness('submission'). Checking
+   * the cell there would have made a hand-corrected draft permanently
+   * unsubmittable, which is the same dead end one step later.
    */
   | 'PI_SALESPERSON_MISSING'
   | 'PI_CONFIRMATION_DATE_MISSING'
   | 'PI_DISPATCH_DATE_MISSING'
-
-/** Things a reviewer should see. None of these stops a submission. */
-export type PiWarningCode =
   /** A cell holds a formula with no cached result, so the workbook never stored
    *  the number Excel would display. We report the gap rather than compute one. */
   | 'FORMULA_WITHOUT_CACHED_VALUE'
@@ -196,8 +213,7 @@ export type PiWarning = {
 export type PiBlockingIssue = {
   code: PiBlockingIssueCode
   message: string
-  /** Always present: the sheet row to fix — a product row, or for the three
-   *  PI_* header requirements, row 21 (Sales Person) or row 113 (the dates). */
+  /** Always present: the product row to fix. */
   row: number
   /** The A1 address a reviewer should go and fix. */
   cell?: string
@@ -478,11 +494,29 @@ export type PiTemplateInfo = {
 
 // ── Result ────────────────────────────────────────────────────────────────────
 
+/**
+ * What the PI says about its own terms, as the workbook stated them.
+ *
+ * PREFILL, NOT TRUTH. Both are read from decorative regions of the template
+ * and both are null whenever the sheet said nothing recognisable. Neither is
+ * required by the parser and neither produces a diagnostic — the requirement
+ * lives at finalization, against the STORED columns, which a person may have
+ * supplied or corrected on the draft. See src/lib/orders/piTerms.ts.
+ */
+export type PiTermsFromWorkbook = {
+  /** The template dropdown beside the fabric cost, mapped to the three
+   *  answers the product offers. Null when the sheet carried no answer. */
+  fabricResponsibility: 'boe' | 'client' | 'not_selected' | null
+  /** The "Note:" block beside the commercial footer, its heading removed. */
+  commercialTermsNote: string | null
+}
+
 export type PiWorkbook = {
   template: PiTemplateInfo
   header: PiHeader
   products: readonly PiProduct[]
   commercial: PiCommercialSummary
+  piTerms: PiTermsFromWorkbook
   /**
    * Every column-E picture that became a product's representative image — one
    * entry per mapped product row. A media part anchored to several rows appears

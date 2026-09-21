@@ -927,8 +927,19 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // rows: nothing rebuilt, nothing recomputed.
     assert.ok(detail.includes('const breakdown = buildBreakdownView(commercialRows)'),
       'the breakdown selects from exactly those rows')
-    assert.ok(detail.includes('<PiCommercialBreakdown view={breakdown} />'),
+    assert.ok(detail.includes('<PiCommercialBreakdown'),
+      'the breakdown card is still the thing that renders it')
+    assert.ok(detail.includes('view={breakdown}'),
       'and renders that selection')
+    // WHAT IT GAINED, AND WHAT IT DID NOT. The card also states who provides
+    // the fabric and what the prices cover (20261225000000). Both are
+    // SENTENCES about the figures, passed in beside them — neither is a
+    // commercial row, so buildCommercialRows is unchanged and the preview
+    // still renders exactly what it always did.
+    assert.ok(detail.includes('fabricResponsibility={submission.fabric_responsibility'),
+      'the fabric answer is passed, not derived')
+    assert.ok(detail.includes('commercialTerms={submission.commercial_terms_note'),
+      'and so are the terms')
     assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
       'and the summary card picks its two figures out of the same array')
   })

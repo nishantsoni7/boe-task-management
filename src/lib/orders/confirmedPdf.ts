@@ -42,6 +42,11 @@ import { persistedCommercial, persistedHeader, persistedProducts } from './draft
 import type { PersistedItem, PersistedProduct } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
 import {
+  FABRIC_RESPONSIBILITY_LABEL,
+  commercialTermsNote,
+  fabricResponsibilityStatement,
+} from './piTerms'
+import {
   buildCommercialRows,
   buildHeaderRows,
   formatInr,
@@ -152,6 +157,23 @@ export type ConfirmedPdfModel = {
   commercial: PdfCommercialRow[]
   /** The verified-payment position, or null when it is not to be printed. */
   payment: PdfField[] | null
+  /**
+   * WHO PROVIDES THE FABRIC, in the sentence the PI states it in, or null.
+   *
+   * Rendered inside the commercial block, immediately under the fabric cost,
+   * for the reason the screen does the same: a figure and the sentence that
+   * says what it means have to be read together. On a document a client is
+   * sent, a fabric charge with no statement beside it invites exactly the
+   * wrong inference about who is buying the cloth.
+   *
+   * NULL ONLY FOR A RECORD NOBODY ANSWERED, which a confirmed Order cannot
+   * be — submission refuses one. It is still typed as nullable rather than
+   * defaulted, because inventing a sentence for an unanswered PI is the one
+   * thing this feature exists to prevent.
+   */
+  fabricResponsibility: string | null
+  /** What the quoted prices do and do not include. Null when unstated. */
+  commercialTerms: string | null
   /** One quiet line under the totals. */
   currencyNote: string
 }
@@ -165,6 +187,10 @@ export const PDF_SHIP_TO_TITLE = 'Ship to'
 export const PDF_PRODUCTS_TITLE = 'Products'
 export const PDF_COMMERCIAL_TITLE = 'Commercial summary'
 export const PDF_PAYMENT_TITLE = 'Payment'
+export const PDF_TERMS_TITLE = 'Commercial terms'
+
+/** The label the fabric statement is printed under. Said once, shared. */
+export const PDF_FABRIC_LABEL = FABRIC_RESPONSIBILITY_LABEL
 
 /** The product table's column headings — REPEATED on every page that carries
  *  product rows. A continuation page whose table has no head is a page of
@@ -224,11 +250,19 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   const billed = billingValue({ totalBeforeGst: beforeGst, percentage: percent })
 
   const meta: PdfField[] = []
-  const contact = clean(sub.contact_number) || clean(sub.bill_to_phone) || clean(sub.ship_to_phone)
-  if (contact) meta.push({ label: 'Contact', value: toPdfText(contact) })
-  // "PI created by" is the DOCUMENT's own author where the workbook named one.
+  // NOT the client’s phone, and no longer falling back to it. contact_number
+  // is the BOE-side number at workbook G22; the client’s numbers are printed
+  // in the Bill to and Ship to blocks, where a reader looks for them.
+  const contact = clean(sub.contact_number)
+  // THE SALESPERSON, and their number, said as what they are.
+  //
+  // Both used to be labelled for something else: the number as a bare
+  // "Contact" that fell back to the client's own phone, and the name as "PI
+  // created by". They are one fact — who at BOE is responsible for this order
+  // and how a client reaches them — and the PI prints them as such.
   const author = clean(sub.source_created_by)
-  if (author) meta.push({ label: 'PI created by', value: toPdfText(author) })
+  if (author) meta.push({ label: 'Salesperson', value: toPdfText(author) })
+  if (contact) meta.push({ label: 'Salesperson contact', value: toPdfText(contact) })
   if (clean(confirmed)) meta.push({ label: 'Confirm date', value: toPdfText(confirmed) })
   meta.push({
     label: 'Due date',
@@ -251,11 +285,24 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   return {
     orderNumber: toPdfText(input.orderNumber),
     clientName: toPdfText(clean(sub.client_name) || clean(sub.bill_to_name) || 'Not provided'),
-    billTo: party(clean(sub.bill_to_name), clean(sub.billing_address), clean(sub.bill_to_phone)),
+    // THE CITY IS PART OF THE BILLING BLOCK. It is a separate column rather
+    // than a line inside the address, so the block states it whether or not
+    // the address happens to repeat it.
+    billTo: party(clean(sub.bill_to_name), clean(sub.billing_address), clean(sub.bill_to_phone),
+      clean(sub.client_city)),
     shipTo: party(clean(sub.ship_to_name), clean(sub.shipping_address), clean(sub.ship_to_phone)),
     meta,
     products: products.map(p => productRow(p, input.imageRows, input.productCodes)),
     commercial: rows.map(commercialRow),
+    // The sentence, never the stored code: a PDF must not print “client”.
+    fabricResponsibility: (() => {
+      const statement = fabricResponsibilityStatement(sub.fabric_responsibility ?? null)
+      return statement === null ? null : toPdfText(statement)
+    })(),
+    commercialTerms: (() => {
+      const terms = commercialTermsNote(sub.commercial_terms_note ?? null)
+      return terms === null ? null : toPdfText(terms)
+    })(),
     payment: input.payment
       ? [
           { label: 'Verified payment', value: pdfAmount(input.payment.receivedText) },
@@ -274,9 +321,10 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   }
 }
 
-function party(name: string, address: string, phone: string): PdfField[] {
+function party(name: string, address: string, phone: string, city = ''): PdfField[] {
   const out: PdfField[] = []
   if (name) out.push({ label: 'Name', value: toPdfText(name) })
+  if (city) out.push({ label: 'City', value: toPdfText(city) })
   if (address) out.push({ label: 'Address', value: toPdfText(address) })
   if (phone) out.push({ label: 'Phone', value: toPdfText(phone) })
   // A block with nothing in it prints its own absence rather than a run of

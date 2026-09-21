@@ -700,6 +700,7 @@ describe('the migration is placed correctly', () => {
       // permission module or action, and writes one override row. It reaches nothing
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
+      '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

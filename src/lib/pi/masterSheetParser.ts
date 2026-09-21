@@ -370,7 +370,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
   }
 
   const header = readHeader(sheet, warnings)
-  blockingIssues.push(...headerRequirementIssues(header))
+  warnings.push(...headerRequirementWarnings(header))
   const commercial = readCommercial(sheet, products, warnings)
 
   return {
@@ -394,6 +394,13 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       header,
       products,
       commercial,
+      // What the workbook itself said about its terms and its fabric, when
+      // it said anything this parser recognises. Prefill only — neither is
+      // required here, and neither produces a diagnostic.
+      piTerms: {
+        fabricResponsibility: readFabricResponsibility(sheet),
+        commercialTermsNote: readCommercialTermsNote(sheet),
+      },
       representativeImages,
       customizationImages,
     },
@@ -480,6 +487,244 @@ function readDateValue(cell: PiCell | undefined): PiDateValue | null {
   return { iso: null, text, source: 'text' }
 }
 
+/**
+ * A DATE THE TEMPLATE WROTE AS WORDS, as an ISO date — or null.
+ *
+ * WHY THIS IS NEEDED AT ALL. G20 ("Date of Creation") is not a date cell in
+ * the production template. The real workbook holds the STRING "26th Feb 2026",
+ * so PiDateValue comes back with `iso: null` and only the text. Everything
+ * downstream that wants a date — the stored creation_date column, the
+ * finalization gate that requires one — would have seen nothing, and the save
+ * path would have quietly stamped TODAY in its place. A PI drawn up in
+ * February would then claim it was drawn up on the day somebody imported it,
+ * which is a false statement about a commercial document and exactly the kind
+ * this parser exists not to make.
+ *
+ * WHAT IT ACCEPTS, AND NOTHING ELSE:
+ *
+ *   26th Feb 2026   26 Feb 2026   26 February 2026   Feb 26, 2026   2026-02-26
+ *
+ * An ordinal suffix (st/nd/rd/th) is optional, the separator may be a space,
+ * a comma, a hyphen or a slash, and the month must be an English month name or
+ * its three-letter abbreviation. The YEAR MUST BE FOUR DIGITS.
+ *
+ * WHAT IT REFUSES, deliberately:
+ *
+ *   02/03/2026      ambiguous — 2 March or 3 February, depending on who typed
+ *                   it. A PI is read by people in two hemispheres and there is
+ *                   no safe answer, so there is no answer.
+ *   Feb 2026        no day.
+ *   yesterday       not a date.
+ *
+ * Nothing is computed and nothing is guessed: a value either matches one of
+ * these shapes and is a real calendar day, or the result is null and the date
+ * is asked for on screen. The final check re-spells the parsed date and
+ * compares it, so 31 February is refused rather than rolled into March.
+ */
+const MONTHS: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
+  dec: 12, december: 12,
+}
+
+export function parseWrittenDate(value: string | null | undefined): string | null {
+  const raw = (value ?? '').trim()
+  if (raw === '') return null
+
+  // Normalised BEFORE the ISO check: isCalendarDate is a type guard, so
+  // narrowing on it first would leave `raw` as `never` for the lines below.
+  const text = raw.toLowerCase().replace(/[,]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Already ISO, and a real day.
+  if (isCalendarDate(raw)) return raw
+
+  // "26th feb 2026" / "26 february 2026"
+  let m = text.match(/^(\d{1,2})(?:st|nd|rd|th)? [-/ ]?([a-z]+) [-/ ]?(\d{4})$/)
+  // "feb 26 2026" / "february 26th 2026"
+  if (!m) { const n = text.match(/^([a-z]+) (\d{1,2})(?:st|nd|rd|th)? (\d{4})$/); if (n) m = [n[0], n[2], n[1], n[3]] as RegExpMatchArray }
+  if (!m) return null
+
+  const month = MONTHS[m[2]]
+  if (month === undefined) return null
+
+  const iso = `${m[3]}-${String(month).padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  // A real calendar day, not 31 February rolled into March.
+  return isCalendarDate(iso) ? iso : null
+}
+
+/**
+ * The DATE OF CREATION this PI states, as an ISO date, or null.
+ *
+ * The cell’s own serial when Excel stored one, then the written form the
+ * production template actually uses. Null when the cell said nothing a date
+ * can be read from — at which point the save path may fall back to the day it
+ * is saving, which is honest only because it is not pretending to be the
+ * document’s own date.
+ */
+export function creationDateIso(header: Pick<PiHeader, 'creationDate'>): string | null {
+  const cell = header.creationDate
+  if (!cell) return null
+  if (isCalendarDate(cell.iso)) return cell.iso
+  return parseWrittenDate(cell.text)
+}
+// ── What the PI says about its own terms ──────────────────────────────────────
+
+/**
+ * THE FABRIC ANSWER AND THE STANDARD NOTE, READ OUT OF THE WORKBOOK.
+ *
+ * The BOE template carries both, and a person filling one in has already
+ * answered the questions the Draft PI asks. Re-typing them on screen would be
+ * asking twice.
+ *
+ *   FABRIC RESPONSIBILITY  a data-validation dropdown on the fabric-cost row
+ *                          (117), to the right of the amount in I117.
+ *   COMMERCIAL TERMS       the red "Note:" block in column A beside the
+ *                          commercial footer.
+ *
+ * ── THE CELLS, CONFIRMED AGAINST A PRODUCTION WORKBOOK ────────────────────
+ *
+ * Both were read out of a real BOE PI ("Revised PI Format.xlsx", 2026-09-21)
+ * rather than guessed, and both are FIXED ADDRESSES like every other value in
+ * this file:
+ *
+ *   K117  the fabric answer. The workbook carries a data-validation list on
+ *         exactly this cell:
+ *             <dataValidation type="list" sqref="K117"
+ *              formula1="Under BOE Scope, Client will send Fabric, Not Selected">
+ *         It sits one column right of the fabric AMOUNT in I117, past the
+ *         G117:H117 merge that carries the label.
+ *   A115  the commercial terms. A merged A115:F116 block holding the red
+ *         "Note:" paragraph.
+ *
+ * ── AND WHY EACH IS STILL GATED ON VOCABULARY ─────────────────────────────
+ *
+ * Knowing the address is not enough to make a value safe to take. K117 is an
+ * ordinary text cell with a dropdown ATTACHED, not a constrained one: Excel
+ * offers the list, and nothing stops a person typing over it, and nothing
+ * stops an older or hand-edited template putting something else there. A115
+ * sits in a decorative band whose neighbouring rows carry other prose
+ * entirely — row 127 opens "Fabric and Wood Finish Confirmations", and C137
+ * contains the words "ex-factory" in a completely different sentence.
+ *
+ * So an address says WHERE TO LOOK and the vocabulary decides WHETHER TO TAKE
+ * IT. A cell holding anything the template does not say is passed over and the
+ * field stays empty for a person to answer. Both failure modes are the same
+ * and both are harmless: no prefill. What cannot happen is a WRONG value,
+ * which on a fabric answer would be a commercial position on a document a
+ * client is sent, taken from a cell nobody meant as an answer.
+ *
+ * A SMALL NEIGHBOURHOOD IS STILL TRIED, after the named cell and only when the
+ * named cell said nothing recognisable. Merged regions move by a column when a
+ * template is revised, and the vocabulary gate means a neighbour can only ever
+ * contribute a value the template itself defines. The named cell always wins.
+ *
+ * NEITHER IS A GATE. Nothing here produces a warning or a blocking issue: a
+ * template without the dropdown is a template the person answers on screen.
+ */
+
+/**
+ * K117 is the cell the production template puts the dropdown on. The rest are
+ * the neighbours a revision could move it to, tried only afterwards.
+ */
+const FABRIC_CHOICE_CELLS = ['K117', 'J117', 'L117', 'M117'] as const
+
+/** A115 is the note block’s anchor (merged A115:F116); the rest are fallbacks. */
+const TERMS_NOTE_CELLS = ['A115', 'A114', 'A116', 'A117', 'A118', 'A119'] as const
+
+/**
+ * The template's own words for each answer, and what they mean.
+ *
+ * THE TEMPLATE'S VOCABULARY IS NOT THE PRODUCT'S. The sheet says "Under BOE";
+ * the PI says "Fabric will be provided by BOE". Both wordings are kept, in the
+ * one place that has to know they are the same thing — src/lib/orders/piTerms.ts
+ * owns what is PRINTED, this owns what is RECOGNISED.
+ *
+ * Matched on a normalised form: lower-cased, with runs of whitespace collapsed,
+ * so "Client will send Fabric" and "client will send fabric" are one phrase. A
+ * phrase is matched WHOLE — no substring, no stemming, no near-miss. This is a
+ * commercial position on a document a client is sent, and a fuzzy match here
+ * would be the system guessing one.
+ */
+/**
+ * THE TEMPLATE’S OWN LIST COMES FIRST, verbatim from the data validation on
+ * K117: "Under BOE Scope, Client will send Fabric, Not Selected". The rest are
+ * wordings a workbook in circulation is known to carry — the displayed value
+ * "Fabric will be given by client" among them — and the product’s own labels,
+ * so a PI exported from this system and re-imported reads back the same way.
+ *
+ * A BARE "boe" OR "client" IS NOT ACCEPTED. Those are the stored codes, not
+ * anything a person types into a spreadsheet, and treating a cell reading
+ * "client" as an answer would be the parser inferring a commercial position
+ * from one ambiguous word.
+ */
+const FABRIC_CHOICE_WORDS: Record<string, 'boe' | 'client' | 'not_selected'> = {
+  // The template’s list.
+  'under boe scope': 'boe',
+  'client will send fabric': 'client',
+  'not selected': 'not_selected',
+
+  // Wordings seen on workbooks in circulation, and the product’s own labels.
+  'under boe': 'boe',
+  'fabric under boe': 'boe',
+  'boe scope': 'boe',
+  'fabric will be provided by boe': 'boe',
+
+  'fabric will be given by client': 'client',
+  'client will provide fabric': 'client',
+  'fabric will be provided by client': 'client',
+
+  'not selected yet': 'not_selected',
+  'fabric not selected yet': 'not_selected',
+}
+
+const normalizeChoice = (value: string): string =>
+  value.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.:]+$/, '')
+
+/**
+ * Which of the three the workbook chose, or null when it said nothing this
+ * function recognises.
+ *
+ * NULL IS THE ORDINARY ANSWER for a template without the dropdown, and it is
+ * not a defect. It means the same as it means everywhere else in this feature:
+ * nobody has answered, and the person working on the draft is asked.
+ */
+export function readFabricResponsibility(sheet: PiSheet): 'boe' | 'client' | 'not_selected' | null {
+  for (const address of FABRIC_CHOICE_CELLS) {
+    const text = textOf(sheet.cells.get(address))
+    if (text === null) continue
+    const match = FABRIC_CHOICE_WORDS[normalizeChoice(text)]
+    if (match !== undefined) return match
+  }
+  return null
+}
+
+/** The distinctive words of the BOE note, as the template prints them. */
+const TERMS_NOTE_MARKER = 'ex-factory'
+
+/**
+ * The commercial terms the workbook printed, or null.
+ *
+ * THE LEADING "Note:" IS DROPPED. It is a heading on the sheet, where the block
+ * has no label of its own; on the Draft PI and on the generated document the
+ * text already sits under a "Commercial terms" heading, and carrying the word
+ * through would print the heading twice.
+ *
+ * Nothing else is touched. Line breaks, wording and punctuation are the
+ * document's own, because this text is the record of what the client was
+ * quoted.
+ */
+export function readCommercialTermsNote(sheet: PiSheet): string | null {
+  for (const address of TERMS_NOTE_CELLS) {
+    const text = textOf(sheet.cells.get(address))
+    if (text === null) continue
+    if (!text.toLowerCase().includes(TERMS_NOTE_MARKER)) continue
+    const withoutHeading = text.replace(/^\s*note\s*:?\s*/i, '').trim()
+    if (withoutHeading !== '') return withoutHeading
+  }
+  return null
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 
 function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {
@@ -515,26 +760,36 @@ function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {
 }
 
 /**
- * The three header cells a PI must fill before it is taken (owner decision
- * 2026-09-18). Blocking, so the browser preview says so before upload and the
- * upload route refuses to save the PI (process-draft step 13).
+ * The three header cells a PI is expected to fill (owner decision 2026-09-18,
+ * revised 2026-09-21).
  *
  * Sales Person: any real text — blank or a bare dash is not a name.
  * Confirmation date: a real calendar date (an Excel date, 2020 or later) —
  *   the Order stores order_confirmation_date only from one.
  * Dispatch date: exactly what the save path will keep as the due date —
- *   plausibleDueDate() (lib/orders/dueDate.ts), the SAME rule, so the upload
- *   check and the saved record can never disagree. A lead time ("6 weeks from
+ *   plausibleDueDate() (lib/orders/dueDate.ts), the SAME rule, so the reading
+ *   here and the saved record can never disagree. A lead time ("6 weeks from
  *   date of confirmation", or a bare "90" that Excel turned into a 1900 date)
- *   is not a due date and is refused.
+ *   is not a due date and does not become one.
+ *
+ * WARNINGS, NOT BLOCKING ISSUES, and the whole point of the distinction is the
+ * door each one closes. A blocking issue refuses the UPLOAD, which said to
+ * somebody holding an otherwise complete PI that the only way forward was back
+ * into Excel — untrue, because all three land in ordinary editable draft
+ * columns. So the upload takes the workbook, the preview says what is missing,
+ * and FINALIZATION is what refuses: submit_pi_for_review checks the stored
+ * columns, which a person may have since corrected by hand. See PiWarningCode.
+ *
+ * The messages name the cell and say the draft can carry the correction, so a
+ * reader is never left thinking a re-import is the only route.
  */
-export function headerRequirementIssues(header: Pick<PiHeader,
-  'createdBy' | 'creationDate' | 'orderConfirmationDate' | 'dispatchCommitment'>): PiBlockingIssue[] {
-  const issues: PiBlockingIssue[] = []
+export function headerRequirementWarnings(header: Pick<PiHeader,
+  'createdBy' | 'creationDate' | 'orderConfirmationDate' | 'dispatchCommitment'>): PiWarning[] {
+  const issues: PiWarning[] = []
   if (isNotApplicableMarker(header.createdBy)) {
     issues.push({
       code: 'PI_SALESPERSON_MISSING',
-      message: 'Sales Person (cell G21) is empty. Enter the salesperson’s name and upload the PI again.',
+      message: 'Sales Person (cell G21) is empty. Name the salesperson on the draft, or enter it in the workbook and upload the PI again.',
       row: 21,
       cell: HEADER_CELLS.createdBy,
     })
@@ -547,8 +802,8 @@ export function headerRequirementIssues(header: Pick<PiHeader,
     issues.push({
       code: 'PI_CONFIRMATION_DATE_MISSING',
       message: read
-        ? `Date of Order Confirmation (cell A113) reads "${read.text}", which is not a date. Enter it as a date (for example 25/10/2026) and upload the PI again.`
-        : 'Date of Order Confirmation (cell A113) is empty. Enter the date and upload the PI again.',
+        ? `Date of Order Confirmation (cell A113) reads "${read.text}", which is not a date. Set the confirm date on the draft, or enter it as a date (for example 25/10/2026) and upload the PI again.`
+        : 'Date of Order Confirmation (cell A113) is empty. Set the confirm date on the draft, or enter it in the workbook and upload the PI again.',
       row: 113,
       cell: HEADER_CELLS.orderConfirmationDate,
     })
@@ -564,10 +819,10 @@ export function headerRequirementIssues(header: Pick<PiHeader,
     issues.push({
       code: 'PI_DISPATCH_DATE_MISSING',
       message: !dispatch
-        ? 'Dispatch Date Finalized (cell E113) is empty. Enter the dispatch date and upload the PI again.'
+        ? 'Dispatch Date Finalized (cell E113) is empty. Set the due date on the draft, or enter the dispatch date in the workbook and upload the PI again.'
         : confirmedOk && isCalendarDate(dispatch.iso) && dispatch.iso >= DUE_DATE_FLOOR
-          ? `Dispatch Date Finalized (cell E113) is ${dispatch.text}, which is before the order confirmation date. Enter the correct dispatch date and upload the PI again.`
-          : `Dispatch Date Finalized (cell E113) reads "${dispatch.text}", which is not a date. Enter the actual dispatch date (for example 25/12/2026), not a lead time, and upload the PI again.`,
+          ? `Dispatch Date Finalized (cell E113) is ${dispatch.text}, which is before the order confirmation date. Set the correct due date on the draft, or correct the workbook and upload the PI again.`
+          : `Dispatch Date Finalized (cell E113) reads "${dispatch.text}", which is not a date. Set the due date on the draft, or enter the actual dispatch date (for example 25/12/2026) — not a lead time — in the workbook and upload the PI again.`,
       row: 113,
       cell: HEADER_CELLS.dispatchCommitment,
     })

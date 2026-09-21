@@ -6,8 +6,10 @@ import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import {
   buildSubmissionPlan,
+  cityFromBillingAddress,
   isUuid,
   isWorkbookPathFor,
+  savedOnDate,
   sha256Hex,
   verifyStoredImageBytes,
   MAX_IMAGE_OBJECT_BYTES,
@@ -271,6 +273,75 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * THE SALESPERSON'S CONTACT NUMBER, when the workbook did not print one.
+ *
+ * The number on a BOE PI is BOE's — cell G22, beside the BOE GST at B22 — and
+ * it is how the client reaches the person running their order. It is required
+ * before the PI can be submitted, so a blank cell would otherwise mean somebody
+ * typing a colleague's number that the system already holds.
+ *
+ * TWO FALLBACKS, IN THIS ORDER, AND NEITHER OVERRIDES THE DOCUMENT:
+ *
+ *   1. THE NUMBER THIS PI ALREADY CARRIES. A person may have supplied or
+ *      corrected it by hand; re-uploading a corrected workbook must not throw
+ *      that away. This is what makes the prefill survive a re-import.
+ *   2. THE SALESPERSON'S OWN PROFILE, matched by the name the workbook printed
+ *      at G21 against active, non-deleted employees.
+ *
+ * EXACTLY ONE MATCH, OR NOTHING. Two people called "Rahul" is not a tie this
+ * may break: printing the wrong person's number on a commercial document is
+ * worse than printing none and being asked for it. Likewise a name the
+ * directory does not know resolves to null, and the screen asks.
+ *
+ * Matching is by trimmed, case-insensitive full name. Deliberately not fuzzy:
+ * a near-match is a guess, and this is a phone number on a client's PI.
+ */
+export async function resolveSalespersonContact(
+  service: ServiceClient,
+  submissionId: string,
+  salespersonName: string | null,
+): Promise<string | null> {
+  const { data: current } = await service
+    .from('order_submissions')
+    .select('contact_number')
+    .eq('id', submissionId)
+    .maybeSingle()
+  const held = ((current as { contact_number?: string | null } | null)?.contact_number ?? '').trim()
+  if (held !== '') return held
+
+  const name = (salespersonName ?? '').trim()
+  if (name === '' || name === '—' || name === '-') return null
+
+  // Two safe columns, named explicitly. `select('*')` on public.users would
+  // pull HR data this route has no business holding.
+  //
+  // NOT `.neq('is_deleted', true)`. In PostgREST that comparison is NULL for
+  // a NULL column and the row is filtered OUT — and is_deleted is NULL on
+  // every user who has never been deleted, which is nearly all of them. The
+  // prefill would have silently found nobody. The two-sided form below is the
+  // idiom every other route in this repository uses, for this exact reason.
+  const { data: people, error } = await service
+    .from('users')
+    .select('full_name, phone')
+    .eq('is_active', true)
+    .or('is_deleted.eq.false,is_deleted.is.null')
+    .ilike('full_name', name)
+    .limit(3)
+  if (error || !people) return null
+
+  const matches = (people as { full_name: string | null; phone: string | null }[])
+    .filter(p => (p.full_name ?? '').trim().toLowerCase() === name.toLowerCase())
+    .map(p => (p.phone ?? '').trim())
+    .filter(phone => phone !== '')
+
+  // One unambiguous answer, or none. `matches` holds only people WITH a number,
+  // so two namesakes of whom one has a phone still resolves — the ambiguity
+  // that matters is two numbers, not two rows.
+  const unique = [...new Set(matches)]
+  return unique.length === 1 ? unique[0] : null
+}
+
+/**
  * Everything that happens while this request owns the submission.
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
@@ -346,6 +417,14 @@ export async function processUnderLease(ctx: {
     })
   }
 
+  // ── 13b. What the workbook did not say, and the system already knows ──
+  //
+  // Resolved AFTER the parse, because both answers depend on what the document
+  // turned out to carry, and BEFORE the plan, because the plan is where they
+  // are written. Neither replaces a value the workbook printed.
+  const salespersonContactFallback = await resolveSalespersonContact(
+    service, submissionId, parsed.data.header.createdBy)
+
   // ── 14. Deterministic ids, so image keys are known before the rows exist ──
   const plan = buildSubmissionPlan({
     submissionId,
@@ -361,6 +440,11 @@ export async function processUnderLease(ctx: {
       workbookSizeBytes: bytes.byteLength,
       workbookSha256,
       templateVersion: parsed.data.template.sheetName,
+      // The fallback for a workbook that stated no date of creation. A PI
+      // cannot be submitted without one and the system knows what today is;
+      // the stored value is correctable through the PI terms editor.
+      savedOn: savedOnDate(),
+      salespersonContactFallback,
     },
   })
 
@@ -510,6 +594,40 @@ export async function processUnderLease(ctx: {
     // they always did. The workbook itself is never touched on any path.
     await rollbackCreated()
     return fail(500, 'SAVE_FAILED', 'The draft could not be saved. Please try again.')
+  }
+
+  // ── 18b. What the workbook said about its own terms ──
+  //
+  // AFTER the parse committed, because it seeds columns on the row that
+  // parse just wrote, and under the same processing lease, so two attempts
+  // on one draft cannot interleave here.
+  //
+  // FILL A HOLE, NEVER OVERWRITE AN ANSWER — the whole rule lives in the RPC
+  // (20261225000000 §3b): the fabric answer is written only while nobody has
+  // answered, the terms only while they are still the standard wording. That
+  // is what lets a re-upload restate the products and the figures without
+  // undoing a fabric decision taken on a call or terms negotiated afterwards.
+  //
+  // A FAILURE HERE IS NOT A SAVE FAILURE. The draft is saved and correct;
+  // what is lost is a convenience, and the two fields are asked for on screen
+  // anyway before the PI can be submitted. Reporting it as a failed save
+  // would send somebody to re-upload a workbook that imported perfectly.
+  // The city is read out of the billing address and only when that address
+  // cannot be anything but a city — see cityFromBillingAddress. It joins the
+  // other two here rather than the parse payload for the same reason they are
+  // here: the parse REPLACES what it writes, and a corrected city must survive
+  // a re-import.
+  const seededCity = cityFromBillingAddress(parsed.data.header.billingAddress)
+
+  if (parsed.data.piTerms.fabricResponsibility !== null
+      || parsed.data.piTerms.commercialTermsNote !== null
+      || seededCity !== null) {
+    await service.rpc('seed_order_submission_pi_terms', {
+      p_submission_id: submissionId,
+      p_fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
+      p_commercial_terms_note: parsed.data.piTerms.commercialTermsNote,
+      p_client_city: seededCity,
+    })
   }
 
   // ── 19. Obsolete objects, and ONLY now ──

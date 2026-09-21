@@ -18,6 +18,8 @@ import sharp from 'sharp'
 
 import {
   PDF_COMMERCIAL_TITLE,
+  PDF_FABRIC_LABEL,
+  PDF_TERMS_TITLE,
   PDF_BILL_TO_TITLE,
   PDF_MARGIN,
   PDF_ORDER_NUMBER_LABEL,
@@ -63,8 +65,14 @@ export const FIRST_PAGE_TOP = 300
 export const LATER_PAGE_TOP = 64
 
 /** Space the commercial summary and the payment block need after the last
- *  product row. */
-export const TAIL_HEIGHT = 230
+ *  product row.
+ *
+ *  RAISED for the two statements the tail now carries — the fabric
+ *  responsibility line inside the figures, and the commercial terms
+ *  paragraph beneath them. The paginator reserves this much before deciding
+ *  whether another product row fits, so a tail that grew without this
+ *  growing would run off the last page. */
+export const TAIL_HEIGHT = 300
 
 // ── Images ────────────────────────────────────────────────────────────────────
 
@@ -423,6 +431,28 @@ function drawTail(doc: Doc, model: ConfirmedPdfModel, top: number): void {
          .fillColor(row.missing ? LGRAY : (row.emphasis ? DARK : GRAY))
          .text(row.value, boxX + boxW * 0.55, y, { width: boxW * 0.45, align: 'right' })
       y += row.emphasis ? 16 : 12
+
+      // WHO PROVIDES THE FABRIC, directly under the figure it explains.
+      //
+      // Inside the loop rather than after it, because the sentence and the
+      // amount are one fact: a client reading "Fabric cost Rs. 40,000" has
+      // to see "Fabric will be provided by client" on the next line, not
+      // six lines below the grand total where it reads as an afterthought.
+      if (row.key === 'fabric' && model.fabricResponsibility) {
+        doc.fontSize(7).font('Helvetica-Oblique').fillColor(GRAY)
+           .text(model.fabricResponsibility, boxX, y, { width: boxW })
+        y += 11
+      }
+    }
+
+    // A PI with no fabric row still answers the question, at the foot of the
+    // figures. The answer is about the order, not about the line.
+    if (model.fabricResponsibility && !model.commercial.some(r => r.key === 'fabric')) {
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(LGRAY)
+         .text(PDF_FABRIC_LABEL.toUpperCase(), boxX, y)
+      doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+         .text(model.fabricResponsibility, boxX, y + 9, { width: boxW })
+      y += 22
     }
   }
 
@@ -435,6 +465,21 @@ function drawTail(doc: Doc, model: ConfirmedPdfModel, top: number): void {
       doc.fontSize(8.5).font('Helvetica').fillColor(DARK).text(field.value, L + 120, y - 1)
       y += 14
     }
+  }
+
+  // ── What the quoted prices cover ──
+  //
+  // After the figures and before the presentation note, because it qualifies
+  // every amount above it. Printed verbatim: this is the wording the PI was
+  // agreed on, standard or negotiated, and the renderer does not decide
+  // between them.
+  if (model.commercialTerms) {
+    y += 12
+    doc.fontSize(7).font('Helvetica-Bold').fillColor(DARK).text(PDF_TERMS_TITLE, L, y)
+    y += 11
+    doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+       .text(model.commercialTerms, L, y, { width: CONTENT_W })
+    y += doc.heightOfString(model.commercialTerms, { width: CONTENT_W })
   }
 
   doc.fontSize(6.5).font('Helvetica').fillColor(LGRAY)
