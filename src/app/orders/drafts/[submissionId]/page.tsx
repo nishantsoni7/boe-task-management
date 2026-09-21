@@ -243,7 +243,6 @@ import {
   buildBreakdownView,
   buildClientDetails,
   buildDateSummary,
-  buildOverviewMeta,
   buildPaymentStatusView,
   buildSubmissionContext,
   commercialBreakdownRows,
@@ -1808,30 +1807,20 @@ function PiDraftDetailPageInner() {
     : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
   /**
-   * The overview's metadata strip — Salesperson, PI submitted by, Created date —
-   * each said once. The salesperson is the name the PI document itself carries;
-   * the created date is the PI's own date where it gave one, and the day the
-   * record was saved where it did not.
-   */
-  const overviewMeta = buildOverviewMeta({
-    salesperson: documentAuthor,
-    // contact_number — the BOE-side number at workbook G22. Shown under the
-    // salesperson, because it is theirs; the client's own numbers stay in the
-    // client dialog.
-    salespersonPhone: submission.contact_number ?? null,
-    submitterName: draft.submitterName,
-    createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at),
-  })
-
-  /**
-   * The "Submitted for review" half of the context row: who, when, and one line
-   * each for management review and the Finance check. Every sentence is one the
-   * page has already derived above; nothing here decides who may act.
+   * The context row's second cell: WHO this PI is from, and where it stands.
+   *
+   * The salesperson is the name the PI document itself carries — never the
+   * submitter, who is named separately on the line below. The created date is
+   * the PI's own date where it gave one, and the day the record was saved where
+   * it did not. Every sentence is one the page has already derived above;
+   * nothing here decides who may act.
    */
   const submissionContext = buildSubmissionContext({
     status: submission.status,
+    salesperson: documentAuthor,
     submitterName: draft.submitterName,
     submittedAt,
+    createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at),
     piApprovedLine: piApprovedText,
     rejectedLine: rejectedAt
       ? `Rejected by ${draft.rejectedByName ?? 'a colleague'} · ${rejectedAt}`
@@ -2160,7 +2149,6 @@ function PiDraftDetailPageInner() {
               : paymentReadiness.summary
           }
           workbookName={workbookName}
-          meta={overviewMeta}
           dates={summaryDates}
           figures={summaryFigures}
         />

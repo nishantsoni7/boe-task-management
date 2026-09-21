@@ -4113,6 +4113,11 @@ body {
 @container (min-width: 900px) {
   .pi-detail-decision-grid {
     grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+    /* TOP-ALIGNED, NOT STRETCHED. Payment status is a disclosure now and is a
+       header and nothing else while it is closed; the grid's default stretch
+       would pull that one header down to the review card's full height and
+       leave a card-shaped hole under it. Each card is as tall as it is. */
+    align-items: start;
   }
   .pi-detail-decision-grid > :only-child {
     grid-column: 1 / -1;
@@ -4372,10 +4377,29 @@ body {
   min-width: 0;
 }
 
+/* The person this PI is from, at the weight that question deserves — it is the
+   right cell's headline, as the Order number is the left cell's. It wraps
+   rather than shrinking the badge beside it. */
 .pi-detail-context-name {
-  font-size: 16px;
-  font-weight: 650;
+  min-width: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
   color: #111318;
+  overflow-wrap: anywhere;
+}
+
+/* The submission facts under it: one quiet line each, never a second headline. */
+.pi-detail-context-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pi-detail-context-meta-name {
+  font-weight: 650;
+  color: #4a5261;
   overflow-wrap: anywhere;
 }
 
@@ -4687,6 +4711,60 @@ body {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 16px;
+}
+
+/* THE HEADER IS THE CONTROL. It is a button, so it is reset to look like the
+   header it replaced — and it keeps a real focus ring, because a disclosure
+   nobody can see the focus of is a disclosure nobody can use by keyboard.
+   44px tall: the project's mobile tap minimum, met on every width. */
+.pi-detail-paystatus-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  width: 100%;
+  min-height: 44px;
+  margin: -4px 0;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pi-detail-paystatus-toggle:hover .pi-detail-paystatus-title {
+  color: #2f5bb7;
+}
+
+.pi-detail-paystatus-toggle:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 2px;
+}
+
+/* Said once, quietly, and only while the card is closed. */
+.pi-detail-paystatus-hint {
+  min-width: 0;
+  font-size: 12px;
+  color: #8c94a6;
+  overflow-wrap: anywhere;
+}
+
+/* The chevron is pushed to the end of the line, whatever else is on it. */
+.pi-detail-paystatus-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: #6b7384;
+}
+
+/* What the disclosure opens: the actions, then the figures the card always had. */
+.pi-detail-paystatus-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 .pi-detail-paystatus-title {

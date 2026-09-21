@@ -1153,11 +1153,12 @@ describe('the page identity is a strip, not a card that repeats the title', () =
 
   test('the ownership facts survive, each said once', () => {
     const view = read(DETAIL_VIEW)
-    // Salesperson · PI submitted by · Created date in the overview's strip; the
-    // submission time and the status in the context row above it.
-    assert.ok(view.includes('label: SALESPERSON_LABEL'),
+    // Salesperson · Submitted by · Created — all three in the CONTEXT ROW now,
+    // beside the status badge. They used to sit in a four-item strip under the
+    // client's name, where BOE facts read as the client's.
+    assert.ok(read(DETAIL_SECTIONS).includes('{SALESPERSON_LABEL}'),
       'the one established word for the salesperson, from the Order flow')
-    for (const label of ["'PI submitted by'", "'Created date'"]) {
+    for (const label of ["'Submitted by'", "'Created'"]) {
       assert.ok(view.includes(label), `${label} must survive the redesign`)
     }
     assert.ok(!/sales candidate/i.test(view + read(DETAIL_SECTIONS)),
@@ -1165,7 +1166,6 @@ describe('the page identity is a strip, not a card that repeats the title', () =
     assert.ok(page.includes('salesperson: documentAuthor,'),
       'the salesperson is whoever the PI document itself named')
     assert.ok(page.includes('submitterName: draft.submitterName,'))
-    assert.ok(page.includes('meta={overviewMeta}'))
     assert.ok(page.includes('context={submissionContext}'))
     assert.ok(page.includes('workbookName={workbookName}'),
       'and the workbook stays in the card rather than being dropped')
@@ -1206,9 +1206,11 @@ describe('the top summary answers four questions and repeats none of them', () =
       'the two dates share one band rather than one carrying a box of its own')
     assert.ok(sections.includes('pi-detail-figures'),
       'and the three figures fill the other column')
-    // The metadata strip sits ABOVE the dates in the left column.
-    assert.ok(sections.indexOf('meta.map') < sections.indexOf('dates.map'),
-      'Salesperson, PI submitted by and Created date read before the dates')
+    // The client's own two facts sit ABOVE the dates in the left column, in the
+    // strip the BOE metadata used to occupy.
+    assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') > 0)
+    assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') < sections.indexOf('dates.map'),
+      'the client’s contact and location read before the dates')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')
   })

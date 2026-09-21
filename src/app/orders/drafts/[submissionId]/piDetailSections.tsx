@@ -17,16 +17,17 @@
 // These draw the answers.
 
 import Link from 'next/link'
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import {
-  AlertTriangle, ArrowRight, Ban, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Copy,
-  FileSpreadsheet, Hash, History, Info, Pencil, Percent, Phone, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
-  User,
+  AlertTriangle, ArrowRight, Ban, Check, CheckCircle2, ChevronDown, ChevronRight, ChevronUp,
+  Clock, Copy, FileSpreadsheet, Hash, History, Info, MapPin, Pencil, Percent, Phone, Send, ShieldCheck,
+  ThumbsUp, Undo2, Upload, User,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
+import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 import { colors } from '@/lib/tokens'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
@@ -70,12 +71,20 @@ import {
   BILLING_NOT_DECLARED_LABEL,
   BILLING_VALUE_LABEL,
   BLOCKING_INSTRUCTION,
+  CLIENT_CONTACT_LABEL,
+  CLIENT_FACT_ABSENT,
+  CLIENT_LOCATION_LABEL,
+  CREATED_LABEL,
   NOT_SUBMITTED_TEXT,
+  PAYMENT_COLLAPSED_HINT,
+  PAYMENT_PANEL_ID,
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUS_TITLE,
   RESERVED_ORDER_LABEL,
   STORED_COPY_NOTE,
+  SUBMITTED_BY_LABEL,
   buildPaymentMetrics,
+  clientContactText,
   describeReceivedHeadline,
   describeRequestedException,
   type ApprovedOrderView,
@@ -83,7 +92,6 @@ import {
   type BreakdownView,
   type ClientDetails,
   type DateSummary,
-  type OverviewMetaItem,
   type PaymentMetric,
   type PaymentStatusView,
   type PiDetailTone,
@@ -225,22 +233,45 @@ export function PiContextRow({
         </section>
 
         <section className="pi-detail-context-cell" aria-label={context.heading}>
+          {/* WHO THIS PI IS FROM leads, because it is the first thing a
+              reviewer checks, and the badge sits on the same line because the
+              next thing they check is whether it is theirs to act on. Both
+              wrap: a long name pushes the badge to its own line rather than
+              squeezing it. */}
+          <div className="pi-detail-context-label">
+            <User size={12} strokeWidth={2.2} aria-hidden="true" />
+            {SALESPERSON_LABEL}
+          </div>
+
           <div className="pi-detail-context-head">
-            <div className="pi-detail-context-label">
-              <Send size={12} strokeWidth={2.2} aria-hidden="true" />
-              {context.heading}
-            </div>
+            {context.salesperson ? (
+              <span className="pi-detail-context-name">{context.salesperson}</span>
+            ) : (
+              <span className="pi-detail-context-absent">{context.salespersonAbsent}</span>
+            )}
             <PiStatusBadge label={statusLabel} tone={tone} />
           </div>
 
-          {context.submittedAt ? (
-            <div className="pi-detail-context-who">
-              <span className="pi-detail-context-name">{context.submittedBy ?? 'A colleague'}</span>
-              <span className="pi-detail-context-when">{context.submittedAt}</span>
-            </div>
-          ) : (
-            <div className="pi-detail-context-absent">{NOT_SUBMITTED_TEXT}</div>
-          )}
+          {/* The submission facts, quietly, under the name they belong to. The
+              submitter is NOT the salesperson above — two labels, two people. */}
+          <div className="pi-detail-context-meta">
+            {context.submittedAt ? (
+              <div className="pi-detail-context-note">
+                {SUBMITTED_BY_LABEL}{' '}
+                <span className="pi-detail-context-meta-name">{context.submittedBy ?? 'A colleague'}</span>
+                <span className="pi-detail-context-when"> · {context.submittedAt}</span>
+              </div>
+            ) : (
+              <div className="pi-detail-context-note">{NOT_SUBMITTED_TEXT}</div>
+            )}
+
+            {context.createdOn && (
+              <div className="pi-detail-context-note">
+                {CREATED_LABEL}{' '}
+                <span className="pi-detail-context-meta-name">{context.createdOn}</span>
+              </div>
+            )}
+          </div>
 
           {/* Colour is never the only channel: every dot sits beside its words. */}
           <ul className="pi-detail-context-lines">
@@ -273,21 +304,19 @@ const CONTEXT_DOT: Record<PiDetailTone, string> = {
 
 // ── 2. The PI overview ────────────────────────────────────────────────────────
 
-/** One icon per metadata item, so the strip scans without reading every label. */
-const META_ICON: Record<OverviewMetaItem['key'], typeof User> = {
-  salesperson: User,
-  salespersonPhone: Phone,
-  submittedBy: Send,
-  created: CalendarDays,
-}
-
 /**
  * THE PI OVERVIEW: who it is for and when it moves, beside what it is worth.
  *
- * LEFT — the client (the name opens the contact dialog), a compact metadata
- * strip (Salesperson · Salesperson contact · PI submitted by · Created date,
- * each said once), and the
+ * LEFT — the CLIENT, and only the client: the name (which opens the contact
+ * dialog), the client's own contact number and the client's location, then the
  * two dates in a band of their own at a size that reads at a glance.
+ *
+ * THE BOE SIDE IS NOT HERE ANY MORE. Salesperson, salesperson contact,
+ * submitter and created date used to sit in a strip under the client's name,
+ * where three BOE facts read as the client's — most damagingly the salesperson's
+ * number, which a reader pressed "call the client" on. Who the PI is from is
+ * now the context row's second cell, beside the status badge. Not one column is
+ * read differently; they are said where they are true.
  *
  * RIGHT — three figures and nothing else: Product value, Total before GST, and
  * the billing declaration as a clear state. They fill their column; there is no
@@ -298,18 +327,16 @@ const META_ICON: Record<OverviewMetaItem['key'], typeof User> = {
  * a capability the page asked the database for, and every write re-derives it.
  */
 export function PiSummaryCard({
-  client, onOpenClient, workbookName, meta,
+  client, onOpenClient, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
   canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
 }: {
   client: ClientDetails
-  /** Opens the client dialog. The card carries the name; the dialog carries
-      the contact and the two parties. */
+  /** Opens the client dialog. The card states who the client is; the dialog
+      carries the billing and shipping parties in full. */
   onOpenClient: () => void
   /** Provenance, only when the record names a workbook. */
   workbookName: string | null
-  /** Salesperson, PI submitted by, Created date. */
-  meta: readonly OverviewMetaItem[]
   dates: readonly DateSummary[]
   /** The two commercial figures, picked out of the breakdown's own rows. */
   figures: readonly SummaryFigure[]
@@ -331,6 +358,9 @@ export function PiSummaryCard({
   /** What this PI still needs before it can take a payment, or null. */
   missingSummary: string | null
 }) {
+  // SELECTION, NOT RESOLUTION: buildClientDetails already decided which stored
+  // number is the client's and whether it can be dialled.
+  const contact = clientContactText(client)
   return (
     <PiCard>
       {/* ── What is still missing, and the way to fix it ── */}
@@ -410,20 +440,26 @@ export function PiSummaryCard({
             </span>
           )}
 
-          {/* ── The metadata strip: icon, label, value — each fact once ── */}
+          {/* ── The client's own two facts, in the strip the BOE metadata used
+              to occupy: same shape, same weights, the client's answers. Shown
+              as TEXT rather than as a dial link — the dialog behind the name
+              is where a number is offered to press, and one card should not
+              hold two ways to ring the same person. */}
           <dl className="pi-detail-meta">
-            {meta.map(item => {
-              const Icon = META_ICON[item.key]
-              return (
-                <div key={item.key} className="pi-detail-meta-item">
-                  <Icon size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
-                  <dt className="pi-detail-meta-label">{item.label}</dt>
-                  <dd className={item.value ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
-                    {item.value ?? item.absent}
-                  </dd>
-                </div>
-              )
-            })}
+            <div className="pi-detail-meta-item">
+              <Phone size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
+              <dt className="pi-detail-meta-label">{CLIENT_CONTACT_LABEL}</dt>
+              <dd className={contact ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
+                {contact ?? CLIENT_FACT_ABSENT}
+              </dd>
+            </div>
+            <div className="pi-detail-meta-item">
+              <MapPin size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
+              <dt className="pi-detail-meta-label">{CLIENT_LOCATION_LABEL}</dt>
+              <dd className={client.city ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
+                {client.city ?? CLIENT_FACT_ABSENT}
+              </dd>
+            </div>
           </dl>
 
           {/* ── The dates, at a size that reads at a glance ──
@@ -529,14 +565,32 @@ export function PiSummaryCard({
  * filtered. A part with no rows behind it is a plain block rather than a
  * control, so nothing invites a click that would open an empty list.
  *
- * THREE CONTROLS AT MOST, in the header. Add payment for somebody canAddPiPayment
- * allows; Payment details for everybody who can read the PI; and, for a viewer
- * the page resolved as a payment verifier, a way into the pending rows. That
- * control decides nothing — the rows' Approve and Reject run Finance's own doors.
+ * THREE CONTROLS AT MOST, under the header. Add payment for somebody
+ * canAddPiPayment allows; Payment details for everybody who can read the PI;
+ * and, for a viewer the page resolved as a payment verifier, a way into the
+ * pending rows. That control decides nothing — the rows' Approve and Reject run
+ * Finance's own doors.
+ *
+ * THE CARD OPENS CLOSED. Money is the loudest thing on this page and it is not
+ * what most readers came for, so the card starts as its own title and nothing
+ * else, and a press opens it. This is CONCEALMENT AND NOTHING ELSE: every
+ * control inside keeps the gate it always had, drawn from the same props, and a
+ * viewer who may not add a payment is offered no Add payment in either state.
+ * The open/closed state is this component's own useState — deliberately not
+ * persisted anywhere, because a card that remembers being open never closes.
  */
-export function PiPaymentStatusCard({
-  status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
-}: {
+export function PiPaymentStatusCard(props: PiPaymentStatusCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <PiPaymentStatusCardView
+      {...props}
+      expanded={expanded}
+      onToggleExpanded={() => setExpanded(open => !open)}
+    />
+  )
+}
+
+type PiPaymentStatusCardProps = {
   /** null only while the summary has not been read. */
   status: PaymentStatusView | null
   canAdd: boolean
@@ -549,51 +603,86 @@ export function PiPaymentStatusCard({
   onOpenDetails: (filter: PiPaymentFilter) => void
   notice: string | null
   onDismissNotice: () => void
+}
+
+/**
+ * The card as a function of whether it is open — DRAWING ONLY, so both states
+ * can be rendered and read without a browser.
+ *
+ * NOTHING BELOW THE HEADER IS MOUNTED WHILE IT IS CLOSED: a reader who has not
+ * opened the card cannot see an amount, a percentage, the bar, a payment count
+ * or any of the three controls, because none of them is in the markup at all.
+ */
+export function PiPaymentStatusCardView({
+  status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
+  expanded, onToggleExpanded,
+}: PiPaymentStatusCardProps & {
+  expanded: boolean
+  onToggleExpanded: () => void
 }) {
+  const Chevron = expanded ? ChevronUp : ChevronDown
   return (
     <PiCard>
       <section className="pi-detail-paystatus" aria-label={PAYMENT_STATUS_TITLE}>
-        <div className="pi-detail-paystatus-head">
+        {/* THE WHOLE HEADER IS THE CONTROL — a real button, so Enter, Space,
+            focus and the accessible name come from the element itself rather
+            than from handlers bolted onto a div. The three actions are SIBLINGS
+            below it: a button cannot hold a button, and nesting them would make
+            every action close the card by accident. */}
+        <button
+          type="button"
+          className="pi-detail-paystatus-toggle"
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+          aria-controls={PAYMENT_PANEL_ID}
+        >
           <h2 className="pi-detail-paystatus-title">{PAYMENT_STATUS_TITLE}</h2>
-          <div className="pi-detail-paystatus-actions">
-            {canVerify && decidableCount > 0 && (
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('awaiting')} aria-haspopup="dialog">
-                <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-                Verify {decidableCount} pending
-              </button>
-            )}
-            {canAdd && (
-              <button type="button" className="boe-btn boe-btn-primary" onClick={onAddPayment} aria-haspopup="dialog">
-                Add payment
-              </button>
-            )}
-            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('all')} aria-haspopup="dialog">
-              {PAYMENT_DETAILS_LABEL}
-            </button>
-          </div>
-        </div>
+          {!expanded && <span className="pi-detail-paystatus-hint">{PAYMENT_COLLAPSED_HINT}</span>}
+          <Chevron size={18} strokeWidth={2.2} className="pi-detail-paystatus-chevron" aria-hidden="true" />
+        </button>
 
-        {status === null ? (
-          <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
-        ) : (
-          <>
-            <PiPaymentPosition status={status} onOpenDetails={onOpenDetails} />
-
-            {notice && (
-              <div className="pi-detail-paystatus-notice" role="status">
-                <span>{notice}</span>
-                <button
-                  type="button" onClick={onDismissNotice} aria-label="Dismiss"
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                  }}
-                >
-                  ×
+        {expanded && (
+          <div id={PAYMENT_PANEL_ID} className="pi-detail-paystatus-panel">
+            <div className="pi-detail-paystatus-actions">
+              {canVerify && decidableCount > 0 && (
+                <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('awaiting')} aria-haspopup="dialog">
+                  <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
+                  Verify {decidableCount} pending
                 </button>
-              </div>
+              )}
+              {canAdd && (
+                <button type="button" className="boe-btn boe-btn-primary" onClick={onAddPayment} aria-haspopup="dialog">
+                  Add payment
+                </button>
+              )}
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('all')} aria-haspopup="dialog">
+                {PAYMENT_DETAILS_LABEL}
+              </button>
+            </div>
+
+            {status === null ? (
+              <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+            ) : (
+              <>
+                <PiPaymentPosition status={status} onOpenDetails={onOpenDetails} />
+
+                {notice && (
+                  <div className="pi-detail-paystatus-notice" role="status">
+                    <span>{notice}</span>
+                    <button
+                      type="button" onClick={onDismissNotice} aria-label="Dismiss"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-          </>
+          </div>
         )}
       </section>
     </PiCard>

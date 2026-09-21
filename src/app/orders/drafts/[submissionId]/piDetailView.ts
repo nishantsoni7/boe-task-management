@@ -49,7 +49,6 @@ import {
 } from '@/lib/orders/billingPercentage'
 import { formatInr, type PiAmountRow } from '@/lib/pi/previewView'
 import { describePaymentCount } from '@/lib/finance/piPaymentView'
-import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
@@ -917,6 +916,39 @@ export function buildClientDetails(input: {
   }
 }
 
+/**
+ * The CLIENT's own identity line, under the client's own name.
+ *
+ * TWO FACTS AND NO MORE: the number to ring and the place to ship to. They are
+ * labelled plainly because the card is already headed by the client's name;
+ * "Contact" inside that card cannot be read as anybody else's.
+ *
+ * NOT ADDED, NOT "not provided". The wording is the same for both because both
+ * are things somebody can go and add — the editor behind the Edit control beside
+ * the name writes exactly these columns — and a quiet, identical absence reads
+ * as a gap rather than as a fault.
+ */
+export const CLIENT_CONTACT_LABEL = 'Contact'
+export const CLIENT_LOCATION_LABEL = 'Location'
+export const CLIENT_FACT_ABSENT = 'Not added'
+
+/**
+ * The client's contact number as the card prints it — the dialable label where
+ * there is one, the document's own text where there is a number that cannot be
+ * dialled, and null where the record carries neither.
+ *
+ * IT RESOLVES NOTHING NEW. Both values are buildClientDetails' own, chosen from
+ * bill_to_phone then ship_to_phone. This only decides which of the two the card
+ * shows, so the card and the dialog cannot pick differently.
+ *
+ * order_submissions.contact_number IS STILL NOT CONSULTED. That column is the
+ * salesperson's number at workbook G22; printing it here is the exact mistake
+ * buildClientDetails' note exists to prevent.
+ */
+export function clientContactText(client: ClientDetails): string | null {
+  return client.phone?.label ?? client.phoneText ?? null
+}
+
 export type DateSummary = {
   key: 'confirmed' | 'due'
   label: string
@@ -979,6 +1011,17 @@ export function buildDateSummary(input: {
 // ── The payment status card ───────────────────────────────────────────────────
 
 export const PAYMENT_STATUS_TITLE = 'Payment status'
+
+/**
+ * What the closed card says instead of the figures.
+ *
+ * It names the ACTION rather than describing the absence, so the header reads
+ * as something to press even before the chevron is noticed.
+ */
+export const PAYMENT_COLLAPSED_HINT = 'Click to view payment details'
+
+/** The panel the header's aria-controls names. One card, so one id. */
+export const PAYMENT_PANEL_ID = 'pi-detail-payment-panel'
 
 export const PAYMENT_STATUS_LABEL = {
   received: 'received',
@@ -1178,6 +1221,35 @@ export function buildPaymentMetrics(view: PaymentStatusView): PaymentMetric[] {
 export const RESERVED_ORDER_LABEL = 'Reserved Order no.'
 export const NOT_SUBMITTED_TEXT = 'Not submitted yet'
 
+/**
+ * The accessible name for the context row's second cell.
+ *
+ * It is NOT the visible label. The cell leads with the SALESPERSON — the
+ * person this PI is from — and carries the submission facts beneath; a screen
+ * reader needs the whole cell named, and "Salesperson" alone would not say
+ * that the status badge and the submission lines belong to the same region.
+ */
+export const SUBMISSION_CELL_HEADING = 'Salesperson and submission'
+
+/** Said once, so the cell and this module cannot word them two ways. */
+export const SUBMITTED_BY_LABEL = 'Submitted by'
+export const CREATED_LABEL = 'Created'
+/** A request, not a shrug: the PI cannot be submitted without one. */
+export const SALESPERSON_ABSENT = 'Not named'
+
+/**
+ * A stored name or date, or null.
+ *
+ * An em dash is what the workbook writes for "nothing here", so it is an
+ * absence and is treated as one — printing it would put a dash where a person's
+ * name belongs. The same rule buildClientDetails and the retired metadata strip
+ * both applied; it is written once here now.
+ */
+const contextClean = (value: string | null | undefined): string | null => {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' || trimmed === '—' ? null : trimmed
+}
+
 export type ContextLine = {
   key: 'review' | 'finance'
   label: string
@@ -1186,11 +1258,21 @@ export type ContextLine = {
 }
 
 export type SubmissionContext = {
+  /** The cell's accessible name. The VISIBLE label is the salesperson's. */
   heading: string
+  /**
+   * The name the PI document itself carries (source_created_by) — the person
+   * who prepared it. Null where the document named nobody; NEVER the submitter.
+   */
+  salesperson: string | null
+  /** What to say where the PI named no salesperson. */
+  salespersonAbsent: string
   /** "Nishant Soni", or null when nobody has submitted it. */
   submittedBy: string | null
   /** Already formatted, or null. */
   submittedAt: string | null
+  /** The PI's own created date, already formatted, or null. */
+  createdOn: string | null
   lines: ContextLine[]
 }
 
@@ -1204,8 +1286,16 @@ export type SubmissionContext = {
  */
 export function buildSubmissionContext(input: {
   status: string
+  /**
+   * The document author — the salesperson the PI itself names. It is never
+   * filled from the submitter: that is a second, separate person, and
+   * borrowing one for the other prints one name under two labels.
+   */
+  salesperson?: string | null
   submitterName: string | null
   submittedAt: string | null
+  /** The PI's own created date, already formatted, or null. */
+  createdOn?: string | null
   /** "PI approved by X · date", when a current PI decision stands. */
   piApprovedLine: string | null
   /** Already formatted "Rejected by X · date", when the PI was rejected. */
@@ -1236,67 +1326,30 @@ export function buildSubmissionContext(input: {
   const lines: ContextLine[] = [review]
 
   return {
-    heading: WORKFLOW_HEADING.submitted,
-    submittedBy: input.submittedAt ? input.submitterName : null,
+    heading: SUBMISSION_CELL_HEADING,
+    salesperson: contextClean(input.salesperson),
+    salespersonAbsent: SALESPERSON_ABSENT,
+    submittedBy: input.submittedAt ? contextClean(input.submitterName) : null,
     submittedAt: input.submittedAt,
+    createdOn: contextClean(input.createdOn),
     lines,
   }
 }
 
-// ── The overview's metadata strip ─────────────────────────────────────────────
-
-export const SUBMITTED_BY_LABEL = 'PI submitted by'
-export const CREATED_DATE_LABEL = 'Created date'
-
-export type OverviewMetaItem = {
-  key: 'salesperson' | 'salespersonPhone' | 'submittedBy' | 'created'
-  label: string
-  /** null prints `absent`, quietly. */
-  value: string | null
-  absent: string
-}
-
-/**
- * Salesperson, PI submitted by, Created date — each said once.
- *
- * THE SALESPERSON IS THE NAME THE PI ITSELF CARRIES (source_created_by), the
- * person who prepared the document. It is never filled from the submitter: that
- * is the second item, and borrowing it would print one person under two labels.
- */
-/** Said once, so the strip and the editor cannot name it two ways. */
-export const SALESPERSON_PHONE_LABEL = 'Salesperson contact'
-
-export function buildOverviewMeta(input: {
-  salesperson: string | null
-  /**
-   * order_submissions.contact_number — the BOE-side number at workbook cell
-   * G22. It sits under the salesperson because it is THEIR number: it is what
-   * the PI prints so a client can reach the person running their order, and
-   * showing it beside the client used to make it read as the client’s.
-   */
-  salespersonPhone?: string | null
-  submitterName: string | null
-  /** Already formatted. */
-  createdOn: string | null
-}): OverviewMetaItem[] {
-  const clean = (value: string | null | undefined) => {
-    const trimmed = (value ?? '').trim()
-    return trimmed === '' || trimmed === '—' ? null : trimmed
-  }
-  return [
-    { key: 'salesperson', label: SALESPERSON_LABEL, value: clean(input.salesperson), absent: 'Not named' },
-    {
-      key: 'salespersonPhone',
-      label: SALESPERSON_PHONE_LABEL,
-      value: clean(input.salespersonPhone),
-      // Said as a request rather than as a shrug: it is required before the PI
-      // can be submitted, and the readiness list says so too.
-      absent: 'Not given',
-    },
-    { key: 'submittedBy', label: SUBMITTED_BY_LABEL, value: clean(input.submitterName), absent: NOT_SUBMITTED_TEXT },
-    { key: 'created', label: CREATED_DATE_LABEL, value: clean(input.createdOn), absent: NOT_PROVIDED },
-  ]
-}
+// ── The overview's metadata strip, retired ────────────────────────────────────
+//
+// buildOverviewMeta used to word a four-item strip under the client name:
+// Salesperson · Salesperson contact · PI submitted by · Created date. Three of
+// those facts are about BOE and one is a date, and none of them is the client —
+// so a reader scanning the card headed by the client's name read the
+// salesperson's number as the client's, which is the confusion
+// buildClientDetails already carries a long note about.
+//
+// WHO THE PI IS FROM now leads the context row, where the status badge is, and
+// the card headed by the client's name carries the CLIENT's identity and
+// nothing else: name, contact, location. See buildSubmissionContext above and
+// CLIENT_CONTACT_LABEL below. Nothing is derived differently — the same
+// columns are read; they are said in the place that makes them true.
 
 // ── The billing metric ────────────────────────────────────────────────────────
 
