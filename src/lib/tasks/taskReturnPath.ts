@@ -45,3 +45,34 @@ export function withTaskReturnTo(href: string | null, returnTo: string | null | 
   const match = TASK_DETAIL_PATH.exec(href)
   return match ? taskDetailHref(match[1], returnTo) : href
 }
+
+/**
+ * Where Task Detail's Back control should go.
+ *
+ * `history` — pop, which is what a reader who walked here from a list expects:
+ * the actual previous page, the list's own scroll restored by its popstate, and
+ * no extra entry left behind for the browser's own Back to trip over.
+ *
+ * `path` — navigate to a named place, for a task that is the first page in its
+ * tab (a notification opened in a new tab, a bookmark, a pasted link). There is
+ * nothing of ours to pop there, so `router.back()` does nothing and the button
+ * looks broken. The destination is the `returnTo` the opener attached when
+ * there is one — every internal entry point attaches it, including notification
+ * links — and otherwise the task's OWN list, which depends on the task rather
+ * than being one address for everybody.
+ *
+ * `returnTo` is taken raw and validated here: it arrives in a URL anybody can
+ * craft, so an external or malformed value is dropped and the task's own list
+ * is used instead. `safeReturnPath` is the shared validator — see
+ * src/lib/safeReturnPath.ts.
+ */
+export type TaskBackTarget = { kind: 'history' } | { kind: 'path'; path: string }
+
+export function taskBackTarget(opts: {
+  inAppHistory: boolean
+  returnTo: string | null | undefined
+  taskType: string | null | undefined
+}): TaskBackTarget {
+  if (opts.inAppHistory) return { kind: 'history' }
+  return { kind: 'path', path: safeReturnPath(opts.returnTo) ?? defaultTaskListPath(opts.taskType) }
+}

@@ -21,7 +21,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  MAX_RETURN_PATH_LENGTH, defaultTaskListPath, pathWithSearch, returnPathFromSearch,
+  MAX_RETURN_PATH_LENGTH, defaultTaskListPath, pathWithSearch, returnPathFromSearch, taskBackTarget,
   safeReturnPath, taskDetailHref, withTaskReturnTo,
 } from './taskReturnPath'
 
@@ -210,12 +210,29 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
     assert.ok(detail.includes('if (submitReturnTimer.current) clearTimeout(submitReturnTimer.current)'))
   })
 
-  test('Approve, Return and Mark Complete navigation are unchanged', () => {
+  test('Approve and Return still navigate nowhere', () => {
     const approve = detail.slice(detail.indexOf('const approveTask = async'), detail.indexOf('const returnTask = async'))
     const ret = detail.slice(detail.indexOf('const returnTask = async'), detail.indexOf('const handleReopen = async'))
     for (const body of [approve, ret]) assert.equal(/router\.(replace|push|back)\(/.test(body), false)
-    assert.ok(detail.includes("const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'"))
-    assert.ok(detail.includes('setTimeout(() => router.push(dest), 800)'))
+  })
+
+  test('Mark Complete returns to the view it was opened from, not to one fixed list', () => {
+    // It used to push '/tasks/quotation-requests' or '/tasks/my' and nothing
+    // else, so a creator completing a task they had opened from Assigned By Me
+    // — or from Today's Focus, or from a notification — was put on a list that
+    // task need never have been on.
+    assert.ok(detail.includes("const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)"))
+    assert.equal(detail.includes("const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'"), false)
+    assert.ok(detail.includes('noteListReturn()\n      router.push(dest)'), 'the list is told this counts as a return, so it restores its scroll')
+  })
+
+  test('Mark Complete no longer waits 800ms for a toast it never shows', () => {
+    // applyStatusChange shows no toast on any path — the delay was dead time
+    // after a click, on the action people perform most. The destination list,
+    // which no longer holds the task, is the confirmation.
+    assert.equal(detail.includes('setTimeout(() => router.push(dest), 800)'), false)
+    const apply = detail.slice(detail.indexOf('const applyStatusChange = async'), detail.indexOf('const submitReturnTimer'))
+    assert.equal(/setTimeout\(/.test(apply), false, 'no timer stands between the write and the navigation')
   })
 })
 
@@ -299,5 +316,100 @@ describe('PR #147 opening behaviour is untouched (17–18)', () => {
 
   test('Enter (a real anchor) and modified clicks (new tab) still work', () => {
     assert.ok(panel.includes('e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Task Detail: the Back control always goes somewhere', () => {
+  const QTN = { taskType: 'quotation_request' as const }
+  const NORMAL = { taskType: 'completion' as const }
+
+  test('with in-app history it pops — the actual previous page', () => {
+    // The ordinary walk: a list was open, the reader clicked a task. Popping is
+    // what restores that list's scroll (its hook listens for the popstate) and
+    // what leaves no extra entry for the browser's own Back to trip over.
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: true, returnTo: '/tasks/assigned-by-me?tab=overdue', ...NORMAL }),
+      { kind: 'history' },
+    )
+  })
+
+  test('history wins even when there is no returnTo to fall back on', () => {
+    assert.deepEqual(taskBackTarget({ inAppHistory: true, returnTo: null, ...NORMAL }), { kind: 'history' })
+  })
+
+  test('with no in-app history it goes to the view the opener named', () => {
+    // A notification opened in a NEW TAB. `router.back()` did nothing at all
+    // here; notification links carry a returnTo, so there is a real answer.
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: false, returnTo: '/notifications', ...NORMAL }),
+      { kind: 'path', path: '/notifications' },
+    )
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: false, returnTo: '/tasks/my?tab=working&q=invoice', ...NORMAL }),
+      { kind: 'path', path: '/tasks/my?tab=working&q=invoice' },
+    )
+  })
+
+  test('the tab and query of the named view are kept exactly', () => {
+    const view = '/tasks/assigned-by-me?tab=for_approval&assignee=2f1c2d3e-5a6b-4c7d-8e9f-0a1b2c3d4e5f&priority=high'
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: false, returnTo: view, ...NORMAL }),
+      { kind: 'path', path: view },
+    )
+  })
+
+  test('with nothing named it goes to the TASK’S own list, not one fixed address', () => {
+    // A pasted URL or an old bookmark. The answer depends on the task, so a
+    // quotation does not send its reader to the normal task list.
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: false, returnTo: null, ...NORMAL }),
+      { kind: 'path', path: '/tasks/my' },
+    )
+    assert.deepEqual(
+      taskBackTarget({ inAppHistory: false, returnTo: undefined, ...QTN }),
+      { kind: 'path', path: '/tasks/quotation-requests' },
+    )
+  })
+
+  test('a crafted returnTo cannot send anyone off BOE', () => {
+    // Same validator, same refusals as Submit for Approval — the value arrives
+    // in a URL anybody can write.
+    for (const bad of [
+      'https://evil.example/steal',
+      '//evil.example',
+      '/\\evil.example',
+      '/tasks/my\twith-a-tab',
+      'javascript:alert(1)',
+      'tasks/my',
+      '/'.repeat(MAX_RETURN_PATH_LENGTH + 1),
+    ]) {
+      assert.deepEqual(
+        taskBackTarget({ inAppHistory: false, returnTo: bad, ...NORMAL }),
+        { kind: 'path', path: '/tasks/my' },
+        bad,
+      )
+    }
+  })
+})
+
+describe('Task Detail: the Back button is wired to that decision', () => {
+  const detail = read('src/app/tasks/[id]/page.tsx')
+  const button = detail.slice(detail.indexOf('aria-label="Go back"') - 1600, detail.indexOf('aria-label="Go back"'))
+
+  test('it asks taskBackTarget rather than popping blindly', () => {
+    assert.ok(button.includes('const target = taskBackTarget({'))
+    assert.ok(button.includes('inAppHistory: hasInAppHistory(),'))
+    assert.ok(button.includes('returnTo:     returnPathFromSearch(window.location.search),'))
+    assert.ok(button.includes('taskType:     task?.task_type,'))
+  })
+
+  test('the history branch still calls router.back(), so Back and Forward stay standard', () => {
+    assert.ok(button.includes("if (target.kind === 'history') { router.back(); return }"))
+  })
+
+  test('the navigating branch tells the list this counts as a return', () => {
+    assert.ok(button.indexOf('noteListReturn()') < button.indexOf('router.push(target.path)'))
   })
 })

@@ -1235,8 +1235,23 @@ function MyTasksContent() {
   )
   const { data: userMap = {} } = useUserNames(creatorIds)
 
-  // Invalidate task cache when refreshKey changes (e.g. after a task mutation elsewhere)
+  // Re-read when something ASKS for it — the Refresh button, or a return to the
+  // tab — and not merely because this component mounted.
+  //
+  // An effect keyed on `refreshKey` runs on mount too, and `refreshKey` lives in
+  // a provider at the root, so it survives navigation: arriving here always saw
+  // the same number and always invalidated. Every visit therefore issued a
+  // request, including a Back press two seconds after leaving, which is exactly
+  // what the 30-second stale window exists to avoid. Nothing was gained by it:
+  // the mutations that make this list stale — Task Detail's invalidateTaskCache,
+  // the create pages — already mark this key themselves.
+  //
+  // Comparing against the last value seen keeps every real bump working and
+  // drops only the one on mount.
+  const lastRefreshKey = useRef(refreshKey)
   useEffect(() => {
+    if (lastRefreshKey.current === refreshKey) return
+    lastRefreshKey.current = refreshKey
     if (!userId) return
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
@@ -1248,10 +1263,24 @@ function MyTasksContent() {
     resetOverrides()
   }, [allTasksRaw])
 
-  // Prefetch task detail pages for the first 15 visible tasks
+  // Warm the detail route for the rows in view — AT THE URL THAT WILL ACTUALLY
+  // BE OPENED. It warmed `/tasks/<id>` while every row opens
+  // `/tasks/<id>?returnTo=…`, and Next keys its route cache on pathname AND
+  // search (client/components/segment-cache/cache-key), so not one of those
+  // fifteen requests could ever be used: the list paid for them on every
+  // arrival and opening a task still started cold, which is precisely what
+  // tasks/[id]/loading.tsx was added to prevent. Same count, same cost, now
+  // spent on the thing that is asked for — the rule NotificationsView already
+  // follows and taskReturnPath.test.ts already pins.
+  //
+  // `returnTo` is deliberately NOT a dependency. It changes with every tab,
+  // filter and committed search term, and re-running on each would turn one
+  // batch of fifteen into a batch per keystroke — paying more to warm a route
+  // the reader has not asked for. Once per arrival, for the view they arrived
+  // on, is the trade the old code was already making.
   useEffect(() => {
     if (allTasksRaw.length === 0) return
-    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(`/tasks/${t.id}`))
+    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(taskDetailHref(t.id, returnTo)))
   }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── THE FIX FOR THE FALSE EMPTY STATE ────────────────────────────────────

@@ -14,7 +14,9 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
-import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useActiveUsers, useAllUserNames } from '@/hooks/queries/useMyTasks'
+import { useAssignedByMe, assignedByMeKey } from '@/hooks/queries/useAssignedByMe'
 import {
   CheckCircle2, ClipboardCheck, ExternalLink, Star, AlertCircle,
   Search, Pencil, Trash2, Paperclip, X,
@@ -30,13 +32,7 @@ import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-const TASK_COLUMNS = [
-  'id', 'title', 'note', 'status', 'priority', 'type',
-  'is_urgent', 'due_date', 'acknowledged_at',
-  'created_at', 'last_update_at', 'blocker_reason',
-  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
-  'assigned_to', 'created_by', 'delegated_by', 'team',
-].join(', ')
+// The column list moved to useAssignedByMe, beside the query that uses it.
 
 const TODAY_STR = new Date().toISOString().slice(0, 10)
 const NOW_MS    = Date.now()
@@ -425,7 +421,7 @@ function DelegateTaskModal({
   onError,
 }: {
   profile: UserProfile
-  allUsers: UserProfile[]
+  allUsers: { id: string; full_name: string; team: string | null }[]
   onClose: () => void
   onCreated: (task: Task) => void
   onError: (msg: string) => void
@@ -1012,13 +1008,54 @@ function EmptyState({ label }: { label: string }) {
   )
 }
 
+// ─── First-load placeholder ───────────────────────────────────────────────────
+// Rows-shaped, at the real card height and gap, so nothing shifts when the data
+// lands. It exists because the only other honest option while the first query
+// is in flight is a blank area — and the DISHONEST option, which is what this
+// page drew the moment its full-screen loader was removed, is the empty state
+// below: "No overdue tasks. You're all clear here."
+function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: number }) {
+  return (
+    <div
+      style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+      role="status"
+      aria-busy="true"
+      aria-label="Loading tasks"
+    >
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          style={{
+            border: `1.5px solid ${colors.border}`,
+            borderRadius: '8px',
+            background: colors.base,
+            minHeight: isMobile ? '62px' : '48px',
+            display: 'flex', alignItems: 'center', gap: '14px',
+            padding: isMobile ? '10px 12px' : '0 14px',
+          }}
+        >
+          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: 'rgba(0,0,0,0.06)', flexShrink: 0 }} />
+          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.06)' }} />
+          {!isMobile && (
+            <>
+              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 function AssignedByMeContent() {
-  const [loggedInId,        setLoggedInId]        = useState<string>('')
-  const [allTasks,          setAllTasks]          = useState<Task[]>([])
-  const [userId,            setUserId]            = useState<string>('')
-  const [userMap,           setUserMap]           = useState<Record<string, string>>({})
-  const [loading,           setLoading]           = useState(true)
+  // Delegate, edit and delete show their result at once and let the cache
+  // correct behind them — the same override the /tasks/my list keeps, for the
+  // same reason: a round trip should not stand between the click and the row.
+  const [taskOverrides,     setTaskOverrides]     = useState<Task[] | null>(null)
   const [selectedTask,      setSelectedTask]      = useState<Task | null>(null)
   const [editingTask,       setEditingTask]       = useState<Task | null>(null)
   const [showDelegateModal, setShowDelegateModal] = useState(false)
@@ -1043,10 +1080,45 @@ function AssignedByMeContent() {
   const queryClient = useQueryClient()
   const { viewAsUserId, exitViewMode } = useViewAs()
 
-  // Cached queries — profile and active users shared across pages
+  // ── Identity ──────────────────────────────────────────────────────────────
+  //
+  // WHAT THIS REPLACES, AND WHY EVERY ARRIVAL HERE WENT BLANK.
+  //
+  // This page resolved its own user: a mount-time effect awaited
+  // `supabase.auth.getSession()`, and only then could it ask for any task. The
+  // whole page sat behind `if (loading) return <LoadingScreen />` until that
+  // hop and the reads after it had finished — so a Back press from a task did
+  // not return to this list, it rebuilt it from nothing, module shell and all.
+  //
+  // useSignedInUserId is the shared resolution the module shell above this page
+  // has already done on the same navigation: the id comes from the stored
+  // session with no request, so it is known on the FIRST render and the task
+  // query starts immediately instead of second in a chain.
+  //
+  // Identity here is for query keys and for what is drawn. The reads run
+  // against PostgREST with the user's own JWT, so row access is decided by RLS
+  // on the server, not by this value.
+  const { data: loggedInId, isPending: idPending } = useSignedInUserId()
+  const authReady = !idPending
   const { data: profile = null } = useProfile(loggedInId)
-  const { data: activeUsersData = [] } = useActiveUsers()
-  const allUsers = activeUsersData as UserProfile[]
+  const { data: allUsers = [] } = useActiveUsers()
+
+  // View-as overrides the logged-in user, exactly as it did before.
+  const userId = viewAsUserId ?? loggedInId ?? ''
+
+  // `isPending` — not `isLoading`. A query still waiting on its `enabled` gate
+  // reports `isLoading: false` (nothing is fetching yet) while `isPending`
+  // stays true (there is no data yet), so reading `isLoading` would draw the
+  // empty state before the server had been asked anything.
+  const { data: allTasksRaw = [], isPending: tasksPending } = useAssignedByMe(userId || null)
+  const allTasks = taskOverrides ?? allTasksRaw
+  const tasksResolved = !tasksPending
+
+  // The SAME unfiltered name lookup this page always used — the drawer resolves
+  // assignees, creators, whoever a task is waiting on and activity actors from
+  // it, and any of them may since have been deactivated — but read through a
+  // cache instead of re-issued on every arrival. See useAllUserNames.
+  const { data: userMap = {} } = useAllUserNames()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1063,41 +1135,30 @@ function AssignedByMeContent() {
     }
   }, [viewAsUserId, profile]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fresh rows from the server replace any local override. Written through a
+  // named function for the same reason /tasks/my does: a bare setState in an
+  // effect body is a cascading render the lint rule rightly objects to.
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+    const resetOverrides = () => { setTaskOverrides(null) }
+    resetOverrides()
+  }, [allTasksRaw])
 
-      const lid = session.user.id
-      setLoggedInId(lid)
-      const uid = viewAsUserId ?? lid
-      setUserId(uid)
+  // Signed out — to /login. Waits for `authReady`: an unresolved context reports
+  // a null user, which is not the same answer as "there is no session".
+  useEffect(() => {
+    if (authReady && !loggedInId) router.push('/login')
+  }, [authReady, loggedInId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-      // Profile and active users are now cached by hooks — only fetch tasks + user map here
-      const [{ data: tasks }, { data: userData }] = await Promise.all([
-        supabase.from('tasks').select(TASK_COLUMNS)
-          .eq('created_by', uid)
-          .not('assigned_to', 'is', null)
-          .neq('assigned_to', uid)
-          .neq('status', 'completed')
-          .neq('status', 'cancelled')
-          .order('due_date', { ascending: true, nullsFirst: false }),
-        supabase.from('users').select('id, full_name'),
-      ])
-
-      const taskList = (tasks ?? []) as unknown as Task[]
-      setAllTasks(taskList)
-      if (userData) {
-        const map: Record<string, string> = {}
-        for (const u of userData) map[u.id] = u.full_name
-        setUserMap(map)
-      }
-      setLoading(false)
-      // Prefetch task detail pages for the first 15 tasks
-      taskList.slice(0, 15).forEach(t => router.prefetch(`/tasks/${t.id}`))
-    }
-    init()
-  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Warm the detail route for the rows in view — AT THE URL THAT WILL ACTUALLY
+  // BE OPENED. It warmed `/tasks/<id>` while every row navigates to
+  // `/tasks/<id>?returnTo=…`, and Next keys its route cache on pathname AND
+  // search, so not one of those fifteen requests could ever be used. Same
+  // count, same cost, now spent on the thing that is asked for. `returnTo` is
+  // deliberately not a dependency — see the matching note on /tasks/my.
+  useEffect(() => {
+    if (allTasksRaw.length === 0) return
+    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(taskDetailHref(t.id, returnTo)))
+  }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -1105,16 +1166,18 @@ function AssignedByMeContent() {
   }
 
   const handleTaskDelegated = (task: Task) => {
-    setAllTasks(prev => [task, ...prev])
+    setTaskOverrides(prev => [task, ...(prev ?? allTasksRaw)])
     setShowDelegateModal(false)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: assignedByMeKey(userId) })
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   const handleEditSaved = (updated: Task) => {
-    setAllTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
+    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === updated.id ? updated : t))
     setEditingTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', updated.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: assignedByMeKey(userId) })
     queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
   }
 
@@ -1128,9 +1191,10 @@ function AssignedByMeContent() {
     const { data: deleted, error } = await supabase.from('tasks').delete().eq('id', task.id).select('id')
     if (error) { console.error('[delete] Supabase error:', error.message); return }
     if (!deleted || deleted.length === 0) { console.warn('[delete] No rows deleted'); return }
-    setAllTasks(prev => prev.filter(t => t.id !== task.id))
+    setTaskOverrides(prev => (prev ?? allTasksRaw).filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: assignedByMeKey(userId) })
     queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
@@ -1168,7 +1232,7 @@ function AssignedByMeContent() {
   // dropdown reading "All Assignees". Drop the filter instead, once the tasks
   // have actually loaded.
   const assigneeIds = useMemo(() => assigneeOptions.map(o => o.value), [assigneeOptions])
-  usePruneUnknownValue(!loading, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
+  usePruneUnknownValue(tasksResolved, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
 
   const visibleTasks = useMemo(() => {
     let tasks = buckets[activeTab]
@@ -1193,7 +1257,10 @@ function AssignedByMeContent() {
 
   const activeTabColor = TABS.find(t => t.key === activeTab)?.color ?? colors.secondary
 
-  if (loading) return <LoadingScreen />
+  // NOTE: no early `return <LoadingScreen />`. Blanking the page hid the tabs,
+  // the filters and the whole module shell behind it until the first read came
+  // back — on every arrival, including a Back press that had the rows cached.
+  // The chrome now renders straight away and only the rows area waits.
 
   return (
     <>
@@ -1327,7 +1394,9 @@ function AssignedByMeContent() {
             )}
 
             {/* Task cards */}
-            {visibleTasks.length === 0 ? (
+            {!tasksResolved ? (
+              <TaskListSkeleton isMobile={isMobile} />
+            ) : visibleTasks.length === 0 ? (
               <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

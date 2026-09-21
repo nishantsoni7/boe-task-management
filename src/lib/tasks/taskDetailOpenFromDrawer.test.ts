@@ -121,13 +121,22 @@ describe('Task Detail starts its queries at mount', () => {
     assert.ok(DETAIL_CODE.includes('if (loading || (!!signedInUserId && profilePending)) return <LoadingScreen />'))
   })
 
-  test('the task, members, activity log and attachments are still loaded together', () => {
+  test('the task, its activity log and its attachments are still loaded together', () => {
     const batch = DETAIL_CODE.slice(DETAIL_CODE.indexOf('await Promise.all(['))
     for (const read of [
       "supabase.from('tasks').select('*, creator:created_by(full_name)')",
-      "supabase.from('users').select('id, full_name').eq('is_active', true)",
       "supabase.from('task_activity_log')",
       "supabase.from('task_attachments')",
     ]) assert.ok(batch.includes(read), read)
+  })
+
+  test('the active-user directory is NOT one of them — it is the shared cache entry', () => {
+    // It was the fourth read in the batch and the only one whose answer does
+    // not depend on the task: the same rows came back on every open, while the
+    // list pages beside it already held them under ['users','active'].
+    assert.ok(DETAIL_CODE.includes('const { data: activeUsers = [] } = useActiveUsers()'))
+    assert.ok(DETAIL_CODE.includes('const teamMembers = activeUsers'))
+    assert.equal(DETAIL_CODE.includes("supabase.from('users').select('id, full_name').eq('is_active', true)"), false,
+      'opening a task must not re-read the directory it already has')
   })
 })

@@ -73,16 +73,60 @@ export function useUserNames(userIds: string[]) {
   })
 }
 
-/** All active users (for admin/manager views). */
-export function useActiveUsers() {
-  return useQuery<{ id: string; full_name: string }[]>({
-    queryKey: ['users', 'active'],
+/**
+ * Every user's display name, active or not — a lookup table, not a directory.
+ *
+ * WHY IT IS NOT `useUserNames(ids)` OR `useActiveUsers()`. The task drawer
+ * resolves four different people from one row — the assignee, the creator,
+ * whoever the task is waiting on, and the actor on the latest activity entry —
+ * and any of them may have since been deactivated. A map keyed on the ids
+ * currently listed would answer "Team member" or "Someone" for the rest, and
+ * the active-user directory would lose the leavers.
+ *
+ * So this is the same unfiltered read Assigned By Me used to issue on every
+ * single arrival, kept exactly as it was and simply cached: ten minutes,
+ * because names change very rarely, which is the same window `useUserNames`
+ * already uses for the identical reason.
+ */
+export function useAllUserNames() {
+  return useQuery<Record<string, string>>({
+    queryKey: ['user-names', 'all'],
     queryFn: async () => {
       const supabase = createClient()
       const { data } = await supabase
         .from('users')
         .select('id, full_name')
+      const map: Record<string, string> = {}
+      for (const u of data ?? []) map[u.id] = u.full_name
+      return map
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  })
+}
+
+/**
+ * All active users — the one directory every task screen draws from.
+ *
+ * `team` IS PART OF IT because the assignee dropdowns render "Name — Team".
+ * Both of them (Assign Task, and Delegate on Assigned By Me) already read this
+ * hook and already printed that dash, with nothing after it, because the column
+ * was not selected. Selecting it is what lets /tasks/create stop re-reading the
+ * directory for itself on every visit.
+ *
+ * Ordered by name, so every dropdown that shares this entry is in the same
+ * order without sorting it again.
+ */
+export function useActiveUsers() {
+  return useQuery<{ id: string; full_name: string; team: string | null }[]>({
+    queryKey: ['users', 'active'],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('users')
+        .select('id, full_name, team')
         .eq('is_active', true)
+        .order('full_name')
       return data ?? []
     },
     staleTime: 10 * 60 * 1000,
