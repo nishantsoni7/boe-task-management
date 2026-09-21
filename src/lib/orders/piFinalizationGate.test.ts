@@ -1,20 +1,30 @@
 /**
- * EVERY DOOR THAT CAN FINALIZE A PI, AND WHAT HAPPENS TO THE RECORDS THAT
- * ALREADY EXIST.
+ * PHASE 1: THE MIGRATION ADDS THE GATE AND WIRES IT TO NOTHING.
  *
- * The migration's own `do $$` blocks assert all of this against a live
- * database, which is the authority. These tests read the SQL as text, so the
- * same properties are checked in review and in CI without a database — and so
- * that removing one of them from the migration fails something.
+ * This feature ships in two halves, and the order is the point.
  *
- * WHY A TEST FILE FOR A BYPASS. The first cut of this work gated
- * submit_pi_for_review and recorded in the migration header that the four
- * legacy doors were "not wrapped… no screen has called them". That was true
- * and irrelevant: all four are still `grant execute … to authenticated`, and
- * PostgREST exposes every granted function. A PI could have been finalized
- * with no salesperson and no client city by one HTTP request. The lesson is
- * that "no screen calls it" is not the same as "nobody can call it", and these
- * assertions exist so the next person cannot make the same mistake quietly.
+ *   PHASE 1 (this migration)  the three columns, the editors, the seed, and
+ *                             assert_order_submission_finalizable sitting
+ *                             inert. Purely additive.
+ *   PHASE 2 (a later, minimal five wrappers, one `perform` each.
+ *            migration)
+ *
+ * WHY, CONCRETELY. The currently deployed application has no field for
+ * client_city and no control for fabric_responsibility. Putting the seven-field
+ * assertion in front of the submission doors at the same moment the columns
+ * appear would refuse EVERY PI SUBMISSION between applying the migration and
+ * deploying the new code — for values nobody could enter — and a failed deploy
+ * would leave the Orders module unable to submit at all.
+ *
+ * SO THIS FILE PROVES THE OPPOSITE OF WHAT IT WILL PROVE LATER. Phase 1 must be
+ * invisible to the running application: every submission door exactly as it
+ * was, the gate called by none of them. The assertions that the five doors ARE
+ * gated live with the Phase 2 migration, where they will be true, rather than
+ * being asserted here against a file that deliberately does not do it.
+ *
+ * The migration's own `do $$` blocks re-derive all of this from pg_proc at
+ * apply time, which is the authority. These read the SQL as text so the same
+ * properties are checked in review and in CI without a database.
  *
  *   npx tsx --test src/lib/orders/piFinalizationGate.test.ts
  */
@@ -46,85 +56,84 @@ function body(signature: string): string {
   return SQL.slice(start, end)
 }
 
-// ── 1. Every submission door ──────────────────────────────────────────────────
-
-/**
- * The five doors that can move a PI out of draft, and the internal each hands
- * off to. Four of them are the legacy ones no screen calls and every signed-in
- * caller can still reach.
- */
+/** Every door that can move a PI out of draft, and its internal. */
 const SUBMIT_DOORS = [
-  ['submit_pi_for_review(', 'submit_pi_for_review_internal'],
-  ['submit_order_submission(', 'submit_order_submission_internal'],
-  ['submit_order_submission_with_note(', 'submit_order_submission_internal'],
-  ['submit_order_submission_with_advance(', 'submit_order_submission_advance_internal'],
-  ['submit_order_submission_with_advance_amount(', 'submit_order_submission_advance_v2_internal'],
+  'submit_pi_for_review',
+  'submit_order_submission',
+  'submit_order_submission_with_note',
+  'submit_order_submission_with_advance',
+  'submit_order_submission_with_advance_amount',
 ] as const
 
-describe('every callable finalization path runs the gate', () => {
-  for (const [door, internal] of SUBMIT_DOORS) {
-    test(`${door.slice(0, -1)} refuses an incomplete PI before doing anything`, () => {
-      const source = body(door)
-      assert.ok(source.includes('assert_order_submission_finalizable'),
-        `${door} does not run the gate`)
-      // BEFORE, not after. A refusal that arrived after the delegation would
-      // be a refusal of a submission that had already happened.
-      assert.ok(
-        source.indexOf('assert_order_submission_finalizable') < source.indexOf(internal),
-        `${door} runs the gate after the work it is meant to gate`)
-    })
-  }
+// ── 1. PHASE 1 IS INVISIBLE TO THE RUNNING APPLICATION ───────────────────────
 
-  test('and the migration asserts the same thing against the live database', () => {
-    // These tests read text; the migration re-derives it from pg_proc at apply
-    // time. Both must exist, or a hand-edited function could pass here.
-    assert.ok(SQL.includes("raise exception 'ASSERTION FAILED: % does not run the finalization gate'"))
-    assert.ok(SQL.includes('runs the gate AFTER the work it is meant to gate'))
-  })
-
-  test('THE LIST IS COMPLETE — no other granted function can submit a PI', () => {
-    // Read every migration for a submission door granted to a browser-reachable
-    // role. Any name here that the gate does not cover is a bypass.
-    const granted = new Set<string>()
-    for (const file of ALL) {
-      const sql = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
-      for (const m of sql.matchAll(
-        /grant\s+execute\s+on\s+function\s+public\.(submit_\w+)\s*\([^)]*\)\s*(?:\n\s*)?to\s+([a-z_,\s]+);/gi)) {
-        const [, name, roles] = m
-        if (!/authenticated|anon|public/i.test(roles)) continue
-        granted.add(name)
-      }
-    }
-    // Payment requests are a different module and finalize no PI.
-    const piDoors = [...granted].filter(n => !n.startsWith('submit_payment_request')).sort()
-    assert.deepEqual(piDoors, [
-      'submit_order_submission',
-      'submit_order_submission_with_advance',
-      'submit_order_submission_with_advance_amount',
-      'submit_order_submission_with_note',
-      'submit_pi_for_review',
-    ], 'a submission door exists that these tests do not know about')
-
-    for (const name of piDoors) {
-      assert.ok(SUBMIT_DOORS.some(([door]) => door.startsWith(`${name}(`)),
-        `${name} is reachable by a browser and is not gated`)
+describe('this migration is backward-compatible with the deployed application', () => {
+  test('IT RE-EMITS NO SUBMISSION DOOR', () => {
+    // The whole safety argument. A door re-emitted with the gate in front of it
+    // would refuse submissions the moment this is applied, for fields the
+    // deployed screens cannot set.
+    for (const door of SUBMIT_DOORS) {
+      assert.ok(!SQL.includes(`create or replace function public.${door}(`),
+        `${door} must not be re-emitted until the new UI is live`)
     }
   })
 
-  test('no browser-callable door was quietly opened to anon', () => {
-    for (const [door] of SUBMIT_DOORS) {
-      const name = door.slice(0, -1)
-      const re = new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${name}\\s*\\([^)]*\\)[\\s\\S]{0,40}?to\\s+([a-z_,\\s]+);`, 'gi')
-      for (const m of SQL.matchAll(re)) {
-        assert.ok(!/\banon\b|\bpublic\b/.test(m[1]), `${name} is granted to ${m[1].trim()}`)
-      }
+  test('and therefore nothing calls the gate yet', () => {
+    // The function is DEFINED — Phase 2 needs it, and defining it changes
+    // nothing — but no caller exists.
+    const calls = [...SQL.matchAll(/perform public\.assert_order_submission_finalizable/g)]
+    assert.equal(calls.length, 0,
+      'Phase 1 must define the gate and wire it to nothing')
+  })
+
+  test('it revokes nothing and narrows no grant', () => {
+    const revokes = [...SQL.matchAll(/^revoke\s+(?:all|execute)\s+on\s+function\s+public\.(\w+)/gmi)]
+      .map(m => m[1])
+    // Every revoke in this file is the `revoke … from public, anon` that
+    // immediately precedes a grant on a function this file itself creates.
+    for (const name of revokes) {
+      assert.ok(SQL.includes(`create or replace function public.${name}(`),
+        `${name} is revoked but not created here — that would narrow existing access`)
     }
+  })
+
+  test('it makes no column NOT NULL and backfills nothing', () => {
+    assert.ok(!/set not null/i.test(SQL), 'a NOT NULL would refuse every existing row')
+    assert.ok(!/^\s*update public\.order_submissions set/mi.test(
+      SQL.replace(/create or replace function[\s\S]*?\n\$\$;/g, '')),
+      'the migration body must not rewrite any row')
+  })
+
+  test('it changes no approval behaviour', () => {
+    for (const fn of ['approve_order_submission', 'approve_pi_review', 'approve_order_pi_revision']) {
+      assert.ok(!SQL.includes(`create or replace function public.${fn}`),
+        `${fn} must not be re-emitted`)
+    }
+  })
+
+  test('the one editor it DOES re-emit keeps its signature and grant', () => {
+    // update_order_submission_client_details gains client_city in its
+    // allow-list. An old caller sends ten keys and never sends the eleventh, so
+    // its behaviour is unchanged; the signature and grant must be too.
+    assert.ok(SQL.includes(
+      'create or replace function public.update_order_submission_client_details(\n  p_submission_id    uuid,\n  p_fields           jsonb,\n  p_expected_version integer default null,\n  p_reason           text default null\n)'),
+      'the signature moved, which would orphan every existing caller')
+    assert.ok(SQL.includes(
+      'grant  execute on function public.update_order_submission_client_details(uuid, jsonb, integer, text) to authenticated;'))
+  })
+
+  test('AND THE MIGRATION ASSERTS ALL OF IT AGAINST A LIVE DATABASE', () => {
+    // These read text; the migration re-derives from pg_proc at apply time.
+    assert.ok(SQL.includes('Phase 1 must leave every submission door alone'),
+      'the migration must check, at apply time, that no door gained the gate')
+    assert.ok(SQL.includes("has_function_privilege('authenticated', v_col, 'execute')"),
+      'and that each door is still callable by exactly whom it was')
   })
 })
 
-// ── 2. What the gate asks for ─────────────────────────────────────────────────
+// ── 2. The gate exists, and says the right things ────────────────────────────
 
-describe('the gate asks for the seven, and for nothing else', () => {
+describe('the gate is defined, ready for Phase 2', () => {
   const gate = body('assert_order_submission_finalizable(')
 
   for (const requirement of PI_FINALIZATION_REQUIREMENTS) {
@@ -157,22 +166,41 @@ describe('the gate asks for the seven, and for nothing else', () => {
   })
 })
 
-// ── 3. Approval is deliberately NOT gated ─────────────────────────────────────
+// ── 3. The doors Phase 2 will have to cover ──────────────────────────────────
 
-describe('approval is left alone, so existing records are not stranded', () => {
-  test('the migration re-emits no approval function', () => {
-    for (const fn of ['approve_order_submission', 'approve_pi_review', 'approve_order_pi_revision']) {
-      assert.ok(!SQL.includes(`create or replace function public.${fn}`),
-        `${fn} must not be re-emitted here`)
+describe('the bypass Phase 2 closes is enumerated, not assumed', () => {
+  test('exactly five granted functions can submit a PI', () => {
+    // Read every migration for a submission door granted to a browser-reachable
+    // role. Phase 2 must cover this list; a name appearing here that it does
+    // not cover would be a bypass left open.
+    const granted = new Set<string>()
+    for (const file of ALL) {
+      const sql = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+      for (const m of sql.matchAll(
+        /grant\s+execute\s+on\s+function\s+public\.(submit_\w+)\s*\([^)]*\)\s*(?:\n\s*)?to\s+([a-z_,\s]+);/gi)) {
+        const [, name, roles] = m
+        if (!/authenticated|anon|public/i.test(roles)) continue
+        granted.add(name)
+      }
     }
+    // Payment requests are a different module and finalize no PI.
+    const piDoors = [...granted].filter(n => !n.startsWith('submit_payment_request')).sort()
+    assert.deepEqual(piDoors, [...SUBMIT_DOORS].sort(),
+      'a submission door exists that the Phase 2 plan does not know about')
   })
 
-  test('and says why in a form a reader will find', () => {
-    assert.ok(/APPROVAL IS DELIBERATELY NOT GATED/.test(SQL))
+  test('THE GAP IS DOCUMENTED, not left for somebody to discover', () => {
+    // Between the deploy and Phase 2, the seven-field rule is the screen's
+    // alone: an ordinary user cannot submit an incomplete PI, but a direct
+    // PostgREST call to one of the five doors can. That window is deliberate
+    // and time-boxed, and the file has to say so.
+    assert.ok(/KNOWN, TIME-BOXED GAP/.test(SQL),
+      'the migration must name the window it leaves open')
+    assert.ok(/PHASE 2/.test(SQL), 'and say what closes it')
   })
 })
 
-// ── 4. What happens to the records that already exist ─────────────────────────
+// ── 4. What happens to the records that already exist ────────────────────────
 
 describe('existing records after this migration', () => {
   test('NO COLUMN BACKFILLS HISTORY — the default is set in its own statement', () => {
@@ -227,7 +255,7 @@ describe('existing records after this migration', () => {
   })
 })
 
-// ── 5. A re-upload never undoes a person ──────────────────────────────────────
+// ── 5. A re-upload never undoes a person ─────────────────────────────────────
 
 describe('re-uploading a workbook does not overwrite an answer', () => {
   const seed = body('seed_order_submission_pi_terms(')
@@ -303,7 +331,7 @@ describe('the migration is structurally sound', () => {
     const closes = [...all(/^\$\$;$/gm), ...all(/^end \$\$;$/gm)]
     assert.equal(opens.length, closes.length,
       `${opens.length} bodies open and ${closes.length} close`)
-    assert.ok(opens.length >= 10, 'this migration defines several functions and assertion blocks')
+    assert.ok(opens.length >= 6, 'this migration defines several functions and assertion blocks')
   })
 
   test('NO DELIMITER LOST A DOLLAR', () => {
@@ -313,20 +341,14 @@ describe('the migration is structurally sound', () => {
     assert.ok(!/^do \$$/m.test(SQL), 'an anonymous block opens with a single dollar')
   })
 
-  test('every function it creates is one this work owns', () => {
-    const created = [...SQL.matchAll(/create or replace function public\.(\w+)/g)]
-      .map(m => m[1])
+  test('every function it creates is one Phase 1 owns', () => {
+    const created = [...SQL.matchAll(/create or replace function public\.(\w+)/g)].map(m => m[1])
     assert.deepEqual([...new Set(created)].sort(), [
       'assert_order_submission_finalizable',
       'seed_order_submission_pi_terms',
-      'submit_order_submission',
-      'submit_order_submission_with_advance',
-      'submit_order_submission_with_advance_amount',
-      'submit_order_submission_with_note',
-      'submit_pi_for_review',
       'update_order_submission_client_details',
       'update_order_submission_pi_terms',
-    ], 'this migration re-emits a function it should not')
+    ], 'Phase 1 creates a function it should not — a submission door, perhaps')
   })
 
   test('and every one of them is SECURITY DEFINER with a pinned search_path', () => {

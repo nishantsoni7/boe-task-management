@@ -714,7 +714,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/orders/drafts/draftsAccess.test.ts',
     'src/app/orders/import/importAccess.test.ts',
     'src/app/api/orders/import/salespersonContact.test.ts',
-    'src/lib/orders/submissionReplySchema.test.ts',
   ])
 
   test('the Draft PI allowance names files, never a directory', () => {

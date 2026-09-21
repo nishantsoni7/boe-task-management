@@ -93,32 +93,36 @@
 -- them could take. Everything here is checked at SUBMISSION, against the STORED
 -- COLUMNS, so a hand-corrected draft passes on its own merits.
 --
--- THE GATE IS ON EVERY DOOR THAT CAN FINALIZE A PI, not only on the one the
--- screen uses. submit_pi_for_review is what the browser sends, and the four
--- legacy doors — submit_order_submission, _with_note, _with_advance and
--- _with_advance_amount — are all still granted to `authenticated`, so
--- PostgREST exposes every one of them to any signed-in caller. All five now
--- run assert_order_submission_finalizable first and then delegate to their
--- own UNCHANGED internal. See the four doors in §4 for why they are gated
--- rather than revoked.
+-- ── PHASE 1 OF TWO, AND THE ORDER IS THE POINT ─────────────────────────────
 --
--- APPROVAL IS DELIBERATELY NOT GATED. approve_order_submission and
+-- THIS FILE ENFORCES NOTHING. It adds the columns, the editors and the gate
+-- FUNCTION; it does not put that gate in front of any submission door. A
+-- separate, minimal migration does that, after the new Draft PI screen is live
+-- in production and verified.
+--
+-- WHY, CONCRETELY. The deployed application has no field for client_city and
+-- no control for fabric_responsibility. Enforcing the seven fields at the same
+-- moment the columns appear would refuse EVERY PI SUBMISSION in the window
+-- between applying the migration and deploying the new code — for values
+-- nobody could enter — and a failed deploy would leave the Orders module
+-- unable to submit at all.
+--
+-- Each half is therefore safe on its own. Applying this file to production
+-- today changes nothing the current application does: three nullable columns
+-- with no backfill, one editor that gained a field old callers never send, one
+-- new editor nothing calls yet, one service-role seed, and an inert function.
+-- §5 asserts exactly that, door by door.
+--
+-- APPROVAL IS NOT GATED IN EITHER PHASE. approve_order_submission and
 -- approve_pi_review decide a PI that was already submitted, and PIs submitted
--- before this file existed carry none of the new fields. Gating approval would
--- strand them: a record that is legitimately awaiting a decision could never
--- receive one. The rule applies where a PI BECOMES final, which is submission.
---
--- NO TABLE-LEVEL CHECK, and that is a decision, not an oversight. A CHECK over
--- `status not in ('draft','needs_changes')` would be the stronger guarantee,
--- and it would also refuse the next ordinary UPDATE of every PI already
--- submitted — a finance verification, a PI approval — because those rows carry
--- no city and no fabric answer and never will. A constraint that breaks
--- existing records in order to enforce a new rule on new ones is not worth
--- having.
+-- before this feature carry none of the new fields. Gating approval would
+-- strand them: a record legitimately awaiting a decision could never receive
+-- one. The rule belongs where a PI BECOMES final, which is submission.
 --
 -- ── WHAT THIS DOES NOT TOUCH ───────────────────────────────────────────────
 --
--- No PI number, no order number, no figure, no total, no status, no payment,
+-- No submission door, no PI number, no order number, no figure, no total, no
+-- status, no payment,
 -- no allocation, no document file, no policy, no grant to anon, no existing
 -- product row. submit_pi_for_review_internal, approve_order_submission,
 -- replace_order_submission_parse and update_order_submission_schedule_terms
@@ -971,160 +975,38 @@ revoke all    on function public.assert_order_submission_finalizable(uuid) from 
 grant  execute on function public.assert_order_submission_finalizable(uuid) to authenticated;
 
 
--- ── The door ────────────────────────────────────────────────────────────────
+-- ── AND NOTHING CALLS IT YET ────────────────────────────────────────────────
 --
--- The same signature, the same delegation, one assertion in front of it. It
--- becomes plpgsql only because a `language sql` body cannot sequence a check
--- before a call; submit_pi_for_review_internal is NOT re-emitted, and every
--- rule it holds — the verified-payment route, the reason on the reduced route,
--- the parse, workbook, product and image completeness checks — is untouched.
-
-create or replace function public.submit_pi_for_review(
-  p_submission_id uuid,
-  p_note          text default null,
-  p_reason        text default null,
-  p_payment_terms text default null,
-  p_billing_terms text default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  perform public.assert_order_submission_finalizable(p_submission_id);
-  return public.submit_pi_for_review_internal(
-    p_submission_id, p_note, p_reason, p_payment_terms, p_billing_terms);
-end;
-$$;
-
-comment on function public.submit_pi_for_review(uuid, text, text, text, text) is
-  'Submits a PI for management review. FIRST refuses anything a finalized PI must say and does not — date of creation, salesperson, salesperson contact number, client name, client city, fabric responsibility, commercial terms note — naming the one field at fault. THEN the unchanged implementation: the database decides the route from FINANCE-VERIFIED payment; at or above 40% of the grand total it is the standard route, below it — zero included — a reason and Payment Terms are mandatory and a reduced-payment exception is raised. Assigns no Order number and creates no payment.';
-
-revoke all    on function public.submit_pi_for_review(uuid, text, text, text, text) from public, anon;
-grant  execute on function public.submit_pi_for_review(uuid, text, text, text, text) to authenticated;
-
-
-
-
--- ── THE FOUR LEGACY DOORS ───────────────────────────────────────────────────
+-- THE GATE IS DEFINED HERE AND WIRED UP IN A SEPARATE MIGRATION, after the new
+-- Draft PI screen is live in production and verified. That ordering is the
+-- whole reason this file is split, and it is not caution for its own sake.
 --
--- THEY ARE NOT UNREACHABLE, and the first cut of this file said they were.
--- That was wrong, and checking rather than assuming is what found it:
+-- THE RELEASE HAZARD IT AVOIDS. The currently deployed application has no way
+-- to set client_city or fabric_responsibility — the fields do not exist on its
+-- screens. If this migration also put the seven-field assertion in front of the
+-- submission doors, then between applying it and deploying the new code EVERY
+-- PI SUBMISSION WOULD BE REFUSED, for a value nobody could supply. A failed or
+-- delayed deploy would leave the Orders module unable to submit anything, and
+-- the only way out would be a second emergency migration.
 --
---   grant execute on function public.submit_order_submission(uuid) to authenticated;
---   grant execute on function public.submit_order_submission_with_note(uuid, text) to authenticated;
---   grant execute on function public.submit_order_submission_with_advance(...) to authenticated;
---   grant execute on function public.submit_order_submission_with_advance_amount(...) to authenticated;
+-- So the two halves are ordered so that each is safe alone:
 --
--- Every one of those grants is live. NO SCREEN HAS CALLED THEM since
--- 20260921000000 — the browser sends submit_pi_for_review and nothing else —
--- but PostgREST exposes every granted function, so any signed-in caller can
--- reach them directly. A gate that only the current screen honours is not a
--- gate; it is a habit. A PI could have been finalized with no salesperson, no
--- client city and no fabric answer by one HTTP request.
+--   PHASE 1 (this file)  purely additive. Three nullable columns with no
+--                        backfill, one editor extended by one field, one new
+--                        editor, one service-role seed, and this gate sitting
+--                        inert. The deployed application cannot tell it ran.
 --
--- WHY THEY ARE GATED AND NOT REVOKED. Revoking is the tidier-looking option
--- and the riskier one: these are the doors an older browser tab still holds,
--- and a client mid-deploy that met a sudden 42501 would look like a broken
--- product rather than an upgrade. 20260921000000 kept them deliberately, for
--- exactly that reason, and this file does not overturn that decision — it
--- makes them agree with the current one. Retiring them is its own change, on
--- its own day, once nothing can be holding them.
+--   PHASE 2 (later)      five wrappers, one `perform` each. Nothing else.
+--                        Applied once the new UI is confirmed to populate the
+--                        seven fields, at which point the assertion refuses
+--                        only what the screen already refuses.
 --
--- ONE LINE EACH, AND NOTHING ELSE MOVES. Each door keeps its signature, its
--- grant, its comment and its delegation; the assertion runs BEFORE the
--- delegation, so a refusal happens before any state is touched. The four
--- internals they call — submit_order_submission_internal,
--- submit_order_submission_advance_internal and
--- submit_order_submission_advance_v2_internal — are NOT re-emitted here and
--- keep every rule they have.
-
-create or replace function public.submit_order_submission(p_submission_id uuid)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  perform public.assert_order_submission_finalizable(p_submission_id);
-  return public.submit_order_submission_internal(p_submission_id, null);
-end;
-$$;
-
-create or replace function public.submit_order_submission_with_note(
-  p_submission_id uuid,
-  p_note          text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  perform public.assert_order_submission_finalizable(p_submission_id);
-  return public.submit_order_submission_internal(p_submission_id, p_note);
-end;
-$$;
-
-create or replace function public.submit_order_submission_with_advance(
-  p_submission_id     uuid,
-  p_note              text,
-  p_advance_condition text,
-  p_advance_percent   numeric,
-  p_advance_reason    text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  perform public.assert_order_submission_finalizable(p_submission_id);
-  return public.submit_order_submission_advance_internal(
-    p_submission_id, p_note, true, p_advance_condition, p_advance_percent, p_advance_reason);
-end;
-$$;
-
-create or replace function public.submit_order_submission_with_advance_amount(
-  p_submission_id     uuid,
-  p_note              text,
-  p_advance_condition text,
-  p_advance_amount    numeric,
-  p_advance_reason    text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  perform public.assert_order_submission_finalizable(p_submission_id);
-  return public.submit_order_submission_advance_v2_internal(
-    p_submission_id, p_note, 'amount', p_advance_condition, p_advance_amount, p_advance_reason);
-end;
-$$;
-
--- The grants are RE-STATED rather than changed, so this file is explicit about
--- who can still reach these doors: exactly who could before, under the new
--- gate. Nothing is granted that was not granted, and anon keeps nothing.
-revoke all    on function public.submit_order_submission(uuid) from public, anon;
-grant  execute on function public.submit_order_submission(uuid) to authenticated;
-revoke all    on function public.submit_order_submission_with_note(uuid, text) from public, anon;
-grant  execute on function public.submit_order_submission_with_note(uuid, text) to authenticated;
-revoke all    on function public.submit_order_submission_with_advance(uuid, text, text, numeric, text) from public, anon;
-grant  execute on function public.submit_order_submission_with_advance(uuid, text, text, numeric, text) to authenticated;
-revoke all    on function public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text) from public, anon;
-grant  execute on function public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text) to authenticated;
-
-comment on function public.submit_order_submission(uuid) is
-  'Legacy submission door, kept for a client mid-deploy. Refuses a PI missing anything a finalized PI must say (assert_order_submission_finalizable), then delegates unchanged to submit_order_submission_internal. No screen calls it.';
-comment on function public.submit_order_submission_with_note(uuid, text) is
-  'Legacy submission door carrying the employee''s reply. Refuses a PI missing anything a finalized PI must say, then delegates unchanged. No screen calls it.';
-comment on function public.submit_order_submission_with_advance(uuid, text, text, numeric, text) is
-  'Legacy submission door carrying a declared advance PERCENTAGE. Refuses a PI missing anything a finalized PI must say, then delegates unchanged. No screen calls it.';
-comment on function public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text) is
-  'Legacy submission door carrying a declared advance AMOUNT. Refuses a PI missing anything a finalized PI must say, then delegates unchanged. No screen calls it.';
+-- BETWEEN THE TWO, THE RULE IS THE SCREEN'S ALONE. piReadiness lists every
+-- missing field and the submit control is refused without them, so an ordinary
+-- user cannot submit an incomplete PI. What is NOT closed in that window is a
+-- direct PostgREST call to one of the five granted doors — the bypass this
+-- feature exists to shut. It is a KNOWN, TIME-BOXED GAP, open only between the
+-- deploy and Phase 2, and it is no wider than the gap that exists today.
 
 -- ═══ 5. What this migration promises, checked here ══════════════════════════
 
@@ -1268,41 +1150,41 @@ begin
       'ASSERTION FAILED: the gate refuses a deliberate ''not_selected'', which is one of the three offered answers';
   end if;
 
-  -- ── EVERY DOOR THAT CAN FINALIZE A PI RUNS THE GATE, AND RUNS IT FIRST ──
+  -- ── NO SUBMISSION DOOR WAS TOUCHED, AND THE GATE IS NOT WIRED IN ──
   --
-  -- Not just the one the screen uses. Each of these is granted to
-  -- `authenticated` and therefore reachable through PostgREST by any signed-in
-  -- caller; a gate on one of five is not a gate. The second check is the one
-  -- that matters most: the assertion must come BEFORE the delegation, or a
-  -- refusal would arrive after the submission had already happened.
-  for v_col, v_inner in
-    select * from (values
-      ('public.submit_pi_for_review(uuid, text, text, text, text)',                        'submit_pi_for_review_internal'),
-      ('public.submit_order_submission(uuid)',                                             'submit_order_submission_internal'),
-      ('public.submit_order_submission_with_note(uuid, text)',                             'submit_order_submission_internal'),
-      ('public.submit_order_submission_with_advance(uuid, text, text, numeric, text)',     'submit_order_submission_advance_internal'),
-      ('public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text)', 'submit_order_submission_advance_v2_internal')
-    ) as t(door, inner_fn)
+  -- The property Phase 1 has to prove is the OPPOSITE of the one Phase 2 will:
+  -- that applying this file changes nothing the deployed application does. So
+  -- every door is checked to be exactly what it was, and the gate is checked
+  -- to be called by none of them.
+  for v_col in
+    select unnest(array[
+      'public.submit_pi_for_review(uuid, text, text, text, text)',
+      'public.submit_order_submission(uuid)',
+      'public.submit_order_submission_with_note(uuid, text)',
+      'public.submit_order_submission_with_advance(uuid, text, text, numeric, text)',
+      'public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text)'
+    ])
   loop
     v_def := pg_get_functiondef(v_col::regprocedure);
-    if v_def not like '%assert_order_submission_finalizable%' then
-      raise exception 'ASSERTION FAILED: % does not run the finalization gate', v_col;
+    if v_def like '%assert_order_submission_finalizable%' then
+      raise exception
+        'ASSERTION FAILED: % runs the finalization gate. Phase 1 must leave every submission door alone — the deployed UI cannot supply the fields it would demand.', v_col;
     end if;
-    if position('assert_order_submission_finalizable' in v_def) > position(v_inner in v_def) then
-      raise exception 'ASSERTION FAILED: % runs the gate AFTER the work it is meant to gate', v_col;
-    end if;
-    -- And none of them quietly became reachable by anon.
-    if has_function_privilege('anon', v_col, 'execute') then
-      raise exception 'ASSERTION FAILED: anon can reach %', v_col;
+    -- And each is still reachable by exactly whom it was.
+    if not has_function_privilege('authenticated', v_col, 'execute') then
+      raise exception 'ASSERTION FAILED: % is no longer callable by authenticated', v_col;
     end if;
   end loop;
 
-  -- APPROVAL IS NOT GATED, and that is deliberate: a PI submitted before this
-  -- file existed carries none of the new fields and must still be decidable.
+  -- THE GATE EXISTS, ready for Phase 2, and is called by nothing.
+  if to_regprocedure('public.assert_order_submission_finalizable(uuid)') is null then
+    raise exception 'ASSERTION FAILED: the finalization gate was not created';
+  end if;
+
+  -- APPROVAL IS UNTOUCHED, in this phase and the next.
   v_def := pg_get_functiondef('public.approve_order_submission(uuid)'::regprocedure);
   if v_def like '%assert_order_submission_finalizable%' then
-    raise exception
-      'ASSERTION FAILED: approval runs the finalization gate, which would strand every PI submitted before this migration';
+    raise exception 'ASSERTION FAILED: approval runs the finalization gate';
   end if;
 
   -- ── THE IMPLEMENTATION IS UNTOUCHED ──
