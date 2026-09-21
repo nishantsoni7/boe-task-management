@@ -16,6 +16,8 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { useQueryClient } from '@tanstack/react-query'
+import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 
 // Every quotation request is assigned to this user (resolved by email at init).
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
@@ -54,6 +56,7 @@ export default function NewQuotationRequestPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
@@ -211,6 +214,13 @@ export default function NewQuotationRequestPage() {
         created_by: session.user.id,
       })
     }
+
+    // The list caches its rows, so the request just raised would not be in the
+    // cached copy the user lands on next. Marking it stale is what puts the new
+    // row there — without it, a brand new quotation request could be missing from
+    // the list for the length of the stale window, which is the one moment the
+    // person is certain to go looking for it.
+    queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
 
     // Reset
     setCustomerName('');  setContactNumber(''); setPriority('medium')

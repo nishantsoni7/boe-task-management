@@ -36,6 +36,7 @@ import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, 
 import { perfTrack } from '@/lib/perf'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
+import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
 import { defaultTaskListPath, returnPathFromSearch } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
@@ -322,6 +323,14 @@ export default function TaskDetailPage() {
   const invalidateTaskCache = (assignedTo: string) => {
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', assignedTo] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
+    // Quotation Requests reads the same rows under its own key, and it is the
+    // list a quotation is opened from — so it is exactly the one a mutation here
+    // would otherwise send the user back to holding a stale status. Invalidating
+    // (not removing) keeps the cached rows on screen for the first frame and
+    // corrects them behind the user. Keyed by prefix, without the user id: this
+    // tab only ever holds the signed-in user's entry, so a prefix cannot reach
+    // anyone else's data and cannot miss theirs.
+    queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
   }
 
 
@@ -967,6 +976,13 @@ export default function TaskDetailPage() {
         try {
           const { error } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
           if (error) console.error('[saveComment] last_update_at bump failed (freshness only):', error.message)
+          // Quotation Requests ORDERS BY this column (last_update_at ?? created_at),
+          // and it caches its rows — so a commented-on quotation would keep its old
+          // position in that list until the entry aged out. The broader
+          // invalidateTaskCache is deliberately NOT used here: a comment is not a
+          // status change, and My Tasks and Today's Focus have never refetched for
+          // one. This narrows to the list whose ordering actually moved.
+          else queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
         } catch (e) {
           console.error('[saveComment] last_update_at bump threw (freshness only):', e)
         }
