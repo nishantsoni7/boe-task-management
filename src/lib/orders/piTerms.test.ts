@@ -35,7 +35,7 @@ import {
 import { piReadiness, PI_FINALIZATION_REQUIREMENTS } from './piReadiness'
 import { buildConfirmedPdfModel } from './confirmedPdf'
 import { buildHeaderRows, buildOrderInformationRows } from '@/lib/pi/previewView'
-import { buildOverviewMeta } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { buildSubmissionContext } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import type { PiHeader } from '@/lib/pi/types'
 
 /** A header with nothing in it: these tests are about LABELS, not values. */
@@ -599,12 +599,19 @@ describe('every surface calls the salesperson the salesperson', () => {
     assert.ok(!rows.some(r => r.label === 'Created by'))
   })
 
-  test('the PI detail strip, unchanged', () => {
-    const meta = buildOverviewMeta({
-      salesperson: 'Dhruv', salespersonPhone: '+91 83023 68420',
-      submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
+  test('the PI detail page, which now says it in its context row', () => {
+    // The four-item strip under the client name is gone; the salesperson it
+    // named leads the context row instead. WHAT IT IS CALLED did not move.
+    const context = buildSubmissionContext({
+      status: 'submitted', salesperson: 'Dhruv',
+      submitterName: 'Priya Rao', submittedAt: '03 Aug 2026',
+      createdOn: '01 Aug 2026', piApprovedLine: null, rejectedLine: null, hasOrder: false,
     })
-    assert.equal(meta[0].label, 'Salesperson')
+    assert.equal(context.salesperson, 'Dhruv')
+    const sections = readFileSync(
+      join(process.cwd(), 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'), 'utf8')
+    assert.ok(sections.includes('{SALESPERSON_LABEL}'),
+      'and it is drawn under the one shared label, never a second word for it')
   })
 
   test('and the generated PDF', () => {
@@ -623,9 +630,15 @@ describe('every surface calls the salesperson the salesperson', () => {
       upload: { by: 'Priya Rao', at: '01 Aug 2026' },
     })
     assert.ok(rows.some(r => r.label === 'Uploaded by'))
-    const meta = buildOverviewMeta({
-      salesperson: 'Dhruv', submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
+    const context = buildSubmissionContext({
+      status: 'submitted', salesperson: 'Dhruv',
+      submitterName: 'Priya Rao', submittedAt: '03 Aug 2026',
+      createdOn: '01 Aug 2026', piApprovedLine: null, rejectedLine: null, hasOrder: false,
     })
-    assert.ok(meta.some(m => m.label === 'PI submitted by'))
+    // TWO PEOPLE, TWO FIELDS. The context row prints the submitter under
+    // "Submitted by" and the salesperson under "Salesperson"; neither is ever
+    // filled from the other.
+    assert.equal(context.submittedBy, 'Priya Rao')
+    assert.equal(context.salesperson, 'Dhruv')
   })
 })

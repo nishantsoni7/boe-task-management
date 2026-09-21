@@ -40,6 +40,7 @@ import {
   PiContextRow,
   PiLowerGrid,
   PiPaymentStatusCard,
+  PiPaymentStatusCardView,
   PiSummaryCard,
   PiStoredCopyNote,
   PiWarningPanel,
@@ -49,12 +50,21 @@ import {
 import {
   BILLING_NOT_DECLARED_LABEL,
   BILLING_VALUE_LABEL,
+  CLIENT_CONTACT_LABEL,
+  CLIENT_FACT_ABSENT,
+  CLIENT_LOCATION_LABEL,
+  CREATED_LABEL,
+  PAYMENT_COLLAPSED_HINT,
+  PAYMENT_PANEL_ID,
+  PAYMENT_STATUS_TITLE,
   RESERVED_ORDER_LABEL,
+  SALESPERSON_ABSENT,
+  SUBMISSION_CELL_HEADING,
+  SUBMITTED_BY_LABEL,
   barWidth,
   buildBillingSummary,
   buildBreakdownView,
   buildClientDetails,
-  buildOverviewMeta,
   buildPaymentStatusView,
   buildSubmissionContext,
   NOT_PROVIDED,
@@ -69,6 +79,7 @@ import {
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
+import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 import { RESERVE_ACTION_LABEL, type ReservationView } from '@/lib/orders/orderNumberReservation'
 import {
   APPROVED_ORDER_HEADING,
@@ -366,8 +377,10 @@ const HELD: ReservationView = {
 
 const contextHtml = (over: {
   status?: string
+  salesperson?: string | null
   submittedAt?: string | null
   submitterName?: string | null
+  createdOn?: string | null
   finance?: { verified: boolean; text: string } | null
   piApprovedLine?: string | null
   rejectedLine?: string | null
@@ -388,8 +401,10 @@ const contextHtml = (over: {
       copied={over.copied ?? false}
       context={buildSubmissionContext({
         status,
+        salesperson: over.salesperson === undefined ? 'Dhruv Mehta' : over.salesperson,
         submitterName: over.submitterName === undefined ? 'Nishant Soni' : over.submitterName,
         submittedAt: over.submittedAt === undefined ? '03 Aug 2026, 09:30 am' : over.submittedAt,
+        createdOn: over.createdOn === undefined ? '02 Sep 2026' : over.createdOn,
         piApprovedLine: over.piApprovedLine ?? null,
         rejectedLine: over.rejectedLine ?? null,
         hasOrder: false,
@@ -406,8 +421,10 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.ok(html.includes('class="pi-detail-context"'))
     assert.equal((html.match(/class="pi-detail-context-cell"/g) ?? []).length, 2)
     const t = text(html)
-    assert.ok(t.indexOf(RESERVED_ORDER_LABEL) < t.indexOf(WORKFLOW_HEADING.submitted),
-      'Reserved Order no. on the left, Submitted for review on the right')
+    assert.ok(t.indexOf(RESERVED_ORDER_LABEL) < t.indexOf(SALESPERSON_LABEL),
+      'Reserved Order no. on the left, who the PI is from on the right')
+    assert.ok(html.includes(`aria-label="${SUBMISSION_CELL_HEADING}"`),
+      'and the whole cell is named for assistive technology, not just its first label')
   })
 
   test('the number is prominent, copyable, and explained in exactly one line', () => {
@@ -436,14 +453,47 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.ok(t.includes('Confirmed Order number 0521'))
   })
 
-  test('submitted: the badge, who, when, and the review line', () => {
+  test('THE SALESPERSON LEADS, and the badge sits beside them', () => {
+    const html = contextHtml()
+    const t = text(html)
+    assert.ok(t.includes(SALESPERSON_LABEL), 'the small label says whose name this is')
+    assert.ok(t.includes('Dhruv Mehta'), 'and the name the PI itself carries is shown')
+    assert.ok(html.includes('class="pi-detail-context-name"'), 'at the cell headline weight')
+    assert.ok(t.includes('Submitted for Review'), 'the status badge is on the same line')
+    const head = html.slice(html.indexOf('class="pi-detail-context-head"'))
+    assert.ok(head.indexOf('Dhruv Mehta') < head.indexOf('Submitted for Review'),
+      'name first, badge after it')
+  })
+
+  test('the SUBMITTER is named separately — never borrowed from the salesperson', () => {
     const t = text(contextHtml())
-    for (const part of [
-      'Submitted for Review', 'Nishant Soni', '03 Aug 2026, 09:30 am',
-      'Awaiting management review',
-    ]) {
-      assert.ok(t.includes(part), `${part} missing`)
-    }
+    assert.ok(t.includes(`${SUBMITTED_BY_LABEL} Nishant Soni`))
+    assert.ok(t.includes('03 Aug 2026, 09:30 am'), 'with when they submitted it')
+    // Two different people, each printed once under their own label.
+    assert.equal(t.split('Dhruv Mehta').length - 1, 1)
+    assert.equal(t.split('Nishant Soni').length - 1, 1)
+  })
+
+  test('the CREATED DATE is here, where the PI is described', () => {
+    const t = text(contextHtml({ createdOn: '02 Sep 2026' }))
+    assert.ok(t.includes(`${CREATED_LABEL} 02 Sep 2026`))
+    // A record with no date at all prints no labelled hole.
+    assert.ok(!text(contextHtml({ createdOn: null })).includes(CREATED_LABEL))
+  })
+
+  test('a PI that named no salesperson says so quietly, and still shows the rest', () => {
+    const t = text(contextHtml({ salesperson: null }))
+    assert.ok(t.includes(SALESPERSON_ABSENT))
+    assert.ok(t.includes(`${SUBMITTED_BY_LABEL} Nishant Soni`))
+    // An em dash is the workbook's "nothing here", not a name.
+    assert.ok(text(contextHtml({ salesperson: '—' })).includes(SALESPERSON_ABSENT))
+  })
+
+  test('the review line is still there, and no finance status joins it', () => {
+    const t = text(contextHtml())
+    assert.ok(t.includes('Awaiting management review'))
+    assert.ok(!t.includes('Finance'), 'nothing PR #186 removed comes back')
+    assert.ok(!t.includes('Verified by'))
   })
 
   test('a standing PI decision reads as such, and no finance line joins it', () => {
@@ -456,7 +506,7 @@ describe('the context row puts the reserved number beside where review stands', 
   })
 
   test('a draft says it has not been submitted, and raises no finance question', () => {
-    const t = text(contextHtml({ status: 'draft', submittedAt: null }))
+    const t = text(contextHtml({ status: 'draft', submittedAt: null, submitterName: null }))
     assert.ok(t.includes('Not submitted yet'))
     assert.ok(!t.includes('Finance'), 'no finance line exists on any record')
     assert.ok(t.includes('Draft — not yet with management'))
@@ -465,7 +515,7 @@ describe('the context row puts the reserved number beside where review stands', 
   test('every state has its own words, and colour is never the only channel', () => {
     const line = (status: string, extra: Partial<Parameters<typeof buildSubmissionContext>[0]> = {}) =>
       buildSubmissionContext({
-        status, submitterName: 'N', submittedAt: 'x',
+        status, salesperson: 'D', submitterName: 'N', submittedAt: 'x', createdOn: '01 Aug 2026',
         piApprovedLine: null, rejectedLine: null, hasOrder: false, ...extra,
       }).lines[0]
     assert.deepEqual(line('needs_changes'), { key: 'review', label: 'Review', text: 'Returned for changes', tone: 'amber' })
@@ -496,7 +546,6 @@ const summaryHtml = (over: {
   canEditDetails?: boolean
   onRequestCorrection?: (() => void) | null
   missingSummary?: string | null
-  meta?: ReturnType<typeof buildOverviewMeta>
   workbookName?: string | null
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
@@ -506,9 +555,6 @@ const summaryHtml = (over: {
     onRequestCorrection={over.onRequestCorrection ?? null}
     missingSummary={over.missingSummary ?? null}
     workbookName={over.workbookName === undefined ? 'Kalyan-PI-Aug.xlsx' : over.workbookName}
-    meta={over.meta ?? buildOverviewMeta({
-      salesperson: 'Nishant Soni', submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
-    })}
     onOpenClient={() => {}}
     client={buildClientDetails(over.client ?? {
       clientName: 'Kalyan Interiors',
@@ -528,64 +574,67 @@ const summaryHtml = (over: {
   />,
 )
 
-describe('the overview names each person once, under one established label each', () => {
-  test('Salesperson, their number, PI submitted by, Created date — in that order', () => {
-    const meta = buildOverviewMeta({
-      salesperson: 'Nishant Soni',
-      salespersonPhone: '+91 98200 11223',
-      submitterName: 'Priya Rao',
-      createdOn: '01 Aug 2026',
-    })
-    assert.deepEqual(meta.map(m => m.label),
-      ['Salesperson', 'Salesperson contact', 'PI submitted by', 'Created date'])
-    assert.deepEqual(meta.map(m => m.value),
-      ['Nishant Soni', '+91 98200 11223', 'Priya Rao', '01 Aug 2026'])
-  })
-
-  test('THE NUMBER SITS UNDER THE SALESPERSON, because it is theirs', () => {
-    // order_submissions.contact_number is the BOE-side number at workbook
-    // G22, and the PI prints it so a client can reach the person running
-    // their order. It used to lead the CLIENT’s contact line, which made
-    // "call the client" dial BOE. It is required before the PI can be
-    // submitted, so its absence is said as a request rather than a shrug.
-    const meta = buildOverviewMeta({
-      salesperson: 'Nishant Soni', salespersonPhone: null,
-      submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
-    })
-    assert.equal(meta[1].label, 'Salesperson contact')
-    assert.equal(meta[1].value, null)
-    assert.equal(meta[1].absent, 'Not given')
-  })
-
-  test('the salesperson is the name the PI carries — never borrowed from the submitter', () => {
-    const meta = buildOverviewMeta({ salesperson: null, submitterName: 'Priya Rao', createdOn: '01 Aug 2026' })
-    assert.equal(meta[0].value, null)
-    assert.equal(meta[0].absent, 'Not named')
-    assert.equal(meta[2].value, 'Priya Rao', 'the submitter is named once, under its own label')
-  })
-
-  test('an unsubmitted PI says so, and a dash is never a value', () => {
-    const meta = buildOverviewMeta({ salesperson: '—', salespersonPhone: '—', submitterName: null, createdOn: '  ' })
-    assert.deepEqual(meta.map(m => m.value), [null, null, null, null])
-    assert.equal(meta[2].absent, 'Not submitted yet')
-  })
-
-  test('the strip renders every label once, with its icon hidden from assistive technology', () => {
-    const html = summaryHtml()
-    const t = text(html)
-    // 'Salesperson' is a PREFIX of 'Salesperson contact', so it is counted by
-    // splitting on the longer label first and checking what is left.
-    assert.equal(t.split('Salesperson contact').length - 1, 1, 'Salesperson contact appears once')
-    const withoutPhoneLabel = t.split('Salesperson contact').join('·')
-    assert.equal(withoutPhoneLabel.split('Salesperson').length - 1, 1, 'Salesperson appears once')
-    for (const label of ['PI submitted by', 'Created date']) {
-      assert.equal(t.split(label).length - 1, 1, `${label} appears once`)
+describe('the card headed by the client name carries the CLIENT, and nobody else', () => {
+  test('THE BOE SIDE IS GONE from under the client name', () => {
+    const t = text(summaryHtml())
+    // Each of these used to sit in a four-item strip under the client's name,
+    // where three BOE facts and a date read as the client's own.
+    for (const gone of ['Salesperson', 'Salesperson contact', 'PI submitted by', 'Created date']) {
+      assert.ok(!t.includes(gone), `${gone} belongs to the context row now, not to the client`)
     }
     for (const retired of ['PI created by', 'Sales candidate', 'Sales Candidate', 'Assignee']) {
       assert.ok(!t.includes(retired), `${retired} is a second word for somebody already named`)
     }
+  })
+
+  test('the salesperson’s number is nowhere near the client’s contact line', () => {
+    // order_submissions.contact_number is the BOE-side number at workbook G22.
+    // It is the one value that must never be printed as the client's, because
+    // a reader who presses "call the client" would be dialling BOE.
+    const html = summaryHtml({ client: {
+      clientName: 'Kalyan Interiors', clientCity: 'Bengaluru',
+      billToName: 'Kalyan Interiors', shipToName: null,
+      billToPhone: '+91 98450 22222', shipToPhone: null,
+      billingAddress: null, shippingAddress: null,
+    } })
+    const sections = readFileSync(
+      join(process.cwd(), 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'), 'utf8')
+    assert.ok(!sections.includes('contact_number'), 'the card never reads that column')
+    assert.ok(!sections.includes('salespersonPhone'))
+    assert.ok(text(html).includes('+91 98450 22222'), 'the number shown is the client’s own')
+  })
+
+  test('the client’s two facts sit in the strip, each labelled and iconed once', () => {
+    const html = summaryHtml()
+    const t = text(html)
+    for (const label of [CLIENT_CONTACT_LABEL, CLIENT_LOCATION_LABEL]) {
+      assert.equal(t.split(label).length - 1, 1, `${label} appears once`)
+    }
+    assert.ok(t.includes('+91 98450 22222'), 'the client’s contact number')
+    assert.ok(t.includes('Bengaluru'), 'and where they are')
     const strip = html.slice(html.indexOf('class="pi-detail-meta"'), html.indexOf('class="pi-detail-dates"'))
-    assert.equal((strip.match(/aria-hidden="true"/g) ?? []).length, 4)
+    assert.equal((strip.match(/aria-hidden="true"/g) ?? []).length, 2, 'two icons, both hidden')
+  })
+
+  test('a number that cannot be dialled is still shown, as the text it is', () => {
+    const t = text(summaryHtml({ client: {
+      clientName: 'Kalyan Interiors', clientCity: 'Bengaluru',
+      billToName: null, shipToName: null,
+      billToPhone: 'ext 4102', shipToPhone: null,
+      billingAddress: null, shippingAddress: null,
+    } }))
+    assert.ok(t.includes('ext 4102'), 'what the document said beats being told there is nothing')
+  })
+
+  test('an empty contact or location is a quiet absence, not a fault', () => {
+    const t = text(summaryHtml({ client: {
+      clientName: 'Kalyan Interiors', clientCity: null,
+      billToName: null, shipToName: null, billToPhone: null, shipToPhone: null,
+      billingAddress: null, shippingAddress: null,
+    } }))
+    assert.equal(t.split(CLIENT_FACT_ABSENT).length - 1, 2, 'both say it the same quiet way')
+    assert.ok(!t.includes('Contact not provided'))
+    assert.ok(!t.includes('Location not provided'))
   })
 
   test('the workbook is named quietly, and a record with none shows no block', () => {
@@ -658,15 +707,16 @@ describe('the overview repeats two commercial figures, and only two', () => {
   })
 })
 
-describe('the card names the client, and holds the rest behind that name', () => {
-  test('the name, once — and no contact, no address, no location in the card', () => {
+describe('the card names the client, and holds the ADDRESSES behind that name', () => {
+  test('the name once, the contact and city shown, the addresses still in the dialog', () => {
     const html = text(summaryHtml())
     assert.equal((html.match(/Kalyan Interiors/g) ?? []).length, 1,
       'bill-to and ship-to are the same party here, and the name is printed once')
     assert.ok(!html.includes('Bill to') && !html.includes('Ship to'))
     assert.ok(!html.includes('12 Residency Road'), 'the address is not in the card')
-    assert.ok(!html.includes('98450'), 'nor the number')
-    assert.ok(!summaryHtml().includes('href="tel:'), 'and there is no dial link to press')
+    assert.ok(html.includes('98450'), 'but the client’s own number now is')
+    assert.ok(!summaryHtml().includes('href="tel:'),
+      'as TEXT — the dialog behind the name is the one place a number is offered to press')
   })
 
   test('the name is a control, and still reads as the name', () => {
@@ -878,7 +928,22 @@ const statusProps = (over: Partial<StatusCardProps> = {}): StatusCardProps => ({
   ...over,
 })
 
+/**
+ * The card AS OPENED. Every assertion below about figures, the bar and the
+ * three controls is about the card a reader has expanded — which is the only
+ * state those things exist in. The closed state has its own suite.
+ *
+ * PiPaymentStatusCardView is the same drawing the stateful card renders; the
+ * card adds a useState and hands it down, and nothing else.
+ */
 const statusHtml = (over: Partial<StatusCardProps> = {}) =>
+  renderToStaticMarkup(<PiPaymentStatusCardView {...openProps(over)} />)
+
+const openProps = (over: Partial<StatusCardProps> = {}) =>
+  ({ ...statusProps(over), expanded: true, onToggleExpanded: () => {} })
+
+/** The card as the page mounts it — no props about disclosure at all. */
+const closedHtml = (over: Partial<StatusCardProps> = {}) =>
   renderToStaticMarkup(<PiPaymentStatusCard {...statusProps(over)} />)
 
 // The bar's three shares, read off the rendered track. Green, amber and red are
@@ -1059,7 +1124,7 @@ const labelOf = (control: AnyElement): string =>
 describe('each part opens the rows it is made of', () => {
   test('Confirmed opens confirmed rows, Awaiting verification the pending ones, Payment details all of them', () => {
     const opened: string[] = []
-    const controls = pressables(PiPaymentStatusCard(statusProps({
+    const controls = pressables(PiPaymentStatusCardView(openProps({
       canAdd: true, canVerify: true, decidableCount: 1,
       onAddPayment: () => opened.push('add'),
       onOpenDetails: filter => opened.push(filter),
@@ -1078,13 +1143,14 @@ describe('each part opens the rows it is made of', () => {
   })
 
   test('a part with nothing behind it cannot be pressed at all', () => {
-    const controls = pressables(PiPaymentStatusCard(statusProps({ status: statusView(NO_PAYMENTS) })))
-    assert.deepEqual(controls.map(labelOf), [PAYMENT_DETAILS_LABEL], 'only the way into every row remains')
+    const controls = pressables(PiPaymentStatusCardView(openProps({ status: statusView(NO_PAYMENTS) })))
+    assert.deepEqual(controls.map(labelOf).filter(l => l !== PAYMENT_STATUS_TITLE),
+      [PAYMENT_DETAILS_LABEL], 'only the way into every row remains')
   })
 
   test('only native buttons answer a press, so every control is reachable by keyboard', () => {
-    const controls = pressables(PiPaymentStatusCard(statusProps({ canAdd: true, canVerify: true, decidableCount: 1 })))
-    assert.equal(controls.length, 5)
+    const controls = pressables(PiPaymentStatusCardView(openProps({ canAdd: true, canVerify: true, decidableCount: 1 })))
+    assert.equal(controls.length, 6, 'the five it always had, plus the disclosure header')
     for (const control of controls) {
       assert.equal(control.type, 'button', 'no clickable div')
       assert.equal(control.props.type, 'button')
@@ -1121,12 +1187,12 @@ describe('the card’s actions keep their gates and their place', () => {
     assert.ok(buttonLabels(statusHtml({ canVerify: true, decidableCount: 2 })).includes('Verify 2 pending'))
   })
 
-  test('the actions sit together in the card header, once each', () => {
+  test('the actions sit together at the top of the opened card, once each', () => {
     const html = statusHtml({ canAdd: true, canVerify: true, decidableCount: 2 })
-    const head = text(html.slice(html.indexOf('pi-detail-paystatus-head'), html.indexOf('pi-detail-paystatus-body')))
+    const top = text(html.slice(html.indexOf('pi-detail-paystatus-actions'), html.indexOf('pi-detail-paystatus-body')))
     for (const label of ['Verify 2 pending', 'Add payment', PAYMENT_DETAILS_LABEL]) {
       assert.equal(buttonLabels(html).filter(l => l === label).length, 1, `${label} once`)
-      assert.ok(head.includes(label), `${label} in the header`)
+      assert.ok(top.includes(label), `${label} above the figures`)
     }
   })
 
@@ -1146,6 +1212,122 @@ describe('the card’s actions keep their gates and their place', () => {
     assert.ok(!text(html).includes('received'))
     assert.ok(!html.includes('role="progressbar"'))
     assert.ok(!html.includes('data-metric'))
+  })
+})
+
+describe('payment status opens closed, and is a real disclosure', () => {
+  test('EVERY new page load starts collapsed — nothing is remembered anywhere', () => {
+    const html = closedHtml({ canAdd: true, canVerify: true, decidableCount: 2 })
+    assert.ok(html.includes('aria-expanded="false"'), 'the card the page mounts is shut')
+    assert.equal((html.match(/aria-expanded=/g) ?? []).length, 1, 'one trigger, not one per control')
+    const sections = read(SECTIONS)
+    const card = sections.slice(sections.indexOf('export function PiPaymentStatusCard('))
+    assert.ok(card.includes('useState(false)'), 'and it is local state, closed to begin with')
+    for (const persisted of ['localStorage', 'sessionStorage', 'supabase', 'searchParams']) {
+      assert.ok(!card.includes(persisted), `the open state must not be kept in ${persisted}`)
+    }
+  })
+
+  test('the closed card shows its name, a hint and a chevron — and NOT ONE FIGURE', () => {
+    const html = closedHtml({ canAdd: true, canVerify: true, decidableCount: 2, notice: 'Payment recorded' })
+    const t = text(html)
+    assert.ok(t.includes(PAYMENT_STATUS_TITLE))
+    assert.ok(t.includes(PAYMENT_COLLAPSED_HINT))
+    assert.ok(html.includes('pi-detail-paystatus-chevron'), 'with a visible expand indicator')
+
+    // The amounts, the shares and the bar.
+    for (const figure of ['₹', '%', 'received', 'Confirmed', 'Awaiting verification']) {
+      assert.ok(!t.includes(figure), `${figure} must not be readable while the card is shut`)
+    }
+    assert.ok(!html.includes('role="progressbar"'), 'no progress bar')
+    assert.ok(!html.includes('data-metric'), 'no confirmed/awaiting blocks')
+    assert.ok(!html.includes('data-segment'), 'no bar segments')
+
+    // The payment COUNT, which the verify control would otherwise announce.
+    assert.ok(!t.includes('Verify 2 pending'), 'no payment-count information')
+    assert.ok(!/\d+ payment/.test(t))
+
+    // And every control that acts on money.
+    for (const control of ['Add payment', PAYMENT_DETAILS_LABEL]) {
+      assert.ok(!buttonLabels(html).includes(control), `${control} is behind the disclosure`)
+    }
+    assert.equal(buttonLabels(html).length, 1, 'the header is the only thing to press')
+  })
+
+  test('opening it reveals the whole card, with every control it always had', () => {
+    const open = statusHtml({ canAdd: true, canVerify: true, decidableCount: 2 })
+    const t = text(open)
+    assert.ok(open.includes('aria-expanded="true"'))
+    assert.ok(!t.includes(PAYMENT_COLLAPSED_HINT), 'the hint has done its job and gone')
+    for (const part of ['received', 'Confirmed', 'Awaiting verification', 'PI Total']) {
+      assert.ok(t.includes(part), `${part} is back`)
+    }
+    assert.ok(open.includes('role="progressbar"'))
+    assert.ok(open.includes('data-segment="confirmed"'))
+    for (const control of ['Verify 2 pending', 'Add payment', PAYMENT_DETAILS_LABEL]) {
+      assert.ok(buttonLabels(open).includes(control), `${control} is offered again`)
+    }
+  })
+
+  test('closing it hides them again — the same props, the other state', () => {
+    const props = { canAdd: true, canVerify: true, decidableCount: 2 } as const
+    const open = statusHtml(props)
+    const shut = renderToStaticMarkup(
+      <PiPaymentStatusCardView {...statusProps(props)} expanded={false} onToggleExpanded={() => {}} />)
+    assert.ok(text(open).includes('₹') && !text(shut).includes('₹'))
+    assert.ok(open.includes('role="progressbar"') && !shut.includes('role="progressbar"'))
+    for (const control of ['Verify 2 pending', 'Add payment', PAYMENT_DETAILS_LABEL]) {
+      assert.ok(buttonLabels(open).includes(control))
+      assert.ok(!buttonLabels(shut).includes(control), `${control} is hidden again`)
+    }
+  })
+
+  test('aria-expanded follows the state, and names the panel it controls', () => {
+    const shut = closedHtml()
+    const open = statusHtml()
+    assert.ok(shut.includes('aria-expanded="false"'))
+    assert.ok(open.includes('aria-expanded="true"'))
+    const named = open.match(/aria-controls="([^"]+)"/)
+    assert.ok(named, 'the trigger says what it opens')
+    assert.equal(named![1], PAYMENT_PANEL_ID)
+    assert.ok(open.includes(`id="${PAYMENT_PANEL_ID}"`), 'and that panel is in the tree once open')
+    // The chevron turns over, so the direction is not carried by the word alone.
+    const chevron = (html: string) =>
+      html.match(/class="lucide lucide-(chevron-[a-z]+) pi-detail-paystatus-chevron"/)?.[1] ?? null
+    assert.equal(chevron(shut), 'chevron-down', 'shut: points to what opening would reveal')
+    assert.equal(chevron(open), 'chevron-up', 'open: points back to closing it')
+  })
+
+  test('the trigger is a real button with a visible focus ring and a tappable header', () => {
+    const html = closedHtml()
+    assert.ok(/<button[^>]*class="pi-detail-paystatus-toggle"/.test(html), 'a button, not a clickable div')
+    assert.ok(html.includes('type="button"'))
+    assert.ok(!html.includes('tabindex'), 'keyboard reach comes from the element, not a tabindex')
+    const css = pageCss()
+    assert.ok(/\.pi-detail-paystatus-toggle:focus-visible {[^}]*outline: 2px solid/.test(css))
+    assert.ok(/\.pi-detail-paystatus-toggle {[^}]*min-height: 44px/.test(css), 'the project’s tap minimum')
+    assert.ok(/\.pi-detail-paystatus-toggle {[^}]*width: 100%/.test(css), 'the FULL header is the control')
+  })
+
+  test('the disclosure conceals; it decides nothing', () => {
+    // A viewer with no authority is offered no control in EITHER state — the
+    // gate is the prop it always was, and hiding is not a permission.
+    const open = statusHtml({ canAdd: false, canVerify: false, decidableCount: 2 })
+    assert.ok(!buttonLabels(open).includes('Add payment'))
+    assert.ok(!buttonLabels(open).some(l => /^Verify \d+ pending$/.test(l)))
+    const sections = read(SECTIONS)
+    const card = sections.slice(sections.indexOf('export function PiPaymentStatusCardView('))
+    for (const decided of ['canApprove', 'getEffectivePermissions', 'role ===', 'supabase']) {
+      assert.ok(!card.includes(decided), `${decided} is not the card’s to decide`)
+    }
+  })
+
+  test('the two decision cards stay top-aligned, so a shut card leaves no hole', () => {
+    const css = pageCss()
+    const grid = css.slice(css.indexOf('@container (min-width: 900px)'))
+    const block = grid.slice(0, grid.indexOf('}\r\n}') + 3 || grid.indexOf('\n}\n}') + 3)
+    assert.ok(/align-items: start/.test(block.slice(0, 600)),
+      'the grid must not stretch Payment status to the review card’s height')
   })
 })
 
