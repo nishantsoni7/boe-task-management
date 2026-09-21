@@ -36,6 +36,7 @@ import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, 
 import { perfTrack } from '@/lib/perf'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
+import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
 import { defaultTaskListPath, returnPathFromSearch } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
@@ -322,6 +323,14 @@ export default function TaskDetailPage() {
   const invalidateTaskCache = (assignedTo: string) => {
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', assignedTo] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
+    // Quotation Requests reads the same rows under its own key, and it is the
+    // list a quotation is opened from — so it is exactly the one a mutation here
+    // would otherwise send the user back to holding a stale status. Invalidating
+    // (not removing) keeps the cached rows on screen for the first frame and
+    // corrects them behind the user. Keyed by prefix, without the user id: this
+    // tab only ever holds the signed-in user's entry, so a prefix cannot reach
+    // anyone else's data and cannot miss theirs.
+    queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
   }
 
 

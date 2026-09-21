@@ -7,7 +7,6 @@ import type { Task, TaskPriority } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { useProfile } from '@/hooks/queries/useProfile'
 import { useUserNames } from '@/hooks/queries/useMyTasks'
 import { ExternalLink, Plus, Building2, User } from 'lucide-react'
 import {
@@ -16,8 +15,8 @@ import {
   filtersActive,
   type DateFilterKey, type QuotationFilters,
 } from './filters'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
-import { fetchAllRows } from '@/lib/supabasePaging'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useQuotationRequests } from '@/hooks/queries/useQuotationRequests'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
@@ -34,15 +33,6 @@ import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
  */
 const QUOTATIONS_LOAD_ERROR =
   'Quotation requests could not be loaded in full. Check your connection and try again.'
-
-const QTN_COLUMNS = [
-  'id', 'title', 'note', 'status', 'priority', 'type', 'task_type',
-  'is_urgent', 'due_date', 'acknowledged_at',
-  'created_at', 'last_update_at', 'blocker_reason',
-  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
-  'assigned_to', 'created_by', 'delegated_by', 'team',
-  'customer_name', 'contact_number', 'company_name', 'city_project',
-].join(', ')
 
 // Customer | Assigned By | Priority | Created Date | Notes | Action.
 // One definition for the header and the rows so the two can never drift. The
@@ -205,12 +195,10 @@ function RequestCard({
   )
 }
 
-function QuotationRequestsContent() {
-  const [loggedInId,   setLoggedInId]   = useState('')
-  const [tasks,        setTasks]        = useState<Task[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+/** Stable empty list, so the memos below do not re-run while the read is in flight. */
+const NO_TASKS: Task[] = []
 
+function QuotationRequestsContent() {
   const { state, setState } = useListUrlState(LIST_PARAMS)
   const viewTab = state.tab
   const filters: QuotationFilters = useMemo(() => ({
@@ -228,70 +216,69 @@ function QuotationRequestsContent() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const { data: profile = null } = useProfile(loggedInId)
+  // ── IDENTITY, ROLE AND PERMISSIONS: ONE CACHED RESOLUTION ──────────────────
+  //
+  // This screen sits inside DashboardLayout, which already resolves the signed-in
+  // user's profile and effective permissions through usePermissionContext. Asking
+  // again here — a `users.role` read plus a `resolve_effective_permissions` RPC on
+  // every mount — repeated work the shell had already done, and did it BEFORE the
+  // list read, so both round trips landed on the critical path of every arrival,
+  // Back included. Reading the shared context instead is a cache hit.
+  //
+  // `resolve_effective_permissions_for_user` (behind the context) and
+  // `resolve_effective_permissions` (used before) run the identical precedence
+  // merge and both filter inactive modules, so this is a transport change, not an
+  // authorization change — the same substitution ModuleGuard and DashboardLayout
+  // already make.
+  const { ready, userId, profile, role, permissionsByModule } = usePermissionContext()
+
+  // This whole screen is quotation-specific, so it is gated rather than filtered.
+  // Someone without the permission is sent to their ordinary task list — their
+  // assigned quotation tasks are still there, without the customer's commercial
+  // details.
+  const canViewQuotations = useMemo(
+    () => deriveQuotationCapabilities(
+      role,
+      permissionsByModule.get('task_management') ?? [],
+    ).canViewQuotations,
+    [role, permissionsByModule],
+  )
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
+  // `ready` IS NOT `allowed`: an unresolved context reports role null and an
+  // empty permission map, which reads as a denial. Redirecting on that would
+  // bounce a permitted user out of their own screen, so nothing is decided until
+  // the context has actually answered.
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      setLoggedInId(session.user.id)
+    if (!ready) return
+    if (!userId) { router.push('/login'); return }
+    if (!canViewQuotations) router.replace('/tasks/my')
+  }, [ready, userId, canViewQuotations, router])
 
-      // This whole screen is quotation-specific, so it is gated rather than
-      // filtered. Someone without the permission is sent to their ordinary task
-      // list — their assigned quotation tasks are still there, without the
-      // customer's commercial details. Denied BEFORE the query runs, so a
-      // direct URL never fetches a row it may not show.
-      // THE ROLE AND THE PERMISSIONS, TOGETHER. They ran one after the next, and
-      // neither needs the other's answer: resolve_effective_permissions is asked
-      // by user id, which the session already carries. The GATE below is
-      // unchanged and still holds both before it decides.
-      const [{ data: me }, taskPerms] = await Promise.all([
-        supabase.from('users').select('role').eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'task_management').catch(() => []),
-      ])
-      if (!deriveQuotationCapabilities(me?.role, taskPerms).canViewQuotations) {
-        router.replace('/tasks/my')
-        return
-      }
+  // THE LIST STAYS AFTER THE GATE, deliberately. That ordering is load-bearing
+  // and is not an oversight to be parallelised away: a direct URL must never
+  // fetch a row it may not show. `enabled` is what holds it now — the query does
+  // not fire until the resolved context has granted the permission, exactly as
+  // the previous version held it by awaiting the resolve first.
+  const { data, isPending, isError } = useQuotationRequests(userId, ready && canViewQuotations)
 
-      // THE LIST STAYS AFTER THE GATE, deliberately. That ordering is
-      // load-bearing and is not an oversight to be parallelised away: a direct
-      // URL must never fetch a row it may not show, and starting this read
-      // beside the permission resolve would do exactly that.
-      //
-      // PAGED, because PostgREST truncates silently at 1000 rows — a cap, not an
-      // error (src/lib/supabasePaging.ts). Quotation requests accumulate and
-      // this list is ordered newest-first, so past a thousand the oldest would
-      // stop appearing with nothing to show for it. The whole set is held in
-      // memory because the tabs, counts and search on this page all work over
-      // it; narrowing one page in the browser would hide every match beyond it.
-      //
-      // The secondary sort on `id` is required for stable paging: range() maps
-      // to LIMIT/OFFSET, which promises nothing about row order unless the
-      // ordering is unique.
-      const result = await fetchAllRows<Task>((from, to) => supabase
-        .from('tasks')
-        .select(QTN_COLUMNS)
-        .eq('task_type', 'quotation_request')
-        .or(`assigned_to.eq.${session.user.id},created_by.eq.${session.user.id}`)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .range(from, to))
+  const tasks = data?.rows ?? NO_TASKS
+  // A FAILED OR CAPPED READ IS NOT AN EMPTY WORKLOAD — see useQuotationRequests.
+  const loadError = (isError || (data && !data.complete)) ? QUOTATIONS_LOAD_ERROR : null
 
-      // A FAILED READ IS NOT AN EMPTY WORKLOAD. The tab counts are computed from
-      // these rows, so silently accepting a partial answer would understate
-      // somebody's outstanding work rather than merely showing a short list.
-      setLoadError(result.ok && !result.truncated ? null : QUOTATIONS_LOAD_ERROR)
-      setTasks(result.ok ? (result.rows as unknown as Task[]) : [])
-      setLoading(false)
-    }
-    init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // THE FULL-SCREEN LOADER IS FOR A FIRST ARRIVAL, NOT FOR A RETURN.
+  //
+  // `data` is present the moment a cached list is handed back, so coming here
+  // from a quotation's detail page renders the rows on the first frame and never
+  // blanks the screen. It still covers the genuinely unresolved states: the
+  // context not having answered, and a cold load with nothing cached yet. A
+  // background refetch (after an invalidation) leaves `data` in place, so it
+  // updates the rows underneath the user rather than replacing the page.
+  const loading = !ready || !canViewQuotations || (isPending && !data)
 
   const allUserIds = useMemo(
     () => [...new Set(tasks.flatMap(t => [t.assigned_to, t.created_by]))],
