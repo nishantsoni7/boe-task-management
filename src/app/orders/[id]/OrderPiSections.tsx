@@ -19,7 +19,7 @@
 // approved PI screen. This adds no new design; it puts the agreed treatment on
 // a second screen so the two cannot look like two different products.
 
-import { ChevronRight, Download, FileSpreadsheet, FileText, Upload } from 'lucide-react'
+import { ChevronRight, Download, FileSpreadsheet, Upload } from 'lucide-react'
 import {
   APPROVE_REVISION_BUTTON_LABEL,
   OPEN_VERSION_LABEL,
@@ -45,7 +45,13 @@ import {
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
-import { formatCustomization, formatInr, orDash, type PiAmountRow } from '@/lib/pi/previewView'
+import {
+  NET_DIFFERENCE_LABEL,
+  ORDER_COMMERCIAL_TITLE,
+  type CommercialLine,
+  type CommercialNet,
+} from '@/lib/orders/orderCommercial'
+import { formatCustomization, formatInr, orDash } from '@/lib/pi/previewView'
 import { SECTION_HEADER_STYLE } from './OrderWorkspace'
 import type { PersistedProduct } from '@/lib/orders/draftsView'
 import {
@@ -63,18 +69,6 @@ import {
   ORDER_PI_UNAVAILABLE_TITLE,
   ORDER_PI_WORKBOOK_LABEL,
 } from '@/lib/orders/orderPiHandoff'
-import {
-  ORDER_DOCUMENTS_EXCEL_LABEL,
-  ORDER_DOCUMENTS_GENERATE_LABEL,
-  ORDER_DOCUMENTS_NONE,
-  ORDER_DOCUMENTS_PDF_LABEL,
-  ORDER_DOCUMENTS_RETRY_LABEL,
-  ORDER_DOCUMENTS_TITLE,
-  ORDER_DOCUMENTS_WORKING,
-  ORDER_DOCUMENTS_REGENERATE_LABEL,
-  type OrderDocumentTone,
-  type OrderDocumentsView,
-} from '@/lib/orders/orderDocuments'
 
 /** The one heading the handoff sits under, said once so the card and its tests
  *  cannot word it differently. */
@@ -438,61 +432,102 @@ export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
 
 // ── The commercial breakdown, as the Order shows it ───────────────────────────
 
-export const ORDER_COMMERCIAL_TITLE = 'Commercial breakdown'
-
 /**
- * THE SAME ROWS THE PI PRINTS — literally the strings the shared row builder
- * produced; nothing here recomputes a total — in a denser column that shares
- * a row with the Approved PI band. The grand total keeps the shared
- * .pi-commercial-grand-total ground so it reads as the same figure it is on
- * the PI screen.
+ * THE ONLY COMMERCIAL PRESENTATION ON THE PAGE, and a calculation rather than a
+ * list of captioned figures.
+ *
+ * WHAT IT REPLACED. A `Product value` / `Order value` totals block sat directly
+ * above this, restating the breakdown's own first and last lines under
+ * different captions — the same rupees twice, four lines apart, which is how a
+ * reader starts wondering whether they are two different numbers. That block is
+ * gone and this section carries both figures, at the two ends of the working
+ * that connects them.
+ *
+ * HOW IT READS. Three money columns' worth of meaning in two:
+ *
+ *   the opening product value and every running total sit in the OUTER column
+ *   every factor that moves the figure sits INSET, with its own sign
+ *
+ * so a reader scanning the right-hand edge sees only totals, and a reader
+ * following the arithmetic sees what each step did. The final Order value is
+ * the strongest row on the page, and the net effect follows it in one quiet
+ * line — rupees, and a percentage only where the base allows one.
+ *
+ * NO FIGURE HERE IS COMPUTED. Every amount is the string the shared PI row
+ * builder produced; the roles, the signs and the net are orderCommercial's, and
+ * the net is a display subtraction of two stored Order columns. See that module
+ * for why that is the only arithmetic in the section.
  */
-export function OrderCommercialBreakdown({ rows, embedded = false }: {
-  rows: readonly PiAmountRow[]
-  /** Drawn INSIDE the Order Summary's commercial column: a titled block with
-   *  no card of its own, because the summary is already one surface. */
+export function OrderCommercialBreakdown({ lines, net, embedded = false }: {
+  lines: readonly CommercialLine[]
+  net: CommercialNet
+  /** Drawn INSIDE the commercial column: a titled block with no card of its
+   *  own, because that column is already one surface. */
   embedded?: boolean
 }) {
   const body = (
-      <div style={{ padding: embedded ? 0 : '4px 0 6px' }}>
-        {rows.map(row => {
-          const total = row.emphasis === 'total'
-          return (
+    <div className="order-breakdown-lines">
+      {lines.map(line => {
+        const total = line.role === 'final'
+        const running = line.role === 'running' || line.role === 'base'
+        return (
+          <div
+            key={line.key}
+            className={[
+              'order-breakdown-line',
+              `order-breakdown-line--${line.role}`,
+              line.groupStart && !total ? 'order-breakdown-line--group' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            <div className="order-breakdown-label">
+              {line.label}
+              {line.note && <span className="order-breakdown-note">{line.note}</span>}
+            </div>
             <div
-              key={row.key}
-              className={total ? 'order-commercial-row pi-commercial-grand-total' : 'order-commercial-row'}
+              className={running || total ? 'order-breakdown-total' : 'order-breakdown-adjust'}
               style={{
-                borderTop: !total && row.groupStart ? `1px solid ${colors.borderSoft}` : undefined,
-                marginTop: !total && row.groupStart ? '3px' : undefined,
-                paddingTop: !total && row.groupStart ? '7px' : undefined,
-                background: row.emphasis === 'advance' ? colors.amberTint : undefined,
+                // A worded cell — `Included`, `Not applicable`, the text a
+                // workbook typed where a number belongs — is not an amount and
+                // is not dressed as one.
+                whiteSpace: line.kind === 'text' ? 'normal' : 'nowrap',
+                color: line.kind === 'text' || line.kind === 'missing' ? colors.secondary : undefined,
+                fontStyle: line.kind === 'amount' || line.kind === 'missing' ? 'normal' : 'italic',
               }}
             >
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontSize: row.emphasis ? '12.5px' : '12px',
-                  fontWeight: row.emphasis ? 700 : 400,
-                  color: row.emphasis ? colors.primary : colors.secondary,
-                }}>
-                  {row.label}
-                </div>
-                {row.note && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>{row.note}</div>}
-              </div>
-              <div style={{
-                whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
-                textAlign: 'right',
-                fontVariantNumeric: 'tabular-nums',
-                fontSize: total ? '14px' : row.emphasis ? '13px' : '12.5px',
-                fontWeight: row.emphasis ? 700 : 500,
-                color: row.kind === 'text' || row.kind === 'missing' ? colors.secondary : colors.primary,
-                fontStyle: row.kind === 'amount' || row.kind === 'missing' ? 'normal' : 'italic',
-              }}>
-                {row.value}
-              </div>
+              {line.sign && <span className="order-breakdown-sign" aria-hidden="true">{line.sign}</span>}
+              {/* The sign is announced in words for a reader who is not seeing
+                  the glyph beside the figure. */}
+              {line.sign && (
+                <span className="order-sr-only">
+                  {line.sign === '−' ? 'less ' : 'plus '}
+                </span>
+              )}
+              {line.value}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
+
+      {/* WHAT THE TERMS DID, IN ONE LINE. Null whenever the Order does not
+          store both figures — never ₹0, which a reader would take for "the
+          terms changed nothing". */}
+      {net.amount && (
+        <div className="order-breakdown-net">
+          <span className="order-breakdown-net-label">{NET_DIFFERENCE_LABEL}</span>
+          <span
+            className="order-breakdown-net-value"
+            style={{
+              color: net.direction === 'down' ? colors.green
+                : net.direction === 'up' ? colors.primary
+                : colors.secondary,
+            }}
+          >
+            {net.amount}
+            {net.percent && <span className="order-breakdown-net-percent">{net.percent}</span>}
+          </span>
+        </div>
+      )}
+    </div>
   )
 
   if (embedded) {
@@ -507,7 +542,7 @@ export function OrderCommercialBreakdown({ rows, embedded = false }: {
   return (
     <PiCard style={{ height: '100%' }}>
       <PiCardHeader title={ORDER_COMMERCIAL_TITLE} style={SECTION_HEADER_STYLE} />
-      {body}
+      <div style={{ padding: '4px 16px 10px' }}>{body}</div>
     </PiCard>
   )
 }
@@ -580,11 +615,14 @@ export function OrderPiProducts({
                   {...representativeThumbnail(p.row)}
                   size={PI_THUMBNAIL_SIZE.representativeCompact}
                 />
-                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
+                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {/* THE PRODUCT CODE IS THE IDENTIFIER. It is what production,
+                      dispatch and the client all quote, and it used to be the
+                      smallest, palest thing in the row. */}
+                  <div className="order-product-code order-product-code--card">
                     {orDash(p.orderProductCode ?? p.itemSequence)}
                   </div>
-                  <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
+                  <MultilineText className="order-product-name" style={{ margin: 0 }}>
                     {orDash(p.productName)}
                   </MultilineText>
                   <div style={{ fontSize: '12px', color: colors.secondary }}>
@@ -637,14 +675,21 @@ export function OrderPiProducts({
             <tbody>
               {products.map(p => (
                 <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <td style={{ whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                    {orDash(p.orderProductCode ?? p.itemSequence)}
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {/* THE COLUMN A READER SCANS DOWN. Heavier, darker and a
+                        size up from the prose beside it, so a code can be found
+                        in a forty-line table without reading the names. */}
+                    <span className="order-product-code">
+                      {orDash(p.orderProductCode ?? p.itemSequence)}
+                    </span>
                   </td>
                   <td>
                     <PiProductThumbnail {...representativeThumbnail(p.row)} />
                   </td>
                   <td>
-                    <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0, overflowWrap: 'anywhere' }}>
+                    {/* SECONDARY, NOT HIDDEN: every word of the name is still
+                        here, one step quieter than the code. */}
+                    <MultilineText className="order-product-name" style={{ margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.productName)}
                     </MultilineText>
                   </td>
@@ -680,198 +725,6 @@ export function OrderPiProducts({
           </table>
         </div>
       )}
-    </PiCard>
-  )
-}
-
-// ── The generated documents ───────────────────────────────────────────────────
-
-const DOCUMENT_TONE: Record<OrderDocumentTone, { bg: string; color: string; border: string }> = {
-  neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
-  blue:    { bg: colors.blueTint,  color: '#2F5BB7',        border: 'rgba(85,133,232,0.3)' },
-  green:   { bg: colors.greenTint, color: '#2F7A52',        border: 'rgba(69,168,112,0.25)' },
-  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(217,79,79,0.3)' },
-}
-
-/**
- * THE CONFIRMED DOCUMENTS, and what to do about them.
- *
- * DOCUMENT-READY MEANS BOTH FILES, so there is one downloadable state and never
- * a half of one: `view.downloadable` is false unless the register names both
- * objects, and the database refuses to record `ready` any other way.
- *
- * THE DOWNLOADS ARE SIGNED ON THE CLICK, through the reader's own session, so
- * the order-files rule decides again per object at that moment — and that rule
- * authorizes an object only when a READY version names it, which is what keeps a
- * failed attempt's half-upload unreachable.
- *
- * THE GENERATE CONTROL IS NOT THE SECURITY. Two RLS policies re-derive both the
- * management approval authority and sight of the Order when the request lands.
- * Hiding the button is a courtesy to everybody who would only be refused.
- */
-export function OrderDocumentsCard({
-  view, canGenerate, onGenerate, generating, onDownload, downloading, error, embedded = false,
-}: {
-  view: OrderDocumentsView
-  canGenerate: boolean
-  onGenerate: () => void
-  generating: boolean
-  onDownload: (kind: 'xlsx' | 'pdf') => void
-  /** Which download is being signed, if any. */
-  downloading: 'xlsx' | 'pdf' | null
-  /** One quiet line. Never a stack trace, never a storage message. */
-  error: string | null
-  /**
-   * Drawn as a titled section inside a shared "Order records" card rather
-   * than as a card of its own. Composition only: every word, control and gate
-   * is identical in both forms.
-   */
-  embedded?: boolean
-}) {
-  const tone = view.tone ? DOCUMENT_TONE[view.tone] : null
-
-  const status = (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {view.statusLabel && tone && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center',
-                padding: '3px 10px', borderRadius: '5px',
-                fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
-                background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
-              }}>
-                {view.statusLabel}
-              </span>
-            )}
-            {view.outdated && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center',
-                padding: '3px 10px', borderRadius: '5px',
-                fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
-                background: colors.amberTint, color: colors.amber,
-                border: '1px solid rgba(190,140,40,0.28)',
-              }}>
-                Not current
-              </span>
-            )}
-            {view.version !== null && (
-              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                Version {view.version}
-              </span>
-            )}
-          </div>
-  )
-
-  // COMPACT ROWS, not a band of buttons. One line per file when the pair is
-  // downloadable — its name and the download — and one quiet sentence
-  // otherwise. The section is only as tall as what it has to say.
-  const body = (
-      <div style={{ padding: embedded ? 0 : '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {view.version === null && (
-          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-            {ORDER_DOCUMENTS_NONE}
-          </div>
-        )}
-
-        {/* NO PROGRESS BAR AND NO ESTIMATE. Nothing here knows how long a render
-            takes, and a bar that creeps to 90% and stops is worse than a
-            sentence that is honest. */}
-        {view.working && (
-          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-            {ORDER_DOCUMENTS_WORKING}
-          </div>
-        )}
-
-        {/* ── STALE, NOT BROKEN ──
-            Amber and not red, above the downloads and not in place of them.
-            The files exist, they still open, and they are still exactly what
-            somebody may have sent a client last week — hiding them would
-            destroy the only record of what this Order looked like then. What
-            changed is the PI behind them. */}
-        {view.outdatedNote && (
-          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-            {view.outdatedNote}
-          </div>
-        )}
-
-        {view.failure && (
-          <div style={{ fontSize: '12.5px', color: colors.red, lineHeight: 1.55 }}>
-            {view.failure}
-            {view.attempts !== null && (
-              <span style={{ color: colors.muted }}> · {view.attempts} attempts</span>
-            )}
-          </div>
-        )}
-
-        {view.downloadable && (
-          <div>
-            {([
-              { kind: 'xlsx' as const, label: ORDER_DOCUMENTS_EXCEL_LABEL, icon: <FileSpreadsheet size={16} strokeWidth={1.8} className="order-doc-icon" aria-hidden="true" /> },
-              { kind: 'pdf' as const,  label: ORDER_DOCUMENTS_PDF_LABEL,   icon: <FileText size={16} strokeWidth={1.8} className="order-doc-icon" aria-hidden="true" /> },
-            ]).map(file => (
-              <div key={file.kind} className="order-doc-row">
-                {file.icon}
-                <div className="order-doc-name" style={{ minWidth: 0, flex: 1 }}>{file.label}</div>
-                <button
-                  type="button"
-                  onClick={() => onDownload(file.kind)}
-                  disabled={downloading !== null}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-                  aria-label={`Download ${file.label}`}
-                >
-                  <Download size={13} strokeWidth={2} aria-hidden="true" />
-                  {downloading === file.kind ? 'Preparing…' : 'Download'}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }}>{error}</div>
-        )}
-
-        {canGenerate && !view.working && (
-          <div>
-            <button
-              type="button"
-              onClick={onGenerate}
-              disabled={generating}
-              className="boe-btn boe-btn-primary"
-              style={{ padding: '7px 14px', fontSize: '12px', fontWeight: 600, opacity: generating ? 0.6 : 1 }}
-            >
-              {generating
-                ? 'Starting…'
-                : view.failure
-                  ? ORDER_DOCUMENTS_RETRY_LABEL
-                  : view.outdated
-                    // NOT "Try again": nothing failed. The next version is a
-                    // fresh render of figures that have since moved, and the
-                    // label says that rather than implying a retry.
-                    ? ORDER_DOCUMENTS_REGENERATE_LABEL
-                    : ORDER_DOCUMENTS_GENERATE_LABEL}
-            </button>
-          </div>
-        )}
-      </div>
-  )
-
-  if (embedded) {
-    return (
-      <section className="order-record-section" aria-label={ORDER_DOCUMENTS_TITLE}>
-        <div className="order-record-head">
-          <h3 className="order-record-title">{ORDER_DOCUMENTS_TITLE}</h3>
-          {status}
-        </div>
-        {body}
-      </section>
-    )
-  }
-
-  return (
-    <PiCard>
-      <PiCardHeader title={ORDER_DOCUMENTS_TITLE} style={SECTION_HEADER_STYLE} right={status} />
-      {body}
     </PiCard>
   )
 }

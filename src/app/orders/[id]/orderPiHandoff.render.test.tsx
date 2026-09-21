@@ -24,26 +24,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ORDER_PI_PRODUCTS_TITLE,
   ORDER_PI_SECTION_TITLE,
-  OrderDocumentsCard,
   OrderPiNoSource,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
 } from './OrderPiSections'
-import {
-  ORDER_DOCUMENTS_EXCEL_LABEL,
-  ORDER_DOCUMENTS_GENERATE_LABEL,
-  ORDER_DOCUMENTS_NONE,
-  ORDER_DOCUMENTS_PDF_LABEL,
-  ORDER_DOCUMENTS_RETRY_LABEL,
-  ORDER_DOCUMENTS_WORKING,
-  ORDER_DOCUMENTS_REGENERATE_LABEL,
-  ORDER_DOCUMENT_COLUMNS,
-  ORDER_DOCUMENT_FAILURES,
-  buildOrderDocumentsView,
-  orderDocumentAttemptPath,
-  type OrderDocumentRow,
-} from '@/lib/orders/orderDocuments'
 import {
   ORDER_PI_NO_SOURCE_BODY,
   ORDER_PI_UNAVAILABLE_BODY,
@@ -456,9 +441,9 @@ describe('/orders/[id] itself', () => {
     assert.ok(page.includes('  ORDER_PI_UNAVAILABLE_BODY,'), 'and the sentence is the shared one')
   })
 
-  test('the no-PI panel still gets NO documents card — there is nothing to generate', () => {
-    // The documents card stays behind `kind !== 'none'`. Explaining the absence
-    // must not become an invitation to generate a document that cannot exist.
+  test('the no-PI panel still follows the Order records gate — there is nothing to generate', () => {
+    // Order records stays behind `kind !== 'none'`. Explaining the absence of
+    // a PI must not become a second, wider gate that draws it anyway.
     assert.match(page, /piHandoff\.kind !== 'none' && \(/)
     const noSourceAt = page.indexOf("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />")
     const cardAt = page.indexOf("piHandoff.kind !== 'none' && (")
@@ -485,183 +470,41 @@ describe('/orders/[id] itself', () => {
   })
 })
 
-// ── 9. The confirmed documents card ───────────────────────────────────────────
+// ── 10. The documents surface has LEFT this page ─────────────────
 
-const DOC_ORDER = '11111111-2222-3333-4444-555555555555'
+/**
+ * WHAT WAS REMOVED, AND WHAT MUST NOT HAVE BEEN.
+ *
+ * The Documents section and the Generate Document control were taken off the
+ * Confirmed Order screen. The register, its route, its storage rule and its
+ * RLS are all untouched and still tested by documentsRoute.test.ts and
+ * orderDocuments.test.ts. These pin the removal as a PRESENTATION change, so
+ * a later phase reinstating a documents surface starts from an intact service
+ * rather than from a half-deleted one.
+ */
+describe('/orders/[id] no longer draws documents', () => {
+  const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
 
-function docRow(over: Partial<OrderDocumentRow> = {}): OrderDocumentRow {
-  return {
-    id: 'v1', order_id: DOC_ORDER, version: 1, status: 'ready', attempt_count: 1,
-    claimed_at: null, completed_at: '2026-08-20T10:00:00Z',
-    last_error_code: null, last_error_message: null,
-    excel_path: orderDocumentAttemptPath(DOC_ORDER, 1, 1, 'xlsx'),
-    pdf_path: orderDocumentAttemptPath(DOC_ORDER, 1, 1, 'pdf'),
-    excel_sha256: 'a'.repeat(64), pdf_sha256: 'b'.repeat(64),
-    excel_bytes: 1000, pdf_bytes: 2000,
-    created_at: '2026-08-20T09:00:00Z', updated_at: '2026-08-20T10:00:00Z',
-    ...over,
-  }
-}
-
-function documentsMarkup(rows: OrderDocumentRow[], opts: {
-  canGenerate?: boolean
-  generating?: boolean
-  downloading?: 'xlsx' | 'pdf' | null
-  error?: string | null
-} = {}) {
-  return renderToStaticMarkup(
-    <OrderDocumentsCard
-      view={buildOrderDocumentsView(rows)}
-      canGenerate={opts.canGenerate ?? false}
-      onGenerate={() => {}}
-      generating={opts.generating ?? false}
-      onDownload={() => {}}
-      downloading={opts.downloading ?? null}
-      error={opts.error ?? null}
-    />,
-  )
-}
-
-describe('the confirmed documents card', () => {
-  test('an Order nobody has asked about says so, and offers no download', () => {
-    const html = documentsMarkup([])
-    assert.ok(html.includes(ORDER_DOCUMENTS_NONE))
-    assert.ok(!html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
-    assert.ok(!html.includes(ORDER_DOCUMENTS_PDF_LABEL))
-  })
-
-  test('a ready version offers BOTH downloads', () => {
-    const html = documentsMarkup([docRow()])
-    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
-    assert.ok(html.includes(ORDER_DOCUMENTS_PDF_LABEL))
-    assert.ok(html.includes('Ready'))
-    assert.ok(html.includes('Version 1'))
-  })
-
-  test('NO STORAGE PATH AND NO URL reaches the markup', () => {
-    // The link is minted on the click, through the reader's own session, so the
-    // page never carries one that could outlive it.
-    const html = documentsMarkup([docRow()])
-    assert.ok(!html.includes('orders/'))
-    assert.ok(!html.includes('approved.xlsx'))
-    assert.ok(!html.includes(DOC_ORDER))
-    assert.ok(!/href=/.test(html))
-    assert.ok(!html.includes('token='))
-  })
-
-  test('a HALF-ready version offers nothing — document-ready means both files', () => {
-    for (const half of [{ pdf_path: null }, { excel_path: null }]) {
-      const html = documentsMarkup([docRow(half)])
-      assert.ok(!html.includes(ORDER_DOCUMENTS_EXCEL_LABEL), JSON.stringify(half))
-      assert.ok(!html.includes(ORDER_DOCUMENTS_PDF_LABEL), JSON.stringify(half))
+  test('the page neither reads the register nor offers to generate', () => {
+    for (const gone of ['order_document_versions', 'ORDER_DOCUMENT_COLUMNS',
+                        'buildOrderDocumentsView', 'OrderDocumentsCard',
+                        'mayGenerateDocuments', 'ORDER_DOCUMENT_URL_TTL_SECONDS',
+                        '/documents`, { method:']) {
+      assert.ok(!page.includes(gone), gone + ' is still on the page')
     }
   })
 
-  test('a generation in flight says so, with NO progress bar and no estimate', () => {
-    const html = documentsMarkup([docRow({
-      status: 'claimed', excel_path: null, pdf_path: null, completed_at: null,
-    })])
-    assert.ok(html.includes(ORDER_DOCUMENTS_WORKING))
-    assert.ok(html.includes('Generating'), 'a lease is not a person\'s concern')
-    assert.ok(!html.includes('Claimed'))
-    assert.ok(!/%/.test(html.replace(/max-width:\s*100%/g, '')))
+  test('no dead presentation code is left behind in the page-owned components', () => {
+    const sections = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderPiSections.tsx'), 'utf8')
+    assert.ok(!sections.includes('OrderDocumentsCard'))
+    assert.ok(!sections.includes('orderDocuments'))
   })
 
-  test('a failure shows its PREWRITTEN sentence and never its code', () => {
-    const html = documentsMarkup([docRow({
-      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
-      last_error_code: 'WORKBOOK_UNREADABLE',
-      last_error_message: ORDER_DOCUMENT_FAILURES.WORKBOOK_UNREADABLE,
-    })])
-    assert.ok(html.includes(ORDER_DOCUMENT_FAILURES.WORKBOOK_UNREADABLE))
-    assert.ok(!html.includes('WORKBOOK_UNREADABLE'))
-  })
-
-  test('the generate control appears only for somebody who may press it', () => {
-    assert.ok(!documentsMarkup([]).includes(ORDER_DOCUMENTS_GENERATE_LABEL))
-    assert.ok(documentsMarkup([], { canGenerate: true }).includes(ORDER_DOCUMENTS_GENERATE_LABEL))
-  })
-
-  test('and it reads `Try again` once a version has failed', () => {
-    const failed = docRow({
-      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
-      last_error_code: 'PDF_RENDER_FAILED',
-      last_error_message: ORDER_DOCUMENT_FAILURES.PDF_RENDER_FAILED,
-    })
-    const html = documentsMarkup([failed], { canGenerate: true })
-    assert.ok(html.includes(ORDER_DOCUMENTS_RETRY_LABEL))
-    assert.ok(!html.includes(ORDER_DOCUMENTS_GENERATE_LABEL))
-  })
-
-  test('it is HIDDEN while a generation is in flight, so nobody queues a second', () => {
-    const busy = docRow({ status: 'pending', excel_path: null, pdf_path: null, completed_at: null })
-    const html = documentsMarkup([busy], { canGenerate: true })
-    assert.ok(!html.includes(ORDER_DOCUMENTS_GENERATE_LABEL))
-    assert.ok(!html.includes(ORDER_DOCUMENTS_RETRY_LABEL))
-  })
-
-  test('an amendment generating over existing documents keeps BOTH truths', () => {
-    const ready1 = docRow({ id: 'v1', version: 1 })
-    const busy2 = docRow({
-      id: 'v2', version: 2, status: 'claimed',
-      excel_path: null, pdf_path: null, completed_at: null,
-    })
-    const html = documentsMarkup([ready1, busy2])
-    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL), 'version 1 is still downloadable')
-    assert.ok(html.includes(ORDER_DOCUMENTS_WORKING), 'and version 2 is on its way')
-  })
-
-  test('a refusal is one quiet line and the card survives it', () => {
-    const html = documentsMarkup([docRow()], { error: 'That could not be done just now.' })
-    assert.ok(html.includes('That could not be done just now.'))
-    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
-  })
-
-  test('a download being prepared disables BOTH buttons', () => {
-    const html = documentsMarkup([docRow()], { downloading: 'pdf' })
-    assert.ok(html.includes('Preparing…'))
-    assert.equal((html.match(/disabled/g) ?? []).length, 2)
-  })
-})
-
-// ── 10. The page wires the documents card the way the module intends ─────────
-
-describe('/orders/[id] and its documents', () => {
-  const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
-
-  test('reads the register with NAMED columns, and never the lease token', () => {
-    assert.ok(page.includes("from('order_document_versions')"))
-    assert.ok(page.includes('ORDER_DOCUMENT_COLUMNS'))
-    // Comments stripped: the page DOCUMENTS that the token is unreadable, and a
-    // raw search would match the sentence promising the thing it verifies.
-    const code = page
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
-    assert.ok(!code.includes('claim_token'))
-  })
-
-  test('the generate control is gated on the approval authority, not on a role', () => {
-    assert.ok(page.includes('ordersCaps.canApproveOrderSubmission'))
-    assert.ok(page.includes('mayGenerateDocuments'))
-    // Suppressed under View As, exactly as every other authority on this page.
-    assert.match(page, /canApproveOrderSubmission && !viewAsUserId/)
-  })
-
-  test('the request goes to the route, with NO body of its own', () => {
-    assert.match(page, /fetch\(`\/api\/orders\/\$\{id\}\/documents`, \{ method: 'POST' \}\)/)
-  })
-
-  test('a download is signed on demand and never built as a public URL', () => {
-    assert.ok(page.includes('ORDER_DOCUMENT_URL_TTL_SECONDS'))
-    assert.ok(!page.includes('getPublicUrl'))
-  })
-
-  test('no service-role credential exists anywhere in this client page', () => {
-    assert.ok(!/SERVICE_ROLE|createServiceClient/.test(page))
-  })
-
-  test('an Order with NO source PI gets no documents card at all', () => {
-    assert.match(page, /piHandoff\.kind !== 'none' && \(/)
+  test('THE SHARED SERVICE IS UNTOUCHED — only the screen stopped asking', () => {
+    for (const kept of ['src/lib/orders/orderDocuments.ts',
+                        'src/app/api/orders/[id]/documents/route.ts']) {
+      assert.ok(readFileSync(join(process.cwd(), kept), 'utf8').length > 0, kept)
+    }
   })
 })
 
@@ -704,116 +547,5 @@ describe('OrderPiNoSource', () => {
     assert.notEqual(html, refused)
     assert.ok(!html.includes(ORDER_PI_UNAVAILABLE_BODY))
     assert.ok(!refused.includes(ORDER_PI_NO_SOURCE_BODY))
-  })
-})
-
-// ── 10. A ready version that is no longer current ─────────────────────────────
-
-/** Text content, tags removed — for "does it SAY this" checks. */
-const text = (html: string): string =>
-  html.replace(/<[^>]*>/g, ' ')
-    .replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-
-const buttonLabels = (html: string): string[] =>
-  [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map(m => text(m[1]).trim())
-
-//
-// An admin corrects the PI behind an approved Order. Every figure on both files
-// came from the workbook that was just replaced, so the pair stops being
-// current — but nothing failed, nothing was deleted, and the files are still
-// exactly what somebody may have sent a client last week.
-//
-// The failure mode this guards against is the tidy one: treating stale as
-// broken. Hiding the downloads, or colouring the card red, would destroy the
-// only record of what this Order looked like at the time and would tell a
-// reader that something went wrong when nothing did.
-
-describe('a superseded document pair is stale, not broken', () => {
-  const superseded = (reason: string | null) => docRow({
-    superseded_at: '2026-08-21T09:00:00Z',
-    superseded_reason: reason,
-  })
-
-  test('a current pair says nothing about it', () => {
-    const html = documentsMarkup([docRow()])
-    assert.ok(!text(html).includes('no longer current'))
-    assert.ok(!text(html).includes('Not current'))
-  })
-
-  test('a superseded pair is still downloadable', () => {
-    const view = buildOrderDocumentsView([superseded('pi_data_amended')])
-    assert.equal(view.downloadable, true, 'the files still exist and still open')
-    assert.equal(view.outdated, true)
-    assert.notEqual(view.excelPath, null)
-    assert.notEqual(view.pdfPath, null)
-
-    const html = documentsMarkup([superseded('pi_data_amended')])
-    assert.ok(text(html).includes(ORDER_DOCUMENTS_EXCEL_LABEL))
-    assert.ok(text(html).includes(ORDER_DOCUMENTS_PDF_LABEL))
-  })
-
-  test('it says why, in the server’s prewritten words', () => {
-    assert.match(text(documentsMarkup([superseded('pi_data_amended')])),
-      /no longer current: the PI behind them was corrected/)
-    assert.match(text(documentsMarkup([superseded('billing_percentage_changed')])),
-      /no longer current: the billing percentage was changed/)
-  })
-
-  test('an unrecognised reason falls back rather than printing itself', () => {
-    // The column is rendered. A value the server did not choose must never
-    // reach the screen as text — supersede_order_documents already refuses to
-    // store one, and this is the second half of the same rule.
-    const html = text(documentsMarkup([superseded('<script>whatever</script>')]))
-    assert.ok(!html.includes('whatever'))
-    assert.match(html, /no longer current: the PI behind them changed/)
-  })
-
-  test('it is not reported as a failure', () => {
-    const view = buildOrderDocumentsView([superseded('pi_data_amended')])
-    assert.equal(view.failure, null, 'nothing failed')
-    assert.equal(view.working, false, 'nothing is in flight')
-    assert.equal(view.status, 'ready', 'the version is still ready')
-  })
-
-  test('the control offers the current version rather than a retry', () => {
-    const html = documentsMarkup([superseded('pi_data_amended')], { canGenerate: true })
-    const labels = buttonLabels(html)
-    assert.ok(labels.includes(ORDER_DOCUMENTS_REGENERATE_LABEL),
-      'nothing failed, so "Try again" would be the wrong word')
-    assert.ok(!labels.includes(ORDER_DOCUMENTS_RETRY_LABEL))
-  })
-
-  test('a pending version 2 hides the stale note behind what is happening now', () => {
-    // Both are true, and the reader needs the newer fact first: the current
-    // version IS being generated. The stale note stays — version 1 is still
-    // what they can open — but the working line is what changes their mind
-    // about waiting.
-    const html = text(documentsMarkup([
-      superseded('pi_data_amended'),
-      docRow({ id: 'v2', version: 2, status: 'pending', excel_path: null, pdf_path: null,
-               completed_at: null }),
-    ]))
-    assert.ok(html.includes(ORDER_DOCUMENTS_WORKING))
-    assert.ok(html.includes('no longer current'))
-  })
-
-  test('a pending or failed version never reports itself stale', () => {
-    // Only a READY version can be superseded — the database constrains that
-    // too — and two problems on screen where there is one is how a reader stops
-    // reading either.
-    const view = buildOrderDocumentsView([docRow({
-      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
-      last_error_message: 'Generating the documents did not finish.',
-      superseded_at: '2026-08-21T09:00:00Z', superseded_reason: 'pi_data_amended',
-    })])
-    assert.equal(view.outdated, false)
-    assert.notEqual(view.failure, null)
-  })
-
-  test('the register read asks for both columns', () => {
-    assert.ok(ORDER_DOCUMENT_COLUMNS.includes('superseded_at'))
-    assert.ok(ORDER_DOCUMENT_COLUMNS.includes('superseded_reason'))
   })
 })

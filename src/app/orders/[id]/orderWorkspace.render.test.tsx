@@ -1,7 +1,7 @@
 /**
- * The Confirmed Order pieces, rendered: the attention bar, the Order Summary,
- * the payment figures, the records sections, the activity trail, the overflow
- * menu and the loading shell.
+ * The Confirmed Order pieces, rendered: the attention bar, the Order Summary
+ * panel, the commercial breakdown, the payment figures, the records sections,
+ * the activity trail, the overflow menu and the loading shell.
  *
  * Every component is a function of its props; these check what they SAY, that
  * nothing depends on colour alone, and that no URL or storage key reaches the
@@ -19,37 +19,34 @@ import {
   MoreActionsMenu,
   OrderActivityList,
   OrderAttentionBar,
-  OrderCommercialTotals,
   OrderDetailSkeleton,
-  OrderImportantDatesSection,
+  OrderRecordInformation,
   OrderStatusPill,
-  OrderSummary,
+  OrderSummaryPanel,
   PaymentSummaryFigures,
   type OrderActivityItem,
 } from './OrderWorkspace'
 import {
   CUSTOMIZATION_MARK,
-  ORDER_COMMERCIAL_TITLE,
   OrderCommercialBreakdown,
   OrderCustomizationCell,
-  OrderDocumentsCard,
 } from './OrderPiSections'
 import {
   SUMMARY_NOT_SET,
   SUMMARY_UNASSIGNED,
   orderAttentionItems,
-  orderImportantDates,
-  orderSummaryFacts,
+  orderRecordFacts,
+  orderSummaryFields,
 } from '@/lib/orders/orderWorkspace'
-import { buildOrderFinancePosition, type OrderFinancePaymentRow } from '@/lib/finance/orderFinancePosition'
 import {
-  ORDER_DOCUMENTS_EXCEL_LABEL,
-  ORDER_DOCUMENTS_PDF_LABEL,
-  ORDER_DOCUMENTS_TITLE,
-  buildOrderDocumentsView,
-  orderDocumentAttemptPath,
-  type OrderDocumentRow,
-} from '@/lib/orders/orderDocuments'
+  NET_DIFFERENCE_LABEL,
+  ORDER_COMMERCIAL_TITLE,
+  orderCommercialLines,
+  orderCommercialNet,
+  orderStoredCommercialLines,
+} from '@/lib/orders/orderCommercial'
+import { formatMoney } from '@/lib/finance/piPaymentView'
+import { buildOrderFinancePosition, type OrderFinancePaymentRow } from '@/lib/finance/orderFinancePosition'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
 const text = (html: string): string =>
@@ -93,75 +90,130 @@ describe('the attention bar', () => {
   })
 })
 
-// ── The identity band, the status pill and Important Dates ────────────────────
+// ── The Order Summary panel and the status pill ───────────────────────────────
 
-const facts = (over: Partial<Parameters<typeof orderSummaryFacts>[0]> = {}) => orderSummaryFacts({
-  status: 'running', customerName: 'Acme Exports',
-  productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-  salespersonName: null, leadSource: null,
-  raisedByName: null, sourceRequestNumber: null,
+const fields = (over: Partial<Parameters<typeof orderSummaryFields>[0]> = {}) => orderSummaryFields({
+  clientName: 'Acme Exports',
+  location: 'Jaipur',
+  confirmDate: '8 Sep 2026',
+  uploadDate: '2 Sep 2026, 11:04 am',
+  dueDate: '30 Oct 2026',
+  isOverdue: false,
+  totalProductValue: '₹12,53,000.00',
   ...over,
 })
 
-function summaryMarkup(over: Parameters<typeof facts>[0] = {}, commercial: React.ReactNode = null) {
-  return renderToStaticMarkup(<OrderSummary facts={facts(over)} commercial={commercial} />)
-}
+const summaryMarkup = (over: Parameters<typeof fields>[0] = {}) =>
+  renderToStaticMarkup(<OrderSummaryPanel fields={fields(over)} />)
 
-describe('the identity band', () => {
-  test('states who the Order is for and who is carrying it', () => {
-    const body = text(summaryMarkup({
-      salespersonName: 'Nishant', leadSource: 'Reference', raisedByName: 'Dhruv',
-    }))
-    for (const s of ['Customer', 'Acme Exports', 'Salesperson', 'Nishant',
-                     'Lead source', 'Reference', 'Production', 'Not Aligned',
-                     'Raised by', 'Dhruv']) {
+describe('the Order Summary panel', () => {
+  test('states all six facts, each under its own label', () => {
+    const body = text(summaryMarkup())
+    for (const s of ['Client name', 'Acme Exports', 'Location', 'Jaipur',
+                     'Confirm date', '8 Sep 2026', 'Upload date', '2 Sep 2026, 11:04 am',
+                     'Due date', '30 Oct 2026', 'Total product value', '₹12,53,000.00']) {
       assert.ok(body.includes(s), s)
     }
   })
 
-  test('states NEITHER the status NOR a date — those are the header and Important Dates', () => {
-    const body = text(summaryMarkup({ salespersonName: 'Nishant', leadSource: 'Reference' }))
+  test('RAISED BY IS NOT DRAWN — the one field this pass removed', () => {
+    const body = text(summaryMarkup())
+    assert.ok(!/raised by|requested by/i.test(body))
+  })
+
+  test('states NEITHER the status NOR the facts that moved off this band', () => {
+    const body = text(summaryMarkup())
     assert.ok(!/\bStatus\b/.test(body))
     assert.ok(!/\bRunning\b/.test(body))
-    assert.ok(!/date/i.test(body))
+    for (const gone of ['Salesperson', 'Lead source', 'Production', 'From request',
+                        'Created', 'Last updated']) {
+      assert.ok(!body.includes(gone), gone)
+    }
   })
 
-  test('says neither Owner nor Assignee anywhere', () => {
-    const html = summaryMarkup({ salespersonName: 'Nishant' })
-    assert.ok(!/owner|assignee/i.test(text(html)))
+  test('shows ONE amount, and it is the product value — payment is its own section', () => {
+    const body = text(summaryMarkup())
+    assert.equal((body.match(/₹/g) ?? []).length, 1)
+    assert.ok(!/verified|awaiting|balance|order value/i.test(body))
   })
 
-  test('shows NO payment figure — payment is its own section', () => {
-    const body = text(summaryMarkup({ salespersonName: 'Nishant' }))
-    assert.ok(!/verified|awaiting|balance|₹/i.test(body))
+  test('the two prose fields are marked wide; the four fixed ones are not', () => {
+    const html = summaryMarkup()
+    assert.equal((html.match(/order-fact--wide/g) ?? []).length, 2)
+  })
+
+  test('a missing value says `Not available` and is marked as absent, not as a fault', () => {
+    const html = summaryMarkup({ location: null, uploadDate: null, totalProductValue: null })
+    const body = text(html)
+    assert.equal((body.match(/Not available/g) ?? []).length, 3)
+    assert.equal((html.match(/order-fact--missing/g) ?? []).length, 3)
+    // Restrained: an absence is never dressed as a warning.
+    assert.ok(!html.includes('order-fact--amber'))
+    assert.ok(!html.includes('order-fact--red'))
+  })
+
+  test('an overdue due date says so IN WORDS, not by colour alone', () => {
+    const html = summaryMarkup({ isOverdue: true })
+    assert.ok(text(html).includes('Overdue'))
+    assert.equal((html.match(/order-fact--red/g) ?? []).length, 1)
+  })
+
+  test('the panel is labelled for a reader who is not seeing it', () => {
+    assert.match(summaryMarkup(), /aria-label="Order summary"/)
+  })
+})
+
+
+// ── Record information ──────────────────────────────────────────────
+
+const recordFacts = (over: Partial<Parameters<typeof orderRecordFacts>[0]> = {}) =>
+  orderRecordFacts({
+    status: 'running',
+    salespersonName: 'Nishant',
+    leadSource: 'Reference',
+    productionAligned: true,
+    productionLabel: 'Aligned',
+    productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
+    ...over,
+  })
+
+const recordMarkup = (over: Parameters<typeof recordFacts>[0] = {}) =>
+  renderToStaticMarkup(<OrderRecordInformation facts={recordFacts(over)} />)
+
+describe('the Record information block', () => {
+  test('draws all three facts, each under its existing label', () => {
+    const body = text(recordMarkup())
+    for (const s of ['Record information', 'Salesperson', 'Nishant',
+                     'Lead source', 'Reference', 'Production', 'Aligned',
+                     'Aligned by Ravi']) {
+      assert.ok(body.includes(s), s)
+    }
+  })
+
+  test('restates NONE of the six facts the summary panel states', () => {
+    const body = text(recordMarkup())
+    for (const forbidden of [/client name/i, /location/i, /confirm date/i,
+                             /upload date/i, /due date/i, /product value/i, /₹/]) {
+      assert.equal(forbidden.test(body), false, String(forbidden))
+    }
+  })
+
+  test('and says nothing about who raised the Order', () => {
+    assert.equal(/raised by|requested by/i.test(text(recordMarkup())), false)
   })
 
   test('a gap is marked by a class as well as by its words', () => {
-    const html = summaryMarkup()
-    // production, salesperson and lead source are all missing here
+    const html = recordMarkup({
+      salespersonName: null, leadSource: null,
+      productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
+    })
     assert.equal((html.match(/order-fact--amber/g) ?? []).length, 3)
     assert.ok(text(html).includes(SUMMARY_UNASSIGNED))
     assert.ok(text(html).includes(SUMMARY_NOT_SET))
   })
 
-  test('the dot is decorative; the words carry the meaning', () => {
-    assert.match(summaryMarkup(), /class="order-fact-dot"[^>]*aria-hidden="true"/)
-  })
-
-  test('the commercial column is whatever the page hands it, and nothing when it hands none', () => {
-    const withMoney = summaryMarkup({}, <div>Product value ₹12,53,000</div>)
-    assert.ok(text(withMoney).includes('₹12,53,000'))
-    assert.ok(withMoney.includes('order-summary-commercial'))
-    assert.ok(!summaryMarkup().includes('order-summary-commercial'),
-      'a reader who may see no commercial figure gets no empty column')
-  })
-
-  test('the two stored totals read as label and figure', () => {
-    const body = text(renderToStaticMarkup(
-      <OrderCommercialTotals productValue="₹12,53,000.00" orderValue="₹15,64,090.00" />,
-    ))
-    assert.ok(body.includes('Product value ₹12,53,000.00'))
-    assert.ok(body.includes('Order value ₹15,64,090.00'))
+  test('the block is labelled for a reader who is not seeing it', () => {
+    assert.match(recordMarkup(), /aria-label="Record information"/)
   })
 })
 
@@ -182,39 +234,6 @@ describe('the status pill', () => {
   test('the WORD carries the meaning — colour is never the only signal', () => {
     // A reader who cannot tell amber from red still reads "Cancelled".
     assert.ok(text(renderToStaticMarkup(<OrderStatusPill label="Cancelled" tone="red" />)).includes('Cancelled'))
-  })
-})
-
-const importantDates = (over: Partial<Parameters<typeof orderImportantDates>[0]> = {}) =>
-  orderImportantDates({
-    status: 'running', confirmDate: '8 Sep 2026', dueDate: '30 Oct 2026', isOverdue: false,
-    createdAt: '8 Sep 2026', updatedAt: '9 Sep 2026',
-    ...over,
-  })
-
-describe('Important Dates', () => {
-  test('draws the planning pair and the audit pair, each in its own list', () => {
-    const html = renderToStaticMarkup(<OrderImportantDatesSection dates={importantDates()} />)
-    const body = text(html)
-    for (const s of ['Important Dates', 'Confirm date', '8 Sep 2026', 'Due date', '30 Oct 2026',
-                     'Created', 'Last updated', '9 Sep 2026']) {
-      assert.ok(body.includes(s), s)
-    }
-    assert.ok(html.includes('order-dates-primary'))
-    assert.ok(html.includes('order-dates-secondary'))
-  })
-
-  test('the primary pair is marked as such, so the hierarchy is not colour alone', () => {
-    const html = renderToStaticMarkup(<OrderImportantDatesSection dates={importantDates()} />)
-    assert.equal((html.match(/order-date--primary/g) ?? []).length, 2)
-    assert.equal((html.match(/order-date--secondary/g) ?? []).length, 2)
-  })
-
-  test('an overdue due date says so in words', () => {
-    const body = text(renderToStaticMarkup(
-      <OrderImportantDatesSection dates={importantDates({ isOverdue: true })} />,
-    ))
-    assert.ok(body.includes('Overdue'))
   })
 })
 
@@ -337,58 +356,106 @@ describe('the activity trail', () => {
 
 // ── Order records: the same documents section, embedded ───────────────────────
 
-function docRow(over: Partial<OrderDocumentRow> = {}): OrderDocumentRow {
-  const id = '11111111-2222-3333-4444-555555555555'
-  return {
-    id: 'v1', order_id: id, version: 1, status: 'ready', attempt_count: 1,
-    claimed_at: null, completed_at: '2026-08-20T10:00:00Z',
-    last_error_code: null, last_error_message: null,
-    excel_path: orderDocumentAttemptPath(id, 1, 1, 'xlsx'),
-    pdf_path: orderDocumentAttemptPath(id, 1, 1, 'pdf'),
-    excel_sha256: 'a'.repeat(64), pdf_sha256: 'b'.repeat(64),
-    excel_bytes: 1000, pdf_bytes: 2000,
-    created_at: '2026-08-20T09:00:00Z', updated_at: '2026-08-20T10:00:00Z',
-    ...over,
-  }
-}
-
-describe('the documents section, embedded in Order records', () => {
-  test('is a titled section rather than a card, with every word and control intact', () => {
-    const html = renderToStaticMarkup(
-      <OrderDocumentsCard
-        embedded
-        view={buildOrderDocumentsView([docRow()])}
-        canGenerate onGenerate={() => {}} generating={false}
-        onDownload={() => {}} downloading={null} error={null}
-      />,
-    )
-    assert.match(html, /<section[^>]*aria-label="Documents"/)
-    assert.match(html, /<h3[^>]*>Documents<\/h3>/)
-    const body = text(html)
-    assert.ok(body.includes(ORDER_DOCUMENTS_TITLE))
-    assert.ok(body.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
-    assert.ok(body.includes(ORDER_DOCUMENTS_PDF_LABEL))
-    assert.ok(body.includes('Ready'))
-    assert.ok(body.includes('Version 1'))
-    assert.ok(!/href=/.test(html))
-  })
-})
-
 // ── The commercial breakdown ──────────────────────────────────────────────────
 
+const breakdownLines = () => orderCommercialLines([
+  { key: 'gross',      label: 'Gross product amount',   value: '₹11,70,000', kind: 'amount' },
+  { key: 'discount',   label: 'Discount',               value: '₹20,000',    kind: 'amount' },
+  { key: 'subtotal',   label: 'Subtotal after discount', value: '₹11,50,000', kind: 'amount' },
+  { key: 'packing',    label: 'Packing cost',           value: 'Included',   kind: 'included' },
+  { key: 'beforeGst',  label: 'Total before GST',       value: '₹11,70,000', kind: 'amount', groupStart: true },
+  { key: 'gst',        label: 'GST',                    value: '₹2,10,600',  kind: 'amount' },
+  { key: 'grandTotal', label: 'Grand Total',            value: '₹13,80,600', kind: 'amount', emphasis: 'total' },
+] as PiAmountRow[])
+
+const breakdownNet = () => orderCommercialNet({
+  productValue: 1170000, orderValue: 1380600, formatAmount: formatMoney,
+})
+
 describe('the commercial breakdown', () => {
-  test('prints exactly the rows it is given, the grand total on the shared ground', () => {
-    const rows: PiAmountRow[] = [
-      { key: 'products', label: 'Products', value: '₹11,70,000', kind: 'amount' },
-      { key: 'gst', label: 'GST 18%', value: '₹2,10,600', kind: 'amount', groupStart: true },
-      { key: 'total', label: 'Grand total', value: '₹13,80,600', kind: 'amount', emphasis: 'total' },
-    ] as PiAmountRow[]
-    const html = renderToStaticMarkup(<OrderCommercialBreakdown rows={rows} />)
+  test('prints exactly the lines it is given, and invents none', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    )
     const body = text(html)
     assert.ok(body.includes(ORDER_COMMERCIAL_TITLE))
-    for (const s of ['Products', '₹11,70,000', 'GST 18%', '₹2,10,600', 'Grand total', '₹13,80,600']) assert.ok(body.includes(s), s)
-    assert.equal((html.match(/order-commercial-row/g) ?? []).length, 3, 'no row is invented')
-    assert.equal((html.match(/pi-commercial-grand-total/g) ?? []).length, 1)
+    for (const s of ['₹11,70,000', 'Discount', '₹20,000', 'Subtotal after discount',
+                     'Packing cost', 'Included', 'Total before GST', 'GST', '₹2,10,600',
+                     '₹13,80,600']) {
+      assert.ok(body.includes(s), s)
+    }
+    // One label per line, so this counts LINES rather than class tokens.
+    assert.equal((html.match(/order-breakdown-label/g) ?? []).length, 7)
+  })
+
+  test('it opens on Product value and ends on Order value, in the Order`s words', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    ))
+    assert.ok(body.includes('Product value'))
+    assert.ok(body.includes('Order value'))
+    assert.ok(!body.includes('Gross product amount'))
+    assert.ok(!body.includes('Grand Total'))
+  })
+
+  test('the final row is the strongest, and there is exactly one of it', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    )
+    assert.equal((html.match(/order-breakdown-line--final/g) ?? []).length, 1)
+    assert.equal((html.match(/order-breakdown-line--base/g) ?? []).length, 1)
+  })
+
+  test('a factor and a running total land in different columns', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    )
+    // discount, packing and GST move the figure; the rest are totals.
+    assert.equal((html.match(/order-breakdown-adjust/g) ?? []).length, 3)
+    assert.equal((html.match(/order-breakdown-total/g) ?? []).length, 4)
+  })
+
+  test('a sign is announced in words as well as drawn as a glyph', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    )
+    // The glyph is decorative; the word beside it is what a screen reader says.
+    assert.match(html, /order-breakdown-sign"[^>]*aria-hidden="true"/)
+    const body = text(html)
+    assert.ok(body.includes('less'), 'the deduction is spoken')
+    assert.ok(body.includes('plus'), 'the addition is spoken')
+  })
+
+  test('the net difference is stated once, with its percentage', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+    ))
+    assert.ok(body.includes(NET_DIFFERENCE_LABEL))
+    assert.ok(body.includes(`+${formatMoney(210600)}`))
+    assert.ok(body.includes('+18.0%'))
+  })
+
+  test('an underivable net is DRAWN AS NOTHING, never as ₹0', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown
+        lines={breakdownLines()}
+        net={orderCommercialNet({ productValue: null, orderValue: 1380600, formatAmount: formatMoney })}
+      />,
+    )
+    assert.ok(!html.includes('order-breakdown-net'))
+    assert.ok(!text(html).includes(NET_DIFFERENCE_LABEL))
+  })
+
+  test('the Order with no PI still states its two stored figures', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderCommercialBreakdown
+        lines={orderStoredCommercialLines({ productValue: '₹5,000.00', orderValue: '₹5,900.00' })}
+        net={orderCommercialNet({ productValue: 5000, orderValue: 5900, formatAmount: formatMoney })}
+      />,
+    ))
+    assert.ok(body.includes('Product value ₹5,000.00'))
+    assert.ok(body.includes('Order value ₹5,900.00'))
+    assert.ok(body.includes(`+${formatMoney(900)}`))
   })
 })
 

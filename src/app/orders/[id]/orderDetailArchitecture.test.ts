@@ -47,12 +47,12 @@ const body = page.slice(page.indexOf('<OrdersLayout'))
 describe('the page reads in one order, with no second summary', () => {
   const marks = {
     header:   body.indexOf('className="order-command-header"'),
-    summary:  body.indexOf('<OrderSummary'),
-    dates:    body.indexOf('<OrderImportantDatesSection'),
+    summary:  body.indexOf('<OrderSummaryPanel'),
     attention: body.indexOf('<OrderAttentionBar'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
     records:  body.indexOf('title="Order records"'),
+    recordInfo: body.indexOf('<OrderRecordInformation'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -65,13 +65,14 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
-      'header', 'summary', 'dates', 'attention', 'products', 'payment', 'records', 'activity',
+      'header', 'summary', 'attention', 'products', 'payment', 'records',
+      'recordInfo', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
-    assert.equal((body.match(/<OrderSummary/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderImportantDatesSection/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderSummaryPanel/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderRecordInformation/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)
@@ -116,31 +117,75 @@ describe('the redundant surfaces are gone', () => {
   // It stated five things and each of them was either MOVED or deliberately
   // dropped; none was simply deleted. See the block that replaced it on the
   // page for the mapping, and the two tests below for what has to survive.
-  test('the Record Information section is gone, and so is its styling', () => {
-    assert.equal(body.includes('aria-label="Record information"'), false)
-    assert.equal(/Record information/i.test(body), false, 'the page must not still name it')
-    for (const cls of ['order-details', 'order-details-head', 'order-details-grid']) {
-      assert.equal(page.includes(`"${cls}"`), false, `${cls} is still used`)
-      assert.equal(read(CSS).includes(`.${cls} {`), false, `.${cls} is still styled`)
+  test('Record Information holds the three facts that are not the headline', () => {
+    // The salesperson, the lead source and production. Each is something the
+    // attention strip can raise a gap in, so none of them may be invisible.
+    assert.ok(body.includes('<OrderRecordInformation facts={recordFacts}'))
+    const ws = read('src/lib/orders/orderWorkspace.ts')
+    for (const key of ["key: 'salesperson'", "key: 'lead_source'", "key: 'production'"]) {
+      assert.ok(ws.includes(key), key)
+    }
+    for (const label of ["label: 'Salesperson'", "label: 'Lead source'", "label: 'Production'"]) {
+      assert.ok(ws.includes(label), label + ' — the existing wording, unchanged')
     }
   })
 
-  test('nothing was lost with it: every useful value has a new home', () => {
-    // Who raised it and the originating request number: the identity band.
-    const ws = read('src/lib/orders/orderWorkspace.ts')
-    assert.ok(ws.includes("key: 'raised_by'") && ws.includes("label: 'Raised by'"))
-    assert.ok(ws.includes("key: 'source_request'") && ws.includes("label: 'From request'"))
-    assert.ok(page.includes('raisedByName: order.requested_by_name'))
-    assert.ok(page.includes('sourceRequestNumber: order.source_request_number'))
+  test('and each of the three still comes from its original source', () => {
+    // A move, not a re-resolution: the same column, the same helper, the same
+    // capability behind the production control.
+    assert.ok(page.includes('salespersonName: order.assigned_to_name ?? null'))
+    assert.ok(page.includes('const leadSource = leadSourceLabel(order.lead_source)'))
+    assert.ok(page.includes('leadSource,'))
+    assert.ok(page.includes('describeProductionAlignment({'))
+    assert.ok(page.includes('canAlign: mayAlignProduction'))
+    assert.ok(page.includes('const mayAlignProduction = canAlignProduction(ordersCaps, Boolean(viewAsUserId))'))
+  })
 
-    // The two audit timestamps: Important Dates, as its secondary pair.
-    assert.ok(ws.includes("key: 'created_at'") && ws.includes("key: 'updated_at'"))
-    assert.ok(page.includes('createdAt: fmtDate(order.created_at)'))
-    assert.ok(page.includes('updatedAt: fmtDate(order.updated_at)'))
+  test('its OLD markup and styling did not come back with it', () => {
+    for (const cls of ['order-details', 'order-details-head', 'order-details-grid']) {
+      assert.equal(page.includes('"' + cls + '"'), false, cls + ' is still used')
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, '.' + cls + ' is still styled')
+    }
+  })
 
-    // The notes: their own block, still on the page.
+  test('the notes survived it: operational content, still on the page', () => {
+    // The one thing on Record Information that was never metadata — somebody
+    // typed it about this Order for somebody else to read.
     assert.ok(body.includes('aria-label="Order notes"'))
     assert.ok(body.includes('{order.notes}'))
+  })
+
+  // ── RAISED BY ──
+  //
+  // A DISPLAY REMOVAL AND NOTHING ELSE. The summary panel no longer draws who
+  // raised the Order. The column is still selected, still carried on the row,
+  // still what the PI-revision rule reads to find the PI's owner, and the
+  // activity trail still names who did what.
+  test('Raised by is not drawn anywhere on the page', () => {
+    assert.equal(/Raised by/i.test(body), false, 'the page must not draw it')
+    const ws = read('src/lib/orders/orderWorkspace.ts')
+    assert.equal(/'raised_by'/.test(ws), false, 'and no builder must produce it')
+    // Not in Record information either — that block holds three facts and this
+    // is not one of them.
+    const at = body.indexOf('<OrderRecordInformation')
+    assert.ok(at > 0)
+  })
+
+  test('but the audit data underneath it is untouched', () => {
+    assert.ok(page.includes('requested_by'), 'the column is still selected')
+    assert.ok(page.includes('requested_by_name'), 'and still mapped onto the row')
+    // The rule that decides who may propose a revised PI reads exactly this.
+    assert.ok(page.includes('canProposePiRevision'))
+  })
+
+  test('the originating request number and the audit timestamps are not drawn either', () => {
+    // Neither is something anybody plans against, and both competed with the
+    // six facts that are. Both columns are still read.
+    for (const gone of ['From request', 'Last updated']) {
+      assert.equal(body.includes(gone), false, gone + ' is still drawn')
+    }
+    assert.ok(page.includes('source_request_number'), 'the column is still selected')
+    assert.ok(page.includes('updated_at'), 'and so is the timestamp')
   })
 
   test('the internal request UUID is not displayed anywhere', () => {
@@ -182,22 +227,39 @@ describe('no Order fact is stated twice', () => {
     assert.equal(/key: 'status'/.test(facts), false, 'the identity band must not restate the status')
   })
 
-  test('the identity facts are stated only by the band', () => {
+  test('the six summary facts are stated by ONE panel, built ONCE', () => {
     // The page hands them to one component and draws none of them itself.
-    assert.equal((page.match(/orderSummaryFacts\(/g) ?? []).length, 1)
-    assert.ok(page.includes('facts={summaryFacts}'))
+    assert.equal((page.match(/orderSummaryFields\(/g) ?? []).length, 1)
+    assert.ok(page.includes('fields={summaryFields}'))
   })
 
-  test('every date is stated only by Important Dates', () => {
-    assert.equal((page.match(/orderImportantDates\(/g) ?? []).length, 1)
-    assert.ok(page.includes('dates={importantDates}'))
-    // And the band it used to share them with states none.
-    const ws = code('src/lib/orders/orderWorkspace.ts')
-    const facts = ws.slice(ws.indexOf('export function orderSummaryFacts'),
-                           ws.indexOf('export function orderImportantDates'))
-    for (const forbidden of ["key: 'confirm_date'", "key: 'due_date'"]) {
-      assert.equal(facts.includes(forbidden), false, `${forbidden} belongs to Important Dates now`)
+  test('the upload date is the APPROVED PI version’s, never another date', () => {
+    // Not the Order's creation date, not the draft's, not the confirmation
+    // date. The approved row of order_pi_versions, and nothing else.
+    assert.ok(page.includes('const piUploadedAt = piHistory.current?.uploadedAt ?? null'))
+    assert.ok(page.includes('uploadDate: piUploadedAt'))
+    assert.equal(/uploadDate: fmtDate\(order\./.test(page), false,
+      'an Order column must never stand in for the PI upload stamp')
+  })
+
+  test('the location is the saved client city, never an address line', () => {
+    assert.ok(page.includes('piHandoff.client.city'))
+    for (const forbidden of ['billing_address', 'shipping_address',
+                             'billTo.address', 'shipTo.address']) {
+      assert.equal(page.includes('location: ' + forbidden), false, forbidden)
     }
+  })
+
+  test('every date this page draws is one of the panel’s three', () => {
+    const ws = code('src/lib/orders/orderWorkspace.ts')
+    const fields = ws.slice(ws.indexOf('export function orderSummaryFields'))
+    for (const key of ["'confirm_date'", "'upload_date'", "'due_date'"]) {
+      assert.ok(fields.includes(key), key)
+    }
+    // And the separate Important Dates band is gone with its builder.
+    assert.equal(/orderImportantDates/.test(read('src/lib/orders/orderWorkspace.ts')), false)
+    assert.equal(/OrderImportantDatesSection/.test(code(WORKSPACE)), false)
+    assert.equal(read(CSS).includes('.order-dates {'), false, 'and so is its styling')
   })
 
   test('every payment figure lives in the payment section and nowhere else', () => {
@@ -211,26 +273,52 @@ describe('no Order fact is stated twice', () => {
     }
   })
 
-  test('the commercial figures are stated ONCE, in their own column below Products', () => {
-    // NOT in the identity band: that band is identity only, and the money
-    // belongs under the product list it describes.
-    const summary = body.slice(body.indexOf('<OrderSummary'), body.indexOf('<OrderAttentionBar'))
-    for (const forbidden of ['total_product_value', 'total_value', 'OrderCommercialTotals', 'OrderCommercialBreakdown']) {
-      assert.equal(summary.includes(forbidden), false, `${forbidden} must not be in the Order Summary`)
+  test('there is ONE commercial presentation, and the totals block is gone', () => {
+    // The `Product value` / `Order value` pair restated the breakdown's own
+    // first and last lines under different captions — the same rupees twice.
+    assert.equal(/OrderCommercialTotals/.test(page), false, 'the page must not draw it')
+    assert.equal(/OrderCommercialTotals/.test(code(WORKSPACE)), false, 'and it must not exist')
+    for (const cls of ['order-commercial-totals', 'order-commercial-total']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
     }
 
     // In the lower workspace's right column, and after the products.
     const aside = body.slice(body.indexOf('order-lower-aside'))
-    assert.ok(aside.includes('<OrderCommercialTotals'))
-    assert.ok(aside.includes('total_product_value'))
-    assert.ok(aside.includes('total_value'))
     assert.ok(aside.includes('<OrderCommercialBreakdown'))
     assert.ok(body.indexOf('className="order-products"') < body.indexOf('order-lower-aside'),
       'the money sits below the products it describes')
-
-    // Drawn once each.
-    assert.equal((body.match(/<OrderCommercialTotals/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderCommercialBreakdown/g) ?? []).length, 1)
+  })
+
+  test('the three record facts are NOT restated in the summary panel', () => {
+    const ws = code('src/lib/orders/orderWorkspace.ts')
+    const fields = ws.slice(ws.indexOf('export function orderSummaryFields'),
+                            ws.indexOf('export type OrderRecordFactKey'))
+    for (const forbidden of ["'salesperson'", "'lead_source'", "'production'"]) {
+      assert.equal(fields.includes(forbidden), false, forbidden + ' belongs to Record information')
+    }
+    // And the page builds each list exactly once.
+    assert.equal((page.match(/orderRecordFacts\(/g) ?? []).length, 1)
+  })
+
+  test('the summary panel states the product value and no other figure', () => {
+    // Its Total Product Value is the product subtotal BEFORE any commercial
+    // adjustment; the Order value belongs to the breakdown alone.
+    const summary = body.slice(body.indexOf('<OrderSummaryPanel'), body.indexOf('<OrderAttentionBar'))
+    for (const forbidden of ['total_value', 'OrderCommercialBreakdown', 'finance.']) {
+      assert.equal(summary.includes(forbidden), false, forbidden)
+    }
+    assert.ok(page.includes('totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value)'))
+  })
+
+  test('the breakdown recomputes NOTHING — one derived figure, and it is the net', () => {
+    const lib = code('src/lib/orders/orderCommercial.ts')
+    // The only arithmetic in the module is the stored-column subtraction.
+    assert.ok(lib.includes('const diff = Math.round((total - base) * 100) / 100'))
+    assert.equal((lib.match(/Math\.round\(/g) ?? []).length, 1)
+    // And the page does none of its own.
+    assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows)'))
+    assert.ok(page.includes('formatAmount: fmtAmount'))
   })
 
   test('the lower workspace puts the record left and the money right', () => {
@@ -251,11 +339,41 @@ describe('no Order fact is stated twice', () => {
 describe('Order records holds the documents, the source PI and the history', () => {
   const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('<OrderActivityList'))
 
-  test('all three sections are inside it, each embedded rather than a card of its own', () => {
-    assert.ok(records.includes('<OrderDocumentsCard'))
+  test('both sections are inside it, each embedded rather than a card of its own', () => {
     assert.ok(records.includes('Source PI'))
     assert.ok(records.includes('<OrderPiHistoryCard'))
-    assert.equal((records.match(/embedded/g) ?? []).length >= 2, true)
+    assert.ok(records.includes('embedded'))
+  })
+
+  // ── DOCUMENTS ──
+  //
+  // The section and the Generate Document control left this page. The register,
+  // its route, its storage rule and its RLS are untouched and still tested by
+  // orderDocuments.test.ts and documentsRoute.test.ts — only the surface went.
+  test('the Documents section and the Generate control are gone from the page', () => {
+    for (const gone of ['OrderDocumentsCard', 'documentsQuery', 'documentsView',
+                        'mayGenerateDocuments', 'ORDER_DOCUMENT_COLUMNS',
+                        'buildOrderDocumentsView', 'order_document_versions']) {
+      assert.equal(page.includes(gone), false, gone + ' is still on the page')
+    }
+  })
+
+  test('and no dead presentation code was left behind', () => {
+    const sections = code(SECTIONS)
+    assert.equal(/OrderDocumentsCard/.test(sections), false)
+    assert.equal(/ORDER_DOCUMENTS_/.test(sections), false)
+    for (const cls of ['order-doc-row', 'order-doc-icon']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
+    }
+    // The two the Source PI reference still uses are deliberately kept.
+    assert.ok(read(CSS).includes('.order-doc-name {'))
+  })
+
+  test('THE SHARED SERVICE IS UNTOUCHED — only the screen stopped asking', () => {
+    for (const kept of ['src/lib/orders/orderDocuments.ts',
+                        'src/app/api/orders/[id]/documents/route.ts']) {
+      assert.ok(read(kept).length > 0, kept)
+    }
   })
 
   // ── The PI door ──
@@ -311,11 +429,24 @@ describe('the business rules this pass must not touch', () => {
     assert.ok(page.includes('financePaymentHref(p.id)'))
   })
 
-  test('production alignment, the amendment doors and the generate gate are unchanged', () => {
+  test('production alignment and the amendment doors are unchanged', () => {
     assert.ok(page.includes('canAlignProduction(ordersCaps, Boolean(viewAsUserId))'))
     assert.ok(page.includes("rpc('set_order_production_alignment'"))
     assert.ok(page.includes('const mayManageOrders = ordersCaps.canManageOrders && !viewAsUserId'))
-    assert.ok(page.includes('canApproveOrderSubmission && !viewAsUserId'))
+  })
+
+  test('the PRODUCT CODE leads every row, and the name stays whole beside it', () => {
+    const sections = code(SECTIONS)
+    // Both layouts, one treatment: the code is its own class and the name is
+    // one step quieter, rather than the code being the palest thing in the row.
+    assert.equal((sections.match(/className="order-product-code/g) ?? []).length, 2)
+    assert.equal((sections.match(/className="order-product-name"/g) ?? []).length, 2)
+    const css = read(CSS)
+    assert.match(css, /\.order-product-code \{[\s\S]*?font-weight: 700;/)
+    assert.match(css, /\.order-product-name \{[\s\S]*?font-weight: 500;/)
+    // NOTHING WAS DROPPED: the name is still rendered whole, through the shared
+    // multi-line renderer, which never truncates.
+    assert.equal((sections.match(/<MultilineText className="order-product-name"/g) ?? []).length, 2)
   })
 
   test('the products table keeps its full-width fixed layout and all nine columns', () => {
@@ -378,13 +509,13 @@ describe('the critical path to the product table', () => {
       'no single-object signer runs while loading the table')
   })
 
-  test('the workbook and each document are signed ON THE CLICK, not at load', () => {
+  test('the workbook and each PI version are signed ON THE CLICK, not at load', () => {
     // A page that signed every version's file up front would spend a request
     // per archived PI for something nobody opened.
-    for (const handler of ['const downloadWorkbook', 'const openVersion', 'const downloadDocument']) {
+    for (const handler of ['const downloadWorkbook', 'const openVersion']) {
       const at = page.indexOf(handler)
       assert.ok(at > 0, handler)
-      assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), `${handler} signs on demand`)
+      assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), handler + ' signs on demand')
     }
   })
 })
@@ -406,13 +537,6 @@ describe('a narrow write does not re-read the whole page', () => {
       'alignment must not fall back to the full page load')
   })
 
-  test('asking for documents re-reads the register and the trail, and nothing else', () => {
-    const fn = bodyOf('const requestDocuments')
-    assert.ok(fn.includes('await reloadDocuments()'))
-    assert.equal(fn.includes('loadOrder()'), false,
-      'document generation must not fall back to the full page load')
-  })
-
   test('a status change is still the narrowest of all — the trail alone', () => {
     assert.match(page, /onStatusChanged=\{updated => \{[\s\S]{0,900}?reloadActivity\(\)/)
   })
@@ -421,15 +545,11 @@ describe('a narrow write does not re-read the whole page', () => {
     // One definition each, used by the full load and by the narrow refresh.
     assert.equal((page.match(/orderRowQuery\(\)/g) ?? []).length, 2,
       'the Order row query: the full load and the narrow refresh')
-    assert.equal((page.match(/documentsQuery\(\)/g) ?? []).length, 2,
-      'the documents query: the full load and the narrow refresh')
     assert.equal((page.match(/activityQuery\(\)/g) ?? []).length, 2,
       'the activity query: the full load and the narrow refresh')
     // And each of those tables is SELECTed from in exactly one place: the
-    // register and the trail have one read each, and the Order row's single
-    // read sits beside the one UPDATE a status change performs.
-    assert.equal((page.match(/\.from\('order_document_versions'\)/g) ?? []).length, 1)
-    assert.equal((page.match(/\.select\(ORDER_DOCUMENT_COLUMNS\)/g) ?? []).length, 1)
+    // trail has one read, and the Order row's single read sits beside the one
+    // UPDATE a status change performs.
     assert.equal((page.match(/\.from\('order_activity_log'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
     assert.equal((page.match(/\.from\('orders'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
   })
@@ -444,7 +564,7 @@ describe('a narrow write does not re-read the whole page', () => {
     assert.equal(fn.includes('reloadOrderRow()'), false)
   })
 
-  test('the chronology and the register are derived once per load, not per render', () => {
+  test('the chronology is derived once per load, not per render', () => {
     // Opening the image viewer, expanding the trail or opening a menu
     // re-renders this component. Without these the whole merged chronology was
     // rebuilt and re-sorted for a state change that touched none of it.
@@ -452,7 +572,6 @@ describe('a narrow write does not re-read the whole page', () => {
       'const history = useMemo(',
       'const orderEntryById = useMemo(',
       'const piHistory = useMemo(',
-      'const documentsView = useMemo(',
     ]) {
       assert.ok(page.includes(memo), memo + ' must be memoised')
     }
