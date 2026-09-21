@@ -101,7 +101,7 @@ export function QuickActionList({
           <button
             key={action.key}
             type="button"
-            className="boe-btn boe-btn-primary boe-quick-action"
+            className="boe-btn boe-quick-action"
             onClick={() => router.push(action.href)}
           >
             {action.icon}

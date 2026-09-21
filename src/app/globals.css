@@ -3046,43 +3046,69 @@ body {
   gap: 8px;
 }
 
-/* Full width on both surfaces, and never below the 44px touch minimum — .boe-btn
-   only reaches that at <= 767px, and this button has to be tappable at every
-   width. Colour is left to .boe-btn-primary, which is the amber action token. */
+/* TINTED, NOT FILLED.
+
+   This button is NOT .boe-btn-primary. A filled #E8A030 slab was the loudest
+   thing in a column of quiet nav items, against "neutral-heavy palette",
+   "minimal bright colours" and "low visual noise" in docs/Reference/UI_RULES.md
+   — and against the note on .boe-record-action above, which already states the
+   rule for this codebase: one dominant primary is the only filled button.
+
+   So it takes the shape .boe-btn-danger already establishes for a coloured but
+   quiet action — low-alpha fill, matching hairline, coloured mark — in amber:
+
+     fill    rgba(232,160,48,0.12), the same tint .boe-nav-badge.amber uses
+     border  the same hue at 0.34, so the edge is real on #F8F9FA and #F4F5F7
+     label   --color-boe-primary, 16.1:1 on that fill
+     icon    #C4831A, the amber foreground .boe-nav-badge.amber already pairs
+             with this exact tint. Decorative and aria-hidden, so it carries
+             the identity while the label carries the contrast.
+
+   Full width on both surfaces, and never below the 44px touch minimum —
+   .boe-btn only reaches that at <= 767px and this has to be tappable at every
+   width. */
 .boe-quick-action {
   width: 100%;
   justify-content: center;
   min-height: 46px;
   font-size: 13.5px;
+  font-weight: 600;
   gap: 8px;
-}
-
-/* DARK LABEL ON THE AMBER FILL, for this button only.
-
-   .boe-btn-primary sets white on #E8A030, which measures 2.2:1 — below the
-   4.5:1 AA needs for 13.5px text. The amber IS the identity and stays; what
-   changes is the foreground, to --color-boe-primary (#111318), the token the
-   rest of the app already uses for primary text. That measures 8.4:1 on the
-   fill and 7.0:1 on the #D4911F hover, so both states clear AA comfortably.
-   The icon is stroke="currentColor", so it follows the label with no rule of
-   its own.
-
-   SCOPED TWO WAYS, deliberately:
-     .boe-btn-primary.boe-quick-action outranks .boe-btn-primary on
-       specificity rather than source order, so the global token and every
-       other primary button in the app are untouched. Same shape as the
-       existing .boe-btn-primary.pi-approve-btn override further down.
-     :not(:disabled) leaves .boe-btn-primary:disabled alone, which supplies
-       its own grey-on-grey pair. Without it this rule, being equally
-       specific and later, would paint a disabled button in live text. */
-.boe-btn-primary.boe-quick-action:not(:disabled) {
+  background: rgba(232, 160, 48, 0.12);
   color: var(--color-boe-primary);
+  border: 1px solid rgba(232, 160, 48, 0.34);
 }
 
-/* An amber ring on an amber fill is no ring at all. Same reasoning, and the
-   same shape, as .boe-task-action-submit:focus-visible above: where the global
-   default disappears into the button, the button states its own. #111318 is
-   the primary text token, so this introduces no new colour. */
+/* lucide renders stroke="currentColor", so setting colour on the svg is the
+   whole of it — the mark goes amber, the label stays dark. */
+.boe-quick-action svg {
+  color: #C4831A;
+}
+
+/* Deepens the tint rather than changing hue, the way .boe-btn-danger:hover
+   does. Label contrast only improves. */
+.boe-quick-action:hover:not(:disabled) {
+  background: rgba(232, 160, 48, 0.2);
+  border-color: rgba(232, 160, 48, 0.5);
+}
+
+/* Stated here because this button no longer inherits .boe-btn-primary:disabled.
+   Same grey pair that rule supplies, so a disabled quick action looks like
+   every other disabled button in the app. */
+.boe-quick-action:disabled {
+  background: #EEF0F4;
+  color: #8C94A6;
+  border-color: rgba(0, 0, 0, 0.08);
+  cursor: not-allowed;
+}
+.boe-quick-action:disabled svg {
+  color: #8C94A6;
+}
+
+/* The global focus ring is amber at 0.45 alpha, which on an amber-tinted
+   button is very nearly the button. Same reasoning and the same shape as
+   .boe-task-action-submit:focus-visible above; #111318 is the primary text
+   token, so this introduces no new colour. */
 .boe-quick-action:focus-visible {
   outline: 2px solid #111318;
   outline-offset: 2px;
@@ -3100,27 +3126,27 @@ body {
 }
 
 /* ── Page copy (<= 767px) ──
-   A tinted amber container so the section reads as one block and is clearly
-   separated from the module grid below it, using the existing amber tint token
-   rather than a new colour. */
+   SEPARATED BY A RULE, not by a tinted box. The button is itself amber-tinted
+   now, so a tinted container around it was tint on tint — it washed the button
+   out and cost it the prominence the section exists for. A hairline and its
+   spacing do the separating instead, which is quieter and matches how the rest
+   of this UI divides a page. */
 .boe-quick-actions-page {
   display: none;
   margin-bottom: 18px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--color-boe-amber-tint);
-  border: 1px solid rgba(232, 160, 48, 0.22);
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-/* Matches the launcher’s own MODULES label, one token darker (tertiary rather
-   than muted) because it sits on a tinted ground. */
+/* The launcher’s own MODULES label, to the value: the two sit one above the
+   other and any difference between them would read as a mistake. */
 .boe-quick-actions-page-label {
   margin: 0 0 10px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--color-boe-tertiary);
+  color: #8C94A6;
 }
 
 @media (max-width: 767px) {
