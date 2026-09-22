@@ -26,6 +26,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const PAGE = 'src/app/orders/[id]/page.tsx'
 const WORKSPACE = 'src/app/orders/[id]/OrderWorkspace.tsx'
 const SECTIONS = 'src/app/orders/[id]/OrderPiSections.tsx'
+const STATUS = 'src/app/orders/[id]/OrderStatusWorkspace.tsx'
 const CSS = 'src/app/globals.css'
 
 /** The page with its comments removed: these assertions are about what RENDERS,
@@ -53,7 +54,6 @@ describe('the page reads in one order, with no second summary', () => {
     currentStatus: body.indexOf('<OrderCurrentStatus>'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
-    records:  body.indexOf('title="Order records"'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -67,7 +67,7 @@ describe('the page reads in one order, with no second summary', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
       'header', 'summary', 'attention', 'workspace', 'currentStatus', 'products',
-      'payment', 'records', 'activity',
+      'payment', 'activity',
     ])
   })
 
@@ -79,7 +79,6 @@ describe('the page reads in one order, with no second summary', () => {
     // section higher would be the same document stated twice on one screen.
     assert.equal((body.match(/<OrderMainPiCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderDesignFilesCard/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderManufacturingCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)
@@ -89,6 +88,82 @@ describe('the page reads in one order, with no second summary', () => {
 // ══ 2. The surfaces that were removed ═════════════════════════════════════════
 
 describe('the redundant surfaces are gone', () => {
+  // ── MANUFACTURING STATUS ──
+  //
+  // Its one real line was the production alignment, which the Sales and
+  // production group at the top of the page already states. A reader met the
+  // same alignment twice on one screen.
+  test('the lower Current Status area draws NO Manufacturing Status card', () => {
+    const current = body.slice(body.indexOf('<OrderCurrentStatus>'), body.indexOf('</OrderCurrentStatus>'))
+    assert.equal(/OrderManufacturingCard/.test(current), false, 'the card is still drawn')
+    assert.equal(/Manufacturing/i.test(body), false, 'and it is not named anywhere on the page')
+    assert.equal(/OrderManufacturingCard/.test(code(STATUS)), false, 'and it no longer exists')
+  })
+
+  test('Main PI and Design Files are both still there, and once each', () => {
+    const current = body.slice(body.indexOf('<OrderCurrentStatus>'), body.indexOf('</OrderCurrentStatus>'))
+    assert.equal((current.match(/<OrderMainPiCard/g) ?? []).length, 1)
+    assert.equal((current.match(/<OrderDesignFilesCard/g) ?? []).length, 1)
+    // The Main PI card keeps every one of its own controls.
+    for (const kept of ['onView', 'onDownload', 'onHistory', 'viewing', 'downloading']) {
+      assert.ok(current.includes(kept + '='), kept + ' was dropped from the Main PI card')
+    }
+  })
+
+  test('THE MANUFACTURING DATA AND THE ALIGNMENT LOGIC ARE UNTOUCHED', () => {
+    // A display removal only. The describer, its rules and its tests stay; the
+    // alignment the page DOES still state comes from the same helper as before,
+    // and every control that SETS one is where it was.
+    const lib = read('src/lib/orders/orderCurrentStatus.ts')
+    assert.ok(lib.includes('export function describeManufacturingStatus'))
+    assert.ok(read('src/lib/orders/orderCurrentStatus.test.ts').includes('describeManufacturingStatus'))
+    assert.ok(page.includes('describeProductionAlignment({'))
+    assert.ok(page.includes('canAlignProduction'))
+    assert.ok(page.includes('<ProductionAlignmentModal'))
+  })
+
+  // ── ORDER RECORDS ──
+  //
+  // It held one thing: the source PI, named, with a Download. The PI in force —
+  // which for a converted Order IS that document — is the Main PI card, with
+  // its own View, Download and View history.
+  test('the Order records section is gone', () => {
+    assert.equal(body.includes('title="Order records"'), false, 'the section is still drawn')
+    assert.equal(/Order records/i.test(body), false, 'and it is not named on the page')
+    assert.equal(/Source PI/i.test(body), false, 'nor is the row it held')
+  })
+
+  test('and no dead page code was left behind by it', () => {
+    for (const gone of ['downloadWorkbook', 'wbPath', 'wbBusy', 'wbError',
+                        'ORDER_PI_UNAVAILABLE_BODY', 'orderPiWorkbookPath']) {
+      assert.equal(page.includes(gone), false, gone + ' is still on the page')
+    }
+    for (const cls of ['order-records-body', 'order-source-pi', 'order-doc-name', 'order-doc-meta']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
+    }
+    // The three the commercial breakdown and the PI history list still use.
+    for (const cls of ['order-record-section', 'order-record-head', 'order-record-title']) {
+      assert.ok(read(CSS).includes('.' + cls + ' '), cls + ' was removed and is still used')
+    }
+  })
+
+  test('BUT THE PI, ITS FILES AND ITS HISTORY ARE ALL STILL HERE', () => {
+    // Removing the section must not remove the record, the relation or the
+    // reader's way to the document.
+    assert.ok(page.includes("from('order_pi_versions')"))
+    assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'))
+    assert.ok(page.includes('describePiVersionHistory'))
+    assert.ok(page.includes('canProposePiRevision'))
+    assert.ok(page.includes('canDecidePiRevision'))
+    assert.ok(page.includes('source_order_submission_id'))
+    // The document itself: signed through the Main PI card's own reads.
+    assert.ok(body.includes('<OrderMainPiCard'))
+    assert.ok(page.includes('openVersionFile'))
+    assert.equal((body.match(/<PiHistoryModal/g) ?? []).length, 1)
+    // And the shared helper the PI Drafts module still uses is untouched.
+    assert.ok(read('src/lib/orders/orderPiHandoff.ts').includes('export function orderPiWorkbookPath'))
+  })
+
   test('there is no Order Health card anywhere', () => {
     for (const path of [PAGE, WORKSPACE]) {
       const source = code(path)
@@ -292,7 +367,7 @@ describe('no Order fact is stated twice', () => {
   })
 
   test('every payment figure lives in the payment section and nowhere else', () => {
-    // The six figures are drawn by one component, used once.
+    // The figures are drawn by one component, used once.
     assert.equal((body.match(/<PaymentSummaryFigures/g) ?? []).length, 1)
     // And the summary is handed no payment figure at all.
     const summary = body.slice(body.indexOf('<OrderSummary'), body.indexOf('<OrderAttentionBar'))
@@ -358,108 +433,60 @@ describe('no Order fact is stated twice', () => {
     assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
     // The three sections that belong on the left, in order, all before the aside.
     const left = lower.slice(main, aside)
-    for (const section of ['PAYMENT_SECTION_TITLE', 'title="Order records"', '<OrderActivityList']) {
+    for (const section of ['PAYMENT_SECTION_TITLE', '<OrderActivityList']) {
       assert.ok(left.includes(section), `${section} belongs in the left column`)
     }
   })
 })
 
-// ══ 4. Order records ══════════════════════════════════════════════════════════
+// ══ 4. The payment surface ══════════════════════════════════════════════════
 
-describe('Order records holds the documents, the source PI and the history', () => {
-  const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('<OrderActivityList'))
+describe('the payment section states a position and opens its rows', () => {
+  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('order-lower-aside'))
 
-  test('it holds the SOURCE PI provenance, and no longer the version history', () => {
-    // Source PI is the document this Order was CREATED from — a permanent
-    // provenance record. The PI in force is a different fact once a revision
-    // has been approved, and it has its own card above the products. The
-    // version history moved into the modal that card opens, so no surface
-    // states it twice.
-    assert.ok(records.includes('Source PI'))
-    assert.equal(records.includes('<OrderPiHistoryCard'), false)
-    assert.equal(page.includes('<OrderPiHistoryCard'), false,
-      'the history card is not drawn anywhere on this page')
-  })
-
-  test('the PI in force is stated by the Main PI card, and once', () => {
-    assert.ok(body.includes('<OrderMainPiCard'))
-    assert.ok(page.includes('const mainPi = mainPiCard(piHistory)'))
-    assert.equal((page.match(/mainPiCard\(/g) ?? []).length, 1)
-  })
-
-  test('the whole version trail is stated by the modal, and once', () => {
-    assert.equal((body.match(/<PiHistoryModal/g) ?? []).length, 1)
-    assert.equal((page.match(/piVersionTimeline\(/g) ?? []).length, 1)
-    // Mounted only while it is open: a closed modal reads no files and signs
-    // nothing.
-    assert.ok(body.includes('{historyOpen && ('))
-  })
-
-  // ── DOCUMENTS ──
-  //
-  // The section and the Generate Document control left this page. The register,
-  // its route, its storage rule and its RLS are untouched and still tested by
-  // orderDocuments.test.ts and documentsRoute.test.ts — only the surface went.
-  test('the Documents section and the Generate control are gone from the page', () => {
-    for (const gone of ['OrderDocumentsCard', 'documentsQuery', 'documentsView',
-                        'mayGenerateDocuments', 'ORDER_DOCUMENT_COLUMNS',
-                        'buildOrderDocumentsView', 'order_document_versions']) {
-      assert.equal(page.includes(gone), false, gone + ' is still on the page')
-    }
-  })
-
-  test('and no dead presentation code was left behind', () => {
-    const sections = code(SECTIONS)
-    assert.equal(/OrderDocumentsCard/.test(sections), false)
-    assert.equal(/ORDER_DOCUMENTS_/.test(sections), false)
-    for (const cls of ['order-doc-row', 'order-doc-icon']) {
+  test('the inline PAYMENT RECORDS table is gone, with its explanatory prose', () => {
+    assert.equal(/Payment records/i.test(body), false, 'the block is still drawn')
+    assert.equal(pay.includes('<table'), false, 'a payment table is still on the page')
+    assert.equal(/Amounts are this Order/.test(body), false, 'its caption is still on the page')
+    for (const cls of ['order-pay-records', 'order-pay-records-head']) {
       assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
     }
-    // The two the Source PI reference still uses are deliberately kept.
-    assert.ok(read(CSS).includes('.order-doc-name {'))
   })
 
-  test('THE SHARED SERVICE IS UNTOUCHED — only the screen stopped asking', () => {
-    for (const kept of ['src/lib/orders/orderDocuments.ts',
-                        'src/app/api/orders/[id]/documents/route.ts']) {
-      assert.ok(read(kept).length > 0, kept)
+  test('and the duplicated figures with it', () => {
+    // Order value is in the headline's own line; Received was verified plus
+    // awaiting, both of which are named and clickable above it; the legend
+    // named the shares the two buttons name.
+    const ws = code(WORKSPACE)
+    for (const gone of ['order-pay-figures', 'order-pay-legend', 'order-pay-swatch', 'order-pay-split']) {
+      assert.equal(ws.includes(gone), false, gone + ' is still drawn')
+      assert.equal(read(CSS).includes('.' + gone + ' {'), false, gone + ' is still styled')
     }
   })
 
-  // ── The PI door ──
-  //
-  // AFTER CONVERSION, THIS PAGE IS THE SOURCE OF TRUTH. A prominent way back
-  // to the superseded draft invited operational readers to work from it, so
-  // the action is gone. Everything underneath it is untouched, and the two
-  // tests below are the halves of that: no button, and no lost record.
-  test('there is no "Open source PI" action for an ordinary reader', () => {
-    assert.equal(/Open source PI/i.test(body), false, 'the page must not offer it')
-    assert.equal(body.includes('piSubmissionHref('), false,
-      'and it must not build a route back to the draft')
+  test('the two figures are BUTTONS, and each opens its own filtered dialog', () => {
+    const ws = code(WORKSPACE)
+    assert.ok(ws.includes('onOpenList(metric.kind)'), 'the metric blocks must be controls')
+    assert.ok(/<button[\s\S]*?className={`order-pay-metric/.test(ws), 'and real buttons')
+    assert.ok(pay.includes('onOpenList={setPaymentList}'))
+    assert.equal((body.match(/<OrderPaymentListDialog/g) ?? []).length, 1,
+      'one dialog component, told which list to show')
+    assert.ok(body.includes('rows={orderPaymentList(payments, paymentList)}'))
   })
 
-  test('the source PI is still NAMED and its workbook still downloadable', () => {
-    // Removing the door must not remove the reference: the file this Order was
-    // built from is a record, and Download reads it rather than reopening the
-    // draft as a working surface.
-    const source = records.slice(records.indexOf('Source PI'), records.indexOf('<OrderPiHistoryCard'))
-    assert.ok(source.includes('piHandoff.workbookName'))
-    assert.ok(source.includes('downloadWorkbook'))
-    // None of what the big card used to restate.
-    for (const forbidden of ['piHandoff.dates', 'piHandoff.figures', 'piHandoff.billing', 'Total before GST']) {
-      assert.equal(source.includes(forbidden), false, `${forbidden} belongs to the Order Summary now`)
-    }
+  test('the dialog is filtered by the SAME predicates the totals use', () => {
+    const lists = code('src/lib/orders/orderPaymentLists.ts')
+    assert.ok(lists.includes('isVerifiedPaymentStatus'))
+    assert.ok(lists.includes('isAwaitingVerification'))
+    // It filters. It does not total, convert or re-derive a share.
+    assert.equal(/Math\.|parseFloat|Number\(/.test(lists), false, 'the builder must compute nothing')
+    assert.equal(lists.includes('allocatedAmount'), false,
+      'the share is withExactAmounts\' answer, read not re-derived')
+    assert.ok(lists.includes('exactAllocatedAmount'))
   })
 
-  test('the PI relationship, its data and its history are all still reachable', () => {
-    // Removing the card must not remove the record.
-    assert.ok(page.includes("from('order_pi_versions')"))
-    assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'))
-    assert.ok(page.includes('describePiVersionHistory'))
-    assert.ok(page.includes('canProposePiRevision'))
-    assert.ok(page.includes('canDecidePiRevision'))
-    // And the relation itself is read, so traceability survives the button.
-    assert.ok(page.includes('source_order_submission_id'))
+  test('the Finance door keeps the gate the table gave it', () => {
+    assert.ok(body.includes('financeHref={financeCaps.canAccessFinanceModule ? financePaymentHref : null}'))
   })
 })
 
@@ -475,8 +502,13 @@ describe('the business rules this pass must not touch', () => {
   })
 
   test('the Finance link is still gated on Finance module entry', () => {
-    assert.ok(page.includes('financeCaps.canAccessFinanceModule && ('))
-    assert.ok(page.includes('financePaymentHref(p.id)'))
+    // It moved from the inline table into the payment dialog and kept the gate
+    // it had there: the page passes a href builder only to a reader holding
+    // Finance module entry, and passes null to everybody else.
+    assert.ok(page.includes('financeHref={financeCaps.canAccessFinanceModule ? financePaymentHref : null}'))
+    // The component draws the control only when it was given one.
+    assert.ok(code(WORKSPACE).includes('const href = financeHref?.(row.id) ?? null'))
+    assert.ok(code(WORKSPACE).includes('{href && ('))
   })
 
   // ── Add payment ──
@@ -489,18 +521,28 @@ describe('the business rules this pass must not touch', () => {
     assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
     // Between the payment section's title and the section that follows it.
     const payment = body.indexOf('PAYMENT_SECTION_TITLE')
-    const records = body.indexOf('title="Order records"')
+    const after = body.indexOf('<OrderActivityList')
     const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
-    assert.ok(payment > 0 && records > payment)
-    assert.ok(control > payment && control < records,
-      'the control belongs to the Payment section, not to the header or the records')
+    assert.ok(payment > 0 && after > payment)
+    assert.ok(control > payment && control < after,
+      'the control belongs to the Payment section, not to the header')
+    // AND ITS RULE IS UNCHANGED: the same capability, the same modal, the same
+    // refresh. This pass rearranged the section around it and touched neither.
+    assert.ok(page.includes('const mayRecordPayment = canRecordPaymentAgainstOrder({'))
+    assert.ok(body.includes('{mayRecordPayment && ('))
+    assert.ok(body.includes('{recordingPayment && mayRecordPayment && ('))
   })
 
   test('and it changes none of the figures beside it', () => {
     // The builder, the exact amounts and the absence of arithmetic are asserted
     // above; this holds that the payment section still draws the same one
     // component from the same position, with the control added beside it.
-    assert.equal((body.match(/<PaymentSummaryFigures finance={finance} loaded={recordsReady} \/>/g) ?? []).length, 1)
+    const figures = body.slice(body.indexOf('<PaymentSummaryFigures'))
+    assert.ok(figures.startsWith(`<PaymentSummaryFigures
+              finance={finance}
+              loaded={recordsReady}
+              onOpenList={setPaymentList}
+            />`), 'the component is handed the position, the load flag and a door — nothing else')
     assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
   })
 
@@ -593,14 +635,16 @@ describe('the critical path to the product table', () => {
       'no single-object signer runs while loading the table')
   })
 
-  test('the workbook and each PI version are signed ON THE CLICK, not at load', () => {
+  test('each PI version is signed ON THE CLICK, not at load', () => {
     // A page that signed every version's file up front would spend a request
     // per archived PI for something nobody opened.
-    for (const handler of ['const downloadWorkbook', 'const openVersionFile']) {
-      const at = page.indexOf(handler)
-      assert.ok(at > 0, handler)
-      assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), handler + ' signs on demand')
-    }
+    //
+    // THE SOURCE-PI WORKBOOK HANDLER IS GONE, with the Order records section
+    // that was the only thing offering it; the document itself is downloaded
+    // from the Main PI card, through this same on-demand signer.
+    const at = page.indexOf('const openVersionFile')
+    assert.ok(at > 0, 'const openVersionFile')
+    assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), 'it signs on demand')
   })
 })
 

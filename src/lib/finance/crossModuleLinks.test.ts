@@ -138,14 +138,24 @@ describe('a control is drawn only for a reader who can get through the door', ()
 
 describe('the Order screen links into Finance, and gates it', () => {
   const page = readFileSync(ORDER_PAGE, 'utf8')
+  /** Where the per-payment rows are drawn: the dialog the figures open. */
+  const workspace = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
   test('a payment row offers its Finance record', () => {
-    assert.ok(page.includes('financePaymentHref(p.id)'))
+    // The rows moved from a table permanently open under the figures into the
+    // dialog the figures open. The DOOR is the same one, built by the same
+    // helper, from the payment's own id.
+    assert.ok(page.includes('financeHref={financeCaps.canAccessFinanceModule ? financePaymentHref : null}'))
+    assert.ok(workspace.includes('const href = financeHref?.(row.id) ?? null'))
+    assert.ok(workspace.includes('href={href}'))
   })
 
   test('and only to a reader who holds Finance module entry', () => {
-    assert.ok(page.includes('financeCaps.canAccessFinanceModule && ('),
+    assert.ok(page.includes('financeCaps.canAccessFinanceModule ? financePaymentHref : null'),
       'the Finance control is gated on Finance module entry')
+    // A reader without it is passed no builder at all, and the component draws
+    // nothing rather than a dead control.
+    assert.ok(workspace.includes('{href && ('))
   })
 
   test('the capability starts empty and is resolved, not assumed from the role', () => {
@@ -221,9 +231,12 @@ describe('the Finance list links into Order Management, and gates it', () => {
 describe('neither screen reveals a record it could not already read', () => {
   test('the Order screen builds its Finance links from payments RLS already returned', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    // `p` is a row of the merged payment list, which comes from the two
-    // Order-anchored, RLS-checked reads. No id is fetched to make a link.
-    assert.ok(page.includes('financePaymentHref(p.id)'))
+    const workspace = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
+    // The dialog's rows are orderPaymentList's, filtered from the merged payment
+    // list, which comes from the two Order-anchored, RLS-checked reads. The
+    // href is built from a ROW'S OWN id; no id is fetched to make a link.
+    assert.ok(page.includes('rows={orderPaymentList(payments, paymentList)}'))
+    assert.ok(workspace.includes('financeHref?.(row.id)'))
     assert.ok(!page.includes('financePaymentHref(id)'),
       'a link is never built from the route parameter or any unchecked id')
   })
@@ -260,8 +273,11 @@ describe('the trail runs both ways between an Order and its PI', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
     assert.ok(page.includes('source_order_submission_id'), 'the relation itself')
     assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'), 'the PI the Order came from')
-    assert.ok(page.includes('piHandoff.workbookName'), 'named on screen')
-    assert.ok(page.includes('downloadWorkbook'), 'and its file still downloadable')
+    // NAMED AND DOWNLOADABLE FROM THE MAIN PI CARD. The Order records section
+    // that used to name it is gone; for a converted Order the PI in force IS
+    // that document, and the card states its file name and signs it on demand.
+    assert.ok(page.includes('<OrderMainPiCard'), 'named on screen')
+    assert.ok(page.includes('openVersionFile'), 'and its file still downloadable')
     assert.ok(page.includes("from('order_pi_versions')"), 'and every PI version')
 
     // The merged chronology still interleaves the PI's own activity trail, so
@@ -269,15 +285,18 @@ describe('the trail runs both ways between an Order and its PI', () => {
     assert.ok(page.includes('mergeOrderHistory'))
   })
 
-  test('and the PI card is drawn only for an Order that HAS a PI', () => {
+  test('and an Order with no PI is told so, rather than shown an empty section', () => {
     // An Order created from an Order Request has no source PI, and gets no
-    // section about a record that does not exist — exactly as before.
+    // section about a record that does not exist — exactly as before. The
+    // Order records section that used to carry the reference is gone; the two
+    // absences keep their own quiet cards, and they are mutually exclusive.
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    assert.ok(page.indexOf("piHandoff.kind !== 'none'") < page.indexOf('title="Order records"'),
-      'Order Records is gated on the Order having a PI at all')
-    const records = page.slice(page.indexOf('title="Order records"'))
-    assert.ok(records.indexOf("piHandoff.kind === 'ready'") > 0,
-      'and the source-PI block inside it on the handoff being ready')
+    assert.equal(page.includes('title="Order records"'), false, 'the section is gone')
+    assert.ok(page.includes("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />"))
+    assert.ok(page.includes("piHandoff.kind === 'unavailable' && <OrderPiUnavailable />"))
+    // The products, the commercial breakdown and the client dialog are all
+    // still gated on the handoff being READY, exactly as before.
+    assert.ok(page.includes("piHandoff.kind === 'ready'"))
   })
 
   test('the PI already offered its Order, and that is unchanged', () => {

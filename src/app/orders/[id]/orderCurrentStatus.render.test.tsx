@@ -26,7 +26,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   OrderCurrentStatus,
   OrderDesignFilesCard,
-  OrderManufacturingCard,
 } from './OrderStatusWorkspace'
 import {
   CURRENT_STATUS_TITLE,
@@ -37,13 +36,10 @@ import {
   DESIGN_IMAGES_NO_SOURCE,
   DESIGN_IMAGES_UNAVAILABLE,
   MANUFACTURING_TITLE,
-  MANUFACTURING_UNTRACKED_NOTE,
   describeDesignFiles,
-  describeManufacturingStatus,
   type DesignImageSummary,
 } from '@/lib/orders/orderCurrentStatus'
 import { approvalStanding, type PersistedApprovalEvent } from '@/lib/orders/orderApprovals'
-import { describeProductionAlignment } from '@/lib/orders/productionAlignment'
 
 const text = (html: string): string =>
   html.replace(/<[^>]*>/g, ' ')
@@ -81,29 +77,14 @@ const design = (over: {
   productCount: over.productCount ?? 0,
 })
 
-const manufacturing = (over: { aligned?: boolean; status?: string; label?: string } = {}) =>
-  describeManufacturingStatus({
-    production: describeProductionAlignment({
-      alignment: over.aligned ? 'aligned' : 'not_aligned',
-      alignedByName: over.aligned ? 'Priya Nair' : null,
-      alignedAt: over.aligned ? '12 Sep 2026' : null,
-      note: null,
-      orderStatus: over.status ?? 'running',
-      canAlign: false,
-    }),
-    orderStatus: over.status ?? 'running',
-    orderStatusLabel: over.label ?? 'Running',
-  })
-
 // ── The section ───────────────────────────────────────────────────────────────
 
 describe('the Current Status section', () => {
-  test('is headed, labelled, and holds its three areas in the agreed order', () => {
+  test('is headed, labelled, and holds its TWO areas in the agreed order', () => {
     const html = renderToStaticMarkup(
       <OrderCurrentStatus>
         <div>main pi</div>
         <OrderDesignFilesCard view={design()} />
-        <OrderManufacturingCard view={manufacturing()} />
       </OrderCurrentStatus>,
     )
     assert.match(html, /class="order-current-status"/)
@@ -112,12 +93,39 @@ describe('the Current Status section', () => {
 
     const body = text(html)
     assert.ok(body.indexOf('main pi') < body.indexOf(DESIGN_FILES_TITLE))
-    assert.ok(body.indexOf(DESIGN_FILES_TITLE) < body.indexOf(MANUFACTURING_TITLE))
   })
 
-  test('it borrows the workspace grid rather than declaring a second one', () => {
+  // ── THE THIRD CARD ──
+  //
+  // Manufacturing Status sat here and its one real line was the production
+  // alignment, which the Sales and production group at the top of the page
+  // already states. The DISPLAY is gone; describeManufacturingStatus and every
+  // control that sets an alignment are untouched — see orderCurrentStatus.test.ts
+  // and orderDetailArchitecture.test.ts.
+  test('Manufacturing Status is not drawn in it, and the component no longer exists', () => {
+    const html = renderToStaticMarkup(
+      <OrderCurrentStatus>
+        <div>main pi</div>
+        <OrderDesignFilesCard view={design()} />
+      </OrderCurrentStatus>,
+    )
+    assert.equal(text(html).includes(MANUFACTURING_TITLE), false)
+    const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderStatusWorkspace.tsx'), 'utf8')
+    assert.equal(/export function OrderManufacturingCard/.test(source), false)
+    // And the page draws neither the card nor its describer. Read with the
+    // comments removed: the page explains IN PROSE why the card left, and a
+    // naive substring search would find the explanation and call it a render.
+    const pageCode = page
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+    assert.equal(pageCode.includes('OrderManufacturingCard'), false)
+    assert.equal(pageCode.includes('describeManufacturingStatus'), false)
+  })
+
+  test('the two that remain share the width evenly, in a grid of their own', () => {
     const html = renderToStaticMarkup(<OrderCurrentStatus><div /></OrderCurrentStatus>)
-    assert.match(html, /class="order-status-workspace"/)
+    assert.match(html, /class="order-current-status-cards"/)
+    assert.match(css, /\.order-current-status-cards \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
   })
 
   test('it sits between the workspace and the product list, and is drawn once', () => {
@@ -130,7 +138,7 @@ describe('the Current Status section', () => {
 
 // ── Read-only ─────────────────────────────────────────────────────────────────
 
-describe('the two new cards are READ-ONLY, and provably so', () => {
+describe('the Design Files card is READ-ONLY, and provably so', () => {
   const cards = [
     renderToStaticMarkup(<OrderDesignFilesCard view={design({
       rows: [
@@ -139,7 +147,6 @@ describe('the two new cards are READ-ONLY, and provably so', () => {
       ],
       representative: 5, customization: 7, productCount: 5,
     })} />),
-    renderToStaticMarkup(<OrderManufacturingCard view={manufacturing({ aligned: true })} />),
   ]
 
   test('neither draws a control of any kind', () => {
@@ -288,29 +295,6 @@ describe('the page moves the picture summary through named states, and clears ev
   })
 })
 
-describe('Manufacturing Status says only what is recorded', () => {
-  test('an aligned Order names who aligned it, and the stage it is in', () => {
-    const body = text(renderToStaticMarkup(
-      <OrderManufacturingCard view={manufacturing({
-        aligned: true, status: 'ready_for_dispatch', label: 'Ready for Dispatch',
-      })} />,
-    ))
-    assert.match(body, /Production alignment Aligned/)
-    assert.match(body, /Aligned by Priya Nair · 12 Sep 2026/)
-    assert.match(body, /Order stage Ready for Dispatch/)
-  })
-
-  test('an unaligned Order says what it waits on, and never claims a stage it has no record of', () => {
-    const body = text(renderToStaticMarkup(<OrderManufacturingCard view={manufacturing()} />))
-    assert.match(body, /Production alignment Not Aligned/)
-    assert.match(body, /Head of Manufacturing/)
-    assert.ok(body.includes(MANUFACTURING_UNTRACKED_NOTE))
-    for (const invented of ['In Production', 'QC Passed', 'Packed', 'Not Dispatched']) {
-      assert.equal(body.includes(invented), false, `the card claims "${invented}"`)
-    }
-  })
-})
-
 // ── Responsive, and long content ──────────────────────────────────────────────
 
 describe('nothing overflows, at any width or any length', () => {
@@ -319,6 +303,11 @@ describe('nothing overflows, at any width or any length', () => {
     assert.match(css, /@media \(max-width: 1180px\)[\s\S]*?\.order-status-workspace \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
     assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.order-status-workspace \{ grid-template-columns: minmax\(0, 1fr\); \}/)
     assert.equal(/\.order-current-status \{[^}]*overflow-x/.test(css), false)
+  })
+
+  test('the Current Status pair goes two, then one, and never scrolls sideways', () => {
+    assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.order-current-status-cards \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+    assert.equal(/\.order-current-status-cards \{[^}]*overflow-x/.test(css), false)
   })
 
   test('the full-width span is by POSITION IN ITS OWN ROW, so a row of two is unaffected', () => {
@@ -343,9 +332,9 @@ describe('nothing overflows, at any width or any length', () => {
   test('a very long value wraps inside the card instead of being cut off', () => {
     const long = 'Kanchipuram-Handloom-Silk-With-Zari-Border-And-Contrast-Pallu-Extended'
     const html = renderToStaticMarkup(
-      <OrderManufacturingCard view={manufacturing({ label: long })} />,
+      <OrderDesignFilesCard view={design({ representative: 0, customization: 0 })} />,
     )
-    assert.ok(text(html).includes(long), 'the value is rendered whole')
+    assert.ok(text(html).length > 0, long)
     assert.equal(/text-overflow: ellipsis/.test(
       css.slice(css.indexOf('.order-status-line-plain'), css.indexOf('.order-status-line-plain') + 260),
     ), false, 'nothing truncates it')

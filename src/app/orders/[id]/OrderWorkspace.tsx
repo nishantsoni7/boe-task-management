@@ -21,10 +21,21 @@ import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
 import { PAYMENT_BAR_COLORS_SUBDUED, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
+import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
+import { piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import {
+  PAYMENT_LIST_CAPTION,
+  PAYMENT_LIST_EMPTY,
+  PAYMENT_LIST_TITLE,
+  type OrderPaymentListKind,
+  type OrderPaymentListRow,
+} from '@/lib/orders/orderPaymentLists'
+import { OrderModalShell } from './OrderStatusWorkspace'
 import {
   activityToggleLabel,
   activityWindow,
   attentionHeading,
+  ORDER_PRODUCTION_LABEL,
   SUMMARY_GROUP_TITLE,
   type OrderAttentionItem,
   type OrderFactRow,
@@ -89,14 +100,22 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
  * field that said so. The three operational facts are now in group 2, beside
  * the sale they belong to, and the block below the payment is gone.
  *
- * THE VALUE IS THE ONE FIGURE IN THE HEADER, so it gets a panel of its own —
- * a tinted ground and a size up, inside group 1 where the reader already is.
- * It is a tint from the existing token set and nothing louder: the figure is
- * meant to be found, not announced.
+ * EVERY FIELD IS ONE ROW: the label on the left, the value on the right, and
+ * the values of a group ending on one edge that can be scanned. The client's
+ * name used to be an oversized paragraph and the total product value a tinted
+ * panel of its own, which made one group three different kinds of thing and the
+ * panel half again as tall as the facts in it need. Both are rows now; the
+ * value keeps a half-step of extra weight and nothing more.
  *
- * PRODUCTION IS A BADGE, and its supporting line is drawn ONLY when the Order
- * is aligned. orderSummaryView has already made that line null otherwise, so
- * there is no empty "aligned on" row to read past.
+ * THE HEADINGS CARRY THE HIERARCHY, and they are the only thing that does. A
+ * section heading is dark, semibold and ruled off; a row label is small and
+ * muted. Before, both were the same 10px uppercase grey, so a group title and
+ * a field caption were indistinguishable at a glance.
+ *
+ * PRODUCTION IS A BADGE — the one value in the panel that is a STATUS rather
+ * than a name — and its supporting line is drawn ONLY when the Order is
+ * aligned. orderSummaryView has already made that line null otherwise, so there
+ * is no empty "aligned on" row to read past.
  *
  * A MISSING VALUE IS DRAWN QUIETLY AND NEVER SUBSTITUTED. The two builders
  * behind this have already turned a null into `Not available` or `Not set`;
@@ -108,12 +127,30 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
  */
 export const ORDER_SUMMARY_TITLE = 'Order summary'
 
-/** One label/value line inside a group. */
+/**
+ * ONE FIELD: THE LABEL ON THE LEFT, THE VALUE ON THE RIGHT, ONE LINE EACH.
+ *
+ * The pair used to stack — a small uppercase caption with its value underneath
+ * — which cost two lines per field and left the values on a ragged left edge
+ * that could not be scanned. They are a two-column row now: the labels form one
+ * column, the values end on one right edge, and a group of four fields is four
+ * lines rather than eight.
+ *
+ * THE VALUE COLUMN IS FLEXIBLE, NOT FIXED. A long client name or location wraps
+ * inside its own cell and pushes the row taller; it never widens the panel and
+ * never introduces a horizontal scroll. `min-width: 0` on both cells is what
+ * lets that happen — see the rule in globals.css.
+ */
 function SummaryRow({ row }: { row: OrderFactRow }) {
   const tone = TONE[row.tone]
   const warning = row.tone === 'amber' || row.tone === 'red'
   return (
-    <div className={['order-sum-row', row.missing ? 'order-sum-row--missing' : '', warning ? `order-sum-row--${row.tone}` : ''].filter(Boolean).join(' ')}>
+    <div className={[
+      'order-sum-row',
+      row.missing ? 'order-sum-row--missing' : '',
+      row.emphasis ? 'order-sum-row--strong' : '',
+      warning ? `order-sum-row--${row.tone}` : '',
+    ].filter(Boolean).join(' ')}>
       <dt className="order-sum-label">{row.label}</dt>
       <dd className="order-sum-value">
         <span style={{ color: row.missing ? colors.muted : tone.text, fontWeight: warning ? 700 : 600 }}>
@@ -132,41 +169,42 @@ export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
     <section className="order-facts" aria-label={ORDER_SUMMARY_TITLE}>
       <div className="order-sum-groups">
 
-        {/* ── 1. Client and value ── */}
+        {/* ── 1. Client and value ──
+            FOUR ROWS AND NOTHING ELSE: the client, the contact, the location
+            and what the products come to. The name was an oversized paragraph
+            and the value a tinted panel, which between them made one group look
+            like three different kinds of thing and made this card the tallest
+            of the three for no reason a reader benefits from. */}
         <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.client}>
           <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.client}</h3>
-          <p
-            className={view.client.nameMissing ? 'order-sum-client order-sum-client--missing' : 'order-sum-client'}
-          >
-            {view.client.name}
-          </p>
           <dl className="order-sum-rows">
             {view.client.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
-          {/* THE ONE FIGURE IN THE HEADER. A lightly tinted panel from the
-              existing token set — found at a glance, and no louder than that. */}
-          <div className={view.client.value.missing ? 'order-sum-amount order-sum-amount--missing' : 'order-sum-amount'}>
-            <span className="order-sum-amount-label">{view.client.value.label}</span>
-            <span className="order-sum-amount-value">{view.client.value.value}</span>
-          </div>
         </section>
 
-        {/* ── 2. Sales and production ── */}
+        {/* ── 2. Sales and production ──
+            PRODUCTION LEADS, as a row like the two under it. Its value is the
+            badge rather than plain text, because the alignment state is the one
+            thing in this group that is a STATUS and not a name — the word still
+            carries it, and the tint only agrees. */}
         <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.sales}>
           <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.sales}</h3>
-          <div className="order-sum-production">
-            <span
-              className="order-sum-badge"
-              style={{ background: productionTone.bg, color: productionTone.fg, borderColor: productionTone.border }}
-            >
-              {production.label}
-            </span>
-            {/* ONLY WHEN ALIGNED. Never an empty date or an empty actor. */}
-            {production.line && (
-              <span className="order-sum-production-line">{production.line}</span>
-            )}
-          </div>
           <dl className="order-sum-rows">
+            <div className="order-sum-row order-sum-row--production">
+              <dt className="order-sum-label">{ORDER_PRODUCTION_LABEL}</dt>
+              <dd className="order-sum-value">
+                <span
+                  className="order-sum-badge"
+                  style={{ background: productionTone.bg, color: productionTone.fg, borderColor: productionTone.border }}
+                >
+                  {production.label}
+                </span>
+                {/* ONLY WHEN ALIGNED. Never an empty date or an empty actor. */}
+                {production.line && (
+                  <span className="order-sum-production-line">{production.line}</span>
+                )}
+              </dd>
+            </div>
             {view.sales.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
         </section>
@@ -227,120 +265,135 @@ export const PAYMENT_SECTION_TITLE = 'Payment'
 export const ADD_PAYMENT_ACTION_LABEL = 'Add payment'
 
 /**
- * THE ONLY PAYMENT FIGURES ON THE PAGE, in the Draft PI's approved shape.
+ * THE ONLY PAYMENT FIGURES ON THE PAGE, and now the only payment surface too.
  *
- * WHAT IT BORROWS, AND WHAT IT DOES NOT. The Draft PI's payment card reads as a
- * position, then its parts, then one bar that adds up to the whole: a headline
- * percentage with the word it qualifies, two metric blocks under it, the shared
- * three-share track, and a legend that names each share. This is that same
- * arrangement, drawn with the same PiPaymentProgress component, so the two
- * screens' payment sections cannot drift apart.
+ * WHAT A READER CAME FOR, IN FIVE LINES. How much is verified, how much is
+ * awaiting Finance, how much remains, and what percentage of the Order that
+ * verified money covers. The section used to answer those four questions with a
+ * headline, two metric blocks, a bar, a three-item legend naming the same
+ * shares the metric blocks had just named, a second grid of three captioned
+ * figures restating the order value and adding verified to awaiting under the
+ * caption `Received`, and a permanently open table of every payment underneath.
+ * The same rupees appeared up to three times, and the section was taller than
+ * the product list.
  *
- * THE WORDS ARE THE ORDER'S OWN, AND THEY ARE NOT THE PI'S. The PI card says
- * `confirmed`; this says `verified`, because that is what this screen has
- * always called money Finance has decided on. NOTHING IS RELABELLED TO MATCH:
- * `Received` here still means verified PLUS awaiting verification, and it is
- * never presented as approved money.
+ * THE TWO METRICS ARE BUTTONS NOW. A figure that is the total of a set of real
+ * payments should open that set; the alternative -- printing the whole set under
+ * the figure, forever, on a page that also carries products, activity and a
+ * commercial breakdown -- is what made this section the tallest on the screen.
+ * The dialog is the same rows the table drew, with the columns nobody read
+ * removed.
  *
- * IT SITS QUIETER THAN THE PI'S. The Order page carries several sections and
- * the money must not be the loudest of them, so the track uses the subdued
- * palette and the metrics are tinted rather than filled. Every colour is still
- * a token and every share keeps its meaning.
- *
- * NO CONTROL WAS ADDED. The Confirmed Order has never offered payment entry and
- * this does not invent one; the per-payment Finance links below the figures are
- * the page's existing disclosure and are untouched.
+ * NOTHING WAS DROPPED. Order value is stated in the line under the headline
+ * ("X verified of Y order value"); `Received` was verified plus awaiting, and
+ * both of its parts are named and clickable above it; the legend named the
+ * three shares of a bar whose two coloured shares are the two buttons beside
+ * it. Balance keeps its own line, because it is the one figure that is not the
+ * total of anything shown.
  *
  * EVERY FIGURE IS buildOrderFinancePosition'S. Nothing here adds, subtracts or
- * percentages money.
+ * percentages money, and no amount, percentage or status rule changed in this
+ * pass.
  */
-export function PaymentSummaryFigures({ finance, loaded }: {
+export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
   finance: OrderFinancePosition
   /** False while the payment reads are still in flight. */
   loaded: boolean
+  /**
+   * Open the payments behind one of the two figures. Always offered, including
+   * for an empty set: a figure of zero that cannot be opened leaves a reader
+   * unable to tell a broken control from an empty list.
+   */
+  onOpenList: (kind: OrderPaymentListKind) => void
 }) {
   if (!loaded) {
     return (
-      <div className="order-pay-figures" role="status" aria-label="Loading payment summary">
-        {[0, 1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="order-pay-figure">
-            <SkeletonBlock w={78} h={10} />
-            <div style={{ marginTop: 7 }}><SkeletonBlock w={104} h={16} /></div>
-          </div>
-        ))}
+      <div role="status" aria-label="Loading payment summary">
+        <SkeletonBlock w={152} h={28} />
+        <div style={{ marginTop: 8 }}><SkeletonBlock w={240} h={12} /></div>
+        <div className="order-pay-metrics" style={{ marginTop: 12 }}>
+          {[0, 1].map(i => (
+            <div key={i} className="order-pay-metric">
+              <SkeletonBlock w={92} h={10} />
+              <div style={{ marginTop: 7 }}><SkeletonBlock w={104} h={16} /></div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
-  /** The two parts of what has been received. */
-  const metrics: { key: 'verified' | 'awaiting'; label: string; amount: string; meta: string; tone: WorkspaceTone }[] = [
+  /** The two parts of what has been received -- each one a door to its rows. */
+  const metrics: {
+    kind: OrderPaymentListKind; label: string; amount: string; meta: string; tone: WorkspaceTone
+  }[] = [
     {
-      key: 'verified',
+      kind: 'verified',
       label: 'Verified',
       amount: formatMoney(finance.verified),
-      meta: 'confirmed by Finance',
+      meta: finance.counts.verified > 0
+        ? `${finance.counts.verified} payment${finance.counts.verified === 1 ? '' : 's'}`
+        : 'no payments',
       tone: 'green',
     },
     {
-      key: 'awaiting',
+      kind: 'awaiting',
       label: 'Awaiting verification',
       amount: formatMoney(finance.awaitingVerification),
       meta: finance.counts.awaiting > 0
-        ? `${finance.counts.awaiting} payment${finance.counts.awaiting === 1 ? '' : 's'} with Finance`
-        : 'nothing with Finance',
+        ? `${finance.counts.awaiting} payment${finance.counts.awaiting === 1 ? '' : 's'}`
+        : 'no payments',
       tone: finance.counts.awaiting > 0 ? 'amber' : 'neutral',
-    },
-  ]
-
-  /** The three figures the position is measured against. Each was on this
-   *  screen before and each is still here. */
-  const supporting: { key: string; label: string; value: string; tone?: WorkspaceTone; hint?: string }[] = [
-    { key: 'order_value', label: 'Order value', value: formatMoney(finance.orderValue) },
-    { key: 'received', label: 'Received', value: formatMoney(finance.received), hint: 'verified + awaiting' },
-    {
-      key: 'balance', label: 'Balance', value: formatMoney(finance.pendingBalance),
-      tone: finance.pendingBalance && finance.pendingBalance !== '0.00' && !finance.fullyPaid ? 'amber' : undefined,
-      hint: 'against verified',
     },
   ]
 
   return (
     <>
-      <div className="order-pay-position">
-        {/* THE HEADLINE — the one percentage a reader came for, and the word it
-            qualifies. The figure is buildOrderFinancePosition's and is
-            deliberately not capped, so an overpaid Order reads over 100%. */}
-        <div className="order-pay-headline">
-          <span
-            className="order-pay-percent"
-            style={{ color: finance.fullyPaid ? TONE.green.text : colors.primary }}
-          >
-            {formatPercent(finance.verifiedPercent)}
-          </span>
-          <span className="order-pay-word">verified</span>
-        </div>
-        <div className="order-pay-of">
-          {formatMoney(finance.verified)} verified of {formatMoney(finance.orderValue)} order value
-        </div>
-
-        <div className="order-pay-metrics">
-          {metrics.map(metric => (
-            <div key={metric.key} className={`order-pay-metric order-pay-metric--${metric.key}`}>
-              <span className="order-pay-metric-label">{metric.label}</span>
-              <span className="order-pay-metric-value" style={{ color: TONE[metric.tone].text }}>
-                {metric.amount}
-              </span>
-              <span className="order-pay-metric-meta">{metric.meta}</span>
-            </div>
-          ))}
-        </div>
+      {/* THE HEADLINE -- the one percentage a reader came for, and the word it
+          qualifies. The figure is buildOrderFinancePosition's and is
+          deliberately not capped, so an overpaid Order reads over 100%. */}
+      <div className="order-pay-headline">
+        <span
+          className="order-pay-percent"
+          style={{ color: finance.fullyPaid ? TONE.green.text : colors.primary }}
+        >
+          {formatPercent(finance.verifiedPercent)}
+        </span>
+        <span className="order-pay-word">verified</span>
+      </div>
+      {/* THE ORDER VALUE IS STATED HERE, and nowhere else in this section. */}
+      <div className="order-pay-of">
+        {formatMoney(finance.verified)} verified of {formatMoney(finance.orderValue)} order value
       </div>
 
-      {/* THE SHARED TRACK, the Draft PI's own component — green for money
+      <div className="order-pay-metrics">
+        {metrics.map(metric => (
+          <button
+            key={metric.kind}
+            type="button"
+            className={`order-pay-metric order-pay-metric--${metric.kind}`}
+            onClick={() => onOpenList(metric.kind)}
+            aria-label={`${metric.label}: ${metric.amount}, ${metric.meta}. Show the payments.`}
+          >
+            <span className="order-pay-metric-label">{metric.label}</span>
+            <span className="order-pay-metric-value" style={{ color: TONE[metric.tone].text }}>
+              {metric.amount}
+            </span>
+            <span className="order-pay-metric-meta">{metric.meta}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* THE SHARED TRACK, the Draft PI's own component -- green for money
           Finance verified, amber for the rest of what was received, the
           remainder for what has not arrived. Percentages in, pixels out: it
           computes no money. The Order shows no advance marker here, so it is
-          passed none rather than being given an invented one. */}
+          passed none rather than being given an invented one.
+
+          NO LEGEND. The two buttons above it name the two coloured shares, in
+          the same words and the same order, and the bar's accessible label
+          names all three -- a legend repeating them was a third statement of
+          figures already made twice. */}
       {finance.verifiedPercent !== null && (
         <PiPaymentProgress
           confirmedPercent={Number(finance.verifiedPercent)}
@@ -348,55 +401,129 @@ export function PaymentSummaryFigures({ finance, loaded }: {
           thresholdPercent={null}
           height={10}
           palette={PAYMENT_BAR_COLORS_SUBDUED}
-          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the order value — ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} awaiting verification`}
+          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the order value -- ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} awaiting verification, ${formatMoney(finance.pendingBalance)} not received`}
         />
       )}
 
-      <ul className="order-pay-legend">
-        <li className="order-pay-legend-item">
-          <span className="order-pay-swatch" style={{ background: PAYMENT_BAR_COLORS_SUBDUED.confirmed }} aria-hidden="true" />
-          Verified
-        </li>
-        <li className="order-pay-legend-item">
-          <span className="order-pay-swatch" style={{ background: PAYMENT_BAR_COLORS_SUBDUED.awaiting }} aria-hidden="true" />
-          Awaiting verification
-        </li>
-        <li className="order-pay-legend-item">
-          <span className="order-pay-swatch" style={{ background: PAYMENT_BAR_COLORS_SUBDUED.unpaid }} aria-hidden="true" />
-          Not received
-        </li>
-      </ul>
-
-      <div className="order-pay-figures">
-        {supporting.map(figure => (
-          <div key={figure.key} className="order-pay-figure">
-            <div className="order-pay-figure-label">{figure.label}</div>
-            <div
-              className="order-pay-figure-value"
-              style={{ color: figure.tone ? TONE[figure.tone].text : colors.primary }}
-            >
-              {figure.value}
-            </div>
-            {figure.hint && <div className="order-pay-figure-hint">{figure.hint}</div>}
-          </div>
-        ))}
+      {/* THE ONE FIGURE THAT IS NOT THE TOTAL OF ANYTHING ABOVE: what is still
+          owed, measured against VERIFIED money -- the business's own reading,
+          unchanged, and the reason it keeps a line of its own. */}
+      <div className="order-pay-balance">
+        <span className="order-pay-balance-label">Balance</span>
+        <span
+          className="order-pay-balance-value"
+          style={{
+            color: finance.pendingBalance && finance.pendingBalance !== '0.00' && !finance.fullyPaid
+              ? TONE.amber.text
+              : colors.primary,
+          }}
+        >
+          {formatMoney(finance.pendingBalance)}
+        </span>
+        <span className="order-pay-balance-hint">against verified</span>
       </div>
-
-      {/* MONEY THAT IS ONLY PARTLY THIS ORDER'S. A payment may legitimately be
-          split across targets, and every figure above counts only this Order's
-          share. Said out loud, because a reader comparing the Balance against a
-          bank statement needs to know the difference is a split and not a
-          missing payment. */}
-      {finance.splitPayments.length > 0 && (
-        <div className="order-pay-split">
-          {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
-          {' '}allocated across more than one record. Once a payment is allocated, the
-          allocations decide what each Order receives — so only this Order&apos;s allocated
-          share is counted above. The complete allocation history is in each one&apos;s
-          Finance record.
-        </div>
-      )}
     </>
+  )
+}
+
+// ── The payments behind a figure ──────────────────
+
+/**
+ * THE ROWS BEHIND ONE OF THE TWO SUMMARY FIGURES, IN A DIALOG.
+ *
+ * WHY A DIALOG AND NOT A TABLE ON THE PAGE. The table that used to sit here was
+ * open whether or not anybody wanted it, carried six columns to say four things,
+ * and restated each payment's status beside a summary that had just grouped the
+ * payments BY status. A reader who wants to know which payments make up a figure
+ * clicks the figure; everybody else gets a section four lines long.
+ *
+ * THE AMOUNT IS THIS ORDER'S SHARE. `allocated` is the exact figure the summary
+ * above is built from -- never the payment's full ledger amount -- so the rows
+ * and the total they belong to cannot disagree. A payment that is only partly
+ * this Order's says so under its own amount, which is the one case where the
+ * full amount is worth printing at all.
+ *
+ * IT DECIDES NOTHING AND OPENS NOTHING IT MAY NOT. The Finance link is drawn
+ * only when the page passes one -- the page draws it on Finance module entry,
+ * exactly as the table did -- and Finance re-reads the row under the reader's
+ * own RLS whatever this renders.
+ */
+export function OrderPaymentListDialog({ kind, rows, formatDate, financeHref, onClose }: {
+  kind: OrderPaymentListKind
+  rows: readonly OrderPaymentListRow[]
+  /** The page's own date formatting, so one date reads the same everywhere. */
+  formatDate: (iso: string | null) => string
+  /** null when this reader holds no Finance module entry. */
+  financeHref: ((paymentId: string) => string) | null
+  onClose: () => void
+}) {
+  return (
+    <OrderModalShell title={PAYMENT_LIST_TITLE[kind]} onClose={onClose}>
+      {rows.length === 0 ? (
+        /* AN EMPTY SET IS AN ANSWER, and it is given rather than withheld. */
+        <p className="order-pay-list-empty">{PAYMENT_LIST_EMPTY[kind]}</p>
+      ) : (
+        <>
+          <ul className="order-pay-list">
+            {rows.map(row => {
+              const href = financeHref?.(row.id) ?? null
+              return (
+                <li key={row.id} className="order-pay-list-row">
+                  <div className="order-pay-list-main">
+                    <div className="order-pay-list-amount">{formatMoney(row.allocated)}</div>
+                    {/* ONLY WHEN THE TWO GENUINELY DIFFER. Saying "of X" under
+                        every row would be noise on the ordinary case, where the
+                        whole payment is this Order's. */}
+                    {row.isPartialShare && (
+                      <div className="order-pay-list-split">
+                        allocated from {formatMoney(row.full)} received
+                      </div>
+                    )}
+                  </div>
+                  <dl className="order-pay-list-facts">
+                    <div className="order-pay-list-fact">
+                      <dt>Date</dt>
+                      <dd>{formatDate(row.dateIso)}</dd>
+                    </div>
+                    <div className="order-pay-list-fact">
+                      <dt>Mode</dt>
+                      <dd>{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '—'}</dd>
+                    </div>
+                    <div className="order-pay-list-fact">
+                      <dt>Client</dt>
+                      <dd>{customerDisplayName(row.client)}</dd>
+                    </div>
+                    {/* THE STATUS, ONLY WHERE IT DISTINGUISHES ANYTHING. Every
+                        row in the verified list is verified and captioning each
+                        one so says nothing; a row awaiting Finance may be
+                        pending or may need clarification, which is a real
+                        difference to the person chasing it. */}
+                    {kind === 'awaiting' && (
+                      <div className="order-pay-list-fact">
+                        <dt>Status</dt>
+                        <dd>{piPaymentStatusLabel(row.status)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {href && (
+                    /* A LINK, so the payment can be opened beside the Order in a
+                       new tab -- the usual way to check one against the other. */
+                    <a
+                      href={href}
+                      className="boe-btn boe-btn-ghost order-pay-list-link"
+                      title="Open this payment's full record in Finance"
+                    >
+                      Finance record
+                    </a>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <p className="order-pay-list-note">{PAYMENT_LIST_CAPTION}</p>
+        </>
+      )}
+    </OrderModalShell>
   )
 }
 

@@ -361,6 +361,19 @@ export const SUMMARY_GROUP_TITLE: Record<OrderSummaryGroupKey, string> = {
  *  name across the two screens that print it. */
 export const ORDER_CONTACT_LABEL = 'Contact'
 
+/**
+ * THE CLIENT'S OWN ROW LABEL.
+ *
+ * The name used to be the group's oversized primary text, captioned by nothing.
+ * It is a label/value row like the three beside it now, and a row needs a label.
+ * `Client`, not the field builder's `Client name`: every row in this group is
+ * about the client, and the extra word only lengthens the column.
+ */
+export const ORDER_CLIENT_LABEL = 'Client'
+
+/** The production alignment's own row label, above the badge that states it. */
+export const ORDER_PRODUCTION_LABEL = 'Production'
+
 /** A label/value pair as the groups draw them — the shape both builders above
  *  already produce, narrowed to what a row needs. */
 export type OrderFactRow = {
@@ -371,17 +384,22 @@ export type OrderFactRow = {
   missing: boolean
   detail: string | null
   tone: WorkspaceTone
+  /**
+   * A row whose value carries slightly more weight than the rows around it.
+   *
+   * THE ONE ROW THAT USES IT is the total product value, which lost its tinted
+   * panel so the group could be a plain column of label/value rows. It is a
+   * half-step in weight, not a second heading: the panel already has three
+   * headings and a fourth voice inside a group would undo the hierarchy the
+   * headings establish.
+   */
+  emphasis?: boolean
 }
 
 export type OrderSummaryView = {
   client: {
-    /** The client's own name — the group's primary text. */
-    name: string
-    nameMissing: boolean
-    /** The contact, then the location. */
+    /** Client, contact, location, total product value — always all four. */
     rows: OrderFactRow[]
-    /** The one figure in the header, given its own panel. */
-    value: { label: string; value: string; missing: boolean }
   }
   sales: {
     production: {
@@ -391,7 +409,7 @@ export type OrderSummaryView = {
       /** "Aligned by X · date". NULL WHENEVER THE ORDER IS NOT ALIGNED. */
       line: string | null
     }
-    /** The lead source, then the salesperson. */
+    /** The lead source, then the salesperson. Production leads them as a badge. */
     rows: OrderFactRow[]
   }
   /** Confirm date, upload date, due date — always all three, in that order. */
@@ -439,9 +457,16 @@ export function orderSummaryView(input: {
 
   return {
     client: {
-      name: client?.value ?? SUMMARY_NOT_AVAILABLE,
-      nameMissing: client?.missing ?? true,
       rows: [
+        // THE NAME IS A ROW NOW, not the group's oversized primary text. It
+        // keeps its own value, its own `missing` answer and its own wrapping;
+        // only its label and its weight changed.
+        client
+          ? { ...asRow(client), label: ORDER_CLIENT_LABEL }
+          : {
+              key: 'client', label: ORDER_CLIENT_LABEL, value: SUMMARY_NOT_AVAILABLE,
+              missing: true, detail: null, tone: 'neutral' as WorkspaceTone,
+            },
         {
           key: 'contact',
           label: ORDER_CONTACT_LABEL,
@@ -454,12 +479,20 @@ export function orderSummaryView(input: {
           key: 'location', label: SUMMARY_FIELD_LABEL.location, value: SUMMARY_NOT_AVAILABLE,
           missing: true, detail: null, tone: 'neutral' as WorkspaceTone,
         },
+        // THE FIGURE, AS A ROW. It had a tinted panel of its own, which made
+        // the group two things — a list and a banner — and cost the panel the
+        // vertical room three groups of plain rows do not need. It is the last
+        // row of the group, carrying a half-step of extra weight and nothing
+        // more. The value itself is untouched: still the approved PI's own
+        // string, still formatted by the builder that has always formatted it.
+        value
+          ? { ...asRow(value), emphasis: true }
+          : {
+              key: 'product_value', label: SUMMARY_FIELD_LABEL.product_value,
+              value: SUMMARY_NOT_AVAILABLE, missing: true, detail: null,
+              tone: 'neutral' as WorkspaceTone, emphasis: true,
+            },
       ],
-      value: {
-        label: value?.label ?? SUMMARY_FIELD_LABEL.product_value,
-        value: value?.value ?? SUMMARY_NOT_AVAILABLE,
-        missing: value?.missing ?? true,
-      },
     },
     sales: {
       production: {

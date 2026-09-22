@@ -58,10 +58,8 @@ import {
 import {
   CURRENT_STATUS_TITLE,
   DESIGN_FILES_TITLE,
-  MANUFACTURING_TITLE,
   type CurrentStatusLine,
   type DesignFilesView,
-  type ManufacturingStatusView,
 } from '@/lib/orders/orderCurrentStatus'
 import {
   APPROVAL_HISTORY_LABEL,
@@ -401,36 +399,27 @@ export function OrderDesignFilesCard({ view }: { view: DesignFilesView }) {
 }
 
 /**
- * HOW FAR THE ORDER HAS GOT, from the two records that actually exist.
+ * THE SECTION ITSELF: a heading, and a grid of TWO cards — Main PI and Design
+ * Files.
  *
- * The closing note is not boilerplate: without it a card headed "Manufacturing
- * Status" that shows only an alignment reads as though manufacturing had not
- * started, when the truth is that this system never tracked it.
- */
-export function OrderManufacturingCard({ view }: { view: ManufacturingStatusView }) {
-  return (
-    <CardShell title={MANUFACTURING_TITLE}>
-      <dl className="order-status-lines">
-        {view.lines.map(line => <StatusLine key={line.key} line={line} />)}
-      </dl>
-      <p className="order-status-note">{view.note}</p>
-    </CardShell>
-  )
-}
-
-/**
- * THE SECTION ITSELF: a heading, and the same three-column grid the workspace
- * below it uses.
+ * THERE WAS A THIRD, AND IT SAID WHAT THE SUMMARY PANEL ALREADY SAYS. The
+ * Manufacturing Status card's one real line was the production alignment, which
+ * is the first row of Sales and production at the top of the page; its other
+ * lines said only that this build records no manufacturing stage. A reader met
+ * the same alignment twice on one screen and a card of disclaimers once.
  *
- * It reuses `order-status-workspace` rather than declaring a second grid, so
- * the two rows of cards can never wrap differently at the same width — one set
- * of breakpoints, one behaviour, one thing to verify.
+ * NOTHING UNDERNEATH IT MOVED. describeManufacturingStatus, the alignment
+ * columns it reads and every control that SETS an alignment are untouched —
+ * this is the removal of a duplicated display and nothing else.
+ *
+ * ITS OWN GRID, AT THE SAME BREAKPOINTS as the operational row above: two cards
+ * share the width evenly on desktop and stack in the same order on a phone.
  */
 export function OrderCurrentStatus({ children }: { children: React.ReactNode }) {
   return (
     <section className="order-current-status" aria-label={CURRENT_STATUS_TITLE}>
       <h2 className="order-current-status-title">{CURRENT_STATUS_TITLE}</h2>
-      <div className="order-status-workspace">{children}</div>
+      <div className="order-current-status-cards">{children}</div>
     </section>
   )
 }

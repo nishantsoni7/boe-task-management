@@ -300,7 +300,15 @@ describe('no Order screen waits more than it must', () => {
       // success, and the bucket's DELETE policy cannot reach a screenshot an
       // event has already filed. The wait count is unchanged: the test above
       // still requires exactly three.
-      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 32,
+      //
+      // DETAIL 32 -> 31: the Order records section left the page, and the
+      // source-PI workbook's own signer went with it — the one `.from()` it
+      // issued was against the storage bucket, fired from that section's
+      // Download. The DOCUMENT is unaffected: the PI in force is downloaded
+      // from the Main PI card, through openVersionFile's signer, which is
+      // counted here already. Nothing at load either way; this screen simply
+      // stopped offering the same file through two doors.
+      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 31,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

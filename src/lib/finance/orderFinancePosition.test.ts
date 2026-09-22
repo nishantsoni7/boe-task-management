@@ -415,10 +415,13 @@ describe('withExactAmounts', () => {
 
 describe('a payment status is called the same thing on the Order and on the PI', () => {
   const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+  /** Where the Order draws a per-payment status: the dialog its summary opens. */
+  const rows = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
   test('the Order screen takes its labels from the PI card\'s own map', () => {
-    assert.ok(page.includes('piPaymentStatusLabel(p.status)'),
-      'the label comes from the shared map, not a second one on this page')
+    assert.ok(rows.includes('piPaymentStatusLabel(row.status)'),
+      'the label comes from the shared map, not a second one on this screen')
+    assert.ok(rows.includes("import { piPaymentStatusLabel } from '@/lib/finance/piPaymentView'"))
   })
 
   test('the three labels that disagreed are gone', () => {
@@ -431,7 +434,9 @@ describe('a payment status is called the same thing on the Order and on the PI',
     //   'Received'          for approved_linked, which is now the summary's word
     //                       for verified + awaiting together
     for (const stale of ["label: 'Pending'", "'Order No. Pending'", "label: 'Received'"]) {
-      assert.ok(!page.includes(stale), `${stale} must not be a payment label here`)
+      for (const src of [page, rows]) {
+        assert.ok(!src.includes(stale), `${stale} must not be a payment label here`)
+      }
     }
   })
 
@@ -441,9 +446,17 @@ describe('a payment status is called the same thing on the Order and on the PI',
     assert.equal(piPaymentStatusLabel('pending_approval'), 'Awaiting Verification')
   })
 
-  test('and the colours are still this screen\'s own', () => {
-    assert.ok(page.includes('const PAYMENT_STATUS_COLOR'))
-    assert.ok(page.includes("rejected:            '#991B1B'"), 'the existing palette is unchanged')
+  test('and the WORD is now the whole signal — the table\'s palette went with it', () => {
+    // The inline payment table tinted each status. The rows live in a dialog
+    // now, grouped BY status, and a status is stated only in the awaiting list,
+    // where it distinguishes pending from needs-clarification. The palette that
+    // coloured a column nobody is reading any more went with the column.
+    assert.equal(page.includes('const PAYMENT_STATUS_COLOR'), false,
+      'the page must not keep a palette nothing paints with')
+    assert.equal(rows.includes('PAYMENT_STATUS_COLOR'), false)
+    // NOTHING WAS LOST THAT A READER ACTED ON: the status is still stated, in
+    // the shared map's own words, and no meaning ever depended on the tint.
+    assert.ok(rows.includes('piPaymentStatusLabel(row.status)'))
   })
 })
 
