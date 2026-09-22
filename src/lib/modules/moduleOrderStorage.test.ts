@@ -353,25 +353,32 @@ describe('normal mode', () => {
   })
 
   test('every card dimension, breakpoint, icon and badge rule is untouched', () => {
-    // The responsive design AS IT STANDS ON main, asserted value by value. The
-    // card-surface work (#193) removed the description and the footer and
-    // resized the card around what was left — 200px became 132px, the title
-    // clamp went — so these are that design's numbers, not the older ones. The
-    // ordering rules are appended after a marked boundary and none of them is
-    // one of these.
+    // The responsive design AS IT STANDS ON main, asserted value by value, so
+    // that a change to the ORDERING work cannot quietly resize a card. These
+    // numbers have moved twice and the reason is worth keeping: #193 removed
+    // the description and the footer, #194 (this file's own feature) left the
+    // card exactly as it found it, and the compact redesign then rebuilt the
+    // card around what #193 had left — a 92px horizontal row in place of a
+    // 132px column that was mostly empty.
+    //
+    // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
+    // promise that it owns no card dimension. The card's own shape is pinned by
+    // src/app/modules/moduleCardSurface.test.ts, which is where a deliberate
+    // design change is argued; this list only has to follow it.
     for (const rule of [
-      'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))',
-      'gap: 20px',
-      'min-height: 132px',
-      'padding: 24px 22px 20px',
-      'width: 56px',
+      'grid-template-columns: repeat(3, 1fr)',
+      'grid-template-columns: repeat(4, 1fr)',
+      'gap: 14px',
+      'min-height: 92px',
+      'padding: 16px',
+      'width: 46px',
       '@media (max-width: 767px)',
       '@media (max-width: 639px)',
       'grid-template-columns: repeat(2, 1fr)',
-      'min-height: 118px',
+      'min-height: 122px',
       'width: 44px',
       'overflow-wrap: anywhere',
-      'font-size: 13.5px',
+      'font-size: 13px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
     }
@@ -389,13 +396,16 @@ describe('normal mode', () => {
       'a module name is never clamped')
   })
 
-  test('the heading gap is preserved when the label moves into a row', () => {
-    // .sectionLabel's own 16px margin-bottom now belongs to .sectionHeader, and
-    // the label's is zeroed inside it — so the space below the heading is the
-    // same as before at both widths.
-    assert.match(CSS, /\.sectionHeader \{[\s\S]*?margin-bottom: 16px;/)
-    assert.match(CSS, /\.sectionHeader \.sectionLabel \{[\s\S]*?margin-bottom: 0;/)
-    assert.match(CSS, /@media \(max-width: 639px\) \{[\s\S]*?\.sectionHeader \{[\s\S]*?margin-bottom: 10px;/)
+  test('the heading row still owns the space below the heading', () => {
+    // The Edit-order control shares a row with the page heading, and that row —
+    // not the heading itself — carries the gap down to the first row of cards.
+    // The compact redesign turned the bottom of that row into the page's
+    // divider, so the spacing is now a padding above a border plus a margin
+    // below it; the arrangement it replaced was a single margin. Both widths
+    // still declare it in one place, which is the part this test is for.
+    assert.match(CSS, /\.sectionHeader \{[\s\S]*?border-bottom: 1px solid #E4E7EC;/)
+    assert.match(CSS, /\.sectionHeader \{[\s\S]*?margin-bottom: 18px;/)
+    assert.match(CSS, /@media \(max-width: 639px\) \{[\s\S]*?\.sectionHeader \{[\s\S]*?margin-bottom: 12px;/)
   })
 })
 

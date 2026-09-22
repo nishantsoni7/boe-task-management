@@ -703,15 +703,25 @@ export default function BoeOsHomePage() {
               every width. */}
           <QuickActionList actions={quickActions} variant="page" />
 
-          {/* ── Section label, and the one action beside it ──
-              The label's own margin moved onto this row so the gap between the
-              heading and the first row of cards is unchanged; see
-              modules.module.css. In normal mode the row carries a single quiet
-              "Edit order" text button and nothing else — no handles, no arrows,
-              no editing furniture on the cards. */}
+          {/* ── The page's own header, and the one action beside it ──
+              Three lines of hierarchy where there used to be a single uppercase
+              label: a red WORKSPACE eyebrow that is the only branding on the
+              screen, the section's real heading, and ONE line of guidance for
+              the whole grid.
+
+              THAT LINE IS WHY THE CARDS CARRY NO DESCRIPTIONS. "Select a module
+              to continue" is said once, at page level, rather than thirteen
+              times inside thirteen cards; a launcher is a list of destinations,
+              and naming them is what a card is for.
+
+              In normal mode the row still carries a single quiet "Edit order"
+              text button and nothing else — no handles, no arrows, no editing
+              furniture on the cards. */}
           <div className={styles.sectionHeader}>
-            <div className={styles.sectionLabel}>
-              Modules
+            <div className={styles.sectionHeading}>
+              <div className={styles.eyebrow}>Workspace</div>
+              <h1 className={styles.sectionLabel}>Modules</h1>
+              <p className={styles.sectionSupport}>Select a module to continue</p>
             </div>
             {canEditOrder && (
               <ModuleOrderBar
@@ -801,6 +811,13 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
   // elevation instead — set here rather than in CSS because `.card`'s border,
   // shadow and transform are inline (they depend on the accent) and an inline
   // style always wins over a class rule.
+  //
+  // FOCUS IS NOT HOVER, and this is the one thing the inline styles cannot do:
+  // `:focus-visible` has no inline form, so the accent border, the lift and the
+  // shadow for a keyboard user are set by the stylesheet with `!important` —
+  // the one place in this file that needs it, and only because the resting
+  // values it overrides are themselves inline. The accent stripe and the arrow
+  // are pure CSS and respond to hover and focus identically.
   const lifted = dragging || (hovered && !editing)
 
   return (
@@ -813,24 +830,33 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
       onMouseLeave={() => setHovered(false)}
       className={`${styles.card}${editing ? ` ${styles.cardEditing}` : ''}${dragging ? ` ${styles.cardDragging}` : ''}`}
       style={{
-        border: `1.5px solid ${lifted ? mod.accent : '#E8EBF0'}`,
+        border: `1px solid ${lifted ? mod.accent : '#E4E7EC'}`,
         boxShadow: dragging
-          ? '0 10px 28px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07)'
+          ? '0 10px 24px rgba(20,25,34,0.12), 0 2px 6px rgba(20,25,34,0.07)'
           : lifted
-            ? `0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)`
-            : '0 1px 4px rgba(0,0,0,0.05)',
+            ? '0 6px 16px rgba(20,25,34,0.08), 0 1px 3px rgba(20,25,34,0.05)'
+            : '0 1px 2px rgba(20,25,34,0.04)',
         transform: lifted ? 'translateY(-2px)' : 'none',
-      }}
+        // The accent the left-edge stripe and the arrow read. A custom property
+        // rather than a second inline rule, because neither of them is an
+        // element this component renders a style attribute onto: the stripe is
+        // `.card::before` and the arrow only takes the colour once the card is
+        // hovered or focused. Same bridge the showroom product form uses.
+        '--module-accent': mod.accent,
+      } as React.CSSProperties & Record<'--module-accent', string>}
     >
       {handle}
 
-      {/* ── Icon block with notification badge ── */}
+      {/* ── Icon block with notification badge ──
+          The badge stays positioned against THIS wrapper, not the card, so it
+          rides with the icon at every width — including the phone layout, where
+          the icon centres itself and takes the badge with it. */}
       <div className={styles.iconWrap}>
         <div
           className={styles.iconBox}
           style={{
-            background: lifted ? `${mod.accent}1E` : `${mod.accent}12`,
-            border: `1.5px solid ${mod.accent}22`,
+            background: lifted ? `${mod.accent}1F` : `${mod.accent}14`,
+            border: `1px solid ${mod.accent}24`,
             color: mod.accent,
           }}
         >
@@ -849,6 +875,34 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
           {mod.title}
         </div>
       </div>
+
+      {/* ── The navigation cue ──
+          A DECORATION, NOT A CONTROL. The whole card is the button; this arrow
+          is `aria-hidden` and is not focusable, so it adds nothing to the tab
+          order and a screen reader still hears exactly one button named after
+          the module. It says "this goes somewhere" without spending a word on
+          "Open", which is what every card on a launcher does.
+
+          It is NOT RENDERED IN EDIT MODE: the card does not navigate then, and
+          the drag handle occupies the same corner on a phone. */}
+      {!editing && (
+        <svg
+          className={styles.arrow}
+          aria-hidden="true"
+          focusable="false"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M7 17 17 7" />
+          <path d="M8 7h9v9" />
+        </svg>
+      )}
     </div>
   )
 }
