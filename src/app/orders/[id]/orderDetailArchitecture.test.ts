@@ -53,7 +53,6 @@ describe('the page reads in one order, with no second summary', () => {
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
     records:  body.indexOf('title="Order records"'),
-    recordInfo: body.indexOf('<OrderRecordInformation'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -67,13 +66,12 @@ describe('the page reads in one order, with no second summary', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
       'header', 'summary', 'attention', 'workspace', 'products', 'payment',
-      'records', 'recordInfo', 'activity',
+      'records', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
     assert.equal((body.match(/<OrderSummaryPanel/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderRecordInformation/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderStatusWorkspace>/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderMainPiCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
@@ -117,13 +115,26 @@ describe('the redundant surfaces are gone', () => {
 
   // ── Record Information ──
   //
-  // It stated five things and each of them was either MOVED or deliberately
-  // dropped; none was simply deleted. See the block that replaced it on the
-  // page for the mapping, and the two tests below for what has to survive.
-  test('Record Information holds the three facts that are not the headline', () => {
+  // THE SECTION IS GONE FROM THE PAGE. It sat below the payment and held three
+  // operational facts; those three are now in the summary panel at the top,
+  // beside the sale they belong to. Nothing it stated was dropped — the tests
+  // below hold each thing that had to survive, and where it survived to.
+  test('the Record Information section is no longer rendered', () => {
+    assert.equal(/OrderRecordInformation/.test(page), false,
+      'the page must not draw it')
+    assert.equal(/RECORD_INFORMATION_TITLE/.test(code(WORKSPACE)), false,
+      'and the component must be gone with it')
+    for (const cls of ['order-record-info', 'order-record-facts']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, '.' + cls + ' is still styled')
+    }
+  })
+
+  test('its three facts are STILL DRAWN — in the summary panel, from the same builder', () => {
     // The salesperson, the lead source and production. Each is something the
     // attention strip can raise a gap in, so none of them may be invisible.
-    assert.ok(body.includes('<OrderRecordInformation facts={recordFacts}'))
+    assert.ok(body.includes('<OrderSummaryPanel view={summaryView}'))
+    assert.ok(page.includes('facts: recordFacts'),
+      'the panel is handed orderRecordFacts own output')
     const ws = read('src/lib/orders/orderWorkspace.ts')
     for (const key of ["key: 'salesperson'", "key: 'lead_source'", "key: 'production'"]) {
       assert.ok(ws.includes(key), key)
@@ -131,6 +142,14 @@ describe('the redundant surfaces are gone', () => {
     for (const label of ["label: 'Salesperson'", "label: 'Lead source'", "label: 'Production'"]) {
       assert.ok(ws.includes(label), label + ' — the existing wording, unchanged')
     }
+  })
+
+  test('the alignment date and actor are shown ONLY for an aligned Order', () => {
+    // describeProductionAlignment already nulls the line for an unaligned
+    // Order; the view refuses to draw it a second time rather than trusting a
+    // caller that hands over a stale one.
+    const ws = read('src/lib/orders/orderWorkspace.ts')
+    assert.ok(ws.includes('line: input.productionAligned ? (production?.detail ?? null) : null'))
   })
 
   test('and each of the three still comes from its original source', () => {
@@ -168,10 +187,6 @@ describe('the redundant surfaces are gone', () => {
     assert.equal(/Raised by/i.test(body), false, 'the page must not draw it')
     const ws = read('src/lib/orders/orderWorkspace.ts')
     assert.equal(/'raised_by'/.test(ws), false, 'and no builder must produce it')
-    // Not in Record information either — that block holds three facts and this
-    // is not one of them.
-    const at = body.indexOf('<OrderRecordInformation')
-    assert.ok(at > 0)
   })
 
   test('but the audit data underneath it is untouched', () => {
@@ -232,8 +247,13 @@ describe('no Order fact is stated twice', () => {
 
   test('the six summary facts are stated by ONE panel, built ONCE', () => {
     // The page hands them to one component and draws none of them itself.
+    // The three groups are COMPOSED from the two builders, each called once,
+    // so no fact in the header is resolved twice or resolved differently.
     assert.equal((page.match(/orderSummaryFields\(/g) ?? []).length, 1)
-    assert.ok(page.includes('fields={summaryFields}'))
+    assert.equal((page.match(/orderRecordFacts\(/g) ?? []).length, 1)
+    assert.equal((page.match(/orderSummaryView\(/g) ?? []).length, 1)
+    assert.ok(page.includes('fields: summaryFields'))
+    assert.ok(page.includes('view={summaryView}'))
   })
 
   test('the upload date is the APPROVED PI version’s, never another date', () => {
@@ -451,6 +471,40 @@ describe('the business rules this pass must not touch', () => {
   test('the Finance link is still gated on Finance module entry', () => {
     assert.ok(page.includes('financeCaps.canAccessFinanceModule && ('))
     assert.ok(page.includes('financePaymentHref(p.id)'))
+  })
+
+  // ── Add payment ──
+  //
+  // A DOOR, DRAWN ONCE, IN THE PAYMENT SECTION. The form behind it is Finance's
+  // own; what this holds is that the Order opens it rather than growing one,
+  // and that adding the door moved no figure and no rule.
+  test('Add payment is drawn once, and inside the payment section', () => {
+    assert.equal((body.match(/ADD_PAYMENT_ACTION_LABEL/g) ?? []).length, 1)
+    assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
+    // Between the payment section's title and the section that follows it.
+    const payment = body.indexOf('PAYMENT_SECTION_TITLE')
+    const records = body.indexOf('title="Order records"')
+    const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
+    assert.ok(payment > 0 && records > payment)
+    assert.ok(control > payment && control < records,
+      'the control belongs to the Payment section, not to the header or the records')
+  })
+
+  test('and it changes none of the figures beside it', () => {
+    // The builder, the exact amounts and the absence of arithmetic are asserted
+    // above; this holds that the payment section still draws the same one
+    // component from the same position, with the control added beside it.
+    assert.equal((body.match(/<PaymentSummaryFigures finance={finance} loaded={recordsReady} \/>/g) ?? []).length, 1)
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+  })
+
+  test('the writing path is Finance’s, and the refresh is the page’s own', () => {
+    // The modal is handed the client and the actor and nothing else that could
+    // decide anything; what it records, it records through its own RPC.
+    assert.ok(page.includes('<RecordSplitPaymentModal'))
+    assert.ok(page.includes('void loadOrder()'), 'the page settles the way it already settles')
+    // And the page never reaches for the allocation RPC itself.
+    assert.equal(code(PAGE).includes('record_payment_with_allocations'), false)
   })
 
   test('production alignment and the amendment doors are unchanged', () => {

@@ -78,6 +78,24 @@ export const PAYMENT_BAR_COLORS = {
   unpaid: colors.red,
 } as const
 
+/**
+ * THE SAME THREE SHARES, ONE STEP QUIETER — for a screen where the payment
+ * section is one of several and must not be the loudest thing on it. The
+ * MEANING of each colour is unchanged and no caller may remap a share to a
+ * different one; only the saturation differs.
+ */
+export const PAYMENT_BAR_COLORS_SUBDUED = {
+  confirmed: 'rgba(69,168,112,0.72)',
+  awaiting: 'rgba(232,160,48,0.68)',
+  unpaid: 'rgba(0,0,0,0.09)',
+} as const
+
+export type PaymentBarPalette = {
+  readonly confirmed: string
+  readonly awaiting: string
+  readonly unpaid: string
+}
+
 /** A share of the track: a pixel quantity, clamped to 0–100, never a figure. */
 const trackWidth = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
@@ -95,7 +113,7 @@ const trackWidth = (value: number): number =>
  * received money — and the amber width is the gap between the two, rounded to
  * hundredths only so the style attribute stays readable.
  */
-export function PiPaymentProgress({ confirmedPercent, receivedPercent, thresholdPercent, label, height = 8 }: {
+export function PiPaymentProgress({ confirmedPercent, receivedPercent, thresholdPercent, label, height = 8, palette = PAYMENT_BAR_COLORS }: {
   /** verified_percent: confirmed money as a share of the PI total. */
   confirmedPercent: number
   /** attached_percent: confirmed plus awaiting verification, as a share of the PI total. */
@@ -105,6 +123,11 @@ export function PiPaymentProgress({ confirmedPercent, receivedPercent, threshold
   label: string
   /** Track height in pixels. */
   height?: number
+  /**
+   * The three fills, for a caller that needs this same bar to sit quieter.
+   * DEFAULTS TO THE PI PALETTE, so every existing caller draws exactly as before.
+   */
+  palette?: PaymentBarPalette
 }) {
   const confirmed = trackWidth(confirmedPercent)
   const received = Math.max(confirmed, trackWidth(receivedPercent))
@@ -125,19 +148,19 @@ export function PiPaymentProgress({ confirmedPercent, receivedPercent, threshold
       {confirmed > 0 && (
         <div
           data-segment="confirmed"
-          style={{ width: `${confirmed}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.confirmed }}
+          style={{ width: `${confirmed}%`, flexShrink: 0, height: '100%', background: palette.confirmed }}
         />
       )}
       {awaiting > 0 && (
         <div
           data-segment="awaiting"
-          style={{ width: `${awaiting}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.awaiting }}
+          style={{ width: `${awaiting}%`, flexShrink: 0, height: '100%', background: palette.awaiting }}
         />
       )}
       {received < 100 && (
         <div
           data-segment="unpaid"
-          style={{ flexGrow: 1, height: '100%', background: PAYMENT_BAR_COLORS.unpaid }}
+          style={{ flexGrow: 1, height: '100%', background: palette.unpaid }}
         />
       )}
       {showTick && (

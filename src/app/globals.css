@@ -2239,90 +2239,146 @@ body {
   overflow: hidden;
 }
 
-/* EIGHT TRACKS, NOT SIX COLUMNS. The client name and the location take two
-   each and the four fixed-width fields take one, so a name has room to be read
-   without a date being squeezed to two characters — and without six equal
-   boxes that read as six separate cards. */
-.order-facts-grid {
-  margin: 0;
-  padding: 2px 0;
+/* ── The three groups ──
+   THREE QUESTIONS SIDE BY SIDE: who the client is and what the order is worth,
+   who owns the sale and whether production is aligned, and the dates. Equal
+   tracks, because three groups whose widths depend on how much text each
+   happens to hold read as three different kinds of thing.
+
+   THE RULES BETWEEN THEM ARE THE SEPARATION, not gaps and not three cards: the
+   panel is one surface and the groups are its parts. */
+.order-sum-groups {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-
-.order-fact {
-  padding: 9px 16px;
-  border-left: 3px solid transparent;
+.order-sum-group {
   min-width: 0;
+  padding: 12px 16px 13px;
+  border-left: 1px solid rgba(0,0,0,0.07);
 }
-.order-fact--wide { grid-column: span 2; }
-/* A gap on an open Order is marked by its rule as well as by its words. Only
-   an overdue due date reaches this: a value the record simply has not got is
-   drawn quietly, because there is nothing alarming about it. */
-.order-fact--amber { border-left-color: #E8A030; background: rgba(232,160,48,0.05); }
-.order-fact--red   { border-left-color: #D94F4F; background: rgba(217,79,79,0.05); }
+.order-sum-group:first-child { border-left: none; }
 
-.order-fact-label {
+.order-sum-group-head {
+  margin: 0 0 8px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8C94A6;
-  margin-bottom: 3px;
 }
-.order-fact-value {
+
+/* THE CLIENT'S NAME IS THE PRIMARY TEXT of the whole panel. It holds prose of
+   unpredictable length, so it wraps rather than widening the page. */
+.order-sum-client {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #111318;
+  overflow-wrap: anywhere;
+}
+.order-sum-client--missing {
+  font-size: 13px;
+  font-weight: 600;
+  font-style: italic;
+  color: #8C94A6;
+}
+
+/* A label above its value, stacked — the pair stays legible at any width and
+   never depends on a second column that a narrow screen would take away. */
+.order-sum-rows { margin: 0; display: flex; flex-direction: column; gap: 7px; }
+.order-sum-row { min-width: 0; }
+.order-sum-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 2px;
+}
+.order-sum-value {
   margin: 0;
   min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 7px;
   flex-wrap: wrap;
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.35;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 /* A FLEX ITEM WILL NOT SHRINK BELOW ITS CONTENT unless it is told it may, so a
-   long client name or a timestamp in a narrow cell overflowed the panel rather
-   than wrapping inside it. Both rules are needed: the first allows the shrink,
-   the second decides where the break goes. */
-.order-fact-value > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-/* `Not available` is a statement, not a warning: one weight down and muted, so
-   it never competes with the five fields that do have an answer. */
-.order-fact--missing .order-fact-value { font-size: 12.5px; font-style: italic; }
-.order-fact-detail {
-  flex-basis: 100%;
-  font-size: 11.5px;
-  font-weight: 600;
-}
+   long client location or a timestamp overflowed the group rather than
+   wrapping inside it. Both rules are needed: the first allows the shrink, the
+   second decides where the break goes. */
+.order-sum-value > span { min-width: 0; overflow-wrap: anywhere; }
+/* `Not available` is a statement, not a warning: one weight down and muted. */
+.order-sum-row--missing .order-sum-value { font-size: 12.5px; font-style: italic; }
+.order-sum-detail { flex-basis: 100%; font-size: 11.5px; font-weight: 600; }
+/* A gap on an open Order is marked by its rule as well as by its words. */
+.order-sum-row--amber { border-left: 3px solid #E8A030; padding-left: 7px; margin-left: -10px; }
+.order-sum-row--red   { border-left: 3px solid #D94F4F; padding-left: 7px; margin-left: -10px; }
 
-/* ── Record information ──
-   The three operational facts that are not among the six above: the
-   salesperson, the lead source and where the Order stands in production.
-   Same fact cells as the summary panel, one step quieter, in a block that
-   does not compete with it. */
-.order-record-info {
-  background: #FFFFFF;
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 10px;
-  overflow: hidden;
+/* THE DATES LINE UP. Each value sits on the same left edge as the one above
+   it, so the column can be scanned rather than read. */
+.order-sum-rows--dates .order-sum-value { font-variant-numeric: tabular-nums; }
+
+/* THE ONE FIGURE IN THE HEADER — found at a glance and no louder than that.
+   A tint from the existing token set, a hairline, and a size up; not a banner
+   and not a colour this page uses for anything else. */
+.order-sum-amount {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(85,133,232,0.07);
+  border: 1px solid rgba(85,133,232,0.18);
 }
-.order-record-info-head {
+.order-sum-amount-label {
+  display: block;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #8C94A6;
-  padding: 10px 16px 0;
+  color: #6B7384;
+  margin-bottom: 2px;
 }
-.order-record-facts {
-  margin: 0;
-  padding: 2px 0 4px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.order-sum-amount-value {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* A value the record has not got is still drawn, quietly: the panel must not
+   let "no value" look like "this screen does not show it". */
+.order-sum-amount--missing { background: #F8F9FB; border-color: rgba(0,0,0,0.08); }
+.order-sum-amount--missing .order-sum-amount-value {
+  font-size: 13px; font-style: italic; font-weight: 600; color: #8C94A6;
+}
+
+/* Production: a badge and, only when the Order is aligned, the line that says
+   who aligned it and when. */
+.order-sum-production { margin-bottom: 9px; }
+.order-sum-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.order-sum-production-line {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #4A5261;
+  overflow-wrap: anywhere;
 }
 
 /* ── The three-column status workspace ──
@@ -2848,12 +2904,16 @@ body {
 
 .order-breakdown-line {
   display: grid;
-  /* THE TWO MONEY COLUMNS ARE FIXED, and each is sized for the widest figure
-     this screen can print — a crore with paise, measured rather than guessed.
-     Each line is its own grid, so `auto` tracks would size per row and the
-     right-hand edge would stop being a straight line to scan down. */
-  grid-template-columns: minmax(0, 1fr) 84px 90px;
-  column-gap: 6px;
+  /* ONE LABEL COLUMN AND ONE VALUE COLUMN, and the value column is FIXED —
+     sized for the widest figure this screen can print, a crore with paise,
+     measured rather than guessed. Each line is its own grid, so an `auto`
+     track would size per row and the right-hand edge would stop being the
+     straight line the whole section is read down.
+
+     EVERY ROW USES THIS GRID, including the final one: a row that sets its own
+     columns ends on its own edge, which is the bug this replaced. */
+  grid-template-columns: minmax(0, 1fr) 118px;
+  column-gap: 10px;
   align-items: baseline;
   padding: 3px 0;
 }
@@ -2869,23 +2929,22 @@ body {
   color: #8C94A6;
   margin-top: 1px;
 }
-.order-breakdown-adjust,
-.order-breakdown-total {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  min-width: 0;
-}
-/* A factor: the middle column, quieter, so it cannot be mistaken for a total. */
-.order-breakdown-adjust {
+/* EVERY VALUE, WHATEVER THE ROW IS: the same column, the same right edge, so
+   `Not applicable` on the fabric line terminates exactly where the Subtotal
+   above it and the Order value below it do. What a line IS is carried by its
+   weight and its colour, which need no column of their own. */
+.order-breakdown-value {
   grid-column: 2;
+  text-align: right;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
   color: #6B7384;
 }
-/* A running total, the opening product value and the final order value: the
-   outer column, where the eye already is. */
-.order-breakdown-total {
-  grid-column: 3;
+/* A running total and the opening product value: darker and heavier, in place. */
+.order-breakdown-line--base .order-breakdown-value,
+.order-breakdown-line--running .order-breakdown-value {
   font-size: 12.5px;
   font-weight: 600;
   color: #111318;
@@ -2912,7 +2971,9 @@ body {
    towards, and nothing else in the column competes with it. */
 .order-breakdown-line--final {
   margin-top: 8px;
-  padding: 8px 8px;
+  padding: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
   border-radius: 6px;
   background: rgba(58,122,190,0.07);
 }
@@ -2921,14 +2982,15 @@ body {
   font-weight: 700;
   color: #111318;
 }
-/* THE FINAL ROW SETS ITS OWN WIDTH. It is a size up from every figure above
-   it and is already separated by its own ground, so holding it to the column
-   the small figures share would only clip it. */
-.order-breakdown-line--final { grid-template-columns: minmax(0, 1fr) auto; }
-.order-breakdown-line--final .order-breakdown-total {
-  grid-column: 2;
+/* THE FINAL ROW KEEPS THE SHARED GRID. It used to set its own `auto` columns
+   and carry 8px of side padding, which put the one figure the section works
+   towards on an edge of its own — 8px inside every total above it. Its ground
+   is now inset by NEGATIVE MARGIN instead, so the tint still bleeds past the
+   text while the figure stays on the column. */
+.order-breakdown-line--final .order-breakdown-value {
   font-size: 16px;
   font-weight: 700;
+  color: #111318;
   letter-spacing: -0.01em;
 }
 
@@ -2947,9 +3009,8 @@ body {
 }
 
 @media (max-width: 1400px) {
-  /* Four tracks: the name and the place take the first row, the three dates
-     and the amount the second. */
-  .order-facts-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* The groups keep their three columns; only their breathing room goes. */
+  .order-sum-group { padding: 11px 13px 12px; }
 }
 
 @media (max-width: 1100px) {
@@ -2965,23 +3026,49 @@ body {
 }
 
 @media (max-width: 768px) {
-  /* Production carries a second line naming who aligned it and when, so it
-     takes the full row rather than a third of one. */
-  .order-record-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .order-record-facts > .order-fact:last-child { grid-column: 1 / -1; }
-  /* TWO COLUMNS, and the two prose fields take a full row each so a long
-     client name wraps instead of forcing a date into two characters. */
-  .order-facts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .order-fact--wide { grid-column: 1 / -1; }
+  /* TABLET: two groups abreast and the dates on their own full-width row
+     underneath, which is the one group that reads perfectly well wide. */
+  .order-sum-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-sum-group:nth-child(3) {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid rgba(0,0,0,0.07);
+  }
+  /* The dates lie across the row rather than stacking down it. */
+  .order-sum-rows--dates {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 7px 22px;
+  }
 }
 
 @media (max-width: 560px) {
-  /* ONE MONEY COLUMN at phone width: two would leave neither enough room. A
-     factor keeps its sign and its quieter weight, which is what distinguishes
-     it from a total once they share a column. */
-  .order-breakdown-line { grid-template-columns: minmax(0, 1fr) auto; }
-  .order-breakdown-adjust,
-  .order-breakdown-total { grid-column: 2; }
+  /* PHONE: the three groups stack whole, in the same order, each separated by
+     a rule rather than by a gap — one surface, three parts, no horizontal
+     scroll and nothing behind a hover.
+
+     THIS BREAKPOINT AND NOT 767: the two-column tablet arrangement lives at
+     768, and a phone rule written below it in a LATER block would win at every
+     width under 768 and leave the tablet layout unreachable. */
+  .order-sum-groups { grid-template-columns: minmax(0, 1fr); }
+  .order-sum-group {
+    border-left: none;
+    border-top: 1px solid rgba(0,0,0,0.07);
+    padding: 11px 14px 12px;
+  }
+  .order-sum-group:first-child { border-top: none; }
+  /* The dates go back to stacking: there is no room to lay them across. */
+  .order-sum-rows--dates { flex-direction: column; gap: 7px; }
+  /* THE VALUE STAYS FOUND at phone width: it keeps its panel and its size. */
+  .order-sum-amount-value { font-size: 16px; }
+  .order-pay-metrics { grid-template-columns: minmax(0, 1fr); }
+  .order-pay-percent { font-size: 26px; }
+  /* A NARROWER VALUE COLUMN at phone width, but still a FIXED one: a long
+     label wraps onto a second line and its value stays on the same right edge
+     as every other, which is the whole point of the column. `auto` would size
+     it per row and bend the edge that is there to be scanned. */
+  .order-breakdown-line { grid-template-columns: minmax(0, 1fr) 104px; column-gap: 8px; }
+  .order-breakdown-line--final .order-breakdown-value { font-size: 15px; }
 }
 
 /* ── The attention strip ──
@@ -3131,10 +3218,116 @@ body {
 }
 
 /* ── The payment section ──
-   Six figures, then the records. The only payment surface on the page. */
-.order-pay-figures {
+   THE DRAFT PI'S ARRANGEMENT, ONE STEP QUIETER: the position and its two
+   parts, the shared three-share track, the legend that names each share, then
+   the figures the position is measured against, then the records.
+
+   The PI's card is the loudest thing on the PI screen and is meant to be. This
+   one is a section among several, so the same structure is drawn in tinted
+   rather than filled blocks and with the subdued track palette. */
+.order-pay-position { margin-bottom: 12px; }
+
+.order-pay-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.order-pay-percent {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.order-pay-word {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+}
+.order-pay-of {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #6B7384;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* The two parts of what has been received. Tinted, hairlined blocks — the PI's
+   metric shape without its fill. */
+.order-pay-metrics {
+  margin-top: 11px;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.order-pay-metric {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(0,0,0,0.07);
+  background: #F8F9FB;
+}
+.order-pay-metric--verified { background: rgba(69,168,112,0.06); border-color: rgba(69,168,112,0.20); }
+.order-pay-metric--awaiting { background: rgba(232,160,48,0.06); border-color: rgba(232,160,48,0.20); }
+.order-pay-metric-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+  margin-bottom: 3px;
+}
+.order-pay-metric-value {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.order-pay-metric-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: #8C94A6;
+  line-height: 1.4;
+}
+
+/* WHAT EACH SHARE OF THE TRACK MEANS, in words — nothing on this page depends
+   on a reader telling green from amber. */
+.order-pay-legend {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.order-pay-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: #6B7384;
+}
+.order-pay-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* The three figures the position is measured against. */
+.order-pay-figures {
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid #F0F2F5;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px 18px;
 }
 .order-pay-figure { min-width: 0; }
@@ -3147,7 +3340,7 @@ body {
   margin-bottom: 4px;
 }
 .order-pay-figure-value {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -3160,17 +3353,21 @@ body {
   line-height: 1.4;
 }
 
-.order-pay-bar {
-  height: 5px;
-  border-radius: 3px;
-  background: #EEF0F4;
-  overflow: hidden;
-  margin-top: 12px;
-}
-.order-pay-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
+/* What Finance just recorded. A quiet blue note, not a success banner: the
+   money has been REPORTED, and whether it arrived is still Finance’s call. */
+.order-pay-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(85,133,232,0.07);
+  border: 1px solid rgba(85,133,232,0.18);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4A5261;
 }
 
 .order-pay-split {
@@ -3407,13 +3604,6 @@ body {
   .order-command-actions > * { flex: 1 1 auto; }
   .order-command-actions .boe-record-action { min-height: 44px; }
   .order-command-actions .boe-record-action--icon { flex: 0 0 44px; width: 44px; min-width: 44px; }
-  /* TWO COLUMNS AT PHONE WIDTH, not one: six stacked fields is a scroll, and
-     the four fixed-width ones sit happily side by side. The name and the
-     place already take a full row each, from the 768 rule. */
-  .order-fact { border-top: 1px solid #F0F2F5; padding: 9px 14px; }
-  /* Only the very first: below 768 the two wide fields each take a full row,
-     so Location genuinely opens a new one and needs its rule. */
-  .order-fact:first-child { border-top: none; }
   .order-pay-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

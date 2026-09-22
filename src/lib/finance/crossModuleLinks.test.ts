@@ -30,6 +30,7 @@ import {
   FINANCE_PAYMENT_PARAM,
   canOpenFinanceRecord,
   canOpenOrderRecord,
+  canRecordPaymentAgainstOrder,
   financePaymentHref,
   orderDetailHref,
   piSubmissionHref,
@@ -282,5 +283,168 @@ describe('the trail runs both ways between an Order and its PI', () => {
   test('the PI already offered its Order, and that is unchanged', () => {
     const piPage = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
     assert.ok(piPage.includes('onOpenOrder={'))
+  })
+})
+
+// ══ Recording a payment against an Order, from the Order ══════════════════════
+
+describe('who is offered Add payment on a Confirmed Order', () => {
+  const gate = (over: Partial<Parameters<typeof canRecordPaymentAgainstOrder>[0]> = {}) =>
+    canRecordPaymentAgainstOrder({ canAllocatePayment: true, orderStatus: 'running', ...over })
+
+  test('a holder of finance.allocate on an open Order is offered it', () => {
+    assert.equal(gate(), true)
+  })
+
+  test('every open status is offered it — the rule is the permission, not the stage', () => {
+    for (const status of ['confirmed', 'running', 'in_production', 'dispatched']) {
+      assert.equal(gate({ orderStatus: status }), true, status)
+    }
+  })
+
+  // ── The unauthorized reader ──
+  //
+  // NOT A DISABLED CONTROL. record_payment_with_allocations() would refuse
+  // them, and a button that exists only to report that refusal is worse than
+  // no button: the gate returns false and the page draws nothing.
+  test('a reader without finance.allocate is offered NOTHING', () => {
+    assert.equal(gate({ canAllocatePayment: false }), false)
+  })
+
+  test('and neither is one whose capability has not been resolved yet', () => {
+    // The page starts on NO_FINANCE_CAPABILITIES and fills it after a read; a
+    // control must not flash into existence on an absent answer.
+    for (const unresolved of [null, undefined]) {
+      assert.equal(gate({ canAllocatePayment: unresolved }), false, String(unresolved))
+    }
+  })
+
+  test('module entry alone is not enough — it is folded into the capability', () => {
+    // deriveFinanceCapabilities computes canAllocatePayment as
+    // `canAccessFinanceModule && allowed('allocate')`, so a reader with entry
+    // but no allocate arrives here as false and this gate adds nothing to it.
+    const finance = readFileSync('src/lib/permissions/finance.ts', 'utf8')
+    assert.ok(finance.includes("canAllocatePayment: withEntry('allocate')"))
+  })
+
+  // ── The cancelled Order ──
+  test('a cancelled Order is not a target, so no control is drawn', () => {
+    assert.equal(gate({ orderStatus: 'cancelled' }), false)
+    // Even for somebody who holds the permission — this is the RPC's rule, not
+    // the reader's.
+    assert.equal(gate({ canAllocatePayment: true, orderStatus: 'cancelled' }), false)
+  })
+
+  test('and that agrees with the picker, which already declines to offer one', () => {
+    const picker = readFileSync('src/app/finance/received/AllocatePaymentModal.tsx', 'utf8')
+    assert.ok(picker.includes(".not('status', 'in', '(cancelled)')"),
+      'searchAllocationTargets filters cancelled Orders out')
+  })
+
+  test('it decides DRAWING only, and says so', () => {
+    const source = readFileSync('src/lib/finance/crossModuleLinks.ts', 'utf8')
+    const at = source.indexOf('export function canRecordPaymentAgainstOrder')
+    assert.ok(at > 0)
+    // No write, no client, no navigation: a predicate over two booleans.
+    const fn = source.slice(at, source.indexOf('\n}', at))
+    for (const forbidden of ['supabase', 'rpc(', 'fetch(', 'router']) {
+      assert.equal(fn.includes(forbidden), false, forbidden)
+    }
+  })
+})
+
+describe('the Order opens Finance’s payment form and never its own', () => {
+  const page = readFileSync(ORDER_PAGE, 'utf8')
+
+  test('the control is gated on the resolved capability', () => {
+    assert.ok(page.includes('const mayRecordPayment = canRecordPaymentAgainstOrder({'))
+    assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment,'))
+    assert.ok(page.includes('orderStatus: order.status,'))
+    // Drawn only when the gate says so, and mounted only when it says so — the
+    // second check means a stale open flag cannot outlive the permission.
+    assert.ok(page.includes('{mayRecordPayment && ('))
+    assert.ok(page.includes('{recordingPayment && mayRecordPayment && ('))
+  })
+
+  test('it opens the SAME component Finance opens, not a second form', () => {
+    assert.ok(page.includes('<RecordSplitPaymentModal'))
+    const finance = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+    assert.ok(finance.includes('<RecordSplitPaymentModal'), 'Finance opens the same one')
+  })
+
+  test('and carries NO payment form, validation or write of its own', () => {
+    // WHAT RENDERS, NOT WHAT IS EXPLAINED. The page names the RPC in prose, to
+    // say whose rules these are; asserting over the comments would read that
+    // sentence as an implementation. CRLF is stripped first, or a block comment
+    // spanning lines survives the strip after a checkout on Windows.
+    const code = page
+      .replace(/\r\n/g, '\n')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+
+    // Every one of these belongs to the shared form and to the RPC behind it.
+    for (const forbidden of [
+      'record_payment_with_allocations',
+      'validatePiPaymentForm',
+      'AddPiPaymentModal',
+    ]) {
+      assert.equal(code.includes(forbidden), false, forbidden + ' must not be reimplemented here')
+    }
+
+    // THE PAGE READS THE MONEY AND WRITES NONE OF IT. Both tables are selected
+    // from — that is how the figures and the records table exist at all — so
+    // what must be absent is a WRITE, not a mention.
+    for (const table of ['finance_payment_requests', 'finance_payment_allocations']) {
+      for (const write of ['insert', 'update', 'delete', 'upsert']) {
+        assert.equal(
+          new RegExp(`from\\('${table}'\\)[\\s\\S]{0,120}\\.${write}\\(`).test(code), false,
+          `${table}.${write}() belongs to Finance, not to this page`)
+      }
+    }
+  })
+
+  test('THIS Order is what it is seeded with', () => {
+    assert.ok(page.includes('initialTarget={{'))
+    assert.ok(page.includes("kind: 'order',"))
+    assert.ok(page.includes('id: order.id,'))
+    assert.ok(page.includes('reference: order.display_number ?? '), 'the Order number the picker would show')
+    assert.ok(page.includes('clientName: order.client_name ?? '))
+  })
+
+  test('the seed does not restrict the form to one target', () => {
+    const modal = readFileSync('src/app/finance/received/RecordSplitPaymentModal.tsx', 'utf8')
+    // Add another row and Remove are untouched, so a payment can still be
+    // divided — which is the reason this form exists.
+    assert.ok(modal.includes('setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])'))
+    assert.ok(modal.includes('const removeRow = (key: string) =>'))
+  })
+
+  // ── THE SEAM IS ONE OPTIONAL PROP ──
+  //
+  // This is the whole of what the Order asked of Finance. If it ever stops
+  // being optional, every existing caller has to change and this stops being
+  // reuse; if the write ever leaves the modal, the Order has grown a payment
+  // system. Both are held here.
+  test('Finance is reached through ONE prop that defaults to null', () => {
+    const modal = readFileSync('src/app/finance/received/RecordSplitPaymentModal.tsx', 'utf8')
+    assert.ok(modal.includes('initialTarget = null,'), 'defaulted, so the Finance page is unchanged')
+    assert.ok(modal.includes('initialTarget?: {'), 'and optional in the type, so no caller is forced')
+  })
+
+  test('and the write stays in the modal, behind its own RPC', () => {
+    const modal = readFileSync('src/app/finance/received/RecordSplitPaymentModal.tsx', 'utf8')
+    assert.ok(modal.includes('record_payment_with_allocations'),
+      'the transaction belongs to the form the Order opens, not to the Order')
+  })
+
+  test('afterwards the page refreshes the way it already refreshes', () => {
+    const at = page.indexOf('onRecorded={summary => {')
+    assert.ok(at > 0)
+    const handler = page.slice(at, page.indexOf('}}', at))
+    assert.ok(handler.includes('loadOrder()'), 'the page’s own full settle, not a bespoke re-read')
+  })
+
+  test('recording is not verifying, and the notice says so', () => {
+    assert.ok(page.includes('Finance verification is still pending.'))
   })
 })

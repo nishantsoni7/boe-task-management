@@ -90,6 +90,39 @@ export function canOpenOrderRecord(canAccessOrdersModule: boolean | null | undef
   return Boolean(canAccessOrdersModule)
 }
 
+/**
+ * Whether to offer RECORDING A PAYMENT against this Order, from the Order.
+ *
+ * TWO CONDITIONS, AND BOTH ARE SOMEBODY ELSE’S RULE.
+ *
+ * `finance.allocate` (with Finance module entry, which deriveFinanceCapabilities
+ * already folds into canAllocatePayment) is exactly what
+ * record_payment_with_allocations() requires and exactly what the Received
+ * Payments page draws its own Record Payment button on. The Order asks the same
+ * question in the same words rather than inventing a second answer.
+ *
+ * A CANCELLED ORDER IS NOT A TARGET. The RPC refuses one outright, and
+ * searchAllocationTargets already declines to offer one to the picker. Offering
+ * a control that is certain to be refused is worse than not offering it — the
+ * rule this whole area is written to.
+ *
+ * IT AUTHORIZES NOTHING. Like every gate in this file it is a DRAWING rule: the
+ * RPC re-derives the actor, the permission and the target’s eligibility for
+ * itself, and refuses anything this happens to draw wrongly.
+ */
+export function canRecordPaymentAgainstOrder(input: {
+  /** FinanceCapabilities.canAllocatePayment — entry is already folded in. */
+  canAllocatePayment: boolean | null | undefined
+  /** orders.status, as the row carries it. */
+  orderStatus: string | null | undefined
+}): boolean {
+  if (!input.canAllocatePayment) return false
+  return input.orderStatus !== CANCELLED_ORDER_STATUS
+}
+
+/** The one status the allocation RPC refuses a target for. */
+const CANCELLED_ORDER_STATUS = 'cancelled'
+
 // ── What a Payment Request is FOR, as a door ─────────────────────────────────
 
 /** The fields of a payment destination this needs — see paymentDestination.ts. */

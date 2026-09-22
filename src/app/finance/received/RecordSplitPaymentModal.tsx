@@ -68,6 +68,7 @@ import {
   splitPaymentErrorMessage,
   splitPaymentTotals,
   targetKey,
+  targetKindDestination,
   toRpcAllocations,
   type SplitAllocationRow,
   type SplitTargetKind,
@@ -134,12 +135,39 @@ export function RecordSplitPaymentModal({
   userId,
   onClose,
   onRecorded,
+  initialTarget = null,
 }: {
   supabase: ReturnType<typeof createClient>
   /** Whoever is recording this. Seeds the first custody activity and the proof row. */
   userId?: string | null
   onClose: () => void
   onRecorded: (summary: { requestNumber: string; allocationCount: number }) => void
+  /**
+   * ONE TARGET TO START FROM, for a caller that already knows which record the
+   * reader is looking at — the Confirmed Order screen opens this from its own
+   * Payment section and should not make somebody search for the Order they are
+   * already on.
+   *
+   * IT SEEDS, IT DOES NOT NARROW. The destination card, the picker, Add another
+   * and Remove all behave exactly as they always have: the row can be changed
+   * or removed and more rows added, because dividing one payment across several
+   * Orders is the reason this form exists. Choosing a different destination
+   * clears it like any other row.
+   *
+   * IT GRANTS NOTHING AND VALIDATES NOTHING. The id goes through the same
+   * allocation row as a picked one and is re-validated by
+   * record_payment_with_allocations() — which refuses a target that does not
+   * exist, is ineligible, or is not visible to the caller.
+   *
+   * Null (the default) is the Finance page’s own behaviour, unchanged.
+   */
+  initialTarget?: {
+    kind: SplitTargetKind
+    id: string
+    /** The Order number or PI reference, as the picker would have shown it. */
+    reference: string
+    clientName: string
+  } | null
 }) {
   // ── Where the money is for ──
   //
@@ -147,7 +175,9 @@ export function RecordSplitPaymentModal({
   // the same component. What differs below is only how many targets the answer
   // admits: a request names one, and this form divides one payment across
   // several of that one kind.
-  const [destination, setDestination] = useState<PaymentDestination>(EMPTY_PAYMENT_ENTRY.destination)
+  const [destination, setDestination] = useState<PaymentDestination>(
+    initialTarget ? targetKindDestination(initialTarget.kind) : EMPTY_PAYMENT_ENTRY.destination,
+  )
 
   // ── The payment, entered once ──
   const [amount,      setAmount]      = useState('')
@@ -180,7 +210,21 @@ export function RecordSplitPaymentModal({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
-  const [rows, setRows] = useState<SplitAllocationRow[]>([EMPTY_ALLOCATION_ROW(nextRowKey())])
+  const [rows, setRows] = useState<SplitAllocationRow[]>(() => {
+    const first = EMPTY_ALLOCATION_ROW(nextRowKey())
+    if (!initialTarget) return [first]
+    // THE SAME FIVE FIELDS `choose` WRITES, in the same shape — including the
+    // label’s "reference · client" form, so a seeded row and a picked one are
+    // indistinguishable to everything downstream.
+    return [{
+      ...first,
+      kind: initialTarget.kind,
+      targetId: initialTarget.id,
+      targetLabel: `${initialTarget.reference} · ${initialTarget.clientName}`,
+      clientName: initialTarget.clientName,
+      reference: initialTarget.reference,
+    }]
+  })
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   /** The customer set the person confirmed, as customerSignature() writes it. */
   const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
