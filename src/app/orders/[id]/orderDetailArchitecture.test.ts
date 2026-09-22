@@ -314,14 +314,15 @@ describe('no Order fact is stated twice', () => {
     assert.ok(page.includes('totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value)'))
   })
 
-  test('the breakdown recomputes NOTHING — one derived figure, and it is the net', () => {
+  test('the breakdown recomputes NOTHING — and now derives nothing either', () => {
     const lib = code('src/lib/orders/orderCommercial.ts')
-    // The only arithmetic in the module is the stored-column subtraction.
-    assert.ok(lib.includes('const diff = Math.round((total - base) * 100) / 100'))
-    assert.equal((lib.match(/Math\.round\(/g) ?? []).length, 1)
-    // And the page does none of its own.
+    // The net-effect line took the module's only arithmetic with it.
+    assert.equal((lib.match(/Math\.round\(/g) ?? []).length, 0)
+    assert.equal(lib.includes('total - base'), false)
+    // The page hands the section rows and nothing else — no net, no formatter.
     assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows)'))
-    assert.ok(page.includes('formatAmount: fmtAmount'))
+    assert.ok(page.includes('<OrderCommercialBreakdown lines={commercialLines} embedded />'))
+    assert.equal(page.includes('orderCommercialNet'), false)
   })
 
   test('the lower workspace puts the record left and the money right', () => {

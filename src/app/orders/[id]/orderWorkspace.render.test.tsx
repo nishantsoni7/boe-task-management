@@ -39,10 +39,8 @@ import {
   orderSummaryFields,
 } from '@/lib/orders/orderWorkspace'
 import {
-  NET_DIFFERENCE_LABEL,
   ORDER_COMMERCIAL_TITLE,
   orderCommercialLines,
-  orderCommercialNet,
   orderStoredCommercialLines,
 } from '@/lib/orders/orderCommercial'
 import { formatMoney } from '@/lib/finance/piPaymentView'
@@ -368,14 +366,10 @@ const breakdownLines = () => orderCommercialLines([
   { key: 'grandTotal', label: 'Grand Total',            value: '₹13,80,600', kind: 'amount', emphasis: 'total' },
 ] as PiAmountRow[])
 
-const breakdownNet = () => orderCommercialNet({
-  productValue: 1170000, orderValue: 1380600, formatAmount: formatMoney,
-})
-
 describe('the commercial breakdown', () => {
   test('prints exactly the lines it is given, and invents none', () => {
     const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     )
     const body = text(html)
     assert.ok(body.includes(ORDER_COMMERCIAL_TITLE))
@@ -390,7 +384,7 @@ describe('the commercial breakdown', () => {
 
   test('it opens on Product value and ends on Order value, in the Order`s words', () => {
     const body = text(renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     ))
     assert.ok(body.includes('Product value'))
     assert.ok(body.includes('Order value'))
@@ -400,7 +394,7 @@ describe('the commercial breakdown', () => {
 
   test('the final row is the strongest, and there is exactly one of it', () => {
     const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     )
     assert.equal((html.match(/order-breakdown-line--final/g) ?? []).length, 1)
     assert.equal((html.match(/order-breakdown-line--base/g) ?? []).length, 1)
@@ -408,7 +402,7 @@ describe('the commercial breakdown', () => {
 
   test('a factor and a running total land in different columns', () => {
     const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     )
     // discount, packing and GST move the figure; the rest are totals.
     assert.equal((html.match(/order-breakdown-adjust/g) ?? []).length, 3)
@@ -417,7 +411,7 @@ describe('the commercial breakdown', () => {
 
   test('a sign is announced in words as well as drawn as a glyph', () => {
     const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     )
     // The glyph is decorative; the word beside it is what a screen reader says.
     assert.match(html, /order-breakdown-sign"[^>]*aria-hidden="true"/)
@@ -426,36 +420,63 @@ describe('the commercial breakdown', () => {
     assert.ok(body.includes('plus'), 'the addition is spoken')
   })
 
-  test('the net difference is stated once, with its percentage', () => {
-    const body = text(renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} net={breakdownNet()} />,
-    ))
-    assert.ok(body.includes(NET_DIFFERENCE_LABEL))
-    assert.ok(body.includes(`+${formatMoney(210600)}`))
-    assert.ok(body.includes('+18.0%'))
+  test('THE NET-EFFECT LINE IS NOT DRAWN, and nothing stands where it did', () => {
+    const html = renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
+    )
+    const body = text(html)
+
+    // The label is gone, in every casing somebody might reintroduce it.
+    for (const wording of ['Net effect', 'net effect', 'Net difference', 'net difference']) {
+      assert.equal(body.includes(wording), false, wording)
+    }
+    // So is the markup that carried it, and its styling hooks.
+    for (const hook of ['order-breakdown-net', 'order-breakdown-net-label',
+                        'order-breakdown-net-value', 'order-breakdown-net-percent']) {
+      assert.equal(html.includes(hook), false, hook)
+    }
+    // And so is the figure it stated: 13,80,600 − 11,70,000, with its percentage.
+    assert.equal(body.includes(`+${formatMoney(210600)}`), false, 'the difference itself')
+    assert.equal(body.includes('+18.0%'), false, 'the percentage')
   })
 
-  test('an underivable net is DRAWN AS NOTHING, never as ₹0', () => {
+  test('the ORDER VALUE is now the last thing in the section', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
+    ))
+    // Nothing follows the answer. This is the property the removal was for.
+    assert.ok(body.trimEnd().endsWith('₹13,80,600'), body.slice(-80))
+  })
+
+  test('and EVERY OTHER ROW SURVIVED the removal, with its sign', () => {
+    // Product value, each individual adjustment, the running totals and the
+    // final Order value — the whole point is that only one line went.
     const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown
-        lines={breakdownLines()}
-        net={orderCommercialNet({ productValue: null, orderValue: 1380600, formatAmount: formatMoney })}
-      />,
+      <OrderCommercialBreakdown lines={breakdownLines()} />,
     )
-    assert.ok(!html.includes('order-breakdown-net'))
-    assert.ok(!text(html).includes(NET_DIFFERENCE_LABEL))
+    const body = text(html)
+    for (const s of ['Product value', '₹11,70,000', 'Discount', '₹20,000',
+                     'Subtotal after discount', 'Packing cost', 'Included',
+                     'Total before GST', 'GST', '₹2,10,600',
+                     'Order value', '₹13,80,600']) {
+      assert.ok(body.includes(s), s)
+    }
+    assert.equal((html.match(/order-breakdown-label/g) ?? []).length, 7)
+    assert.equal((html.match(/order-breakdown-line--final/g) ?? []).length, 1)
+    assert.ok(body.includes('less'), 'the deduction is still spoken')
+    assert.ok(body.includes('plus'), 'the addition is still spoken')
   })
 
   test('the Order with no PI still states its two stored figures', () => {
     const body = text(renderToStaticMarkup(
       <OrderCommercialBreakdown
         lines={orderStoredCommercialLines({ productValue: '₹5,000.00', orderValue: '₹5,900.00' })}
-        net={orderCommercialNet({ productValue: 5000, orderValue: 5900, formatAmount: formatMoney })}
       />,
     ))
     assert.ok(body.includes('Product value ₹5,000.00'))
     assert.ok(body.includes('Order value ₹5,900.00'))
-    assert.ok(body.includes(`+${formatMoney(900)}`))
+    // And states no third figure between or after them.
+    assert.equal(body.includes(formatMoney(900)), false, 'no derived difference')
   })
 })
 

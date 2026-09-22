@@ -1,12 +1,13 @@
 /**
- * The Confirmed Order's commercial breakdown: what each line IS, which way it
- * moves the figure, and the one derived number on the page.
+ * The Confirmed Order's commercial breakdown: what each line IS, and which way
+ * it moves the figure.
  *
  * THE POINT OF THESE. The section was redesigned from a flat list of captioned
  * amounts into a readable calculation, and the risk of that change is that a
- * presentation layer starts doing arithmetic. Every assertion below either pins
- * a formatted string straight through untouched, or pins the single subtraction
- * this module is allowed to perform.
+ * presentation layer starts doing arithmetic. Every assertion below pins a
+ * formatted string straight through untouched — and since the net-effect line
+ * was removed, that is now ALL this module does. Nothing here computes money,
+ * and one describe block below exists to keep it that way.
  *
  * Pure functions over rows the shared PI builder already produced. No database,
  * no network.
@@ -17,15 +18,18 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
-  NET_DIFFERENCE_LABEL,
   ORDER_COMMERCIAL_TITLE,
   ORDER_VALUE_LABEL,
   PRODUCT_VALUE_LABEL,
   orderCommercialLines,
-  orderCommercialNet,
   orderStoredCommercialLines,
 } from './orderCommercial'
+/** The whole module, so the removed exports can be asserted ABSENT rather than
+ *  merely unused. */
+import * as orderCommercial from './orderCommercial'
 import {
   buildCommercialRows,
   formatInr,
@@ -150,61 +154,39 @@ describe('the lines, and what each one IS', () => {
   })
 })
 
-describe('the net difference — the ONE derived figure', () => {
-  const net = (productValue: unknown, orderValue: unknown) =>
-    orderCommercialNet({
-      productValue: productValue as number | string | null,
-      orderValue: orderValue as number | string | null,
-      formatAmount: formatMoney,
-    })
+describe('THE NET-EFFECT LINE IS GONE, and nothing replaced it', () => {
+  // It used to close the section with a display subtraction of the Order's two
+  // stored columns. It was removed as a presentation decision — the breakdown
+  // opens on the product value and closes on the Order value, so the difference
+  // between the first row and the last restated what the rows already showed.
+  //
+  // These assertions exist so it cannot come back by accident, and so the
+  // removal cannot be confused with a change to the money.
 
-  test('states what the terms added, in rupees and percent', () => {
-    const n = net(1253000, 1530460)
-    assert.equal(n.amount, `+${formatMoney(277460)}`)
-    assert.equal(n.percent, '+22.1%')
-    assert.equal(n.direction, 'up')
-  })
-
-  test('a discount-dominated Order reads as a reduction, with a minus', () => {
-    const n = net(1000000, 940000)
-    assert.equal(n.amount, `−${formatMoney(60000)}`)
-    assert.equal(n.percent, '−6.0%')
-    assert.equal(n.direction, 'down')
-  })
-
-  test('no change is stated as no change, unsigned', () => {
-    const n = net(500000, 500000)
-    assert.equal(n.amount, formatMoney(0))
-    assert.equal(n.percent, '0.0%')
-    assert.equal(n.direction, 'flat')
-  })
-
-  test('numeric STRINGS are read as the numbers PostgREST sent', () => {
-    // The two columns arrive as strings precisely so they are not rounded by
-    // JSON`s double; parsing them here must give the same answer as numbers.
-    assert.deepEqual(net('1253000.00', '1530460.00'), net(1253000, 1530460))
-  })
-
-  test('paise survive the subtraction rather than becoming a float artefact', () => {
-    const n = net('0.30', '0.10')
-    assert.equal(n.amount, `−${formatMoney(0.2)}`)
-  })
-
-  test('MISSING IS NOT ZERO: either column absent and there is no net to state', () => {
-    for (const bad of [null, undefined, '', 'n/a', NaN]) {
-      assert.deepEqual(net(bad, 1530460), { amount: null, percent: null, direction: null })
-      assert.deepEqual(net(1253000, bad), { amount: null, percent: null, direction: null })
+  test('the module exports neither the label nor the calculation', () => {
+    for (const gone of ['NET_DIFFERENCE_LABEL', 'orderCommercialNet']) {
+      assert.equal(gone in orderCommercial, false, `${gone} must no longer be exported`)
     }
   })
 
-  test('a percentage is offered ONLY where there is a real base to take one of', () => {
-    // Zero would divide by zero; a negative base would invert the sign of a
-    // real change. Both still state the rupees, which are unambiguous.
-    for (const base of [0, -100]) {
-      const n = net(base, 5000)
-      assert.equal(n.percent, null, String(base))
-      assert.ok(n.amount !== null)
+  test('and the module now performs NO arithmetic on money at all', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/orders/orderCommercial.ts'), 'utf8')
+    // The subtraction, its rounding and its percentage are all gone. If any
+    // arithmetic reappears here, this module has stopped being presentation.
+    for (const arithmetic of ['Math.round(', 'total - base', 'toFixed(', '/ base']) {
+      assert.equal(source.includes(arithmetic), false, `${arithmetic} must not return`)
     }
+    assert.equal(source.includes('Net effect'), true,
+      'the removal should still be explained in the module, so it is not re-added')
+  })
+
+  test('the two stored columns themselves are untouched', () => {
+    // The breakdown still opens on the product value and closes on the Order
+    // value; only the line BETWEEN their two figures went.
+    const lines = orderCommercialLines(rows())
+    assert.equal(lines[0].label, PRODUCT_VALUE_LABEL)
+    assert.equal(lines[lines.length - 1].label, ORDER_VALUE_LABEL)
+    assert.equal(lines[lines.length - 1].role, 'final')
   })
 })
 
@@ -231,7 +213,6 @@ describe('the Order that never came from a PI', () => {
 describe('the words', () => {
   test('are said once, here, so the section and its tests cannot disagree', () => {
     assert.equal(ORDER_COMMERCIAL_TITLE, 'Commercial breakdown')
-    assert.equal(NET_DIFFERENCE_LABEL, 'Net effect on product value')
     assert.equal(PRODUCT_VALUE_LABEL, 'Product value')
     assert.equal(ORDER_VALUE_LABEL, 'Order value')
   })

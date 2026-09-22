@@ -19,10 +19,16 @@
 //   column which of the two money columns it belongs in, so a factor can never
 //          be mistaken for a running total
 //
-// THE ONE DERIVED FIGURE is the net difference between the Order's own stored
-// product value and its stored order value — the two columns the removed totals
-// block printed. It is a DISPLAY subtraction of two stored amounts. No stored
-// value, no commercial formula and no rounding rule elsewhere changes for it.
+// AND IT NOW DERIVES NOTHING AT ALL. A `Net effect on product value` line used
+// to close the section with a display subtraction of the Order's two stored
+// columns. It has been removed as a presentation decision: the breakdown already
+// opens on the product value, states every factor that moves it with its own
+// sign, and closes on the final Order value, so the difference between the first
+// row and the last was a figure the section restated rather than revealed.
+//
+// NOTHING ABOUT THE MONEY CHANGED WITH IT. No stored column, no commercial
+// formula and no rounding rule was touched to remove that line — the
+// subtraction simply has no reader any more, so it is gone rather than hidden.
 
 import type { PiAmountRow, PiValueKind } from '@/lib/pi/previewView'
 
@@ -114,67 +120,6 @@ export function orderCommercialLines(rows: readonly PiAmountRow[]): CommercialLi
   })
 }
 
-// ── The net difference ────────────────────────────────────────────────────────
-
-export const NET_DIFFERENCE_LABEL = 'Net effect on product value'
-
-export type CommercialNet = {
-  /** `+₹3,11,090.00`, `−₹4,200.00`, `₹0.00` — or null when not derivable. */
-  amount: string | null
-  /** `+24.8%`, or null whenever the base is missing or nil. */
-  percent: string | null
-  direction: 'up' | 'down' | 'flat' | null
-}
-
-const EMPTY_NET: CommercialNet = { amount: null, percent: null, direction: null }
-
-/**
- * A stored `numeric` column as a number.
- *
- * PostgREST hands numeric back as a STRING so it is not rounded by JSON's
- * double, and this is the one place in this module that converts one. Missing
- * stays null: an Order with no stored product value has no net difference to
- * state, and ₹0 would be a figure somebody acts on.
- */
-function numeric(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const n = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(n) ? n : null
-}
-
-/**
- * What the commercial terms did to the product value, in rupees and percent.
- *
- * BOTH INPUTS ARE THE ORDER'S OWN STORED COLUMNS — total_product_value and
- * total_value — which is exactly the pair the removed totals block printed. The
- * subtraction is rounded to paise so the result is a real amount rather than a
- * float artefact, and the percentage is offered only when the base is a real,
- * positive figure to take a percentage OF.
- */
-export function orderCommercialNet(input: {
-  productValue: number | string | null | undefined
-  orderValue: number | string | null | undefined
-  /** The page's own money formatter, handed in so there is one of them. */
-  formatAmount: (value: number) => string
-}): CommercialNet {
-  const base = numeric(input.productValue)
-  const total = numeric(input.orderValue)
-  if (base === null || total === null) return EMPTY_NET
-
-  const diff = Math.round((total - base) * 100) / 100
-  const direction = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'
-  const prefix = diff > 0 ? '+' : diff < 0 ? '−' : ''
-  const amount = `${prefix}${input.formatAmount(Math.abs(diff))}`
-
-  // A percentage of nothing is not a percentage: a zero base would divide by
-  // zero, and a negative one would invert the sign of a real change.
-  const percent = base > 0
-    ? `${prefix}${((Math.abs(diff) / base) * 100).toFixed(1)}%`
-    : null
-
-  return { amount, percent, direction }
-}
-
 // ── The fallback for an Order that never came from a PI ───────────────────────
 
 /**
@@ -184,7 +129,7 @@ export function orderCommercialNet(input: {
  * commercial statement at all — a regression dressed as a simplification. The
  * breakdown's middle is genuinely unknown for these Orders (there is no PI to
  * read a discount or a tax off), so it is not invented: the two stored figures
- * and the net between them are stated, and nothing else.
+ * are stated, and nothing else.
  */
 export function orderStoredCommercialLines(input: {
   /** Already formatted by the page's money helper. */
