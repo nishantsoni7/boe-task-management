@@ -106,9 +106,22 @@ export function ModuleDragHandle({
  * measuring anything, and the rearrangement is the real grid reflowing rather
  * than a floating copy: the gap the dragged card leaves IS the placeholder.
  *
- * THE POINTER IS CAPTURED by the handle, so a drag that leaves the grid, crosses
- * the sidebar or ends outside the window still ends — `pointercancel` and
- * `pointerup` both land on the element that holds the capture.
+ * THE LISTENERS ARE ON `window`, NOT ON THE HANDLE, and that is not a detail.
+ * An earlier version attached them to the handle and relied on
+ * setPointerCapture to route the rest of the gesture there. In a real browser
+ * that capture is not guaranteed to survive the drag: the grid reflows under the
+ * pointer on every move, and when the capture is lost the `pointerup` goes
+ * somewhere else — so the handle's own listener never fires, `dragEnd` is never
+ * dispatched, and the card stays visibly lifted with the drag still "in
+ * progress" after the mouse has been released. That is exactly what happened the
+ * first time this was driven through a browser.
+ *
+ * Window listeners cannot be lost. The capture is kept as well, because it still
+ * helps when it works, but nothing depends on it: every handler filters on
+ * `pointerId`, so a second finger is not this drag and a stale event cannot end
+ * it. `blur` is the last resort — if the window loses focus mid-gesture (a
+ * screenshot tool, an alt-tab, a dropped touch) the drag ends rather than
+ * stranding a card.
  */
 export function useModuleReorderPointer({
   enabled,
@@ -137,8 +150,8 @@ export function useModuleReorderPointer({
     const handle = event.currentTarget
     const pointerId = event.pointerId
     active.current = pointerId
-    // Every subsequent event for this pointer comes to `handle`, whatever it is
-    // over — including outside the document.
+    // Helpful when it holds, relied on for nothing: the listeners below are on
+    // `window` precisely because this capture can be lost as the grid reflows.
     try { handle.setPointerCapture(pointerId) } catch { /* capture is a nicety, not a requirement */ }
     onDragStart(key)
 
@@ -166,19 +179,23 @@ export function useModuleReorderPointer({
       onMoveToSlotOf(key, targetKey)
     }
 
-    const finish = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointerId) return
-      handle.removeEventListener('pointermove', onMove)
-      handle.removeEventListener('pointerup', finish)
-      handle.removeEventListener('pointercancel', finish)
-      try { handle.releasePointerCapture(pointerId) } catch { /* already released */ }
+    // `ev` is absent for the blur fallback, which belongs to no pointer.
+    const finish = (ev?: PointerEvent) => {
+      if (ev && ev.pointerId !== pointerId) return
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      window.removeEventListener('blur', onBlur)
+      try { handle.releasePointerCapture(pointerId) } catch { /* already released, or never held */ }
       active.current = null
       onDragEnd()
     }
+    const onBlur = () => finish()
 
-    handle.addEventListener('pointermove', onMove)
-    handle.addEventListener('pointerup', finish)
-    handle.addEventListener('pointercancel', finish)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+    window.addEventListener('blur', onBlur)
   }
 }
 

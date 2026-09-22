@@ -504,6 +504,7 @@ describe('34/35. no regression into suppressed territory', () => {
       // existing function, adds no column to any existing table, writes no row and
       // drops nothing, so it reaches nothing here.
       '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

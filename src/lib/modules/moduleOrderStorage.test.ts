@@ -35,7 +35,20 @@ import { join } from 'node:path'
 import { PERSONAL_MODULE_ORDER_TABLE } from './moduleOrder'
 
 const ROOT = process.cwd()
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+
+/**
+ * Read a source file with LINE ENDINGS NORMALISED.
+ *
+ * Not a nicety. This repository is worked on Windows and git checks these files
+ * out CRLF, so a source line ends `…\r\n`. In a JavaScript regex `.` matches any
+ * character EXCEPT a line terminator, and `\r` is one — so `/--.*$/` cannot
+ * reach the end of a CRLF line and the comment-stripping below silently stops
+ * working, which turns every "the migration does not mention X" assertion into a
+ * check of the sentence that promises it does not. That is exactly what happened
+ * the first time this branch was rebased, so the normalisation is here rather
+ * than in each pattern.
+ */
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
 const MIGRATION_FILE = 'supabase/migrations/20261228000000_personal_module_order.sql'
 const MIGRATION  = read(MIGRATION_FILE)
@@ -423,6 +436,32 @@ describe('edit mode', () => {
       assert.equal(LAUNCHER.includes(html5), false,
         `${html5} reached the launcher — mobile browsers do not fire it`)
     }
+  })
+
+  test('A DRAG ALWAYS ENDS — the listeners are on the window, not on the handle', () => {
+    // Found by driving this in a real browser, not by reading it. With the
+    // listeners on the handle and setPointerCapture relied on to route the rest
+    // of the gesture there, the capture did not survive the grid reflowing under
+    // the pointer: `pointerup` landed elsewhere, `dragEnd` never dispatched, and
+    // the card stayed lifted with a drag still "in progress" after the mouse had
+    // been released. Window listeners cannot be lost.
+    for (const listener of [
+      "window.addEventListener('pointermove'",
+      "window.addEventListener('pointerup'",
+      "window.addEventListener('pointercancel'",
+      "window.addEventListener('blur'",
+    ]) {
+      assert.ok(CONTROLS.includes(listener), `missing ${listener}`)
+    }
+    assert.equal(CONTROLS.includes('handle.addEventListener'), false,
+      'a listener on the handle can be stranded when pointer capture is lost')
+    // Every one of them is removed again, or a finished drag keeps listening.
+    for (const off of ['pointermove', 'pointerup', 'pointercancel', 'blur']) {
+      assert.ok(CONTROLS.includes(`window.removeEventListener('${off}'`), `missing removal of ${off}`)
+    }
+    // And each filters on the pointer that started the drag, so a second finger
+    // cannot end it.
+    assert.match(CONTROLS, /ev\.pointerId !== pointerId/)
   })
 
   test('a held handle does not scroll the page', () => {
