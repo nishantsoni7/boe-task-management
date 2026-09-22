@@ -115,13 +115,22 @@ import {
 } from './OrderPiSections'
 import {
   OrderAdvanceCard,
+  OrderCurrentStatus,
+  OrderDesignFilesCard,
   OrderFabricFinishCard,
   OrderMainPiCard,
+  OrderManufacturingCard,
   OrderStatusWorkspace,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import {
+  countDesignImages,
+  describeDesignFiles,
+  describeManufacturingStatus,
+  type DesignImageSummary,
+} from '@/lib/orders/orderCurrentStatus'
 import { advanceStanding } from '@/lib/orders/orderAdvance'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -286,6 +295,47 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
   dispatched:         { label: 'Dispatched',          bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+}
+
+/**
+ * EVERYTHING THE PAGE HOLDS ABOUT THE APPROVED PI'S PICTURES.
+ *
+ * The four URL-bearing fields are what the product table and the image viewer
+ * draw. `summary` is what Current Status reports, and it is a STATE rather than
+ * a count: the read has not finished, the Order has no PI behind it, the read
+ * failed, or it succeeded and here is the number. See DesignImageSummary.
+ *
+ * `summary.counts` IS COUNTED FROM THE STORED ROWS, not from the maps beside
+ * it. Those hold the URLs that were actually signed, so a picture this reader's
+ * storage policy refused is missing from them — and a count that shrank because
+ * of who was looking would be a count of nothing.
+ */
+type PiImagesState = {
+  representativeByRow: ReadonlyMap<number, string>
+  customizationByRow: ReadonlyMap<number, readonly string[]>
+  unresolved: number
+  viewerItems: readonly PiViewerItem[]
+  summary: DesignImageSummary
+}
+
+/**
+ * NO PICTURES, IN A NAMED STATE — the whole of it, every field, every time.
+ *
+ * WHY A FACTORY AND NOT A SHARED CONSTANT: every path that abandons a PI load
+ * must clear the maps, the viewer items, the unresolved tally AND the summary
+ * together. Clearing four of the five is exactly the defect this replaces —
+ * an Order with no PI of its own showing the last Order's photographs — and a
+ * single call that returns all five makes a partial reset something you have to
+ * write out on purpose rather than something you can forget.
+ */
+function noPiImages(summary: DesignImageSummary): PiImagesState {
+  return {
+    representativeByRow: new Map(),
+    customizationByRow: new Map(),
+    unresolved: 0,
+    viewerItems: [],
+    summary,
+  }
 }
 
 /** The same five states as the health card reads them: ordinary running states
@@ -657,12 +707,8 @@ export default function OrderDetailPage() {
   // what it has always been. See src/lib/orders/orderPiHandoff.ts.
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
-  const [piImages,    setPiImages]    = useState<{
-    representativeByRow: ReadonlyMap<number, string>
-    customizationByRow: ReadonlyMap<number, readonly string[]>
-    unresolved: number
-    viewerItems: readonly PiViewerItem[]
-  }>({ representativeByRow: new Map(), customizationByRow: new Map(), unresolved: 0, viewerItems: [] })
+  // Lazily, so the two empty Maps are built once rather than on every render.
+  const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
   const [clientOpen,  setClientOpen]  = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const [wbBusy,      setWbBusy]      = useState(false)
@@ -756,12 +802,39 @@ export default function OrderDetailPage() {
    */
   const loadPiHandoff = async (order: Order) => {
     const submissionId = order.source_order_submission_id
+
+    // ── NOTHING FROM THE LAST ORDER SURVIVES THE FIRST LINE OF THIS ONE ──
+    //
+    // Every field at once, before any decision and before any read: the signed
+    // URLs, the viewer's items, the unresolved tally and the picture summary.
+    // The page is a client component and this function runs again on a
+    // navigation from one Order to another, so anything left standing here is
+    // one Order's photographs and counts displayed under another's number.
+    //
+    // `loading` IS THE HONEST STATE AT THIS POINT, and the reason the summary
+    // is a state and not a number. A count starting at zero would have the
+    // Design Files card say "None recorded" — a claim that somebody read the
+    // table and it was empty — during the round trip that is about to find out.
+    //
+    // UNCONDITIONAL, AND NOT "ONLY WHEN THE ORDER CHANGED". A reset that has to
+    // decide whether it is needed is a reset that can decide wrong, and the
+    // thing it would be deciding wrong about is whose photographs are on the
+    // screen. The price is paid on an in-place refresh of the SAME Order: the
+    // product pictures blank for the one round trip these reads take, then come
+    // back. A refresh the reader asked for, showing that it is re-reading, is
+    // worth more than a branch that can leave another Order's pictures up.
+    setPiImages(noPiImages({ kind: 'loading' }))
+
     if (!submissionId) {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
       setWbPath(null)
       setPiVersions([])
       setPiActivity([])
+      // No PI behind this Order, so there is nothing to count and nothing
+      // failed. The card says which, rather than reporting an empty read that
+      // never happened.
+      setPiImages(noPiImages({ kind: 'no_source' }))
       setHandoffReady(true)
       return
     }
@@ -863,6 +936,11 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'unavailable' })
       setPiProducts([])
       setWbPath(null)
+      // THE SAME ABSENCE THE HANDOFF REPORTS, said by the picture line too.
+      // The images may well have read cleanly, but without the submission row
+      // there are no product lines to hang them on — and a count printed
+      // beside an unavailable PI would be a number nobody can check.
+      setPiImages(noPiImages({ kind: 'unavailable' }))
       setHandoffReady(true)
       return
     }
@@ -884,6 +962,13 @@ export default function OrderDetailPage() {
       // The same helper both PI screens use, so a picture is labelled and
       // ordered identically wherever it is opened.
       viewerItems: buildImageViewerItems(products, urls),
+      // A READ THAT ERRORED IS NOT AN ORDER WITH NO PICTURES. PostgREST
+      // answers a refused or failed select with an error and an empty `data`,
+      // so counting the rows without looking at `error` first would turn every
+      // such failure into a confident "None recorded".
+      summary: imagesRes.error
+        ? { kind: 'unavailable' }
+        : { kind: 'ready', counts: countDesignImages(images) },
     })
     setWbPath(orderPiWorkbookPath(row))
     setPiHandoff(buildOrderPiHandoff(row, {
@@ -1905,6 +1990,29 @@ export default function OrderDetailPage() {
   })
 
   /**
+   * THE TWO NEW CURRENT STATUS CARDS, from answers this page already had.
+   *
+   * `approvalView` is the very standing the Fabric & Finish card draws, and
+   * `production` is describeProductionAlignment's — both reused rather than
+   * re-derived, so the summary above the product list and the detail below it
+   * cannot report different states of the same record. The image counts are
+   * the stored rows of the approved PI, and the stage is the Order's own
+   * status through the page's own label map.
+   */
+  const designFiles = describeDesignFiles({
+    approvals: approvalView,
+    images: piImages.summary,
+    productCount: piProducts.length,
+  })
+  const manufacturing = describeManufacturingStatus({
+    production,
+    orderStatus: order.status,
+    // The header pill's own label, read the same way it reads it, so the two
+    // statements of one status are the same string or there is no status.
+    orderStatusLabel: STATUS_META[order.status]?.label ?? order.status,
+  })
+
+  /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
    * The assigned salesperson matched BY USER ID, an active admin or an active
@@ -2199,20 +2307,16 @@ export default function OrderDetailPage() {
         )}
 
         {/* ══ 3. THE STATUS WORKSPACE ══
-            WHAT A READER CHECKS BEFORE THEY LOOK AT A SINGLE PRODUCT LINE: the
-            PI this Order actually runs on, how much of it is paid for, and
-            whether fabric and finish have been signed off. Three cards, one
-            row where the width allows, stacked in the same order where it does
-            not. */}
+            THE TWO OPERATIONAL CARDS: how much of the Order is paid for, and
+            whether fabric and finish have been signed off — the second being
+            the one place on the page either approval is moved. One row where
+            the width allows, stacked in the same order where it does not.
+
+            MAIN PI MOVED DOWN ONE SECTION, into Current Status, where it is
+            the first of the three things a reader wants together. The card,
+            its data, its actions and its permissions are untouched; only where
+            it sits changed. */}
         <OrderStatusWorkspace>
-          <OrderMainPiCard
-            card={mainPi}
-            onView={v => { void openVersionFile(v, 'view') }}
-            onDownload={v => { void openVersionFile(v, 'download') }}
-            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            viewing={piFileBusy !== null}
-            downloading={piFileBusy !== null}
-          />
           <OrderAdvanceCard standing={advance} />
           <OrderFabricFinishCard
             standing={approvalView}
@@ -2222,6 +2326,37 @@ export default function OrderDetailPage() {
             busyEvidence={proofBusy}
           />
         </OrderStatusWorkspace>
+
+        {/* ══ 3b. CURRENT STATUS ══
+            WHERE THIS ORDER ACTUALLY STANDS, immediately above the product
+            list, so management reads its position in one place instead of
+            opening the PI screen, the approval card and the summary panel in
+            turn.
+
+            READ-ONLY, ALL THREE. The only controls are the Main PI card's own
+            View, Download and View history — reads, each signed through the
+            reader's own session at the moment of the click. Nothing here
+            uploads, approves, aligns, dispatches or writes anything.
+
+            EVERY FIGURE IS SOMEBODY ELSE'S ANSWER. mainPiCard names the PI in
+            force, approvalStanding names fabric and finish, the image counts
+            are the stored rows of the approved PI, and describeProductionAlignment
+            names production. Nothing is recomputed here, so no card on this
+            page can disagree with another. Where this build records nothing —
+            CAD, a manufacturing stage, QC, packaging — the line says so rather
+            than leaving a blank to be read as "not started". */}
+        <OrderCurrentStatus>
+          <OrderMainPiCard
+            card={mainPi}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+          />
+          <OrderDesignFilesCard view={designFiles} />
+          <OrderManufacturingCard view={manufacturing} />
+        </OrderCurrentStatus>
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
