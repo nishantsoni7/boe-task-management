@@ -17,7 +17,6 @@ import {
   OrderActivityList,
   OrderAttentionBar,
   OrderDetailSkeleton,
-  OrderRecordInformation,
   OrderStatusPill,
   OrderSummaryPanel,
   PAYMENT_SECTION_TITLE,
@@ -32,6 +31,7 @@ import {
   arrangeOrderActions,
   orderAttentionItems,
   orderRecordFacts,
+  orderSummaryView,
   orderSummaryFields,
   type OrderHeaderActionKey,
   type WorkspaceTone,
@@ -174,6 +174,11 @@ import {
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
 import { leadSourceLabel } from '@/lib/orders/orderConfirmation'
+// THE CLIENT'S OWN NUMBER, resolved by the builder the PI card uses — bill-to
+// then ship-to, and never order_submissions.contact_number, which is the
+// SALESPERSON's number and would have a reader press "call the client" and
+// reach BOE. See buildClientDetails for why that column is not consulted.
+import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailView'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1914,6 +1919,25 @@ export default function OrderDetailPage() {
     productionLine: production?.line ?? null,
   })
 
+  /**
+   * THE HEADER, AS THREE GROUPS — composed, not resolved.
+   *
+   * orderSummaryFields built the six above and orderRecordFacts built the
+   * three; this only says which group each belongs to and hands the client
+   * contact in beside them. Every value, label, tone and absent-wording is the
+   * one those two builders already decided.
+   *
+   * THE THREE OPERATIONAL FACTS MOVED UP HERE FROM Record information, which
+   * sat below the payment section and is gone. They are the same facts from the
+   * same columns; only where they are drawn changed.
+   */
+  const summaryView = orderSummaryView({
+    fields: summaryFields,
+    facts: recordFacts,
+    clientContact: piHandoff.kind === 'ready' ? clientContactText(piHandoff.client) : null,
+    productionAligned,
+  })
+
   const attention = orderAttentionItems({
     status: order.status,
     productionAligned,
@@ -2108,22 +2132,31 @@ export default function OrderDetailPage() {
         </header>
 
         {/* ══ 2. THE SUMMARY PANEL ══
-            SIX FACTS, ONE SURFACE: who the Order is for, where it goes, when
-            it was confirmed, when its PI was uploaded, when it is due, and
-            what the products come to.
+            THREE GROUPS, ONE SURFACE, in the order a reader asks them: who the
+            client is and what the order is worth; who owns the sale and
+            whether production has been aligned; and the dates.
 
-            It replaces the identity band and the separate Important Dates
-            band. Those spread these six across two surfaces and mixed them
-            with facts nobody is asking at this moment — the lead source, the
-            originating request number, and the two audit timestamps, none of
-            which anybody plans against.
+            IT ABSORBED Record information. The salesperson, the lead source
+            and production used to sit in their own block BELOW the payment
+            section, which meant a reader told "Production not aligned" by the
+            attention strip had to scroll past the money to find the field that
+            said so. They are in group 2 now, from the same columns and the
+            same builder, and that block is gone.
+
+            THE CLIENT'S CONTACT IS NEW TO THIS PAGE and to nothing else: it is
+            the number the approved PI already carried and the PI card already
+            printed, resolved by that card's own builder.
+
+            THE ORIGINATING REQUEST NUMBER AND THE AUDIT TIMESTAMPS ARE STILL
+            OFF THE PAGE, for the reason they left it: nobody plans against
+            either.
 
             RAISED BY IS NOT DRAWN. A DISPLAY REMOVAL ONLY: orders.requested_by
             is still read, still carried on the row, still the column the PI
             revision rule reads to find the PI's owner, and the activity trail
             still names who did what. Nothing was dropped from a select and
             nothing was dropped from the database. */}
-        <OrderSummaryPanel fields={summaryFields} />
+        <OrderSummaryPanel view={summaryView} />
 
         {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
@@ -2449,25 +2482,7 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ 7. RECORD INFORMATION ══
-            THE SALESPERSON, THE LEAD SOURCE AND PRODUCTION — the three
-            operational facts that are not among the six a reader opens this
-            page asking for. They are here rather than in the summary panel,
-            and they are HERE rather than nowhere: the attention strip raises a
-            gap in each, and a warning whose field cannot be found is a warning
-            a reader cannot act on.
-
-            WHAT IS DELIBERATELY NOT BACK. Who raised the Order — a display
-            removal, and only that: orders.requested_by is still read, still on
-            the row and still what the PI-revision rule reads. The originating
-            request number and the two audit timestamps stay off the page for
-            the reason they left it: nobody plans against either. And the
-            internal request UUID that used to ride along as a title attribute
-            is still not reproduced — a database key is not a fact about the
-            Order. */}
-        <OrderRecordInformation facts={recordFacts} />
-
-        {/* ══ 8. ACTIVITY ══ the complete trail, last: the current state is
+        {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
             understood before the history that produced it. */}
         {!recordsReady ? (
           <SectionSkeleton rows={3} label="Loading activity" />

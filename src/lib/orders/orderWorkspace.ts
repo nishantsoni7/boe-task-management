@@ -327,6 +327,161 @@ export function orderRecordFacts(input: OrderRecordFactsInput): OrderRecordFact[
   ]
 }
 
+
+// ── The top summary, as three groups ──────────────────────────────────────────
+//
+// THREE QUESTIONS, IN THE ORDER A READER ASKS THEM. Who the client is and what
+// the order is worth; who owns the sale and whether production has been
+// aligned; and the dates. The band used to answer the first and third together
+// in one flat row of six, with the second stranded in its own block below the
+// payment section — so a reader told "Production not aligned" had to scroll
+// past the money to find the field that said so.
+//
+// IT COMPOSES, IT DOES NOT RESOLVE. Every value here is already decided:
+// orderSummaryFields built the six, orderRecordFacts built the three, and both
+// keep their own wording, their own `Not available` / `Not set` conventions and
+// their own gap tones. This only says which group each one belongs to. The one
+// field that is new to the panel is the client's contact number, and that
+// arrives resolved by the same builder the PI card uses.
+//
+// AN UNALIGNED ORDER SHOWS NO ALIGNMENT METADATA. `line` is
+// describeProductionAlignment's, which is null unless the Order is aligned AND
+// carries a timestamp — so there is never an empty "aligned by" or "aligned on"
+// row to read past.
+
+export type OrderSummaryGroupKey = 'client' | 'sales' | 'dates'
+
+export const SUMMARY_GROUP_TITLE: Record<OrderSummaryGroupKey, string> = {
+  client: 'Client and value',
+  sales:  'Sales and production',
+  dates:  'Important dates',
+}
+
+/** The client's own number. The PI card's word for it, so one thing keeps one
+ *  name across the two screens that print it. */
+export const ORDER_CONTACT_LABEL = 'Contact'
+
+/** A label/value pair as the groups draw them — the shape both builders above
+ *  already produce, narrowed to what a row needs. */
+export type OrderFactRow = {
+  key: string
+  label: string
+  value: string
+  /** True when the record genuinely has none. Drawn quietly, never as an alarm. */
+  missing: boolean
+  detail: string | null
+  tone: WorkspaceTone
+}
+
+export type OrderSummaryView = {
+  client: {
+    /** The client's own name — the group's primary text. */
+    name: string
+    nameMissing: boolean
+    /** The contact, then the location. */
+    rows: OrderFactRow[]
+    /** The one figure in the header, given its own panel. */
+    value: { label: string; value: string; missing: boolean }
+  }
+  sales: {
+    production: {
+      label: string
+      tone: WorkspaceTone
+      aligned: boolean
+      /** "Aligned by X · date". NULL WHENEVER THE ORDER IS NOT ALIGNED. */
+      line: string | null
+    }
+    /** The lead source, then the salesperson. */
+    rows: OrderFactRow[]
+  }
+  /** Confirm date, upload date, due date — always all three, in that order. */
+  dates: OrderFactRow[]
+}
+
+const asRow = (f: OrderSummaryField): OrderFactRow => ({
+  key: f.key, label: f.label, value: f.value, missing: f.missing, detail: f.detail, tone: f.tone,
+})
+
+/** A record fact as a row. These carry their own absent wording (`Not set`,
+ *  `Not assigned`) and are never `missing` in the panel's sense. */
+const factRow = (f: OrderRecordFact): OrderFactRow => ({
+  key: f.key, label: f.label, value: f.value, missing: false, detail: f.detail, tone: f.tone,
+})
+
+/**
+ * The three groups, from the two builders' own output.
+ *
+ * A field this cannot find is not invented: the summary builder always emits
+ * all six and the facts builder always emits all three, so every lookup below
+ * is total. The fallbacks exist so a caller that hands over a short list gets a
+ * quiet gap rather than a crash.
+ */
+export function orderSummaryView(input: {
+  /** orderSummaryFields' six, unchanged. */
+  fields: readonly OrderSummaryField[]
+  /** orderRecordFacts' three, unchanged. */
+  facts: readonly OrderRecordFact[]
+  /** The client's own number as the PI card prints it, or null. */
+  clientContact: string | null
+  productionAligned: boolean
+}): OrderSummaryView {
+  const byKey = (key: OrderSummaryFieldKey): OrderSummaryField | null =>
+    input.fields.find(f => f.key === key) ?? null
+  const factByKey = (key: OrderRecordFactKey): OrderRecordFact | null =>
+    input.facts.find(f => f.key === key) ?? null
+
+  const client = byKey('client')
+  const location = byKey('location')
+  const value = byKey('product_value')
+  const production = factByKey('production')
+
+  const contact = (input.clientContact ?? '').trim()
+
+  return {
+    client: {
+      name: client?.value ?? SUMMARY_NOT_AVAILABLE,
+      nameMissing: client?.missing ?? true,
+      rows: [
+        {
+          key: 'contact',
+          label: ORDER_CONTACT_LABEL,
+          value: contact === '' ? SUMMARY_NOT_AVAILABLE : contact,
+          missing: contact === '',
+          detail: null,
+          tone: 'neutral',
+        },
+        location ? asRow(location) : {
+          key: 'location', label: SUMMARY_FIELD_LABEL.location, value: SUMMARY_NOT_AVAILABLE,
+          missing: true, detail: null, tone: 'neutral' as WorkspaceTone,
+        },
+      ],
+      value: {
+        label: value?.label ?? SUMMARY_FIELD_LABEL.product_value,
+        value: value?.value ?? SUMMARY_NOT_AVAILABLE,
+        missing: value?.missing ?? true,
+      },
+    },
+    sales: {
+      production: {
+        label: production?.value ?? SUMMARY_NOT_AVAILABLE,
+        tone: production?.tone ?? 'neutral',
+        aligned: input.productionAligned,
+        // The supporting line is shown ONLY for an aligned Order. On an
+        // unaligned one the helper has already made it null, and this says so
+        // a second time rather than trusting the caller.
+        line: input.productionAligned ? (production?.detail ?? null) : null,
+      },
+      rows: [
+        factByKey('lead_source'),
+        factByKey('salesperson'),
+      ].filter((f): f is OrderRecordFact => f !== null).map(factRow),
+    },
+    dates: (['confirm_date', 'upload_date', 'due_date'] as OrderSummaryFieldKey[])
+      .map(byKey)
+      .filter((f): f is OrderSummaryField => f !== null)
+      .map(asRow),
+  }
+}
 // ── The header actions ────────────────────────────────────────────────────────
 
 export type OrderHeaderActionKey =

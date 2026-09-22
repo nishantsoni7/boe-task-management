@@ -20,7 +20,6 @@ import {
   OrderActivityList,
   OrderAttentionBar,
   OrderDetailSkeleton,
-  OrderRecordInformation,
   OrderStatusPill,
   OrderSummaryPanel,
   PaymentSummaryFigures,
@@ -32,11 +31,14 @@ import {
   OrderCustomizationCell,
 } from './OrderPiSections'
 import {
+  SUMMARY_GROUP_TITLE,
+  SUMMARY_NOT_AVAILABLE,
   SUMMARY_NOT_SET,
   SUMMARY_UNASSIGNED,
   orderAttentionItems,
   orderRecordFacts,
   orderSummaryFields,
+  orderSummaryView,
 } from '@/lib/orders/orderWorkspace'
 import {
   ORDER_COMMERCIAL_TITLE,
@@ -88,7 +90,7 @@ describe('the attention bar', () => {
   })
 })
 
-// ── The Order Summary panel and the status pill ───────────────────────────────
+// ── The Order Summary panel: three groups ─────────────────────────────────────
 
 const fields = (over: Partial<Parameters<typeof orderSummaryFields>[0]> = {}) => orderSummaryFields({
   clientName: 'Acme Exports',
@@ -101,117 +103,187 @@ const fields = (over: Partial<Parameters<typeof orderSummaryFields>[0]> = {}) =>
   ...over,
 })
 
-const summaryMarkup = (over: Parameters<typeof fields>[0] = {}) =>
-  renderToStaticMarkup(<OrderSummaryPanel fields={fields(over)} />)
+const recordFacts = (over: Partial<Parameters<typeof orderRecordFacts>[0]> = {}) =>
+  orderRecordFacts({
+    status: 'running',
+    salespersonName: 'Nishant Soni',
+    leadSource: 'Reference',
+    productionAligned: true,
+    productionLabel: 'Aligned for Production',
+    productionLine: 'Aligned by Nishant Soni · 21 Sep 2026, 10:00 am',
+    ...over,
+  })
 
-describe('the Order Summary panel', () => {
-  test('states all six facts, each under its own label', () => {
+const view = (over: {
+  field?: Parameters<typeof fields>[0]
+  fact?: Parameters<typeof recordFacts>[0]
+  clientContact?: string | null
+  productionAligned?: boolean
+} = {}) => orderSummaryView({
+  fields: fields(over.field ?? {}),
+  facts: recordFacts(over.fact ?? {}),
+  clientContact: over.clientContact === undefined ? '+91 98290 12345' : over.clientContact,
+  productionAligned: over.productionAligned ?? true,
+})
+
+const summaryMarkup = (over: Parameters<typeof view>[0] = {}) =>
+  renderToStaticMarkup(<OrderSummaryPanel view={view(over)} />)
+
+describe('the Order Summary panel: group 1, client and value', () => {
+  test('states the client name, the contact and the location', () => {
     const body = text(summaryMarkup())
-    for (const s of ['Client name', 'Acme Exports', 'Location', 'Jaipur',
-                     'Confirm date', '8 Sep 2026', 'Upload date', '2 Sep 2026, 11:04 am',
-                     'Due date', '30 Oct 2026', 'Total product value', '₹12,53,000.00']) {
+    for (const s of ['Client and value', 'Acme Exports', 'Contact', '+91 98290 12345',
+                     'Location', 'Jaipur']) {
       assert.ok(body.includes(s), s)
     }
   })
 
-  test('RAISED BY IS NOT DRAWN — the one field this pass removed', () => {
-    const body = text(summaryMarkup())
-    assert.ok(!/raised by|requested by/i.test(body))
+  test('the client name is the group’s primary text, not a labelled field', () => {
+    const html = summaryMarkup()
+    assert.ok(html.includes('order-sum-client'))
+    // It is the name itself, never captioned "Client name" like an ordinary row.
+    assert.equal(text(html).includes('Client name'), false)
   })
 
-  test('states NEITHER the status NOR the facts that moved off this band', () => {
-    const body = text(summaryMarkup())
-    assert.ok(!/\bStatus\b/.test(body))
-    assert.ok(!/\bRunning\b/.test(body))
-    for (const gone of ['Salesperson', 'Lead source', 'Production', 'From request',
-                        'Created', 'Last updated']) {
-      assert.ok(!body.includes(gone), gone)
-    }
+  test('the total product value is stated, in its own panel', () => {
+    const html = summaryMarkup()
+    assert.ok(text(html).includes('₹12,53,000.00'))
+    assert.ok(text(html).includes('Total product value'))
+    assert.ok(html.includes('order-sum-amount'))
   })
 
-  test('shows ONE amount, and it is the product value — payment is its own section', () => {
+  test('and it is the ONLY amount in the header — payment is its own section', () => {
     const body = text(summaryMarkup())
     assert.equal((body.match(/₹/g) ?? []).length, 1)
     assert.ok(!/verified|awaiting|balance|order value/i.test(body))
   })
 
-  test('the two prose fields are marked wide; the four fixed ones are not', () => {
-    const html = summaryMarkup()
-    assert.equal((html.match(/order-fact--wide/g) ?? []).length, 2)
-  })
-
-  test('a missing value says `Not available` and is marked as absent, not as a fault', () => {
-    const html = summaryMarkup({ location: null, uploadDate: null, totalProductValue: null })
+  test('a long client name and location wrap rather than widening the page', () => {
+    const html = summaryMarkup({
+      field: {
+        clientName: 'Maharaja Heritage Furnishings and Export House Private Limited',
+        location: 'Sitapura Industrial Area, Tonk Road, Jaipur, Rajasthan',
+      },
+    })
     const body = text(html)
-    assert.equal((body.match(/Not available/g) ?? []).length, 3)
-    assert.equal((html.match(/order-fact--missing/g) ?? []).length, 3)
-    // Restrained: an absence is never dressed as a warning.
-    assert.ok(!html.includes('order-fact--amber'))
-    assert.ok(!html.includes('order-fact--red'))
+    // Neither is truncated, and neither is hidden behind a title attribute.
+    assert.ok(body.includes('Maharaja Heritage Furnishings and Export House Private Limited'))
+    assert.ok(body.includes('Sitapura Industrial Area, Tonk Road, Jaipur, Rajasthan'))
+    assert.equal(/title="/.test(html), false)
   })
 
-  test('an overdue due date says so IN WORDS, not by colour alone', () => {
-    const html = summaryMarkup({ isOverdue: true })
-    assert.ok(text(html).includes('Overdue'))
-    assert.equal((html.match(/order-fact--red/g) ?? []).length, 1)
-  })
-
-  test('the panel is labelled for a reader who is not seeing it', () => {
-    assert.match(summaryMarkup(), /aria-label="Order summary"/)
+  test('a missing contact says `Not available` and is marked absent, not at fault', () => {
+    const html = summaryMarkup({ clientContact: null })
+    assert.ok(text(html).includes(SUMMARY_NOT_AVAILABLE))
+    assert.ok(html.includes('order-sum-row--missing'))
+    assert.ok(!html.includes('order-sum-row--amber'))
   })
 })
 
-
-// ── Record information ──────────────────────────────────────────────
-
-const recordFacts = (over: Partial<Parameters<typeof orderRecordFacts>[0]> = {}) =>
-  orderRecordFacts({
-    status: 'running',
-    salespersonName: 'Nishant',
-    leadSource: 'Reference',
-    productionAligned: true,
-    productionLabel: 'Aligned',
-    productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
-    ...over,
+describe('the Order Summary panel: group 2, sales and production', () => {
+  test('an ALIGNED order shows the state, the date and who aligned it', () => {
+    const body = text(summaryMarkup())
+    assert.ok(body.includes('Sales and production'))
+    assert.ok(body.includes('Aligned for Production'))
+    assert.ok(body.includes('Aligned by Nishant Soni'))
+    assert.ok(body.includes('21 Sep 2026'))
   })
 
-const recordMarkup = (over: Parameters<typeof recordFacts>[0] = {}) =>
-  renderToStaticMarkup(<OrderRecordInformation facts={recordFacts(over)} />)
+  test('the production state is a badge, and the WORD carries it', () => {
+    const html = summaryMarkup()
+    assert.ok(html.includes('order-sum-badge'))
+    // A reader who cannot tell green from amber still reads the state.
+    assert.ok(text(html).includes('Aligned for Production'))
+  })
 
-describe('the Record information block', () => {
-  test('draws all three facts, each under its existing label', () => {
-    const body = text(recordMarkup())
-    for (const s of ['Record information', 'Salesperson', 'Nishant',
-                     'Lead source', 'Reference', 'Production', 'Aligned',
-                     'Aligned by Ravi']) {
+  test('an UNALIGNED order shows the state and NO alignment metadata', () => {
+    const html = summaryMarkup({
+      productionAligned: false,
+      fact: { productionAligned: false, productionLabel: 'Not Aligned for Production', productionLine: null },
+    })
+    const body = text(html)
+    assert.ok(body.includes('Not Aligned for Production'))
+    // No empty date and no empty actor — the row is absent, not blank.
+    assert.equal(html.includes('order-sum-production-line'), false)
+    assert.equal(/aligned by/i.test(body), false)
+    assert.equal(/aligned on/i.test(body), false)
+  })
+
+  test('an alignment line is never drawn for an unaligned order EVEN IF one is passed', () => {
+    // The helper already nulls it; the view says so a second time rather than
+    // trusting a caller that hands over a stale line.
+    const html = summaryMarkup({
+      productionAligned: false,
+      fact: {
+        productionAligned: false,
+        productionLabel: 'Not Aligned for Production',
+        productionLine: 'Aligned by Somebody · 1 Jan 2026',
+      },
+    })
+    assert.equal(/Somebody/.test(text(html)), false)
+  })
+
+  test('the lead source and the salesperson are shown, under their existing labels', () => {
+    const body = text(summaryMarkup())
+    for (const s of ['Lead source', 'Reference', 'Salesperson', 'Nishant Soni']) {
       assert.ok(body.includes(s), s)
     }
   })
 
-  test('restates NONE of the six facts the summary panel states', () => {
-    const body = text(recordMarkup())
-    for (const forbidden of [/client name/i, /location/i, /confirm date/i,
-                             /upload date/i, /due date/i, /product value/i, /₹/]) {
-      assert.equal(forbidden.test(body), false, String(forbidden))
+  test('a missing lead source or salesperson keeps its existing wording and its amber rule', () => {
+    const html = summaryMarkup({
+      fact: { salespersonName: null, leadSource: null },
+    })
+    const body = text(html)
+    assert.ok(body.includes(SUMMARY_UNASSIGNED))
+    assert.ok(body.includes(SUMMARY_NOT_SET))
+    assert.equal((html.match(/order-sum-row--amber/g) ?? []).length, 2)
+  })
+})
+
+describe('the Order Summary panel: group 3, the dates', () => {
+  test('states the confirm date, the upload date and the due date', () => {
+    const body = text(summaryMarkup())
+    for (const s of ['Important dates', 'Confirm date', '8 Sep 2026',
+                     'Upload date', '2 Sep 2026, 11:04 am', 'Due date', '30 Oct 2026']) {
+      assert.ok(body.includes(s), s)
     }
   })
 
-  test('and says nothing about who raised the Order', () => {
-    assert.equal(/raised by|requested by/i.test(text(recordMarkup())), false)
+  test('an overdue due date says so IN WORDS, not by colour alone', () => {
+    const html = summaryMarkup({ field: { isOverdue: true } })
+    assert.ok(text(html).includes('Overdue'))
+    assert.equal((html.match(/order-sum-row--red/g) ?? []).length, 1)
   })
 
-  test('a gap is marked by a class as well as by its words', () => {
-    const html = recordMarkup({
-      salespersonName: null, leadSource: null,
-      productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-    })
-    assert.equal((html.match(/order-fact--amber/g) ?? []).length, 3)
-    assert.ok(text(html).includes(SUMMARY_UNASSIGNED))
-    assert.ok(text(html).includes(SUMMARY_NOT_SET))
+  test('a date the record has not got says `Not available`, quietly', () => {
+    const html = summaryMarkup({ field: { uploadDate: null } })
+    assert.ok(text(html).includes(SUMMARY_NOT_AVAILABLE))
+    assert.ok(html.includes('order-sum-row--missing'))
+  })
+})
+
+describe('the Order Summary panel as a whole', () => {
+  test('the panel and each of its three groups are labelled for a reader not seeing it', () => {
+    const html = summaryMarkup()
+    assert.match(html, /aria-label="Order summary"/)
+    for (const title of Object.values(SUMMARY_GROUP_TITLE)) {
+      assert.ok(html.includes(`aria-label="${title}"`), title)
+    }
   })
 
-  test('the block is labelled for a reader who is not seeing it', () => {
-    assert.match(recordMarkup(), /aria-label="Record information"/)
+  test('RAISED BY IS STILL NOT DRAWN', () => {
+    assert.equal(/raised by|requested by/i.test(text(summaryMarkup())), false)
+  })
+
+  test('the status is not restated here — it is the pill beside the order number', () => {
+    assert.equal(/\bStatus\b/.test(text(summaryMarkup())), false)
+  })
+
+  test('nothing is hidden behind a hover: every value is in the markup', () => {
+    const html = summaryMarkup()
+    assert.equal(/onMouseOver|:hover/.test(html), false)
+    assert.equal(/title="/.test(html), false)
   })
 })
 
@@ -254,15 +326,49 @@ function paymentMarkup(payments: OrderFinancePaymentRow[], orderValue: number | 
 }
 
 describe('the payment summary figures', () => {
-  test('states all six figures the business reads', () => {
+  test('states all six figures the business reads — every one of them, still', () => {
     const body = text(paymentMarkup([payment({})], 1564090))
-    assert.ok(body.includes('Order value ₹15,64,090.00'))
+    // The two parts of what has been received, as metric blocks.
     assert.ok(body.includes('Verified ₹7,50,000.00'))
     assert.ok(body.includes('Awaiting verification ₹0.00'))
+    // The three the position is measured against.
+    assert.ok(body.includes('Order value ₹15,64,090.00'))
     assert.ok(body.includes('Received ₹7,50,000.00'))
     assert.ok(body.includes('Balance ₹8,14,090.00'))
-    assert.ok(body.includes('Verified % 47.95%'))
-    assert.match(paymentMarkup([payment({})], 1564090), /class="order-pay-bar"/)
+    // The percentage is the headline rather than a sixth captioned figure.
+    assert.ok(body.includes('47.95%'))
+  })
+
+  test('reads as a position, in the Draft PI’s arrangement', () => {
+    const html = paymentMarkup([payment({})], 1564090)
+    const body = text(html)
+    // The headline percentage and the word it qualifies.
+    assert.ok(html.includes('order-pay-percent'))
+    assert.ok(body.includes('verified'))
+    assert.ok(body.includes('₹7,50,000.00 verified of ₹15,64,090.00 order value'))
+    // The SHARED three-share track, not this page’s old single-fill bar.
+    assert.match(html, /role="progressbar"/)
+    assert.equal(html.includes('order-pay-bar-fill'), false)
+    for (const seg of ['confirmed', 'unpaid']) {
+      assert.ok(html.includes(`data-segment="${seg}"`), seg)
+    }
+  })
+
+  test('the payment WORDS are the Order’s own — verified is never called approved', () => {
+    const body = text(paymentMarkup([payment({})], 1564090))
+    assert.ok(body.includes('Verified'))
+    assert.ok(body.includes('Awaiting verification'))
+    // The Draft PI says "confirmed"; this screen has always said "verified",
+    // and RECEIVED here still means verified PLUS awaiting.
+    assert.equal(/approved/i.test(body), false)
+    assert.ok(body.includes('verified + awaiting'))
+  })
+
+  test('every share of the track is named in words, not by colour alone', () => {
+    const body = text(paymentMarkup([payment({})], 1564090))
+    for (const share of ['Verified', 'Awaiting verification', 'Not received']) {
+      assert.ok(body.includes(share), share)
+    }
   })
 
   test('money awaiting Finance is counted', () => {
@@ -400,13 +506,38 @@ describe('the commercial breakdown', () => {
     assert.equal((html.match(/order-breakdown-line--base/g) ?? []).length, 1)
   })
 
-  test('a factor and a running total land in different columns', () => {
-    const html = renderToStaticMarkup(
-      <OrderCommercialBreakdown lines={breakdownLines()} />,
-    )
-    // discount, packing and GST move the figure; the rest are totals.
-    assert.equal((html.match(/order-breakdown-adjust/g) ?? []).length, 3)
-    assert.equal((html.match(/order-breakdown-total/g) ?? []).length, 4)
+  test('EVERY row’s value sits in the one value column — one right edge', () => {
+    const lines = breakdownLines()
+    const html = renderToStaticMarkup(<OrderCommercialBreakdown lines={lines} />)
+    // Seven rows, seven values, and not a second money column between them.
+    assert.equal((html.match(/order-breakdown-value/g) ?? []).length, lines.length)
+    for (const gone of ['order-breakdown-adjust', 'order-breakdown-total']) {
+      assert.equal(html.includes(gone), false, gone + ' is a column that no longer exists')
+    }
+  })
+
+  test('and the final Order value shares it, rather than setting its own', () => {
+    const html = renderToStaticMarkup(<OrderCommercialBreakdown lines={breakdownLines()} />)
+    // The strongest row is still marked as such — it is its WEIGHT that differs,
+    // not its column.
+    assert.ok(html.includes('order-breakdown-line--final'))
+    const finalAt = html.indexOf('order-breakdown-line--final')
+    assert.ok(html.indexOf('order-breakdown-value', finalAt) > finalAt)
+  })
+
+  test('a worded value such as `Not applicable` sits in the same column as an amount', () => {
+    const html = renderToStaticMarkup(<OrderCommercialBreakdown lines={[
+      { key: 'gross', label: 'Product value', value: '₹1,00,000', kind: 'amount',
+        role: 'base', sign: null, groupStart: false, note: null },
+      { key: 'fabric', label: 'Fabric cost', value: 'Not applicable', kind: 'notApplicable',
+        role: 'addition', sign: null, groupStart: false, note: null },
+      { key: 'subtotal', label: 'Subtotal', value: '₹1,00,000', kind: 'amount',
+        role: 'running', sign: null, groupStart: false, note: null },
+    ]} />)
+    assert.ok(text(html).includes('Not applicable'))
+    // Three rows, three values, all in the one column: the worded cell
+    // terminates exactly where the Subtotal below it does.
+    assert.equal((html.match(/order-breakdown-value/g) ?? []).length, 3)
   })
 
   test('a sign is announced in words as well as drawn as a glyph', () => {

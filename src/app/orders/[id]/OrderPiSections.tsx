@@ -441,14 +441,20 @@ export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
  * gone and this section carries both figures, at the two ends of the working
  * that connects them.
  *
- * HOW IT READS. Three money columns' worth of meaning in two:
+ * HOW IT READS. ONE LABEL COLUMN AND ONE VALUE COLUMN, and EVERY value ends on
+ * the same right edge — the opening product value, each factor that moves it,
+ * every running total, the tax, the final Order value, and a worded cell such
+ * as `Not applicable`. A reader checks a column of figures by running an eye down
+ * its right-hand edge, and that only works if the edge is straight.
  *
- *   the opening product value and every running total sit in the OUTER column
- *   every factor that moves the figure sits INSET, with its own sign
+ * FACTORS USED TO SIT IN A SECOND, INSET MONEY COLUMN so that the outer edge
+ * held totals alone. It cost more than it bought: `Not applicable` against the
+ * fabric line stopped short of the Subtotal above it and read as a different
+ * kind of value, and the final row — which set its own grid — ended on a third
+ * edge again. What a line IS is now carried by its WEIGHT, its colour and its
+ * sign, none of which needs a column of its own.
  *
- * so a reader scanning the right-hand edge sees only totals, and a reader
- * following the arithmetic sees what each step did. THE FINAL ORDER VALUE IS
- * THE LAST AND STRONGEST ROW, and nothing follows it.
+ * THE FINAL ORDER VALUE IS THE LAST AND STRONGEST ROW, and nothing follows it.
  *
  * A `Net effect on product value` line used to. It was removed deliberately:
  * the section already opens on the product value and closes on the Order value,
@@ -470,7 +476,6 @@ export function OrderCommercialBreakdown({ lines, embedded = false }: {
     <div className="order-breakdown-lines">
       {lines.map(line => {
         const total = line.role === 'final'
-        const running = line.role === 'running' || line.role === 'base'
         return (
           <div
             key={line.key}
@@ -485,7 +490,7 @@ export function OrderCommercialBreakdown({ lines, embedded = false }: {
               {line.note && <span className="order-breakdown-note">{line.note}</span>}
             </div>
             <div
-              className={running || total ? 'order-breakdown-total' : 'order-breakdown-adjust'}
+              className="order-breakdown-value"
               style={{
                 // A worded cell — `Included`, `Not applicable`, the text a
                 // workbook typed where a number belongs — is not an amount and
