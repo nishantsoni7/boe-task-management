@@ -1,9 +1,14 @@
-/* ── Modules launcher: the page header, the grid, the card ───────────────────
+/* ── Modules launcher: the grid and the card ────────────────────────────────
    LIGHT ONLY, and nothing in this file has a dark variant — neither does the
    app, which carries no prefers-color-scheme block anywhere in globals.css. The
    palette below is the approved one: white cards on the shell's soft grey,
-   #141922 for a name, #697386 for supporting text, #E4E7EC for a border, and
-   the BOE red spent on the one eyebrow at the top of the page.
+   #141922 for a name, #697386 for supporting text and #E4E7EC for a border.
+
+   THE PAGE HEADER IS NOT IN THIS FILE. The title, the supporting line and the
+   Edit order control live in the app header (BoeOsLayout), styled by the
+   shared .boe-page-* and .boe-header-actions rules every other shell already
+   uses. What this file styles is the grid and the card, and below the
+   controls, the drag handle they share.
 
    Colours, hover states and anything that depends on a MODULE'S OWN accent stay
    inline in page.tsx, because an inline style always wins over a class rule and
@@ -18,47 +23,6 @@
    reserving a box with no content in it. What replaced them is not more content
    but less card: a 92px horizontal row on a desktop instead of a 132px column
    that was mostly air. */
-
-/* ── The page header ───────────────────────────────────────────────────────── */
-
-/* THE ONLY BRANDING ON THE SCREEN, and it is nine characters of it. The red
-   belongs to a label naming where you are, not to a card, a button or a panel —
-   which is what keeps thirteen coloured icons legible underneath it. */
-.eyebrow {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #DC1F2E;
-  margin-bottom: 5px;
-}
-
-/* Was an 11px uppercase grey label; it is the page's real heading and now reads
-   like one. An <h1> in the markup, so the document has a heading before its
-   list of destinations. */
-.sectionLabel {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #141922;
-  line-height: 1.15;
-  margin: 0;
-}
-
-/* THE GRID'S ONE INSTRUCTION, said once at page level. This line is the reason
-   a card needs no description of its own: "what do I do here" is answered for
-   all thirteen at once, and each card is then free to be nothing but a name. */
-.sectionSupport {
-  font-size: 12.5px;
-  color: #697386;
-  margin: 3px 0 0;
-  line-height: 1.35;
-}
-
-.sectionHeading {
-  min-width: 0;
-}
 
 /* ── The grid ──────────────────────────────────────────────────────────────── */
 
@@ -361,31 +325,18 @@
   }
 }
 
-/* ── Personal card order: the heading row, the controls, the handle ──────────
-   The "Edit order" work, unchanged in behaviour. Normal mode renders none of
-   these classes apart from `.sectionHeader` and `.orderEditButton`. */
+/* ── Personal card order: the controls and the handle ───────────────────────
+   The "Edit order" work, unchanged in behaviour.
 
-.sectionHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  /* The divider under the page header, and the gap between it and the first row
-     of cards. The heading block above it carries its own leading, so the rule
-     sits closer to the text than to the grid — which is what makes it read as
-     the end of the header rather than as a line floating between two things. */
-  padding-bottom: 14px;
-  border-bottom: 1px solid #E4E7EC;
-  margin-bottom: 18px;
-}
+   THE ROW THAT USED TO HOLD THEM IS GONE. These controls now sit in the app
+   header's own `.boe-header-actions` slot, which supplies the position, the
+   spacing and the wrapping — so the heading row this file used to declare, and
+   the divider it carried, both went with the duplicate heading block that is
+   no longer drawn. The app header's own bottom border is the only rule under
+   the title now, and the grid begins directly beneath it with nothing but the
+   page body's padding in between.
 
-/* The heading block takes the row's left side; the control keeps the right.
-   `align-items: flex-start` above means the button sits level with the eyebrow,
-   so the two are optically aligned without a magic padding. */
-.sectionHeader .sectionHeading {
-  flex: 1 1 auto;
-}
+   Normal mode renders none of these classes apart from `.orderEditButton`. */
 
 /* ── Normal mode: one quiet action ──
    Text-weight, in the muted grey of the supporting line, so it reads as a
@@ -589,13 +540,6 @@
 
 /* ── Small screens ── */
 @media (max-width: 767px) {
-  /* The heading and its control stack rather than sharing a row, so a long
-     heading never squeezes the button into two lines. */
-  .sectionHeader {
-    padding-bottom: 12px;
-    margin-bottom: 14px;
-  }
-
   /* The controls take the full width and centre, like everything else on a
      narrow launcher, instead of crowding the right edge. */
   .orderEditing {
@@ -615,15 +559,6 @@
 }
 
 @media (max-width: 639px) {
-  .sectionLabel {
-    font-size: 19px;
-  }
-
-  .sectionHeader {
-    padding-bottom: 11px;
-    margin-bottom: 12px;
-  }
-
   /* A compact two-up card is 11px from its own edge, so the handle comes in with
      it and keeps clear of the centred icon below. */
   .dragHandle {

@@ -690,10 +690,35 @@ export default function BoeOsHomePage() {
       {loading ? <LoadingScreen /> : (
         <BoeOsLayout
           profile={profile}
-          title="BOE Operating System"
-          subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          // THE PAGE NAMES ITSELF ONCE, HERE. This header used to read "BOE
+          // Operating System" over today's date, and the body opened with a
+          // second heading block — an eyebrow, a repeat of the page's name, a
+          // supporting line and a divider. Two headers, one screen, and the
+          // top one said what the sidebar was already saying.
+          //
+          // The product name stays in the sidebar brand, where it belongs and
+          // where it still is. The date went with it: nothing on a launcher
+          // depends on knowing what day it is, and it was competing with the
+          // one thing this header is for.
+          title="Modules"
+          subtitle="Select a module to continue"
           onSignOut={handleSignOut}
           quickActions={quickActions}
+          // The reorder control now travels with the heading it belongs to.
+          // Unchanged in behaviour: same reducer, same handlers, same props —
+          // only its position on the screen is different.
+          headerActions={canEditOrder ? (
+            <ModuleOrderBar
+              editing={editingOrder}
+              saving={orderEdit.saving}
+              error={orderEdit.error}
+              dirty={orderIsDirty}
+              onEdit={() => dispatchOrderEdit({ type: 'open', order: moduleOrderKeys(modules) })}
+              onSave={handleSaveOrder}
+              onCancel={() => dispatchOrderEdit({ type: 'cancel' })}
+              onReset={() => dispatchOrderEdit({ type: 'reset', canonical: canonicalKeys })}
+            />
+          ) : null}
         >
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
@@ -703,41 +728,13 @@ export default function BoeOsHomePage() {
               every width. */}
           <QuickActionList actions={quickActions} variant="page" />
 
-          {/* ── The page's own header, and the one action beside it ──
-              Three lines of hierarchy where there used to be a single uppercase
-              label: a red WORKSPACE eyebrow that is the only branding on the
-              screen, the section's real heading, and ONE line of guidance for
-              the whole grid.
+          {/* NO SECOND HEADING HERE. The page's title, its supporting line and
+              the Edit order control are all in the one header above, passed to
+              BoeOsLayout. The grid is the first thing in the body, so there is
+              no heading block, no divider and no reserved space left behind —
+              the header's own bottom border is the only rule on the screen.
 
-              THAT LINE IS WHY THE CARDS CARRY NO DESCRIPTIONS. "Select a module
-              to continue" is said once, at page level, rather than thirteen
-              times inside thirteen cards; a launcher is a list of destinations,
-              and naming them is what a card is for.
-
-              In normal mode the row still carries a single quiet "Edit order"
-              text button and nothing else — no handles, no arrows, no editing
-              furniture on the cards. */}
-          <div className={styles.sectionHeader}>
-            <div className={styles.sectionHeading}>
-              <div className={styles.eyebrow}>Workspace</div>
-              <h1 className={styles.sectionLabel}>Modules</h1>
-              <p className={styles.sectionSupport}>Select a module to continue</p>
-            </div>
-            {canEditOrder && (
-              <ModuleOrderBar
-                editing={editingOrder}
-                saving={orderEdit.saving}
-                error={orderEdit.error}
-                dirty={orderIsDirty}
-                onEdit={() => dispatchOrderEdit({ type: 'open', order: moduleOrderKeys(modules) })}
-                onSave={handleSaveOrder}
-                onCancel={() => dispatchOrderEdit({ type: 'cancel' })}
-                onReset={() => dispatchOrderEdit({ type: 'reset', canonical: canonicalKeys })}
-              />
-            )}
-          </div>
-
-          {/* Responsive app-launcher grid. Unchanged at every breakpoint: edit
+              Responsive app-launcher grid. Unchanged at every breakpoint: edit
               mode adds a handle in each card's top-right corner, which is
               absolutely positioned and so costs the card no layout. */}
           <div className={styles.grid}>

@@ -337,7 +337,10 @@ describe('normal mode', () => {
     assert.match(CONTROLS, /Edit order/)
     // The handle and the three controls are rendered only inside edit mode.
     assert.match(LAUNCHER, /handle=\{editingOrder \? \(/)
-    assert.match(LAUNCHER, /\{canEditOrder && \(/)
+    // The control moved into the app header's action slot, so the permission
+    // gate it has always sat behind is now expressed as the ternary that
+    // supplies that slot. Same flag, same component, same absence in View As.
+    assert.match(LAUNCHER, /headerActions=\{canEditOrder \? \(/)
   })
 
   test('the whole card is still the button', () => {
@@ -396,16 +399,22 @@ describe('normal mode', () => {
       'a module name is never clamped')
   })
 
-  test('the heading row still owns the space below the heading', () => {
-    // The Edit-order control shares a row with the page heading, and that row —
-    // not the heading itself — carries the gap down to the first row of cards.
-    // The compact redesign turned the bottom of that row into the page's
-    // divider, so the spacing is now a padding above a border plus a margin
-    // below it; the arrangement it replaced was a single margin. Both widths
-    // still declare it in one place, which is the part this test is for.
-    assert.match(CSS, /\.sectionHeader \{[\s\S]*?border-bottom: 1px solid #E4E7EC;/)
-    assert.match(CSS, /\.sectionHeader \{[\s\S]*?margin-bottom: 18px;/)
-    assert.match(CSS, /@media \(max-width: 639px\) \{[\s\S]*?\.sectionHeader \{[\s\S]*?margin-bottom: 12px;/)
+  test('THIS FILE NO LONGER OWNS A HEADING ROW — the app header does', () => {
+    // There used to be a `.sectionHeader` flex row in the page body holding a
+    // heading block and this feature's control, with its own divider and its
+    // own margin down to the grid. The page now puts its title and this control
+    // in the one app header, so that row is gone.
+    //
+    // WHAT THIS TEST IS FOR IS UNCHANGED: the ordering feature must not own
+    // page layout. It used to prove that by pinning the row's spacing; it
+    // proves it now by holding the row deleted, which is the stronger claim.
+    assert.equal(/\.sectionHeader\b/.test(CSS), false,
+      'the heading row is deleted, not left behind as unused CSS')
+    assert.equal(/\.sectionHeading\b/.test(CSS), false)
+    assert.equal(/\.sectionLabel\b/.test(CSS), false)
+    // And no stray divider survives between the header and the first card row.
+    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
+      'the only rule under the title is the app header’s own border')
   })
 })
 

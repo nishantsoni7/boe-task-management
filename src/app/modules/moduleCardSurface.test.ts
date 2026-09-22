@@ -31,6 +31,8 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '
 
 const PAGE = read('src/app/modules/page.tsx')
 const CSS = read('src/app/modules/modules.module.css')
+/** The Edit order controls, whose labels this suite checks but does not own. */
+const CONTROLS_SRC = read('src/app/modules/ModuleOrderControls.tsx')
 
 /**
  * The body of the FIRST rule named `selector`, wherever it appears.
@@ -363,57 +365,117 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
-// ── The page header carries the guidance, so the cards do not ────────────────
+// ── ONE HEADER, AT THE TOP OF THE PAGE ───────────────────────────────────────
 //
-// THE TRADE THIS REDESIGN MAKES. A launcher with no descriptions on its cards
-// still has to tell somebody what the screen is for; it just says it once, at
-// page level, instead of thirteen times. If that line ever goes, the cards get
-// argued back — so it is pinned here, beside the rule that keeps them off.
-describe('the page header: eyebrow, heading, one supporting line', () => {
-  /** The header row only, so a match inside a card cannot pass for one here. */
-  const HEADER = (() => {
-    const at = PAGE.indexOf('<div className={styles.sectionHeader}>')
-    assert.notEqual(at, -1, 'the header row must still exist')
-    return PAGE.slice(at, PAGE.indexOf('className={styles.grid}', at))
+// The launcher used to name itself twice. The app header said "BOE Operating
+// System" over today's date; the body then opened with a second heading block
+// carrying a WORKSPACE eyebrow, the page's real title, its supporting line and
+// its own divider. Two headers, one screen, and the top one repeated the
+// sidebar brand while the bottom one held the title that mattered.
+//
+// There is now one. The title and the supporting line are passed to
+// BoeOsLayout, the Edit order control sits at the right-hand end of that same
+// row, and the body starts with the grid.
+//
+// These read the LAYOUT as well as the page, because the header is no longer
+// something this page draws — it is something it supplies.
+describe('the page has ONE header, and it is the app header', () => {
+  const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
+
+  /** The props the launcher hands the shell. */
+  const LAYOUT_CALL = (() => {
+    const at = PAGE.indexOf('<BoeOsLayout')
+    assert.notEqual(at, -1, 'the launcher still renders the shell')
+    return PAGE.slice(at, PAGE.indexOf('>\n', at))
   })()
 
-  test('all three lines are rendered, in order', () => {
-    const eyebrow = HEADER.indexOf('>Workspace<')
-    const heading = HEADER.indexOf('>Modules<')
-    const support = HEADER.indexOf('>Select a module to continue<')
-    assert.ok(eyebrow > -1, 'the WORKSPACE eyebrow')
-    assert.ok(heading > -1, 'the Modules heading')
-    assert.ok(support > -1, 'the supporting line')
-    assert.ok(eyebrow < heading && heading < support, 'and in that order')
+  test('the title is Modules and the supporting line sits under it', () => {
+    assert.match(LAYOUT_CALL, /title="Modules"/)
+    assert.match(LAYOUT_CALL, /subtitle="Select a module to continue"/)
+    // In the shell, the subtitle is rendered immediately after the title inside
+    // the same title group — so "under it" is structural, not a CSS accident.
+    const group = LAYOUT.slice(LAYOUT.indexOf('boe-page-title-group'))
+    assert.ok(group.indexOf('{title}') < group.indexOf('{subtitle'),
+      'the supporting line follows the title')
   })
 
-  test('the heading is a real heading element, not a styled div', () => {
-    assert.ok(/<h1 className=\{styles\.sectionLabel\}>/.test(HEADER),
-      'the page names itself with an <h1> before listing its destinations')
+  test('MODULES IS THE PAGE’S MAIN HEADING, as an actual h1', () => {
+    assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/,
+      'the page title is an h1, not a styled div')
+    // And the page declares no second one.
+    assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0,
+      'the page body must not add a heading of its own')
   })
 
-  test('the eyebrow is THE BOE RED, and the only thing on the page wearing it', () => {
-    const at = CSS.indexOf('.eyebrow {')
-    assert.notEqual(at, -1)
-    assert.ok(/color:\s*#DC1F2E/i.test(CSS.slice(at, CSS.indexOf('}', at))),
-      'the eyebrow carries the brand red')
-    // Branding here is one label. A red card, a red border or a red button
-    // would be the "subtle" in subtle branding going the other way.
-    const reds = CSS.match(/#DC1F2E/gi) ?? []
-    assert.equal(reds.length, 1,
-      'exactly one rule in this stylesheet may use the BOE red')
-  })
-
-  test('a divider closes the header off from the grid', () => {
-    const at = CSS.indexOf('.sectionHeader {')
-    assert.notEqual(at, -1)
-    assert.ok(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS.slice(at, CSS.indexOf('}', at))),
-      'a light neutral rule under the header')
-  })
-
-  test('AND THE CARDS STILL SAY NOTHING — the line is page-level, not per-card', () => {
+  test('the supporting line appears EXACTLY ONCE in the whole page', () => {
+    assert.equal((PAGE.match(/Select a module to continue/g) ?? []).length, 1,
+      'said once, in the header — never repeated in the body or on a card')
     assert.equal(CARD.includes('Select a module'), false,
-      'the guidance belongs to the page, never to a card')
+      'and never on a card')
+  })
+
+  test('WORKSPACE IS GONE — eyebrow markup and its style both', () => {
+    assert.equal(/Workspace/i.test(stripJs(PAGE).replace(/\/\*[\s\S]*?\*\//g, '')), false,
+      'no WORKSPACE eyebrow is rendered')
+    assert.equal(CSS.includes('.eyebrow'), false,
+      'and the rule that styled it is deleted, not merely unreferenced')
+    // The red it carried was the only BOE red in this stylesheet, so it goes too.
+    assert.equal(/#DC1F2E/i.test(stripCss(CSS)), false,
+      'the eyebrow red leaves with the eyebrow')
+  })
+
+  test('THE DATE IS GONE from the Modules header', () => {
+    assert.equal(/toLocaleDateString/.test(PAGE), false,
+      'nothing on a launcher depends on knowing what day it is')
+    assert.equal(/new Date\(\)/.test(PAGE), false)
+  })
+
+  test('BOE Operating System is NOT the page header — but IS still the sidebar brand', () => {
+    assert.equal(LAYOUT_CALL.includes('BOE Operating System'), false,
+      'the product name is not this page’s title any more')
+    // The shell still carries it as the brand, which is the one place it belongs.
+    assert.ok(LAYOUT.includes('boe-sidebar-brand'), 'the brand block survives')
+    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</, 'and still says BOE')
+    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</,
+      'with "Operating System" beneath it, untouched')
+  })
+
+  test('Edit order is still offered, now in the header’s action slot', () => {
+    assert.match(LAYOUT_CALL, /headerActions=\{canEditOrder \? \(/,
+      'the control is passed to the header, still behind the same permission')
+    assert.match(LAYOUT_CALL, /<ModuleOrderBar/, 'and it is the same component')
+    assert.ok(CONTROLS_SRC.includes('Edit order'), 'whose normal-mode label is unchanged')
+    // The shell renders it in the slot every other layout in the app uses.
+    assert.match(LAYOUT, /className="boe-header-actions"/)
+    assert.ok(LAYOUT.includes('headerActions &&'),
+      'and a caller that passes nothing gets no slot at all')
+  })
+
+  test('THE DUPLICATE CONTENT HEADER IS GONE, markup and CSS together', () => {
+    // Not "renders nothing" — removed. A leftover wrapper would still reserve
+    // margin and leave the gap this change exists to close.
+    for (const cls of ['sectionHeader', 'sectionHeading', 'sectionLabel', 'sectionSupport', 'eyebrow']) {
+      assert.equal(PAGE.includes(`styles.${cls}`), false,
+        `styles.${cls} must not be referenced any more`)
+      assert.equal(new RegExp(`^\\.${cls}\\b`, 'm').test(CSS), false,
+        `.${cls} must be deleted from the stylesheet, not left unused`)
+    }
+    // And no divider is left floating between the header and the grid: the
+    // header's own bottom border is the only rule there now.
+    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
+      'the content header took its divider with it')
+  })
+
+  test('the grid is the first thing in the body', () => {
+    const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
+    const grid = body.indexOf('className={styles.grid}')
+    const quick = body.indexOf('<QuickActionList')
+    assert.ok(grid > -1, 'the grid is still there')
+    // QuickActionList is the small-screen copy and legitimately precedes it;
+    // nothing else may.
+    assert.ok(quick > -1 && quick < grid, 'only the quick actions come first')
+    assert.equal(body.slice(quick, grid).includes('<div className={styles.'), false,
+      'no heading wrapper survives between them')
   })
 })
 
