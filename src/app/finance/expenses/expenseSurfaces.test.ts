@@ -201,8 +201,11 @@ describe('Quick Add Expense on the launcher', () => {
     // …and above the identity block, so Switch User and the profile controls
     // keep the foot of the sidebar to themselves.
     assert.ok(osLayout.indexOf('variant="sidebar"') < osLayout.indexOf('<ViewModeSidebarSection'))
-    // In the page it precedes the Modules heading and therefore the grid.
-    assert.ok(modules.indexOf('variant="page"') < modules.indexOf('styles.sectionLabel'))
+    // In the page it precedes the module grid. It used to be anchored on the
+    // launcher's in-body heading; that heading is gone — the page's title now
+    // lives in the app header — so this anchors on the grid itself, which is
+    // the thing the quick actions have to come before.
+    assert.ok(modules.indexOf('variant="page"') < modules.indexOf('styles.grid'))
   })
 
   test('the touch target clears 44px at every width', () => {

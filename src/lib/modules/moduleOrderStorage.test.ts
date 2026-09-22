@@ -337,7 +337,10 @@ describe('normal mode', () => {
     assert.match(CONTROLS, /Edit order/)
     // The handle and the three controls are rendered only inside edit mode.
     assert.match(LAUNCHER, /handle=\{editingOrder \? \(/)
-    assert.match(LAUNCHER, /\{canEditOrder && \(/)
+    // The control moved into the app header's action slot, so the permission
+    // gate it has always sat behind is now expressed as the ternary that
+    // supplies that slot. Same flag, same component, same absence in View As.
+    assert.match(LAUNCHER, /headerActions=\{canEditOrder \? \(/)
   })
 
   test('the whole card is still the button', () => {
@@ -353,25 +356,32 @@ describe('normal mode', () => {
   })
 
   test('every card dimension, breakpoint, icon and badge rule is untouched', () => {
-    // The responsive design AS IT STANDS ON main, asserted value by value. The
-    // card-surface work (#193) removed the description and the footer and
-    // resized the card around what was left — 200px became 132px, the title
-    // clamp went — so these are that design's numbers, not the older ones. The
-    // ordering rules are appended after a marked boundary and none of them is
-    // one of these.
+    // The responsive design AS IT STANDS ON main, asserted value by value, so
+    // that a change to the ORDERING work cannot quietly resize a card. These
+    // numbers have moved twice and the reason is worth keeping: #193 removed
+    // the description and the footer, #194 (this file's own feature) left the
+    // card exactly as it found it, and the compact redesign then rebuilt the
+    // card around what #193 had left — a 92px horizontal row in place of a
+    // 132px column that was mostly empty.
+    //
+    // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
+    // promise that it owns no card dimension. The card's own shape is pinned by
+    // src/app/modules/moduleCardSurface.test.ts, which is where a deliberate
+    // design change is argued; this list only has to follow it.
     for (const rule of [
-      'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))',
-      'gap: 20px',
-      'min-height: 132px',
-      'padding: 24px 22px 20px',
-      'width: 56px',
+      'grid-template-columns: repeat(3, 1fr)',
+      'grid-template-columns: repeat(4, 1fr)',
+      'gap: 14px',
+      'min-height: 92px',
+      'padding: 16px',
+      'width: 46px',
       '@media (max-width: 767px)',
       '@media (max-width: 639px)',
       'grid-template-columns: repeat(2, 1fr)',
-      'min-height: 118px',
+      'min-height: 122px',
       'width: 44px',
       'overflow-wrap: anywhere',
-      'font-size: 13.5px',
+      'font-size: 13px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
     }
@@ -389,13 +399,22 @@ describe('normal mode', () => {
       'a module name is never clamped')
   })
 
-  test('the heading gap is preserved when the label moves into a row', () => {
-    // .sectionLabel's own 16px margin-bottom now belongs to .sectionHeader, and
-    // the label's is zeroed inside it — so the space below the heading is the
-    // same as before at both widths.
-    assert.match(CSS, /\.sectionHeader \{[\s\S]*?margin-bottom: 16px;/)
-    assert.match(CSS, /\.sectionHeader \.sectionLabel \{[\s\S]*?margin-bottom: 0;/)
-    assert.match(CSS, /@media \(max-width: 639px\) \{[\s\S]*?\.sectionHeader \{[\s\S]*?margin-bottom: 10px;/)
+  test('THIS FILE NO LONGER OWNS A HEADING ROW — the app header does', () => {
+    // There used to be a `.sectionHeader` flex row in the page body holding a
+    // heading block and this feature's control, with its own divider and its
+    // own margin down to the grid. The page now puts its title and this control
+    // in the one app header, so that row is gone.
+    //
+    // WHAT THIS TEST IS FOR IS UNCHANGED: the ordering feature must not own
+    // page layout. It used to prove that by pinning the row's spacing; it
+    // proves it now by holding the row deleted, which is the stronger claim.
+    assert.equal(/\.sectionHeader\b/.test(CSS), false,
+      'the heading row is deleted, not left behind as unused CSS')
+    assert.equal(/\.sectionHeading\b/.test(CSS), false)
+    assert.equal(/\.sectionLabel\b/.test(CSS), false)
+    // And no stray divider survives between the header and the first card row.
+    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
+      'the only rule under the title is the app header’s own border')
   })
 })
 

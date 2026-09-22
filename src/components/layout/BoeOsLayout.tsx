@@ -21,11 +21,27 @@ type BoeOsLayoutProps = {
    * is today.
    */
   quickActions?: QuickAction[]
+  /**
+   * The page's own control, rendered at the right-hand end of the header row.
+   *
+   * ONE HEADER, NOT TWO. The launcher used to name itself twice — this header
+   * said "BOE Operating System" over the date, and the page body opened with a
+   * second heading block carrying its own title, its own supporting line and
+   * its own divider. The page now puts its real title here, and the control
+   * that belongs beside that title comes with it.
+   *
+   * `.boe-header-actions` is the class every other shell in this app already
+   * uses for exactly this slot (Orders, Finance, Meetings, Assets and the rest),
+   * so the placement, the spacing and the wrapping behaviour are the ones the
+   * rest of the application already has. Optional: a caller that passes nothing
+   * gets the header exactly as it was.
+   */
+  headerActions?: React.ReactNode
   children: React.ReactNode
 }
 
 export function BoeOsLayout({
-  profile, title, subtitle, onSignOut, quickActions = [], children,
+  profile, title, subtitle, onSignOut, quickActions = [], headerActions = null, children,
 }: BoeOsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
@@ -102,9 +118,34 @@ export function BoeOsLayout({
             {sidebarOpen ? <X size={18} /> : '☰'}
           </button>
           <div className="boe-page-title-group">
-            <div className="boe-page-title">{title}</div>
+            {/* THE PAGE'S ONE HEADING. An <h1> rather than a styled div,
+                because this line is now the page's title and not a strip of
+                chrome above the real one — the launcher no longer repeats it
+                in the body.
+
+                The margin is set here rather than on `.boe-page-title`: that
+                class is shared by ten other shells which all render it as a
+                div, and a div has no default margin to cancel. Resetting it in
+                globals.css would mean editing a rule every page in the app
+                uses, to fix something only this element has. */}
+            <h1 className="boe-page-title" style={{ margin: '0 0 2px' }}>{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
+          {/* The page's own control, at the right-hand end of the same row.
+              `.boe-page-header` is already `justify-content: space-between`
+              with `flex-wrap: wrap`, so this sits opposite the title on a
+              desktop and drops onto its own line before anything is squeezed.
+
+              flexWrap/flexShrink match what Orders, Finance, Meetings, Assets,
+              Image Editor and Performance already pass here. The base class is
+              `flex-shrink: 0`, which is right for two icon buttons and wrong
+              for edit mode with three labelled controls at 390px; with these,
+              the row gives way instead of overflowing. */}
+          {headerActions && (
+            <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
+              {headerActions}
+            </div>
+          )}
         </div>
 
         {/* Page body */}

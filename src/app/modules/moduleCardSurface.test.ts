@@ -31,6 +31,26 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '
 
 const PAGE = read('src/app/modules/page.tsx')
 const CSS = read('src/app/modules/modules.module.css')
+/** The Edit order controls, whose labels this suite checks but does not own. */
+const CONTROLS_SRC = read('src/app/modules/ModuleOrderControls.tsx')
+
+/**
+ * The body of the FIRST rule named `selector`, wherever it appears.
+ *
+ * Deliberately not "everything before the first @media": the grid's column
+ * steps are min-width queries that now sit between `.grid` and `.card`, so a
+ * slice like that would cut the card out of the file. Every base rule is still
+ * declared before any block that overrides it, so the first match is the
+ * unconditional one.
+ */
+function baseRule(selector: string): string {
+  const at = CSS.indexOf(`${selector} {`)
+  assert.notEqual(at, -1, `${selector} must still exist`)
+  return CSS.slice(at, CSS.indexOf('}', at))
+}
+
+/** The base `.card` rule, so a match in `.cardEditing` cannot pass for it. */
+const DESKTOP_CARD = baseRule('.card')
 
 /** Just the ModuleCard component, so a match elsewhere on the page cannot pass. */
 const CARD = (() => {
@@ -258,19 +278,73 @@ describe('the mobile card centres its icon and its name', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*width:\s*100%/.test(SMALL))
   })
 
-  test('DESKTOP IS NOT CENTRED — the change is scoped to the breakpoint', () => {
-    const base = CSS.slice(0, CSS.indexOf('@media'))
-    const cardRule = base.slice(base.indexOf('.card'), base.indexOf('}', base.indexOf('.card')))
-    assert.equal(/align-items:\s*center/.test(cardRule), false,
-      'the desktop card does not centre its children on the cross axis')
-    assert.equal(/text-align:\s*center/.test(cardRule), false,
+  test('the arrow leaves the flow, so a wrapped name keeps the full width', () => {
+    // On a desktop the arrow is the third item in a row. On a phone the card is
+    // a column, and an arrow left in that flow would either sit under the name
+    // or take width from it — so here it comes out of the flow into the corner.
+    assert.ok(/\.arrow\s*\{[^}]*position:\s*absolute/.test(SMALL))
+  })
+
+  test('DESKTOP IS NOT CENTRED ON THE INLINE AXIS — the centring is scoped here', () => {
+    assert.equal(/text-align:\s*center/.test(DESKTOP_CARD), false,
       'the desktop card keeps its left edge')
-    // justify-content IS centred, and is the MAIN axis of a column: it splits
-    // the min-height slack above and below the icon/name pair. That is vertical
-    // and says nothing about the left edge.
-    assert.ok(/justify-content:\s*center/.test(cardRule))
-    assert.ok(/\.iconWrap\s*\{[^}]*align-self:\s*flex-start/.test(base),
-      'and the desktop icon stays at the left edge')
+    // `align-items: center` IS now set on the desktop card, and on a ROW that is
+    // the VERTICAL axis: it centres the icon, the name and the arrow against one
+    // another. It says nothing about the left edge, which the assertion above is
+    // what really guards. The phone card re-declares the card as a COLUMN, where
+    // the same property means horizontal — which is why this reads the two
+    // directions apart rather than looking for one property name in both.
+    assert.ok(/flex-direction:\s*row/.test(DESKTOP_CARD),
+      'the desktop card is a row, so align-items is its vertical axis')
+    assert.ok(/flex-direction:\s*column/.test(SMALL),
+      'and the phone card turns it back into a column')
+  })
+})
+
+// ── The desktop card is a ROW ────────────────────────────────────────────────
+//
+// The layout contract this redesign is actually about. The card used to be a
+// 132px column — a 56px icon stacked above a name — and once the description
+// and the "Open →" footer were removed that left most of a 240px-wide box
+// empty. Laid on its side the same two things need 92px, and the grid fits four
+// across a wide screen instead of three.
+//
+// These pin the SHAPE, not the exact numbers: a particular pixel is a design
+// call and changing one should not fail a suite. What must not change silently
+// is the direction, the order of the three parts, and the fact that the card
+// stays compact rather than becoming a tall box with a hole in it again.
+describe('the desktop card is a horizontal row: icon, name, arrow', () => {
+  test('it is a row, and its three parts are in that order in the markup', () => {
+    assert.ok(/flex-direction:\s*row/.test(DESKTOP_CARD))
+    const icon = CARD.indexOf(styleClass('iconWrap'))
+    const title = CARD.indexOf(styleClass('titleWrap'))
+    const arrow = CARD.indexOf(styleClass('arrow'))
+    assert.ok(icon > -1 && title > -1 && arrow > -1, 'all three are rendered')
+    assert.ok(icon < title, 'the icon leads')
+    assert.ok(title < arrow, 'and the arrow is last')
+  })
+
+  test('the card is COMPACT — no oversized box for an icon and a name', () => {
+    const floor = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
+    assert.ok(floor, 'the desktop card still has a floor')
+    assert.ok(Number(floor[1]) <= 100,
+      `a card holding an icon and a name must stay compact — found ${floor[1]}px`)
+  })
+
+  test('the name takes the slack, so the arrow sits at the far edge', () => {
+    assert.ok(/\.titleWrap\s*\{[^}]*flex:\s*1 1 auto/.test(CSS),
+      'the name grows into the space between the icon and the arrow')
+    assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS),
+      'and min-width: 0 is what lets it wrap rather than widen the row')
+  })
+
+  test('neither the icon nor the arrow is squeezed by a long name', () => {
+    for (const rule of ['iconWrap', 'iconBox', 'arrow']) {
+      const at = CSS.indexOf(`.${rule} {`)
+      assert.notEqual(at, -1, `.${rule} must exist`)
+      assert.ok(/flex-shrink:\s*0/.test(CSS.slice(at, CSS.indexOf('}', at))),
+        `.${rule} must not shrink when "Performance Management" wraps`)
+    }
   })
 })
 
@@ -291,7 +365,290 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
+// ── ONE HEADER, AT THE TOP OF THE PAGE ───────────────────────────────────────
+//
+// The launcher used to name itself twice. The app header said "BOE Operating
+// System" over today's date; the body then opened with a second heading block
+// carrying a WORKSPACE eyebrow, the page's real title, its supporting line and
+// its own divider. Two headers, one screen, and the top one repeated the
+// sidebar brand while the bottom one held the title that mattered.
+//
+// There is now one. The title and the supporting line are passed to
+// BoeOsLayout, the Edit order control sits at the right-hand end of that same
+// row, and the body starts with the grid.
+//
+// These read the LAYOUT as well as the page, because the header is no longer
+// something this page draws — it is something it supplies.
+describe('the page has ONE header, and it is the app header', () => {
+  const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
+
+  /** The props the launcher hands the shell. */
+  const LAYOUT_CALL = (() => {
+    const at = PAGE.indexOf('<BoeOsLayout')
+    assert.notEqual(at, -1, 'the launcher still renders the shell')
+    return PAGE.slice(at, PAGE.indexOf('>\n', at))
+  })()
+
+  test('the title is Modules and the supporting line sits under it', () => {
+    assert.match(LAYOUT_CALL, /title="Modules"/)
+    assert.match(LAYOUT_CALL, /subtitle="Select a module to continue"/)
+    // In the shell, the subtitle is rendered immediately after the title inside
+    // the same title group — so "under it" is structural, not a CSS accident.
+    const group = LAYOUT.slice(LAYOUT.indexOf('boe-page-title-group'))
+    assert.ok(group.indexOf('{title}') < group.indexOf('{subtitle'),
+      'the supporting line follows the title')
+  })
+
+  test('MODULES IS THE PAGE’S MAIN HEADING, as an actual h1', () => {
+    assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/,
+      'the page title is an h1, not a styled div')
+    // And the page declares no second one.
+    assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0,
+      'the page body must not add a heading of its own')
+  })
+
+  test('the supporting line appears EXACTLY ONCE in the whole page', () => {
+    assert.equal((PAGE.match(/Select a module to continue/g) ?? []).length, 1,
+      'said once, in the header — never repeated in the body or on a card')
+    assert.equal(CARD.includes('Select a module'), false,
+      'and never on a card')
+  })
+
+  test('WORKSPACE IS GONE — eyebrow markup and its style both', () => {
+    assert.equal(/Workspace/i.test(stripJs(PAGE).replace(/\/\*[\s\S]*?\*\//g, '')), false,
+      'no WORKSPACE eyebrow is rendered')
+    assert.equal(CSS.includes('.eyebrow'), false,
+      'and the rule that styled it is deleted, not merely unreferenced')
+    // The red it carried was the only BOE red in this stylesheet, so it goes too.
+    assert.equal(/#DC1F2E/i.test(stripCss(CSS)), false,
+      'the eyebrow red leaves with the eyebrow')
+  })
+
+  test('THE DATE IS GONE from the Modules header', () => {
+    assert.equal(/toLocaleDateString/.test(PAGE), false,
+      'nothing on a launcher depends on knowing what day it is')
+    assert.equal(/new Date\(\)/.test(PAGE), false)
+  })
+
+  test('BOE Operating System is NOT the page header — but IS still the sidebar brand', () => {
+    assert.equal(LAYOUT_CALL.includes('BOE Operating System'), false,
+      'the product name is not this page’s title any more')
+    // The shell still carries it as the brand, which is the one place it belongs.
+    assert.ok(LAYOUT.includes('boe-sidebar-brand'), 'the brand block survives')
+    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</, 'and still says BOE')
+    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</,
+      'with "Operating System" beneath it, untouched')
+  })
+
+  test('Edit order is still offered, now in the header’s action slot', () => {
+    assert.match(LAYOUT_CALL, /headerActions=\{canEditOrder \? \(/,
+      'the control is passed to the header, still behind the same permission')
+    assert.match(LAYOUT_CALL, /<ModuleOrderBar/, 'and it is the same component')
+    assert.ok(CONTROLS_SRC.includes('Edit order'), 'whose normal-mode label is unchanged')
+    // The shell renders it in the slot every other layout in the app uses.
+    assert.match(LAYOUT, /className="boe-header-actions"/)
+    assert.ok(LAYOUT.includes('headerActions &&'),
+      'and a caller that passes nothing gets no slot at all')
+  })
+
+  test('THE DUPLICATE CONTENT HEADER IS GONE, markup and CSS together', () => {
+    // Not "renders nothing" — removed. A leftover wrapper would still reserve
+    // margin and leave the gap this change exists to close.
+    for (const cls of ['sectionHeader', 'sectionHeading', 'sectionLabel', 'sectionSupport', 'eyebrow']) {
+      assert.equal(PAGE.includes(`styles.${cls}`), false,
+        `styles.${cls} must not be referenced any more`)
+      assert.equal(new RegExp(`^\\.${cls}\\b`, 'm').test(CSS), false,
+        `.${cls} must be deleted from the stylesheet, not left unused`)
+    }
+    // And no divider is left floating between the header and the grid: the
+    // header's own bottom border is the only rule there now.
+    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
+      'the content header took its divider with it')
+  })
+
+  test('the grid is the first thing in the body', () => {
+    const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
+    const grid = body.indexOf('className={styles.grid}')
+    const quick = body.indexOf('<QuickActionList')
+    assert.ok(grid > -1, 'the grid is still there')
+    // QuickActionList is the small-screen copy and legitimately precedes it;
+    // nothing else may.
+    assert.ok(quick > -1 && quick < grid, 'only the quick actions come first')
+    assert.equal(body.slice(quick, grid).includes('<div className={styles.'), false,
+      'no heading wrapper survives between them')
+  })
+})
+
+// ── The navigation cue ───────────────────────────────────────────────────────
+//
+// It replaces the "Open →" footer WITHOUT bringing the word back: an arrow says
+// "this leads somewhere" in no characters at all, and the brief is explicit
+// that the textual link does not return.
+describe('the arrow is a cue, not a control and not a label', () => {
+  test('it carries no text — "Open" does not come back in any form', () => {
+    const at = CARD.indexOf(styleClass('arrow'))
+    assert.notEqual(at, -1, 'the arrow must exist')
+    const svg = CARD.slice(at, CARD.indexOf('</svg>', at))
+    assert.equal(/>[A-Za-z]/.test(svg.replace(/<[^>]*>/g, '')), false,
+      'the arrow is paths and nothing else')
+    // Comments stripped first. The prose above the arrow explains that it
+    // replaces the "Open" footer, and that sentence is not a label.
+    assert.equal(/\bOpen\b/.test(stripJs(CARD)), false,
+      'the word never reaches a card')
+  })
+
+  test('it is hidden from assistive technology and out of the tab order', () => {
+    const at = CARD.indexOf(styleClass('arrow'))
+    const tag = CARD.slice(at, CARD.indexOf('<path', at))
+    assert.ok(/aria-hidden="true"/.test(tag),
+      'the card is announced as one button named after its module, and nothing else')
+    assert.ok(/focusable="false"/.test(tag), 'and SVG focus is off too')
+    // The whole card is the control; a pointer event landing on the arrow must
+    // still be the card's.
+    assert.ok(/\.arrow\s*\{[^}]*pointer-events:\s*none/.test(CSS))
+  })
+
+  test('IT IS NOT DRAWN IN EDIT MODE, where the handle takes that corner', () => {
+    assert.ok(CARD.includes('{!editing && ('),
+      'a card that does not navigate shows no navigation cue')
+    // On a phone both live in the top-right. Only one is ever rendered.
+    assert.ok(/\.dragHandle\s*\{[^}]*position:\s*absolute/.test(CSS))
+  })
+
+  test('it answers FOCUS as well as hover, so a keyboard is not second class', () => {
+    assert.ok(/\.card:hover \.arrow,\s*\.card:focus-visible \.arrow/.test(CSS),
+      'hover and focus-visible share one rule — hover is never on its own')
+    assert.ok(/\.card:hover::before,\s*\.card:focus-visible::before/.test(CSS),
+      'and so does the accent stripe')
+  })
+})
+
+// ── The responsive contract ──────────────────────────────────────────────────
+describe('the grid steps down by column, and never overflows', () => {
+  test('4 / 3 / 2 columns at 1920 / 1440 / 1024, DECLARED rather than inferred', () => {
+    // WHY NOT auto-fill. The sidebar takes 260px and the page body 22px of
+    // gutter each side, so 1920 leaves 1616px of grid — room for six 232px
+    // tracks when the approved design is four. A minimum track width cannot say
+    // "four, however wide the screen gets", so the steps are declared.
+    assert.equal(/auto-fill|auto-fit/.test(stripCss(CSS)), false,
+      'a minimum card width cannot express a fixed column count at 1920')
+    assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, 1fr\)/)
+
+    // Each step, and the viewport it starts at.
+    for (const [query, columns] of [['1200px', 3], ['1600px', 4]] as const) {
+      const at = CSS.indexOf(`@media (min-width: ${query})`)
+      assert.notEqual(at, -1, `the ${columns}-column step must exist`)
+      assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid {', at))),
+        new RegExp(`grid-template-columns:\\s*repeat\\(${columns}, 1fr\\)`))
+    }
+  })
+
+  test('a card never becomes an oversized box at the widest step', () => {
+    // 1920 minus the 260px sidebar and 44px of gutter is 1616px of grid; four
+    // columns and three 14px gaps make each card (1616 - 42) / 4 = 393px. The
+    // test is the arithmetic, so a future column change has to re-do it: a
+    // 6-column 1920 would give 254px cards, and a 2-column one 787px.
+    const CONTENT_AT_1920 = 1920 - 260 - 44
+    const GAP = 14
+    const card = (CONTENT_AT_1920 - GAP * 3) / 4
+    assert.ok(card > 300 && card < 420,
+      `four columns at 1920 give a ${Math.round(card)}px card, which is not the approved proportion`)
+  })
+
+  test('a phone gets TWO columns, and one only when two cannot be read', () => {
+    const phone = CSS.slice(CSS.indexOf('@media (max-width: 639px)'))
+    assert.ok(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, 1fr\)/.test(phone),
+      'two-up at ordinary phone widths — 430, 390 and 360 all land here')
+    const narrow = CSS.indexOf('@media (max-width: 339px)')
+    assert.notEqual(narrow, -1, 'and a single column below 340px')
+    assert.ok(/grid-template-columns:\s*1fr/.test(CSS.slice(narrow)))
+  })
+
+  test('nothing can push a card wider than its column', () => {
+    // The three ways a card overflows its track: a name that will not break, a
+    // fixed-width child that will not shrink, or a title box with no min-width.
+    assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS))
+    assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
+  })
+})
+
+// ── Reorder, permissions and routes are somebody else's tests ────────────────
+//
+// This suite does not re-assert what moduleOrder.test.ts already proves. What it
+// DOES pin is that the redesign left the launcher wired to that machinery — a
+// presentation change that quietly dropped a prop would otherwise pass every
+// other test in this file.
+describe('the redesign did not unwire the launcher', () => {
+  test('edit mode still reaches the same reducer, handle and save path', () => {
+    for (const wiring of [
+      '<ModuleOrderBar',
+      '<ModuleDragHandle',
+      'saveModuleOrder',
+      'onClick={editingOrder ? null : () => router.push(mod.href)}',
+    ]) {
+      assert.ok(PAGE.includes(wiring), `${wiring} must survive the redesign`)
+    }
+  })
+
+  test('a card still navigates to its own href, and none is hard-coded', () => {
+    assert.ok(PAGE.includes('router.push(mod.href)'),
+      'the destination comes from the module definition, as before')
+  })
+
+  test('reorder mode is visibly different without a second card component', () => {
+    assert.ok(/\.cardEditing\s*\{[^}]*border-style:\s*dashed/.test(CSS),
+      'a dashed border says "you are rearranging" — one class, one card')
+    assert.equal(CSS.includes('.cardReorder'), false,
+      'and no parallel card style was introduced to maintain alongside .card')
+  })
+})
+
+// ── Light only ───────────────────────────────────────────────────────────────
+describe('this page has no dark variant, and adds none', () => {
+  test('the stylesheet declares no dark-mode block', () => {
+    // The AT-RULE, not the phrase: the header comment says in prose that the
+    // app has no prefers-color-scheme block anywhere, and a test that could not
+    // tell those apart would forbid explaining the decision.
+    assert.equal(/@media[^{]*prefers-color-scheme/.test(stripCss(CSS)), false,
+      'the launcher is light-only, like the rest of the app')
+    assert.equal(/data-theme/.test(stripCss(CSS)), false)
+  })
+
+  test('the card surface is white and its border is the neutral grey', () => {
+    assert.ok(/\.card\s*\{[^}]*background:\s*#fff/i.test(CSS))
+    assert.ok(PAGE.includes("'#E4E7EC'"),
+      'the resting border is the approved neutral, set inline beside the accent')
+  })
+
+  test('reduced motion drops the movement and keeps the meaning', () => {
+    const rm = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion: reduce)'))
+    assert.notEqual(rm, '', 'the block must exist')
+    assert.ok(/transition:\s*none/.test(rm), 'nothing eases')
+    assert.ok(/transform:\s*none\s*!important/.test(rm),
+      'and the 2px lift — which is motion and nothing else — is dropped outright')
+  })
+})
+
 /** `className={styles.x}`, written once so a rename is a single edit. */
 function styleClass(name: string): string {
   return `styles.${name}`
+}
+
+// ── Comments are prose, not markup ───────────────────────────────────────────
+//
+// Both files explain, at length, the things these tests forbid: page.tsx says
+// the arrow replaces the "Open" footer, and modules.module.css says the app has
+// no prefers-color-scheme block anywhere. A suite that searched the raw text
+// would fail on the explanation and pass on a file that simply said nothing —
+// exactly backwards. So the two assertions that look for a FORBIDDEN string
+// strip comments first, as the nested-control test above already does.
+
+/** JSX/TS source with `//` and block comments removed. */
+function stripJs(source: string): string {
+  return source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
+/** CSS with block comments removed. CSS has no line-comment form. */
+function stripCss(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '')
 }
