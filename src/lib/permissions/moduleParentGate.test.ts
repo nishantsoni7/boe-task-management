@@ -627,9 +627,18 @@ describe('the launcher shows no visibility or readiness badge', () => {
     }
   })
 
-  test('the notification line and Open affordance are kept', () => {
+  test('the notification COUNT is kept, as a badge and only as a badge', () => {
+    // The count still reaches the card and still decides the badge — this
+    // suite's subject, which is that the parent gate never cost a card its
+    // notification, is unchanged.
     assert.ok(launcher.includes('notificationCount'))
-    assert.ok(launcher.includes("'No notifications'"))
+    assert.ok(launcher.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'))
+    // What went is the FOOTER that spelled the same count out underneath the
+    // badge, together with the "Open →" affordance beside it. A launcher card is
+    // now an icon, its badge and the module name; the full card was already the
+    // single control, so nothing was lost by dropping the word Open from it.
+    assert.equal(launcher.includes("'No notifications'"), false)
+    assert.equal(/>\s*Open\b/.test(launcher), false)
   })
 
   test('Attendance/Payroll still resolves through app_modules, unchanged', () => {

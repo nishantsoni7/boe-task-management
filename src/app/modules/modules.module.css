@@ -1,11 +1,15 @@
 /* ── Modules launcher grid + card ─────────────────────────────────────────────
-   Desktop values below are exactly what page.tsx used to set inline; nothing
-   about them changed. The only new behaviour is the max-width: 639px block,
-   which turns the launcher into a compact 2-up app-grid on phones. Colors,
-   hover states and anything that depends on a module's accent stay inline in
-   page.tsx — only the accent-independent layout numbers live here, because an
-   inline style always wins over a class rule and would otherwise block the
-   mobile override. */
+   Colors, hover states and anything that depends on a module's accent stay
+   inline in page.tsx — only the accent-independent layout numbers live here,
+   because an inline style always wins over a class rule and would otherwise
+   block the mobile override.
+
+   A LAUNCHER CARD IS AN ICON, ITS BADGE AND A NAME. At every width, not just on
+   a phone. The description and the "Open →" footer are gone from the markup
+   entirely — not hidden here — so there is no rule left to unwind at a
+   breakpoint and nothing reserving a box that no longer has content. The badge
+   on the icon is the single notification indicator; the footer line that spelled
+   the same count out underneath was a second reading of one fact. */
 
 .sectionLabel {
   font-size: 11px;
@@ -22,6 +26,13 @@
   gap: 20px;
 }
 
+/* The desktop grid, padding and radius are untouched. Only min-height moves:
+   200px was sized for a card carrying a description and a footer, and with
+   those gone it is mostly empty air. 132px keeps the cards an even, comfortably
+   large target; `justify-content: center` splits the slack above and below the
+   icon/name pair rather than letting it pool under the name and read as the
+   hole the footer used to fill. A FLOOR AND NEVER A CEILING — a two-line name
+   grows the card instead of being cut by it. */
 .card {
   background: #fff;
   border-radius: 16px;
@@ -30,8 +41,9 @@
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 14px;
-  min-height: 200px;
+  min-height: 132px;
 }
 
 .iconWrap {
@@ -69,51 +81,37 @@
   letter-spacing: 0.01em;
 }
 
+/* Sized to its content, not `flex: 1`. There is nothing below it to be pushed
+   apart from any more, so stretching it would only strand the name at the top
+   of an empty box. */
 .titleWrap {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
+/* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. The name is now the
+   only text on the card, so a clipped one is the single thing that could still
+   leave a card unreadable. "Performance Management" and "Attendance & Payroll"
+   wrap to two lines and arrive whole; the card grows to fit them. */
 .title {
   font-size: 15px;
   font-weight: 700;
   color: #111318;
   letter-spacing: -0.02em;
-  margin-bottom: 5px;
   line-height: 1.2;
-}
-
-.description {
-  font-size: 12px;
-  color: #6B7384;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 12px;
-  border-top: 1px solid #F3F4F6;
-  gap: 8px;
+  overflow-wrap: anywhere;
 }
 
 /* ── Small screens: centred cards, <= 767px ──────────────────────────────────
-   767px is the SIDEBAR’S OWN BREAKPOINT (globals.css) — the width at which the
+   767px is the SIDEBAR'S OWN BREAKPOINT (globals.css) — the width at which the
    permanent sidebar becomes a drawer and quick actions move into the page — so
    "small screen" means one thing across the whole launcher and there is no
-   second breakpoint to keep in step. The 639px block further down is the
-   pre-existing PHONE COMPACTION (two-up grid, smaller boxes); it is a size
-   change, not a layout change, and is deliberately left where it was.
+   second breakpoint to keep in step. The 639px block below is the pre-existing
+   PHONE COMPACTION (two-up grid, smaller boxes): a size change, not a layout
+   one.
 
    A narrow card is read down the middle rather than scanned along a left edge,
-   so everything centres on one axis. NOTHING IS HIDDEN to buy the space: the
-   name, the description, the notification line and Open are all still drawn,
-   which is the point — a card that shows only an icon makes the reader guess
-   what the module is and gives them no idea whether anything is waiting in it. */
+   so the icon and the name centre on one axis. */
 @media (max-width: 767px) {
   .card {
     align-items: center;
@@ -129,38 +127,6 @@
 
   .titleWrap {
     width: 100%;
-    min-width: 0;
-  }
-
-  /* NO CLAMP ON A SMALL SCREEN. The base rule caps the description at two
-     lines with -webkit-box + -webkit-line-clamp + overflow: hidden, which on
-     a column half the desktop width ends most descriptions in an ellipsis —
-     and a truncated description is barely better than the hidden one this
-     work replaced. All three declarations are unwound here, so the text runs
-     to its last word.
-
-     THE CARD GROWS INSTEAD. Every card in a grid row already stretches to
-     the tallest of them, so a long description makes its row taller and
-     changes nothing else; no card overlaps, clips or scrolls sideways. */
-  .description {
-    display: block;
-    -webkit-line-clamp: none;
-    overflow: visible;
-  }
-
-  /* The footer keeps both halves and stacks them instead of pushing them to
-     opposite edges, so at 320px neither the count nor Open is squeezed into a
-     column too narrow to read. */
-  .footer {
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-  }
-
-  .footer > * {
-    justify-content: center;
-    max-width: 100%;
   }
 }
 
@@ -176,10 +142,10 @@
   }
 
   .card {
-    padding: 13px 12px;
+    padding: 14px 12px 16px;
     border-radius: 13px;
     min-height: 118px;
-    gap: 8px;
+    gap: 10px;
   }
 
   .iconBox {
@@ -196,25 +162,11 @@
     font-size: 8px;
   }
 
+  /* Type size only — the no-clamp rule in the base block is deliberately not
+     re-capped here. A half-width column is the width at which a cut-off name is
+     most likely and least acceptable. */
   .title {
     font-size: 13.5px;
-    margin-bottom: 4px;
-    line-height: 1.25;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  /* Type size only. The unclamping is in the <= 767px block above and is NOT
-     re-capped here — a phone is the width at which a cut-off description is
-     most likely and least acceptable. */
-  .description {
-    font-size: 11.5px;
-    line-height: 1.4;
-  }
-
-  .footer {
-    padding-top: 10px;
+    line-height: 1.3;
   }
 }

@@ -236,13 +236,19 @@ function QuotationRequestsContent() {
   // Someone without the permission is sent to their ordinary task list — their
   // assigned quotation tasks are still there, without the customer's commercial
   // details.
-  const canViewQuotations = useMemo(
+  const quotationCaps = useMemo(
     () => deriveQuotationCapabilities(
       role,
       permissionsByModule.get('task_management') ?? [],
-    ).canViewQuotations,
+    ),
     [role, permissionsByModule],
   )
+  const canViewQuotations = quotationCaps.canViewQuotations
+  // Whether to OFFER raising a request. An admin reaches this screen with
+  // canViewQuotations and canManageQuotations both true and still sees no New
+  // Request button: reviewing and responding are their part of the workflow,
+  // raising one is not. See src/lib/permissions/quotations.ts.
+  const canCreateQuotations = quotationCaps.canCreateQuotations
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -344,7 +350,7 @@ function QuotationRequestsContent() {
         title="Quotation Requests"
         subtitle="Customer quotation and inquiry requests"
         onSignOut={handleLogout}
-        actions={
+        actions={canCreateQuotations ? (
           <button
             onClick={() => router.push('/tasks/quotation-requests/new')}
             style={{
@@ -360,7 +366,7 @@ function QuotationRequestsContent() {
             <Plus size={13} strokeWidth={2.5} />
             New Request
           </button>
-        }
+        ) : undefined}
       >
         {/* ── Top section: tabs left, search + filters right ──
             Row and no-wrap from 1280px up, column below it. The rules live in
@@ -543,8 +549,13 @@ function QuotationRequestsContent() {
               ) : (
                 <>
                   <p style={{ fontSize: '13px', color: colors.secondary, fontWeight: 500 }}>No quotation requests yet</p>
+                  {/* Only pointed at a button the reader actually has. An admin
+                      has no New Request button, so naming it would send them
+                      looking for a control that is not on their screen. */}
                   <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
-                    Use the New Request button to submit a quotation request.
+                    {canCreateQuotations
+                      ? 'Use the New Request button to submit a quotation request.'
+                      : 'Requests raised by your team will appear here.'}
                   </p>
                 </>
               )}

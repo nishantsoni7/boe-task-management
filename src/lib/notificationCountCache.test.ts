@@ -122,11 +122,21 @@ describe('zero, missing and malformed are three different answers', () => {
     writePersistedUnreadCount(USER_A, 'task', 0, { storage, now: NOW })
     assert.deepEqual(readPersistedUnreadCount(USER_A, 'task', { storage, now: NOW }),
       { count: 0, at: NOW })
-    // The card prints "No notifications" for a resolved zero, and a placeholder
-    // only while the value is undefined.
-    assert.ok(MODULES.includes('count === undefined ? ('))
-    assert.ok(MODULES.includes("aria-label=\"Loading notification count\""))
-    assert.ok(MODULES.includes("? 'No notifications'"))
+    // THE BADGE IS THE CARD'S ONLY NOTIFICATION SURFACE. The footer that
+    // printed "No notifications" for a resolved zero, and a loading placeholder
+    // while the value was still undefined, is gone from the launcher card — the
+    // card is now an icon, its badge and the module name. So a resolved zero
+    // and a not-yet-resolved undefined look the same ON THE CARD, which is why
+    // the round-trip above still has to tell them apart IN THE CACHE: only a
+    // real number is ever persisted, and only `> 0` ever draws a badge.
+    assert.equal(MODULES.includes('count === undefined ? ('), false,
+      'the loading placeholder went with the footer')
+    assert.equal(MODULES.includes("? 'No notifications'"), false,
+      'the spelled-out zero state went with the footer')
+    assert.ok(MODULES.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'),
+      'a missing or zero count draws no badge, and only a positive one does')
+    assert.ok(MODULES.includes('{hasNotif && ('),
+      'the badge is rendered on that test and nothing else')
   })
 
   test('6. no cache reads as null, so the caller shows the placeholder', () => {
