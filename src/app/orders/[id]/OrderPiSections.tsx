@@ -46,10 +46,8 @@ import {
 } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import {
-  NET_DIFFERENCE_LABEL,
   ORDER_COMMERCIAL_TITLE,
   type CommercialLine,
-  type CommercialNet,
 } from '@/lib/orders/orderCommercial'
 import { formatCustomization, formatInr, orDash } from '@/lib/pi/previewView'
 import { SECTION_HEADER_STYLE } from './OrderWorkspace'
@@ -449,18 +447,21 @@ export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
  *   every factor that moves the figure sits INSET, with its own sign
  *
  * so a reader scanning the right-hand edge sees only totals, and a reader
- * following the arithmetic sees what each step did. The final Order value is
- * the strongest row on the page, and the net effect follows it in one quiet
- * line — rupees, and a percentage only where the base allows one.
+ * following the arithmetic sees what each step did. THE FINAL ORDER VALUE IS
+ * THE LAST AND STRONGEST ROW, and nothing follows it.
  *
- * NO FIGURE HERE IS COMPUTED. Every amount is the string the shared PI row
- * builder produced; the roles, the signs and the net are orderCommercial's, and
- * the net is a display subtraction of two stored Order columns. See that module
- * for why that is the only arithmetic in the section.
+ * A `Net effect on product value` line used to. It was removed deliberately:
+ * the section already opens on the product value and closes on the Order value,
+ * so the difference between its first row and its last restated what the rows
+ * had just shown.
+ *
+ * NO FIGURE HERE IS COMPUTED, and now none is derived either. Every amount is
+ * the string the shared PI row builder produced; the roles and the signs are
+ * orderCommercial's. See that module for what was removed and what was left
+ * exactly as it was.
  */
-export function OrderCommercialBreakdown({ lines, net, embedded = false }: {
+export function OrderCommercialBreakdown({ lines, embedded = false }: {
   lines: readonly CommercialLine[]
-  net: CommercialNet
   /** Drawn INSIDE the commercial column: a titled block with no card of its
    *  own, because that column is already one surface. */
   embedded?: boolean
@@ -508,25 +509,6 @@ export function OrderCommercialBreakdown({ lines, net, embedded = false }: {
         )
       })}
 
-      {/* WHAT THE TERMS DID, IN ONE LINE. Null whenever the Order does not
-          store both figures — never ₹0, which a reader would take for "the
-          terms changed nothing". */}
-      {net.amount && (
-        <div className="order-breakdown-net">
-          <span className="order-breakdown-net-label">{NET_DIFFERENCE_LABEL}</span>
-          <span
-            className="order-breakdown-net-value"
-            style={{
-              color: net.direction === 'down' ? colors.green
-                : net.direction === 'up' ? colors.primary
-                : colors.secondary,
-            }}
-          >
-            {net.amount}
-            {net.percent && <span className="order-breakdown-net-percent">{net.percent}</span>}
-          </span>
-        </div>
-      )}
     </div>
   )
 

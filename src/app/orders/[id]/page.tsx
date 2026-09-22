@@ -39,7 +39,6 @@ import {
 import {
   ORDER_COMMERCIAL_TITLE,
   orderCommercialLines,
-  orderCommercialNet,
   orderStoredCommercialLines,
 } from '@/lib/orders/orderCommercial'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -1850,12 +1849,6 @@ export default function OrderDetailPage() {
         orderValue: fmtAmount(order.total_value),
       })
 
-  const commercialNet = orderCommercialNet({
-    productValue: order.total_product_value,
-    orderValue: order.total_value,
-    formatAmount: fmtAmount,
-  })
-
   /**
    * THE THREE THAT ARE NOT THE HEADLINE.
    *
@@ -2521,7 +2514,7 @@ export default function OrderDetailPage() {
         <aside className="order-lower-aside" aria-label={ORDER_COMMERCIAL_TITLE}>
           <div className="order-lower-aside-inner">
             <div className="order-commercial">
-              <OrderCommercialBreakdown lines={commercialLines} net={commercialNet} embedded />
+              <OrderCommercialBreakdown lines={commercialLines} embedded />
               {!handoffReady && order.source_order_submission_id && (
                 <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
               )}

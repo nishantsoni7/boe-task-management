@@ -2932,24 +2932,6 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* WHAT THE TERMS DID, in one quiet line under the answer. */
-.order-breakdown-net {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-top: 5px;
-  padding: 0 8px;
-}
-.order-breakdown-net-label { font-size: 11px; color: #8C94A6; }
-.order-breakdown-net-value {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.order-breakdown-net-percent { margin-left: 6px; font-weight: 500; opacity: 0.8; }
-
 /* Available to screen readers, invisible on screen. Scoped rather than added
    as a global utility, for the reason .payroll-guide-sr-only is. */
 .order-sr-only {
