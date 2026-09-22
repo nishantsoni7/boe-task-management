@@ -3353,6 +3353,23 @@ body {
   line-height: 1.4;
 }
 
+/* What Finance just recorded. A quiet blue note, not a success banner: the
+   money has been REPORTED, and whether it arrived is still Finance’s call. */
+.order-pay-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(85,133,232,0.07);
+  border: 1px solid rgba(85,133,232,0.18);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4A5261;
+}
+
 .order-pay-split {
   margin-top: 12px;
   padding-top: 10px;

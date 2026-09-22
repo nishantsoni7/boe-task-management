@@ -222,6 +222,10 @@ export function OrderStatusPill({ label, tone }: { label: string; tone: Workspac
 
 export const PAYMENT_SECTION_TITLE = 'Payment'
 
+/** The one creating action in this section. Finance’s own form does the work;
+ *  this page only opens it. Named here with the section it sits in. */
+export const ADD_PAYMENT_ACTION_LABEL = 'Add payment'
+
 /**
  * THE ONLY PAYMENT FIGURES ON THE PAGE, in the Draft PI's approved shape.
  *

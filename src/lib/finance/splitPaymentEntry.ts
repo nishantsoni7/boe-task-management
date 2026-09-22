@@ -45,6 +45,23 @@ import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
 export type SplitTargetKind = 'order' | 'submission'
 
 /**
+ * destinationTargetKind READ THE OTHER WAY, for a caller that starts from a
+ * target it already holds rather than from a destination somebody picked — the
+ * Confirmed Order screen, opening this form over the Order it is showing.
+ *
+ * It lives here, beside the import of its counterpart, because paymentEntry.ts
+ * is a module this area holds still; the two mappings are still read together
+ * and a change to either is visible from this line.
+ *
+ * TOTAL, and there is no destination for "both kinds": a payment covering a PI
+ * Draft and an Order is a Suspense Entry, divided afterwards through Allocate
+ * Funds.
+ */
+export function targetKindDestination(kind: SplitTargetKind): PaymentDestination {
+  return kind === 'order' ? 'confirmed_order' : 'pi_draft'
+}
+
+/**
  * One row of the allocation list, as the form holds it.
  *
  * `amount` is the RAW STRING the person typed. Keeping it as typed is what lets

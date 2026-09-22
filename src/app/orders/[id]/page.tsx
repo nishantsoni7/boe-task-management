@@ -19,6 +19,7 @@ import {
   OrderDetailSkeleton,
   OrderStatusPill,
   OrderSummaryPanel,
+  ADD_PAYMENT_ACTION_LABEL,
   PAYMENT_SECTION_TITLE,
   PaymentSummaryFigures,
   SECTION_HEADER_STYLE,
@@ -61,7 +62,7 @@ import {
 // piSubmissionHref is deliberately NOT imported: after conversion this page is
 // the source of truth and offers no route back to the superseded draft. The PI
 // relation, its files and its version history are all still here.
-import { financePaymentHref } from '@/lib/finance/crossModuleLinks'
+import { canRecordPaymentAgainstOrder, financePaymentHref } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ChevronDown } from 'lucide-react'
@@ -179,6 +180,10 @@ import { leadSourceLabel } from '@/lib/orders/orderConfirmation'
 // SALESPERSON's number and would have a reader press "call the client" and
 // reach BOE. See buildClientDetails for why that column is not consulted.
 import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailView'
+// FINANCE’S OWN PAYMENT-ENTRY FORM, mounted here rather than reimplemented.
+// One payment, its allocations and every gate belong to
+// record_payment_with_allocations(); this page supplies a door and a seed.
+import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -677,6 +682,10 @@ export default function OrderDetailPage() {
   // Set once and never cleared: a refresh replaces data in place and must not
   // blank a screen somebody is reading.
   const [recordsReady, setRecordsReady] = useState(false)
+  /** Finance’s Record Payment form, open over this Order. */
+  const [recordingPayment, setRecordingPayment] = useState(false)
+  /** What it recorded, said once above the figures it just changed. */
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null)
   /**
    * WHERE THIS READER HAD GOT TO — the timestamp of their oldest unread update
    * on this Order, captured once on open, just before those rows are marked
@@ -1910,6 +1919,22 @@ export default function OrderDetailPage() {
     viewingAs: !!viewAsUserId,
   })
 
+  /**
+   * MAY THIS READER RECORD A PAYMENT AGAINST THIS ORDER?
+   *
+   * finance.allocate with Finance module entry — the same capability the
+   * Received Payments page draws its own Record Payment button on and the same
+   * one record_payment_with_allocations() requires — and not a cancelled Order,
+   * which that RPC refuses outright. Both conditions are stated once, in
+   * crossModuleLinks, so the two modules cannot answer differently.
+   *
+   * IT GRANTS NOTHING. The RPC re-derives the actor and the permission.
+   */
+  const mayRecordPayment = canRecordPaymentAgainstOrder({
+    canAllocatePayment: financeCaps.canAllocatePayment,
+    orderStatus: order.status,
+  })
+
   const recordFacts = orderRecordFacts({
     status: order.status,
     salespersonName: order.assigned_to_name ?? null,
@@ -2229,14 +2254,58 @@ export default function OrderDetailPage() {
             title={PAYMENT_SECTION_TITLE}
             style={SECTION_HEADER_STYLE}
             right={recordsReady ? (
-              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                {payments.length === 0
-                  ? 'No payments recorded'
-                  : `${payments.length} payment${payments.length === 1 ? '' : 's'}`}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                  {payments.length === 0
+                    ? 'No payments recorded'
+                    : `${payments.length} payment${payments.length === 1 ? '' : 's'}`}
+                </span>
+                {/* ── Add payment ──
+                    A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
+                    opens record_payment_with_allocations’ one flow, seeded with
+                    this Order, and this page contains no payment form, no
+                    validation and no write of its own.
+
+                    DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
+                    button on — finance.allocate with module entry — plus the
+                    Order not being cancelled, which the RPC refuses anyway. A
+                    reader without it is offered no control at all, not a
+                    disabled one: the RPC would refuse them and a dead button
+                    only asks them to find that out. */}
+                {mayRecordPayment && (
+                  <button
+                    type="button"
+                    onClick={() => setRecordingPayment(true)}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
+                  >
+                    {ADD_PAYMENT_ACTION_LABEL}
+                  </button>
+                )}
+              </div>
             ) : undefined}
           />
           <div style={{ padding: '12px 16px 14px' }}>
+            {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
+                names the payment and says plainly that verification has not
+                happened — recording money is not the same as its having
+                arrived, and this page must not let the two read alike. */}
+            {paymentNotice && (
+              <div className="order-pay-notice" role="status">
+                <span>{paymentNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setPaymentNotice(null)}
+                  aria-label="Dismiss"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <PaymentSummaryFigures finance={finance} loaded={recordsReady} />
 
             {/* ── The records ──
@@ -2672,6 +2741,46 @@ export default function OrderDetailPage() {
              finds nothing and sends nothing — which is right: the Order did
              not move. */
           onDone={() => afterChange('amended')}
+        />
+      )}
+
+      {/* ══ ADD PAYMENT ══
+          FINANCE’S FORM, NOT A SECOND ONE. RecordSplitPaymentModal is the same
+          component the Received Payments page opens, doing the same work in the
+          same single transaction through record_payment_with_allocations() —
+          which re-derives the actor, requires Finance module entry AND
+          finance.allocate, re-validates every target, and writes the payment as
+          pending_approval. Verification remains Finance’s separate decision.
+
+          SEEDED WITH THIS ORDER, not restricted to it. The reader arrived from
+          this Order, so row one names it; they may still change it, remove it
+          or divide the payment across several records, because that is what the
+          form is for.
+
+          THE GATE IS DRAWN, NOT ENFORCED, HERE. mayRecordPayment decides whether
+          the control exists; the RPC decides whether the write happens. */}
+      {recordingPayment && mayRecordPayment && (
+        <RecordSplitPaymentModal
+          supabase={supabase}
+          userId={profile?.id ?? null}
+          initialTarget={{
+            kind: 'order',
+            id: order.id,
+            reference: order.display_number ?? '—',
+            clientName: order.client_name ?? '—',
+          }}
+          onClose={() => setRecordingPayment(false)}
+          onRecorded={summary => {
+            setRecordingPayment(false)
+            setPaymentNotice(
+              summary.allocationCount === 0
+                ? `Payment ${summary.requestNumber} recorded. None of it is allocated yet — it is available to allocate in Finance.`
+                : `Payment ${summary.requestNumber} recorded against ${summary.allocationCount} record${summary.allocationCount === 1 ? '' : 's'}. Finance verification is still pending.`)
+            // THE PAGE’S OWN REFRESH, unchanged: a recorded payment moves the
+            // payment reads, the allocation reads and the activity trail, and
+            // loadOrder is what settles all of them in one commit.
+            void loadOrder()
+          }}
         />
       )}
 

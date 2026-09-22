@@ -473,6 +473,40 @@ describe('the business rules this pass must not touch', () => {
     assert.ok(page.includes('financePaymentHref(p.id)'))
   })
 
+  // ── Add payment ──
+  //
+  // A DOOR, DRAWN ONCE, IN THE PAYMENT SECTION. The form behind it is Finance's
+  // own; what this holds is that the Order opens it rather than growing one,
+  // and that adding the door moved no figure and no rule.
+  test('Add payment is drawn once, and inside the payment section', () => {
+    assert.equal((body.match(/ADD_PAYMENT_ACTION_LABEL/g) ?? []).length, 1)
+    assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
+    // Between the payment section's title and the section that follows it.
+    const payment = body.indexOf('PAYMENT_SECTION_TITLE')
+    const records = body.indexOf('title="Order records"')
+    const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
+    assert.ok(payment > 0 && records > payment)
+    assert.ok(control > payment && control < records,
+      'the control belongs to the Payment section, not to the header or the records')
+  })
+
+  test('and it changes none of the figures beside it', () => {
+    // The builder, the exact amounts and the absence of arithmetic are asserted
+    // above; this holds that the payment section still draws the same one
+    // component from the same position, with the control added beside it.
+    assert.equal((body.match(/<PaymentSummaryFigures finance={finance} loaded={recordsReady} \/>/g) ?? []).length, 1)
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+  })
+
+  test('the writing path is Finance’s, and the refresh is the page’s own', () => {
+    // The modal is handed the client and the actor and nothing else that could
+    // decide anything; what it records, it records through its own RPC.
+    assert.ok(page.includes('<RecordSplitPaymentModal'))
+    assert.ok(page.includes('void loadOrder()'), 'the page settles the way it already settles')
+    // And the page never reaches for the allocation RPC itself.
+    assert.equal(code(PAGE).includes('record_payment_with_allocations'), false)
+  })
+
   test('production alignment and the amendment doors are unchanged', () => {
     assert.ok(page.includes('canAlignProduction(ordersCaps, Boolean(viewAsUserId))'))
     assert.ok(page.includes("rpc('set_order_production_alignment'"))
