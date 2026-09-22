@@ -611,7 +611,17 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
       role="button"
       tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && onClick()}
+      // ENTER AND SPACE, because role="button" promises both — a native
+      // <button> fires on either and a screen-reader user is told this is a
+      // button. Space is also the browser's page-scroll key, so it is
+      // preventDefault-ed: without that, activating a focused card would open
+      // the module AND scroll the launcher behind it.
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
       className={styles.card}
       style={{
         border: `1.5px solid ${hovered ? mod.accent : '#E8EBF0'}`,
@@ -640,81 +650,11 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
         )}
       </div>
 
-      {/* ── Name + description ── */}
+      {/* ── Name ── */}
       <div className={styles.titleWrap}>
         <div className={styles.title}>
           {mod.title}
         </div>
-        <div className={styles.description}>
-          {mod.description}
-        </div>
-      </div>
-
-      {/* ── Footer: notification line + open ── */}
-      <div className={styles.footer}>
-        {/* Left: notification signal. The status pill that used to sit here is
-            gone — see the note on ModuleDef. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          {/* An unresolved count (undefined) renders a compact placeholder, not
-              "No notifications": the card is on screen before its badge is
-              known, and printing a zero-state we have not confirmed would be
-              stating something false for as long as the request is in flight.
-              With the persisted last-known count seeding the query, this state
-              is now reached only on a first-ever visit or after a sign-out. A
-              resolved null still reads "No notifications", as it always did:
-              that is a module with no count API rather than one still being
-              counted, and a resolved ZERO reads the same way. */}
-          {count === undefined ? (
-            /* Nothing known yet: no persisted count and no response. A tinted
-               bar on a box of exactly the text's height, so the footer — and
-               therefore the card — is the height it will be once the number
-               lands and nothing moves under the cursor. Announced as busy
-               rather than read out as an empty region. */
-            <span
-              role="status"
-              aria-busy="true"
-              aria-label="Loading notification count"
-              style={{
-                display: 'inline-block',
-                width: '84px', height: '11px',
-                borderRadius: '4px',
-                background: 'rgba(0,0,0,0.06)',
-                verticalAlign: 'middle',
-              }}
-            />
-          ) : (
-            <span style={{
-              fontSize: '11px',
-              color: hasNotif ? '#D94F4F' : '#B0B8C8',
-              fontWeight: hasNotif ? 600 : 400,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {count == null
-                ? 'No notifications'
-                : hasNotif
-                  ? `${count} ${count === 1 ? 'notification' : 'notifications'}`
-                  : 'No notifications'}
-            </span>
-          )}
-        </div>
-
-        {/* Right: Open */}
-        <span style={{
-          fontSize: '12px', fontWeight: 600,
-          color: hovered ? mod.accent : '#A0A9BE',
-          display: 'flex', alignItems: 'center', gap: '3px',
-          transition: 'color 0.15s',
-          flexShrink: 0,
-        }}>
-          Open
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: hovered ? 'translateX(2px)' : 'none', transition: 'transform 0.15s' }}>
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
-        </span>
       </div>
     </div>
   )

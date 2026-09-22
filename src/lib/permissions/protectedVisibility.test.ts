@@ -283,6 +283,8 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
   test('no permissions at all means nothing is granted', () => {
     assert.deepEqual(deriveQuotationCapabilities(null, []), {
       canViewQuotations: false, canManageQuotations: false,
+      // Creation is a narrowing of manage, so fail-closed reaches it for free.
+      canCreateQuotations: false,
     })
     assert.equal(deriveOrdersCapabilities(null, []).canViewAllOrders, false)
     assert.equal(deriveFinanceCapabilities(null, []).canViewAllFinance, false)

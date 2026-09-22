@@ -944,6 +944,72 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  /**
+   * MODULE CARDS + ADMIN QUOTATION CREATION. Two small presentation changes
+   * that share a branch and touch nothing this guard protects.
+   *
+   * The launcher card drops its description and its "Open →" footer at every
+   * width, leaving an icon, its notification badge and the module name, and
+   * gains Space alongside Enter on the card's existing role="button". Both of
+   * those land in src/app/modules/, which ALLOWED_QUICK_ACTION_PLACEMENT
+   * already names — so the launcher contributes no entry here.
+   *
+   * The three below are the quotation half. An admin no longer sees the offer
+   * to RAISE a quotation request: the New Request header button, the sidebar's
+   * New Quotation Request item, and the empty state that points at them.
+   *
+   * IT IS ONE NEW BOOLEAN ON AN EXISTING HELPER, not a second role system.
+   * deriveQuotationCapabilities already took `role` and already short-circuited
+   * on admin; canCreateQuotations narrows canManageQuotations and never widens
+   * it. canViewQuotations and canManageQuotations are unchanged for every role,
+   * so an admin keeps reviewing, responding, approving and rejecting, and every
+   * non-admin that could raise a request still can.
+   *
+   * NOTHING BELOW THE INTERFACE MOVES. No RLS, no RPC, no policy, no migration,
+   * no route handler — the quotation actions have no RLS backing at all (see
+   * the enforcement note in src/lib/permissions/quotations.ts), so there was
+   * nothing to keep in step even if this had wanted to.
+   */
+  const ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE = new Set([
+    'src/lib/permissions/quotations.ts',          // the new canCreateQuotations
+    'src/components/layout/DashboardLayout.tsx',  // sidebar New Quotation Request
+    'src/app/tasks/quotation-requests/page.tsx',  // header button + empty state
+    // The suites that hold both halves to it. notificationCountCache is an
+    // EXISTING suite and had to move: three of its assertions read the card's
+    // footer for "No notifications" and the loading placeholder, and that
+    // footer no longer exists. Its subject — what the cache stores and returns
+    // — is unchanged and still asserted.
+    'src/lib/notificationCountCache.test.ts',
+    // Two more EXISTING suites that read the card's footer or deep-equal the
+    // capability object, and had to follow the change for the same reason.
+    'src/lib/permissions/moduleParentGate.test.ts',
+    'src/lib/permissions/protectedVisibility.test.ts',
+    'src/app/modules/moduleCardSurface.test.ts',
+    'src/lib/permissions/quotationCreateVisibility.test.ts',
+  ])
+
+  test('the module-card and quotation allowance names files, never a directory', () => {
+    for (const file of ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE) {
+      assert.ok(/\.(tsx?)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+    }
+    // It admits no Finance or Orders surface, and no permission file other than
+    // the quotation one it exists for.
+    for (const untouchable of [
+      'src/app/finance/page.tsx',
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/orders/finalApproval.ts',
+    ]) {
+      assert.equal(ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(untouchable), false,
+        `${untouchable} must not ride in on the module-card and quotation allowance`)
+    }
+  })
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -959,7 +1025,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
-    !ALLOWED_PI_CONFIRMATION_DIALOG.has(f)
+    !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
+    !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f)
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -1100,7 +1167,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
-        || ALLOWED_PI_CONFIRMATION_DIALOG.has(file),
+        || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
+        || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

@@ -1390,3 +1390,53 @@ unchanged.
 
 Presentation only: no workflow, permission, visibility rule, status, handler,
 database object or API changed.
+
+---
+
+# Modules launcher cards, and Add Quotation for Admins (2026-09-22)
+
+Two presentation changes, neither touching the database, the permission engine,
+a route handler or a workflow.
+
+**A launcher card is an icon, its badge and the module name.** The card carried a
+two-line description and a footer holding a spelled-out notification count and
+"Open →". The count appeared twice — once on the icon badge and once written out
+underneath — and on a phone the rest cost most of the card to restate what the
+icon and the name already said. The description and the whole footer are now gone
+from the markup at every width, not hidden at a breakpoint, so no stylesheet rule
+reserves a box that has no content. Below 767px the icon, its badge and the name
+centre on one axis; the desktop card keeps its left edge and its layout. The name
+is no longer clamped or ellipsised anywhere, so "Performance Management" and
+"Attendance & Payroll" wrap and arrive whole at 320px; every min-height is a floor
+and never a ceiling, so a two-line name grows its card.
+
+The whole card was already a single control — one `role="button"` with the only
+`onClick` on the root — so nothing was rewired, and the card gained Space
+alongside Enter, with the default cancelled so activating a focused card does not
+also scroll the launcher. Verified rather than assumed: 58,240 hit-test probes at
+1366px and 25,714 at 320px all resolve to their own card, with no interactive
+element intercepting and no dead area. Module order, routes, permissions,
+notification counts and Quick Actions are untouched.
+
+This behaviour had been written once before, on an unmerged branch that never
+reached `main` and so never reached production; that version hid the description
+and footer with `display: none` below 767px only, leaving both on desktop. This
+is a fresh, smaller change against the current `main` that removes them outright.
+
+**An Admin is no longer offered the action that creates a quotation request.**
+Raising a request is the salesperson's step in the workflow — it captures a
+customer the raiser is dealing with — and an Admin's part is the one after it.
+The Admin held the New Request button only because `role === 'admin'`
+short-circuits every capability in `src/lib/permissions/quotations.ts`, not
+because the workflow asked them to raise one. That helper gained one boolean,
+`canCreateQuotations`: a narrowing of `canManageQuotations` that is false wherever
+manage is false and false additionally for an Admin, and the three surfaces that
+offered creation — the Quotation Requests header button, the sidebar's New
+Quotation Request item, and the empty state that pointed at them — now read it.
+
+`canViewQuotations` and `canManageQuotations` are unchanged for every role, so an
+Admin still reviews, responds to, approves and rejects quotations exactly as
+before, and every non-Admin that could raise a request still can. No second role
+system was introduced, no Supabase policy, RPC or migration changed, and the
+creation route keeps the gate it always had — this removes the Admin-facing
+offer from the interface and nothing else.

@@ -265,8 +265,12 @@ export function DashboardLayout({
               Task are header actions on every Task Management screen, so the
               group held one child; a group of one is just an item. The route
               and its gate are unchanged — raising a request is a quotation
-              operation, manage rather than view. */}
-          {!inViewMode && quotationCaps.canManageQuotations && (
+              operation, manage rather than view.
+
+              canCreateQuotations, NOT canManageQuotations: an admin keeps
+              manage — review, respond, approve, reject — and loses only the
+              offer to raise one. See src/lib/permissions/quotations.ts. */}
+          {!inViewMode && quotationCaps.canCreateQuotations && (
             <NavLeaf
               label="New Quotation Request"
               icon={<PlusCircle size={15} strokeWidth={1.8} />}

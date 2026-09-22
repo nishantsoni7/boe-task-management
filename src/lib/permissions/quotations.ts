@@ -59,11 +59,31 @@ export type QuotationCapabilities = {
    * operations exist. Never true without canViewQuotations.
    */
   canManageQuotations: boolean
+  /**
+   * May be OFFERED the raise-a-request action — the New Request button, the
+   * sidebar's New Quotation Request item and the empty state that points at
+   * them. A NARROWING OF canManageQuotations, never a widening: it is false
+   * wherever manage is false, and false additionally for an admin.
+   *
+   * WHY ADMIN IS EXCLUDED. Raising a quotation request is the salesperson's
+   * step in the workflow — it captures a customer the raiser is dealing with,
+   * and the admin's part is the one after it: read, respond, approve, reject.
+   * The admin held the action only because `role === 'admin'` short-circuits
+   * every capability in this file, not because the workflow ever asked them to
+   * raise one.
+   *
+   * REVIEW AND RESPONSE ARE UNTOUCHED. canManageQuotations stays true for an
+   * admin and is what every non-creation quotation operation still branches
+   * on, so nothing an admin does to an existing request changes. This is a
+   * display gate on one action; there is no RLS, RPC or policy behind it.
+   */
+  canCreateQuotations: boolean
 }
 
 export const NO_QUOTATION_CAPABILITIES: QuotationCapabilities = {
   canViewQuotations: false,
   canManageQuotations: false,
+  canCreateQuotations: false,
 }
 
 export function deriveQuotationCapabilities(
@@ -71,7 +91,11 @@ export function deriveQuotationCapabilities(
   permissions: readonly EffectivePermission[],
 ): QuotationCapabilities {
   if (role === 'admin') {
-    return { canViewQuotations: true, canManageQuotations: true }
+    return {
+      canViewQuotations: true,
+      canManageQuotations: true,
+      canCreateQuotations: false,
+    }
   }
 
   const allowed = (actionKey: string) =>
@@ -89,6 +113,9 @@ export function deriveQuotationCapabilities(
     // previously saved manage-only overrides that could not surface any UI.
     canViewQuotations,
     canManageQuotations,
+    // Every non-admin role that could raise a request before still can: the
+    // grant that decides it is the same one, unchanged.
+    canCreateQuotations: canManageQuotations,
   }
 }
 
