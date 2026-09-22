@@ -20,7 +20,12 @@ import {
   DESIGN_DRAWINGS_LABEL,
   DESIGN_DRAWINGS_NOTE,
   DESIGN_DRAWINGS_UNSUPPORTED,
+  DESIGN_IMAGES_LOADING,
   DESIGN_IMAGES_NONE,
+  DESIGN_IMAGES_NO_SOURCE,
+  DESIGN_IMAGES_NO_SOURCE_NOTE,
+  DESIGN_IMAGES_UNAVAILABLE,
+  DESIGN_IMAGES_UNAVAILABLE_NOTE,
   DESIGN_NO_PROOF,
   DESIGN_PROOF_ON_FILE,
   MANUFACTURING_PRODUCTION_LABEL,
@@ -30,6 +35,7 @@ import {
   describeDesignFiles,
   describeManufacturingStatus,
   type CurrentStatusLine,
+  type DesignImageSummary,
 } from './orderCurrentStatus'
 import { approvalStanding, type PersistedApprovalEvent } from './orderApprovals'
 import { describeProductionAlignment } from './productionAlignment'
@@ -53,6 +59,14 @@ function event(over: Partial<PersistedApprovalEvent> = {}): PersistedApprovalEve
 
 const standing = (events: PersistedApprovalEvent[] = []) =>
   approvalStanding({ events, formatWhen: when })
+
+/** A picture read that FINISHED, for this Order, without an error. */
+const ready = (representative: number, customization: number): DesignImageSummary =>
+  ({ kind: 'ready', counts: { representative, customization } })
+
+/** The picture line of a Design Files card built from one image state. */
+const imagesLine = (images: DesignImageSummary, productCount = 3) =>
+  line(describeDesignFiles({ approvals: standing([]), images, productCount }).lines, 'images')
 
 const line = (lines: readonly CurrentStatusLine[], key: string): CurrentStatusLine => {
   const found = lines.find(l => l.key === key)
@@ -80,7 +94,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
         event({ id: 'a', approval_kind: 'fabric', status: 'fully_approved' }),
         event({ id: 'b', approval_kind: 'finish', status: 'partially_approved' }),
       ]),
-      images: { representative: 0, customization: 0 },
+      images: ready(0, 0),
       productCount: 0,
     })
 
@@ -93,7 +107,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
   test('an Order with no events at all reads Not Approved on both — the truthful default', () => {
     const view = describeDesignFiles({
       approvals: standing([]),
-      images: { representative: 0, customization: 0 },
+      images: ready(0, 0),
       productCount: 0,
     })
     for (const key of ['fabric', 'finish']) {
@@ -107,7 +121,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
       approvals: standing([
         event({ approval_kind: 'fabric', status: 'fully_approved', evidence_path: 'orders/o1/secret.png' }),
       ]),
-      images: { representative: 0, customization: 0 },
+      images: ready(0, 0),
       productCount: 0,
     })
     assert.equal(line(view.lines, 'fabric').detail, DESIGN_PROOF_ON_FILE)
@@ -120,7 +134,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
   test('the pictures are counted, and one file is not "1 files"', () => {
     const one = describeDesignFiles({
       approvals: standing([]),
-      images: { representative: 1, customization: 0 },
+      images: ready(1, 0),
       productCount: 1,
     })
     assert.equal(line(one.lines, 'images').value, '1 file')
@@ -128,7 +142,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
 
     const many = describeDesignFiles({
       approvals: standing([]),
-      images: { representative: 5, customization: 7 },
+      images: ready(5, 7),
       productCount: 5,
     })
     assert.equal(line(many.lines, 'images').value, '12 files')
@@ -138,7 +152,7 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
   test('no pictures says so, and claims no qualifier it does not have', () => {
     const view = describeDesignFiles({
       approvals: standing([]),
-      images: { representative: 0, customization: 0 },
+      images: ready(0, 0),
       productCount: 4,
     })
     assert.equal(line(view.lines, 'images').value, DESIGN_IMAGES_NONE)
@@ -150,24 +164,85 @@ describe('Design Files reports the approval log, not a second opinion of it', ()
       approvals: standing([
         event({ approval_kind: 'fabric', evidence_path: 'orders/o1/fabric.png' }),
       ]),
-      images: { representative: 9, customization: 3 },
+      images: ready(9, 3),
       productCount: 3,
     })
     const drawings = line(view.lines, 'drawings')
     assert.equal(drawings.label, DESIGN_DRAWINGS_LABEL)
     assert.equal(drawings.value, DESIGN_DRAWINGS_UNSUPPORTED)
-    assert.equal(drawings.unsupported, true, 'so the screen can mute it rather than dress it as a state')
+    assert.equal(drawings.muted, true, 'so the screen can mute it rather than dress it as a state')
     assert.equal(drawings.detail, DESIGN_DRAWINGS_NOTE)
   })
 
   test('every line states a word, so no line depends on colour alone', () => {
     const view = describeDesignFiles({
       approvals: standing([]),
-      images: { representative: 2, customization: 0 },
+      images: ready(2, 0),
       productCount: 1,
     })
     for (const l of view.lines) {
       assert.ok(l.value.trim() !== '', `${l.key} says nothing`)
+    }
+  })
+})
+
+// ── The picture read state ────────────────────────────────────────────────────
+
+describe('`None recorded` is a CLAIM, and only a finished, clean read may make it', () => {
+  test('a read still in flight says Loading — never None recorded', () => {
+    const l = imagesLine({ kind: 'loading' })
+    assert.equal(l.value, DESIGN_IMAGES_LOADING)
+    assert.notEqual(l.value, DESIGN_IMAGES_NONE)
+    assert.equal(l.muted, true, 'a pending read is not a fact about the Order')
+    assert.equal(l.detail, null, 'and it qualifies nothing, because it knows nothing')
+  })
+
+  test('ONLY a successful read of zero rows says None recorded', () => {
+    const l = imagesLine(ready(0, 0))
+    assert.equal(l.value, DESIGN_IMAGES_NONE)
+    assert.equal(l.muted, false, 'this one IS a fact about the Order')
+  })
+
+  test('stored rows produce the count, and the qualifier that goes with it', () => {
+    const l = imagesLine(ready(4, 6), 4)
+    assert.equal(l.value, '10 files')
+    assert.equal(l.detail, '4 representative · 6 customization · 4 product lines')
+    assert.equal(l.muted, false)
+  })
+
+  test('an Order that never came from a PI says so, and counts nothing', () => {
+    const l = imagesLine({ kind: 'no_source' })
+    assert.equal(l.value, DESIGN_IMAGES_NO_SOURCE)
+    assert.equal(l.detail, DESIGN_IMAGES_NO_SOURCE_NOTE)
+    assert.equal(l.muted, true)
+  })
+
+  test('a failed or unreadable source says Unavailable — a failure is NOT a zero', () => {
+    const l = imagesLine({ kind: 'unavailable' })
+    assert.equal(l.value, DESIGN_IMAGES_UNAVAILABLE)
+    assert.equal(l.detail, DESIGN_IMAGES_UNAVAILABLE_NOTE)
+    assert.equal(l.muted, true)
+    assert.notEqual(l.value, DESIGN_IMAGES_NONE)
+  })
+
+  test('no state but `ready` carries a number ANYWHERE in the line', () => {
+    for (const images of [
+      { kind: 'loading' }, { kind: 'no_source' }, { kind: 'unavailable' },
+    ] as DesignImageSummary[]) {
+      const l = imagesLine(images)
+      assert.equal(/\d/.test(`${l.value} ${l.detail ?? ''}`), false,
+        `${images.kind} printed a figure`)
+    }
+  })
+
+  test('the rest of the card is unaffected by which state the pictures are in', () => {
+    for (const images of [
+      { kind: 'loading' }, { kind: 'no_source' }, { kind: 'unavailable' }, ready(2, 2),
+    ] as DesignImageSummary[]) {
+      const view = describeDesignFiles({ approvals: standing([]), images, productCount: 1 })
+      assert.deepEqual(view.lines.map(l => l.key), ['fabric', 'finish', 'images', 'drawings'])
+      assert.equal(line(view.lines, 'fabric').value, 'Not Approved')
+      assert.equal(line(view.lines, 'drawings').value, DESIGN_DRAWINGS_UNSUPPORTED)
     }
   })
 })

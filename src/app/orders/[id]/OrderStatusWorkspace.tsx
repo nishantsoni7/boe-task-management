@@ -360,14 +360,16 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
  * are plain words, because a coloured badge around "3 files" would give a
  * number the weight of a decision.
  *
- * `unsupported` is muted rather than hidden. A reader who does not see a CAD
- * row concludes nothing; a reader who sees "CAD & drawings — Not recorded"
+ * A `muted` line is quietened rather than hidden. A reader who does not see a
+ * CAD row concludes nothing; a reader who sees "CAD & drawings — Not recorded"
  * learns that this system does not hold them, which is the true answer and the
- * only one that stops somebody hunting for the file elsewhere.
+ * only one that stops somebody hunting for the file elsewhere. The same goes
+ * for a picture read that has not finished or could not be made: the line is
+ * present, and quiet, and says which.
  */
 function StatusLine({ line }: { line: CurrentStatusLine }) {
   return (
-    <div className={line.unsupported ? 'order-status-line order-status-line--muted' : 'order-status-line'}>
+    <div className={line.muted ? 'order-status-line order-status-line--muted' : 'order-status-line'}>
       <dt className="order-status-fact-label">{line.label}</dt>
       <dd className="order-status-line-value">
         {line.tone

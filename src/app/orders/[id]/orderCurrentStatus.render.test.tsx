@@ -32,11 +32,15 @@ import {
   CURRENT_STATUS_TITLE,
   DESIGN_DRAWINGS_NOTE,
   DESIGN_FILES_TITLE,
+  DESIGN_IMAGES_LOADING,
   DESIGN_IMAGES_NONE,
+  DESIGN_IMAGES_NO_SOURCE,
+  DESIGN_IMAGES_UNAVAILABLE,
   MANUFACTURING_TITLE,
   MANUFACTURING_UNTRACKED_NOTE,
   describeDesignFiles,
   describeManufacturingStatus,
+  type DesignImageSummary,
 } from '@/lib/orders/orderCurrentStatus'
 import { approvalStanding, type PersistedApprovalEvent } from '@/lib/orders/orderApprovals'
 import { describeProductionAlignment } from '@/lib/orders/productionAlignment'
@@ -60,14 +64,19 @@ const events = (rows: Partial<PersistedApprovalEvent>[] = []): PersistedApproval
 
 const design = (over: {
   rows?: Partial<PersistedApprovalEvent>[]
+  /** The picture read's state. Defaults to a finished, clean, empty read. */
+  images?: DesignImageSummary
   representative?: number
   customization?: number
   productCount?: number
 } = {}) => describeDesignFiles({
   approvals: approvalStanding({ events: events(over.rows ?? []), formatWhen: v => v }),
-  images: {
-    representative: over.representative ?? 0,
-    customization: over.customization ?? 0,
+  images: over.images ?? {
+    kind: 'ready',
+    counts: {
+      representative: over.representative ?? 0,
+      customization: over.customization ?? 0,
+    },
   },
   productCount: over.productCount ?? 0,
 })
@@ -176,10 +185,106 @@ describe('Design Files says what is on record and what is not', () => {
     assert.ok(body.includes(DESIGN_DRAWINGS_NOTE))
   })
 
-  test('the unsupported line is muted rather than hidden', () => {
+  test('the CAD line is muted rather than hidden', () => {
     const html = renderToStaticMarkup(<OrderDesignFilesCard view={design()} />)
     assert.match(html, /class="order-status-line order-status-line--muted"/)
     assert.ok(text(html).includes('CAD & drawings'))
+  })
+})
+
+describe('the rendered picture line never turns a non-answer into a zero', () => {
+  const rendered = (images: DesignImageSummary) =>
+    text(renderToStaticMarkup(<OrderDesignFilesCard view={design({ images })} />))
+
+  test('while the read is in flight it says Loading, NOT None recorded', () => {
+    const body = rendered({ kind: 'loading' })
+    assert.ok(body.includes(DESIGN_IMAGES_LOADING))
+    assert.equal(body.includes(DESIGN_IMAGES_NONE), false)
+  })
+
+  test('a finished, clean, empty read says None recorded', () => {
+    assert.ok(rendered({ kind: 'ready', counts: { representative: 0, customization: 0 } })
+      .includes(DESIGN_IMAGES_NONE))
+  })
+
+  test('stored rows render the count', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderDesignFilesCard view={design({ representative: 2, customization: 9, productCount: 2 })} />,
+    ))
+    assert.match(body, /11 files/)
+    assert.match(body, /2 representative · 9 customization · 2 product lines/)
+  })
+
+  test('an Order with no source PI says so', () => {
+    const body = rendered({ kind: 'no_source' })
+    assert.ok(body.includes(DESIGN_IMAGES_NO_SOURCE))
+    assert.equal(body.includes(DESIGN_IMAGES_NONE), false)
+  })
+
+  test('a failed or unreadable read says Unavailable', () => {
+    const body = rendered({ kind: 'unavailable' })
+    assert.ok(body.includes(DESIGN_IMAGES_UNAVAILABLE))
+    assert.equal(body.includes(DESIGN_IMAGES_NONE), false)
+  })
+
+  test('each non-answer is drawn muted, so it never reads as a status', () => {
+    for (const kind of ['loading', 'no_source', 'unavailable'] as const) {
+      const html = renderToStaticMarkup(<OrderDesignFilesCard view={design({ images: { kind } })} />)
+      const muted = (html.match(/order-status-line--muted/g) ?? []).length
+      assert.equal(muted, 2, `${kind}: the picture line and CAD, and nothing else`)
+    }
+  })
+})
+
+// ── The page's own read states ────────────────────────────────────────────────
+
+describe('the page moves the picture summary through named states, and clears everything between Orders', () => {
+  const loader = page.slice(page.indexOf('const loadPiHandoff'), page.indexOf('const reloadActivity'))
+
+  test('every PI load resets the WHOLE image state before it decides anything', () => {
+    const reset = loader.indexOf("setPiImages(noPiImages({ kind: 'loading' }))")
+    assert.ok(reset > 0, 'the load does not reset the image state')
+    assert.ok(reset < loader.indexOf('if (!submissionId)'),
+      'the reset must happen BEFORE the no-source branch, or a stale count survives it')
+    assert.ok(reset < loader.indexOf('await Promise.all'),
+      'and before the reads, so nothing from the last Order is on screen during them')
+  })
+
+  test('the reset is total — one helper returns all five fields, so none can be forgotten', () => {
+    const helper = page.slice(page.indexOf('function noPiImages'), page.indexOf('function noPiImages') + 420)
+    for (const field of ['representativeByRow', 'customizationByRow', 'unresolved', 'viewerItems', 'summary']) {
+      assert.ok(helper.includes(field), `noPiImages does not clear ${field}`)
+    }
+    assert.match(helper, /representativeByRow: new Map\(\)/)
+    assert.match(helper, /viewerItems: \[\]/)
+  })
+
+  test('BOTH early returns leave a named state and no counts from the last Order', () => {
+    // No source PI.
+    const noSource = loader.slice(loader.indexOf('if (!submissionId)'), loader.indexOf('await Promise.all'))
+    assert.match(noSource, /setPiImages\(noPiImages\(\{ kind: 'no_source' \}\)\)/)
+
+    // The submission row could not be read.
+    const unavailable = loader.slice(loader.indexOf('if (subRes.error || !row)'))
+    assert.match(unavailable.slice(0, 600), /setPiImages\(noPiImages\(\{ kind: 'unavailable' \}\)\)/)
+  })
+
+  test('a failed image read becomes `unavailable`, never a count of zero', () => {
+    assert.match(loader, /summary: imagesRes\.error\s*\?\s*\{ kind: 'unavailable' \}\s*:\s*\{ kind: 'ready', counts: countDesignImages\(images\) \}/)
+  })
+
+  test('`ready` is reached from ONE place, and that place has the rows in hand', () => {
+    assert.equal((page.match(/kind: 'ready'/g) ?? []).length, 1)
+    assert.equal((page.match(/countDesignImages\(/g) ?? []).length, 1)
+  })
+
+  test('the initial state is `loading` — the page has read nothing when it first draws', () => {
+    assert.match(page, /useState<PiImagesState>\(\(\) => noPiImages\(\{ kind: 'loading' \}\)\)/)
+  })
+
+  test('the card is fed the STATE, not a bare count', () => {
+    assert.match(page, /images: piImages\.summary/)
+    assert.equal(page.includes('piImages.counts'), false)
   })
 })
 

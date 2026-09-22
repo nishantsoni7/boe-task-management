@@ -129,7 +129,7 @@ import {
   countDesignImages,
   describeDesignFiles,
   describeManufacturingStatus,
-  type DesignImageCounts,
+  type DesignImageSummary,
 } from '@/lib/orders/orderCurrentStatus'
 import { advanceStanding } from '@/lib/orders/orderAdvance'
 import {
@@ -295,6 +295,47 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
   dispatched:         { label: 'Dispatched',          bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+}
+
+/**
+ * EVERYTHING THE PAGE HOLDS ABOUT THE APPROVED PI'S PICTURES.
+ *
+ * The four URL-bearing fields are what the product table and the image viewer
+ * draw. `summary` is what Current Status reports, and it is a STATE rather than
+ * a count: the read has not finished, the Order has no PI behind it, the read
+ * failed, or it succeeded and here is the number. See DesignImageSummary.
+ *
+ * `summary.counts` IS COUNTED FROM THE STORED ROWS, not from the maps beside
+ * it. Those hold the URLs that were actually signed, so a picture this reader's
+ * storage policy refused is missing from them — and a count that shrank because
+ * of who was looking would be a count of nothing.
+ */
+type PiImagesState = {
+  representativeByRow: ReadonlyMap<number, string>
+  customizationByRow: ReadonlyMap<number, readonly string[]>
+  unresolved: number
+  viewerItems: readonly PiViewerItem[]
+  summary: DesignImageSummary
+}
+
+/**
+ * NO PICTURES, IN A NAMED STATE — the whole of it, every field, every time.
+ *
+ * WHY A FACTORY AND NOT A SHARED CONSTANT: every path that abandons a PI load
+ * must clear the maps, the viewer items, the unresolved tally AND the summary
+ * together. Clearing four of the five is exactly the defect this replaces —
+ * an Order with no PI of its own showing the last Order's photographs — and a
+ * single call that returns all five makes a partial reset something you have to
+ * write out on purpose rather than something you can forget.
+ */
+function noPiImages(summary: DesignImageSummary): PiImagesState {
+  return {
+    representativeByRow: new Map(),
+    customizationByRow: new Map(),
+    unresolved: 0,
+    viewerItems: [],
+    summary,
+  }
 }
 
 /** The same five states as the health card reads them: ordinary running states
@@ -666,24 +707,8 @@ export default function OrderDetailPage() {
   // what it has always been. See src/lib/orders/orderPiHandoff.ts.
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
-  const [piImages,    setPiImages]    = useState<{
-    representativeByRow: ReadonlyMap<number, string>
-    customizationByRow: ReadonlyMap<number, readonly string[]>
-    unresolved: number
-    viewerItems: readonly PiViewerItem[]
-    /**
-     * HOW MANY PICTURES THE ORDER HOLDS, counted from the stored rows rather
-     * than from the maps above. Those hold the URLs that were actually signed,
-     * so a picture this reader's storage policy refused is missing from them —
-     * and a count that shrank because of who was looking would be a count of
-     * nothing. Current Status reports the record, not the reader's view of it.
-     */
-    counts: DesignImageCounts
-  }>({
-    representativeByRow: new Map(), customizationByRow: new Map(),
-    unresolved: 0, viewerItems: [],
-    counts: { representative: 0, customization: 0 },
-  })
+  // Lazily, so the two empty Maps are built once rather than on every render.
+  const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
   const [clientOpen,  setClientOpen]  = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const [wbBusy,      setWbBusy]      = useState(false)
@@ -777,12 +802,39 @@ export default function OrderDetailPage() {
    */
   const loadPiHandoff = async (order: Order) => {
     const submissionId = order.source_order_submission_id
+
+    // ── NOTHING FROM THE LAST ORDER SURVIVES THE FIRST LINE OF THIS ONE ──
+    //
+    // Every field at once, before any decision and before any read: the signed
+    // URLs, the viewer's items, the unresolved tally and the picture summary.
+    // The page is a client component and this function runs again on a
+    // navigation from one Order to another, so anything left standing here is
+    // one Order's photographs and counts displayed under another's number.
+    //
+    // `loading` IS THE HONEST STATE AT THIS POINT, and the reason the summary
+    // is a state and not a number. A count starting at zero would have the
+    // Design Files card say "None recorded" — a claim that somebody read the
+    // table and it was empty — during the round trip that is about to find out.
+    //
+    // UNCONDITIONAL, AND NOT "ONLY WHEN THE ORDER CHANGED". A reset that has to
+    // decide whether it is needed is a reset that can decide wrong, and the
+    // thing it would be deciding wrong about is whose photographs are on the
+    // screen. The price is paid on an in-place refresh of the SAME Order: the
+    // product pictures blank for the one round trip these reads take, then come
+    // back. A refresh the reader asked for, showing that it is re-reading, is
+    // worth more than a branch that can leave another Order's pictures up.
+    setPiImages(noPiImages({ kind: 'loading' }))
+
     if (!submissionId) {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
       setWbPath(null)
       setPiVersions([])
       setPiActivity([])
+      // No PI behind this Order, so there is nothing to count and nothing
+      // failed. The card says which, rather than reporting an empty read that
+      // never happened.
+      setPiImages(noPiImages({ kind: 'no_source' }))
       setHandoffReady(true)
       return
     }
@@ -884,6 +936,11 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'unavailable' })
       setPiProducts([])
       setWbPath(null)
+      // THE SAME ABSENCE THE HANDOFF REPORTS, said by the picture line too.
+      // The images may well have read cleanly, but without the submission row
+      // there are no product lines to hang them on — and a count printed
+      // beside an unavailable PI would be a number nobody can check.
+      setPiImages(noPiImages({ kind: 'unavailable' }))
       setHandoffReady(true)
       return
     }
@@ -905,7 +962,13 @@ export default function OrderDetailPage() {
       // The same helper both PI screens use, so a picture is labelled and
       // ordered identically wherever it is opened.
       viewerItems: buildImageViewerItems(products, urls),
-      counts: countDesignImages(images),
+      // A READ THAT ERRORED IS NOT AN ORDER WITH NO PICTURES. PostgREST
+      // answers a refused or failed select with an error and an empty `data`,
+      // so counting the rows without looking at `error` first would turn every
+      // such failure into a confident "None recorded".
+      summary: imagesRes.error
+        ? { kind: 'unavailable' }
+        : { kind: 'ready', counts: countDesignImages(images) },
     })
     setWbPath(orderPiWorkbookPath(row))
     setPiHandoff(buildOrderPiHandoff(row, {
@@ -1938,7 +2001,7 @@ export default function OrderDetailPage() {
    */
   const designFiles = describeDesignFiles({
     approvals: approvalView,
-    images: piImages.counts,
+    images: piImages.summary,
     productCount: piProducts.length,
   })
   const manufacturing = describeManufacturingStatus({

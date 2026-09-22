@@ -17,10 +17,16 @@
 //
 // IT INVENTS NO STATUS. Where this system records nothing — CAD and technical
 // drawings, a manufacturing stage, QC, packaging — the line says so in words
-// and carries `unsupported`, so the screen can mute it rather than dress an
+// and carries `muted`, so the screen can quieten it rather than dress an
 // absence up as a state. A combined "manufacturing progress" derived from a due
 // date, or from the Order merely existing, is the one thing this must never
 // produce: it would read as a fact and be a guess.
+//
+// AND IT NEVER TURNS A FAILURE INTO A ZERO. The picture line carries a read
+// STATE, not a number that starts at nought: `None recorded` is a claim that
+// somebody read the table and found nothing, and a read that has not finished,
+// an Order with no PI behind it, and a read that errored each say their own
+// thing instead. See DesignImageSummary.
 
 import {
   APPROVAL_STATUS_LABEL,
@@ -52,8 +58,17 @@ export type CurrentStatusLine = {
   value: string
   tone: CurrentStatusTone | null
   detail: string | null
-  /** True when this system holds no record of this at all. */
-  unsupported: boolean
+  /**
+   * TRUE WHEN THE LINE IS NOT A FACT ABOUT THIS ORDER.
+   *
+   * Three different things are muted and they have one thing in common: none of
+   * them is a state this Order is in. Nothing is recorded anywhere (CAD), or
+   * nothing could be read (Unavailable), or nothing has arrived yet (Loading).
+   * Each is shown rather than hidden — a reader who sees no line concludes
+   * nothing — and each is quieter than a real status, so it never competes with
+   * one.
+   */
+  muted: boolean
 }
 
 // ── Design files ──────────────────────────────────────────────────────────────
@@ -65,7 +80,29 @@ export const DESIGN_DRAWINGS_LABEL = 'CAD & drawings'
 
 export const DESIGN_PROOF_ON_FILE = 'Approval screenshot on file'
 export const DESIGN_NO_PROOF = 'No screenshot on file'
+
+/**
+ * THE FOUR THINGS THE PICTURE LINE MAY SAY, AND WHY THEY ARE FOUR.
+ *
+ * `None recorded` is a CLAIM ABOUT THE ORDER: somebody read the table and it
+ * held nothing. Three other situations produce no pictures and none of them
+ * supports that claim — the read has not finished, the Order never came from a
+ * PI, or the read failed. Collapsing them into one zero would tell a reader
+ * that an Order has no photographs on the strength of a query that errored, or
+ * of one that had not returned yet.
+ */
 export const DESIGN_IMAGES_NONE = 'None recorded'
+export const DESIGN_IMAGES_LOADING = 'Loading…'
+export const DESIGN_IMAGES_NO_SOURCE = 'No source PI'
+export const DESIGN_IMAGES_UNAVAILABLE = 'Unavailable'
+
+/** Said under `Unavailable`, so the absence reads as a failed read and not as
+ *  an empty Order. */
+export const DESIGN_IMAGES_UNAVAILABLE_NOTE =
+  'The approved PI could not be read, so its pictures cannot be counted.'
+/** Said under `No source PI`: this Order was entered directly. */
+export const DESIGN_IMAGES_NO_SOURCE_NOTE =
+  'This Order was not created from a PI, so it carries no product pictures.'
 
 /**
  * WHAT THIS BUILD DOES NOT HOLD, said plainly.
@@ -86,6 +123,22 @@ export type DesignImageCounts = {
   representative: number
   customization: number
 }
+
+/**
+ * WHERE THE PICTURE READ HAS GOT TO — the state the card draws from.
+ *
+ * `ready` IS THE ONLY STATE THAT CARRIES A NUMBER, and it is reached only after
+ * the images table has been read successfully for THIS Order. Every other state
+ * carries nothing at all, so there is no zero lying around for a stale or
+ * failed read to present as an answer. The page moves through them in one
+ * direction per load: `loading` at the top of every handoff, then exactly one
+ * of `no_source`, `unavailable` or `ready`.
+ */
+export type DesignImageSummary =
+  | { kind: 'loading' }
+  | { kind: 'no_source' }
+  | { kind: 'unavailable' }
+  | { kind: 'ready'; counts: DesignImageCounts }
 
 export type DesignFilesView = {
   lines: CurrentStatusLine[]
@@ -113,7 +166,7 @@ function fileCount(total: number): string {
  */
 export function describeDesignFiles(input: {
   approvals: ApprovalStanding
-  images: DesignImageCounts
+  images: DesignImageSummary
   /** How many product lines the approved PI carries, for the qualifier. */
   productCount: number
 }): DesignFilesView {
@@ -126,23 +179,11 @@ export function describeDesignFiles(input: {
       value: APPROVAL_STATUS_LABEL[kind.status],
       tone: APPROVAL_STATUS_TONE[kind.status],
       detail: kind.evidencePath ? DESIGN_PROOF_ON_FILE : DESIGN_NO_PROOF,
-      unsupported: false,
+      muted: false,
     })
   }
 
-  const total = input.images.representative + input.images.customization
-  const acrossProducts = `${input.productCount} product line${input.productCount === 1 ? '' : 's'}`
-  lines.push({
-    key: 'images',
-    label: DESIGN_IMAGES_LABEL,
-    value: total === 0 ? DESIGN_IMAGES_NONE : fileCount(total),
-    tone: null,
-    detail: total === 0
-      ? null
-      : `${input.images.representative} representative · ${input.images.customization} customization`
-        + (input.productCount > 0 ? ` · ${acrossProducts}` : ''),
-    unsupported: false,
-  })
+  lines.push({ key: 'images', ...designImagesLine(input.images, input.productCount) })
 
   lines.push({
     key: 'drawings',
@@ -150,10 +191,57 @@ export function describeDesignFiles(input: {
     value: DESIGN_DRAWINGS_UNSUPPORTED,
     tone: null,
     detail: DESIGN_DRAWINGS_NOTE,
-    unsupported: true,
+    muted: true,
   })
 
   return { lines, note: DESIGN_FILES_READ_ONLY_NOTE }
+}
+
+/**
+ * THE PICTURE LINE, one branch per state and no default that invents a count.
+ *
+ * The three non-`ready` branches are muted and carry NO number. Only a read
+ * that finished, against this Order, and came back without an error reaches the
+ * branch that may say `None recorded` — and it says it because the table held
+ * nothing, which is the one circumstance in which that sentence is true.
+ */
+function designImagesLine(
+  images: DesignImageSummary,
+  productCount: number,
+): Omit<CurrentStatusLine, 'key'> {
+  const label = DESIGN_IMAGES_LABEL
+
+  if (images.kind === 'loading') {
+    return { label, value: DESIGN_IMAGES_LOADING, tone: null, detail: null, muted: true }
+  }
+  if (images.kind === 'no_source') {
+    return {
+      label, value: DESIGN_IMAGES_NO_SOURCE, tone: null,
+      detail: DESIGN_IMAGES_NO_SOURCE_NOTE, muted: true,
+    }
+  }
+  if (images.kind === 'unavailable') {
+    return {
+      label, value: DESIGN_IMAGES_UNAVAILABLE, tone: null,
+      detail: DESIGN_IMAGES_UNAVAILABLE_NOTE, muted: true,
+    }
+  }
+
+  const { representative, customization } = images.counts
+  const total = representative + customization
+  if (total === 0) {
+    return { label, value: DESIGN_IMAGES_NONE, tone: null, detail: null, muted: false }
+  }
+
+  const acrossProducts = `${productCount} product line${productCount === 1 ? '' : 's'}`
+  return {
+    label,
+    value: fileCount(total),
+    tone: null,
+    detail: `${representative} representative · ${customization} customization`
+      + (productCount > 0 ? ` · ${acrossProducts}` : ''),
+    muted: false,
+  }
 }
 
 /**
@@ -231,7 +319,7 @@ export function describeManufacturingStatus(input: {
       // The line names who aligned it and when; before that there is only the
       // hint, which says what the Order is waiting for and on whom.
       detail: input.production.line ?? input.production.hint,
-      unsupported: false,
+      muted: false,
     })
   }
 
@@ -241,7 +329,7 @@ export function describeManufacturingStatus(input: {
     value: input.orderStatusLabel,
     tone: null,
     detail: null,
-    unsupported: false,
+    muted: false,
   })
 
   return { lines, note: MANUFACTURING_UNTRACKED_NOTE }
