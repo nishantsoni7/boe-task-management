@@ -1,7 +1,7 @@
 /**
- * The Confirmed Order rules: the six Order Summary facts, what needs
- * attention, which header action is primary, the activity window and the
- * relative day label.
+ * The Confirmed Order rules: the six fields the Order Summary panel states,
+ * what needs attention, which header action is primary, the activity window
+ * and the relative day label.
  *
  * Pure functions over state the page already holds. No database, no network.
  *
@@ -15,17 +15,18 @@ import {
   ACTIVITY_PREVIEW_COUNT,
   activityToggleLabel,
   activityWindow,
+  SUMMARY_NOT_AVAILABLE,
   SUMMARY_NOT_SET,
   SUMMARY_UNASSIGNED,
   arrangeOrderActions,
   attentionHeading,
   isOrderClosed,
   orderAttentionItems,
-  orderImportantDates,
-  orderSummaryFacts,
+  orderRecordFacts,
+  orderSummaryFields,
   relativeDayLabel,
   type OrderAttentionInput,
-  type OrderImportantDatesInput,
+  type OrderRecordFactsInput,
   type OrderSummaryInput,
 } from './orderWorkspace'
 
@@ -128,130 +129,172 @@ describe('the attention bar', () => {
 })
 
 const summary: OrderSummaryInput = {
-  status: 'running',
-  customerName: 'Acme Exports',
-  productionAligned: true,
-  productionLabel: 'Aligned',
-  productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
-  salespersonName: 'Nishant',
-  leadSource: 'Reference',
-  raisedByName: null,
-  sourceRequestNumber: null,
+  clientName: 'Acme Exports',
+  location: 'Jaipur',
+  confirmDate: '8 Sep 2026',
+  uploadDate: '2 Sep 2026, 11:04 am',
+  dueDate: '30 Oct 2026',
+  isOverdue: false,
+  totalProductValue: '₹12,53,000.00',
 }
 
-describe('the identity band', () => {
-  test('states who the Order is for and who is carrying it, in reading order', () => {
-    assert.deepEqual(orderSummaryFacts(summary).map(f => f.key),
-      ['customer', 'salesperson', 'lead_source', 'production'])
-    assert.deepEqual(orderSummaryFacts(summary).map(f => f.label),
-      ['Customer', 'Salesperson', 'Lead source', 'Production'])
+describe('the Order Summary panel', () => {
+  test('states exactly six fields, in reading order', () => {
+    assert.deepEqual(orderSummaryFields(summary).map(f => f.key), [
+      'client', 'location', 'confirm_date', 'upload_date', 'due_date', 'product_value',
+    ])
+    assert.deepEqual(orderSummaryFields(summary).map(f => f.label), [
+      'Client name', 'Location', 'Confirm date', 'Upload date', 'Due date', 'Total product value',
+    ])
+  })
+
+  test('every value is the one it was handed, verbatim', () => {
+    assert.deepEqual(orderSummaryFields(summary).map(f => f.value), [
+      'Acme Exports', 'Jaipur', '8 Sep 2026', '2 Sep 2026, 11:04 am', '30 Oct 2026', '₹12,53,000.00',
+    ])
+    assert.ok(orderSummaryFields(summary).every(f => !f.missing))
   })
 
   test('the status is NOT here — it belongs to the command header', () => {
-    const facts = orderSummaryFacts(summary)
-    assert.ok(!facts.some(f => (f.key as string) === 'status'))
-    assert.ok(!facts.some(f => /^status$/i.test(f.label)))
+    const fields = orderSummaryFields(summary)
+    assert.ok(!fields.some(f => (f.key as string) === 'status'))
+    assert.ok(!fields.some(f => /^status$/i.test(f.label)))
   })
 
-  test('neither date is here — both belong to Important Dates', () => {
-    const facts = orderSummaryFacts(summary)
-    for (const key of ['confirm_date', 'due_date']) {
-      assert.ok(!facts.some(f => (f.key as string) === key), key)
-    }
-    assert.ok(!/date/i.test(facts.map(f => f.label).join(' ')))
-  })
-
-  test('the two Record Information survivors appear only when the Order has them', () => {
-    assert.equal(orderSummaryFacts(summary).length, 4)
-    const full = orderSummaryFacts({
-      ...summary, raisedByName: 'Dhruv', sourceRequestNumber: 'BOE-R-0042',
-    })
-    assert.deepEqual(full.map(f => f.key),
-      ['customer', 'salesperson', 'lead_source', 'production', 'raised_by', 'source_request'])
-    assert.equal(full[4].value, 'Dhruv')
-    assert.equal(full[5].value, 'BOE-R-0042')
-    // Both are records, never gaps: nobody can act on a missing one.
-    assert.ok(full.slice(4).every(f => f.tone === 'neutral'))
+  test('RAISED BY IS NOT HERE — the one field this pass removed from the page', () => {
+    const fields = orderSummaryFields(summary)
+    assert.ok(!fields.some(f => (f.key as string) === 'raised_by'))
+    assert.ok(!/raised|requested by/i.test(fields.map(f => f.label).join(' ')))
   })
 
   test('carries NO payment figure — payment has its own section', () => {
-    const facts = orderSummaryFacts(summary)
-    for (const fact of facts) {
-      assert.ok(!/verified|₹|%|balance|awaiting/i.test(fact.value), fact.key)
-      assert.ok(!/verified|₹|balance|awaiting/i.test(fact.detail ?? ''), fact.key)
+    for (const f of orderSummaryFields(summary)) {
+      assert.ok(!/verified|balance|awaiting|received/i.test(f.value), f.key)
+      assert.ok(!/verified|balance|awaiting|received/i.test(f.label), f.key)
     }
-    assert.ok(!facts.some(f => (f.key as string) === 'payment'))
   })
 
-  test('never says Owner or Assignee — the Order flow has one word', () => {
-    const said = orderSummaryFacts(summary).map(f => f.label).join(' ')
-    assert.ok(!/owner|assignee/i.test(said))
-    assert.ok(said.includes('Salesperson'))
+  test('the ONE amount is the product value, never the order value', () => {
+    const money = orderSummaryFields(summary).filter(f => f.value.includes('₹'))
+    assert.equal(money.length, 1)
+    assert.equal(money[0].key, 'product_value')
   })
 
-  test('a gap on an OPEN Order is amber and names itself', () => {
-    const gaps = orderSummaryFacts({
-      ...summary, customerName: '', productionAligned: false, productionLabel: 'Not Aligned',
-      productionLine: null, salespersonName: null, leadSource: null,
+  test('a missing value says so and is drawn quietly — never a substitute', () => {
+    const blank = orderSummaryFields({
+      clientName: null, location: null, confirmDate: null, uploadDate: null,
+      dueDate: null, isOverdue: false, totalProductValue: null,
     })
-    assert.equal(gaps[0].value, SUMMARY_NOT_SET)
-    assert.equal(gaps[1].value, SUMMARY_UNASSIGNED)
-    assert.equal(gaps[2].value, SUMMARY_NOT_SET)
+    assert.equal(blank.length, 6, 'a missing field is still drawn')
+    assert.ok(blank.every(f => f.value === SUMMARY_NOT_AVAILABLE), 'and says what it is')
+    assert.ok(blank.every(f => f.missing))
+    // Restrained, not alarming: nothing here turns amber or red for an absence.
+    assert.ok(blank.every(f => f.tone === 'neutral'))
+    assert.ok(blank.every(f => f.detail === null))
+  })
+
+  test('whitespace is not a value', () => {
+    const blank = orderSummaryFields({ ...summary, clientName: '   ', location: '' })
+    assert.equal(blank[0].value, SUMMARY_NOT_AVAILABLE)
+    assert.equal(blank[1].value, SUMMARY_NOT_AVAILABLE)
+    assert.ok(blank[0].missing && blank[1].missing)
+  })
+
+  test('an upload date is never filled in from another date', () => {
+    // The page hands null when there is no approved PI version to read one
+    // from. Nothing here reaches for the confirm date to cover the gap.
+    const noPi = orderSummaryFields({ ...summary, uploadDate: null })
+    assert.equal(noPi[3].value, SUMMARY_NOT_AVAILABLE)
+    assert.notEqual(noPi[3].value, noPi[2].value)
+  })
+
+  test('an overdue due date is the one field that raises its voice', () => {
+    const late = orderSummaryFields({ ...summary, isOverdue: true })
+    assert.equal(late[4].tone, 'red')
+    assert.equal(late[4].detail, 'Overdue')
+    assert.equal(late.filter(f => f.tone !== 'neutral').length, 1)
+  })
+
+  test('an absent due date takes no overdue wording, whatever the flag says', () => {
+    const none = orderSummaryFields({ ...summary, dueDate: null, isOverdue: true })
+    assert.equal(none[4].value, SUMMARY_NOT_AVAILABLE)
+    assert.equal(none[4].detail, null)
+    assert.equal(none[4].tone, 'neutral')
+  })
+
+  test('the name and the place get the width; the dates and the amount do not', () => {
+    const fields = orderSummaryFields(summary)
+    assert.deepEqual(fields.filter(f => f.wide).map(f => f.key), ['client', 'location'])
+  })
+})
+
+
+const record: OrderRecordFactsInput = {
+  status: 'running',
+  salespersonName: 'Nishant',
+  leadSource: 'Reference',
+  productionAligned: true,
+  productionLabel: 'Aligned',
+  productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
+}
+
+describe('Record information', () => {
+  test('states the three facts that are not the headline, in reading order', () => {
+    assert.deepEqual(orderRecordFacts(record).map(f => f.key),
+      ['salesperson', 'lead_source', 'production'])
+    assert.deepEqual(orderRecordFacts(record).map(f => f.label),
+      ['Salesperson', 'Lead source', 'Production'])
+  })
+
+  test('NONE of the six summary facts is restated here', () => {
+    const said = orderRecordFacts(record).map(f => f.label + ' ' + f.value).join(' ')
+    for (const forbidden of [/client/i, /location/i, /date/i, /₹/]) {
+      assert.equal(forbidden.test(said), false, String(forbidden))
+    }
+  })
+
+  test('and neither is the status, nor who raised it', () => {
+    const facts = orderRecordFacts(record)
+    assert.ok(!facts.some(f => (f.key as string) === 'status'))
+    assert.ok(!facts.some(f => (f.key as string) === 'raised_by'))
+    assert.ok(!/raised|requested by/i.test(facts.map(f => f.label).join(' ')))
+  })
+
+  test('the values are the ones handed in, verbatim', () => {
+    assert.deepEqual(orderRecordFacts(record).map(f => f.value),
+      ['Nishant', 'Reference', 'Aligned'])
+    assert.equal(orderRecordFacts(record)[2].detail, record.productionLine)
+  })
+
+  test('a gap on an OPEN Order is amber and names itself — the band’s own rule', () => {
+    const gaps = orderRecordFacts({
+      ...record, salespersonName: null, leadSource: null,
+      productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
+    })
+    assert.equal(gaps[0].value, SUMMARY_UNASSIGNED)
+    assert.equal(gaps[1].value, SUMMARY_NOT_SET)
+    assert.equal(gaps[2].value, 'Not Aligned')
     assert.ok(gaps.every(f => f.tone === 'amber'))
   })
 
   test('the same gaps on a closed Order are neutral, not warnings', () => {
-    const facts = orderSummaryFacts({
-      ...summary, status: 'dispatched', customerName: '', productionAligned: false,
-      productionLabel: 'Not Aligned', productionLine: null, salespersonName: null, leadSource: null,
+    const facts = orderRecordFacts({
+      ...record, status: 'dispatched', salespersonName: null, leadSource: null,
+      productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
     })
     assert.ok(facts.every(f => f.tone === 'neutral'))
   })
 
-  test('a settled Order is quiet: production green, everything else neutral', () => {
-    const facts = orderSummaryFacts(summary)
-    assert.equal(facts[3].tone, 'green')
-    assert.ok(facts.slice(0, 3).every(f => f.tone === 'neutral'))
-  })
-})
-
-const dates: OrderImportantDatesInput = {
-  status: 'running',
-  confirmDate: '8 Sep 2026',
-  dueDate: '30 Oct 2026',
-  isOverdue: false,
-  createdAt: '8 Sep 2026',
-  updatedAt: '9 Sep 2026',
-}
-
-describe('Important Dates', () => {
-  test('the planning pair leads and the audit pair follows', () => {
-    const d = orderImportantDates(dates)
-    assert.deepEqual(d.primary.map(x => x.key), ['confirm_date', 'due_date'])
-    assert.deepEqual(d.secondary.map(x => x.key), ['created_at', 'updated_at'])
-    assert.deepEqual(d.primary.map(x => x.label), ['Confirm date', 'Due date'])
-    assert.deepEqual(d.secondary.map(x => x.label), ['Created', 'Last updated'])
+  test('a settled Order is quiet: production green, the other two neutral', () => {
+    const facts = orderRecordFacts(record)
+    assert.equal(facts[2].tone, 'green')
+    assert.ok(facts.slice(0, 2).every(f => f.tone === 'neutral'))
   })
 
-  test('overdue is the only red, and it names itself', () => {
-    const d = orderImportantDates({ ...dates, isOverdue: true })
-    assert.equal(d.primary[1].tone, 'red')
-    assert.equal(d.primary[1].detail, 'Overdue')
-    assert.equal([...d.primary, ...d.secondary].filter(x => x.tone === 'red').length, 1)
-  })
-
-  test('a missing planning date on an OPEN Order is amber; on a closed one it is not', () => {
-    const open = orderImportantDates({ ...dates, confirmDate: null, dueDate: null })
-    assert.ok(open.primary.every(x => x.value === SUMMARY_NOT_SET && x.tone === 'amber'))
-    const closed = orderImportantDates({ ...dates, status: 'cancelled', confirmDate: null, dueDate: null })
-    assert.ok(closed.primary.every(x => x.tone === 'neutral'))
-  })
-
-  test('the audit pair is never a warning — nothing is waiting on a timestamp', () => {
-    const d = orderImportantDates({ ...dates, confirmDate: null, dueDate: null })
-    assert.ok(d.secondary.every(x => x.tone === 'neutral'))
-    assert.equal(d.secondary[0].value, '8 Sep 2026')
-    assert.equal(d.secondary[1].value, '9 Sep 2026')
+  test('never says Owner or Assignee — the Order flow has one word', () => {
+    const said = orderRecordFacts(record).map(f => f.label).join(' ')
+    assert.ok(!/owner|assignee/i.test(said))
+    assert.ok(said.includes('Salesperson'))
   })
 })
 

@@ -25,8 +25,8 @@ import {
   activityWindow,
   attentionHeading,
   type OrderAttentionItem,
-  type OrderImportantDates,
-  type OrderSummaryFact,
+  type OrderRecordFact,
+  type OrderSummaryField,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
 
@@ -71,36 +71,87 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
   )
 }
 
-// ── The Order Summary ─────────────────────────────────────────────────────────
-
-export const ORDER_SUMMARY_COMMERCIAL_TITLE = 'Commercial'
+// ── The Order Summary panel ───────────────────────────────────────────────────
 
 /**
- * WHO THIS ORDER IS FOR, AND WHO IS CARRYING IT.
+ * SIX FACTS, ONE PANEL, READ IN UNDER A SECOND.
  *
- * The customer, the salesperson, the lead source and the production state —
- * the identity a reader needs the moment they know WHICH Order they are on.
+ * Who the Order is for, where it goes, when it was confirmed, when its PI was
+ * uploaded, when it is due, and what the products come to. This replaces the
+ * identity band and the separate Important Dates band, which between them
+ * spread these six across two surfaces and mixed them with facts a reader was
+ * not asking for at that moment.
  *
- * NEITHER THE STATUS NOR THE DATES ARE HERE. The status is in the command
- * header, beside the Order number, because it is the second thing anybody
- * looks for and it was previously three lines below the fold of the eye. The
- * dates are in Important Dates, which states every one of them, once.
+ * THE NAME AND THE PLACE GET THE ROOM. Both hold prose of unpredictable length
+ * and both are what a reader looks at first; the three dates and the amount are
+ * fixed-width and do not need it. On a narrow screen the panel is two columns
+ * and the wide pair take a full row each, so a long client name wraps instead
+ * of squeezing a date into two characters.
  *
- * NO MONEY HERE. The commercial figures live in their own column on the right
- * of the lower workspace, BELOW the product list they describe, which is where
- * a reader looks once they know what the Order is. Payment has its own section
- * for the same reason. `commercial` remains as an optional slot so a caller
- * that genuinely wants the two side by side can still do it, but the Order
- * screen deliberately passes nothing.
+ * A MISSING VALUE IS DRAWN QUIETLY AND NEVER SUBSTITUTED. orderSummaryFields
+ * has already turned a null into `Not available`; this only mutes it. The one
+ * field that raises its voice is a due date that has passed, which is the
+ * page's existing overdue rule and not a new one.
  */
-export function OrderSummary({ facts, commercial }: {
-  facts: readonly OrderSummaryFact[]
-  /** Optional, and unused by /orders/[id]: the money is its own column. */
-  commercial?: React.ReactNode
-}) {
+export const ORDER_SUMMARY_TITLE = 'Order summary'
+
+export function OrderSummaryPanel({ fields }: { fields: readonly OrderSummaryField[] }) {
   return (
-    <section className="order-summary" aria-label="Order summary">
-      <dl className="order-summary-facts">
+    <section className="order-facts" aria-label={ORDER_SUMMARY_TITLE}>
+      <dl className="order-facts-grid">
+        {fields.map(f => {
+          const tone = TONE[f.tone]
+          const warning = f.tone === 'amber' || f.tone === 'red'
+          const className = [
+            'order-fact',
+            f.wide ? 'order-fact--wide' : '',
+            f.missing ? 'order-fact--missing' : '',
+            warning ? `order-fact--${f.tone}` : '',
+          ].filter(Boolean).join(' ')
+          return (
+            <div key={f.key} className={className}>
+              <dt className="order-fact-label">{f.label}</dt>
+              <dd className="order-fact-value">
+                <span style={{
+                  color: f.missing ? colors.muted : tone.text,
+                  fontWeight: warning ? 700 : 600,
+                }}>
+                  {f.value}
+                </span>
+                {f.detail && (
+                  <span className="order-fact-detail" style={{ color: tone.text }}>{f.detail}</span>
+                )}
+              </dd>
+            </div>
+          )
+        })}
+      </dl>
+    </section>
+  )
+}
+
+// ── Record information ──────────────────────────────────────────────
+
+/**
+ * THE THREE FACTS THAT ARE NOT THE HEADLINE.
+ *
+ * The salesperson, the lead source and the production state. Each is real
+ * and each is something the attention strip can raise a gap in, so none of
+ * them may be invisible — a reader told "Production not aligned" has to be
+ * able to find the field that says so. None of them is one of the six a
+ * reader opens this page asking, so none of them is in the summary panel.
+ *
+ * THE SAME TREATMENT THE PANEL USES, one step quieter: the same fact cells,
+ * the same amber rule on a gap, in a block that does not compete with the
+ * six above it.
+ */
+export const RECORD_INFORMATION_TITLE = 'Record information'
+
+export function OrderRecordInformation({ facts }: { facts: readonly OrderRecordFact[] }) {
+  return (
+    <section className="order-record-info" aria-label={RECORD_INFORMATION_TITLE}>
+      <div className="order-record-info-head">{RECORD_INFORMATION_TITLE}</div>
+      <dl className="order-record-facts">
         {facts.map(fact => {
           const tone = TONE[fact.tone]
           const warning = fact.tone === 'amber' || fact.tone === 'red'
@@ -111,7 +162,6 @@ export function OrderSummary({ facts, commercial }: {
             >
               <dt className="order-fact-label">{fact.label}</dt>
               <dd className="order-fact-value">
-                <span className="order-fact-dot" style={{ background: tone.dot }} aria-hidden="true" />
                 <span style={{ color: tone.text, fontWeight: warning ? 700 : 600 }}>{fact.value}</span>
                 {fact.detail && <span className="order-fact-detail">{fact.detail}</span>}
               </dd>
@@ -119,11 +169,9 @@ export function OrderSummary({ facts, commercial }: {
           )
         })}
       </dl>
-      {commercial && <div className="order-summary-commercial">{commercial}</div>}
     </section>
   )
 }
-
 // ── The status pill ───────────────────────────────────────────────────────────
 
 /**
@@ -154,71 +202,6 @@ export function OrderStatusPill({ label, tone }: { label: string; tone: Workspac
     >
       {label}
     </span>
-  )
-}
-
-// ── Important dates ───────────────────────────────────────────────────────────
-
-export const IMPORTANT_DATES_TITLE = 'Important Dates'
-
-/**
- * FAST SCANNING, IN ONE BAND.
- *
- * The two dates operations plans against sit large and first; the two audit
- * timestamps follow, muted, on the same row. Both pairs come from
- * orderImportantDates, which is the only thing that decides which is which —
- * this draws the answer and computes no date of its own.
- */
-export function OrderImportantDatesSection({ dates }: { dates: OrderImportantDates }) {
-  return (
-    <section className="order-dates" aria-label={IMPORTANT_DATES_TITLE}>
-      <div className="order-dates-head">{IMPORTANT_DATES_TITLE}</div>
-      <div className="order-dates-body">
-        <dl className="order-dates-primary">
-          {dates.primary.map(d => {
-            const tone = TONE[d.tone]
-            const warning = d.tone === 'amber' || d.tone === 'red'
-            return (
-              <div key={d.key} className="order-date order-date--primary">
-                <dt className="order-date-label">{d.label}</dt>
-                <dd className="order-date-value" style={{ color: tone.text, fontWeight: warning ? 700 : 700 }}>
-                  {d.value}
-                  {d.detail && <span className="order-date-detail" style={{ color: tone.text }}>{d.detail}</span>}
-                </dd>
-              </div>
-            )
-          })}
-        </dl>
-        <dl className="order-dates-secondary">
-          {dates.secondary.map(d => (
-            <div key={d.key} className="order-date order-date--secondary">
-              <dt className="order-date-label">{d.label}</dt>
-              <dd className="order-date-value">{d.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </section>
-  )
-}
-
-/** The two stored totals, above the breakdown. Both are the Order's own
- *  columns, formatted by the shared money helper and computed nowhere. */
-export function OrderCommercialTotals({ productValue, orderValue }: {
-  productValue: string
-  orderValue: string
-}) {
-  return (
-    <div className="order-commercial-totals">
-      <div className="order-commercial-total">
-        <dt>Product value</dt>
-        <dd>{productValue}</dd>
-      </div>
-      <div className="order-commercial-total order-commercial-total--lead">
-        <dt>Order value</dt>
-        <dd>{orderValue}</dd>
-      </div>
-    </div>
   )
 }
 

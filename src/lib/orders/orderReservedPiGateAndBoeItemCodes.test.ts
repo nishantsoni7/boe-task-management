@@ -402,6 +402,12 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // and drops nothing, so the reserved-number and BOE-item-code rules this
       // file asserts are untouched.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // The Confirmed Order's fabric and finish approvals: an append-only event
+      // log, its write RPC and a private evidence bucket. One new table and one
+      // new bucket; it re-emits nothing, adds no column to any existing table,
+      // and reaches neither approve_order_submission nor the BOE item codes
+      // this file asserts.
+      '20261227000000_order_fabric_finish_approvals.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

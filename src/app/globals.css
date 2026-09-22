@@ -2227,32 +2227,38 @@ body {
 .order-back:hover { color: #111318; background: rgba(0,0,0,0.04); }
 .order-back:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
 
-/* ── The Order Summary ──
-   Operational facts on the left, the money on the extreme right. One surface,
-   split by a hairline rather than by two cards. */
-/* OPERATIONAL FACTS ONLY, and compact because of it: six across at desktop,
-   one band rather than a two-column card. The money moved to its own column
-   below the products it describes. */
-.order-summary {
+/* ── The Order Summary panel ──
+   SIX FACTS, ONE SURFACE. Who the Order is for, where it goes, its three dates
+   and what the products come to. One band rather than the identity band plus a
+   separate Important Dates band, which between them spread these across two
+   surfaces and mixed them with facts nobody was asking for at that moment. */
+.order-facts {
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
   overflow: hidden;
 }
 
-.order-summary-facts {
+/* EIGHT TRACKS, NOT SIX COLUMNS. The client name and the location take two
+   each and the four fixed-width fields take one, so a name has room to be read
+   without a date being squeezed to two characters — and without six equal
+   boxes that read as six separate cards. */
+.order-facts-grid {
   margin: 0;
-  padding: 4px 0;
+  padding: 2px 0;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
 .order-fact {
-  padding: 10px 16px;
+  padding: 9px 16px;
   border-left: 3px solid transparent;
   min-width: 0;
 }
-/* A gap on an open Order is marked by its rule as well as by its words. */
+.order-fact--wide { grid-column: span 2; }
+/* A gap on an open Order is marked by its rule as well as by its words. Only
+   an overdue due date reaches this: a value the record simply has not got is
+   drawn quietly, because there is nothing alarming about it. */
 .order-fact--amber { border-left-color: #E8A030; background: rgba(232,160,48,0.05); }
 .order-fact--red   { border-left-color: #D94F4F; background: rgba(217,79,79,0.05); }
 
@@ -2272,22 +2278,531 @@ body {
   gap: 7px;
   flex-wrap: wrap;
   font-size: 13.5px;
-  line-height: 1.3;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+/* A FLEX ITEM WILL NOT SHRINK BELOW ITS CONTENT unless it is told it may, so a
+   long client name or a timestamp in a narrow cell overflowed the panel rather
+   than wrapping inside it. Both rules are needed: the first allows the shrink,
+   the second decides where the break goes. */
+.order-fact-value > span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
-.order-fact-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  position: relative;
-  top: -1px;
-}
+/* `Not available` is a statement, not a warning: one weight down and muted, so
+   it never competes with the five fields that do have an answer. */
+.order-fact--missing .order-fact-value { font-size: 12.5px; font-style: italic; }
 .order-fact-detail {
   flex-basis: 100%;
-  padding-left: 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* ── Record information ──
+   The three operational facts that are not among the six above: the
+   salesperson, the lead source and where the Order stands in production.
+   Same fact cells as the summary panel, one step quieter, in a block that
+   does not compete with it. */
+.order-record-info {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.order-record-info-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  padding: 10px 16px 0;
+}
+.order-record-facts {
+  margin: 0;
+  padding: 2px 0 4px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ── The three-column status workspace ──
+   Main PI, Advance Received, Fabric & Finish. One row where the width
+   allows; the SAME ORDER stacked where it does not, so a person describing
+   the screen over the phone describes the same thing either way.
+
+   EQUAL TRACKS, NOT auto: three cards whose widths depend on how much text
+   each happens to hold read as three different kinds of thing. */
+.order-status-workspace {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.order-status-card {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.order-status-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #F0F2F5;
+  min-height: 38px;
+}
+.order-status-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+}
+.order-status-card-body {
+  padding: 11px 14px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+/* THE ONE THING THE CARD EXISTS TO SAY, and a pill beside it. */
+.order-status-lead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.order-status-lead-value {
+  font-size: 19px;
+  font-weight: 700;
+  color: #111318;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.order-status-lead-value--numeric { font-variant-numeric: tabular-nums; }
+
+/* WORDS FIRST. Every chip carries its status as text; the tint only agrees. */
+.order-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.order-status-chip--strong { font-size: 11.5px; padding: 3px 10px; }
+
+.order-status-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.order-status-fact { min-width: 0; }
+.order-status-fact-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 2px;
+}
+.order-status-fact-value {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111318;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-status-approvals {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.order-status-approval { min-width: 0; }
+.order-status-approval-value {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.order-status-approval-at {
   font-size: 11.5px;
   color: #6B7384;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-status-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: #6B7384;
+  line-height: 1.5;
+}
+.order-status-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: #6B7384;
+  line-height: 1.55;
+}
+
+.order-status-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 2px;
+}
+/* The card actions are SECONDARY: the status is the message, and a row of
+   filled buttons would out-shout it. */
+.order-status-action {
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  /* TWO PLUS ONE. Main PI and Advance share the row; Fabric & Finish takes
+     the full width under them, which is the one of the three that holds two
+     statuses and a date each and benefits most from the room. */
+  .order-status-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-status-workspace > .order-status-card:nth-child(3) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 820px) {
+  /* STACKED, IN THE SAME ORDER. No horizontal scrolling at any width. */
+  .order-status-workspace { grid-template-columns: minmax(0, 1fr); }
+  .order-status-workspace > .order-status-card:nth-child(3) { grid-column: auto; }
+}
+
+/* Who recorded the current status. Quieter than the date beside it: the
+   status is the message, the moment qualifies it, and the name qualifies
+   the moment. */
+.order-status-approval-by {
+  font-size: 11.5px;
+  color: #8C94A6;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* ── The permanent trail, compact ──
+   A native <details>, so it opens with a keyboard and is announced without
+   a line of script. Closed by default: where the two approvals stand NOW is
+   the question, and superseded states are the answer to a different one. */
+.order-approval-history { margin-top: 6px; }
+.order-approval-history-summary {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7384;
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+.order-approval-history-summary::-webkit-details-marker { display: none; }
+.order-approval-history-summary::before {
+  content: "\25B8";
+  font-size: 9px;
+  transition: transform 0.12s ease;
+}
+.order-approval-history[open] > .order-approval-history-summary::before {
+  transform: rotate(90deg);
+}
+.order-approval-history-summary:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.order-approval-history-list {
+  list-style: none;
+  margin: 5px 0 0;
+  padding: 0 0 0 11px;
+  border-left: 2px solid #F0F2F5;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.order-approval-history-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  min-width: 0;
+}
+.order-approval-history-status {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #4A5160;
+}
+.order-approval-history-meta {
+  font-size: 11px;
+  color: #8C94A6;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* The sentence under a file input that says what the system does NOT do. */
+.order-approval-hint {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #6B7384;
+  line-height: 1.5;
+}
+
+/* A proof, opened on the press. Quiet: it sits beside a status, not above
+   it, and a card full of buttons would bury the statuses they belong to. */
+.order-status-proof {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #3A7ABE;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.order-status-proof:disabled { color: #8C94A6; cursor: default; text-decoration: none; }
+.order-status-proof:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+
+/* ── The Fabric & Finish update dialog ── */
+.order-approval-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.order-approval-field {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 9px;
+  padding: 10px 12px 12px;
+  margin: 0;
+  min-width: 0;
+}
+.order-approval-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111318;
+}
+/* WHICH FIELD CHANGED, in a word rather than only a colour. */
+.order-approval-changed {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9A6A12;
+  background: rgba(190,140,40,0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.order-approval-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 4px;
+}
+.order-approval-select {
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: #111318;
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 7px;
+}
+.order-approval-select:focus-visible,
+.order-approval-file:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
+.order-approval-evidence { margin-top: 10px; }
+.order-approval-file { width: 100%; font-size: 12px; color: #4A5160; }
+.order-approval-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #B42318;
+  line-height: 1.5;
+}
+.order-approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+@media (max-width: 560px) {
+  .order-approval-actions { flex-direction: column-reverse; }
+  .order-approval-actions .order-status-action { width: 100%; justify-content: center; min-height: 42px; }
+}
+
+/* ── The modal shell ──
+   One dialog treatment for PI history and the Fabric & Finish update. It is
+   a real dialog: labelled, modal to assistive technology, focus moved in on
+   open and given back on close, Escape and the backdrop both close it. */
+.order-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(17,19,24,0.42);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+}
+.order-modal {
+  background: #FFFFFF;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 12px 32px rgba(17,19,24,0.16);
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.order-modal--wide { max-width: 720px; }
+.order-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #F0F2F5;
+  flex-shrink: 0;
+}
+.order-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111318;
+}
+.order-modal-close {
+  border: 0;
+  background: transparent;
+  color: #6B7384;
+  cursor: pointer;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.order-modal-close:hover { background: #F0F2F5; color: #111318; }
+.order-modal-close:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+.order-modal-body {
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── PI history ── */
+.order-history-toolbar { display: flex; justify-content: flex-end; }
+.order-history-error {
+  margin: 0;
+  font-size: 12px;
+  color: #B42318;
+  line-height: 1.5;
+}
+.order-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.order-history-row {
+  border: 1px solid rgba(0,0,0,0.08);
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+/* MARKED, NOT SHOUTED: one rule and one small badge. */
+.order-history-row--current {
+  border-left-color: #45A870;
+  background: rgba(69,168,112,0.04);
+}
+.order-history-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.order-history-version { font-size: 13px; font-weight: 700; color: #111318; }
+.order-history-current {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2F7A52;
+}
+.order-history-meta {
+  font-size: 11.5px;
+  color: #8C94A6;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.order-history-remark, .order-history-refused {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.order-history-remark-label { color: #8C94A6; }
+.order-history-remark-text { color: #4A5160; }
+/* `Not recorded` is the absence of a remark, not a remark. */
+.order-history-remark-missing { color: #8C94A6; font-style: italic; }
+.order-history-refused { color: #B42318; }
+.order-history-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 3px;
+}
+
+@media (max-width: 560px) {
+  .order-modal-backdrop { padding: 12px 10px 24px; align-items: flex-start; }
+  .order-modal { max-height: none; }
+  .order-status-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* A tap target on a phone is 44px, and these are the actions people press
+     from the shop floor. */
+  .order-status-action { min-height: 38px; }
+  .order-history-actions .order-status-action { flex: 1 1 auto; justify-content: center; }
 }
 
 /* ── The lower workspace ──
@@ -2323,67 +2838,139 @@ body {
   padding: 11px 16px 13px;
   min-width: 0;
 }
-.order-summary-commercial-head {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8C94A6;
-  margin-bottom: 8px;
-}
-.order-commercial-totals {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(0,0,0,0.07);
-}
-.order-commercial-total {
-  display: flex;
-  justify-content: space-between;
+/* ── The commercial breakdown ──
+   A CALCULATION, NOT A LIST OF FIGURES. Two money columns: every factor sits
+   inset in the first, every running total and the final value sit in the
+   second, so the right-hand edge can be scanned for totals alone. */
+.order-breakdown { margin-top: 0; }
+.order-breakdown .order-record-title { margin-bottom: 6px; }
+.order-breakdown-lines { display: flex; flex-direction: column; }
+
+.order-breakdown-line {
+  display: grid;
+  /* THE TWO MONEY COLUMNS ARE FIXED, and each is sized for the widest figure
+     this screen can print — a crore with paise, measured rather than guessed.
+     Each line is its own grid, so `auto` tracks would size per row and the
+     right-hand edge would stop being a straight line to scan down. */
+  grid-template-columns: minmax(0, 1fr) 84px 90px;
+  column-gap: 6px;
   align-items: baseline;
-  gap: 12px;
+  padding: 3px 0;
 }
-.order-commercial-total dt {
+.order-breakdown-label {
+  min-width: 0;
   font-size: 12px;
   color: #6B7384;
+  overflow-wrap: anywhere;
 }
-.order-commercial-total dd {
-  margin: 0;
-  font-size: 13.5px;
+.order-breakdown-note {
+  display: block;
+  font-size: 11px;
+  color: #8C94A6;
+  margin-top: 1px;
+}
+.order-breakdown-adjust,
+.order-breakdown-total {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+/* A factor: the middle column, quieter, so it cannot be mistaken for a total. */
+.order-breakdown-adjust {
+  grid-column: 2;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6B7384;
+}
+/* A running total, the opening product value and the final order value: the
+   outer column, where the eye already is. */
+.order-breakdown-total {
+  grid-column: 3;
+  font-size: 12.5px;
   font-weight: 600;
   color: #111318;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }
-.order-commercial-total--lead dd {
-  font-size: 17px;
+.order-breakdown-sign { margin-right: 3px; }
+
+/* The opening figure and the two running totals carry a hairline, so the three
+   groups — what the products came to, what the terms did, what tax did — read
+   as three steps rather than nine equal lines. */
+.order-breakdown-line--base {
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+  margin-bottom: 3px;
+}
+.order-breakdown-line--running {
+  border-top: 1px solid rgba(0,0,0,0.06);
+  margin-top: 3px;
+  padding-top: 6px;
+}
+.order-breakdown-line--running .order-breakdown-label { color: #4A5160; font-weight: 600; }
+.order-breakdown-line--group { margin-top: 2px; }
+
+/* THE STRONGEST ROW ON THE PAGE. It is the answer the whole section works
+   towards, and nothing else in the column competes with it. */
+.order-breakdown-line--final {
+  margin-top: 8px;
+  padding: 8px 8px;
+  border-radius: 6px;
+  background: rgba(58,122,190,0.07);
+}
+.order-breakdown-line--final .order-breakdown-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111318;
+}
+/* THE FINAL ROW SETS ITS OWN WIDTH. It is a size up from every figure above
+   it and is already separated by its own ground, so holding it to the column
+   the small figures share would only clip it. */
+.order-breakdown-line--final { grid-template-columns: minmax(0, 1fr) auto; }
+.order-breakdown-line--final .order-breakdown-total {
+  grid-column: 2;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-/* The breakdown, inside the summary rather than in a card of its own. */
-.order-breakdown { margin-top: 10px; }
-.order-breakdown .order-record-title { margin-bottom: 5px; }
-.order-commercial-row {
+/* WHAT THE TERMS DID, in one quiet line under the answer. */
+.order-breakdown-net {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 14px;
-  padding: 3px 0;
-}
-.order-commercial-row.pi-commercial-grand-total {
-  padding: 7px 8px;
+  gap: 10px;
   margin-top: 5px;
-  border-radius: 5px;
+  padding: 0 8px;
+}
+.order-breakdown-net-label { font-size: 11px; color: #8C94A6; }
+.order-breakdown-net-value {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.order-breakdown-net-percent { margin-left: 6px; font-weight: 500; opacity: 0.8; }
+
+/* Available to screen readers, invisible on screen. Scoped rather than added
+   as a global utility, for the reason .payroll-guide-sr-only is. */
+.order-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 1400px) {
-  .order-summary-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Four tracks: the name and the place take the first row, the three dates
+     and the amount the second. */
+  .order-facts-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1100px) {
-  .order-summary-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* The money goes UNDER the record rather than beside it: at this width a
      280px column would squeeze both. */
   .order-lower { grid-template-columns: minmax(0, 1fr); }
@@ -2393,6 +2980,26 @@ body {
     overflow-y: visible;
   }
   .order-commercial { max-width: 520px; }
+}
+
+@media (max-width: 768px) {
+  /* Production carries a second line naming who aligned it and when, so it
+     takes the full row rather than a third of one. */
+  .order-record-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-record-facts > .order-fact:last-child { grid-column: 1 / -1; }
+  /* TWO COLUMNS, and the two prose fields take a full row each so a long
+     client name wraps instead of forcing a date into two characters. */
+  .order-facts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-fact--wide { grid-column: 1 / -1; }
+}
+
+@media (max-width: 560px) {
+  /* ONE MONEY COLUMN at phone width: two would leave neither enough room. A
+     factor keeps its sign and its quieter weight, which is what distinguishes
+     it from a total once they share a column. */
+  .order-breakdown-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .order-breakdown-adjust,
+  .order-breakdown-total { grid-column: 2; }
 }
 
 /* ── The attention strip ──
@@ -2463,6 +3070,32 @@ body {
    14px padding and never wrap: "Cost / piece" and "Line total". */
 .order-products-table col:nth-child(8) { width: 104px; }  /* cost / piece */
 .order-products-table col:nth-child(9) { width: 100px; }  /* line total */
+
+/* ── THE PRODUCT CODE IS THE PRIMARY IDENTIFIER ──
+   It is what production, dispatch, the workbook and the client all quote, and
+   it used to be the smallest and palest thing in the row — 11px, muted, under
+   a 13px semibold product name. It now leads: heavier, darker, a size up, and
+   monospaced so a column of codes lines up and can be scanned vertically
+   without reading a single name. */
+.order-product-code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111318;
+  letter-spacing: -0.01em;
+}
+/* On the mobile card the code sits above the name rather than beside it, so it
+   carries a touch more line height and the same weight. */
+.order-product-code--card { font-size: 12px; line-height: 1.4; }
+
+/* SECONDARY, NEVER TRUNCATED. Every word of the name is still rendered, one
+   step quieter than the code above it. */
+.order-product-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #4A5160;
+  line-height: 1.45;
+}
 
 .order-products-table td {
   padding: 8px 12px;
@@ -2624,90 +3257,12 @@ body {
   }
 }
 
-/* ── The documents rows ── */
-.order-doc-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  border-top: 1px solid #F0F2F5;
-}
-.order-doc-row:first-child { border-top: none; padding-top: 0; }
-.order-doc-icon { color: #6B7384; flex-shrink: 0; }
+/* ── A named file and the line under it ──
+   All that is left of the documents rows: the Source PI reference inside Order
+   records uses these two. The row and icon rules went with the Documents
+   section they drew. */
 .order-doc-name { font-size: 13px; font-weight: 600; color: #111318; }
 .order-doc-meta { font-size: 11.5px; color: #8C94A6; }
-
-/* ── Important Dates: the planning pair loud, the audit pair quiet ── */
-.order-dates {
-  background: #FFFFFF;
-  border: 1px solid rgba(0,0,0,0.07);
-  border-radius: 10px;
-  padding: 10px 16px 12px;
-}
-.order-dates-head {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6B7384;
-  margin-bottom: 9px;
-}
-.order-dates-body {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px 32px;
-  flex-wrap: wrap;
-}
-.order-dates-primary {
-  display: flex;
-  gap: 32px;
-  flex-wrap: wrap;
-  margin: 0;
-  min-width: 0;
-}
-.order-dates-secondary {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  margin: 0;
-  min-width: 0;
-}
-.order-date { min-width: 0; }
-.order-date-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #8C94A6;
-  margin-bottom: 2px;
-}
-.order-date-value {
-  margin: 0;
-  min-width: 0;
-  color: #111318;
-}
-.order-date--primary .order-date-value {
-  font-size: 18px;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-.order-date--secondary .order-date-label { color: #9AA1B0; }
-.order-date--secondary .order-date-value {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #6B7384;
-  line-height: 1.3;
-}
-.order-date-detail {
-  display: inline-block;
-  margin-left: 7px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 /* ── NEW UPDATE: an Order this reader has unread updates on ──
    HARD TO MISS, NOT IRRITATING. The row carries a tint and a left edge; the
    only thing that moves is this 5px dot, and it stops after four pulses. A
@@ -2870,15 +3425,14 @@ body {
   .order-command-actions > * { flex: 1 1 auto; }
   .order-command-actions .boe-record-action { min-height: 44px; }
   .order-command-actions .boe-record-action--icon { flex: 0 0 44px; width: 44px; min-width: 44px; }
-  .order-summary-facts { grid-template-columns: minmax(0, 1fr); }
-  .order-fact { border-top: 1px solid #F0F2F5; }
+  /* TWO COLUMNS AT PHONE WIDTH, not one: six stacked fields is a scroll, and
+     the four fixed-width ones sit happily side by side. The name and the
+     place already take a full row each, from the 768 rule. */
+  .order-fact { border-top: 1px solid #F0F2F5; padding: 9px 14px; }
+  /* Only the very first: below 768 the two wide fields each take a full row,
+     so Location genuinely opens a new one and needs its rule. */
   .order-fact:first-child { border-top: none; }
   .order-pay-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* The audit pair drops under the planning pair rather than beside it, and
-     the planning pair stays legible: this band exists to be scanned. */
-  .order-dates-body { flex-direction: column; gap: 12px; }
-  .order-dates-primary { gap: 24px; }
-  .order-date--primary .order-date-value { font-size: 16.5px; }
 }
 
 /* ─────────────────────────────────────────────────────

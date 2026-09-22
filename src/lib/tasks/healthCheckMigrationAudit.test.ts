@@ -705,6 +705,11 @@ describe('the migration is placed correctly', () => {
       // approval functions re-emitted with one check removed and one added, no
       // schema change, no DML, nothing dropped. It reaches nothing here.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // The Confirmed Order’s fabric and finish approvals: one new append-only
+      // table, one new private storage bucket and one write RPC. It re-emits no
+      // existing function, adds no column to any existing table, writes no row and
+      // drops nothing, so it reaches nothing here.
+      '20261227000000_order_fabric_finish_approvals.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

@@ -128,6 +128,15 @@ export type PiVersionView = {
   uploadedBy: string
   uploadedAt: string
   revisionReason: string | null
+  /**
+   * WHEN THE DECISION WAS TAKEN, on its own and already formatted.
+   *
+   * decisionLine below says who AND when in one sentence, which reads well in a
+   * list and is useless to a card that wants the date in its own field. This is
+   * the same `decided_at`, through the same formatter, so the two can never
+   * print different moments. Null while a version is still pending.
+   */
+  decidedAt: string | null
   /** "Approved by X · date" / "Rejected by X · date", or null while pending. */
   decisionLine: string | null
   decisionReason: string | null
@@ -189,6 +198,7 @@ export function describePiVersionHistory(
         uploadedBy: name(row.uploaded_by),
         uploadedAt: formatWhen(row.uploaded_at),
         revisionReason: row.revision_reason && row.revision_reason.trim() !== '' ? row.revision_reason.trim() : null,
+        decidedAt: row.decided_at ? formatWhen(row.decided_at) : null,
         decisionLine: decisionVerb && row.decided_at
           ? `${decisionVerb} by ${name(row.decided_by)} · ${formatWhen(row.decided_at)}`
           : null,

@@ -14,14 +14,12 @@ import { colors } from '@/lib/tokens'
 import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import {
   MoreActionsMenu,
-  ORDER_SUMMARY_COMMERCIAL_TITLE,
   OrderActivityList,
   OrderAttentionBar,
-  OrderCommercialTotals,
   OrderDetailSkeleton,
-  OrderImportantDatesSection,
+  OrderRecordInformation,
   OrderStatusPill,
-  OrderSummary,
+  OrderSummaryPanel,
   PAYMENT_SECTION_TITLE,
   PaymentSummaryFigures,
   SECTION_HEADER_STYLE,
@@ -33,11 +31,17 @@ import {
 import {
   arrangeOrderActions,
   orderAttentionItems,
-  orderImportantDates,
-  orderSummaryFacts,
+  orderRecordFacts,
+  orderSummaryFields,
   type OrderHeaderActionKey,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
+import {
+  ORDER_COMMERCIAL_TITLE,
+  orderCommercialLines,
+  orderCommercialNet,
+  orderStoredCommercialLines,
+} from '@/lib/orders/orderCommercial'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import {
@@ -49,7 +53,7 @@ import {
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
-import { formatMoney, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import { formatMoney, formatPercent, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -106,11 +110,29 @@ import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
   OrderCommercialBreakdown,
-  OrderDocumentsCard,
-  OrderPiHistoryCard,
   OrderPiNoSource,
   OrderPiProducts,
 } from './OrderPiSections'
+import {
+  OrderAdvanceCard,
+  OrderFabricFinishCard,
+  OrderMainPiCard,
+  OrderStatusWorkspace,
+  PiHistoryModal,
+} from './OrderStatusWorkspace'
+import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
+import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import { advanceStanding } from '@/lib/orders/orderAdvance'
+import {
+  APPROVAL_EVIDENCE_BUCKET,
+  FABRIC_FINISH_VIEW_AS_NOTE,
+  ORDER_APPROVAL_EVENT_SELECT,
+  approvalStanding,
+  canRecordApproval,
+  describeApprovalFailure,
+  evidenceObjectPath,
+  type PersistedApprovalEvent,
+} from '@/lib/orders/orderApprovals'
 import {
   ApproveRevisionModal,
   ProductionAlignmentModal,
@@ -153,13 +175,6 @@ import {
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
 import { leadSourceLabel } from '@/lib/orders/orderConfirmation'
-import {
-  ORDER_DOCUMENT_COLUMNS,
-  ORDER_DOCUMENT_URL_TTL_SECONDS,
-  buildOrderDocumentsView,
-  orderDocumentResponse,
-  type OrderDocumentRow,
-} from '@/lib/orders/orderDocuments'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -316,13 +331,6 @@ const MOBILE_BREAKPOINT = 768
  *  no internals: a refusal is almost always a permission answer and saying so
  *  in detail would confirm what the reader is not entitled to. */
 const WORKBOOK_UNAVAILABLE = 'That file is not available to you right now.'
-
-/** What the documents card says when a request or a download is refused. One
- *  sentence, no internals: a refusal is almost always a permission answer, and
- *  elaborating would confirm what the reader is not entitled to. */
-const DOCUMENTS_REFUSED = 'That could not be done just now.'
-
-
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   created:          'Order created',
@@ -694,21 +702,16 @@ export default function OrderDetailPage() {
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
   const [revisionError, setRevisionError] = useState<string | null>(null)
-  const [versionOpening, setVersionOpening] = useState<string | null>(null)
+  const [historyOpen,   setHistoryOpen]   = useState(false)
+  const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
+  const [approvalOpen,  setApprovalOpen]  = useState(false)
+  const [approvalBusy,  setApprovalBusy]  = useState(false)
+  const [approvalError, setApprovalError] = useState<string | null>(null)
+  const [proofBusy,     setProofBusy]     = useState<string | null>(null)
+  const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
   const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
   const [alignBusy,     setAlignBusy]     = useState(false)
   const [alignError,    setAlignError]    = useState<string | null>(null)
-
-  // ── The generated documents ──
-  //
-  // The register, read under the caller's own RLS: can_view_order decides, so a
-  // reader who may open the Order sees its document state and nobody else does.
-  // claim_token is not among the columns and could not be selected if it were —
-  // it is granted to no client role.
-  const [documents,   setDocuments]   = useState<OrderDocumentRow[]>([])
-  const [docBusy,     setDocBusy]     = useState(false)
-  const [docDownload, setDocDownload] = useState<'xlsx' | 'pdf' | null>(null)
-  const [docError,    setDocError]    = useState<string | null>(null)
 
   // Which thumbnail opened the viewer, so focus goes back to it on close, and
   // where those thumbnails live. Refs rather than state: neither is rendered.
@@ -988,29 +991,42 @@ export default function OrderDetailPage() {
   }
 
   /**
-   * The Order's document register, as one query — named once so the full load
-   * and the narrow refresh below cannot read or shape it differently.
+   * The Order's fabric and finish events, as one query — named once so the full
+   * load and the narrow refresh below cannot read or shape it differently.
+   *
+   * NEWEST FIRST, and the whole log: the card folds it to the current state of
+   * each kind and the history reads the rest. Two kinds, a handful of events
+   * each; there is no page to keep.
    */
-  const documentsQuery = () =>
+  /**
+   * The embed arrives NESTED, as PostgREST returns it, and the view wants one
+   * flat field. Flattened here rather than in the lib so the lib keeps taking
+   * a plain row shape a test can build by hand.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapApprovalRows = (raw: any[] | null): PersistedApprovalEvent[] =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (raw ?? []).map((row: any) => ({
+      ...row,
+      actor_name: row.actor?.full_name ?? null,
+    })) as PersistedApprovalEvent[]
+
+  const approvalsQuery = () =>
     supabase
-      .from('order_document_versions')
-      .select(ORDER_DOCUMENT_COLUMNS)
+      .from('order_approval_events')
+      .select(ORDER_APPROVAL_EVENT_SELECT)
       .eq('order_id', id)
-      .order('version', { ascending: false })
+      .order('created_at', { ascending: false })
 
   /**
-   * WHAT ASKING FOR DOCUMENTS ACTUALLY CHANGED.
-   *
-   * The route writes one row in order_document_versions, and that table's own
-   * trigger appends the matching activity entry. It touches no Order column,
-   * no payment, no change request and no PI — so re-running the whole page
-   * load to see a new version re-read fourteen things and re-signed every
-   * product photograph.
+   * WHAT RECORDING AN APPROVAL ACTUALLY CHANGED: one appended row. It touches
+   * no Order column, no payment and no PI, so re-running the whole page load
+   * would re-read fourteen things and re-sign every product photograph to show
+   * one new status.
    */
-  const reloadDocuments = async () => {
-    const { data } = await documentsQuery()
-    setDocuments((data ?? []) as unknown as OrderDocumentRow[])
-    await reloadActivity()
+  const reloadApprovals = async () => {
+    const { data } = await approvalsQuery()
+    setApprovals(mapApprovalRows(data))
   }
 
   /** The full load. A refresh calls this and replaces data in place. */
@@ -1051,7 +1067,7 @@ export default function OrderDetailPage() {
       { data: allocData },
       { data: aData },
       { data: cData },
-      { data: dData },
+      { data: apprData },
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -1073,7 +1089,7 @@ export default function OrderDetailPage() {
 
       activityQuery(),
 
-      documentsQuery(),
+      approvalsQuery(),
 
       supabase
         .from('order_change_requests')
@@ -1090,7 +1106,7 @@ export default function OrderDetailPage() {
         .order('created_at', { ascending: false }),
     ])
 
-    setDocuments((dData ?? []) as unknown as OrderDocumentRow[])
+    setApprovals(mapApprovalRows(apprData))
 
     // MERGE, THEN RE-READ THE MONEY EXACTLY.
     //
@@ -1234,7 +1250,7 @@ export default function OrderDetailPage() {
       // ── THE SHELL FIRST ──
       //
       // loadOrder() still runs in full — the payments, the allocation totals,
-      // the documents, the activity, the change requests, the PI handoff and
+      // the activity, the change requests, the PI handoff and
       // its signed URLs — but the page no longer waits for ALL of it before it
       // draws anything. It resolves `shell` the moment the Order row itself has
       // landed, and that is what this group waits on beside the profile and
@@ -1341,20 +1357,6 @@ export default function OrderDetailPage() {
 
   // ── PI versions (20261119000000) ──
 
-  /** Any version's file, signed on demand exactly as the current workbook is. */
-  const openVersion = async (version: PiVersionView) => {
-    if (!version.workbookPath || versionOpening) return
-    setVersionOpening(version.id)
-    setRevisionError(null)
-    const { data, error } = await supabase
-      .storage
-      .from(ORDER_FILES_BUCKET)
-      .createSignedUrl(version.workbookPath, ORDER_PI_WORKBOOK_URL_TTL_SECONDS, { download: true })
-    setVersionOpening(null)
-    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-  }
-
   /**
    * Propose a revised PI: the file to private storage under the PI's own
    * original/ folder (the revision insert policy decides), then ONE RPC that
@@ -1458,75 +1460,129 @@ export default function OrderDetailPage() {
   }
 
   /**
-   * Ask for this Order's documents.
+   * OPEN OR SAVE ONE PI VERSION'S WORKBOOK.
    *
-   * THE BUTTON IS NOT THE SECURITY. The route calls
-   * request_order_document_generation through the CALLER'S own session, and two
-   * RLS policies re-derive both the management approval authority and sight of
-   * this Order. Hiding the control is a courtesy to everybody who would only be
-   * refused.
-   *
-   * A refusal is one quiet line, never a thrown page.
+   * SIGNED ON THE PRESS, through the reader's own session, so the order-files
+   * policy decides again at that moment and a key copied out of this page stops
+   * working within the hour. The two differ only in the `download` flag the
+   * signer is given: viewing hands the browser the file to open, saving asks
+   * for it as an attachment. Neither builds a URL into the markup and neither
+   * mints anything for a version nobody named.
    */
-  const requestDocuments = async () => {
-    if (docBusy) return
-    setDocBusy(true)
-    setDocError(null)
-    try {
-      const response = await fetch(`/api/orders/${id}/documents`, { method: 'POST' })
-      const body = await response.json().catch(() => null) as
-        { code?: string; error?: string; message?: string } | null
-
-      if (!response.ok && response.status !== 202) {
-        // THE CODE DECIDES, NOT THE SERVER'S PROSE.
-        //
-        // This used to print `body.message` and fall back to one generic
-        // sentence when it was absent. That fallback is how a deployment
-        // missing its service-role key was reported to a reader as "that could
-        // not be done just now" — a sentence that describes a refusal, sends
-        // them to look at permissions, and is wrong about all of it.
-        //
-        // The code is resolved against a table THIS BUNDLE owns, so the text on
-        // screen is text this repository reviewed. The server's own message is
-        // never rendered; an unknown code degrades to the generic answer rather
-        // than printing a token from the wire.
-        setDocError(orderDocumentResponse(body?.code ?? body?.error).message)
-      }
-    } catch {
-      setDocError(DOCUMENTS_REFUSED)
-    }
-    setDocBusy(false)
-    // Re-read either way: a refusal may still have moved the register, and a
-    // success certainly did. The register and the trail, and nothing else.
-    await reloadDocuments()
-  }
-
-  /**
-   * Download one confirmed document.
-   *
-   * SIGNED ON THE CLICK, through the reader's own session, so the order-files
-   * rule decides again at that moment — and that rule authorizes an object only
-   * when a READY version names it, which is what keeps a failed attempt's
-   * half-upload unreachable however well somebody knows its key.
-   *
-   * The PATH comes from the register, which is itself RLS-filtered. Nothing here
-   * builds a key.
-   */
-  const downloadDocument = async (kind: 'xlsx' | 'pdf') => {
-    if (docDownload) return
-    const view = buildOrderDocumentsView(documents)
-    const path = kind === 'xlsx' ? view.excelPath : view.pdfPath
-    if (!path) { setDocError(DOCUMENTS_REFUSED); return }
-
-    setDocDownload(kind)
-    setDocError(null)
+  const openVersionFile = async (version: PiVersionView, mode: 'view' | 'download') => {
+    if (piFileBusy) return
+    const path = version.workbookPath
+    if (!path) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
+    setPiFileBusy(version.id)
+    setRevisionError(null)
     const { data, error } = await supabase
       .storage
       .from(ORDER_FILES_BUCKET)
-      .createSignedUrl(path, ORDER_DOCUMENT_URL_TTL_SECONDS, { download: true })
-    setDocDownload(null)
-    if (error || !data?.signedUrl) { setDocError(DOCUMENTS_REFUSED); return }
+      .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
+        mode === 'download' ? { download: true } : undefined)
+    setPiFileBusy(null)
+    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  /**
+   * OPEN ONE ERP SCREENSHOT.
+   *
+   * Signed on the press through the reader's own session, so the evidence
+   * bucket's SELECT policy — which asks can_view_order — decides again at that
+   * moment. No proof is signed at load, and a key never reaches the markup.
+   */
+  const viewEvidence = async (path: string) => {
+    if (proofBusy) return
+    setProofBusy(path)
+    setApprovalError(null)
+    const { data, error } = await supabase
+      .storage
+      .from(APPROVAL_EVIDENCE_BUCKET)
+      .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS)
+    setProofBusy(null)
+    if (error || !data?.signedUrl) { setApprovalError(describeApprovalFailure(error)); return }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  /**
+   * RECORD ONE OR BOTH APPROVALS.
+   *
+   * THE ORDER OF OPERATIONS MATTERS. Each screenshot is uploaded to its own
+   * unique key under this Order and this kind FIRST, because
+   * record_order_approval_event() refuses a recorded path that names no object.
+   * The RPC is then called once per changed kind; it re-derives the authority,
+   * the evidence requirement and the path ownership under a row lock on the
+   * Order, so nothing decided in this browser is trusted.
+   *
+   * A FAILURE IS NEVER DRESSED AS A SUCCESS. The dialog stays open with one
+   * quiet line and the card is re-read either way, so what is on screen is what
+   * the database actually holds.
+   *
+   * AND A FAILURE LEAVES NOTHING BEHIND. Because the upload must precede the
+   * write, every refusal strands the file that was uploaded for it; each
+   * iteration removes its own orphan before reporting. An event that DID record
+   * keeps its screenshot — the bucket will not let that one be removed.
+   */
+  const recordApprovals = async (changes: ApprovalSubmission[]) => {
+    if (!order || approvalBusy) return
+    setApprovalBusy(true)
+    setApprovalError(null)
+    try {
+      for (const change of changes) {
+        let path: string | null = null
+
+        // NOT APPROVED NEVER CARRIES A FILE. The dialog already sends none for
+        // it, and the RPC now REFUSES a path here instead of discarding it — so
+        // uploading one would be writing an object for a call that cannot
+        // succeed. Stated again at the point of upload, because this is the
+        // only line that creates an object.
+        if (change.file && change.status !== 'not_approved') {
+          path = evidenceObjectPath({
+            orderId: order.id,
+            kind: change.kind,
+            objectId: crypto.randomUUID(),
+            fileName: change.file.name,
+          })
+          const { error: uploadError } = await supabase.storage
+            .from(APPROVAL_EVIDENCE_BUCKET)
+            .upload(path, change.file, { contentType: change.file.type })
+          if (uploadError) { setApprovalError(describeApprovalFailure(uploadError)); return }
+        }
+
+        const { error } = await supabase.rpc('record_order_approval_event', {
+          p_order_id: order.id,
+          p_approval_kind: change.kind,
+          p_status: change.status,
+          p_evidence_path: path,
+        })
+        if (error) {
+          // THE ORPHAN THIS PRESS JUST MADE, AND NOTHING ELSE.
+          //
+          // The upload had to come first, so a refusal always leaves a file
+          // behind that no event references. `path` is the key this iteration
+          // generated a moment ago from a fresh uuid, so removing it cannot
+          // reach anybody else's screenshot — and the bucket's DELETE policy
+          // refuses any object an event has already claimed, so it cannot reach
+          // a filed proof even if this code were wrong about which key it holds.
+          //
+          // The cleanup's own outcome is deliberately not surfaced: the refusal
+          // above is what the person needs to read, and a failed tidy-up must
+          // not replace it with a second, less useful message.
+          if (path) {
+            await supabase.storage.from(APPROVAL_EVIDENCE_BUCKET).remove([path])
+          }
+          setApprovalError(describeApprovalFailure(error))
+          return
+        }
+      }
+      setApprovalOpen(false)
+    } finally {
+      setApprovalBusy(false)
+      // Either way: a refusal may still have moved something, and a success
+      // certainly did. The event log alone — nothing else on the page changed.
+      await reloadApprovals()
+    }
   }
 
   // ── The image viewer ──
@@ -1596,22 +1652,6 @@ export default function OrderDetailPage() {
   const pendingRequests = changeRequests.filter(r => r.status === 'pending')
 
   /**
-   * WHO SEES THE GENERATE CONTROL.
-   *
-   * orders.approve_order — the existing management approval authority, the same
-   * protected action that decides whether a person may turn a PI into an Order.
-   * deriveOrdersCapabilities short-circuits an active admin, so this page never
-   * reads users.role to decide it.
-   *
-   * SUPPRESSED UNDER VIEW AS, for the reason every other authority on this page
-   * is: viewing as somebody else must not lend them your authority.
-   *
-   * And it is not the enforcement. Two RLS policies re-derive both this and
-   * sight of the Order when the request actually lands.
-   */
-  const mayGenerateDocuments = ordersCaps.canApproveOrderSubmission && !viewAsUserId
-
-  /**
    * THE PI HISTORY AND WHO MAY MOVE IT (20261119000000).
    *
    * Proposing: the PI's owner or an admin holding orders.create — the same
@@ -1675,10 +1715,6 @@ export default function OrderDetailPage() {
     () => new Map(activity.map(entry => [entry.id, entry])),
     [activity],
   )
-
-  /** ONE ANSWER about the documents, so the card, the buttons and the tests
-   *  cannot disagree about whether there is anything to download. */
-  const documentsView = useMemo(() => buildOrderDocumentsView(documents), [documents])
 
   const amendableOrder = order && {
     id: order.id,
@@ -1768,31 +1804,121 @@ export default function OrderDetailPage() {
   // it arranges are exactly the ones the capabilities above allow.
   const productionAligned = production?.value === 'aligned'
   const statusTone: WorkspaceTone = STATUS_TONE[order.status] ?? 'neutral'
-  const salespersonName = order.assigned_to_name ?? null
   const leadSource = leadSourceLabel(order.lead_source)
 
-  const summaryFacts = orderSummaryFacts({
+  /**
+   * WHEN THE PI BEHIND THIS ORDER WAS UPLOADED.
+   *
+   * order_pi_versions' APPROVED row, which is V1 for an Order that has never
+   * been revised and the revision's own row once one has been approved — so it
+   * follows the latest approved PI by construction and needs no rule here.
+   *
+   * IT IS NOT A SUBSTITUTE FOR ANYTHING. An Order whose versions have not been
+   * read yet, or which never came from a PI, has no upload date, and the panel
+   * says so rather than printing the Order's creation date in its place.
+   */
+  const piUploadedAt = piHistory.current?.uploadedAt ?? null
+
+  /**
+   * WHERE THE CLIENT IS — the approved PI's own `client_city`, resolved by the
+   * shared client builder and labelled `Location` wherever this product shows
+   * it. NEVER assembled out of the billing or shipping address: those name a
+   * destination for an invoice or a truck, which is a different question.
+   */
+  const clientLocation = piHandoff.kind === 'ready' ? piHandoff.client.city : null
+
+  const summaryFields = orderSummaryFields({
+    clientName: order.client_name,
+    location: clientLocation,
+    confirmDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
+    uploadDate: piUploadedAt,
+    dueDate: order.due_date ? fmtDate(order.due_date) : null,
+    isOverdue: !!isOverdue,
+    totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value),
+  })
+
+  // ── THE ONE COMMERCIAL PRESENTATION ──
+  //
+  // The approved PI's own rows where there is a PI, and the Order's two stored
+  // totals where there is not. Every amount is a string somebody else already
+  // formatted; orderCommercial only roles and signs them. The net is the one
+  // derived figure on the page and is a subtraction of the two stored columns.
+  const commercialLines = piHandoff.kind === 'ready'
+    ? orderCommercialLines(piHandoff.commercialRows)
+    : orderStoredCommercialLines({
+        productValue: fmtAmount(order.total_product_value),
+        orderValue: fmtAmount(order.total_value),
+      })
+
+  const commercialNet = orderCommercialNet({
+    productValue: order.total_product_value,
+    orderValue: order.total_value,
+    formatAmount: fmtAmount,
+  })
+
+  /**
+   * THE THREE THAT ARE NOT THE HEADLINE.
+   *
+   * The salesperson, the lead source and the production state, each from the
+   * column and the helper it has always come from — orders.assigned_to's name,
+   * leadSourceLabel over orders.lead_source, and describeProductionAlignment
+   * over the four production columns. Not one of them is resolved differently
+   * because it moved: this is the same input the identity band was handed.
+   *
+   * NOT IN THE SUMMARY PANEL, and NOT INVISIBLE EITHER. The attention strip
+   * raises a gap in all three, and a reader told "Production not aligned" must
+   * be able to find the field that says so.
+   */
+  /**
+   * THE PI IN FORCE, AND THE WHOLE TRAIL BEHIND IT.
+   *
+   * Both read piHistory, which is describePiVersionHistory's answer over the
+   * rows public.order_pi_versions returned under this reader's own RLS. The
+   * card states the APPROVED version and the modal states every one; neither
+   * re-derives which is current, so they cannot disagree.
+   */
+  const mainPi = mainPiCard(piHistory)
+  const piTimeline = piVersionTimeline(piHistory)
+
+  /**
+   * WHAT THE ADVANCE COMES TO, and whether it reads Risky or Safe.
+   *
+   * `finance` is buildOrderFinancePosition's, unchanged, and its
+   * verifiedPercent is already verified-and-allocated over the final Order
+   * Value. Nothing here recomputes it — see orderAdvance.ts for why, and for
+   * why this label is an indicator rather than the confirmation gate.
+   */
+  const advance = advanceStanding({ finance, formatAmount: formatMoney, formatPercent })
+
+  /** Where fabric and finish stand: the newest event of each kind. */
+  const approvalView = approvalStanding({
+    events: approvals,
+    formatWhen: fmtDateTime,
+    readOnlyNote: viewAsUserId ? FABRIC_FINISH_VIEW_AS_NOTE : undefined,
+  })
+
+  /**
+   * WHETHER TO DRAW THE UPDATE CONTROL.
+   *
+   * The assigned salesperson matched BY USER ID, an active admin or an active
+   * manager, and never under View As. can_record_order_approval() asks exactly
+   * the same question of public.users.role and orders.assigned_to when the RPC
+   * lands, so hiding the button is a courtesy and the refusal is the database's.
+   */
+  const mayRecordApproval = canRecordApproval({
+    viewerId: viewAsUserId ? null : (profile?.id ?? null),
+    role: profile?.role ?? null,
+    assignedTo: order.assigned_to,
+    viewingAs: !!viewAsUserId,
+  })
+
+  const recordFacts = orderRecordFacts({
     status: order.status,
-    customerName: order.client_name,
+    salespersonName: order.assigned_to_name ?? null,
+    leadSource,
     productionAligned,
     productionLabel: production?.label ?? '—',
     productionLine: production?.line ?? null,
-    salespersonName,
-    leadSource,
-    raisedByName: order.requested_by_name ?? null,
-    sourceRequestNumber: order.source_request_number,
-  })
-
-  // EVERY DATE, RANKED, ONCE. The two the business plans against and the two
-  // the database recorded — the pair Record Information used to state on its
-  // own, three sections lower.
-  const importantDates = orderImportantDates({
-    status: order.status,
-    confirmDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
-    dueDate: order.due_date ? fmtDate(order.due_date) : null,
-    isOverdue: !!isOverdue,
-    createdAt: fmtDate(order.created_at),
-    updatedAt: fmtDate(order.updated_at),
   })
 
   const attention = orderAttentionItems({
@@ -1802,13 +1928,18 @@ export default function OrderDetailPage() {
     hasDueDate: !!order.due_date,
     hasLeadSource: !!leadSource,
     isOverdue: !!isOverdue,
-    // Money and documents are only known once their reads have landed; until
-    // then they are not "fine", they are unknown, and the bar says nothing.
+    // Money is only known once its read has landed; until then it is not
+    // "fine", it is unknown, and the bar says nothing.
     awaitingVerificationCount: recordsReady ? finance.counts.awaiting : 0,
     pendingChangeRequests: pendingRequests.length,
     pendingPiRevision: piHistory.pending !== null,
-    documentsFailed: recordsReady && !!documentsView.failure,
-    documentsOutdated: recordsReady && documentsView.outdated,
+    // THE DOCUMENT STATES ARE NOT RAISED HERE ANY MORE. The Documents section
+    // and the Generate control left this page, so a reader told that documents
+    // had failed or were out of date would have nothing on this screen to do
+    // about it. The rules still support both keys, and the register, its route
+    // and its RLS are untouched — only this page stops asking.
+    documentsFailed: false,
+    documentsOutdated: false,
   })
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
@@ -1983,20 +2114,23 @@ export default function OrderDetailPage() {
           </div>
         </header>
 
-        {/* ══ 2. THE IDENTITY BAND ══
-            Customer, salesperson, lead source, production — and, when the
-            Order has them, who raised it and the request it came from. The
-            last two came off Record Information rather than being deleted with
-            it: both name something a person cares about, neither is database
-            metadata. */}
-        <OrderSummary facts={summaryFacts} />
+        {/* ══ 2. THE SUMMARY PANEL ══
+            SIX FACTS, ONE SURFACE: who the Order is for, where it goes, when
+            it was confirmed, when its PI was uploaded, when it is due, and
+            what the products come to.
 
-        {/* ══ 3. IMPORTANT DATES ══
-            EVERY DATE THIS ORDER HAS, IN ONE PLACE. Confirm and due lead;
-            created and last-updated follow, muted. The audit pair used to sit
-            alone in Record Information three sections lower, so answering
-            "when" meant looking in two places. */}
-        <OrderImportantDatesSection dates={importantDates} />
+            It replaces the identity band and the separate Important Dates
+            band. Those spread these six across two surfaces and mixed them
+            with facts nobody is asking at this moment — the lead source, the
+            originating request number, and the two audit timestamps, none of
+            which anybody plans against.
+
+            RAISED BY IS NOT DRAWN. A DISPLAY REMOVAL ONLY: orders.requested_by
+            is still read, still carried on the row, still the column the PI
+            revision rule reads to find the PI's owner, and the activity trail
+            still names who did what. Nothing was dropped from a select and
+            nothing was dropped from the database. */}
+        <OrderSummaryPanel fields={summaryFields} />
 
         {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
@@ -2012,6 +2146,31 @@ export default function OrderDetailPage() {
             <div className="order-notes-body">{order.notes}</div>
           </section>
         )}
+
+        {/* ══ 3. THE STATUS WORKSPACE ══
+            WHAT A READER CHECKS BEFORE THEY LOOK AT A SINGLE PRODUCT LINE: the
+            PI this Order actually runs on, how much of it is paid for, and
+            whether fabric and finish have been signed off. Three cards, one
+            row where the width allows, stacked in the same order where it does
+            not. */}
+        <OrderStatusWorkspace>
+          <OrderMainPiCard
+            card={mainPi}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+          />
+          <OrderAdvanceCard standing={advance} />
+          <OrderFabricFinishCard
+            standing={approvalView}
+            canUpdate={mayRecordApproval}
+            onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
+            onViewEvidence={path => { void viewEvidence(path) }}
+            busyEvidence={proofBusy}
+          />
+        </OrderStatusWorkspace>
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
@@ -2178,16 +2337,6 @@ export default function OrderDetailPage() {
           <PiCard>
             <PiCardHeader title="Order records" style={SECTION_HEADER_STYLE} />
             <div className="order-records-body">
-              <OrderDocumentsCard
-                embedded
-                view={documentsView}
-                canGenerate={mayGenerateDocuments}
-                onGenerate={requestDocuments}
-                generating={docBusy}
-                onDownload={downloadDocument}
-                downloading={docDownload}
-                error={docError}
-              />
               <div className="order-record-section">
                 <div className="order-record-head">
                   <h3 className="order-record-title">Source PI</h3>
@@ -2241,21 +2390,6 @@ export default function OrderDetailPage() {
                   </div>
                 )}
               </div>
-              {/* THE PI HISTORY (20261119000000): the current PI, a pending
-                  revision and everything before. */}
-              <OrderPiHistoryCard
-                embedded
-                history={piHistory}
-                canPropose={mayProposeRevision}
-                canDecide={mayDecideRevision && piHistory.pending !== null}
-                onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-                onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-                onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-                onOpen={openVersion}
-                opening={versionOpening}
-                busy={revisionBusy}
-                error={revisionDialog === null ? revisionError : null}
-              />
             </div>
           </PiCard>
         )}
@@ -2322,19 +2456,23 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ RECORD INFORMATION IS GONE ══
-            It held five things. Three were worth keeping and each moved to
-            where it belongs rather than being deleted with the section:
+        {/* ══ 7. RECORD INFORMATION ══
+            THE SALESPERSON, THE LEAD SOURCE AND PRODUCTION — the three
+            operational facts that are not among the six a reader opens this
+            page asking for. They are here rather than in the summary panel,
+            and they are HERE rather than nowhere: the attention strip raises a
+            gap in each, and a warning whose field cannot be found is a warning
+            a reader cannot act on.
 
-              Requested By      → the identity band, as "Raised by"
-              Created           → Important Dates, secondary
-              Last Updated      → Important Dates, secondary
-              Source Request    → the identity band, as "From request"
-              Notes             → its own block under the attention strip
-
-            The internal request UUID that used to ride along as a title
-            attribute is NOT reproduced. Nothing an operational reader can do
-            with it, and a database key is not a fact about the Order. */}
+            WHAT IS DELIBERATELY NOT BACK. Who raised the Order — a display
+            removal, and only that: orders.requested_by is still read, still on
+            the row and still what the PI-revision rule reads. The originating
+            request number and the two audit timestamps stay off the page for
+            the reason they left it: nobody plans against either. And the
+            internal request UUID that used to ride along as a title attribute
+            is still not reproduced — a database key is not a fact about the
+            Order. */}
+        <OrderRecordInformation facts={recordFacts} />
 
         {/* ══ 8. ACTIVITY ══ the complete trail, last: the current state is
             understood before the history that produced it. */}
@@ -2370,23 +2508,20 @@ export default function OrderDetailPage() {
         </div>
 
         {/* ══ 9. COMMERCIAL ══
-            THE EXTREME RIGHT, BELOW PRODUCTS, and the only place any of these
-            figures appear. The two stored totals, then the breakdown: the
-            stored figures through the shared rows builder. Nothing on this
-            page recomputes a total — these are literally the same strings the
-            approved PI screen prints, and which of them a reader may see is
-            still decided where that decision already lives. */}
-        <aside className="order-lower-aside" aria-label={ORDER_SUMMARY_COMMERCIAL_TITLE}>
+            THE EXTREME RIGHT, BELOW PRODUCTS, and THE ONLY PLACE ANY OF THESE
+            FIGURES APPEAR. A `Product value` / `Order value` totals block used
+            to sit above the breakdown and restate its own first and last lines
+            under different captions — the same rupees twice, four lines apart.
+            Both figures are now the two ends of the one working that connects
+            them, and this column has ONE heading rather than a column head and
+            a section title saying nearly the same word.
+
+            NOTHING ON THIS PAGE RECOMPUTES A TOTAL. Every amount below is
+            literally the string the approved PI screen prints. */}
+        <aside className="order-lower-aside" aria-label={ORDER_COMMERCIAL_TITLE}>
           <div className="order-lower-aside-inner">
             <div className="order-commercial">
-              <div className="order-summary-commercial-head">{ORDER_SUMMARY_COMMERCIAL_TITLE}</div>
-              <OrderCommercialTotals
-                productValue={fmtAmount(order.total_product_value)}
-                orderValue={fmtAmount(order.total_value)}
-              />
-              {piHandoff.kind === 'ready' && (
-                <OrderCommercialBreakdown rows={piHandoff.commercialRows} embedded />
-              )}
+              <OrderCommercialBreakdown lines={commercialLines} net={commercialNet} embedded />
               {!handoffReady && order.source_order_submission_id && (
                 <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
               )}
@@ -2435,6 +2570,34 @@ export default function OrderDetailPage() {
           parties, spelled out. The same component the PI screen uses. */}
       {clientOpen && piHandoff.kind === 'ready' && (
         <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
+      )}
+
+      {/* ── The PI history, without leaving the Order ── */}
+      {historyOpen && (
+        <PiHistoryModal
+          entries={piTimeline}
+          onClose={() => setHistoryOpen(false)}
+          onView={v => { void openVersionFile(v, 'view') }}
+          onDownload={v => { void openVersionFile(v, 'download') }}
+          busyId={piFileBusy}
+          canPropose={mayProposeRevision}
+          onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+          canDecide={mayDecideRevision}
+          onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
+          onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
+          error={revisionDialog === null ? revisionError : null}
+        />
+      )}
+
+      {/* ── Fabric and finish (20261227000000) ── */}
+      {approvalOpen && (
+        <OrderApprovalModal
+          standing={approvalView}
+          saving={approvalBusy}
+          failure={approvalError}
+          onClose={() => { if (!approvalBusy) setApprovalOpen(false) }}
+          onConfirm={changes => { void recordApprovals(changes) }}
+        />
       )}
 
       {/* ── PI revision and production alignment dialogs (20261119000000) ── */}

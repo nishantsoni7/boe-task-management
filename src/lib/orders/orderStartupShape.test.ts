@@ -270,7 +270,37 @@ describe('no Order screen waits more than it must', () => {
       // — the wait test above still requires exactly two.
       // DASHBOARD 11 -> 10: the Overdue card was removed, and with it the one
       // count that fed only that card. The wait count is unchanged.
-      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 29,
+      // DETAIL 29 -> 27, AND THIS IS THE FIRST TIME IT HAS GONE DOWN twice
+      // over: the Documents section and the Generate Document control left the
+      // Confirmed Order screen, taking the order_document_versions read and the
+      // document download's signer with them. The register, its route and its
+      // RLS are untouched — the screen simply stopped asking.
+      //
+      // DETAIL 27 -> 31 (20261227000000, the status workspace). FOUR, and not
+      // one of them is on the startup path:
+      //
+      //   +1  order_approval_events, the fabric/finish log. Issued INSIDE the
+      //       page's existing Promise.all, beside the activity trail and the
+      //       change requests, so the count grew and the number of times the
+      //       page waits did NOT — the wait test above still requires exactly
+      //       three.
+      //   +1  the ERP screenshot's signer, fired from the card's own control.
+      //   +1  the screenshot upload, fired from the update dialog.
+      //   +1  record_order_approval_event, the write that dialog performs.
+      //
+      // The last three are a SAVE and two on-demand file operations. None runs
+      // at load, and no archived PI version or stored proof is signed until
+      // somebody names it.
+      //
+      // DETAIL 31 -> 32: the orphan removal. The screenshot has to be uploaded
+      // BEFORE record_order_approval_event(), because that function refuses a
+      // path naming no object — so every refusal strands the file uploaded for
+      // it. This call takes that one file back, and it runs ONLY in the
+      // refusal arm of a write somebody pressed. Nothing at load, nothing on a
+      // success, and the bucket's DELETE policy cannot reach a screenshot an
+      // event has already filed. The wait count is unchanged: the test above
+      // still requires exactly three.
+      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 32,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -552,12 +582,23 @@ describe('a status change re-reads what it changed, and not the whole page', () 
       'the update must return the row it stored')
     assert.ok(detail.includes('setOrder(o => o ? { ...o, ...updated } : o)'),
       'and the page must apply the DATABASE\'s values, not the requested one')
+    // THE TIMESTAMP IS NO LONGER ON SCREEN, and the rule is unchanged anyway.
+    //
     // Record Information was removed (20261202000000) and its two timestamps
-    // moved into Important Dates. The REASON this assertion exists is unchanged
-    // — updated_at is on screen, so a trigger-written value may not be assumed
-    // — and this now pins it where it actually renders.
-    assert.ok(detail.includes('updatedAt: fmtDate(order.updated_at)'),
-      'updated_at is displayed, which is why it may not be assumed')
+    // moved into Important Dates; the six-field summary panel then replaced
+    // Important Dates, and neither `Created` nor `Last updated` is drawn — the
+    // reasoning is in the page, and the architecture test pins that both
+    // columns are still READ.
+    //
+    // So this no longer asserts where updated_at renders. It asserts the thing
+    // that actually protects the narrow refresh: the page applies what the
+    // DATABASE returned and never the value it asked for. A trigger-written
+    // column that is carried on the row must be the stored one whether or not
+    // some later section decides to print it.
+    assert.match(detail, /const \{ data: updated \}|onStatusChanged=\{updated =>/,
+      'the stored row is what flows back into state')
+    assert.equal(/setOrder\(o => o \? \{ \.\.\.o, status: newStatus \}/.test(detail), false,
+      'the requested status must never be applied in place of the stored one')
   })
 
   test('a transition cannot apply against a status that has moved', () => {

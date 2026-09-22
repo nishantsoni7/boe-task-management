@@ -499,6 +499,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // approval functions re-emitted with one check removed and one added, no
       // schema change, no DML, nothing dropped. It reaches nothing here.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // The Confirmed Order’s fabric and finish approvals: one new append-only
+      // table, one new private storage bucket and one write RPC. It re-emits no
+      // existing function, adds no column to any existing table, writes no row and
+      // drops nothing, so it reaches nothing here.
+      '20261227000000_order_fabric_finish_approvals.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

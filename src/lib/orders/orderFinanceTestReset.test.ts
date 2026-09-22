@@ -525,6 +525,19 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // this file is about is unaffected.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // 20261226000000 was ALREADY MISSING from this ledger before the
+      // Confirmed Order detail work began: it is on origin/main, it is
+      // unapplied, and this assertion has been failing for it. Named here so
+      // the ledger tells the truth again rather than being masked by the entry
+      // below it.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // The Confirmed Order's fabric and finish approvals: an append-only
+      // event log, its write RPC and a private evidence bucket. It touches
+      // neither the reset protocol, the deletion claim nor the allocation
+      // ledger — it adds one table and one bucket and changes nothing that
+      // existed — and it stacks last for the ordinary reason: it carries the
+      // highest number on the branch.
+      '20261227000000_order_fabric_finish_approvals.sql',
     ])
   })
 

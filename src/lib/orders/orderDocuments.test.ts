@@ -412,3 +412,94 @@ describe('a stale claim gives the control back', () => {
     assert.equal(view.failure, ORDER_DOCUMENTS_STALLED)
   })
 })
+
+// ── A superseded pair is STALE, NOT BROKEN ────────────────────────────────────
+//
+// An admin corrects the PI behind an approved Order. Every figure on both files
+// came from the workbook that was just replaced, so the pair stops being
+// current — but nothing failed, nothing was deleted, and the files are still
+// exactly what somebody may have sent a client last week.
+//
+// The failure mode this guards against is the tidy one: treating stale as
+// broken. Refusing the downloads, or reporting a failure, would destroy the
+// only record of what this Order looked like at the time and would say
+// something went wrong when nothing did.
+//
+// THESE MOVED HERE from the Confirmed Order page's render test when the
+// Documents section left that page. The rule is the REGISTER'S rather than any
+// screen's, and it is unchanged — only the surface that drew it went away.
+
+describe('a superseded document pair is stale, not broken', () => {
+  const superseded = (reason: string | null) => row({
+    superseded_at: '2026-08-21T09:00:00Z',
+    superseded_reason: reason,
+  })
+
+  test('a current pair reports nothing about it', () => {
+    const view = buildOrderDocumentsView([row()])
+    assert.equal(view.outdated, false)
+    assert.equal(view.outdatedNote, null)
+  })
+
+  test('a superseded pair is still downloadable', () => {
+    const view = buildOrderDocumentsView([superseded('pi_data_amended')])
+    assert.equal(view.downloadable, true, 'the files still exist and still open')
+    assert.equal(view.outdated, true)
+    assert.notEqual(view.excelPath, null)
+    assert.notEqual(view.pdfPath, null)
+  })
+
+  test('it says why, in the server’s prewritten words', () => {
+    assert.match(buildOrderDocumentsView([superseded('pi_data_amended')]).outdatedNote ?? '',
+      /no longer current: the PI behind them was corrected/)
+    assert.match(buildOrderDocumentsView([superseded('billing_percentage_changed')]).outdatedNote ?? '',
+      /no longer current: the billing percentage was changed/)
+  })
+
+  test('an unrecognised reason falls back rather than printing itself', () => {
+    // A value the server did not choose must never reach a screen as text —
+    // supersede_order_documents already refuses to store one, and this is the
+    // second half of the same rule.
+    const note = buildOrderDocumentsView([superseded('<script>whatever</script>')]).outdatedNote ?? ''
+    assert.ok(!note.includes('whatever'))
+    assert.match(note, /no longer current: the PI behind them changed/)
+  })
+
+  test('it is not reported as a failure', () => {
+    const view = buildOrderDocumentsView([superseded('pi_data_amended')])
+    assert.equal(view.failure, null, 'nothing failed')
+    assert.equal(view.working, false, 'nothing is in flight')
+    assert.equal(view.status, 'ready', 'the version is still ready')
+  })
+
+  test('a pending version 2 does not hide that version 1 is stale', () => {
+    // Both are true, and a reader needs both: the current version IS being
+    // generated, and version 1 is still the pair they can open.
+    const view = buildOrderDocumentsView([
+      superseded('pi_data_amended'),
+      row({ id: 'v2', version: 2, status: 'pending', excel_path: null, pdf_path: null,
+            completed_at: null }),
+    ])
+    assert.equal(view.working, true)
+    assert.equal(view.outdated, true)
+    assert.notEqual(view.outdatedNote, null)
+  })
+
+  test('a pending or failed version never reports itself stale', () => {
+    // Only a READY version can be superseded — the database constrains that
+    // too — and two problems where there is one is how a reader stops reading
+    // either.
+    const view = buildOrderDocumentsView([row({
+      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
+      last_error_message: 'Generating the documents did not finish.',
+      superseded_at: '2026-08-21T09:00:00Z', superseded_reason: 'pi_data_amended',
+    })])
+    assert.equal(view.outdated, false)
+    assert.notEqual(view.failure, null)
+  })
+
+  test('the register read asks for both columns', () => {
+    assert.ok(ORDER_DOCUMENT_COLUMNS.includes('superseded_at'))
+    assert.ok(ORDER_DOCUMENT_COLUMNS.includes('superseded_reason'))
+  })
+})
