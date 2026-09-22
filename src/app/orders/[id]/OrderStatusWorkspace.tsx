@@ -9,10 +9,19 @@
 // Finish status is the database's, re-derived under a row lock every time.
 // These draw the answers.
 //
-// THREE CARDS, ONE ROW, IN ONE ORDER: Main PI, Advance Received, Fabric &
-// Finish. They stack in that same order on a narrow screen, so a person
-// describing the screen over the phone is describing the same thing whatever
-// the other person is holding.
+// TWO ROWS OF CARDS, EACH IN ONE FIXED ORDER, sharing one grid and therefore
+// one set of breakpoints:
+//
+//   Order status     Advance Received, Fabric & Finish — the operational cards,
+//                    the second of which is the one place either approval is
+//                    moved.
+//   Current Status   Main PI, Design Files, Manufacturing Status — read-only,
+//                    directly above the product list, for a reader who wants
+//                    the Order's position without opening three screens.
+//
+// They stack in those same orders on a narrow screen, so a person describing
+// the screen over the phone is describing the same thing whatever the other
+// person is holding.
 
 import { useCallback, useEffect, useRef } from 'react'
 import { Download, FileSpreadsheet, History, Upload, X } from 'lucide-react'
@@ -46,6 +55,14 @@ import {
   ADVANCE_TITLE,
   type AdvanceStanding,
 } from '@/lib/orders/orderAdvance'
+import {
+  CURRENT_STATUS_TITLE,
+  DESIGN_FILES_TITLE,
+  MANUFACTURING_TITLE,
+  type CurrentStatusLine,
+  type DesignFilesView,
+  type ManufacturingStatusView,
+} from '@/lib/orders/orderCurrentStatus'
 import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
@@ -331,6 +348,88 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
       </dl>
       {!canUpdate && <p className="order-status-note">{standing.readOnlyNote}</p>}
     </CardShell>
+  )
+}
+
+// ── 4. Current Status: Design Files and Manufacturing ─────────────────────────
+
+/**
+ * ONE LINE OF A CURRENT STATUS CARD.
+ *
+ * The value is a pill only where the line HAS a status; a count and an absence
+ * are plain words, because a coloured badge around "3 files" would give a
+ * number the weight of a decision.
+ *
+ * `unsupported` is muted rather than hidden. A reader who does not see a CAD
+ * row concludes nothing; a reader who sees "CAD & drawings — Not recorded"
+ * learns that this system does not hold them, which is the true answer and the
+ * only one that stops somebody hunting for the file elsewhere.
+ */
+function StatusLine({ line }: { line: CurrentStatusLine }) {
+  return (
+    <div className={line.unsupported ? 'order-status-line order-status-line--muted' : 'order-status-line'}>
+      <dt className="order-status-fact-label">{line.label}</dt>
+      <dd className="order-status-line-value">
+        {line.tone
+          ? <StatusPill label={line.value} tone={line.tone} />
+          : <span className="order-status-line-plain">{line.value}</span>}
+        {line.detail && <span className="order-status-line-detail">{line.detail}</span>}
+      </dd>
+    </div>
+  )
+}
+
+/**
+ * WHAT DESIGN WORK THIS ORDER HAS ON RECORD.
+ *
+ * READ-ONLY, ON PURPOSE. Fabric and Finish are the same standing the card below
+ * draws in full, stated here without their dates, actors, proof buttons or
+ * update control: this card answers "where does design stand", and the one
+ * below is where it is moved. Nothing here uploads, edits or approves anything.
+ */
+export function OrderDesignFilesCard({ view }: { view: DesignFilesView }) {
+  return (
+    <CardShell title={DESIGN_FILES_TITLE}>
+      <dl className="order-status-lines">
+        {view.lines.map(line => <StatusLine key={line.key} line={line} />)}
+      </dl>
+      <p className="order-status-note">{view.note}</p>
+    </CardShell>
+  )
+}
+
+/**
+ * HOW FAR THE ORDER HAS GOT, from the two records that actually exist.
+ *
+ * The closing note is not boilerplate: without it a card headed "Manufacturing
+ * Status" that shows only an alignment reads as though manufacturing had not
+ * started, when the truth is that this system never tracked it.
+ */
+export function OrderManufacturingCard({ view }: { view: ManufacturingStatusView }) {
+  return (
+    <CardShell title={MANUFACTURING_TITLE}>
+      <dl className="order-status-lines">
+        {view.lines.map(line => <StatusLine key={line.key} line={line} />)}
+      </dl>
+      <p className="order-status-note">{view.note}</p>
+    </CardShell>
+  )
+}
+
+/**
+ * THE SECTION ITSELF: a heading, and the same three-column grid the workspace
+ * below it uses.
+ *
+ * It reuses `order-status-workspace` rather than declaring a second grid, so
+ * the two rows of cards can never wrap differently at the same width — one set
+ * of breakpoints, one behaviour, one thing to verify.
+ */
+export function OrderCurrentStatus({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="order-current-status" aria-label={CURRENT_STATUS_TITLE}>
+      <h2 className="order-current-status-title">{CURRENT_STATUS_TITLE}</h2>
+      <div className="order-status-workspace">{children}</div>
+    </section>
   )
 }
 

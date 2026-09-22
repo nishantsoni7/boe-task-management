@@ -50,6 +50,7 @@ describe('the page reads in one order, with no second summary', () => {
     summary:  body.indexOf('<OrderSummaryPanel'),
     attention: body.indexOf('<OrderAttentionBar'),
     workspace: body.indexOf('<OrderStatusWorkspace>'),
+    currentStatus: body.indexOf('<OrderCurrentStatus>'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
     records:  body.indexOf('title="Order records"'),
@@ -65,15 +66,20 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'workspace', 'products', 'payment',
-      'records', 'activity',
+      'header', 'summary', 'attention', 'workspace', 'currentStatus', 'products',
+      'payment', 'records', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
     assert.equal((body.match(/<OrderSummaryPanel/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderStatusWorkspace>/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderCurrentStatus>/g) ?? []).length, 1)
+    // Main PI sits in Current Status now, and in ONE place: a second copy a
+    // section higher would be the same document stated twice on one screen.
     assert.equal((body.match(/<OrderMainPiCard/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderDesignFilesCard/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderManufacturingCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)

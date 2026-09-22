@@ -115,13 +115,22 @@ import {
 } from './OrderPiSections'
 import {
   OrderAdvanceCard,
+  OrderCurrentStatus,
+  OrderDesignFilesCard,
   OrderFabricFinishCard,
   OrderMainPiCard,
+  OrderManufacturingCard,
   OrderStatusWorkspace,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import {
+  countDesignImages,
+  describeDesignFiles,
+  describeManufacturingStatus,
+  type DesignImageCounts,
+} from '@/lib/orders/orderCurrentStatus'
 import { advanceStanding } from '@/lib/orders/orderAdvance'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -662,7 +671,19 @@ export default function OrderDetailPage() {
     customizationByRow: ReadonlyMap<number, readonly string[]>
     unresolved: number
     viewerItems: readonly PiViewerItem[]
-  }>({ representativeByRow: new Map(), customizationByRow: new Map(), unresolved: 0, viewerItems: [] })
+    /**
+     * HOW MANY PICTURES THE ORDER HOLDS, counted from the stored rows rather
+     * than from the maps above. Those hold the URLs that were actually signed,
+     * so a picture this reader's storage policy refused is missing from them —
+     * and a count that shrank because of who was looking would be a count of
+     * nothing. Current Status reports the record, not the reader's view of it.
+     */
+    counts: DesignImageCounts
+  }>({
+    representativeByRow: new Map(), customizationByRow: new Map(),
+    unresolved: 0, viewerItems: [],
+    counts: { representative: 0, customization: 0 },
+  })
   const [clientOpen,  setClientOpen]  = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const [wbBusy,      setWbBusy]      = useState(false)
@@ -884,6 +905,7 @@ export default function OrderDetailPage() {
       // The same helper both PI screens use, so a picture is labelled and
       // ordered identically wherever it is opened.
       viewerItems: buildImageViewerItems(products, urls),
+      counts: countDesignImages(images),
     })
     setWbPath(orderPiWorkbookPath(row))
     setPiHandoff(buildOrderPiHandoff(row, {
@@ -1905,6 +1927,29 @@ export default function OrderDetailPage() {
   })
 
   /**
+   * THE TWO NEW CURRENT STATUS CARDS, from answers this page already had.
+   *
+   * `approvalView` is the very standing the Fabric & Finish card draws, and
+   * `production` is describeProductionAlignment's — both reused rather than
+   * re-derived, so the summary above the product list and the detail below it
+   * cannot report different states of the same record. The image counts are
+   * the stored rows of the approved PI, and the stage is the Order's own
+   * status through the page's own label map.
+   */
+  const designFiles = describeDesignFiles({
+    approvals: approvalView,
+    images: piImages.counts,
+    productCount: piProducts.length,
+  })
+  const manufacturing = describeManufacturingStatus({
+    production,
+    orderStatus: order.status,
+    // The header pill's own label, read the same way it reads it, so the two
+    // statements of one status are the same string or there is no status.
+    orderStatusLabel: STATUS_META[order.status]?.label ?? order.status,
+  })
+
+  /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
    * The assigned salesperson matched BY USER ID, an active admin or an active
@@ -2199,20 +2244,16 @@ export default function OrderDetailPage() {
         )}
 
         {/* ══ 3. THE STATUS WORKSPACE ══
-            WHAT A READER CHECKS BEFORE THEY LOOK AT A SINGLE PRODUCT LINE: the
-            PI this Order actually runs on, how much of it is paid for, and
-            whether fabric and finish have been signed off. Three cards, one
-            row where the width allows, stacked in the same order where it does
-            not. */}
+            THE TWO OPERATIONAL CARDS: how much of the Order is paid for, and
+            whether fabric and finish have been signed off — the second being
+            the one place on the page either approval is moved. One row where
+            the width allows, stacked in the same order where it does not.
+
+            MAIN PI MOVED DOWN ONE SECTION, into Current Status, where it is
+            the first of the three things a reader wants together. The card,
+            its data, its actions and its permissions are untouched; only where
+            it sits changed. */}
         <OrderStatusWorkspace>
-          <OrderMainPiCard
-            card={mainPi}
-            onView={v => { void openVersionFile(v, 'view') }}
-            onDownload={v => { void openVersionFile(v, 'download') }}
-            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            viewing={piFileBusy !== null}
-            downloading={piFileBusy !== null}
-          />
           <OrderAdvanceCard standing={advance} />
           <OrderFabricFinishCard
             standing={approvalView}
@@ -2222,6 +2263,37 @@ export default function OrderDetailPage() {
             busyEvidence={proofBusy}
           />
         </OrderStatusWorkspace>
+
+        {/* ══ 3b. CURRENT STATUS ══
+            WHERE THIS ORDER ACTUALLY STANDS, immediately above the product
+            list, so management reads its position in one place instead of
+            opening the PI screen, the approval card and the summary panel in
+            turn.
+
+            READ-ONLY, ALL THREE. The only controls are the Main PI card's own
+            View, Download and View history — reads, each signed through the
+            reader's own session at the moment of the click. Nothing here
+            uploads, approves, aligns, dispatches or writes anything.
+
+            EVERY FIGURE IS SOMEBODY ELSE'S ANSWER. mainPiCard names the PI in
+            force, approvalStanding names fabric and finish, the image counts
+            are the stored rows of the approved PI, and describeProductionAlignment
+            names production. Nothing is recomputed here, so no card on this
+            page can disagree with another. Where this build records nothing —
+            CAD, a manufacturing stage, QC, packaging — the line says so rather
+            than leaving a blank to be read as "not started". */}
+        <OrderCurrentStatus>
+          <OrderMainPiCard
+            card={mainPi}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+          />
+          <OrderDesignFilesCard view={designFiles} />
+          <OrderManufacturingCard view={manufacturing} />
+        </OrderCurrentStatus>
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
