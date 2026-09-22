@@ -21,6 +21,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { moduleCardPressProps } from '@/lib/modules/moduleOrder'
 
 const ROOT = process.cwd()
 // \r is stripped on read. A rebase or a fresh clone under core.autocrlf can
@@ -94,15 +95,46 @@ describe('the notification badge is unchanged, and is the only count on the card
   })
 })
 
+// ── The root's interactive props ─────────────────────────────────────────────
+//
+// THESE ASSERTIONS NOW EXECUTE RATHER THAN PATTERN-MATCH, and that is the only
+// thing about them that changed.
+//
+// `role`, `tabIndex` and the key handler used to be written inline on the card
+// root and were checked by looking for their text in this file. The personal
+// card-order work moved them into moduleCardPressProps (src/lib/modules/
+// moduleOrder.ts), because the launcher now has a second mode — while somebody
+// is rearranging the grid, a card is NOT a button — and "what makes a card a
+// button" became a decision worth running rather than reading.
+//
+// The header above says these read the source because the repository has no DOM
+// harness for a page this size. That reason does not apply to a pure function:
+// it can simply be called. So every promise the inline version made is made
+// here, of the real props the card spreads, plus the one the second mode adds.
 describe('the WHOLE card is one control', () => {
-  test('exactly one element carries onClick, and it is the card root', () => {
+  test('the card root spreads the press props, and adds no handler of its own', () => {
+    assert.ok(CARD.includes('const press = moduleCardPressProps(onClick)'),
+      'the card must take its interactive props from the one helper')
+    assert.ok(CARD.includes('{...press}'), 'and spread them on the root')
+
+    // A SECOND onClick would be a duplicate navigation handler. The helper
+    // supplies the only one, so the card itself must declare none.
     const handlers = CARD.match(/onClick=/g) ?? []
-    assert.equal(handlers.length, 1,
+    assert.equal(handlers.length, 0,
       'a second onClick would be a duplicate navigation handler')
-    // It is on the root: the first element of the returned tree, before the
-    // icon wrapper. Everything inside it — the icon, the badge, the name and
-    // the empty space around them — therefore activates the same handler.
-    assert.ok(CARD.indexOf('onClick={onClick}') < CARD.indexOf(styleClass('iconWrap')))
+
+    // It is on the ROOT: the spread sits on the first element of the returned
+    // tree, before the icon wrapper. Everything inside it — the icon, the badge,
+    // the name and the empty space around them — therefore activates it.
+    assert.ok(CARD.indexOf('{...press}') < CARD.indexOf(styleClass('iconWrap')))
+  })
+
+  test('exactly one element carries the navigation handler, and it is that root', () => {
+    const press = moduleCardPressProps(() => {})
+    assert.equal(typeof press.onClick, 'function')
+    // The helper returns a flat set of props for one element. There is no
+    // nesting it could distribute a second handler into.
+    assert.deepEqual(Object.keys(press).sort(), ['onClick', 'onKeyDown', 'role', 'tabIndex'])
   })
 
   test('there is no nested link or button inside the card', () => {
@@ -113,7 +145,14 @@ describe('the WHOLE card is one control', () => {
     assert.equal(/<button\b/.test(markup), false, 'and no nested button either')
     assert.equal(/<Link\b/.test(markup), false, 'and no next/link')
     const roles = markup.match(/role="/g) ?? []
-    assert.equal(roles.length, 1, 'one role on the card, none inside it')
+    assert.equal(roles.length, 0, 'the only role comes from the press props')
+
+    // The drag handle IS a <button>, and it is why this still holds: it is
+    // rendered only while the card is NOT a button (the props above are all
+    // undefined then), so a control never nests inside a role="button".
+    assert.ok(CARD.includes('{handle}'), 'the handle is injected, not declared here')
+    assert.equal(moduleCardPressProps(null).role, undefined,
+      'a card showing a handle must not also be announced as a button')
   })
 
   test('the card fills its grid cell, so the empty area is clickable too', () => {
@@ -127,23 +166,49 @@ describe('the WHOLE card is one control', () => {
 
 describe('keyboard accessibility', () => {
   test('the card is focusable and announced as a button', () => {
-    assert.ok(CARD.includes('role="button"'))
-    assert.ok(CARD.includes('tabIndex={0}'))
+    const press = moduleCardPressProps(() => {})
+    assert.equal(press.role, 'button')
+    assert.equal(press.tabIndex, 0)
   })
 
   test('BOTH Enter and Space activate it', () => {
-    assert.ok(/e\.key === 'Enter' \|\| e\.key === ' '/.test(CARD),
-      'role="button" promises both, as a native <button> gives both')
-    assert.ok(CARD.includes('onKeyDown'))
+    for (const key of ['Enter', ' ']) {
+      let opened = 0
+      const press = moduleCardPressProps(() => { opened += 1 })
+      press.onKeyDown?.({ key, preventDefault: () => {} })
+      assert.equal(opened, 1,
+        `role="button" promises both, as a native <button> gives both — ${JSON.stringify(key)} did not activate`)
+    }
   })
 
   test('Space does not also scroll the page', () => {
     // Space is the browser's page-scroll key. Without preventDefault, activating
-    // a focused card would open the module AND scroll the launcher behind it.
-    const handler = CARD.slice(CARD.indexOf('onKeyDown'), CARD.indexOf('className={styles.card}'))
-    assert.ok(handler.includes('e.preventDefault()'))
-    assert.ok(handler.indexOf('e.preventDefault()') < handler.indexOf('onClick()'),
-      'the default is cancelled before navigating')
+    // a focused card would open the module AND scroll the launcher behind it —
+    // and the default must be cancelled BEFORE navigating.
+    for (const key of ['Enter', ' ']) {
+      const events: string[] = []
+      const press = moduleCardPressProps(() => events.push('navigate'))
+      press.onKeyDown?.({ key, preventDefault: () => events.push('preventDefault') })
+      assert.deepEqual(events, ['preventDefault', 'navigate'],
+        `${JSON.stringify(key)}: the default is cancelled before navigating`)
+    }
+  })
+
+  test('and no other key is swallowed', () => {
+    for (const key of ['ArrowDown', 'Tab', 'Escape', 'a']) {
+      const events: string[] = []
+      const press = moduleCardPressProps(() => events.push('navigate'))
+      press.onKeyDown?.({ key, preventDefault: () => events.push('preventDefault') })
+      assert.deepEqual(events, [], `${key} belongs to the page`)
+    }
+  })
+
+  test('while the grid is being rearranged the card is not a button at all', () => {
+    // The second mode, and the reason these moved out of the JSX. Not a handler
+    // that declines to navigate — no handler, no role, nothing focusable.
+    assert.deepEqual(moduleCardPressProps(null), {
+      onClick: undefined, role: undefined, tabIndex: undefined, onKeyDown: undefined,
+    })
   })
 })
 

@@ -170,3 +170,279 @@
     line-height: 1.3;
   }
 }
+
+/* ── Personal card order: the heading row, the controls, the handle ──────────
+   Added for the "Edit order" work. NOTHING ABOVE THIS LINE CHANGED except
+   `.sectionLabel`'s margin, which moved onto the row that now wraps it — the
+   spacing below the heading is identical, and every card dimension, breakpoint,
+   icon size, badge and gap is untouched. Normal mode renders none of these
+   classes apart from `.sectionHeader` and `.orderEditButton`. */
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  /* The margin the section label used to carry on its own, so the gap between
+     the heading and the first row of cards is unchanged. */
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* The label keeps its type; its margin now belongs to the row above. */
+.sectionHeader .sectionLabel {
+  margin-bottom: 0;
+  /* Optically aligns the uppercase label with the button text beside it. */
+  padding-top: 3px;
+}
+
+/* ── Normal mode: one quiet action ──
+   Text-weight, in the same grey family as the section label, so it reads as a
+   utility beside the heading rather than a call to action competing with
+   thirteen cards. */
+.orderEditButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #8C94A6;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.orderEditButton:hover {
+  color: #4B5563;
+  background: #F4F5F7;
+  border-color: #E8EBF0;
+}
+
+.orderEditButton:focus-visible,
+.orderButton:focus-visible,
+.orderButtonPrimary:focus-visible,
+.dragHandle:focus-visible {
+  outline: 2px solid #1A2035;
+  outline-offset: 2px;
+}
+
+/* ── Edit mode: the three controls, the hint, the error ── */
+.orderEditing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.orderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.orderButton,
+.orderButtonPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.orderButton {
+  background: #fff;
+  border: 1px solid #E8EBF0;
+  color: #4B5563;
+}
+
+.orderButton:hover:not(:disabled) {
+  border-color: #C9CFDA;
+  background: #F8F9FB;
+}
+
+.orderButtonPrimary {
+  background: #1A2035;
+  border: 1px solid #1A2035;
+  color: #fff;
+}
+
+.orderButtonPrimary:hover:not(:disabled) {
+  background: #2A3350;
+  border-color: #2A3350;
+}
+
+.orderButton:disabled,
+.orderButtonPrimary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.orderHint {
+  font-size: 11px;
+  color: #8C94A6;
+  text-align: right;
+  max-width: 320px;
+}
+
+/* A failed save, beside the arrangement it belongs to. */
+.orderError {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #B42318;
+  background: #FEF3F2;
+  border: 1px solid #FECDCA;
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-align: right;
+  max-width: 360px;
+}
+
+/* ── The drag handle ──
+   Absolutely positioned in the card's top-right corner, so it costs the card no
+   layout at all: the icon, title, description and footer sit exactly where they
+   sit in normal mode, at every width. 24px with a 44px touch target via ::after,
+   which is the Apple/Android minimum without drawing a 44px control. */
+.dragHandle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #E8EBF0;
+  border-radius: 7px;
+  background: #F8F9FB;
+  color: #8C94A6;
+  cursor: grab;
+  /* THE ONE DECLARATION THAT MAKES TOUCH WORK. Without it the browser claims a
+     vertical drag that starts here as a page scroll and the card never moves.
+     Scoped to the handle, so the page still scrolls normally in edit mode. */
+  touch-action: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.dragHandle:hover {
+  background: #F1F2F5;
+  border-color: #C9CFDA;
+  color: #4B5563;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+/* ── The card in edit mode ──
+   `position: relative` is what the handle is positioned against; it changes
+   nothing else, because the only other absolutely positioned descendant — the
+   notification badge — is positioned against `.iconWrap`. */
+.cardEditing {
+  position: relative;
+  cursor: default;
+  /* The card is not a link any more, and text selection during a drag looks
+     like a bug. */
+  user-select: none;
+}
+
+/* Restrained feedback, and restrained on purpose: the grid reflowing IS the
+   signal, and the gap the card leaves is the placeholder. This only says which
+   card is in hand.
+   THE LIFT AND THE SHADOW ARE NOT HERE. `.card`'s border, box-shadow and
+   transform are set INLINE by page.tsx (they depend on the module's accent), and
+   an inline style always wins over a class rule — which is the reason this whole
+   file exists. So the elevation is computed inline alongside the hover state it
+   replaces, and only the two properties page.tsx does not set live here. */
+.cardDragging {
+  z-index: 3;
+  opacity: 0.92;
+}
+
+.cardDragging .dragHandle {
+  cursor: grabbing;
+  background: #EEF0F4;
+  border-color: #B9C1CE;
+  color: #1A2035;
+}
+
+/* ── Small screens ── */
+@media (max-width: 767px) {
+  /* The controls take the full width and centre, like everything else on a
+     narrow launcher, instead of crowding the right edge. */
+  .orderEditing {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .orderActions {
+    justify-content: center;
+  }
+
+  .orderHint,
+  .orderError {
+    text-align: center;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 639px) {
+  .sectionHeader {
+    margin-bottom: 10px;
+  }
+
+  /* A compact two-up card is 12px from its own edge, so the handle comes in with
+     it and keeps clear of the centred icon below. */
+  .dragHandle {
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .orderButton,
+  .orderButtonPrimary {
+    padding: 7px 10px;
+    font-size: 11.5px;
+    /* Three controls, one row, no overflow at 320px. */
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .orderActions {
+    gap: 6px;
+    width: 100%;
+  }
+}
+
+/* ── Reduced motion ──
+   Somebody who has asked for less motion still gets every piece of feedback this
+   feature relies on — the border, the shadow, the opacity and the grid closing up
+   behind a moved card — without anything easing into place. `.cardEditing` is one
+   class, like `.card`, and comes later in the file, so it wins the transition
+   without !important; and it is scoped to edit mode, so the launcher's ordinary
+   hover behaviour outside it is exactly what it was. */
+@media (prefers-reduced-motion: reduce) {
+  .orderEditButton,
+  .orderButton,
+  .orderButtonPrimary,
+  .dragHandle,
+  .cardEditing {
+    transition: none;
+  }
+}

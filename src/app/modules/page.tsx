@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useReducer } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { Toast, useToast } from '@/components/ui/toast'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
@@ -21,6 +22,24 @@ import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { Image as ImageIcon } from 'lucide-react'
+import {
+  IDLE_MODULE_ORDER_EDIT,
+  moduleOrderEditReducer,
+  moduleOrderEquals,
+  moduleCardPressProps,
+  moduleOrderKeys,
+  visibleModuleOrder,
+} from '@/lib/modules/moduleOrder'
+import {
+  useModuleOrder,
+  useModuleOrderCache,
+  saveModuleOrder,
+} from '@/hooks/queries/useModuleOrder'
+import {
+  ModuleOrderBar,
+  ModuleDragHandle,
+  useModuleReorderPointer,
+} from './ModuleOrderControls'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -153,6 +172,13 @@ export default function BoeOsHomePage() {
     subjectRole,
     subjectProfile,
     subjectPermissionsByModule: subjectPermissions,
+    // True only while previewing somebody else. A personal card order belongs to
+    // the signed-in account, and while previewing we can neither read the viewed
+    // employee's order (RLS answers with no rows, correctly) nor apply our own to
+    // their screen without lying about it — so the preview shows the canonical
+    // order and offers no Edit order at all. What View As is for is WHICH cards
+    // they see, and that is unchanged.
+    viewMode,
   } = useDisplaySubject()
 
   // Counts belong to the user they were fetched for. If the signed-in user has
@@ -181,6 +207,23 @@ export default function BoeOsHomePage() {
     staleTime: PERMISSION_STALE_MS,
     gcTime: PERMISSION_GC_MS,
   })
+
+  // ── THIS PERSON'S CARD ORDER ────────────────────────────────────────────────
+  //
+  // Keyed by the SIGNED-IN user and read from public.user_module_order, whose RLS
+  // answers for exactly one account. null = they have never saved one, which is
+  // the ordinary case and means the canonical order below.
+  //
+  // IT SORTS; IT NEVER ADMITS. The array further down is built by canOpenModule
+  // first and this list is applied to the result, so a stored key naming a module
+  // this person may not open selects no card. See src/lib/modules/moduleOrder.ts.
+  const { data: savedOrder = null, isLoading: orderLoading } = useModuleOrder(userId)
+  const cacheModuleOrder = useModuleOrderCache()
+  const [orderEdit, dispatchOrderEdit] = useReducer(
+    moduleOrderEditReducer,
+    IDLE_MODULE_ORDER_EDIT,
+  )
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
   useEffect(() => {
     if (permsReady && userId === null) router.push('/login')
@@ -364,7 +407,14 @@ export default function BoeOsHomePage() {
     notificationCount: null,
   } : null
 
-  const modules: ModuleDef[] = [
+  // THE CANONICAL ORDER, and the complete answer to "what may this person open".
+  //
+  // Renamed from `modules` when the personal order arrived, and that is the only
+  // change to it: every gate, destination, description, accent, icon and count
+  // below is exactly what it was. This array is the application's DEFAULT order
+  // and the fallback for everybody who has saved nothing, so nothing sorts,
+  // splices or otherwise mutates it — `visibleModuleOrder` returns a new array.
+  const canonicalModules: ModuleDef[] = [
     ...(canOpenModule('task_management') ? [{
       key: 'tasks',
       title: 'Task Management',
@@ -487,6 +537,73 @@ export default function BoeOsHomePage() {
     }] : []),
   ]
 
+  // ── The cards as THIS person arranged them ──────────────────────────────────
+  //
+  // A PERMUTATION OF THE ARRAY ABOVE AND NOTHING ELSE. Every entry rendered came
+  // out of `canonicalModules`, so the gate above remains the only thing that
+  // decides what is on screen; the saved order decides nothing but sequence, and
+  // a key it names that is not up there contributes no card.
+  //
+  // While previewing somebody else the saved order is ignored (see `viewMode`
+  // above): that screen is about which cards the viewed employee has.
+  const canonicalKeys = moduleOrderKeys(canonicalModules)
+  const modules = visibleModuleOrder(
+    canonicalModules,
+    viewMode ? null : savedOrder,
+    orderEdit.working,
+  )
+
+  // ── Edit order ──────────────────────────────────────────────────────────────
+  //
+  // Offered to a signed-in person looking at their own launcher, and only when
+  // there is more than one card to arrange.
+  const canEditOrder = !viewMode && !!userId && canonicalModules.length > 1
+  const editingOrder = orderEdit.working !== null
+
+  // Whether Save has anything to write: the working arrangement against what is
+  // stored, resolved through the same function the grid renders with, so "no
+  // change" means the same thing to the button as it does to the screen.
+  const orderIsDirty =
+    editingOrder &&
+    !moduleOrderEquals(
+      moduleOrderKeys(modules),
+      moduleOrderKeys(visibleModuleOrder(canonicalModules, savedOrder, null)),
+    )
+
+  const beginPointerDrag = useModuleReorderPointer({
+    enabled: editingOrder && !orderEdit.saving,
+    onMoveToSlotOf: (key, targetKey) => dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey }),
+    onDragStart: key => dispatchOrderEdit({ type: 'dragStart', key }),
+    onDragEnd: () => dispatchOrderEdit({ type: 'dragEnd' }),
+  })
+
+  const handleSaveOrder = async () => {
+    if (!userId || !orderEdit.working) return
+    // The keys of the cards AS RENDERED, not the raw working list: a key whose
+    // card has disappeared while edit mode was open (a permission revoked in
+    // another tab) is dropped rather than stored back.
+    const keys = moduleOrderKeys(modules)
+
+    dispatchOrderEdit({ type: 'saveStart' })
+    const result = await saveModuleOrder(userId, keys)
+
+    if (!result.ok) {
+      // NOTHING IS DISCARDED. Edit mode stays open on the same arrangement, the
+      // message sits under the buttons, and Save is still there to press.
+      dispatchOrderEdit({
+        type: 'saveFailed',
+        message: `Could not save your card order. ${result.message} — your arrangement is still here; try Save again.`,
+      })
+      return
+    }
+
+    // Written before leaving edit mode, so the grid outside it renders the order
+    // that was just stored rather than briefly falling back to the old one.
+    cacheModuleOrder(userId, keys)
+    dispatchOrderEdit({ type: 'saveSucceeded' })
+    showToast('Module order saved', 'success')
+  }
+
   // ── PHASE 2: counts, only for the modules this person may open ──────────────
   //
   // These no longer gate the screen. The cards are the answer to "what may I
@@ -546,7 +663,11 @@ export default function BoeOsHomePage() {
   // does not begin with a chunk download. `modules` contains ONLY authorized
   // entries — an unauthorized destination is never in this list and so is never
   // prefetched. Runs after the gate for the same reason the counts do.
-  const moduleHrefs = modules.map(mod => mod.href).join('|')
+  // Read off the CANONICAL array rather than the rendered one. The set of
+  // destinations is identical either way — the personal order is a permutation —
+  // but the canonical array's sequence does not change while somebody drags a
+  // card, so rearranging the grid no longer re-runs this effect on every move.
+  const moduleHrefs = canonicalModules.map(mod => mod.href).join('|')
   useEffect(() => {
     if (!permsReady) return
     for (const href of moduleHrefs.split('|').filter(Boolean)) router.prefetch(href)
@@ -555,7 +676,14 @@ export default function BoeOsHomePage() {
   // The gate, and only the gate. app_modules is included because the
   // Attendance & Payroll card's visibility comes from it, so rendering before
   // it lands could omit a card the employee is entitled to.
-  const loading = !permsReady || modVisPending
+  //
+  // And the saved order, for the same class of reason: it does not decide WHICH
+  // cards exist, but rendering before it lands would draw the launcher in
+  // canonical order and then visibly reshuffle it under the cursor. It is one
+  // primary-key lookup on a two-column table, issued in parallel with the two
+  // above, and `isLoading` — not `isPending` — so a signed-out visitor, whose
+  // query never runs, is not held here forever.
+  const loading = !permsReady || modVisPending || orderLoading
 
   return (
     <DailyQuoteLoader>
@@ -575,21 +703,63 @@ export default function BoeOsHomePage() {
               every width. */}
           <QuickActionList actions={quickActions} variant="page" />
 
-          {/* Section label */}
-          <div className={styles.sectionLabel}>
-            Modules
+          {/* ── Section label, and the one action beside it ──
+              The label's own margin moved onto this row so the gap between the
+              heading and the first row of cards is unchanged; see
+              modules.module.css. In normal mode the row carries a single quiet
+              "Edit order" text button and nothing else — no handles, no arrows,
+              no editing furniture on the cards. */}
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionLabel}>
+              Modules
+            </div>
+            {canEditOrder && (
+              <ModuleOrderBar
+                editing={editingOrder}
+                saving={orderEdit.saving}
+                error={orderEdit.error}
+                dirty={orderIsDirty}
+                onEdit={() => dispatchOrderEdit({ type: 'open', order: moduleOrderKeys(modules) })}
+                onSave={handleSaveOrder}
+                onCancel={() => dispatchOrderEdit({ type: 'cancel' })}
+                onReset={() => dispatchOrderEdit({ type: 'reset', canonical: canonicalKeys })}
+              />
+            )}
           </div>
 
-          {/* Responsive app-launcher grid */}
+          {/* Responsive app-launcher grid. Unchanged at every breakpoint: edit
+              mode adds a handle in each card's top-right corner, which is
+              absolutely positioned and so costs the card no layout. */}
           <div className={styles.grid}>
-            {modules.map(mod => (
+            {modules.map((mod, index) => (
               <ModuleCard
                 key={mod.key}
                 mod={mod}
-                onClick={() => router.push(mod.href)}
+                // NO NAVIGATION WHILE REARRANGING. Passing null rather than a
+                // handler that checks a flag: in edit mode the card is not a
+                // button, has no tabIndex and has no click handler to fire, so
+                // there is nothing for a stray tap at the end of a drag to
+                // trigger.
+                onClick={editingOrder ? null : () => router.push(mod.href)}
+                dragging={orderEdit.dragging === mod.key}
+                handle={editingOrder ? (
+                  <ModuleDragHandle
+                    moduleKey={mod.key}
+                    title={mod.title}
+                    position={index + 1}
+                    total={modules.length}
+                    disabled={orderEdit.saving}
+                    onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
+                    onPointerDown={beginPointerDrag}
+                  />
+                ) : null}
               />
             ))}
           </div>
+
+          {/* The save confirmation. The launcher's existing toast, in the place
+              every other one in the app appears. */}
+          <Toast toast={toast} onDismiss={dismissToast} />
         </BoeOsLayout>
       )}
     </DailyQuoteLoader>
@@ -598,45 +768,68 @@ export default function BoeOsHomePage() {
 
 // ── ModuleCard ────────────────────────────────────────────────────────────────
 
-function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
+// THE WHOLE CARD IS THE BUTTON, and in normal mode that is exactly what it still
+// is: one onClick, role="button", tabIndex 0 and Enter — unchanged.
+//
+// IN EDIT MODE IT IS NOT A BUTTON AT ALL. `onClick` arrives as null, and with it
+// go the role, the tabIndex and the Enter handler: a card being dragged is not a
+// link, and the surest way to stop a drag ending in a navigation is for there to
+// be no handler to fire and nothing focusable to press Enter on. The handle
+// becomes the card's only control.
+function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
+  mod: ModuleDef
+  /** null in edit mode: the card does not navigate. */
+  onClick: (() => void) | null
+  /** This card is the one currently held by a pointer. */
+  dragging?: boolean
+  /** The drag handle, in edit mode only. */
+  handle?: React.ReactNode
+}) {
   const [hovered, setHovered] = useState(false)
 
   const hasNotif = (mod.notificationCount ?? 0) > 0
   const count    = mod.notificationCount
+  const editing  = onClick === null
+
+  // Whether this card is a button, and what pressing it does. Null in edit mode
+  // means every one of these is undefined — no handler, no role, no tabIndex, no
+  // Enter — so a drag has nothing to end in. See moduleCardPressProps.
+  const press = moduleCardPressProps(onClick)
+
+  // Hover is a promise that a click will do something, so a card that no longer
+  // navigates does not make it. The card in hand gets the accent border and the
+  // elevation instead — set here rather than in CSS because `.card`'s border,
+  // shadow and transform are inline (they depend on the accent) and an inline
+  // style always wins over a class rule.
+  const lifted = dragging || (hovered && !editing)
 
   return (
     <div
-      onClick={onClick}
+      // What the pointer drag hit-tests against. The only thing on the card that
+      // names the module, and read by nothing else.
+      data-module-key={mod.key}
+      {...press}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      role="button"
-      tabIndex={0}
-      // ENTER AND SPACE, because role="button" promises both — a native
-      // <button> fires on either and a screen-reader user is told this is a
-      // button. Space is also the browser's page-scroll key, so it is
-      // preventDefault-ed: without that, activating a focused card would open
-      // the module AND scroll the launcher behind it.
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onClick()
-        }
-      }}
-      className={styles.card}
+      className={`${styles.card}${editing ? ` ${styles.cardEditing}` : ''}${dragging ? ` ${styles.cardDragging}` : ''}`}
       style={{
-        border: `1.5px solid ${hovered ? mod.accent : '#E8EBF0'}`,
-        boxShadow: hovered
-          ? `0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)`
-          : '0 1px 4px rgba(0,0,0,0.05)',
-        transform: hovered ? 'translateY(-2px)' : 'none',
+        border: `1.5px solid ${lifted ? mod.accent : '#E8EBF0'}`,
+        boxShadow: dragging
+          ? '0 10px 28px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.07)'
+          : lifted
+            ? `0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)`
+            : '0 1px 4px rgba(0,0,0,0.05)',
+        transform: lifted ? 'translateY(-2px)' : 'none',
       }}
     >
+      {handle}
+
       {/* ── Icon block with notification badge ── */}
       <div className={styles.iconWrap}>
         <div
           className={styles.iconBox}
           style={{
-            background: hovered ? `${mod.accent}1E` : `${mod.accent}12`,
+            background: lifted ? `${mod.accent}1E` : `${mod.accent}12`,
             border: `1.5px solid ${mod.accent}22`,
             color: mod.accent,
           }}

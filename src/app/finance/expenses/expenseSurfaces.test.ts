@@ -1010,6 +1010,75 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  /**
+   * THE PERSONAL MODULE ORDER (branch feat/personal-module-order).
+   *
+   * Each signed-in person can arrange their own /modules launcher cards. Five
+   * NEW files, and not one of them is an edit to anything that already existed:
+   * the launcher itself and its stylesheet are already accounted for above
+   * (ALLOWED_EXISTING and ALLOWED_QUICK_ACTION_PLACEMENT), the migration is
+   * covered by the supabase/migrations/2026122 prefix, and the executable SQL
+   * checks by the supabase/tests/ prefix.
+   *
+   * WHY IT REACHES NO FINANCE OR ORDERS SURFACE. The feature sorts an array the
+   * permission engine has already built, and the ordering module is written so
+   * it cannot do anything else: it takes a list of `{ key }` and returns a
+   * permutation of it. A stored key naming a module somebody may not open
+   * selects no card, because there is no card for it to select. It reads no
+   * permission, no route and no title, and public.user_module_order references
+   * nothing but auth.users.
+   *
+   * NOTHING BELOW THE INTERFACE MOVES for Finance or Orders: no existing table,
+   * column, policy, function, trigger or grant is altered by the migration, and
+   * it contains no DML of any kind.
+   */
+  const ALLOWED_PERSONAL_MODULE_ORDER = new Set([
+    // The ordering decision, with no React and no Supabase in it.
+    'src/lib/modules/moduleOrder.ts',
+    // The read and the one upsert, keyed by the signed-in user.
+    'src/hooks/queries/useModuleOrder.ts',
+    // Edit mode: the controls beside the heading, the drag handle, the pointer
+    // drag. Rendered only while somebody is rearranging.
+    'src/app/modules/ModuleOrderControls.tsx',
+    // The two suites that hold all of it to its promises.
+    'src/lib/modules/moduleOrder.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+  ])
+
+  test('the personal module-order allowance names files, never a directory', () => {
+    for (const file of ALLOWED_PERSONAL_MODULE_ORDER) {
+      assert.ok(/\.(tsx?)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      // No Finance, Orders, payment, PI or permission file may ride in on a
+      // launcher-ordering allowance.
+      assert.equal(
+        /^src\/(app\/finance|app\/orders|lib\/finance|lib\/orders|lib\/pi|lib\/permissions)\//.test(file),
+        false, `${file} is not a launcher-ordering file`)
+    }
+    // Every entry is NEW on this branch. An allowance for a display preference
+    // has no business admitting an edit to something that already shipped.
+    for (const untouchable of [
+      'src/app/finance/page.tsx',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/permissions/moduleVisibility.ts',
+      'src/lib/orders/finalApproval.ts',
+      'src/components/layout/ModuleGuard.tsx',
+    ]) {
+      assert.equal(ALLOWED_PERSONAL_MODULE_ORDER.has(untouchable), false,
+        `${untouchable} must not ride in on the personal module-order allowance`)
+    }
+    // And it may not shadow anything an earlier list already accounts for.
+    for (const file of ALLOWED_PERSONAL_MODULE_ORDER) {
+      assert.equal(ALLOWED_EXISTING.has(file), false)
+      assert.equal(ALLOWED_QUICK_ACTION_PLACEMENT.has(file), false)
+      assert.equal(ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file), false)
+    }
+  })
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1026,7 +1095,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
     !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
-    !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f)
+    !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f) &&
+    !ALLOWED_PERSONAL_MODULE_ORDER.has(f)
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -1148,7 +1218,23 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle/.test(f), `${f} does not belong to this feature`)
+      assert.ok(/expense_lifecycle|personal_module_order/.test(f),
+        `${f} does not belong to this feature`)
+    }
+    // The personal module-order files are held to the SAME rule the expense
+    // runner is held to below: a throwaway local database and nothing that can
+    // reach a real project. Asserted here rather than taken on trust, because
+    // that is the property this whole block exists to protect.
+    if (added.some(f => /personal_module_order/.test(f))) {
+      const pmo = read('supabase/tests/run_personal_module_order_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push/.test(pmo), false,
+        'the personal module-order runner must not be able to reach a linked project')
+      assert.ok(pmo.includes('BOE_DB_CONTAINER'), 'it targets a named throwaway container')
+      assert.ok(pmo.includes('boe-disposable-personal-module-order'),
+        'and refuses a database nobody has marked disposable')
+      const assertions = read('supabase/tests/personal_module_order_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'),
+        'its assertions discard every fixture')
     }
     // AND THE RUNNER CANNOT REACH A REAL PROJECT. It takes a psql host, creates
     // its own database and drops it; nothing in it reads .env, a project ref or
@@ -1168,7 +1254,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
-        || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file),
+        || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
+        || ALLOWED_PERSONAL_MODULE_ORDER.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

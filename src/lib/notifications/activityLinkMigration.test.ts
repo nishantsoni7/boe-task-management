@@ -370,6 +370,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // existing function, adds no column to any existing table, writes no row and
       // drops nothing, so it reaches nothing here.
       '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
     ])
   })
 

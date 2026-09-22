@@ -408,6 +408,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // and reaches neither approve_order_submission nor the BOE item codes
       // this file asserts.
       '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

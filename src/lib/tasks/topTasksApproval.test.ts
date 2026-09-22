@@ -273,6 +273,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // existing function, adds no column to any existing table, writes no row and
     // drops nothing, so it reaches nothing here.
     '20261227000000_order_fabric_finish_approvals.sql',
+    '20261228000000_personal_module_order.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
