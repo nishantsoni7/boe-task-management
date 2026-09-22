@@ -65,7 +65,7 @@ export const PAYMENT_LIST_EMPTY: Record<OrderPaymentListKind, string> = {
 export const PAYMENT_LIST_CAPTION =
   "Amounts are this Order's allocated share. Where a payment is split across " +
   'records, the rest of it belongs elsewhere and is counted here in neither ' +
-  "figure. Each payment's complete allocation history is in its Finance record."
+  'figure. Open a payment to see the whole of it.'
 
 /** One payment, as a list row draws it. Every field is the row's own. */
 export type OrderPaymentListRow = {
@@ -86,9 +86,62 @@ export type OrderPaymentListRow = {
   reference: string | null
   /** The stored status key, for the list that needs to tell two apart. */
   status: string
+  /**
+   * THE REST OF THE ROW, for the detail view behind this one.
+   *
+   * NOT A SECOND READ, AND NOT A WIDER ONE. Every field below is a COLUMN of a
+   * row this screen already holds: RLS on finance_payment_requests is
+   * row-level, so a reader who was shown the payment at all was already
+   * entitled to all of it. Selecting more columns of the same rows moves no
+   * gate and exposes nothing that a different reader could not see before.
+   *
+   * Absent where the record is absent. Nothing here is substituted, and a
+   * missing note is a missing note rather than an empty string.
+   */
+  detail: OrderPaymentDetailFields
 }
 
-const asRow = (row: OrderFinancePaymentRow): OrderPaymentListRow => ({
+/** Everything absent, for a row whose detail the caller did not supply. */
+export const NO_PAYMENT_DETAIL: OrderPaymentDetailFields = {
+  humanId: null, receivedIn: null, proofNote: null, salesNote: null, adminNote: null,
+  approvedAtIso: null, rejectedAtIso: null, clarificationAtIso: null, approvedById: null,
+}
+
+/**
+ * What the detail view of one payment can state.
+ *
+ * Each one is stored on the payment itself. The screen decides what to draw;
+ * this decides nothing but what is carried.
+ */
+export type OrderPaymentDetailFields = {
+  /** The human payment id, which is what Finance and the client both quote. */
+  humanId: string | null
+  /** Where the money landed: company account, cash in hand, and so on. */
+  receivedIn: string | null
+  /** What the payer said about the proof when the payment was recorded. */
+  proofNote: string | null
+  /** What the salesperson noted alongside it. */
+  salesNote: string | null
+  /** Finance's own note — the clarification asked for, or the refusal. */
+  adminNote: string | null
+  /** When Finance approved it, when it refused, when it asked. */
+  approvedAtIso: string | null
+  rejectedAtIso: string | null
+  clarificationAtIso: string | null
+  /** Who approved it, unresolved: a user id the caller may name if it can. */
+  approvedById: string | null
+}
+
+/** Empty string and undefined are both "the record has none". */
+const orNull = (value: string | null | undefined): string | null => {
+  const text = (value ?? '').trim()
+  return text === '' ? null : text
+}
+
+const asRow = (
+  row: OrderFinancePaymentRow,
+  detail: OrderPaymentDetailFields,
+): OrderPaymentListRow => ({
   id: row.id,
   client: row.client_name ?? null,
   dateIso: row.payment_date ?? null,
@@ -98,7 +151,65 @@ const asRow = (row: OrderFinancePaymentRow): OrderPaymentListRow => ({
   mode: row.payment_mode ?? null,
   reference: row.order_number ?? null,
   status: row.status,
+  detail,
 })
+
+/**
+ * One stored payment row, narrowed to what a detail view states.
+ *
+ * THE INPUT IS THE SELECT'S OWN SHAPE. Every key is a column of
+ * finance_payment_requests, and a caller that did not ask for one passes
+ * nothing — the field is then absent rather than invented.
+ */
+export function paymentDetailFields(row: {
+  human_payment_id?: string | null
+  request_number?: string | null
+  received_in?: string | null
+  proof_note?: string | null
+  sales_note?: string | null
+  admin_note?: string | null
+  approved_at?: string | null
+  rejected_at?: string | null
+  clarification_requested_at?: string | null
+  approved_by?: string | null
+}): OrderPaymentDetailFields {
+  return {
+    humanId: orNull(row.human_payment_id) ?? orNull(row.request_number),
+    receivedIn: orNull(row.received_in),
+    proofNote: orNull(row.proof_note),
+    salesNote: orNull(row.sales_note),
+    adminNote: orNull(row.admin_note),
+    approvedAtIso: orNull(row.approved_at),
+    rejectedAtIso: orNull(row.rejected_at),
+    clarificationAtIso: orNull(row.clarification_requested_at),
+    approvedById: orNull(row.approved_by),
+  }
+}
+
+/** Finds one row of a list by payment id. The list is short; this is a scan. */
+export function orderPaymentById(
+  rows: readonly OrderPaymentListRow[],
+  paymentId: string | null,
+): OrderPaymentListRow | null {
+  if (paymentId === null) return null
+  return rows.find(row => row.id === paymentId) ?? null
+}
+
+/** Where a payment landed, in words. The stored keys are finance's own. */
+export const RECEIVED_IN_LABEL: Record<string, string> = {
+  company_account: 'Company account',
+  cash_in_hand: 'Cash in hand',
+  savings_account: 'Savings account',
+  other: 'Other',
+}
+
+export const PAYMENT_DETAIL_TITLE = 'Payment details'
+export const PAYMENT_DETAIL_BACK = 'Back to payments'
+export const PAYMENT_DETAIL_VIEW = 'View details'
+/** Said once, where a reader might otherwise wonder what they are looking at. */
+export const PAYMENT_DETAIL_SPLIT_NOTE =
+  "This payment is split. Only the share allocated to this Order is counted in " +
+  "this Order's totals; the rest belongs to other records."
 
 /**
  * The rows behind one of the two figures.
@@ -109,7 +220,11 @@ const asRow = (row: OrderFinancePaymentRow): OrderPaymentListRow => ({
 export function orderPaymentList(
   rows: readonly OrderFinancePaymentRow[],
   kind: OrderPaymentListKind,
+  /** Payment id → the rest of its own row. Missing ids carry nothing. */
+  details?: ReadonlyMap<string, OrderPaymentDetailFields>,
 ): OrderPaymentListRow[] {
   const keep = kind === 'verified' ? isVerifiedPaymentStatus : isAwaitingVerification
-  return rows.filter(row => keep(row.status)).map(asRow)
+  return rows
+    .filter(row => keep(row.status))
+    .map(row => asRow(row, details?.get(row.id) ?? NO_PAYMENT_DETAIL))
 }

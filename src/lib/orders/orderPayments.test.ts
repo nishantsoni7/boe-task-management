@@ -221,7 +221,16 @@ describe('the Order screen reads, and never writes, the payment tables', () => {
   })
 
   test('the legacy link read is untouched, so a converted Order Request is unaffected', () => {
-    assert.ok(page.includes(".select('id, client_name, amount, payment_date, payment_mode, order_number, status')"))
+    // THE SAME QUERY, ASKING FOR MORE OF THE SAME ROWS. The seven columns the
+    // figures are built from are all still selected; the detail dialog's own
+    // fields ride along on the one read rather than costing a second, and
+    // finance_payment_requests is guarded row by row, so no gate moved.
+    for (const column of ['id, client_name, amount, payment_date, payment_mode, order_number, status',
+                          'human_payment_id', 'proof_note', 'admin_note']) {
+      assert.ok(page.includes(column), column)
+    }
+    assert.equal((page.match(/from\('finance_payment_requests'\)/g) ?? []).length, 1,
+      'and there is still exactly one of it')
     assert.ok(page.includes(".eq('order_id', id)"))
     assert.ok(page.includes('finance_payment_allocations_payment_fk'),
       'the embed names the foreign key, so it cannot become ambiguous')

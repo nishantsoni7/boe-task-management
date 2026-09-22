@@ -141,21 +141,24 @@ describe('the Order screen links into Finance, and gates it', () => {
   /** Where the per-payment rows are drawn: the dialog the figures open. */
   const workspace = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
-  test('a payment row offers its Finance record', () => {
-    // The rows moved from a table permanently open under the figures into the
-    // dialog the figures open. The DOOR is the same one, built by the same
-    // helper, from the payment's own id.
-    assert.ok(page.includes('financeHref={financeCaps.canAccessFinanceModule ? financePaymentHref : null}'))
-    assert.ok(workspace.includes('const href = financeHref?.(row.id) ?? null'))
-    assert.ok(workspace.includes('href={href}'))
+  test('a payment row opens the REST OF ITS RECORD, and does it here', () => {
+    // It was a link into the Finance module: a different layout, and the Order
+    // lost behind it. Everything it went for is a column of a row this page
+    // already holds, so the dialog states it in place.
+    assert.equal(page.includes('financePaymentHref'), false, 'no route into Finance is built')
+    assert.ok(workspace.includes('PAYMENT_DETAIL_VIEW'))
+    assert.ok(page.includes('openId={paymentDetailId}'))
   })
 
-  test('and only to a reader who holds Finance module entry', () => {
-    assert.ok(page.includes('financeCaps.canAccessFinanceModule ? financePaymentHref : null'),
-      'the Finance control is gated on Finance module entry')
-    // A reader without it is passed no builder at all, and the component draws
-    // nothing rather than a dead control.
-    assert.ok(workspace.includes('{href && ('))
+  test('and it exposes nothing a reader could not already see', () => {
+    // finance_payment_requests is guarded ROW BY ROW. The detail is more
+    // columns of rows this page was already shown, from the same two reads —
+    // so no gate moved and no second query appeared.
+    assert.equal((page.match(/from\('finance_payment_requests'\)/g) ?? []).length, 1)
+    assert.ok(page.includes('paymentDetailFields('))
+    // The Finance CAPABILITY is still resolved, and still gates Add payment.
+    assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'))
+    assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment'))
   })
 
   test('the capability starts empty and is resolved, not assumed from the role', () => {
@@ -231,14 +234,16 @@ describe('the Finance list links into Order Management, and gates it', () => {
 describe('neither screen reveals a record it could not already read', () => {
   test('the Order screen builds its Finance links from payments RLS already returned', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    const workspace = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
     // The dialog's rows are orderPaymentList's, filtered from the merged payment
-    // list, which comes from the two Order-anchored, RLS-checked reads. The
-    // href is built from a ROW'S OWN id; no id is fetched to make a link.
-    assert.ok(page.includes('rows={orderPaymentList(payments, paymentList)}'))
-    assert.ok(workspace.includes('financeHref?.(row.id)'))
-    assert.ok(!page.includes('financePaymentHref(id)'),
-      'a link is never built from the route parameter or any unchecked id')
+    // list, which comes from the two Order-anchored, RLS-checked reads. Nothing
+    // is fetched to make a door, because the door no longer leaves the page.
+    assert.ok(page.includes('rows={orderPaymentList(payments, paymentList, paymentDetails)}'))
+    assert.equal(/financePaymentHref/.test(page), false, 'no Finance route is built')
+    // FINANCE'S OWN ENTRY FORM IS MOUNTED HERE, which is the opposite of going
+    // to it: the only /finance string left on the page is that import.
+    assert.equal(/router\.push\([^)]*finance/.test(page), false, 'and none is pushed either')
+    assert.equal((page.match(/@\/app\/finance\//g) ?? []).length, 1)
+    assert.ok(page.includes("import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'"))
   })
 
   test('the Finance list builds its Order links from the projection, not a second read', () => {
@@ -273,10 +278,10 @@ describe('the trail runs both ways between an Order and its PI', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
     assert.ok(page.includes('source_order_submission_id'), 'the relation itself')
     assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'), 'the PI the Order came from')
-    // NAMED AND DOWNLOADABLE FROM THE MAIN PI CARD. The Order records section
+    // NAMED AND DOWNLOADABLE FROM THE DOCUMENTS BOX. The Order records section
     // that used to name it is gone; for a converted Order the PI in force IS
-    // that document, and the card states its file name and signs it on demand.
-    assert.ok(page.includes('<OrderMainPiCard'), 'named on screen')
+    // that document, and the box states its file name and signs it on demand.
+    assert.ok(page.includes('<OrderDocumentsPanel'), 'named on screen')
     assert.ok(page.includes('openVersionFile'), 'and its file still downloadable')
     assert.ok(page.includes("from('order_pi_versions')"), 'and every PI version')
 

@@ -24,9 +24,15 @@ import { PAYMENT_BAR_COLORS_SUBDUED, PiPaymentProgress } from '@/components/orde
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import { piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
 import {
+  PAYMENT_DETAIL_BACK,
+  PAYMENT_DETAIL_SPLIT_NOTE,
+  PAYMENT_DETAIL_TITLE,
+  PAYMENT_DETAIL_VIEW,
   PAYMENT_LIST_CAPTION,
   PAYMENT_LIST_EMPTY,
   PAYMENT_LIST_TITLE,
+  RECEIVED_IN_LABEL,
+  orderPaymentById,
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
@@ -448,15 +454,100 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
  * exactly as the table did -- and Finance re-reads the row under the reader's
  * own RLS whatever this renders.
  */
-export function OrderPaymentListDialog({ kind, rows, formatDate, financeHref, onClose }: {
+export function OrderPaymentListDialog({
+  kind, rows, formatDate, formatDateTime, openId, onOpen, onBack, onClose,
+}: {
   kind: OrderPaymentListKind
   rows: readonly OrderPaymentListRow[]
   /** The page's own date formatting, so one date reads the same everywhere. */
   formatDate: (iso: string | null) => string
-  /** null when this reader holds no Finance module entry. */
-  financeHref: ((paymentId: string) => string) | null
+  /** The page's own timestamp formatting, for the moments Finance decided. */
+  formatDateTime: (iso: string | null) => string
+  /** The payment whose detail is showing, or null for the list. */
+  openId: string | null
+  onOpen: (paymentId: string) => void
+  onBack: () => void
   onClose: () => void
 }) {
+  const open = orderPaymentById(rows, openId)
+
+  // ── THE DETAIL, IN THE SAME DIALOG ──
+  //
+  // Not a second dialog stacked on the first, and not a page in Finance. A
+  // reader who came from a figure to a list to one payment is still on the
+  // Order, one Escape from where they started, with a Back that returns them to
+  // the list rather than to whatever the browser remembers.
+  if (open) {
+    const d = open.detail
+    const facts: { key: string; label: string; value: string }[] = [
+      { key: 'share', label: "Allocated to this Order", value: formatMoney(open.allocated) },
+      // Stated ONLY when it differs. Printing "Full payment" equal to the share
+      // on every ordinary row would invite a reader to look for a difference
+      // that is not there.
+      ...(open.isPartialShare
+        ? [{ key: 'full', label: 'Full payment', value: formatMoney(open.full) }]
+        : []),
+      { key: 'date', label: 'Payment date', value: formatDate(open.dateIso) },
+      { key: 'mode', label: 'Mode', value: PAYMENT_MODE_LABEL[open.mode ?? ''] ?? open.mode ?? '\u2014' },
+      { key: 'payer', label: 'Payer', value: customerDisplayName(open.client) },
+      ...(d.humanId ? [{ key: 'ref', label: 'Payment reference', value: d.humanId }] : []),
+      ...(open.reference ? [{ key: 'order', label: 'Order reference', value: open.reference }] : []),
+      { key: 'status', label: 'Verification', value: piPaymentStatusLabel(open.status) },
+      ...(d.receivedIn
+        ? [{ key: 'in', label: 'Received in', value: RECEIVED_IN_LABEL[d.receivedIn] ?? d.receivedIn }]
+        : []),
+      ...(d.approvedAtIso
+        ? [{ key: 'approved', label: 'Verified on', value: formatDateTime(d.approvedAtIso) }]
+        : []),
+      ...(d.clarificationAtIso
+        ? [{ key: 'clarify', label: 'Clarification asked', value: formatDateTime(d.clarificationAtIso) }]
+        : []),
+      ...(d.rejectedAtIso
+        ? [{ key: 'rejected', label: 'Rejected on', value: formatDateTime(d.rejectedAtIso) }]
+        : []),
+    ]
+
+    // WHAT SOMEBODY WROTE ABOUT IT. Each is drawn only where it exists; an
+    // empty heading over nothing is worse than no heading.
+    const notes: { key: string; label: string; value: string }[] = [
+      ...(d.proofNote ? [{ key: 'proof', label: 'Proof', value: d.proofNote }] : []),
+      ...(d.salesNote ? [{ key: 'sales', label: 'Sales note', value: d.salesNote }] : []),
+      ...(d.adminNote ? [{ key: 'admin', label: 'Finance note', value: d.adminNote }] : []),
+    ]
+
+    return (
+      <OrderModalShell title={PAYMENT_DETAIL_TITLE} onClose={onClose}>
+        <button type="button" className="boe-btn boe-btn-ghost order-pay-detail-back" onClick={onBack}>
+          {PAYMENT_DETAIL_BACK}
+        </button>
+
+        <dl className="order-pay-detail">
+          {facts.map(fact => (
+            <div key={fact.key} className="order-pay-detail-row">
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {open.isPartialShare && (
+          <p className="order-pay-list-note">{PAYMENT_DETAIL_SPLIT_NOTE}</p>
+        )}
+
+        {notes.length > 0 && (
+          <dl className="order-pay-detail-notes">
+            {notes.map(note => (
+              <div key={note.key} className="order-pay-detail-note">
+                <dt>{note.label}</dt>
+                <dd>{note.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </OrderModalShell>
+    )
+  }
+
   return (
     <OrderModalShell title={PAYMENT_LIST_TITLE[kind]} onClose={onClose}>
       {rows.length === 0 ? (
@@ -465,60 +556,57 @@ export function OrderPaymentListDialog({ kind, rows, formatDate, financeHref, on
       ) : (
         <>
           <ul className="order-pay-list">
-            {rows.map(row => {
-              const href = financeHref?.(row.id) ?? null
-              return (
-                <li key={row.id} className="order-pay-list-row">
-                  <div className="order-pay-list-main">
-                    <div className="order-pay-list-amount">{formatMoney(row.allocated)}</div>
-                    {/* ONLY WHEN THE TWO GENUINELY DIFFER. Saying "of X" under
-                        every row would be noise on the ordinary case, where the
-                        whole payment is this Order's. */}
-                    {row.isPartialShare && (
-                      <div className="order-pay-list-split">
-                        allocated from {formatMoney(row.full)} received
-                      </div>
-                    )}
-                  </div>
-                  <dl className="order-pay-list-facts">
-                    <div className="order-pay-list-fact">
-                      <dt>Date</dt>
-                      <dd>{formatDate(row.dateIso)}</dd>
+            {rows.map(row => (
+              <li key={row.id} className="order-pay-list-row">
+                <div className="order-pay-list-main">
+                  <div className="order-pay-list-amount">{formatMoney(row.allocated)}</div>
+                  {/* ONLY WHEN THE TWO GENUINELY DIFFER. Saying "of X" under
+                      every row would be noise on the ordinary case, where the
+                      whole payment is this Order's. */}
+                  {row.isPartialShare && (
+                    <div className="order-pay-list-split">
+                      allocated from {formatMoney(row.full)} received
                     </div>
-                    <div className="order-pay-list-fact">
-                      <dt>Mode</dt>
-                      <dd>{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '—'}</dd>
-                    </div>
-                    <div className="order-pay-list-fact">
-                      <dt>Client</dt>
-                      <dd>{customerDisplayName(row.client)}</dd>
-                    </div>
-                    {/* THE STATUS, ONLY WHERE IT DISTINGUISHES ANYTHING. Every
-                        row in the verified list is verified and captioning each
-                        one so says nothing; a row awaiting Finance may be
-                        pending or may need clarification, which is a real
-                        difference to the person chasing it. */}
-                    {kind === 'awaiting' && (
-                      <div className="order-pay-list-fact">
-                        <dt>Status</dt>
-                        <dd>{piPaymentStatusLabel(row.status)}</dd>
-                      </div>
-                    )}
-                  </dl>
-                  {href && (
-                    /* A LINK, so the payment can be opened beside the Order in a
-                       new tab -- the usual way to check one against the other. */
-                    <a
-                      href={href}
-                      className="boe-btn boe-btn-ghost order-pay-list-link"
-                      title="Open this payment's full record in Finance"
-                    >
-                      Finance record
-                    </a>
                   )}
-                </li>
-              )
-            })}
+                </div>
+                <dl className="order-pay-list-facts">
+                  <div className="order-pay-list-fact">
+                    <dt>Date</dt>
+                    <dd>{formatDate(row.dateIso)}</dd>
+                  </div>
+                  <div className="order-pay-list-fact">
+                    <dt>Mode</dt>
+                    <dd>{PAYMENT_MODE_LABEL[row.mode ?? ''] ?? row.mode ?? '\u2014'}</dd>
+                  </div>
+                  <div className="order-pay-list-fact">
+                    <dt>Client</dt>
+                    <dd>{customerDisplayName(row.client)}</dd>
+                  </div>
+                  {/* THE STATUS, ONLY WHERE IT DISTINGUISHES ANYTHING. Every
+                      row in the verified list is verified and captioning each
+                      one so says nothing; a row awaiting Finance may be
+                      pending or may need clarification, which is a real
+                      difference to the person chasing it. */}
+                  {kind === 'awaiting' && (
+                    <div className="order-pay-list-fact">
+                      <dt>Status</dt>
+                      <dd>{piPaymentStatusLabel(row.status)}</dd>
+                    </div>
+                  )}
+                </dl>
+                {/* THE DOOR TO THE REST OF THE RECORD, and it opens HERE. This
+                    was a link into Finance — a different module, a different
+                    layout, and the Order lost behind it. Everything it went for
+                    is on the row this dialog already holds. */}
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost order-pay-list-link"
+                  onClick={() => onOpen(row.id)}
+                >
+                  {PAYMENT_DETAIL_VIEW}
+                </button>
+              </li>
+            ))}
           </ul>
           <p className="order-pay-list-note">{PAYMENT_LIST_CAPTION}</p>
         </>

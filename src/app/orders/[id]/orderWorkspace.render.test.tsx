@@ -29,9 +29,13 @@ import {
   type OrderActivityItem,
 } from './OrderWorkspace'
 import {
+  PAYMENT_DETAIL_BACK,
+  PAYMENT_DETAIL_TITLE,
+  PAYMENT_DETAIL_VIEW,
   PAYMENT_LIST_EMPTY,
   PAYMENT_LIST_TITLE,
   orderPaymentList,
+  paymentDetailFields,
 } from '@/lib/orders/orderPaymentLists'
 import {
   CUSTOMIZATION_MARK,
@@ -511,16 +515,31 @@ describe('the payment summary figures', () => {
 
 // ── The payments behind a figure ───────────────────────────────
 
+const DETAILS = new Map([
+  ['p1', paymentDetailFields({
+    human_payment_id: 'PAY-2026-0311', received_in: 'company_account',
+    proof_note: 'NEFT reference N260901.', sales_note: 'Advance on 0524.',
+    approved_at: '2026-09-02T10:14:00Z',
+  })],
+  ['p2', paymentDetailFields({
+    human_payment_id: 'PAY-2026-0402', admin_note: 'Which invoice is this against?',
+    clarification_requested_at: '2026-09-15T04:00:00Z',
+  })],
+])
+
 const dialog = (
   rows: OrderFinancePaymentRow[],
   kind: 'verified' | 'awaiting',
-  financeHref: ((id: string) => string) | null = null,
+  over: { openId?: string | null } = {},
 ) => renderToStaticMarkup(
   <OrderPaymentListDialog
     kind={kind}
-    rows={orderPaymentList(rows, kind)}
+    rows={orderPaymentList(rows, kind, DETAILS)}
     formatDate={iso => (iso === null ? '—' : `${iso} formatted`)}
-    financeHref={financeHref}
+    formatDateTime={iso => (iso === null ? '—' : `${iso} at`)}
+    openId={over.openId ?? null}
+    onOpen={() => {}}
+    onBack={() => {}}
     onClose={() => {}}
   />,
 )
@@ -602,14 +621,20 @@ describe('the payments behind a figure', () => {
     assert.ok(text(dialog([], 'verified')).includes(PAYMENT_LIST_EMPTY.verified))
   })
 
-  test('the Finance record door is drawn only when the page passes one', () => {
-    const without = dialog([payment({})], 'verified', null)
-    assert.equal(/href=/.test(without), false, 'no door for a reader who may not open it')
-    assert.equal(without.includes('order-pay-list-link'), false)
+  test('THE DOOR TO THE REST OF THE RECORD OPENS HERE, not in Finance', () => {
+    // It was a link into the Finance module — a different layout, and the Order
+    // lost behind it. It is a button now, and everything it used to go for is
+    // on the row this dialog already holds.
+    const html = dialog([payment({})], 'verified')
+    assert.equal(/<a |href=/.test(html), false, 'nothing in the dialog navigates')
+    assert.equal(/Finance record/.test(text(html)), false)
+    assert.ok(text(html).includes(PAYMENT_DETAIL_VIEW))
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+  })
 
-    const withDoor = dialog([payment({})], 'verified', id => `/finance/received/${id}`)
-    assert.ok(withDoor.includes('href="/finance/received/p1"'))
-    assert.ok(text(withDoor).includes('Finance record'))
+  test('the list can be reached from either figure and says which it is', () => {
+    assert.ok(text(dialog([payment({})], 'verified')).includes(PAYMENT_LIST_TITLE.verified))
+    assert.ok(text(dialog([awaitingRow], 'awaiting')).includes(PAYMENT_LIST_TITLE.awaiting))
   })
 
   test('it is a proper dialog: labelled, modal, and closable', () => {
@@ -622,6 +647,101 @@ describe('the payments behind a figure', () => {
 
   test('the allocation semantics are stated, not assumed', () => {
     assert.ok(text(dialog([payment({})], 'verified')).includes("Amounts are this Order's allocated share"))
+  })
+})
+
+// ── One payment's own record, in the same dialog ──────────────────────────────
+
+describe('the payment detail', () => {
+  const detail = (rows = [payment({})], kind: 'verified' | 'awaiting' = 'verified', openId = 'p1') =>
+    dialog(rows, kind, { openId })
+
+  test('it is the SAME dialog, retitled — not a second one stacked on the first', () => {
+    const html = detail()
+    assert.equal((html.match(/role="dialog"/g) ?? []).length, 1)
+    assert.match(html, new RegExp(`aria-label="${PAYMENT_DETAIL_TITLE}"`))
+    assert.match(html, /aria-label="Close"/)
+    // And the list it came from is not also on screen.
+    assert.equal(html.includes('order-pay-list-row'), false)
+  })
+
+  test('Back returns to the list INSIDE the dialog, never through the browser', () => {
+    const html = detail()
+    assert.ok(text(html).includes(PAYMENT_DETAIL_BACK))
+    assert.match(html, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-detail-back"/)
+    assert.equal(/history\.back|<a |href=/.test(html), false)
+  })
+
+  test('IT DOES NOT NAVIGATE TO FINANCE, or anywhere else', () => {
+    assert.equal(/<a |href=|\/finance/.test(detail()), false)
+  })
+
+  test('states the useful fields of the payment it was opened for', () => {
+    const body = text(detail())
+    for (const s of ['Allocated to this Order', '₹7,50,000.00',
+                     'Payment date', '2026-09-01 formatted',
+                     'Mode', 'Payer', 'Vittaazio',
+                     'Payment reference', 'PAY-2026-0311',
+                     'Verification', 'Verified',
+                     'Received in', 'Company account',
+                     'Verified on', '2026-09-02T10:14:00Z at']) {
+      assert.ok(body.includes(s), s)
+    }
+  })
+
+  test('and the notes somebody actually wrote, each only where it exists', () => {
+    const body = text(detail())
+    assert.ok(body.includes('Proof'))
+    assert.ok(body.includes('NEFT reference N260901.'))
+    assert.ok(body.includes('Sales note'))
+    // No Finance note on this payment, so no empty heading for one.
+    assert.equal(body.includes('Finance note'), false)
+  })
+
+  test('a clarification carries its note and its moment', () => {
+    const body = text(detail([awaitingRow], 'awaiting', 'p2'))
+    assert.ok(body.includes('Clarification asked'))
+    assert.ok(body.includes('Finance note'))
+    assert.ok(body.includes('Which invoice is this against?'))
+  })
+
+  test('A SPLIT PAYMENT SHOWS BOTH FIGURES, and says which is which', () => {
+    const split = payment({
+      id: 'p1', amount: 500000, allocatedAmount: 200000,
+      exactAmount: '500000.00', exactAllocatedAmount: '200000.00', isPartialShare: true,
+    })
+    const body = text(detail([split]))
+    const share = body.indexOf('Allocated to this Order ₹2,00,000.00')
+    const full = body.indexOf('Full payment ₹5,00,000.00')
+    assert.ok(share > 0, "this Order's share is named and stated")
+    assert.ok(full > share, 'and the whole payment after it, never in its place')
+    assert.ok(body.includes('Only the share allocated to this Order is counted'))
+    // The summary counts the SAME share, so the two cannot disagree.
+    assert.equal(buildOrderFinancePosition([split], 1564090).verified, '200000.00')
+  })
+
+  test('an ordinary payment states one figure, not the same figure twice', () => {
+    const body = text(detail())
+    assert.equal(body.includes('Full payment'), false)
+    assert.equal((body.match(/₹7,50,000\.00/g) ?? []).length, 1)
+  })
+
+  test('a field the record has not got is absent, never blank or invented', () => {
+    // p5 carries no detail row at all: no reference, no received-in, no notes.
+    const bare = payment({ id: 'p5' })
+    const body = text(dialog([bare], 'verified', { openId: 'p5' }))
+    for (const absent of ['Payment reference', 'Received in', 'Verified on', 'Proof', 'Finance note']) {
+      assert.equal(body.includes(absent), false, absent)
+    }
+    // What it does have is still stated.
+    assert.ok(body.includes('Allocated to this Order'))
+    assert.ok(body.includes('Verification'))
+  })
+
+  test('an id nothing matches falls back to the list rather than an empty pane', () => {
+    const html = dialog([payment({})], 'verified', { openId: 'nope' })
+    assert.match(html, new RegExp(`aria-label="${PAYMENT_LIST_TITLE.verified}"`))
+    assert.ok(html.includes('order-pay-list-row'))
   })
 })
 
