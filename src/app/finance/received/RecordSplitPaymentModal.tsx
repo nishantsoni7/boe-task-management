@@ -67,8 +67,10 @@ import {
   splitPaymentBlockedReason,
   splitPaymentErrorMessage,
   splitPaymentTotals,
+  splitPaymentIsDirty,
   targetKey,
   targetKindDestination,
+  type SplitPaymentBaseline,
   toRpcAllocations,
   type SplitAllocationRow,
   type SplitTargetKind,
@@ -226,6 +228,19 @@ export function RecordSplitPaymentModal({
     }]
   })
   const [pickerFor, setPickerFor] = useState<string | null>(null)
+
+  /**
+   * THE FORM AS IT OPENED, for the discard guard to measure against.
+   *
+   * Captured ONCE. The modal is mounted fresh each time it is opened, so this
+   * is the same value `destination` and `rows` were seeded from above — a ref
+   * rather than the live prop so that a caller re-rendering with a different
+   * `initialTarget` can never silently re-baseline a form somebody is part way
+   * through, which would turn their edits back into "nothing to discard".
+   */
+  const dirtyBaseline = useRef<SplitPaymentBaseline>({
+    initialTarget: initialTarget ? { kind: initialTarget.kind, id: initialTarget.id } : null,
+  }).current
   /** The customer set the person confirmed, as customerSignature() writes it. */
   const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
 
@@ -269,18 +284,24 @@ export function RecordSplitPaymentModal({
 
   // ── Not losing what was typed ──
   //
-  // Dirty means "there is something here worth a question". The payment mode
-  // starts at a value nobody chose, so it counts only once it has been changed.
-  const isDirty = () =>
-    amount.trim() !== '' ||
-    paymentDate !== '' ||
-    paymentMode !== DEFAULT_PAYMENT_MODE ||
-    reference.trim() !== '' ||
-    remarks.trim() !== '' ||
-    destination !== EMPTY_PAYMENT_ENTRY.destination ||
-    custody.length > 0 ||
-    attachFile !== null ||
-    rows.some(r => r.kind || r.targetId || r.amount.trim())
+  // Dirty means "there is something here worth a question", measured against
+  // the form AS IT OPENED — which for a form opened from a Confirmed Order
+  // already names that Order. The rule itself lives in splitPaymentEntry, with
+  // its own tests; this only hands it the current state.
+  const isDirty = () => splitPaymentIsDirty({
+    destination,
+    emptyDestination: EMPTY_PAYMENT_ENTRY.destination,
+    amount,
+    paymentDate,
+    paymentMode,
+    defaultPaymentMode: DEFAULT_PAYMENT_MODE,
+    reference,
+    remarks,
+    custodyCount: custody.length,
+    hasAttachment: attachFile !== null,
+    rows,
+    baseline: dirtyBaseline,
+  })
 
   // Once the payment is recorded (even without its proof) there is nothing left
   // to discard: X and Escape close at once and refresh the list, like Close.

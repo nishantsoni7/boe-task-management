@@ -117,6 +117,106 @@ export function duplicateTargetKeys(rows: readonly SplitAllocationRow[]): Set<st
   return twice
 }
 
+// ── Is there anything here worth a question? ─────────────────────────────────
+//
+// WHAT "DIRTY" HAS TO MEAN. The discard guard exists so nobody loses a payment
+// they typed. It must therefore fire on anything a person ENTERED — and it must
+// NOT fire on the state the form was handed to them in, because a modal that
+// argues about being closed the instant it opens teaches people to dismiss the
+// warning without reading it, which is exactly when it stops protecting them.
+//
+// THE BASELINE IS NOT ALWAYS EMPTY. A form opened from a Confirmed Order starts
+// with that Order already in row one and its destination already chosen. Both
+// were the caller's doing, not the reader's. Comparing against the EMPTY form
+// counted them as edits, so Add payment → Cancel asked a question about work
+// nobody had done. The comparison is against the form AS IT OPENED.
+//
+// IT DECIDES NOTHING ELSE. Not whether the entry may be submitted (that is
+// splitPaymentBlockedReason), not what is sent (toRpcAllocations), not who may
+// record it (the RPC). Only whether closing should ask first.
+
+/** What the form was handed, before anybody touched it. */
+export type SplitPaymentBaseline = {
+  /**
+   * The row-one target the form opened with, or null for the ordinary empty
+   * form the Finance page opens.
+   */
+  initialTarget: { kind: SplitTargetKind; id: string } | null
+}
+
+/**
+ * The destination the form OPENS on: the seeded target's own, or the empty
+ * form's. A person who never touched the destination card has not edited it,
+ * whichever of the two it started as.
+ */
+export function splitPaymentPristineDestination(
+  baseline: SplitPaymentBaseline,
+  emptyDestination: PaymentDestination,
+): PaymentDestination {
+  return baseline.initialTarget
+    ? targetKindDestination(baseline.initialTarget.kind)
+    : emptyDestination
+}
+
+/**
+ * Whether the ALLOCATION LIST has moved off its baseline.
+ *
+ * Unseeded: any row that names a target or carries an amount is an edit — the
+ * empty form opens with one blank row and nothing else.
+ *
+ * Seeded: the baseline is exactly ONE row, naming the seeded target, with no
+ * amount. So adding a row, removing the seeded one (which leaves a blank row
+ * behind), pointing it somewhere else, or typing an amount into it are each an
+ * edit; and re-picking the same target returns the form to pristine, which is
+ * correct — nothing has been lost at that point.
+ */
+export function splitPaymentRowsChanged(
+  rows: readonly SplitAllocationRow[],
+  baseline: SplitPaymentBaseline,
+): boolean {
+  const seed = baseline.initialTarget
+  if (!seed) return rows.some(r => Boolean(r.kind) || Boolean(r.targetId) || r.amount.trim() !== '')
+  if (rows.length !== 1) return true
+  const row = rows[0]
+  return row.kind !== seed.kind
+    || row.targetId !== seed.id
+    || row.amount.trim() !== ''
+}
+
+/**
+ * Everything a person can enter, against the form as it opened.
+ *
+ * The payment mode starts at a value nobody chose, so it counts only once it
+ * has been changed — the rule this form already had, unchanged.
+ */
+export function splitPaymentIsDirty(input: {
+  destination: PaymentDestination
+  /** The destination an UNSEEDED form opens on — EMPTY_PAYMENT_ENTRY's. */
+  emptyDestination: PaymentDestination
+  amount: string
+  paymentDate: string
+  paymentMode: string
+  /** The mode the form opens on, which nobody chose. */
+  defaultPaymentMode: string
+  reference: string
+  remarks: string
+  /** How many custody events have been added. */
+  custodyCount: number
+  hasAttachment: boolean
+  rows: readonly SplitAllocationRow[]
+  baseline: SplitPaymentBaseline
+}): boolean {
+  return input.amount.trim() !== ''
+    || input.paymentDate !== ''
+    || input.paymentMode !== input.defaultPaymentMode
+    || input.reference.trim() !== ''
+    || input.remarks.trim() !== ''
+    || input.destination !== splitPaymentPristineDestination(input.baseline, input.emptyDestination)
+    || input.custodyCount > 0
+    || input.hasAttachment
+    || splitPaymentRowsChanged(input.rows, input.baseline)
+}
+
 /** The three figures the form shows continuously, all exact. */
 export type SplitPaymentTotals = {
   /** The payment itself, as typed. Null when it is not yet a valid figure. */

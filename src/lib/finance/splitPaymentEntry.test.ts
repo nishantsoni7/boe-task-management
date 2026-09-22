@@ -10,12 +10,16 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   EMPTY_ALLOCATION_ROW,
   duplicateTargetKeys,
   splitPaymentBlockedReason,
   splitPaymentErrorMessage,
+  splitPaymentIsDirty,
+  splitPaymentPristineDestination,
+  splitPaymentRowsChanged,
   splitPaymentTotals,
   targetKey,
   toRpcAllocations,
@@ -283,5 +287,218 @@ describe('server refusals become sentences that name the rule', () => {
 
   test('a null refusal is still a sentence', () => {
     assert.match(splitPaymentErrorMessage(null), /could not be recorded/)
+  })
+})
+
+// ══ Is there anything here worth a question? ══════════════════════════════════
+//
+// The discard guard's rule, against the form AS IT OPENED. A form opened from a
+// Confirmed Order starts with that Order in row one; that is the caller's doing
+// and not the reader's, and a modal that argues about closing the instant it
+// opens teaches people to dismiss the warning without reading it.
+
+const SEED = { kind: 'order' as const, id: 'o-524' }
+
+/** The one argument the rule takes, so both fixtures are the same shape. */
+type DirtyInput = Parameters<typeof splitPaymentIsDirty>[0]
+
+/** The form exactly as an UNSEEDED (Finance page) modal opens it. */
+const pristineUnseeded: DirtyInput = {
+  destination: 'pi_draft' as const,
+  emptyDestination: 'pi_draft' as const,
+  amount: '',
+  paymentDate: '',
+  paymentMode: 'hdfc',
+  defaultPaymentMode: 'hdfc',
+  reference: '',
+  remarks: '',
+  custodyCount: 0,
+  hasAttachment: false,
+  rows: [EMPTY_ALLOCATION_ROW('k1')],
+  baseline: { initialTarget: null },
+}
+
+/** The form exactly as a SEEDED (Confirmed Order) modal opens it. */
+const pristineSeeded: DirtyInput = {
+  ...pristineUnseeded,
+  destination: 'confirmed_order' as const,
+  rows: [{
+    key: 'k1', kind: 'order' as const, targetId: 'o-524',
+    targetLabel: '0524 · Vittaazio', clientName: 'Vittaazio', reference: '0524',
+    amount: '',
+  }],
+  baseline: { initialTarget: SEED },
+}
+
+describe('a form that has just opened has nothing to discard', () => {
+  test('the SEEDED modal is pristine — Add payment then Cancel closes at once', () => {
+    // The regression this exists for: the seeded destination and the seeded row
+    // were each counted as an edit, so the very first Cancel asked a question
+    // about work nobody had done.
+    assert.equal(splitPaymentIsDirty(pristineSeeded), false)
+  })
+
+  test('the UNSEEDED Finance modal is pristine too — unchanged behaviour', () => {
+    assert.equal(splitPaymentIsDirty(pristineUnseeded), false)
+  })
+
+  test('the seeded destination is the one the seed implies, not the empty form’s', () => {
+    assert.equal(
+      splitPaymentPristineDestination({ initialTarget: SEED }, 'pi_draft'),
+      'confirmed_order')
+    assert.equal(
+      splitPaymentPristineDestination({ initialTarget: { kind: 'submission', id: 's-1' } }, 'pi_draft'),
+      'pi_draft')
+    assert.equal(
+      splitPaymentPristineDestination({ initialTarget: null }, 'pi_draft'),
+      'pi_draft')
+  })
+})
+
+describe('anything a person actually entered still asks', () => {
+  // Each runs against BOTH baselines: the fix must not have bought a quiet
+  // close for a form somebody has typed into.
+  const both: [string, DirtyInput][] = [
+    ['seeded', pristineSeeded],
+    ['unseeded', pristineUnseeded],
+  ]
+
+  test('the payment amount', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, amount: '50000' }), true, name)
+      // Whitespace alone is not an entry.
+      assert.equal(splitPaymentIsDirty({ ...form, amount: '   ' }), false, name)
+    }
+  })
+
+  test('the payment date', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, paymentDate: '2026-09-22' }), true, name)
+    }
+  })
+
+  test('the payment mode, once it is CHANGED from the one nobody chose', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, paymentMode: 'hdfc' }), false, name)
+      assert.equal(splitPaymentIsDirty({ ...form, paymentMode: 'pnb' }), true, name)
+    }
+  })
+
+  test('a proof reference, and an attached file', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, reference: 'UTR-99' }), true, name)
+      assert.equal(splitPaymentIsDirty({ ...form, hasAttachment: true }), true, name)
+      assert.equal(splitPaymentIsDirty({ ...form, reference: '  ' }), false, name)
+    }
+  })
+
+  test('notes and remarks', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, remarks: 'paid by cheque' }), true, name)
+      assert.equal(splitPaymentIsDirty({ ...form, remarks: '  ' }), false, name)
+    }
+  })
+
+  test('a custody event', () => {
+    for (const [name, form] of both) {
+      assert.equal(splitPaymentIsDirty({ ...form, custodyCount: 1 }), true, name)
+    }
+  })
+
+  test('choosing a different destination', () => {
+    assert.equal(splitPaymentIsDirty({ ...pristineSeeded, destination: 'suspense' }), true)
+    assert.equal(splitPaymentIsDirty({ ...pristineUnseeded, destination: 'confirmed_order' }), true)
+  })
+})
+
+describe('the allocation list, against the row the form opened with', () => {
+  const seededRow = pristineSeeded.rows[0]
+
+  test('typing an amount into the seeded row asks', () => {
+    assert.equal(splitPaymentRowsChanged([{ ...seededRow, amount: '1000' }], { initialTarget: SEED }), true)
+  })
+
+  test('pointing the seeded row at a DIFFERENT target asks', () => {
+    assert.equal(splitPaymentRowsChanged(
+      [{ ...seededRow, targetId: 'o-999', targetLabel: '0999 · Other' }],
+      { initialTarget: SEED }), true)
+    // A different KIND is a change too, even at the same id.
+    assert.equal(splitPaymentRowsChanged(
+      [{ ...seededRow, kind: 'submission' }], { initialTarget: SEED }), true)
+  })
+
+  test('ADDING an allocation asks', () => {
+    assert.equal(splitPaymentRowsChanged(
+      [seededRow, EMPTY_ALLOCATION_ROW('k2')], { initialTarget: SEED }), true)
+  })
+
+  test('REMOVING the seeded allocation asks', () => {
+    // removeRow never leaves zero rows: it puts a blank one back, which is no
+    // longer the target the form opened with.
+    assert.equal(splitPaymentRowsChanged(
+      [EMPTY_ALLOCATION_ROW('k2')], { initialTarget: SEED }), true)
+  })
+
+  test('CHANGE followed by re-picking the SAME target is pristine again', () => {
+    // Nothing has been lost at that point, so there is nothing to warn about.
+    assert.equal(splitPaymentRowsChanged([seededRow], { initialTarget: SEED }), false)
+  })
+
+  test('on an UNSEEDED form any named target or amount asks, as before', () => {
+    const empty = EMPTY_ALLOCATION_ROW('k1')
+    assert.equal(splitPaymentRowsChanged([empty], { initialTarget: null }), false)
+    assert.equal(splitPaymentRowsChanged([{ ...empty, targetId: 'o-1', kind: 'order' }], { initialTarget: null }), true)
+    assert.equal(splitPaymentRowsChanged([{ ...empty, amount: '500' }], { initialTarget: null }), true)
+  })
+})
+
+// ══ The modal asks the rule, and nothing else moved ═══════════════════════════
+
+describe('RecordSplitPaymentModal is wired to the rule, and its write is untouched', () => {
+  const modal = readFileSync('src/app/finance/received/RecordSplitPaymentModal.tsx', 'utf8')
+    .replace(/\r\n/g, '\n')
+  /** What RENDERS and RUNS, with the prose stripped: this file explains the RPC
+   *  at length and a comment is not a call. */
+  const code = modal
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+
+  test('dirtiness is the shared rule, not an expression that can drift', () => {
+    assert.ok(code.includes('const isDirty = () => splitPaymentIsDirty({'))
+    // The old inline clauses are gone, so there is one definition of "dirty".
+    assert.equal(code.includes("destination !== EMPTY_PAYMENT_ENTRY.destination"), false,
+      'the destination clause must no longer be compared against the EMPTY form')
+    assert.equal(code.includes('rows.some(r => r.kind || r.targetId || r.amount.trim())'), false,
+      'the row clause must no longer treat a seeded row as an edit')
+  })
+
+  test('the baseline is the seeded target, captured once', () => {
+    assert.ok(code.includes('const dirtyBaseline = useRef<SplitPaymentBaseline>({'))
+    assert.ok(code.includes('initialTarget: initialTarget ? { kind: initialTarget.kind, id: initialTarget.id } : null,'))
+    assert.ok(code.includes('baseline: dirtyBaseline,'))
+    // A ref, so a re-render with a different prop cannot re-baseline a form
+    // somebody is part way through.
+    assert.ok(/useRef<SplitPaymentBaseline>\([\s\S]{0,200}\)\.current/.test(code))
+  })
+
+  test('the discard guard itself is unchanged — still asked, still on the same controls', () => {
+    assert.ok(code.includes('const guard = useDiscardGuard({'))
+    assert.ok(code.includes('isDirty: () => isDirty() && recordedWithoutProof === null,'))
+    assert.ok(code.includes('onClose={guard.requestClose}'))
+    assert.ok(code.includes('onKeepEditing={guard.keepEditing}'))
+    assert.ok(code.includes('onDiscard={guard.discard}'))
+  })
+
+  test('SUBMITTING STILL GOES THROUGH THE SAME RPC, with the same arguments', () => {
+    assert.ok(code.includes("supabase.rpc('record_payment_with_allocations', {"))
+    assert.ok(code.includes('p_allocations:  targetKind ? toRpcAllocations(rows) : [],'))
+    // Nothing about this fix touches what is sent or what refuses it.
+    assert.ok(code.includes('splitPaymentBlockedReason({'))
+    assert.ok(code.includes('toRpcCustodyEvents'))
+  })
+
+  test('and the seed itself is untouched: still optional, still defaulted to null', () => {
+    assert.ok(code.includes('initialTarget = null,'))
+    assert.ok(code.includes('initialTarget?: {'))
   })
 })
