@@ -353,12 +353,16 @@ describe('normal mode', () => {
   })
 
   test('every card dimension, breakpoint, icon and badge rule is untouched', () => {
-    // The pre-existing responsive design, asserted value by value. The new rules
-    // are appended after a marked boundary and none of them is one of these.
+    // The responsive design AS IT STANDS ON main, asserted value by value. The
+    // card-surface work (#193) removed the description and the footer and
+    // resized the card around what was left — 200px became 132px, the title
+    // clamp went — so these are that design's numbers, not the older ones. The
+    // ordering rules are appended after a marked boundary and none of them is
+    // one of these.
     for (const rule of [
       'grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))',
       'gap: 20px',
-      'min-height: 200px',
+      'min-height: 132px',
       'padding: 24px 22px 20px',
       'width: 56px',
       '@media (max-width: 767px)',
@@ -366,11 +370,23 @@ describe('normal mode', () => {
       'grid-template-columns: repeat(2, 1fr)',
       'min-height: 118px',
       'width: 44px',
-      '-webkit-line-clamp: 2',
+      'overflow-wrap: anywhere',
       'font-size: 13.5px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
     }
+  })
+
+  test('and the ordering work did not reinstate what the card surface removed', () => {
+    // The Edit-order rules were appended to this stylesheet after #193 landed.
+    // A merge that resurrected a .description or .footer rule would put back
+    // furniture the card deliberately no longer has — and moduleCardSurface's
+    // own assertions would then be the only thing standing between it and the
+    // card. Said here too, because this branch is the one that touched the file.
+    assert.equal(/\.description\b/.test(CSS), false)
+    assert.equal(/\.footer\b/.test(CSS), false)
+    assert.equal(CSS.includes('-webkit-line-clamp'), false,
+      'a module name is never clamped')
   })
 
   test('the heading gap is preserved when the label moves into a row', () => {

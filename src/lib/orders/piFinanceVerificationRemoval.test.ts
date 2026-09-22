@@ -503,6 +503,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       // approve_order_submission nor reads a finance verification, so nothing
       // this file asserts is reachable from it.
       '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
     ])
 
     const previous = lf(readFileSync(

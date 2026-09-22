@@ -1006,6 +1006,15 @@ describe('the applied migrations are frozen', () => {
       // approval functions re-emitted with one check removed and one added, no
       // schema change and no DML. It reaches nothing asserted here.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // Fabric and Finish approvals on a confirmed Order: its own tables and
+      // policies, reaching nothing asserted here. (Absent until now — it landed
+      // without this line, which is why this assertion was already failing on a
+      // clean main.)
+      '20261227000000_order_fabric_finish_approvals.sql',
+      // A personal display order for the /modules launcher: one user-scoped
+      // preference table, no DML, and no payment, participant or order total in
+      // it at all.
+      '20261228000000_personal_module_order.sql',
     ])
   })
 
@@ -1263,6 +1272,15 @@ describe('the applied migrations are frozen', () => {
       // approval functions re-emitted with one check removed and one added, no
       // schema change and no DML. It reaches nothing asserted here.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // Fabric and Finish approvals on a confirmed Order: its own tables and
+      // policies, reaching nothing asserted here. (Absent until now — it landed
+      // without this line, which is why this assertion was already failing on a
+      // clean main.)
+      '20261227000000_order_fabric_finish_approvals.sql',
+      // A personal display order for the /modules launcher: one user-scoped
+      // preference table, no DML, and no payment, participant or order total in
+      // it at all.
+      '20261228000000_personal_module_order.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
