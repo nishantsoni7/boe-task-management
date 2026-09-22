@@ -291,7 +291,16 @@ describe('no Order screen waits more than it must', () => {
       // The last three are a SAVE and two on-demand file operations. None runs
       // at load, and no archived PI version or stored proof is signed until
       // somebody names it.
-      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 31,
+      //
+      // DETAIL 31 -> 32: the orphan removal. The screenshot has to be uploaded
+      // BEFORE record_order_approval_event(), because that function refuses a
+      // path naming no object — so every refusal strands the file uploaded for
+      // it. This call takes that one file back, and it runs ONLY in the
+      // refusal arm of a write somebody pressed. Nothing at load, nothing on a
+      // success, and the bucket's DELETE policy cannot reach a screenshot an
+      // event has already filed. The wait count is unchanged: the test above
+      // still requires exactly three.
+      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 32,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

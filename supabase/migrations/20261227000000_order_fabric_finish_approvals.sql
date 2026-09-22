@@ -26,7 +26,8 @@
 --   3.  public.record_order_approval_event(...) the one write path
 --   4.  storage bucket order-approval-evidence  private, images only
 --   5.  storage policies                        read follows Order visibility,
---                                               write follows (2)
+--                                               write follows (2), delete reaches
+--                                               only an unclaimed orphan
 --
 -- IDEMPOTENT. Every object is created if-not-exists or replaced, every policy is
 -- dropped before it is created, and the verification block at the end raises if
@@ -236,7 +237,8 @@ create trigger order_approval_events_append_only
 --   * the caller may record on this Order            can_record_order_approval
 --   * the Order is not cancelled
 --   * the status is one of the three
---   * evidence is present for an approved status and absent for Not Approved
+--   * evidence is present for an approved status, and REFUSED for Not Approved
+--     rather than quietly discarded
 --   * the evidence object EXISTS in the bucket, under this Order's own prefix
 --     and this kind's folder — a recorded path that names nothing, or names
 --     another Order's file, is refused rather than stored
@@ -355,10 +357,22 @@ begin
         'ORDER_APPROVAL_EVIDENCE_REUSED: that screenshot is already filed against another approval'
         using errcode = 'P0001';
     end if;
-  else
-    -- Reverting to Not Approved is recorded with its actor and its timestamp,
-    -- and carries no screenshot: there is nothing to prove.
-    v_path := null;
+  elsif v_path is not null then
+    -- NOT APPROVED TAKES NO PROOF — AND REFUSING ONE IS NOT THE SAME AS
+    -- DROPPING IT.
+    --
+    -- An earlier version of this function set v_path to null here. That was
+    -- wrong in two ways at once. The caller was told the event had been
+    -- recorded WITH the screenshot it sent, while the audit row holds none; and
+    -- the object it uploaded a moment earlier stayed in the bucket with nothing
+    -- in the log referencing it. A silent disagreement between what the caller
+    -- believes it filed and what the history actually holds is the one thing an
+    -- append-only table exists to prevent.
+    --
+    -- So: refuse, name the reason, and let the caller take its own upload back.
+    raise exception
+      'ORDER_APPROVAL_EVIDENCE_FORBIDDEN: Not Approved carries no screenshot; there is nothing to prove'
+      using errcode = 'P0001';
   end if;
 
   insert into public.order_approval_events (order_id, approval_kind, status, evidence_path, actor_id)
@@ -437,10 +451,13 @@ grant  execute on function public.order_approval_evidence_order_id(text) to auth
 --   INSERT  can_record_order_approval      the assigned salesperson, an admin
 --                                          or a manager, and nobody else.
 --
--- NO UPDATE POLICY AND NO DELETE POLICY: an uploaded screenshot is permanent.
--- Without the UPDATE policy an x-upsert write cannot swap a file while leaving
--- its key untouched, which is what keeps "the proof filed is the proof
--- uploaded" true.
+--   DELETE  can_record_order_approval      and ONLY while no event claims the
+--           + unclaimed                    object: the orphan a refused write
+--                                          left behind, never a filed proof.
+--
+-- NO UPDATE POLICY: an uploaded screenshot's bytes are permanent. Without that
+-- policy an x-upsert write cannot swap a file while leaving its key untouched,
+-- which is what keeps "the proof filed is the proof uploaded" true.
 drop policy if exists "order_approval_evidence_select" on storage.objects;
 create policy "order_approval_evidence_select" on storage.objects
   for select to authenticated
@@ -457,6 +474,38 @@ create policy "order_approval_evidence_insert" on storage.objects
     bucket_id = 'order-approval-evidence'
     and public.module_entry_open('orders')
     and public.can_record_order_approval(public.order_approval_evidence_order_id(name))
+  );
+
+-- ── DELETE: AN ORPHAN, AND ONLY EVER AN ORPHAN ──
+--
+-- The browser must upload the screenshot BEFORE it calls
+-- record_order_approval_event(), because that function refuses a path naming no
+-- object. So every refusal from that function — a forbidden caller, a stale
+-- status, evidence sent for Not Approved — happens with a freshly uploaded file
+-- already in the bucket and no row referencing it. Without a way to take that
+-- file back, every failed press would leave litter in a private bucket forever.
+--
+-- THIS DOES NOT WEAKEN PERMANENCE, and the `not exists` clause is the whole
+-- reason why. An object becomes unreachable by this policy the instant an event
+-- claims it, claiming is the only thing the write path does with a path, and
+-- the table it would have to be un-claimed from has no UPDATE or DELETE policy
+-- and a trigger that refuses both. A FILED PROOF IS STILL PERMANENT; what can
+-- be removed is a file that no approval has ever stood on.
+--
+-- The authority is the write authority, not the read authority: only somebody
+-- who could have recorded the event may clear up after attempting it.
+drop policy if exists "order_approval_evidence_delete" on storage.objects;
+create policy "order_approval_evidence_delete" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'order-approval-evidence'
+    and public.module_entry_open('orders')
+    and public.can_record_order_approval(public.order_approval_evidence_order_id(name))
+    and not exists (
+      select 1
+      from public.order_approval_events e
+      where e.evidence_path = storage.objects.name
+    )
   );
 
 
@@ -516,12 +565,30 @@ begin
     raise exception 'order-approval-evidence is not private at the 5 MiB limit';
   end if;
 
+  -- STILL NO UPDATE POLICY. Without it an x-upsert write cannot swap a file's
+  -- bytes while leaving its key — and the event that names it — untouched.
   if exists (
     select 1 from pg_policies
     where schemaname = 'storage' and tablename = 'objects'
-      and policyname in ('order_approval_evidence_update', 'order_approval_evidence_delete')
+      and policyname = 'order_approval_evidence_update'
   ) then
-    raise exception 'an UPDATE or DELETE policy exists on the evidence bucket; proofs would not be permanent';
+    raise exception 'an UPDATE policy exists on the evidence bucket; proofs would not be permanent';
+  end if;
+
+  -- THE DELETE POLICY EXISTS, AND IT CANNOT REACH A FILED PROOF. It is here so
+  -- a refused write can take back the file it had to upload first. Both halves
+  -- are asserted: the write authority, and the claim check that makes the
+  -- difference between an orphan and evidence. A future edit that drops either
+  -- one fails this migration rather than quietly making proofs deletable.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'order_approval_evidence_delete'
+      and qual like '%can_record_order_approval%'
+      and qual like '%order_approval_events%'
+  ) then
+    raise exception
+      'the evidence DELETE policy is missing, or is not restricted to objects no approval event claims';
   end if;
 
   if to_regprocedure('public.record_order_approval_event(uuid, text, text, text)') is null then

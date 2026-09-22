@@ -71,6 +71,16 @@ export const EVIDENCE_REQUIRED_MESSAGE = 'An ERP screenshot is required for this
 export const EVIDENCE_SAME_FILE_MESSAGE =
   'Fabric and Finish each need their own screenshot. Choose a different file for one of them.'
 
+/**
+ * What the dialog says when a screenshot was sent with Not Approved.
+ *
+ * The dialog never sends one, so this is the answer to a call that did not come
+ * from it. The RPC refuses that path rather than dropping it, so the message has
+ * to exist for the refusal to read as anything but a generic failure.
+ */
+export const EVIDENCE_FORBIDDEN_MESSAGE =
+  'Not Approved takes no screenshot. Remove the file, or choose an approved status.'
+
 export const EVIDENCE_VIEW_LABEL = 'View proof'
 
 /** What the field asks for, in the words the business uses for it. */
@@ -424,6 +434,8 @@ const APPROVAL_FAILURES: readonly { marker: string; message: string }[] = [
     message: FABRIC_FINISH_READ_ONLY },
   { marker: 'ORDER_APPROVAL_EVIDENCE_REQUIRED',
     message: EVIDENCE_REQUIRED_MESSAGE },
+  { marker: 'ORDER_APPROVAL_EVIDENCE_FORBIDDEN',
+    message: EVIDENCE_FORBIDDEN_MESSAGE },
   { marker: 'ORDER_APPROVAL_EVIDENCE_REUSED',
     message: EVIDENCE_SAME_FILE_MESSAGE },
   { marker: 'ORDER_APPROVAL_EVIDENCE_MISSING',

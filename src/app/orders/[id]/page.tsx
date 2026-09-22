@@ -1518,6 +1518,11 @@ export default function OrderDetailPage() {
    * A FAILURE IS NEVER DRESSED AS A SUCCESS. The dialog stays open with one
    * quiet line and the card is re-read either way, so what is on screen is what
    * the database actually holds.
+   *
+   * AND A FAILURE LEAVES NOTHING BEHIND. Because the upload must precede the
+   * write, every refusal strands the file that was uploaded for it; each
+   * iteration removes its own orphan before reporting. An event that DID record
+   * keeps its screenshot — the bucket will not let that one be removed.
    */
   const recordApprovals = async (changes: ApprovalSubmission[]) => {
     if (!order || approvalBusy) return
@@ -1527,7 +1532,12 @@ export default function OrderDetailPage() {
       for (const change of changes) {
         let path: string | null = null
 
-        if (change.file) {
+        // NOT APPROVED NEVER CARRIES A FILE. The dialog already sends none for
+        // it, and the RPC now REFUSES a path here instead of discarding it — so
+        // uploading one would be writing an object for a call that cannot
+        // succeed. Stated again at the point of upload, because this is the
+        // only line that creates an object.
+        if (change.file && change.status !== 'not_approved') {
           path = evidenceObjectPath({
             orderId: order.id,
             kind: change.kind,
@@ -1546,7 +1556,25 @@ export default function OrderDetailPage() {
           p_status: change.status,
           p_evidence_path: path,
         })
-        if (error) { setApprovalError(describeApprovalFailure(error)); return }
+        if (error) {
+          // THE ORPHAN THIS PRESS JUST MADE, AND NOTHING ELSE.
+          //
+          // The upload had to come first, so a refusal always leaves a file
+          // behind that no event references. `path` is the key this iteration
+          // generated a moment ago from a fresh uuid, so removing it cannot
+          // reach anybody else's screenshot — and the bucket's DELETE policy
+          // refuses any object an event has already claimed, so it cannot reach
+          // a filed proof even if this code were wrong about which key it holds.
+          //
+          // The cleanup's own outcome is deliberately not surfaced: the refusal
+          // above is what the person needs to read, and a failed tidy-up must
+          // not replace it with a second, less useful message.
+          if (path) {
+            await supabase.storage.from(APPROVAL_EVIDENCE_BUCKET).remove([path])
+          }
+          setApprovalError(describeApprovalFailure(error))
+          return
+        }
       }
       setApprovalOpen(false)
     } finally {

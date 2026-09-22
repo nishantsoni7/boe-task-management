@@ -612,3 +612,63 @@ describe('a narrow write does not re-read the whole page', () => {
     }
   })
 })
+
+// ══ 10. A refused approval leaves nothing behind ══════════════════════════════
+//
+// The upload MUST precede record_order_approval_event(), because that function
+// refuses a path naming no object. Every refusal therefore happens with a file
+// already written and no row referencing it. These pin the two halves of the
+// answer: don't upload for a status that cannot carry evidence, and remove the
+// orphan when the write is refused anyway.
+
+describe('a refused approval leaves no orphan in the evidence bucket', () => {
+  const handler = page.slice(
+    page.indexOf('const recordApprovals = async'),
+    page.indexOf('// ── The image viewer ──'),
+  )
+
+  test('the handler is where the upload and the write both live', () => {
+    assert.ok(handler.length > 0, 'recordApprovals must still be on the page')
+    assert.ok(handler.includes('.upload('))
+    assert.ok(handler.includes("supabase.rpc('record_order_approval_event'"))
+  })
+
+  test('NOT APPROVED IS NEVER UPLOADED FOR', () => {
+    // The dialog already sends file: null for it. Said again at the only line
+    // that creates an object, because the RPC now refuses such a path outright
+    // and the upload would be writing a file for a call that cannot succeed.
+    assert.match(handler, /if \(change\.file && change\.status !== 'not_approved'\)/)
+  })
+
+  test('THE ORPHAN IS REMOVED WHEN THE WRITE IS REFUSED', () => {
+    assert.match(handler, /if \(path\) \{\s*\n\s*await supabase\.storage\.from\(APPROVAL_EVIDENCE_BUCKET\)\.remove\(\[path\]\)/)
+  })
+
+  test('and the removal is scoped to the key this press generated', () => {
+    // remove() is called with exactly [path] — the uuid key built two lines
+    // earlier — and never with a list, a prefix or a wildcard.
+    const removals = handler.match(/\.remove\([^)]*\)/g) ?? []
+    assert.equal(removals.length, 1, 'exactly one removal')
+    assert.equal(removals[0], '.remove([path])')
+    for (const forbidden of ['.list(', 'prefix', '*']) {
+      assert.equal(removals[0].includes(forbidden), false)
+    }
+  })
+
+  test('the cleanup runs only on refusal, never on success', () => {
+    // It sits inside the `if (error)` arm, so a recorded event keeps its proof.
+    const refusal = handler.slice(handler.indexOf('if (error) {'))
+    assert.ok(refusal.includes('.remove([path])'))
+    const success = handler.slice(0, handler.indexOf('if (error) {'))
+    assert.equal(success.includes('.remove('), false)
+  })
+
+  test('the refusal is what the reader is told, not the cleanup', () => {
+    // describeApprovalFailure(error) is called with the RPC's error after the
+    // tidy-up, so a failed removal cannot overwrite the real message.
+    assert.match(
+      handler,
+      /\.remove\(\[path\]\)[\s\S]*?setApprovalError\(describeApprovalFailure\(error\)\)/,
+    )
+  })
+})

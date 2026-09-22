@@ -21,7 +21,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  APPROVAL_GENERIC_FAILURE,
   EVIDENCE_BAD_TYPE_MESSAGE,
+  EVIDENCE_FORBIDDEN_MESSAGE,
   EVIDENCE_MAX_BYTES,
   EVIDENCE_REQUIRED_MESSAGE,
   EVIDENCE_SAME_FILE_MESSAGE,
@@ -366,6 +368,23 @@ describe('a refusal is one quiet sentence, chosen by its code', () => {
       EVIDENCE_REQUIRED_MESSAGE)
     assert.equal(describeApprovalFailure({ message: 'ORDER_APPROVAL_EVIDENCE_REUSED: x' }),
       EVIDENCE_SAME_FILE_MESSAGE)
+    assert.equal(describeApprovalFailure({ message: 'ORDER_APPROVAL_EVIDENCE_FORBIDDEN: x' }),
+      EVIDENCE_FORBIDDEN_MESSAGE)
+  })
+
+  test('REQUIRED AND FORBIDDEN DO NOT READ AS EACH OTHER', () => {
+    // Two opposite refusals about the same field. A reader who is told to add a
+    // screenshot when they must remove one has been told the wrong thing.
+    assert.notEqual(EVIDENCE_REQUIRED_MESSAGE, EVIDENCE_FORBIDDEN_MESSAGE)
+    assert.equal(
+      describeApprovalFailure({ message: 'ORDER_APPROVAL_EVIDENCE_FORBIDDEN: x' })
+        === EVIDENCE_REQUIRED_MESSAGE,
+      false,
+    )
+    // And neither degrades to the generic line.
+    for (const marker of ['ORDER_APPROVAL_EVIDENCE_REQUIRED', 'ORDER_APPROVAL_EVIDENCE_FORBIDDEN']) {
+      assert.notEqual(describeApprovalFailure({ message: marker + ': x' }), APPROVAL_GENERIC_FAILURE)
+    }
   })
 
   test('AN UNKNOWN FAILURE NEVER PRINTS THE SERVER’S OWN WORDS', () => {
@@ -473,10 +492,49 @@ describe('the migration holds every rule the browser only mirrors', () => {
     // Read follows Order visibility; write follows the same authority as the row.
     assert.match(sql, /create policy "order_approval_evidence_select"[\s\S]*?can_view_order/)
     assert.match(sql, /create policy "order_approval_evidence_insert"[\s\S]*?can_record_order_approval/)
-    // No UPDATE and no DELETE policy: an uploaded proof cannot be swapped.
+    // No UPDATE policy: a filed proof's bytes cannot be swapped.
     assert.equal(/create policy "order_approval_evidence_update"/.test(sql), false)
-    assert.equal(/create policy "order_approval_evidence_delete"/.test(sql), false)
     assert.match(sql, /proofs would not be permanent/)
+  })
+
+  test('DELETE REACHES AN ORPHAN AND NEVER A FILED PROOF', () => {
+    // The policy exists — a refused write has to be able to take back the file
+    // it was forced to upload first.
+    assert.match(sql, /create policy "order_approval_evidence_delete" on storage\.objects/)
+
+    const policy = sql.slice(
+      sql.indexOf('create policy "order_approval_evidence_delete"'),
+      sql.indexOf('-- ═══ 6.'),
+    )
+    // The write authority, not the read authority: only somebody who could have
+    // recorded the event may clear up after attempting it.
+    assert.match(policy, /can_record_order_approval/)
+    assert.equal(/can_view_order/.test(policy), false)
+    // AND the claim check, which is what keeps permanence true. An object an
+    // event names is unreachable by this policy.
+    assert.match(policy, /not exists\s*\(\s*select 1\s*from public\.order_approval_events e\s*where e\.evidence_path = storage\.objects\.name/)
+    assert.match(policy, /bucket_id = 'order-approval-evidence'/)
+    assert.match(policy, /module_entry_open\('orders'\)/)
+
+    // The migration refuses to finish if either half of that is ever dropped.
+    assert.match(sql, /policyname = 'order_approval_evidence_delete'\s*\n\s*and qual like '%can_record_order_approval%'\s*\n\s*and qual like '%order_approval_events%'/)
+    assert.match(sql, /is not restricted to objects no approval event claims/)
+  })
+
+  test('NOT APPROVED IS REFUSED A SCREENSHOT, NOT QUIETLY STRIPPED OF ONE', () => {
+    // The bug this replaced: `v_path := null`, which told the caller its
+    // screenshot had been filed while the row held none and the object stayed
+    // in the bucket unreferenced.
+    assert.equal(/v_path := null;/.test(sql), false)
+    assert.match(sql, /ORDER_APPROVAL_EVIDENCE_FORBIDDEN/)
+    // Raised from the else branch of the approved-status test, so it fires for
+    // not_approved and only for not_approved.
+    assert.match(
+      sql,
+      /elsif v_path is not null then[\s\S]*?raise exception\s*\n\s*'ORDER_APPROVAL_EVIDENCE_FORBIDDEN/,
+    )
+    // The row constraint still refuses the same combination underneath.
+    assert.match(sql, /constraint order_approval_events_evidence_matches_status check \(/)
   })
 
   test('the key grammar the policy decodes matches the one the app writes', () => {
