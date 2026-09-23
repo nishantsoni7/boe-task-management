@@ -1547,8 +1547,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion/.test(f),
+      // order_pi_review_gate_and_versions is edited, not added: the revised-PI
+      // promotion moves its helpers onto the staged approval path.
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions/.test(f),
         `${f} does not belong to this feature`)
+    }
+    // The revised-PI promotion runner is held to the same rule.
+    if (added.some(f => /order_pi_revision_promotion/.test(f))) {
+      const runner = read('supabase/tests/run_order_pi_revision_promotion_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(runner), false,
+        'the revised-PI promotion runner must not be able to reach a linked project')
+      assert.ok(runner.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(runner.includes('is not disposable'), 'and refuses a database holding real Orders')
+      const assertions = read('supabase/tests/order_pi_revision_promotion_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // The document-submissions runner is held to the same rule.
     if (added.some(f => /order_document_submissions/.test(f))) {
