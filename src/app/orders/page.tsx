@@ -362,20 +362,6 @@ export default function OrdersDashboardPage() {
       onRefresh={() => loadData(profile?.id ?? '00000000-0000-0000-0000-000000000000')}
       actions={
         <>
-          {/* ── THE PI FORMAT, FOR EVERYONE WHO CAN ENTER ORDERS ──
-              Not gated on `create`: a viewer who cannot upload a PI still needs
-              to see how one is filled in. A plain link, so the download is an
-              ordinary navigation carrying the session cookie; the route applies
-              the module-entry rule itself and serves the approved workbook. */}
-          <a
-            className="boe-btn boe-btn-ghost"
-            href={PI_FORMAT_ACTION.href}
-            download={PI_FORMAT_FILENAME}
-            title={PI_FORMAT_ACTION.title}
-          >
-            <Download size={13} strokeWidth={2.2} />
-            {PI_FORMAT_ACTION.label}
-          </a>
           {
             // ── THE ONE WAY A NEW ORDER BEGINS ──
             //
@@ -396,6 +382,22 @@ export default function OrdersDashboardPage() {
               </button>
             ) : null
           }
+          {/* ── THE PI FORMAT, FOR EVERYONE WHO CAN ENTER ORDERS ──
+              Not gated on `create`: a viewer who cannot upload a PI still needs
+              to see how one is filled in. A plain link, so the download is an
+              ordinary navigation carrying the session cookie; the route applies
+              the module-entry rule itself and serves the approved workbook.
+              AFTER Upload PI, so on a phone the primary action keeps the first
+              header row and this one wraps beneath it. */}
+          <a
+            className="boe-btn boe-btn-ghost"
+            href={PI_FORMAT_ACTION.href}
+            download={PI_FORMAT_FILENAME}
+            title={PI_FORMAT_ACTION.title}
+          >
+            <Download size={13} strokeWidth={2.2} />
+            {PI_FORMAT_ACTION.label}
+          </a>
         </>
       }
     >

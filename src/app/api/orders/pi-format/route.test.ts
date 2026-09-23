@@ -257,10 +257,16 @@ describe('the Orders dashboard offers the download to every reader', () => {
   const page = read('src/app/orders/page.tsx')
 
   test('the link points at the route and is rendered outside the create gate', () => {
-    const actions = page.slice(page.indexOf('actions={'), page.indexOf('ordersCaps.canCreateOrder ? ('))
-    assert.ok(actions.includes('href={PI_FORMAT_ACTION.href}'), 'the link sits in the header actions, before the create-gated Upload PI')
-    assert.ok(actions.includes('download={PI_FORMAT_FILENAME}'))
-    assert.ok(!/ordersCaps\.\w+\s*(&&|\?)/.test(actions), 'nothing gates the link on an Orders capability')
+    const start = page.indexOf('actions={')
+    const gateEnd = page.indexOf(') : null', page.indexOf('ordersCaps.canCreateOrder ? (', start))
+    const blockEnd = page.indexOf('</>', gateEnd)
+    assert.ok(start > 0 && gateEnd > start && blockEnd > gateEnd, 'the header actions block is where it was')
+    // After the create-gated Upload PI has closed, and still inside the actions.
+    const afterGate = page.slice(gateEnd, blockEnd)
+    assert.ok(afterGate.includes('href={PI_FORMAT_ACTION.href}'), 'the link sits in the header actions, outside the create gate')
+    assert.ok(afterGate.includes('download={PI_FORMAT_FILENAME}'))
+    assert.ok(!/ordersCaps\.\w+\s*(&&|\?)/.test(afterGate), 'nothing gates the link on an Orders capability')
+    assert.equal(page.split('PI_FORMAT_ACTION.href').length, 2, 'offered exactly once')
     assert.equal(PI_FORMAT_ACTION.href, '/api/orders/pi-format')
   })
 
