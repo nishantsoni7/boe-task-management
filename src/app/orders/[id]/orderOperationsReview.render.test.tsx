@@ -217,6 +217,57 @@ describe('the decision dialog', () => {
   })
 })
 
+describe('Order 0524: an approval from before handoffs, sent to operations later (20261230000000)', () => {
+  // The shape the one-time migration writes: V1's own approval (Nishant,
+  // 21 September) kept as it was; the handoff itself created and addressed to
+  // Nitish on 23 September; awaiting; the Order not aligned.
+  const OTHER_ADMIN = 'aaaaaaaa-0000-0000-0000-000000000003'
+  const late = handoff({
+    approved_by: NISHANT, approved_at: '2026-09-21T17:07:25Z',
+    assigned_to: NITISH, assigned_at: '2026-09-23T12:30:00Z',
+    created_at: '2026-09-23T12:30:00Z',
+  })
+
+  test('Nitish sees the historic approval, "Awaiting operations review", and BOTH decisions', () => {
+    const html = card(view(late, NITISH))
+    assert.match(html, /Awaiting operations review/)
+    assert.match(html, /Approved by Nishant · on 2026-09-21/, 'the approval keeps its own date, not the handoff\'s')
+    assert.match(html, /Operations reviewer<\/dt><dd[^>]*><span[^>]*>Nitish<\/span>/)
+    assert.match(html, /<button[^>]*>Accept for production/)
+    assert.match(html, /<button[^>]*>Cannot accept/)
+  })
+
+  test('Nishant, the approving admin, sees the status and no decision', () => {
+    const html = card(view(late, NISHANT))
+    assert.match(html, /Awaiting operations review/)
+    assert.match(html, /Operations reviewer<\/dt><dd[^>]*><span[^>]*>Nitish<\/span>/)
+    assert.doesNotMatch(html, /<button[^>]*>Accept for production/)
+    assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
+    assert.match(html, /Only the assigned operations reviewer can accept/)
+  })
+
+  test('any other admin sees no decision either', () => {
+    const html = card(view(late, OTHER_ADMIN))
+    assert.doesNotMatch(html, /<button[^>]*>Accept for production/)
+    assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
+  })
+
+  test('an admin VIEWING AS Nitish is not lent his decision', () => {
+    const html = card(view(late, null, { viewingAs: true }))
+    assert.doesNotMatch(html, /<button[^>]*>Accept for production/)
+    assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
+  })
+
+  test('Cannot accept opens the reason dialog', () => {
+    const html = renderToStaticMarkup(
+      <OperationsHandoffDecisionModal orderNumber="0524" versionLabel="PI V1" decision="clarification_needed" saving={false} failure={null} onClose={noop} onConfirm={noop} />,
+    )
+    assert.match(html, /Cannot accept this PI version/)
+    assert.match(html, /Order 0524 · PI V1/)
+    assert.match(html, /What needs clarifying/)
+  })
+})
+
 describe('the page draws ONE production decision', () => {
   const page = read('src/app/orders/[id]/page.tsx')
   const body = page.slice(page.indexOf('<OrdersLayout'))

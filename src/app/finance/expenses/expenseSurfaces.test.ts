@@ -622,6 +622,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       .split('\n').map(s => s.trim()).filter(Boolean)
     const all = [...new Set([...added, ...untracked])]
     for (const f of all) {
+      // Order 0524's one-time handoff (20261230000000) is the one named
+      // exception: a data fix for one Order, held by its own suites.
+      if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1185,6 +1188,35 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/modules/moduleOrderStorage.test.ts',
   ])
 
+  /**
+   * ORDER 0524's ONE-TIME HANDOFF (20261230000000).
+   *
+   * One data migration sending one pre-existing approval to operations review,
+   * one extra detail on the history line that migration writes, and the suites
+   * that hold it — plus the one-line inventory pins it moved. No screen, no
+   * rule, no money.
+   */
+  const ALLOWED_ORDER_0524_HANDOFF = new Set([
+    'src/lib/orders/operationsHandoff.ts',
+    'src/lib/orders/operationsHandoff.test.ts',
+    'src/lib/orders/order0524OperationsHandoffMigration.test.ts',
+    'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/notificationSystemActivity.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1204,7 +1236,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f) &&
     !ALLOWED_PERSONAL_MODULE_ORDER.has(f) &&
     !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(f) &&
-    !ALLOWED_OPERATIONS_HANDOFF.has(f)
+    !ALLOWED_OPERATIONS_HANDOFF.has(f) &&
+    !ALLOWED_ORDER_0524_HANDOFF.has(f) &&
+    f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -1359,8 +1393,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff/.test(f),
         `${f} does not belong to this feature`)
+    }
+    // Order 0524's runner is held to the same rule as the handoff's.
+    if (added.some(f => /order_0524_operations_handoff/.test(f))) {
+      const runner = read('supabase/tests/run_order_0524_operations_handoff_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(runner), false,
+        'the Order 0524 runner must not be able to reach a linked project')
+      assert.ok(runner.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(runner.includes('is not disposable'), 'and refuses a database holding real Orders')
+      const assertions = read('supabase/tests/order_0524_operations_handoff_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // The operations-handoff files are held to the same rule: a disposable
     // local stack named by the caller, nothing linked, assertions that roll
@@ -1410,7 +1454,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
         || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
         || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file)
-        || ALLOWED_OPERATIONS_HANDOFF.has(file),
+        || ALLOWED_OPERATIONS_HANDOFF.has(file)
+        || ALLOWED_ORDER_0524_HANDOFF.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

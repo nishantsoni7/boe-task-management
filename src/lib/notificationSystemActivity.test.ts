@@ -310,6 +310,10 @@ describe('the read side excludes system types too', () => {
     // type it writes is an Orders type, never a system one, and it schedules
     // nothing.
     const OPERATIONS_HANDOFF = '20261229000000_order_operations_handoff.sql'
+    // A seventh, 20261230000000, is a one-time data fix: it sends Order 0524's
+    // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
+    // row to ONE person, once. It installs no trigger, function or job.
+    const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -317,7 +321,15 @@ describe('the read side excludes system types too', () => {
       REVIEW_TRAIL_REPAIR,
       APPROVAL_SILENCE,
       OPERATIONS_HANDOFF,
+      ORDER_0524_HANDOFF,
     ])
+    {
+      const sql = read(join(dir, ORDER_0524_HANDOFF))
+      assert.equal(/create\s+(or\s+replace\s+)?(trigger|function)/i.test(sql), false,
+        `${ORDER_0524_HANDOFF}: a data fix installs nothing`)
+      assert.equal((sql.match(/insert\s+into\s+(public\.)?notifications/gi) ?? []).length, 1, `${ORDER_0524_HANDOFF}: one insert`)
+      assert.deepEqual([...(sql.match(/'(\w+)'::notification_type/g) ?? [])], ["'order_operations_review_requested'::notification_type"])
+    }
     {
       const sql = read(join(dir, OPERATIONS_HANDOFF))
       assert.match(sql, /create trigger order_pi_versions_record_operations_handoff\s*\n\s*after insert or update of status on public\.order_pi_versions/,
@@ -353,7 +365,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

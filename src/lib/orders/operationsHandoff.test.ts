@@ -317,6 +317,8 @@ describe('the Order history', () => {
     assert.equal(describeOperationsHandoffEvent('operations_handoff_accepted', { version_number: 1, after_withdrawal: true, note: 'ok' }), 'PI V1 · after a withdrawal · ok')
     assert.equal(describeOperationsHandoffEvent('operations_handoff_acceptance_withdrawn', { version_number: 1, reason: 'Qty' }), 'PI V1 · Qty')
     assert.equal(describeOperationsHandoffEvent('operations_reviewer_unassigned', { version_number: 1, handoff_status: 'clarification_needed' }), 'PI V1 · flagged for clarification')
+    assert.equal(describeOperationsHandoffEvent('operations_handoff_recorded', { version_number: 1, assigned_to: 'r1', production_alignment: 'not_aligned', recorded_for_existing_approval: true }),
+      'PI V1 · sent later for an approval made before operations review existed')
     assert.equal(describeOperationsHandoffEvent('something_else', {}), null)
   })
   test('the alignment event says WHY it moved when a handoff moved it', () => {
