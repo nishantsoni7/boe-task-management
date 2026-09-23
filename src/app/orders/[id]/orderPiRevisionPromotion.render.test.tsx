@@ -88,3 +88,24 @@ describe('the operations review dialog', () => {
     assert.match(html, /<button[^>]*disabled=""[^>]*>Accept PI V2/)
   })
 })
+
+describe('the PI history names the operations decision', () => {
+  test('an accepted revision says who accepted it; a staged one says it is not in force', async () => {
+    const { PiHistoryModal } = await import('./OrderStatusWorkspace')
+    const { piVersionTimeline } = await import('@/lib/orders/orderMainPi')
+    const accepted = describePiVersionHistory([
+      row({ id: 'v2', version_number: 2, status: 'approved', decided_at: '2026-09-20T00:00:00Z',
+            operations_decided_by: 'ops', operations_decided_at: '2026-09-21T00:00:00Z', revision_reason: 'qty' }),
+      row({ status: 'superseded', superseded_at: '2026-09-21T00:00:00Z' }),
+    ], NAMES, when)
+    const t = text(renderToStaticMarkup(
+      <PiHistoryModal entries={piVersionTimeline(accepted)} onClose={noop} onView={noop} onDownload={noop} busyId={null}
+        canPropose={false} onPropose={noop} canDecide={false} onApprove={noop} onReject={noop} error={null} />))
+    assert.ok(t.includes('Accepted by Operations — Kavya · 2026-09-21'))
+    const staged = text(renderToStaticMarkup(
+      <PiHistoryModal entries={piVersionTimeline(history)} onClose={noop} onView={noop} onDownload={noop} busyId={null}
+        canPropose={false} onPropose={noop} canDecide={true} onApprove={noop} onReject={noop} error={null} />))
+    assert.ok(staged.includes('Awaiting operations acceptance by Kavya. Not in force yet.'))
+    assert.equal(staged.includes('Approve revision'), false, 'the admin decision is over once staged')
+  })
+})

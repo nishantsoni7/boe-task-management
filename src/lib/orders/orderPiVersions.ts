@@ -199,7 +199,7 @@ export function describePiVersionHistory(
       const status = asStatus(row.status)
       if (status === null) return null
       const decisionVerb =
-        status === 'admin_approved' ? 'Approved by Admin'
+        status === 'admin_approved' ? 'Admin-approved'
         : status === 'approved' || status === 'superseded' ? 'Approved'
         : status === 'rejected' ? 'Rejected'
         : null

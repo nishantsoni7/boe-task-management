@@ -826,6 +826,18 @@ export function PiHistoryModal({
                   Uploaded by {v.uploadedBy} · {v.uploadedAt}
                   {v.decisionLine ? ` · ${v.decisionLine}` : ''}
                 </div>
+                {/* THE OPERATIONS DECISION (20270101000000): who accepted — or
+                    rejected — this version for production, when, and why. */}
+                {v.operationsLine && (
+                  <div className="order-history-meta">
+                    {v.operationsLine}{v.operationsReason ? ` — “${v.operationsReason}”` : ''}
+                  </div>
+                )}
+                {v.status === 'admin_approved' && (
+                  <div className="order-history-meta">
+                    Awaiting operations acceptance{v.operationsReviewer ? ` by ${v.operationsReviewer}` : ' — no reviewer assigned'}. Not in force yet.
+                  </div>
+                )}
 
                 <div className="order-history-remark">
                   <span className="order-history-remark-label">{REMARK_LABEL}: </span>
