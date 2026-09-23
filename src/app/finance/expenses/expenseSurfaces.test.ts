@@ -1215,6 +1215,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
+  /**
+   * THE PI FORMAT DOWNLOAD. One link on the Orders dashboard, open to every
+   * reader who can enter Orders, and the route that serves the approved workbook
+   * from private storage. No screen besides the dashboard, no rule, no money.
+   */
+  const ALLOWED_PI_FORMAT_DOWNLOAD = new Set([
+    'src/lib/orders/piFormat.ts',
+    'src/app/api/orders/pi-format/route.ts',
+    'src/app/api/orders/pi-format/route.test.ts',
+    'src/app/orders/page.tsx',
+  ])
   const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
 
   /**
@@ -1259,6 +1270,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_OPERATIONS_HANDOFF.has(f) &&
     !ALLOWED_ORDER_0524_HANDOFF.has(f) &&
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
+    !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1508,7 +1520,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file)
         || ALLOWED_OPERATIONS_HANDOFF.has(file)
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
-        || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file),
+        || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
+        || ALLOWED_PI_FORMAT_DOWNLOAD.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
