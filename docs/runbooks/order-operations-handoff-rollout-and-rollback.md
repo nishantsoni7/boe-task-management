@@ -1,9 +1,10 @@
 # The PI-to-operations handoff (`20261229000000`): rollout and rollback
 
 This migration is **additive and forward-only**, but it is not "one trigger".
-It adds two tables (and seeds one settings row), two enum values, seven
-functions (one of them a re-emission of `set_order_production_alignment()`),
-one trigger, RLS policies, and the code reads the tables. Undoing it is a
+It adds two tables (and seeds one settings row), two enum values, eight
+functions (two of them re-emissions of existing doors:
+`set_order_production_alignment()` and `approve_order_pi_revision()`), one
+trigger, RLS policies, and the code reads the tables. Undoing it is a
 **forward-fix** written as a new migration, never an edit or removal of this
 file once it has been applied.
 
@@ -17,6 +18,7 @@ file once it has been applied.
 | `decide_order_operations_handoff()`, `set_order_operations_reviewer()` | RPCs (authenticated) | `revoke execute` closes the doors; `drop function` removes them |
 | `order_operations_handoff_set_alignment()`, `operations_reviewer_can_open_order()`, `operations_reviewer_covers_all_orders()` | internal functions | `drop function` |
 | `set_order_production_alignment()` | **re-emitted** existing RPC | must be **restored** to its `20261119000000 §8` body by a forward migration |
+| `approve_order_pi_revision()` | **re-emitted** existing service-role door: the `20261124000000 §6` body word for word, plus one SHARE lock on the reviewer row before the Order lock | can **stay** after a rollback: with the table present the lock is a harmless no-op wait. Restore the 20261124 body only if the reviewers table is dropped |
 
 ## The interval problem, and how the rollout closes it
 
@@ -135,20 +137,55 @@ Verify on a disposable stack that `pg_get_functiondef` of
 
 ## Concurrency, for whoever changes this next
 
-Lock order everywhere is **orders → order_operations_reviewers →
-order_operations_handoffs**:
+The lock order is **order_operations_reviewers → orders → PI rows
+(submission, versions) → order_operations_handoffs**. The reviewer settings
+row always comes first:
 
 | Path | Takes |
 | --- | --- |
-| initial approval (`approve_order_submission`) | submission row; new orders row; trigger: reviewers **FOR SHARE** → handoffs |
-| revision approval (`approve_order_pi_revision`) | orders **FOR UPDATE** → versions; trigger: reviewers **FOR SHARE** → handoffs → orders (already held) |
-| assignment (`set_order_operations_reviewer`) | reviewers **FOR UPDATE** → handoffs `FOR UPDATE OF h` (never orders) |
-| decision (`decide_order_operations_handoff`, and the alignment door routed to it) | orders **FOR UPDATE** → handoffs (never reviewers) |
+| initial approval (`approve_order_submission`) | submission row; its **new** orders row; trigger: reviewers **FOR SHARE** → handoffs |
+| revision approval (`approve_order_pi_revision`, re-emitted) | reviewers **FOR SHARE** → orders **FOR UPDATE** → submission → versions; trigger: reviewers (already held) → handoffs |
+| decision (`decide_order_operations_handoff`) | reviewers **FOR SHARE** → orders **FOR UPDATE** → handoff |
+| alignment door (`set_order_production_alignment`) | reviewers **FOR SHARE** → orders **FOR UPDATE** → *then* checks for a live handoff (and routes to the decision) |
+| assignment (`set_order_operations_reviewer`) | reviewers **FOR UPDATE** → handoffs `FOR UPDATE OF h` → orders **FOR KEY SHARE**, taken implicitly by the `order_activity_log` foreign key once per readdressed handoff |
 
-No path takes them in the opposite order, so there is no cycle.
-`supabase/tests/run_order_operations_handoff_race.sh` proves the approval /
-assignment ordering with two real sessions, in both directions and for a
-cleared reviewer.
+**Why the reviewer row comes first.** The assignment is the only path that
+reaches an Order after a handoff. Its history row's foreign-key check needs
+`FOR KEY SHARE` on the Order, which conflicts with `FOR UPDATE`. So if any
+path held an Order `FOR UPDATE` and then waited on the reviewer row or a
+handoff, the two could deadlock. That was the original revision-approval
+order, where the reviewer row was taken only in the trigger, after the Order.
+Reproduced with two sessions, Postgres detected the deadlock and aborted one
+transaction. Every such path now takes the reviewer row first, as SHARE. The
+assignment holds that row exclusively, so it never runs while any of them
+holds an Order. It waits for them, or they wait for it, before anyone holds
+anything that the other needs. SHARE does not serialize approvals or
+decisions against each other; the Order lock still does that.
+
+**Rule for new code:** anything that locks an existing Order and can then
+touch `order_operations_handoffs` or the reviewer row must first take
+`perform 1 from public.order_operations_reviewers where duty = 'pi_handoff'
+for share`. The apply-time assertions check this for the three doors above.
+
+`supabase/tests/run_order_operations_handoff_race.sh` proves it with two real
+sessions, each under a 20 s statement timeout:
+
+* directions 1–3: a first approval against a reviewer change, in both orders
+  and with the reviewer cleared;
+* direction 4: a revised PI V2 on an Order whose V1 handoff is unresolved,
+  through the real lease → `approve_order_pi_revision()` → release sequence,
+  while Control Center changes that Order's reviewer, in both orders.
+
+  - **4a, the approval holds the Order when the change arrives.** A test-only
+    pause trigger holds the approval inside its own version write. The change
+    waits, then readdresses V2 from A to B.
+  - **4b, the change holds the reviewer row when the approval arrives.** The
+    approval waits, then records V2 for B directly.
+
+  Both must complete, with V1's handoff superseded, exactly one live handoff,
+  B notified once for V2, and the approval and handoff on the history once.
+  With the 20261124 body of `approve_order_pi_revision` restored, 4a fails
+  with `deadlock detected`.
 
 ## Verifying either direction on a disposable stack
 

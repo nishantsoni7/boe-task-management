@@ -24,13 +24,21 @@
 # runs two psql processes against it. The fixtures it leaves behind are named
 # 'ASSERT RACE …' so the runner's disposability check still passes.
 #
-# LOCK ORDER PROVED HERE, in both directions:
-#   approval:   orders (revision path) → reviewers SHARE → handoffs
-#   assignment: reviewers UPDATE → handoffs  (never orders)
-#   decision:   orders → handoffs            (never reviewers)
-# No cycle: orders < reviewers < handoffs everywhere. Direction 2 also proves
-# the approval does not deadlock while the assignment holds the row and
-# touches handoffs.
+# LOCK ORDER PROVED HERE (the reviewer row is always first):
+#   first approval:    submission → new Order → [trigger] reviewers SHARE → handoffs
+#   revision approval: reviewers SHARE → Order UPDATE → submission → versions → handoffs
+#   assignment:        reviewers UPDATE → handoffs → Order KEY SHARE (the
+#                      order_activity_log foreign key, per readdressed handoff)
+#   decision / alignment door: reviewers SHARE → Order UPDATE → handoff
+# The assignment is the only path that reaches an Order AFTER a handoff, and
+# it holds the reviewer row exclusively while it does, so no path that holds
+# an Order and waits on a handoff or the reviewer row can be running at the
+# same time. Directions 1–3: first approval vs. assignment, both orders, and a
+# cleared reviewer. Direction 4: a revised PI (V2) on an Order whose V1 handoff
+# is unresolved vs. an assignment for that Order, both orders — the case that
+# DEADLOCKED before approve_order_pi_revision took the reviewer row first
+# (the assignment's foreign-key check on the Order waited for the approval,
+# whose trigger waited for the assignment's reviewer row).
 #
 # PREREQUISITES: the same disposable stack run_order_operations_handoff_local.sh
 # needs, with the migration applied, and Docker running.
@@ -57,6 +65,7 @@ A=aaaaaaaa-0000-4000-8000-00000000000a
 B=bbbbbbbb-0000-4000-8000-00000000000b
 SALES=55555555-5555-5555-5555-555555555555
 RUN=$(date +%s)
+SCRATCH=$(mktemp -d)
 
 # RETIRE WHAT THIS RUN COMMITS, pass or fail. The race needs committed rows,
 # but a live awaiting handoff left behind would change the counts the
@@ -64,6 +73,11 @@ RUN=$(date +%s)
 # (through the real cancel door) takes their handoffs out of every "live,
 # unresolved" set; the rows stay, as they would in production.
 retire() {
+  rm -rf "$SCRATCH"
+  Q >/dev/null 2>&1 <<'SQL' || true
+drop trigger if exists zz_race_pause on public.order_pi_versions;
+drop function if exists public.zz_race_pause();
+SQL
   Q >/dev/null 2>&1 <<SQL || true
 begin;
 set local role authenticated;
@@ -231,5 +245,205 @@ wait $APPROVE_PID
 [ "$(scalar "select unassigned_reason from public.order_operations_handoffs h join public.orders o on o.id = h.order_id where o.source_order_submission_id = '$PI3'")" = "no_reviewer" ] \
   || fail "direction 3: the reason must say no reviewer is configured"
 echo "   OK: cleared mid-approval → the committed handoff is unassigned with its reason"
+
+# ── Direction 4: a REVISED PI (V2) on an Order whose V1 handoff is unresolved, while ──
+# ── Control Center changes the reviewer for that same Order                         ──
+#
+# The dangerous interleaving. approve_order_pi_revision() locks the Order FOR
+# UPDATE, replaces the parse, then approves V2, and only then does the trigger
+# ask for the reviewer row. set_order_operations_reviewer() holds the reviewer
+# row, locks the V1 handoff and INSERTS an order_activity_log row for that
+# Order — and that row's foreign-key check takes FOR KEY SHARE on the Order,
+# which conflicts with FOR UPDATE. If the approval held the Order while the
+# change held the reviewer row, each would wait for the other.
+#
+# To make that window deterministic, not lucky, the runner installs a pause
+# (public.zz_race_pause, dropped by retire) that fires on the approval's own
+# "V1 → superseded" version write — after the function has taken every lock
+# it takes before its trigger, and before the trigger — and sleeps only in a
+# session that sets race.pause. Nothing in the function under test is altered
+# or pre-empted.
+#
+# 4a: the approval is mid-flight (Order locked, paused) when the change arrives.
+# 4b: the change holds the reviewer row when the approval arrives.
+# Both sessions must COMPLETE (no deadlock, no timeout), and V2's live handoff
+# must end with B — the reviewer current after both commit — notified once.
+Q <<'SQL'
+create or replace function public.zz_race_pause() returns trigger
+language plpgsql as $f$
+begin
+  if coalesce(current_setting('race.pause', true), '') not in ('', '0') then
+    perform pg_sleep(current_setting('race.pause')::double precision);
+  end if;
+  return new;
+end $f$;
+drop trigger if exists zz_race_pause on public.order_pi_versions;
+create trigger zz_race_pause before update on public.order_pi_versions
+  for each row when (new.status = 'superseded') execute function public.zz_race_pause();
+SQL
+
+# A confirmed Order with V1 approved and its handoff awaiting reviewer A, and a
+# proposed V2 (file stored, reason given) waiting for the admin's approval.
+# Prints "<order id> <V2 workbook path>".
+prepare_v2() {
+  local PI="$1" CLIENT="$2"
+  make_pi "$PI" "$CLIENT" >/dev/null
+  assign "'$A'" >/dev/null
+  approve_holding_lock "$PI" 0 >/dev/null
+  local O; O=$(scalar "select id from public.orders where source_order_submission_id = '$PI'")
+  [ "$(scalar "select assigned_to::text || '/' || status from public.order_operations_handoffs where order_id = '$O' and superseded_at is null")" = "$A/awaiting" ] \
+    || fail "$CLIENT: V1's handoff must be awaiting A before the race"
+  local PATH2; PATH2="submissions/$PI/original/$(scalar "select gen_random_uuid()").xlsx"
+  Q >/dev/null <<SQL
+insert into storage.objects (bucket_id, name, metadata)
+values ('order-files', '$PATH2', jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+begin;
+set local role authenticated;
+$(as_user "$OWNER")
+select public.propose_order_pi_revision('$O', '$PATH2', 'v2.xlsx', 'ASSERT RACE revised quantities');
+commit;
+SQL
+  echo "$O $PATH2"
+}
+
+# The revision approval exactly as /api/orders/pi-revisions/approve makes it:
+# take the processing lease (its own transaction), then one transaction that
+# calls the service-role door with the parsed payload, then release the lease.
+# PAUSE seconds of sleep inside the function's own version write hold the
+# Order lock open.
+approve_revision() {
+  local O="$1" PI="$2" PATH2="$3" PAUSE="$4"
+  local TOK; TOK=$(scalar "select gen_random_uuid()")
+  local V2; V2=$(scalar "select id from public.order_pi_versions where order_id = '$O' and status = 'pending'")
+  Q -t -A >/dev/null <<SQL
+select public.begin_order_submission_processing('$PI', '$OWNER', '$TOK');
+SQL
+  Q -t -A <<SQL
+begin;
+set local statement_timeout = '20s';
+set local race.pause = '$PAUSE';
+select public.approve_order_pi_revision('$V2', '$OWNER', jsonb_build_object(
+  'processing_token', '$TOK',
+  'source', jsonb_build_object('workbook_path', '$PATH2', 'workbook_name', 'v2.xlsx', 'workbook_sha256', repeat('b', 64)),
+  'header', jsonb_build_object('client_name', 'ASSERT RACE revised'),
+  'commercial', jsonb_build_object('gross_product_amount', 1000000, 'grand_total', 1000000),
+  'items', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'source_row', 10, 'item_sequence', '1',
+           'product_name', 'ASSERT chair', 'quantity', 2, 'cost_per_piece', 500000, 'total_amount', 1000000)),
+  'item_images', '[]'::jsonb)) is not null;
+commit;
+select public.finish_order_submission_processing('$PI', '$TOK');
+SQL
+}
+
+# The Control Center change, bounded, optionally holding its locks HOLD seconds.
+assign_bounded() {
+  local WHO="$1" HOLD="${2:-0}"
+  Q -t -A <<SQL
+begin;
+set local statement_timeout = '20s';
+set local role authenticated;
+$(as_user "$OWNER")
+select public.set_order_operations_reviewer($WHO);
+select pg_sleep($HOLD);
+commit;
+SQL
+}
+
+live_v2_handoff() {
+  scalar "select h.version_number || '/' || coalesce(h.assigned_to::text, 'UNASSIGNED') || '/' || h.status
+            from public.order_operations_handoffs h where h.order_id = '$1' and h.superseded_at is null"
+}
+
+check_v2_outcome() {
+  local LABEL="$1" O="$2"
+  [ "$(scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$O'")" = "1/superseded,2/approved" ] \
+    || fail "$LABEL: V1 must be superseded and V2 approved"
+  [ "$(live_v2_handoff "$O")" = "2/$B/awaiting" ] \
+    || fail "$LABEL: V2's live handoff must await B, got $(live_v2_handoff "$O")"
+  [ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O' and version_number = 1 and superseded_at is not null")" = "1" ] \
+    || fail "$LABEL: V1's handoff must be superseded"
+  [ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O' and superseded_at is null")" = "1" ] \
+    || fail "$LABEL: exactly one live handoff"
+  local NB; NB=$(scalar "select count(*) from public.notifications where entity_id = '$O' and user_id = '$B' and type = 'order_operations_review_requested' and title like '%PI V2 %'")
+  [ "$NB" = "1" ] || fail "$LABEL: B must be notified exactly once (for V2), got $NB"
+  [ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O' and event_type = 'pi_revision_approved'")" = "1" ] \
+    || fail "$LABEL: the revision approval must be on the Order's history once"
+  [ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O' and event_type = 'operations_handoff_recorded' and (payload ->> 'version_number') = '2'")" = "1" ] \
+    || fail "$LABEL: V2's handoff must be recorded on the Order's history once"
+}
+
+# One field of the single history event of TYPE for handoff version V on Order O.
+handoff_event() {
+  scalar "select string_agg(payload ->> '$4', ',') from public.order_activity_log
+           where order_id = '$1' and event_type = '$2' and payload ->> 'version_number' = '$3'"
+}
+
+# Run one side in the background and the other in the foreground; both must finish.
+report_pair() {
+  local LABEL="$1" RC1="$2" OUT1="$3" RC2="$4" OUT2="$5"
+  if grep -qi "deadlock" "$OUT1" "$OUT2"; then
+    fail "$LABEL: DEADLOCK — approval: $(tr '\n' ' ' <"$OUT1") | change: $(tr '\n' ' ' <"$OUT2")"
+  fi
+  [ "$RC1" = "0" ] || fail "$LABEL: the revision approval did not complete: $(tr '\n' ' ' <"$OUT1")"
+  [ "$RC2" = "0" ] || fail "$LABEL: the reviewer change did not complete: $(tr '\n' ' ' <"$OUT2")"
+}
+
+# Block until another session is PARKED in pg_sleep inside a statement that
+# matches PATTERN — i.e. it has really taken the locks it holds — rather than
+# guessing with a fixed delay (process start-up alone can take seconds).
+wait_until_parked() {
+  local PAT="$1" i
+  for i in $(seq 1 80); do
+    [ "$(scalar "select count(*) from pg_stat_activity where wait_event = 'PgSleep' and query like '%$PAT%' and pid <> pg_backend_pid()")" -ge 1 ] && return 0
+    sleep 0.25
+  done
+  fail "no session reached its pause in '$PAT' within 20s"
+}
+
+PI4=$(scalar "select gen_random_uuid()")
+read -r O4 PATH4 <<<"$(prepare_v2 "$PI4" "ASSERT RACE 4a $RUN" | tail -1)"
+[[ "$O4" =~ ^[0-9a-f-]{36}$ ]] || fail "direction 4a: the V2 fixture could not be prepared: $O4 $PATH4"
+echo "== direction 4a: revised PI V2 approval holds the Order (V1 handoff unresolved, reviewer A) … Control Center switches to B meanwhile"
+approve_revision "$O4" "$PI4" "$PATH4" 3 >"$SCRATCH/4a-approve.out" 2>&1 &
+APPROVE_PID=$!
+wait_until_parked "approve_order_pi_revision"
+T0=$(date +%s)
+ASSIGN_RC=0; assign_bounded "'$B'" >"$SCRATCH/4a-assign.out" 2>&1 || ASSIGN_RC=$?
+T1=$(date +%s)
+APPROVE_RC=0; wait $APPROVE_PID || APPROVE_RC=$?
+report_pair "direction 4a" "$APPROVE_RC" "$SCRATCH/4a-approve.out" "$ASSIGN_RC" "$SCRATCH/4a-assign.out"
+[ $((T1 - T0)) -ge 1 ] || fail "direction 4a: the change did not wait for the approval in flight (took $((T1 - T0))s)"
+echo "   both sessions completed; the change waited $((T1 - T0))s for the approval, then ran"
+check_v2_outcome "direction 4a" "$O4"
+# The serialization, read back from history: the approval read A (it held the
+# reviewer row), and the change — which waited — then readdressed V2 to B.
+[ "$(handoff_event "$O4" operations_handoff_recorded 2 assigned_to)" = "$A" ] \
+  || fail "direction 4a: the approval must have recorded V2 for A (the reviewer when it locked), got $(handoff_event "$O4" operations_handoff_recorded 2 assigned_to)"
+[ "$(handoff_event "$O4" operations_reviewer_assigned 2 previously_assigned_to)" = "$A" ] \
+  && [ "$(handoff_event "$O4" operations_reviewer_assigned 2 assigned_to)" = "$B" ] \
+  || fail "direction 4a: the change must have readdressed V2 from A to B"
+echo "   OK: V2 recorded for A under the approval's lock, then readdressed to B; V1 superseded; B notified once"
+
+PI5=$(scalar "select gen_random_uuid()")
+read -r O5 PATH5 <<<"$(prepare_v2 "$PI5" "ASSERT RACE 4b $RUN" | tail -1)"
+[[ "$O5" =~ ^[0-9a-f-]{36}$ ]] || fail "direction 4b: the V2 fixture could not be prepared: $O5 $PATH5"
+echo "== direction 4b: Control Center switch to B holds the reviewer row (V1 handoff unresolved) … revised PI V2 approval arrives meanwhile"
+assign_bounded "'$B'" 3 >"$SCRATCH/4b-assign.out" 2>&1 &
+ASSIGN_PID=$!
+wait_until_parked "pg_sleep(3)"
+T0=$(date +%s)
+APPROVE_RC=0; approve_revision "$O5" "$PI5" "$PATH5" 0 >"$SCRATCH/4b-approve.out" 2>&1 || APPROVE_RC=$?
+T1=$(date +%s)
+ASSIGN_RC=0; wait $ASSIGN_PID || ASSIGN_RC=$?
+report_pair "direction 4b" "$APPROVE_RC" "$SCRATCH/4b-approve.out" "$ASSIGN_RC" "$SCRATCH/4b-assign.out"
+[ $((T1 - T0)) -ge 1 ] || fail "direction 4b: the approval did not wait for the change (took $((T1 - T0))s)"
+echo "   both sessions completed; the approval waited $((T1 - T0))s for the change"
+check_v2_outcome "direction 4b" "$O5"
+# The change moved V1 to B first; the approval, which waited, then read B.
+[ "$(handoff_event "$O5" operations_reviewer_assigned 1 assigned_to)" = "$B" ] \
+  || fail "direction 4b: the change must have readdressed V1 to B before the approval"
+[ "$(handoff_event "$O5" operations_handoff_recorded 2 assigned_to)" = "$B" ] \
+  || fail "direction 4b: the approval must have recorded V2 for B directly, got $(handoff_event "$O5" operations_handoff_recorded 2 assigned_to)"
+echo "   OK: V1 readdressed to B by the change; V2 then recorded for B directly; B notified once for V2"
 
 echo "ALL RACE ASSERTIONS PASSED"

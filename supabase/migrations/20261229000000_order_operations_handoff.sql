@@ -65,9 +65,24 @@
 -- An AFTER trigger on order_pi_versions fires when a row's status BECOMES
 -- 'approved' — the one write both approval paths already make, inside their
 -- own transaction (approve_order_submission §14b; approve_order_pi_revision).
--- Neither function is re-emitted. The handoff table is UNIQUE on the version
--- id, and the trigger returns early if a handoff for that version exists, so a
--- retried approval cannot record a second handoff or a second notification.
+-- approve_order_submission is not re-emitted; approve_order_pi_revision is,
+-- word for word, with one lock added (§6b). The handoff table is UNIQUE on the
+-- version id, and the trigger returns early if a handoff for that version
+-- exists, so a retried approval cannot record a second handoff or a second
+-- notification.
+--
+-- LOCK ORDER, EVERYWHERE: the reviewer settings row → orders → PI rows →
+-- handoffs. Every path that locks an existing Order and may then wait on the
+-- reviewer row or a handoff takes the reviewer row FIRST (SHARE):
+-- approve_order_pi_revision (§6b), decide_order_operations_handoff (§8),
+-- set_order_production_alignment (§9). set_order_operations_reviewer (§7)
+-- takes it FOR UPDATE before anything else, then handoffs, then — through
+-- order_activity_log's foreign key — FOR KEY SHARE on each Order. Because
+-- the assignment holds the reviewer row exclusively, it never runs while any
+-- of those paths holds an Order, so its later Order access cannot close a
+-- cycle. (approve_order_submission creates its Order; no other session can
+-- reference that row before it commits, so its trigger taking the reviewer
+-- row late is safe.)
 --
 -- AUTHORITY, AT THE DATABASE
 -- --------------------------
@@ -498,9 +513,11 @@ begin
   -- this approval reads the reviewer AFTER a Control Center change committed,
   -- or the change waits for this approval to commit and then readdresses the
   -- handoff written here. Nothing can be addressed to a reviewer who was
-  -- replaced mid-approval. (Lock order everywhere: orders → reviewers →
-  -- handoffs. The assignment RPC never locks orders; the decision RPC never
-  -- locks reviewers.)
+  -- replaced mid-approval. On the revision path this lock is already held:
+  -- approve_order_pi_revision takes it before it locks the Order (§6b), since
+  -- taking it only here, with the Order held FOR UPDATE, deadlocks against
+  -- the assignment. On the first approval the Order is this transaction's
+  -- own new row, which nobody else can wait on. (Lock order: see the header.)
   select r.user_id into v_configured
     from public.order_operations_reviewers r
    where r.duty = 'pi_handoff'
@@ -638,6 +655,200 @@ create trigger order_pi_versions_record_operations_handoff
   for each row execute function public.order_pi_versions_record_operations_handoff();
 
 
+-- ═══ 6b. approve_order_pi_revision(), re-emitted: the reviewer row first ═══
+--
+-- RE-EMITTED IN FULL from 20261124000000 §6, identical but for ONE statement:
+-- a SHARE lock on the reviewer settings row, taken before the Order is locked.
+--
+-- WHY. Approving the revised version fires §6's trigger, which reads the
+-- reviewer under that SHARE lock. Taken only there, it came AFTER this
+-- function had locked the Order FOR UPDATE. set_order_operations_reviewer()
+-- holds the reviewer row FOR UPDATE, locks the Order's unresolved handoff and
+-- inserts an order_activity_log row for the Order — and that row's foreign
+-- key needs FOR KEY SHARE on the Order, which FOR UPDATE blocks. Each waited
+-- for the other: a real deadlock, reproduced with two sessions by
+-- supabase/tests/run_order_operations_handoff_race.sh (direction 4a), in
+-- which Postgres aborted the Control Center change. With the reviewer row
+-- taken first, an assignment in flight makes this approval wait before it
+-- holds anything, and an approval in flight makes the assignment wait before
+-- it touches a handoff or an Order. Nothing else changes: the same checks,
+-- the same version transitions, the same history and notifications.
+
+create or replace function public.approve_order_pi_revision(
+  p_version_id uuid,
+  p_actor_id   uuid,
+  p_payload    jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_is_admin  boolean;
+  v_ver       public.order_pi_versions%rowtype;
+  v_current   public.order_pi_versions%rowtype;
+  v_order     public.orders%rowtype;
+  v_sub       public.order_submissions%rowtype;
+  v_path      text;
+  v_now       timestamptz := now();
+  v_result    jsonb;
+  v_payload   jsonb;
+  v_codes     jsonb;
+begin
+  if p_actor_id is null then
+    raise exception 'ORDER_SUBMISSION_ACTOR_REQUIRED: an acting employee is required'
+      using errcode = '28000';
+  end if;
+
+  select coalesce(u.role = 'admin', false) into v_is_admin
+  from public.users u
+  where u.id = p_actor_id and u.is_active and coalesce(u.is_deleted, false) = false;
+  if not found or not coalesce(v_is_admin, false) then
+    raise exception 'You do not have permission to decide a revised PI'
+      using errcode = '42501';
+  end if;
+
+  if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
+    raise exception 'ORDER_SUBMISSION_PAYLOAD_INVALID: a JSON object is required'
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_ver from public.order_pi_versions where id = p_version_id;
+  if not found then
+    raise exception 'ORDER_PI_VERSION_NOT_FOUND: that PI version does not exist' using errcode = 'P0002';
+  end if;
+
+  -- THE REVIEWER ROW BEFORE THE ORDER (20261229000000 §6b). Approving this
+  -- version fires the operations-handoff trigger, which reads the reviewer
+  -- under this same SHARE lock. Taken only there — after the Order lock
+  -- below — it deadlocks against set_order_operations_reviewer(). Lock order:
+  -- reviewers → orders → submission → versions → handoffs.
+  perform 1 from public.order_operations_reviewers where duty = 'pi_handoff' for share;
+
+  select * into v_order from public.orders where id = v_ver.order_id for update;
+  if not found then
+    raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002';
+  end if;
+  if v_order.status = 'cancelled' then
+    raise exception
+      'ORDER_PI_REVISION_ORDER_CLOSED: Order % is cancelled and cannot take a revised PI', v_order.display_number
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_sub from public.order_submissions where id = v_ver.submission_id for update;
+  if not found or v_sub.order_id is distinct from v_order.id then
+    raise exception
+      'ORDER_PI_REVISION_INVALID: the PI behind Order % is not the one this version names', v_order.display_number
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_ver from public.order_pi_versions where id = p_version_id for update;
+  if v_ver.status <> 'pending' then
+    raise exception
+      'ORDER_PI_REVISION_NOT_PENDING: PI version % is % and is no longer waiting for a decision',
+      v_ver.version_number, v_ver.status
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_current from public.order_pi_versions
+  where order_id = v_order.id and status = 'approved' for update;
+
+  if v_current.id is not null and v_current.version_number >= v_ver.version_number then
+    raise exception
+      'ORDER_PI_REVISION_STALE: PI version % is older than the current approved version %',
+      v_ver.version_number, v_current.version_number
+      using errcode = 'P0001';
+  end if;
+
+  v_path := nullif(btrim(coalesce(p_payload -> 'source' ->> 'workbook_path', '')), '');
+  if v_path is null or v_path is distinct from v_ver.workbook_path then
+    raise exception
+      'ORDER_PI_REVISION_FILE_MISMATCH: the parsed workbook is not the file this revision proposed'
+      using errcode = 'P0001';
+  end if;
+
+  v_payload := p_payload || jsonb_build_object(
+    'change_reason', left('PI revision V' || v_ver.version_number::text || ': ' || v_ver.revision_reason, 500));
+
+  perform set_config('boe.amendment_context', 'order_amendment', true);
+  v_result := public.replace_order_submission_parse(v_sub.id, p_actor_id, v_payload);
+  perform set_config('boe.amendment_context', '', true);
+
+  select source_workbook_path, source_workbook_sha256, source_workbook_name
+    into v_sub.source_workbook_path, v_sub.source_workbook_sha256, v_sub.source_workbook_name
+  from public.order_submissions where id = v_sub.id;
+  if v_sub.source_workbook_path is distinct from v_ver.workbook_path then
+    raise exception
+      'ORDER_PI_REVISION_NOT_APPLIED: the revised workbook was not recorded on the PI'
+      using errcode = 'P0001';
+  end if;
+
+  if v_current.id is not null then
+    update public.order_pi_versions
+       set status = 'superseded',
+           superseded_at = v_now,
+           superseded_by_version_id = v_ver.id
+     where id = v_current.id;
+  end if;
+
+  update public.order_pi_versions
+     set status = 'approved',
+         decided_by = p_actor_id,
+         decided_at = v_now,
+         workbook_sha256 = coalesce(v_sub.source_workbook_sha256, workbook_sha256)
+   where id = v_ver.id;
+
+  -- Genuinely new lines in the revised set get their own permanent code here;
+  -- every code already issued for a line that survived the reparse (same
+  -- submission_item_id — impossible after a full reparse, since every row is
+  -- reinserted with a fresh id) is untouched, and every code whose row did not
+  -- come back stays exactly as orphaned-and-retired as it was the instant the
+  -- reparse deleted that row.
+  v_codes := public.assign_order_product_codes(v_order.id, p_actor_id);
+
+  perform public.log_order_submission_activity(
+    v_sub.id, p_actor_id, 'pi_revision_approved', 'approved', 'approved', null,
+    jsonb_build_object('order_id', v_order.id, 'version_id', v_ver.id,
+                       'version_number', v_ver.version_number,
+                       'superseded_version_id', v_current.id,
+                       'superseded_version_number', v_current.version_number,
+                       'superseded_documents', v_result -> 'superseded_documents')
+  );
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (v_order.id, p_actor_id, 'pi_revision_approved',
+          jsonb_build_object('version_id', v_ver.id, 'version_number', v_ver.version_number,
+                             'superseded_version_number', v_current.version_number,
+                             'superseded_documents', v_result -> 'superseded_documents'));
+
+  if jsonb_array_length(v_codes) > 0 then
+    insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+    values (
+      v_order.id, p_actor_id, 'order_product_codes_assigned',
+      jsonb_build_object('codes', v_codes, 'version_id', v_ver.id)
+    );
+  end if;
+
+  return jsonb_build_object(
+    'version_id',       v_ver.id,
+    'version_number',   v_ver.version_number,
+    'order_id',         v_order.id,
+    'status',           'approved',
+    'superseded_version_number', v_current.version_number,
+    'parse',            v_result
+  );
+end;
+$$;
+
+comment on function public.approve_order_pi_revision(uuid, uuid, jsonb) is
+  'SERVICE ROLE ONLY. Approves a pending revised PI for an active admin (re-derived from p_actor_id): applies the server''s parse of the revised workbook through replace_order_submission_parse() — which carries the figures onto the Order, clears a finance verification and supersedes ready documents — marks the previous approved version superseded and this one approved, and gives any genuinely new product line its own permanent BOE item code (20261124000000), in ONE transaction. Refuses a non-pending version, a version older than the current one, a cancelled Order, and a payload whose workbook is not this version''s file.';
+
+revoke execute on function public.approve_order_pi_revision(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+grant  execute on function public.approve_order_pi_revision(uuid, uuid, jsonb) to service_role;
+
+
 -- ═══ 7. Assigning the reviewer (Control Center, administrators only) ═══════
 
 create or replace function public.set_order_operations_reviewer(p_user_id uuid)
@@ -687,6 +898,14 @@ begin
   -- flight: the approval trigger takes a SHARE lock on the same row to read
   -- the reviewer, so this statement waits for any approval mid-transaction
   -- to commit — and the loop below then sees the handoff it wrote.
+  --
+  -- It is also what makes the rest of this function deadlock-free. Below, it
+  -- locks handoffs and inserts an order_activity_log row per Order, whose
+  -- foreign key takes FOR KEY SHARE on that Order. Every path that holds an
+  -- Order FOR UPDATE and can then wait on this row or a handoff (a revision
+  -- approval, a decision, the alignment door) takes this row SHARE before the
+  -- Order, so none of them can be holding an Order while this runs; anyone
+  -- else holding an Order is not waiting on us, and we simply wait for them.
   select user_id into v_previous
     from public.order_operations_reviewers
    where duty = 'pi_handoff'
@@ -815,13 +1034,18 @@ begin
       char_length(v_reason) using errcode = 'P0001';
   end if;
 
-  -- LOCK ORDER: the Order first, then the handoff — the same order the
-  -- approval path takes (order → versions → handoffs), so the two cannot
-  -- deadlock.
+  -- LOCK ORDER: the reviewer row (SHARE), then the Order, then the handoff —
+  -- the order a revision approval takes. The reviewer row comes first because
+  -- set_order_operations_reviewer() holds it FOR UPDATE while it locks this
+  -- handoff and then needs FOR KEY SHARE on this Order (its history row's
+  -- foreign key): holding the Order and then waiting on the handoff would
+  -- close that cycle. SHARE does not serialize decisions with each other or
+  -- with approvals; the Order lock does that.
   select order_id into v_order_id from public.order_operations_handoffs where id = p_handoff_id;
   if v_order_id is null then
     raise exception 'ORDER_OPERATIONS_HANDOFF_NOT_FOUND: that handoff no longer exists' using errcode = 'P0002';
   end if;
+  perform 1 from public.order_operations_reviewers where duty = 'pi_handoff' for share;
   select * into v_order from public.orders where id = v_order_id for update;
   select * into v_h from public.order_operations_handoffs where id = p_handoff_id for update;
   if not found then
@@ -956,13 +1180,20 @@ grant  execute on function public.decide_order_operations_handoff(uuid, text, te
 
 -- ═══ 9. set_order_production_alignment(), re-emitted: the SAME door ════════
 --
--- RE-EMITTED IN FULL from 20261119000000 §8. It differs in exactly one place:
--- an Order that carries a live handoff routes BOTH directions through
--- decide_order_operations_handoff(), so the assigned reviewer is the only
--- person who can align it (accept) or take the alignment back (withdraw /
--- flag, reason required) — whatever permission or role the caller holds. An
--- Order with NO handoff (approved before 20261229000000, never revised since)
--- keeps the previous rule, word for word.
+-- RE-EMITTED IN FULL from 20261119000000 §8. It differs in two places:
+--
+-- 1. An Order that carries a live handoff routes BOTH directions through
+--    decide_order_operations_handoff(), so the assigned reviewer is the only
+--    person who can align it (accept) or take the alignment back (withdraw /
+--    flag, reason required) — whatever permission or role the caller holds.
+--    An Order with NO handoff (approved before 20261229000000, never revised
+--    since) keeps the previous rule, word for word.
+-- 2. The reviewer row (SHARE) and then the Order (FOR UPDATE) are locked
+--    BEFORE the "is there a live handoff?" question is asked. Asked unlocked,
+--    a revision approval could commit between the question and the legacy
+--    branch's Order lock, and the legacy branch would then align an Order
+--    whose new version nobody had accepted. Under the Order lock the answer
+--    cannot change; the reviewer row first keeps the lock order of the header.
 
 create or replace function public.set_order_production_alignment(
   p_order_id uuid,
@@ -982,6 +1213,11 @@ declare
   v_now    timestamptz := now();
   v_live   uuid;
 begin
+  -- Lock first, then ask (see §9, point 2). A missing Order locks nothing and
+  -- falls through to the legacy branch's own ORDER_NOT_FOUND, as before.
+  perform 1 from public.order_operations_reviewers where duty = 'pi_handoff' for share;
+  perform 1 from public.orders where id = p_order_id for update;
+
   -- ── An Order with a handoff has ONE operations decision, and this is it ──
   select h.id into v_live
     from public.order_operations_handoffs h
@@ -1108,5 +1344,56 @@ begin
       and p.prosrc like '%public.decide_order_operations_handoff(%'
   ) then
     raise exception 'ASSERT: set_order_production_alignment must route a handoff Order through decide_order_operations_handoff';
+  end if;
+end $$;
+
+-- THE LOCK ORDER, read back from what was installed: in every door that locks
+-- an existing Order and can then wait on the reviewer row or a handoff, the
+-- reviewer row is locked BEFORE the Order. And the re-emitted revision door
+-- still carries the rules it carried, and is still service-role only.
+do $$
+declare
+  v_src  text;
+  v_rev  integer;
+  v_ord  integer;
+  v_rule text;
+begin
+  select p.prosrc into v_src from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'approve_order_pi_revision';
+  v_rev := position('from public.order_operations_reviewers where duty = ''pi_handoff'' for share' in v_src);
+  v_ord := position('from public.orders where id = v_ver.order_id for update' in v_src);
+  if v_rev = 0 or v_ord = 0 or v_rev > v_ord then
+    raise exception 'ASSERT: approve_order_pi_revision must lock the reviewer row before the Order';
+  end if;
+  foreach v_rule in array array[
+    'ORDER_PI_REVISION_NOT_PENDING', 'ORDER_PI_REVISION_STALE', 'ORDER_PI_REVISION_FILE_MISMATCH',
+    'ORDER_PI_REVISION_ORDER_CLOSED', 'ORDER_PI_REVISION_NOT_APPLIED', 'replace_order_submission_parse(',
+    'assign_order_product_codes(', '''pi_revision_approved''', 'superseded_by_version_id = v_ver.id']
+  loop
+    if position(v_rule in v_src) = 0 then
+      raise exception 'ASSERT: re-emitting approve_order_pi_revision dropped %', v_rule;
+    end if;
+  end loop;
+  if has_function_privilege('authenticated', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE') then
+    raise exception 'ASSERT: approve_order_pi_revision must stay service-role only';
+  end if;
+
+  select p.prosrc into v_src from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'decide_order_operations_handoff';
+  v_rev := position('from public.order_operations_reviewers where duty = ''pi_handoff'' for share' in v_src);
+  v_ord := position('from public.orders where id = v_order_id for update' in v_src);
+  if v_rev = 0 or v_ord = 0 or v_rev > v_ord then
+    raise exception 'ASSERT: decide_order_operations_handoff must lock the reviewer row before the Order';
+  end if;
+
+  select p.prosrc into v_src from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'set_order_production_alignment';
+  v_rev := position('from public.order_operations_reviewers where duty = ''pi_handoff'' for share' in v_src);
+  v_ord := position('from public.orders where id = p_order_id for update' in v_src);
+  if v_rev = 0 or v_ord = 0 or v_rev > v_ord
+     or v_ord > position('from public.order_operations_handoffs h' in v_src) then
+    raise exception 'ASSERT: set_order_production_alignment must lock the reviewer row, then the Order, before it looks for a handoff';
   end if;
 end $$;

@@ -5,9 +5,13 @@
  * against a disposable stack. This file holds the migration and the code that
  * reads it to their promises without a database:
  *
- *   * it is forward-only and additive: it re-emits NONE of the approval
- *     functions, alters no existing table, and hooks the one write both
- *     approval paths already make (a version becoming approved);
+ *   * it is forward-only and additive: it alters no existing table, hooks
+ *     the one write both approval paths already make (a version becoming
+ *     approved), and re-emits one approval door — approve_order_pi_revision,
+ *     word for word from 20261124000000 but for the reviewer-row lock it now
+ *     takes before the Order (a deadlock fix, proved by the race runner);
+ *   * lock order: the reviewer row → orders → PI rows → handoffs, in every
+ *     door that holds an Order and can then wait on either;
  *   * ONE operations decision: accepting aligns, flagging or withdrawing
  *     un-aligns, a later version resets, and set_order_production_alignment()
  *     is re-emitted to be the same door on a handoff Order — so no older
@@ -74,9 +78,9 @@ describe('the migration is one additive, forward-only file', () => {
     assert.doesNotMatch(SQL, /alter table public\.orders\b/)
   })
 
-  test('it re-emits NONE of the approval doors, and hooks the versions table instead', () => {
+  test('it re-emits no other approval door, and hooks the versions table instead', () => {
     for (const fn of [
-      'approve_order_submission', 'approve_order_pi_revision', 'approve_pi_review',
+      'approve_order_submission', 'approve_pi_review',
       'propose_order_pi_revision', 'reject_order_pi_revision', 'replace_order_submission_parse',
       'orders_guard_amendable_columns', 'order_pi_versions_guard', 'in_production_alignment',
       'submit_pi_for_review', 'resolve_permission', 'actor_has_module_permission',
@@ -88,9 +92,37 @@ describe('the migration is one additive, forward-only file', () => {
     assert.match(SQL, /if tg_op = 'UPDATE' and old\.status = 'approved' then\s+return null/, 'only the moment a version BECOMES approved')
   })
 
-  test('the one existing function it re-emits is the alignment door, made the SAME door', () => {
+  test('approve_order_pi_revision is re-emitted word for word, plus ONLY the reviewer lock, taken before the Order', () => {
+    const SOURCE = read('supabase/migrations/20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql')
+    const fullBody = (text: string) => {
+      const start = text.indexOf('create or replace function public.approve_order_pi_revision(')
+      assert.ok(start >= 0)
+      const end = text.indexOf('\n$$;', start)
+      assert.ok(end > start)
+      return text.slice(start, end + 4)
+    }
+    const before = fullBody(SOURCE).split('\n')
+    const after = fullBody(MIGRATION).split('\n')
+    const LOCK = "  perform 1 from public.order_operations_reviewers where duty = 'pi_handoff' for share;"
+    const added = after.filter(l => !before.includes(l))
+    assert.ok(added.includes(LOCK), 'the one statement it adds is the reviewer-row SHARE lock')
+    assert.deepEqual(added.filter(l => !/^\s*--/.test(l) && l.trim() !== ''), [LOCK],
+      'nothing else is added: no check, transition, history row or notification changes')
+    assert.deepEqual(before.filter(l => !after.includes(l)), [], 'nothing is removed or rewritten')
+    const body = fnBody('approve_order_pi_revision')
+    const lock = body.indexOf("from public.order_operations_reviewers where duty = 'pi_handoff' for share")
+    assert.ok(lock > 0 && lock < body.indexOf('from public.orders where id = v_ver.order_id for update'),
+      'the reviewer row is locked BEFORE the Order — the order that cannot deadlock against the assignment')
+    assert.match(SQL, /revoke execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\)\s*\n\s*from public, anon, authenticated;\s*\ngrant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/,
+      'still service-role only')
+    assert.match(SQL, /raise exception 'ASSERT: approve_order_pi_revision must lock the reviewer row before the Order'/,
+      'the apply-time assertion reads the installed order back')
+  })
+
+  test('the existing functions it re-emits: the revision door (one lock) and the alignment door, made the SAME door', () => {
     const defs = [...SQL.matchAll(/create or replace function public\.(\w+)\(/g)].map(m => m[1])
     assert.deepEqual([...new Set(defs)].sort(), [
+      'approve_order_pi_revision',
       'decide_order_operations_handoff', 'operations_reviewer_can_open_order',
       'operations_reviewer_covers_all_orders', 'order_operations_handoff_set_alignment',
       'order_operations_handoffs_guard', 'order_pi_versions_record_operations_handoff',
@@ -98,6 +130,14 @@ describe('the migration is one additive, forward-only file', () => {
     ])
     const align = fnBody('set_order_production_alignment')
     assert.match(align, /where h\.order_id = p_order_id and h\.superseded_at is null/, 'it looks for the live handoff first')
+    // …but only once the reviewer row and then the Order are held: asked
+    // unlocked, a revision approval could commit between the question and the
+    // legacy branch's Order lock, and the legacy branch would align an Order
+    // whose new version nobody accepted.
+    const rev = align.indexOf("from public.order_operations_reviewers where duty = 'pi_handoff' for share")
+    const ord = align.indexOf('perform 1 from public.orders where id = p_order_id for update')
+    assert.ok(rev > 0 && rev < ord, 'the reviewer row before the Order')
+    assert.ok(ord < align.indexOf('from public.order_operations_handoffs h'), 'the Order before the handoff question')
     assert.match(align, /return public\.decide_order_operations_handoff\(\s*v_live,\s*case when coalesce\(p_aligned, false\) then 'accepted' else 'clarification_needed' end,\s*v_note\)/,
       'on a handoff Order BOTH directions route through the handoff decision')
     // The legacy branch is the 20261119 rule, word for word where it matters.
@@ -208,8 +248,9 @@ describe('authority lives at the database', () => {
     assert.doesNotMatch(body, /role = 'admin'/, 'the admin role grants nothing here')
     assert.doesNotMatch(body, /actor_has_module_permission\('orders', 'approve_order'\)/, 'approving is not accepting')
     assert.doesNotMatch(body, /actor_has_module_permission\('orders', 'align_production'\)/, 'holding align_production is not being the reviewer')
-    // Locks and the checks under them, in the order that cannot deadlock with approval.
-    assert.match(body, /select \* into v_order from public\.orders where id = v_order_id for update;\s*select \* into v_h from public\.order_operations_handoffs where id = p_handoff_id for update/)
+    // Locks and the checks under them, in the order that cannot deadlock with
+    // approval or assignment: the reviewer row (SHARE), the Order, the handoff.
+    assert.match(body, /perform 1 from public\.order_operations_reviewers where duty = 'pi_handoff' for share;\s*select \* into v_order from public\.orders where id = v_order_id for update;\s*select \* into v_h from public\.order_operations_handoffs where id = p_handoff_id for update/)
     for (const marker of ['ORDER_OPERATIONS_HANDOFF_CLOSED', 'ORDER_OPERATIONS_HANDOFF_SUPERSEDED', 'ORDER_OPERATIONS_HANDOFF_STALE',
                           'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED', 'ORDER_OPERATIONS_HANDOFF_ALREADY_FLAGGED',
                           'ORDER_OPERATIONS_HANDOFF_REASON_REQUIRED', 'ORDER_OPERATIONS_HANDOFF_REASON_TOO_LONG']) {
@@ -249,10 +290,12 @@ describe('authority lives at the database', () => {
       'the one lockable settings row exists from the start, with nobody assigned')
   })
 
-  test('the approver is not told about their own approval; the earlier decision is kept; the decision door never touches the reviewer row', () => {
+  test('the approver is not told about their own approval; the earlier decision is kept; the decision door only SHARES the reviewer row', () => {
     const trg = fnBody('order_pi_versions_record_operations_handoff')
-    assert.doesNotMatch(fnBody('decide_order_operations_handoff'), /order_operations_reviewers/,
-      'the decision takes orders → handoffs only, so it cannot join a cycle with the assignment')
+    const decide = fnBody('decide_order_operations_handoff')
+    assert.equal((decide.match(/order_operations_reviewers/g) ?? []).length, 1,
+      'the decision reads nothing from the reviewer row — it only takes it SHARE, first, so an assignment cannot hold the handoff while the decision holds the Order')
+    assert.doesNotMatch(decide, /order_operations_reviewers[^;]*for update/, 'SHARE only: decisions never block each other on it')
     assert.match(trg, /if v_reviewer is not null and v_reviewer is distinct from new\.decided_by then/, 'the approver is not told about their own approval')
     assert.match(trg, /'order_operations_review_requested'::notification_type/)
     assert.match(trg, /update public\.order_operations_handoffs\s+set superseded_at = v_now,\s+superseded_by_version_id = new\.id\s+where order_id = new\.order_id\s+and superseded_at is null/,
@@ -272,7 +315,8 @@ describe('authority lives at the database', () => {
     assert.ok(lock > 0, 'the settings row is locked FOR UPDATE')
     assert.ok(lock < body.indexOf('insert into public.order_operations_reviewers'), '…before it is written')
     assert.ok(lock < body.indexOf('for v_h in'), '…and before the handoffs are read, so an approval in flight is waited for')
-    assert.doesNotMatch(body, /from public\.orders[^;]*for update/, 'the assignment never locks orders (lock order: orders → reviewers → handoffs)')
+    assert.doesNotMatch(body, /from public\.orders[^;]*for (update|share|no key update)/,
+      'the assignment takes no Order lock of its own; it reaches an Order only through the history row\'s foreign key (FOR KEY SHARE), while it holds the reviewer row exclusively')
     assert.match(body, /for update of h/, 'only handoff rows are locked in the loop')
     assert.match(body, /if p_user_id is not null and not public\.operations_reviewer_can_open_order\(p_user_id, v_h\.order_id\) then/,
       'and each handoff is still checked per Order')

@@ -2374,6 +2374,34 @@ locks that the caller is the assigned reviewer, active, able to open the Order,
 that the handoff is live and its version still the Order's approved one, and
 that the Order is not cancelled. An administrator is never substituted.
 
+### Lock order for the handoff
+
+The reviewer settings row comes **first**, before the Order:
+
+```
+order_operations_reviewers → orders → order_submissions / order_pi_versions
+                           → order_operations_handoffs
+```
+
+| Path | Takes |
+| --- | --- |
+| first approval (`approve_order_submission`) | submission → its **new** Order → trigger: reviewer row SHARE → handoffs |
+| revision approval (`approve_order_pi_revision`, re-emitted with one added lock) | reviewer row SHARE → Order UPDATE → submission → versions → trigger (row already held) → handoffs |
+| decision (`decide_order_operations_handoff`) and the alignment door | reviewer row SHARE → Order UPDATE → handoff |
+| assignment (`set_order_operations_reviewer`) | reviewer row UPDATE → handoffs → Order **KEY SHARE**, through `order_activity_log`'s foreign key, once per readdressed handoff |
+
+The assignment is the only path that reaches an Order after a handoff. It holds
+the reviewer row exclusively while it does that, so no path that holds an Order
+and waits for a handoff or the reviewer row can run at the same time. Before
+this was corrected, the revision approval locked the Order `FOR UPDATE` first
+and took the reviewer row only in its trigger. A Control Center change arriving
+in between held the reviewer row while its history row's foreign-key check
+waited for that Order: a deadlock, reproduced with two sessions (Postgres
+aborted one of them). The alignment door also now locks before it asks whether
+a live handoff exists. Asked unlocked, a revision approval could commit in
+between, and the legacy branch would align an Order whose new version nobody
+had accepted.
+
 ### A later version
 
 Approving V2 stamps V1's handoff `superseded_at` and keeps its decision for
@@ -2413,4 +2441,11 @@ do not move the alignment.
 disposable local stack, `supabase/tests/run_order_operations_handoff_local.sh`
 (applies the migration twice, then `order_operations_handoff_assertions.sql`
 through the real `approve_order_submission()` door, both alignment doors, and
-the reassignment, clearing and deactivation cases).
+the reassignment, clearing and deactivation cases), and
+`supabase/tests/run_order_operations_handoff_race.sh`. The race runner uses two
+real sessions: a first approval against a reviewer change, in both orders and
+with the reviewer cleared, and a revised PI V2 on an Order whose V1 handoff is
+unresolved, approved through the real `approve_order_pi_revision()` door while
+Control Center changes the reviewer, in both orders. Each case requires that
+both sessions complete within a statement timeout and that V2 ends with the
+reviewer who is current after both commit.
