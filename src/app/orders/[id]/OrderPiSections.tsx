@@ -860,7 +860,7 @@ export function OrderPiHistoryCard({
             heading={PI_HISTORY_PENDING_HEADING}
             opening={opening === pending.id}
             onOpen={onOpen}
-            actions={canDecide && pending.status === 'pending' ? (
+            actions={canDecide ? (
               <>
                 <button
                   type="button"

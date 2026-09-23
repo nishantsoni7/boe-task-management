@@ -628,6 +628,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order document submissions (20261231000000): Design Files and Client PO
       // reviewed by admin then operations, held by its own suites.
       if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
+      // Revised-PI promotion (20270101000000), held by its own suites.
+      if (f === 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1293,6 +1295,28 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20261231000000_order_document_submissions.sql'
 
+  /**
+   * REVISED-PI PROMOTION (20270101000000).
+   *
+   * An admin approval stages a revised PI; only the operations reviewer's
+   * acceptance applies it. The approval route's staging mode, the version view
+   * and its words, the Main PI proposal block, the operations review dialog, the
+   * queue rows, the Sales notification wording, and the suites that pin the
+   * lease, the page's query count and the notification writers. Touches the PI
+   * revision path ON PURPOSE — that path is what this work changes.
+   */
+  const ALLOWED_REVISED_PI_PROMOTION = new Set([
+    'src/app/api/orders/import/process-draft/route.ts',
+    'src/app/api/orders/submissions/notify/route.ts',
+    'src/lib/orders/orderPiVersions.ts',
+    'src/lib/orders/orderMainPi.ts',
+    'src/app/orders/[id]/RevisionOperationsReviewModal.tsx',
+    'src/app/orders/[id]/orderPiRevisionPromotion.render.test.tsx',
+    'src/lib/orders/orderPiRevisionPromotion.test.ts',
+    'src/lib/orders/submissionImages.test.ts',
+  ])
+  const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
+
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
     'src/app/orders/[id]/OrderWorkspace.tsx',
@@ -1329,6 +1353,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
+    !ALLOWED_REVISED_PI_PROMOTION.has(f) &&
+    f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
@@ -1355,7 +1381,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/app/orders/[id]/OrderAmendmentModals.tsx',
     ]) {
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      // …unless the revised-PI promotion (20270101000000) reaches it on purpose:
+      // staging a revision IS a change to the PI revision path.
+      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -1516,7 +1546,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion/.test(f),
         `${f} does not belong to this feature`)
     }
     // The document-submissions runner is held to the same rule.
@@ -1591,7 +1621,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
-        || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file),
+        || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
+        || ALLOWED_REVISED_PI_PROMOTION.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
