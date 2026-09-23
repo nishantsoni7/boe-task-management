@@ -144,7 +144,7 @@ export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: s
       if (error) return `${file.name} could not be uploaded. Nothing was submitted.`
       files.push({ path, file_name: file.name.slice(0, 200) })
     }
-    const { error } = await supabase.rpc('submit_order_document_submission', {
+    const { error } = await supabase.rpc('create_order_document_submission', {
       p_submission_id: submissionId,
       p_order_id: orderId,
       p_design_mode: input.designFiles.length > 0 ? input.designMode : null,

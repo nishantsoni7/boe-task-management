@@ -214,7 +214,7 @@ returns jsonb language plpgsql as $$
 declare v jsonb;
 begin
   perform pg_temp.become(p_user);
-  v := public.submit_order_document_submission(p_sub, p_order, p_mode, 'ASSERT note', p_files, p_prior);
+  v := public.create_order_document_submission(p_sub, p_order, p_mode, 'ASSERT note', p_files, p_prior);
   perform pg_temp.restore();
   return v;
 end $$;
@@ -438,7 +438,7 @@ begin
   perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_document_submissions', 'UPDATE'), '6. clients cannot update submissions');
   perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_document_submission_files', 'INSERT'), '6. clients cannot insert file rows');
   perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_document_submission_events', 'DELETE'), '6. clients cannot delete history');
-  perform pg_temp.check(not has_function_privilege('anon', 'public.submit_order_document_submission(uuid, uuid, text, text, jsonb, uuid)', 'EXECUTE'), '6. anon cannot submit');
+  perform pg_temp.check(not has_function_privilege('anon', 'public.create_order_document_submission(uuid, uuid, text, text, jsonb, uuid)', 'EXECUTE'), '6. anon cannot submit');
   perform pg_temp.check(not has_function_privilege('anon', 'public.decide_order_document_submission_admin(uuid, text, text, text)', 'EXECUTE'), '6. anon cannot decide (admin)');
   perform pg_temp.check(not has_function_privilege('anon', 'public.decide_order_document_submission_operations(uuid, text, text, text)', 'EXECUTE'), '6. anon cannot decide (operations)');
   perform pg_temp.check(not exists (select 1 from pg_policy pp join pg_class c on c.oid = pp.polrelid

@@ -314,6 +314,12 @@ describe('the read side excludes system types too', () => {
     // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
     // row to ONE person, once. It installs no trigger, function or job.
     const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
+    // An eighth, 20261231000000, is Order document submissions (Design Files
+    // and Client PO): three RPCs a PERSON presses (submit, the admin decision,
+    // the operations decision) each notify the next owner inside that person's
+    // own transaction. Orders types only; no trigger inserts a notification and
+    // nothing is scheduled.
+    const DOCUMENT_SUBMISSIONS = '20261231000000_order_document_submissions.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -322,7 +328,18 @@ describe('the read side excludes system types too', () => {
       APPROVAL_SILENCE,
       OPERATIONS_HANDOFF,
       ORDER_0524_HANDOFF,
+      DOCUMENT_SUBMISSIONS,
     ])
+    {
+      const sql = read(join(dir, DOCUMENT_SUBMISSIONS))
+      for (const t of [...(sql.match(/'(w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))) {
+        assert.equal(isSystemGeneratedNotificationType(t), false, `${DOCUMENT_SUBMISSIONS} writes ${t}, which must not be a system type`)
+        assert.ok(t.startsWith('order_document_review_'), t)
+      }
+      assert.equal((sql.match(/public.assert_order_submission_actor()/g) ?? []).length, 3,
+        `${DOCUMENT_SUBMISSIONS}: the three RPCs act as a signed-in person`)
+      assert.equal(/creates+triggers+w+s+after/i.test(sql), false, `${DOCUMENT_SUBMISSIONS}: no AFTER trigger sends anything`)
+    }
     {
       const sql = read(join(dir, ORDER_0524_HANDOFF))
       assert.equal(/create\s+(or\s+replace\s+)?(trigger|function)/i.test(sql), false,
@@ -365,7 +382,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

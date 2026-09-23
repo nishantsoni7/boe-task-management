@@ -1024,6 +1024,7 @@ describe('the applied migrations are frozen', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      '20261231000000_order_document_submissions.sql',
     ])
   })
 
@@ -1299,6 +1300,7 @@ describe('the applied migrations are frozen', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      '20261231000000_order_document_submissions.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

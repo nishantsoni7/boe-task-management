@@ -625,6 +625,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order 0524's one-time handoff (20261230000000) is the one named
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
+      // Order document submissions (20261231000000): Design Files and Client PO
+      // reviewed by admin then operations, held by its own suites.
+      if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1236,6 +1239,42 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * Withdraw acceptance joins the header overflow. Same RPC, same dialog, same
    * rule. Every file is named; no migration, no permission, no money.
    */
+  /**
+   * ORDER DOCUMENT SUBMISSIONS (20261231000000).
+   *
+   * Design Files and Client PO on a Confirmed Order: Sales submits, an admin
+   * approves or rejects, the assigned operations reviewer accepts or rejects,
+   * and only acceptance makes a file current. The Documents box, its page
+   * wiring, the dashboard queue, their styles, the view logic and its suite,
+   * plus the one-line inventory pins the migration moved. No money, no PI
+   * figure, no alignment.
+   */
+  const ALLOWED_ORDER_DOCUMENT_SUBMISSIONS = new Set([
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/app/orders/[id]/OrderDocumentSubmissions.tsx',
+    'src/app/orders/page.tsx',
+    'src/components/orders/DocumentActionQueue.tsx',
+    'src/app/globals.css',
+    'src/lib/orders/orderDocumentSubmissions.ts',
+    'src/lib/orders/orderDocumentSubmissions.test.ts',
+    'src/app/orders/[id]/orderDocumentSubmissions.render.test.tsx',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/notificationSystemActivity.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20261231000000_order_document_submissions.sql'
+
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
     'src/app/orders/[id]/OrderWorkspace.tsx',
@@ -1271,6 +1310,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ORDER_0524_HANDOFF.has(f) &&
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
+    !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
+    f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1457,8 +1498,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions/.test(f),
         `${f} does not belong to this feature`)
+    }
+    // The document-submissions runner is held to the same rule.
+    if (added.some(f => /order_document_submissions/.test(f))) {
+      const runner = read('supabase/tests/run_order_document_submissions_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(runner), false,
+        'the document-submissions runner must not be able to reach a linked project')
+      assert.ok(runner.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(runner.includes('is not disposable'), 'and refuses a database holding real Orders')
+      const assertions = read('supabase/tests/order_document_submissions_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // Order 0524's runner is held to the same rule as the handoff's.
     if (added.some(f => /order_0524_operations_handoff/.test(f))) {
@@ -1521,7 +1572,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_OPERATIONS_HANDOFF.has(file)
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
-        || ALLOWED_PI_FORMAT_DOWNLOAD.has(file),
+        || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
+        || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

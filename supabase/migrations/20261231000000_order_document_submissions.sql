@@ -8,7 +8,7 @@
 -- design files (orderDocumentsPanel.ts records that audit). This file gives both
 -- a home, and the home is a REVIEW QUEUE, not a shelf:
 --
---   Sales submits      submit_order_document_submission()          pending_admin
+--   Sales submits      create_order_document_submission()          pending_admin
 --   Admin decides      decide_order_document_submission_admin()    awaiting_operations | rejected_admin
 --   Operations decides decide_order_document_submission_operations() accepted | rejected_operations
 --
@@ -410,7 +410,7 @@ $$;
 -- p_files: [{"path": "...", "file_name": "..."}]. The category is read from the
 -- key. Size and type are read from the stored object, never from the caller.
 
-create or replace function public.submit_order_document_submission(
+create or replace function public.create_order_document_submission(
   p_submission_id    uuid,
   p_order_id         uuid,
   p_design_mode      text,
@@ -577,8 +577,8 @@ begin
                             'snapshot_sha256', v_sha, 'file_count', jsonb_array_length(p_files));
 end;
 $$;
-revoke execute on function public.submit_order_document_submission(uuid, uuid, text, text, jsonb, uuid) from public, anon;
-grant  execute on function public.submit_order_document_submission(uuid, uuid, text, text, jsonb, uuid) to authenticated;
+revoke execute on function public.create_order_document_submission(uuid, uuid, text, text, jsonb, uuid) from public, anon;
+grant  execute on function public.create_order_document_submission(uuid, uuid, text, text, jsonb, uuid) to authenticated;
 
 
 
