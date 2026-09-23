@@ -130,6 +130,12 @@ import {
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
+import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
+import {
+  canDecideRevisionOperations,
+  describeRevisionOperationsFailure,
+  type RevisionDifferences,
+} from '@/lib/orders/orderPiVersions'
 import {
   DocumentCategoryBody,
   DocumentUploadAction,
@@ -816,6 +822,11 @@ export default function OrderDetailPage() {
     | null
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
+  // ── The operations decision on a revised PI (20270101000000) ──
+  const [revOpsOpen,  setRevOpsOpen]  = useState(false)
+  const [revOpsDiff,  setRevOpsDiff]  = useState<RevisionDifferences | null | 'unavailable'>(null)
+  const [revOpsBusy,  setRevOpsBusy]  = useState(false)
+  const [revOpsError, setRevOpsError] = useState<string | null>(null)
   const [revisionError, setRevisionError] = useState<string | null>(null)
   const [historyOpen,   setHistoryOpen]   = useState(false)
   const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
@@ -1964,6 +1975,38 @@ export default function OrderDetailPage() {
     },
   )
   const mayDecideRevision = canDecidePiRevision({ isAdmin: actingAsAdmin })
+  // THE REVIEWER'S CONTROL, for the one person a staged revision is addressed
+  // to (never under View As). decide_order_pi_revision_operations() re-derives
+  // it under row locks — and refuses an acceptance the Order is not amended for.
+  const mayReviewRevision = canDecideRevisionOperations(piHistory.pending, viewAsUserId ? null : (profile?.id ?? null), !!viewAsUserId)
+  const openRevisionReview = async () => {
+    const v = piHistory.pending
+    if (!v) return
+    setRevOpsError(null)
+    setRevOpsDiff(null)
+    setRevOpsOpen(true)
+    const { data, error } = await supabase.rpc('order_pi_revision_differences', { p_version_id: v.id })
+    setRevOpsDiff(error || !data ? 'unavailable' : (data as RevisionDifferences))
+  }
+  const decideRevisionOperations = async (decision: 'accepted' | 'rejected', reason: string | null) => {
+    const v = piHistory.pending
+    if (!v || revOpsBusy) return
+    setRevOpsBusy(true)
+    setRevOpsError(null)
+    try {
+      const { error } = await supabase.rpc('decide_order_pi_revision_operations', {
+        p_version_id: v.id, p_decision: decision, p_reason: reason,
+      })
+      if (error) { setRevOpsError(describeRevisionOperationsFailure(error)); return }
+      setRevOpsOpen(false)
+      // Accepting moves the version in force, the lines, pictures, codes, the
+      // handoff and the alignment; rejecting moves one version row. The whole
+      // Order is re-read either way, and the documents with it.
+      await Promise.all([loadOrder(), docSubs.reload()])
+    } finally {
+      setRevOpsBusy(false)
+    }
+  }
 
   /** Production alignment, and whether this reader may move it. */
   const mayAlignProduction = canAlignProduction(ordersCaps, Boolean(viewAsUserId))
@@ -2672,6 +2715,8 @@ export default function OrderDetailPage() {
               </button>
             ) : undefined}
             mainPiOperations={mainPiOperations}
+            onReviewRevision={mayReviewRevision ? () => { void openRevisionReview() } : undefined}
+            onOpenProposal={v => { void openVersionFile(v, 'view') }}
             designSubmissions={docBody('design_files')}
             designUpload={<DocumentUploadAction category="design_files" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
             clientPoSubmissions={docBody('client_po')}
@@ -3064,6 +3109,20 @@ export default function OrderDetailPage() {
           onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
           onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
           error={revisionDialog === null ? revisionError : null}
+        />
+      )}
+
+      {revOpsOpen && piHistory.pending && (
+        <RevisionOperationsReviewModal
+          orderNumber={order.display_number}
+          current={piHistory.current}
+          proposal={piHistory.pending}
+          differences={revOpsDiff}
+          saving={revOpsBusy}
+          failure={revOpsError}
+          onOpen={v => { void openVersionFile(v, 'view') }}
+          onClose={() => { if (!revOpsBusy) setRevOpsOpen(false) }}
+          onDecide={(d, r) => { void decideRevisionOperations(d, r) }}
         />
       )}
 

@@ -20,7 +20,9 @@ import { workbookObjectPath } from './saveDraftFlow'
 
 // ── The persisted row ─────────────────────────────────────────────────────────
 
-export type PiVersionStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
+// 'admin_approved' (20270101000000): an admin approved the revision and its parse
+// is staged; it is NOT in force until the operations reviewer accepts it.
+export type PiVersionStatus = 'pending' | 'admin_approved' | 'approved' | 'rejected' | 'superseded'
 
 export type PersistedPiVersion = {
   id: string
@@ -37,6 +39,10 @@ export type PersistedPiVersion = {
   decided_at: string | null
   decision_reason: string | null
   superseded_at: string | null
+  operations_reviewer?: string | null
+  operations_decided_by?: string | null
+  operations_decided_at?: string | null
+  operations_reason?: string | null
 }
 
 /** Named, never `*`. The hash and the successor link are not read: the screen
@@ -46,6 +52,7 @@ export const ORDER_PI_VERSION_COLUMNS = [
   'workbook_path', 'workbook_name',
   'uploaded_by', 'uploaded_at', 'revision_reason',
   'decided_by', 'decided_at', 'decision_reason', 'superseded_at',
+  'operations_reviewer', 'operations_decided_by', 'operations_decided_at', 'operations_reason',
 ].join(', ')
 
 // ── Words ─────────────────────────────────────────────────────────────────────
@@ -58,6 +65,7 @@ export const PI_HISTORY_EMPTY = 'No PI versions are recorded for this Order.'
 
 export const PI_VERSION_STATUS_LABEL: Record<PiVersionStatus, string> = {
   pending:    'Pending approval',
+  admin_approved: 'Approved by Admin — awaiting Operations',
   approved:   'Approved',
   rejected:   'Rejected',
   superseded: 'Superseded',
@@ -67,6 +75,7 @@ export type PiVersionTone = 'green' | 'amber' | 'red' | 'neutral'
 
 export const PI_VERSION_STATUS_TONE: Record<PiVersionStatus, PiVersionTone> = {
   pending:    'amber',
+  admin_approved: 'amber',
   approved:   'green',
   rejected:   'red',
   superseded: 'neutral',
@@ -92,9 +101,9 @@ export const OPEN_VERSION_LABEL = 'Open'
  * a new one must know nothing changes until an administrator approves it.
  */
 export const UPLOAD_REVISION_NOTE =
-  'The current approved PI stays in force. The revised PI is recorded as a pending version and changes nothing on this Order until an administrator approves it.'
+  'The current approved PI stays in force. The revised PI is recorded as a pending version and changes nothing on this Order until an administrator approves it and Operations accepts it.'
 export const APPROVE_REVISION_NOTE =
-  'Approving applies the revised workbook to this Order: its figures, product lines and pictures are re-read from the new file, any ready documents stop being current, and the previous PI is kept as history.'
+  'Approving authorizes the revised PI — it does not put it in force. The current PI, its lines, pictures, figures and documents stay in use until the operations reviewer compares the two and accepts the revision. If its client, dates or values differ from the Order, the Order must be amended first.'
 
 export const REVISION_REASON_MAX_LENGTH = 500
 export const REVISION_DECISION_REASON_MAX_LENGTH = 1000
@@ -140,6 +149,13 @@ export type PiVersionView = {
   /** "Approved by X · date" / "Rejected by X · date", or null while pending. */
   decisionLine: string | null
   decisionReason: string | null
+  /** The operations reviewer a revision awaits (admin_approved), by id. */
+  operationsReviewerId: string | null
+  /** Their name, or null when nobody is assigned. */
+  operationsReviewer: string | null
+  /** "Accepted by Operations — X · date" / "Rejected by Operations — X · date". */
+  operationsLine: string | null
+  operationsReason: string | null
 }
 
 export type PiVersionHistory = {
@@ -154,7 +170,7 @@ export type PiVersionHistory = {
 export const UNKNOWN_ACTOR = 'Unknown user'
 
 function asStatus(value: string): PiVersionStatus | null {
-  return value === 'pending' || value === 'approved' || value === 'rejected' || value === 'superseded'
+  return value === 'pending' || value === 'admin_approved' || value === 'approved' || value === 'rejected' || value === 'superseded'
     ? value
     : null
 }
@@ -183,7 +199,8 @@ export function describePiVersionHistory(
       const status = asStatus(row.status)
       if (status === null) return null
       const decisionVerb =
-        status === 'approved' || status === 'superseded' ? 'Approved'
+        status === 'admin_approved' ? 'Approved by Admin'
+        : status === 'approved' || status === 'superseded' ? 'Approved'
         : status === 'rejected' ? 'Rejected'
         : null
       const view: PiVersionView = {
@@ -203,6 +220,12 @@ export function describePiVersionHistory(
           ? `${decisionVerb} by ${name(row.decided_by)} · ${formatWhen(row.decided_at)}`
           : null,
         decisionReason: row.decision_reason && row.decision_reason.trim() !== '' ? row.decision_reason.trim() : null,
+        operationsReviewerId: row.operations_reviewer ?? null,
+        operationsReviewer: row.operations_reviewer ? name(row.operations_reviewer) : null,
+        operationsLine: row.operations_decided_at
+          ? `${status === 'rejected' ? 'Rejected' : 'Accepted'} by Operations — ${name(row.operations_decided_by ?? null)} · ${formatWhen(row.operations_decided_at)}`
+          : null,
+        operationsReason: row.operations_reason && row.operations_reason.trim() !== '' ? row.operations_reason.trim() : null,
       }
       return view
     })
@@ -210,7 +233,9 @@ export function describePiVersionHistory(
     .sort((a, b) => b.versionNumber - a.versionNumber)
 
   const current = views.find(v => v.status === 'approved') ?? null
-  const pending = views.find(v => v.status === 'pending') ?? null
+  // THE OPEN REVISION: pending an admin, or approved by one and awaiting
+  // operations. Either way it is a PROPOSAL — never the current PI.
+  const pending = views.find(v => v.status === 'pending' || v.status === 'admin_approved') ?? null
   const history = views.filter(v => v !== current && v !== pending)
 
   return { current, pending, history }
@@ -222,6 +247,8 @@ export function versionActorIds(rows: readonly PersistedPiVersion[]): string[] {
   for (const row of rows) {
     if (row.uploaded_by) ids.add(row.uploaded_by)
     if (row.decided_by) ids.add(row.decided_by)
+    if (row.operations_reviewer) ids.add(row.operations_reviewer)
+    if (row.operations_decided_by) ids.add(row.operations_decided_by)
   }
   return [...ids]
 }
@@ -359,4 +386,106 @@ export function describePiRevisionFailure(
         ?? (error as { error?: unknown } | null)?.error ?? '')
   const known = REVISION_FAILURES.find(entry => raw.includes(entry.marker))
   return known ? known.message : REVISION_FALLBACK[action]
+}
+
+// ── The operations decision on a revised PI (20270101000000) ─────────────────
+//
+// An admin's approval STAGES a revision ('admin_approved'); the assigned
+// operations reviewer compares it with the PI in force and accepts or rejects
+// it. Only acceptance puts it in force. These words and rules draw that; the
+// database (decide_order_pi_revision_operations) re-derives all of it.
+
+/** One commercial difference between a staged revision and the Order. */
+export type RevisionBlockingDifference = {
+  field: 'client_name' | 'confirm_date' | 'due_date' | 'total_value' | 'total_product_value'
+  label: string
+  order_value: string | number | null
+  pi_value: string | number | null
+}
+
+type LineFigures = { name: string | null; qty: number | null; rate: number | null; total: number | null }
+
+export type RevisionDifferences = {
+  staged: boolean
+  blocking: RevisionBlockingDifference[]
+  lines: {
+    added: (LineFigures & { seq: string })[]
+    removed: (LineFigures & { seq: string })[]
+    changed: { seq: string; name: string | null; from: LineFigures; to: LineFigures }[]
+  }
+  billing_percentage: { order: number | string | null; pi: number | string | null }
+  applied: boolean
+}
+
+export const REVIEW_REVISION_LABEL = (versionNumber: number) => `Review ${piVersionLabel(versionNumber)} — Accept or Reject`
+export const ACCEPT_REVISION_LABEL = (versionNumber: number) => `Accept ${piVersionLabel(versionNumber)}`
+export const REJECT_REVISION_OPS_LABEL = 'Reject'
+export const PROPOSED_REVISION_TITLE = (versionNumber: number) => `Proposed ${piVersionLabel(versionNumber)} — not in force yet`
+export const ACCEPT_REVISION_NOTE =
+  'Accepting puts the proposed PI in force: its product lines and pictures replace the current ones (which are kept in history), product codes are issued for new lines, the confirmed documents are regenerated from it, and production is aligned against it.'
+export const AMENDMENT_REQUIRED_NOTE =
+  'The proposed PI changes this Order’s commercial data. It cannot be accepted until the Order is amended to these values: use Request a Change on this Order (an admin approves it), then accept.'
+export const REJECT_REVISION_OPS_NOTE =
+  'Rejecting keeps the current PI in force and changes nothing on this Order. Sales and the approving admin see your reason.'
+
+/** Who holds a revision now, in words — for the Main PI section and queues. */
+export function revisionStage(v: PiVersionView): { owner: string; next: string } | null {
+  if (v.status === 'pending') return { owner: 'Admin', next: 'Admin to approve or reject' }
+  if (v.status === 'admin_approved') {
+    return {
+      owner: v.operationsReviewer ? `Operations — ${v.operationsReviewer}` : 'Operations — no reviewer assigned',
+      next: 'Operations to accept or reject',
+    }
+  }
+  return null
+}
+
+/** The reviewer's control: drawn for the ONE person the revision is addressed to. */
+export function canDecideRevisionOperations(v: PiVersionView | null, viewerId: string | null, viewingAs: boolean): boolean {
+  return !!v && !viewingAs && !!viewerId && v.status === 'admin_approved' && v.operationsReviewerId === viewerId
+}
+
+/** A database refusal, as a sentence (the text after the marker when there is one). */
+export function describeRevisionOperationsFailure(error: { message?: string | null } | null | undefined): string {
+  const raw = error?.message ?? ''
+  const coded = raw.match(/ORDER_PI_REVISION_[A-Z_]+: ([\s\S]*)$/)
+  if (coded) return coded[1]
+  if (raw.startsWith('Only ') || raw.startsWith('You do not')) return raw
+  if (/order_pi_versions_one_pending_per_order/.test(raw)) {
+    return 'A revised PI for this Order is already open (awaiting Admin or Operations). Wait for its decision first.'
+  }
+  return 'That did not go through. Refresh and try again.'
+}
+
+// ── Revised PIs in the "Needs your action" queue ────────────────────────────
+
+export type RevisionQueueRow = {
+  id: string
+  orderId: string
+  orderNumber: string
+  versionNumber: number
+  status: 'pending' | 'admin_approved'
+  uploadedBy: string | null
+  uploadedAt: string
+  operationsReviewer: string | null
+}
+
+/**
+ * Admin: revisions pending the admin decision. Operations: revisions an admin
+ * approved that are addressed to THIS reviewer. Sales: their own open
+ * revisions, separately, as awaiting somebody else. Nothing under View As.
+ */
+export function splitRevisionQueue(
+  rows: readonly RevisionQueueRow[],
+  viewer: { viewerId: string | null; isAdmin: boolean; viewingAs: boolean },
+): { needsYou: RevisionQueueRow[]; waitingOnOthers: RevisionQueueRow[] } {
+  const needsYou: RevisionQueueRow[] = []
+  const waitingOnOthers: RevisionQueueRow[] = []
+  if (!viewer.viewerId || viewer.viewingAs) return { needsYou, waitingOnOthers }
+  for (const r of rows) {
+    if (r.status === 'pending' && viewer.isAdmin) needsYou.push(r)
+    else if (r.status === 'admin_approved' && r.operationsReviewer === viewer.viewerId) needsYou.push(r)
+    else if (r.uploadedBy === viewer.viewerId) waitingOnOthers.push(r)
+  }
+  return { needsYou, waitingOnOthers }
 }

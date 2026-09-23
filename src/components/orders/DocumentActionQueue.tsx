@@ -28,10 +28,17 @@ import {
   type PersistedDocumentSubmission,
   type QueueRow,
 } from '@/lib/orders/orderDocumentSubmissions'
+import { splitRevisionQueue, type RevisionQueueRow } from '@/lib/orders/orderPiVersions'
 
 const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_admin', 'rejected_operations']
 
-type Loaded = { rows: { submission: PersistedDocumentSubmission; orderNumber: string }[]; names: Map<string, string> }
+type Loaded = {
+  rows: { submission: PersistedDocumentSubmission; orderNumber: string }[]
+  // Revised PIs open on an Order (20270101000000): pending the admin, or
+  // approved and awaiting the operations reviewer.
+  revisions: RevisionQueueRow[]
+  names: Map<string, string>
+}
 
 const TONE: Record<string, { bg: string; fg: string }> = {
   pending_admin: { bg: '#FFF6E0', fg: '#9A6A12' },
@@ -69,14 +76,28 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
         submission: r as PersistedDocumentSubmission,
         orderNumber: (r.order?.display_number as string | undefined) ?? '—',
       }))
+      const { data: revData, error: revErr } = await supabase
+        .from('order_pi_versions')
+        .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, order:orders!order_id(display_number)')
+        .in('status', ['pending', 'admin_approved'])
+        .order('uploaded_at', { ascending: false })
+        .limit(100)
+      if (!live) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const revisions: RevisionQueueRow[] = revErr ? [] : ((revData ?? []) as any[]).map(r => ({
+        id: r.id, orderId: r.order_id, orderNumber: (r.order?.display_number as string | undefined) ?? '—',
+        versionNumber: r.version_number, status: r.status, uploadedBy: r.uploaded_by ?? null,
+        uploadedAt: r.uploaded_at, operationsReviewer: r.operations_reviewer ?? null,
+      }))
       const ids = new Set<string>()
       for (const { submission: s } of rows) for (const uid of [s.submitted_by, s.operations_reviewer]) if (uid) ids.add(uid)
+      for (const r of revisions) for (const uid of [r.uploadedBy, r.operationsReviewer]) if (uid) ids.add(uid)
       let names = new Map<string, string>()
       if (ids.size > 0) {
         const { data: users } = await supabase.from('users').select('id, full_name').in('id', [...ids])
         names = new Map((users ?? []).map((u: { id: string; full_name: string }) => [u.id, u.full_name]))
       }
-      if (live) setLoaded({ rows, names })
+      if (live) setLoaded({ rows, revisions, names })
     })()
     return () => { live = false }
   }, [supabase, viewerId, viewingAs])
@@ -86,7 +107,9 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
     viewerId, isAdmin, canSubmit: true, viewingAs,
   }
   const { needsYou, waitingOnOthers } = splitDocumentQueue(loaded.rows, viewer)
-  if (needsYou.length === 0 && waitingOnOthers.length === 0) return null
+  const rev = splitRevisionQueue(loaded.revisions, { viewerId, isAdmin, viewingAs })
+  const needsCount = needsYou.length + rev.needsYou.length
+  if (needsCount === 0 && waitingOnOthers.length === 0 && rev.waitingOnOthers.length === 0) return null
   const nameOf = (id: string | null) => (id ? loaded.names.get(id) ?? null : null)
 
   const Row = ({ r }: { r: QueueRow }) => {
@@ -121,21 +144,48 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
     )
   }
 
+  const RevRow = ({ r }: { r: RevisionQueueRow }) => (
+    <li className="order-docq-row">
+      <div className="order-docq-main">
+        <strong>Order {r.orderNumber}</strong> · Revised PI · PI V{r.versionNumber}
+        {' '}
+        <span className="order-status-chip" style={{ background: '#FFF6E0', color: '#9A6A12', borderColor: 'transparent' }}>
+          {r.status === 'pending' ? 'Pending Admin approval' : 'Approved by Admin — awaiting Operations'}
+        </span>
+        <span className="order-docq-meta">
+          Uploaded by {nameOf(r.uploadedBy) ?? 'Sales'} · {formatWhen(r.uploadedAt)}
+          {' · '}Owner: {r.status === 'pending' ? 'Admin' : `Operations — ${nameOf(r.operationsReviewer) ?? 'no reviewer assigned'}`}
+          {' · '}Next: {r.status === 'pending' ? 'Admin to approve or reject' : 'Operations to accept or reject'}
+          {' · '}The current PI stays in force until then
+        </span>
+      </div>
+      <Link href={`/orders/${r.orderId}#documents`} className="boe-btn boe-btn-ghost order-doc-action">
+        {(r.status === 'pending' && isAdmin) || (r.status === 'admin_approved' && r.operationsReviewer === viewerId) ? 'Review' : 'Open'}
+      </Link>
+    </li>
+  )
+
   return (
     <section className="order-docq" aria-label="Needs your action">
       <div className="order-docq-head">
-        <h2 className="order-docq-title">Needs your action — Order documents</h2>
-        {needsYou.length > 0 && <span className="order-docq-count" aria-label={`${needsYou.length} waiting on you`}>{needsYou.length}</span>}
+        <h2 className="order-docq-title">Needs your action — Order documents and revised PIs</h2>
+        {needsCount > 0 && <span className="order-docq-count" aria-label={`${needsCount} waiting on you`}>{needsCount}</span>}
       </div>
-      {needsYou.length > 0 ? (
-        <ul className="order-docq-list">{needsYou.map(r => <Row key={r.submission.id} r={r} />)}</ul>
+      {needsCount > 0 ? (
+        <ul className="order-docq-list">
+          {rev.needsYou.map(r => <RevRow key={r.id} r={r} />)}
+          {needsYou.map(r => <Row key={r.submission.id} r={r} />)}
+        </ul>
       ) : (
         <p className="order-docq-meta" style={{ padding: '8px 14px', margin: 0 }}>Nothing is waiting on you.</p>
       )}
-      {waitingOnOthers.length > 0 && (
+      {(waitingOnOthers.length > 0 || rev.waitingOnOthers.length > 0) && (
         <>
           <p className="order-docq-sub">Your submissions awaiting someone else</p>
-          <ul className="order-docq-list">{waitingOnOthers.map(r => <Row key={r.submission.id} r={r} />)}</ul>
+          <ul className="order-docq-list">
+            {rev.waitingOnOthers.map(r => <RevRow key={r.id} r={r} />)}
+            {waitingOnOthers.map(r => <Row key={r.submission.id} r={r} />)}
+          </ul>
         </>
       )}
     </section>

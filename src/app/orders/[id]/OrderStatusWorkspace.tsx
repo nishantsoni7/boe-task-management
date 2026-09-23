@@ -46,6 +46,9 @@ import {
   REJECT_REVISION_BUTTON_LABEL,
   UPLOAD_REVISION_BUTTON_LABEL,
   type PiVersionTone,
+  PROPOSED_REVISION_TITLE,
+  REVIEW_REVISION_LABEL,
+  revisionStage,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
 import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
@@ -205,7 +208,12 @@ export function OrderDocumentsPanel({
   onView, onDownload, onHistory, onManageDesign,
   viewing, downloading,
   mainPiUpload, mainPiOperations, designSubmissions, designUpload, clientPoSubmissions, clientPoUpload,
+  onReviewRevision, onOpenProposal,
 }: {
+  /** The operations reviewer's control on a revision awaiting them (20270101000000). */
+  onReviewRevision?: () => void
+  /** Opens the proposed workbook through the page's signer. */
+  onOpenProposal?: (version: PiVersionView) => void
   mainPi: MainPiCard
   design: DesignFilesDocument
   clientPo: ClientPoDocument
@@ -295,11 +303,40 @@ export function OrderDocumentsPanel({
               </p>
             )}
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
-            {mainPi.pendingRevision && (
-              <p className="order-doc-note">
-                A revised PI is uploaded and waiting for a decision. This one stays in force until it is approved.
-              </p>
-            )}
+            {mainPi.proposal && (() => {
+              // THE PROPOSAL, BESIDE THE PI IN FORCE AND NEVER IN ITS PLACE
+              // (20270101000000): its own dashed block, its stage in words, and
+              // who holds it now. The headline above stays the accepted PI.
+              const p = mainPi.proposal
+              const stage = revisionStage(p)
+              return (
+                <div className="order-docsub-pending" role="group" aria-label={`${p.label} proposed`}>
+                  <p className="order-doc-lead">
+                    <span className="order-docsub-pending-title">{PROPOSED_REVISION_TITLE(p.versionNumber)}</span>
+                    <StatusPill label={p.statusLabel} tone={p.tone} />
+                  </p>
+                  <p className="order-doc-note">
+                    Uploaded by {p.uploadedBy} · {p.uploadedAt}
+                    {p.decisionLine && ` · ${p.decisionLine}`}
+                  </p>
+                  {stage && <p className="order-doc-note"><strong>Waiting on:</strong> {stage.owner} · Next: {stage.next}</p>}
+                  {p.revisionReason && <p className="order-doc-note">Reason: “{p.revisionReason}”</p>}
+                  <p className="order-doc-note">{mainPi.reference} stays in force — its lines, pictures, figures and documents — until {p.label} is accepted by Operations.</p>
+                  <div className="order-docsub-actions">
+                    {onOpenProposal && p.workbookPath && (
+                      <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={() => onOpenProposal(p)}>
+                        Open {p.label}
+                      </button>
+                    )}
+                    {onReviewRevision && (
+                      <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={onReviewRevision}>
+                        {REVIEW_REVISION_LABEL(p.versionNumber)}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </>
         )}
       </DocSection>
