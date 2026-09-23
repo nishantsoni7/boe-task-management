@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Upload } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
@@ -29,6 +29,7 @@ import {
   type OrderDashboardCounts,
 } from '@/lib/orders/orderDashboard'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
+import { PI_FORMAT_ACTION, PI_FORMAT_FILENAME } from '@/lib/orders/piFormat'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 
@@ -360,24 +361,44 @@ export default function OrdersDashboardPage() {
       onSignOut={handleSignOut}
       onRefresh={() => loadData(profile?.id ?? '00000000-0000-0000-0000-000000000000')}
       actions={
-        // ── THE ONE WAY A NEW ORDER BEGINS ──
-        //
-        // "Upload PI", not "New Order": what this control does is upload one
-        // document. The Order comes into existence at approval, with a number,
-        // and the retired path that used to promise one earlier is gone.
-        //
-        // /orders/import enforces the same `create` grant in its own right,
-        // because hiding a button is not access control.
-        ordersCaps.canCreateOrder ? (
-          <button
-            className="boe-btn boe-btn-primary"
-            onClick={() => router.push(NEW_ORDER_ACTION.href)}
-            title={NEW_ORDER_ACTION.title}
+        <>
+          {
+            // ── THE ONE WAY A NEW ORDER BEGINS ──
+            //
+            // "Upload PI", not "New Order": what this control does is upload one
+            // document. The Order comes into existence at approval, with a number,
+            // and the retired path that used to promise one earlier is gone.
+            //
+            // /orders/import enforces the same `create` grant in its own right,
+            // because hiding a button is not access control.
+            ordersCaps.canCreateOrder ? (
+              <button
+                className="boe-btn boe-btn-primary"
+                onClick={() => router.push(NEW_ORDER_ACTION.href)}
+                title={NEW_ORDER_ACTION.title}
+              >
+                <Upload size={13} strokeWidth={2.2} />
+                {NEW_ORDER_ACTION.label}
+              </button>
+            ) : null
+          }
+          {/* ── THE PI FORMAT, FOR EVERYONE WHO CAN ENTER ORDERS ──
+              Not gated on `create`: a viewer who cannot upload a PI still needs
+              to see how one is filled in. A plain link, so the download is an
+              ordinary navigation carrying the session cookie; the route applies
+              the module-entry rule itself and serves the approved workbook.
+              AFTER Upload PI, so on a phone the primary action keeps the first
+              header row and this one wraps beneath it. */}
+          <a
+            className="boe-btn boe-btn-ghost"
+            href={PI_FORMAT_ACTION.href}
+            download={PI_FORMAT_FILENAME}
+            title={PI_FORMAT_ACTION.title}
           >
-            <Upload size={13} strokeWidth={2.2} />
-            {NEW_ORDER_ACTION.label}
-          </button>
-        ) : undefined
+            <Download size={13} strokeWidth={2.2} />
+            {PI_FORMAT_ACTION.label}
+          </a>
+        </>
       }
     >
       {/* ── Quick access ──
