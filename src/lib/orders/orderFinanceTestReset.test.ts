@@ -538,6 +538,16 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // existed — and it stacks last for the ordinary reason: it carries the
       // highest number on the branch.
       '20261227000000_order_fabric_finish_approvals.sql',
+      // 20261228000000 was ALREADY MISSING from this ledger before the
+      // operations-handoff work began (the personal module order landed without
+      // naming it here). A user-scoped preference table with no DML; it
+      // touches neither the reset protocol nor the deletion claim.
+      '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
   })
 

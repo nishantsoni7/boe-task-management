@@ -50,6 +50,20 @@ import {
 } from '@/lib/orders/orderPiVersions'
 import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
 import {
+  ACCEPT_FOR_PRODUCTION_LABEL,
+  CANNOT_ACCEPT_LABEL,
+  OPERATIONS_REVIEW_ANCHOR,
+  OPERATIONS_REVIEW_TITLE,
+  ACCEPTANCE_MEANING,
+  OPEN_CURRENT_PI_LABEL,
+  OPEN_PREVIOUS_PI_LABEL,
+  REVISION_COMPARE_NOTE,
+  WITHDRAW_ACCEPTANCE_LABEL,
+  type OperationsHandoffTone,
+  type OperationsHandoffView,
+  type describeOperationsHandoffHistory,
+} from '@/lib/orders/operationsHandoff'
+import {
   CLIENT_PO_UNSUPPORTED_NOTE,
   DOCUMENTS_TITLE,
   DOC_CLIENT_PO_TITLE,
@@ -103,13 +117,15 @@ export function StatusPill({ label, tone, strong = false }: {
   )
 }
 
-function CardShell({ title, right, children }: {
+function CardShell({ title, right, children, id }: {
   title: string
   right?: React.ReactNode
   children: React.ReactNode
+  /** A fragment target, so a notification can open the page AT this card. */
+  id?: string
 }) {
   return (
-    <section className="order-status-card" aria-label={title}>
+    <section className="order-status-card" aria-label={title} id={id}>
       <div className="order-status-card-head">
         <h3 className="order-status-card-title">{title}</h3>
         {right}
@@ -442,6 +458,183 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
  */
 export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
   return <div className="order-docs-row">{children}</div>
+}
+
+// ── 4. Operations review ──────────────────────────────────────────────────────
+
+const HANDOFF_TONE: Record<OperationsHandoffTone, StatusTone> = {
+  green: 'green', amber: 'amber', red: 'red', neutral: 'neutral',
+}
+
+/**
+ * THE PI-TO-OPERATIONS HANDOFF FOR THE VERSION IN FORCE (20261229000000).
+ *
+ * WHAT IT STATES, IN WORDS: which PI version is current, who approved it and
+ * when, why it was revised (V2+), who must review it for operations, whether
+ * that exact version is awaiting review, accepted for production, or flagged
+ * for clarification — and what the Order's production alignment says as a
+ * result. An Order approved before handoffs were recorded says "Not
+ * recorded"; nothing is invented for it.
+ *
+ * ONE SET OF CONTROLS, FOR ONE PERSON. "Accept for production", "Cannot
+ * accept" and "Withdraw acceptance" are drawn only for the assigned operations
+ * reviewer, never under View As, and never for an administrator in their place
+ * — being an admin is not being operations. They are the SAME door the old
+ * "Align for Production" header button used to open: on an Order with a
+ * handoff that button is gone, because accepting IS aligning.
+ * decide_order_operations_handoff() re-derives all of that under a row lock,
+ * so a call from somebody who never saw the buttons is refused just the same.
+ *
+ * A REVISED WORKBOOK: the revision reason is shown, and the current and the
+ * previous PI can be opened side by side. No field-by-field comparison is
+ * claimed, because none exists yet; the note says so.
+ */
+export function OrderOperationsReviewCard({
+  view, history, busy, onAccept, onCannotAccept, onWithdraw,
+  currentVersion, previousVersion, onOpenVersion, openingVersion,
+}: {
+  view: OperationsHandoffView
+  history: ReturnType<typeof describeOperationsHandoffHistory>
+  busy: boolean
+  onAccept: () => void
+  onCannotAccept: () => void
+  onWithdraw: () => void
+  /** The approved PI version and the one it replaced, for the two Open buttons. */
+  currentVersion: PiVersionView | null
+  previousVersion: PiVersionView | null
+  onOpenVersion: (version: PiVersionView) => void
+  openingVersion: boolean
+}) {
+  const controls = view.kind === 'recorded' && (view.actions.accept || view.actions.cannotAccept || view.actions.withdraw) ? (
+    <span className="order-status-actions">
+      {view.actions.cannotAccept && (
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onCannotAccept} disabled={busy}>
+          {CANNOT_ACCEPT_LABEL}
+        </button>
+      )}
+      {view.actions.withdraw && (
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onWithdraw} disabled={busy}>
+          {WITHDRAW_ACCEPTANCE_LABEL}
+        </button>
+      )}
+      {view.actions.accept && (
+        <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept} disabled={busy}>
+          {ACCEPT_FOR_PRODUCTION_LABEL}
+        </button>
+      )}
+    </span>
+  ) : undefined
+
+  return (
+    <CardShell id={OPERATIONS_REVIEW_ANCHOR} title={OPERATIONS_REVIEW_TITLE} right={controls}>
+      {view.kind === 'not_recorded' ? (
+        <>
+          <StatusPill label={view.label} tone="neutral" />
+          <p className="order-status-note">{view.hint}</p>
+        </>
+      ) : (
+        <>
+          <dl className="order-status-approvals">
+            <div className="order-status-approval">
+              <dt className="order-status-fact-label">{view.versionLabel}</dt>
+              <dd className="order-status-approval-value">
+                <StatusPill label={view.statusLabel} tone={HANDOFF_TONE[view.tone]} strong />
+                <span className="order-status-approval-at">{view.approvedLine}</span>
+              </dd>
+              {view.revisionReason && (
+                <dd className="order-status-approval-value">
+                  <span className="order-status-approval-by">Revised because: <MultilineText>{view.revisionReason}</MultilineText></span>
+                </dd>
+              )}
+            </div>
+            <div className="order-status-approval">
+              <dt className="order-status-fact-label">Operations reviewer</dt>
+              <dd className="order-status-approval-value">
+                {view.unassigned ? (
+                  <>
+                    {/* WHY nobody is assigned — configured nobody, configured
+                        somebody inactive, or somebody who cannot open this
+                        Order — and what an administrator must do about it. */}
+                    <StatusPill label={view.reviewerLine} tone="amber" />
+                    <span className="order-status-approval-by">{view.unassignedHint}</span>
+                  </>
+                ) : (
+                  <span className="order-status-approval-by">{view.reviewerName ?? 'Assigned'}</span>
+                )}
+              </dd>
+            </div>
+            {view.decision && (
+              <div className="order-status-approval">
+                <dt className="order-status-fact-label">Decision</dt>
+                <dd className="order-status-approval-value">
+                  <span className="order-status-approval-by">
+                    {view.decision.label}
+                    {view.decision.by ? ` by ${view.decision.by}` : ''}
+                    {view.decision.at ? ` · ${view.decision.at}` : ''}
+                  </span>
+                  {view.decision.note && (
+                    <span className="order-status-approval-by"><MultilineText>{view.decision.note}</MultilineText></span>
+                  )}
+                </dd>
+                {view.withdrawn && (
+                  <dd className="order-status-approval-value">
+                    <span className="order-status-approval-by">
+                      Accepted earlier{view.withdrawn.acceptedBy ? ` by ${view.withdrawn.acceptedBy}` : ''}{view.withdrawn.acceptedAt ? ` · ${view.withdrawn.acceptedAt}` : ''};
+                      {' '}withdrawn{view.withdrawn.by ? ` by ${view.withdrawn.by}` : ''} · {view.withdrawn.at}
+                    </span>
+                  </dd>
+                )}
+              </div>
+            )}
+            <div className="order-status-approval">
+              <dt className="order-status-fact-label">Production alignment</dt>
+              <dd className="order-status-approval-value">
+                <StatusPill label={view.alignment.label} tone={view.alignment.aligned ? 'green' : 'amber'} />
+                {view.alignment.line && <span className="order-status-approval-at">{view.alignment.line}</span>}
+              </dd>
+            </div>
+          </dl>
+          {view.priorAcceptedNotice && <p className="order-status-note order-status-note--warn">{view.priorAcceptedNotice}</p>}
+          {view.alignmentWarning && <p className="order-status-note order-status-note--warn">{view.alignmentWarning}</p>}
+          {(currentVersion || previousVersion) && (
+            <div className="order-status-actions order-status-actions--start">
+              {currentVersion && (
+                <button type="button" className="boe-btn boe-btn-ghost order-status-action" disabled={openingVersion || !currentVersion.workbookPath}
+                        onClick={() => onOpenVersion(currentVersion)}>
+                  {OPEN_CURRENT_PI_LABEL(currentVersion.versionNumber)}
+                </button>
+              )}
+              {previousVersion && (
+                <button type="button" className="boe-btn boe-btn-ghost order-status-action" disabled={openingVersion || !previousVersion.workbookPath}
+                        onClick={() => onOpenVersion(previousVersion)}>
+                  {OPEN_PREVIOUS_PI_LABEL(previousVersion.versionNumber)}
+                </button>
+              )}
+            </div>
+          )}
+          {previousVersion && <p className="order-status-note">{REVISION_COMPARE_NOTE}</p>}
+          <p className="order-status-note">{ACCEPTANCE_MEANING}</p>
+          {view.readOnlyNote && <p className="order-status-note">{view.readOnlyNote}</p>}
+          {history.length > 0 && (
+            <details className="order-approval-history">
+              <summary className="order-approval-history-summary">
+                Earlier versions ({history.length})
+              </summary>
+              <ol className="order-approval-history-list">
+                {history.map(h => (
+                  <li key={h.key} className="order-approval-history-row">
+                    <span className="order-approval-history-status">{h.versionLabel}: {h.statusLabel}</span>
+                    <span className="order-approval-history-meta">{h.line}</span>
+                    {h.note && <span className="order-approval-history-meta"><MultilineText>{h.note}</MultilineText></span>}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </>
+      )}
+    </CardShell>
+  )
 }
 
 // ── The PI history modal ──────────────────────────────────────────────────────

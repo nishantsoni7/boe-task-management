@@ -10,6 +10,7 @@ import { formatINR } from '@/lib/currency'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { paymentViewClauses } from '@/lib/finance/paymentClassification'
+import { OPERATIONS_REVIEW_ANCHOR, UNASSIGNED_REASON_LABEL, type UnassignedReason } from '@/lib/orders/operationsHandoff'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,8 @@ type QueueCategory =
   | 'finance_suspense'
   | 'order_pi_review'
   | 'order_change_request'
+  | 'order_operations_review'
+  | 'order_operations_clarification'
 
 type ActionQueueItem = {
   id: string
@@ -38,6 +41,15 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
   finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Allocate suspense payment' },
   order_pi_review:             { label: 'PI review',           actionLabel: 'Review submitted PI' },
   order_change_request:        { label: 'Order change',        actionLabel: 'Review change request' },
+  // A PI version in force that operations has not yet accepted
+  // (20261229000000). Listed here so an administrator can see what is waiting
+  // on operations — and, when NOBODY is assigned to review it, that it is
+  // waiting on them to assign someone.
+  order_operations_review:     { label: 'Operations review',   actionLabel: 'Awaiting operations review' },
+  // The reviewer said "Cannot accept", with a reason. Work for the approver:
+  // answer the question, then the reviewer decides again — or a revised PI
+  // brings a new version.
+  order_operations_clarification: { label: 'Needs clarification', actionLabel: 'Resolve operations clarification' },
 }
 
 // Deep-links into the destination page's existing tab/record/modal query-param
@@ -62,6 +74,10 @@ function buildHref(category: QueueCategory, id: string): string {
     // not to the request. `id` here is therefore the ORDER's id, which is why
     // the row below reads order_id rather than the request's own.
     case 'order_change_request':        return `/orders/${id}`
+    // The Order's Operations review card names the version awaiting review
+    // and holds the two decision controls. `id` is the ORDER's id.
+    case 'order_operations_review':     return `/orders/${id}#${OPERATIONS_REVIEW_ANCHOR}`
+    case 'order_operations_clarification': return `/orders/${id}#${OPERATIONS_REVIEW_ANCHOR}`
   }
 }
 
@@ -114,6 +130,21 @@ type OrderChangeRequestRow = {
   requested_by_user: { full_name: string } | null
 }
 
+type OperationsReviewRow = {
+  id: string
+  order_id: string
+  version_number: number
+  approved_at: string
+  assigned_to: string | null
+  unassigned_reason: UnassignedReason | null
+  created_at: string
+  status: 'awaiting' | 'clarification_needed'
+  clarification_at: string | null
+  clarification_reason: string | null
+  order: { client_name: string; total_value: number | null; status: string } | null
+  reviewer: { full_name: string; is_active: boolean | null } | null
+}
+
 export default function ActionQueuePage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<ActionQueueItem[]>([])
@@ -126,6 +157,7 @@ export default function ActionQueuePage() {
 
     const [
       pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes,
+      operationsReviewRes,
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -180,10 +212,28 @@ export default function ActionQueuePage() {
           requested_by_user:users!requested_by(full_name)
         `)
         .eq('status', 'pending'),
+      // PI VERSIONS IN FORCE THAT OPERATIONS HAS NOT ACCEPTED (20261229000000):
+      // live, undecided handoffs, with the Order and the reviewer they are
+      // addressed to. order_operations_handoffs_select scopes this to Orders
+      // the reader may open; this page is admin-only besides.
+      // AWAITING AND FLAGGED: a version operations cannot accept is work
+      // needing resolution — an answer from the approver, then a fresh
+      // decision — not a notification somebody may have read. The reviewer's
+      // reason rides along so the row says what is being asked.
+      supabase
+        .from('order_operations_handoffs')
+        .select(`
+          id, order_id, version_number, approved_at, assigned_to, unassigned_reason, created_at,
+          status, clarification_at, clarification_reason,
+          order:orders!order_id(client_name, total_value, status),
+          reviewer:users!assigned_to(full_name, is_active)
+        `)
+        .in('status', ['awaiting', 'clarification_needed'])
+        .is('superseded_at', null),
     ])
 
     // Handle partial failure honestly rather than silently rendering an empty queue.
-    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes]
+    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes, operationsReviewRes]
       .filter(r => r.error)
       .map(r => r.error?.message)
     if (failures.length > 0) {
@@ -282,6 +332,36 @@ export default function ActionQueuePage() {
         amount: r.proposed_total_value,
         pendingSince: r.created_at,
         href: buildHref('order_change_request', r.order_id),
+      })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of ((operationsReviewRes.data ?? []) as any[]) as OperationsReviewRow[]) {
+      // A cancelled Order has nothing left to accept; the RPC refuses it, so
+      // the queue does not offer it.
+      if (r.order?.status === 'cancelled') continue
+      const flagged = r.status === 'clarification_needed'
+      const reviewer = r.reviewer?.full_name ?? 'the operations reviewer'
+      const inactive = !!r.assigned_to && r.reviewer?.is_active === false
+      combined.push({
+        id: `order_operations_review:${r.id}`,
+        category: flagged ? 'order_operations_clarification' : 'order_operations_review',
+        // NAMED IN WORDS: which version; the reviewer's own reason when it is
+        // flagged; and the two cases that need an ADMINISTRATOR rather than
+        // the reviewer — nobody assigned, or an assigned reviewer who is no
+        // longer active.
+        actionLabel: flagged
+          ? `PI V${r.version_number}: ${reviewer} cannot accept — "${r.clarification_reason ?? 'no reason recorded'}"`
+            + (inactive ? ' (reviewer inactive)' : '')
+          : r.assigned_to
+            ? `PI V${r.version_number} awaiting ${reviewer}${inactive ? ' (reviewer inactive — reassign)' : ''}`
+            : `PI V${r.version_number} awaiting operations — ${UNASSIGNED_REASON_LABEL[r.unassigned_reason ?? 'no_reviewer'].toLowerCase()}`,
+        clientName: r.order?.client_name ?? 'Unnamed client',
+        ownerName: r.reviewer?.full_name ?? null,
+        module: 'Orders',
+        amount: r.order?.total_value ?? null,
+        pendingSince: (flagged ? r.clarification_at : null) ?? r.approved_at ?? r.created_at,
+        href: buildHref(flagged ? 'order_operations_clarification' : 'order_operations_review', r.order_id),
       })
     }
 

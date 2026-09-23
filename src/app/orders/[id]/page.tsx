@@ -126,6 +126,7 @@ import {
   OrderDocumentsRow,
   OrderEvidenceDialog,
   OrderFabricFinishCard,
+  OrderOperationsReviewCard,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
@@ -144,10 +145,20 @@ import {
 } from '@/lib/orders/orderApprovals'
 import {
   ApproveRevisionModal,
+  OperationsHandoffDecisionModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
   RejectRevisionModal,
 } from './OrderRevisionModals'
+import {
+  ORDER_OPERATIONS_HANDOFF_COLUMNS,
+  describeHandoffFailure,
+  describeOperationsHandoff,
+  describeOperationsHandoffHistory,
+  splitOperationsHandoffs,
+  type OperationsHandoffStatus,
+  type PersistedOperationsHandoff,
+} from '@/lib/orders/operationsHandoff'
 import {
   ORDER_PI_VERSION_COLUMNS,
   canDecidePiRevision,
@@ -806,6 +817,13 @@ export default function OrderDetailPage() {
   const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
   const [alignBusy,     setAlignBusy]     = useState(false)
   const [alignError,    setAlignError]    = useState<string | null>(null)
+  // ── The PI-to-operations handoff (20261229000000) ──
+  // One row per PI version that became the version in force, read beside the
+  // versions themselves. The dialog holds which answer is being given.
+  const [handoffs,      setHandoffs]      = useState<PersistedOperationsHandoff[]>([])
+  const [handoffDialog, setHandoffDialog] = useState<OperationsHandoffStatus | null>(null)
+  const [handoffBusy,   setHandoffBusy]   = useState(false)
+  const [handoffError,  setHandoffError]  = useState<string | null>(null)
 
   // Which thumbnail opened the viewer, so focus goes back to it on close, and
   // where those thumbnails live. Refs rather than state: neither is rendered.
@@ -865,6 +883,7 @@ export default function OrderDetailPage() {
       setPiProducts([])
       setPiVersions([])
       setPiActivity([])
+      setHandoffs([])
       // No PI behind this Order, so there is nothing to count and nothing
       // failed. The card says which, rather than reporting an empty read that
       // never happened.
@@ -873,7 +892,7 @@ export default function OrderDetailPage() {
       return
     }
 
-    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes] = await Promise.all([
+    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes, handoffsRes] = await Promise.all([
       supabase
         .from('order_submissions')
         .select(ORDER_PI_HANDOFF_COLUMNS)
@@ -903,6 +922,11 @@ export default function OrderDetailPage() {
         .from('order_product_codes')
         .select('submission_item_id, boe_sequence, source_product_code, source_item_sequence')
         .eq('order_id', order.id),
+      // THE OPERATIONS HANDOFF for each version that has been in force
+      // (20261229000000): read in the SAME group as the versions it is about,
+      // so the card and the PI history cannot describe different sets, and so
+      // the page waits no more times than it did.
+      handoffsQuery(),
     ])
 
     // THE HISTORY, whatever the handoff's own outcome: a viewer who may open
@@ -910,8 +934,10 @@ export default function OrderDetailPage() {
     // them, and an empty read is simply an empty list.
     const versionRows = (versionsRes.data ?? []) as unknown as PersistedPiVersion[]
     const trailRows = (trailRes.data ?? []) as unknown as PersistedActivity[]
+    const handoffRows = (handoffsRes.data ?? []) as unknown as PersistedOperationsHandoff[]
     setPiVersions(versionRows)
     setPiActivity(trailRows)
+    setHandoffs(handoffRows)
 
     // ── THE PRODUCTS NO LONGER WAIT FOR A NAME THEY DO NOT USE ──
     //
@@ -935,7 +961,10 @@ export default function OrderDetailPage() {
     const actorIds = [...new Set([
       ...versionActorIds(versionRows),
       ...activityActorIds(trailRows),
-    ])]
+      // The handoff's four people: who approved, who must review, who accepted
+      // or flagged. Same names read, same round trip.
+      ...handoffRows.flatMap(h => [h.approved_by, h.assigned_to, h.accepted_by, h.clarification_by]),
+    ])].filter((v): v is string => typeof v === 'string' && v !== '')
     const images = (imagesRes.data ?? []) as unknown as PersistedItemImage[]
     const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
 
@@ -1140,6 +1169,27 @@ export default function OrderDetailPage() {
       ...row,
       actor_name: row.actor?.full_name ?? null,
     })) as PersistedApprovalEvent[]
+
+  /**
+   * The Order's operations handoffs, as one query — named once so the PI load
+   * and the narrow refresh after a decision cannot read or shape it
+   * differently. Newest version first; the lib splits live from history.
+   */
+  const handoffsQuery = () =>
+    supabase
+      .from('order_operations_handoffs')
+      .select(ORDER_OPERATIONS_HANDOFF_COLUMNS)
+      .eq('order_id', id)
+      .order('version_number', { ascending: false })
+
+  /**
+   * WHAT A DECISION ACTUALLY CHANGED: one handoff row and one activity entry.
+   * No Order column, no payment, no PI — so nothing else is re-read.
+   */
+  const reloadHandoffs = async () => {
+    const { data } = await handoffsQuery()
+    setHandoffs((data ?? []) as unknown as PersistedOperationsHandoff[])
+  }
 
   const approvalsQuery = () =>
     supabase
@@ -1582,6 +1632,41 @@ export default function OrderDetailPage() {
     }
   }
 
+  // ── The operations handoff decision (20261229000000) ──
+  //
+  // THE DATABASE DECIDES AGAIN. The card only draws the two controls for the
+  // assigned reviewer; decide_order_operations_handoff() re-checks under a row
+  // lock that the caller IS that reviewer, that the handoff is live and
+  // undecided, that its version is still the one in force, and that the Order
+  // is not cancelled. A refusal is shown in the dialog in a sentence.
+  const decideHandoff = async (decision: OperationsHandoffStatus, reason: string | null) => {
+    const live = splitOperationsHandoffs(handoffs).live
+    if (!order || handoffBusy || !live) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('decide_order_operations_handoff', {
+        p_handoff_id: live.id,
+        p_decision: decision,
+        p_reason: reason,
+      })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setHandoffDialog(null)
+      // The decision line names the reader who just made it; their name is
+      // already on this page's profile, so no second names read is needed.
+      if (profile?.id && profile.full_name) {
+        setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
+      }
+      // The RPC wrote one handoff row, moved the four alignment columns on
+      // `orders` (accepting aligns; flagging or withdrawing un-aligns), and
+      // appended the activity entries — so the handoff and the Order row are
+      // re-read, and the trail with the row. Nothing else changed.
+      await Promise.all([reloadHandoffs(), reloadOrderRow()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
   /**
    * OPEN OR SAVE ONE PI VERSION'S WORKBOOK.
    *
@@ -1873,6 +1958,42 @@ export default function OrderDetailPage() {
   }) : null
 
   /**
+   * THE PI-TO-OPERATIONS HANDOFF for the version in force (20261229000000),
+   * and the superseded ones behind it. Who may DECIDE is drawn from the row's
+   * own assigned_to against this reader — never from being an admin, and never
+   * under View As; the RPC re-derives it under a lock.
+   */
+  const operationsSplit = useMemo(() => splitOperationsHandoffs(handoffs), [handoffs])
+  const operationsView = order ? describeOperationsHandoff({
+    live: operationsSplit.live,
+    hasSourcePi: !!order.source_order_submission_id,
+    namesById: piNames,
+    formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
+    viewerId: viewAsUserId ? null : (profile?.id ?? null),
+    viewingAs: !!viewAsUserId,
+    orderStatus: order.status,
+    productionAligned: order.production_alignment === 'aligned',
+    productionAlignedAt: order.production_aligned_at ?? null,
+    // WHY the version in force was revised: the approved version's own
+    // revision_reason, from the same rows the PI history reads.
+    revisionReason: piHistory.current?.revisionReason ?? null,
+  }) : null
+  // The approved PI and the one it replaced, for the card's two Open buttons:
+  // the same PiVersionView objects the Documents box and the PI history use,
+  // signed on the press through openVersionFile, never a URL in the markup.
+  const previousPiVersion = piHistory.current
+    ? piHistory.history.find(v => v.status === 'superseded' && v.versionNumber === piHistory.current!.versionNumber - 1) ?? null
+    : null
+  const operationsHistory = useMemo(
+    () => describeOperationsHandoffHistory({
+      history: operationsSplit.history,
+      namesById: piNames,
+      formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
+    }),
+    [operationsSplit, piNames],
+  )
+
+  /**
    * THE WHOLE CHRONOLOGY: the Order's own trail and the source PI's, merged.
    * The page keeps its own words for the Order events it already labelled;
    * everything else is named by the two shared modules.
@@ -2138,13 +2259,18 @@ export default function OrderDetailPage() {
     orderStatus: order.status,
   })
 
+  // THE PRODUCTION ROW SAYS WHICH VERSION. On an Order with a handoff the
+  // alignment follows the acceptance of the version in force, so the badge
+  // names that version and the acceptance behind it (or what is awaited); the
+  // four columns themselves are unchanged and still read from the row.
+  const handoffAlignment = operationsView?.kind === 'recorded' ? operationsView.alignment : null
   const recordFacts = orderRecordFacts({
     status: order.status,
     salespersonName: order.assigned_to_name ?? null,
     leadSource,
     productionAligned,
-    productionLabel: production?.label ?? '—',
-    productionLine: production?.line ?? null,
+    productionLabel: handoffAlignment?.label ?? production?.label ?? '—',
+    productionLine: handoffAlignment ? handoffAlignment.line : (production?.line ?? null),
   })
 
   /**
@@ -2178,6 +2304,15 @@ export default function OrderDetailPage() {
     awaitingVerificationCount: recordsReady ? finance.counts.awaiting : 0,
     pendingChangeRequests: pendingRequests.length,
     pendingPiRevision: piHistory.pending !== null,
+    // The operations handoff for the version in force, while it is undecided
+    // or flagged — and the one warning a quiet "Not aligned" cannot carry:
+    // production aligned against an EARLIER version than the one now in force.
+    operationsReview: operationsView?.kind === 'recorded' && operationsView.status !== 'accepted'
+      ? { versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned }
+      : null,
+    alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning
+      ? operationsView.versionNumber
+      : null,
     // THE DOCUMENT STATES ARE NOT RAISED HERE ANY MORE. The Documents section
     // and the Generate control left this page, so a reader told that documents
     // had failed or were out of date would have nothing on this screen to do
@@ -2192,7 +2327,11 @@ export default function OrderDetailPage() {
   // unchanged: an active admin, not under View As, on a testing-phase Order
   // while cleanup is still enabled.
   const actions = arrangeOrderActions({
-    alignAction: production?.action ? (productionAligned ? 'unalign' : 'align') : null,
+    // ONE DOOR. On an Order with an operations handoff (20261229000000) the
+    // alignment IS the handoff decision, taken on the Operations review card
+    // by the assigned reviewer; the header offers no second button. The
+    // legacy Order with no handoff keeps the old control and the old rule.
+    alignAction: operationsSplit.live ? null : production?.action ? (productionAligned ? 'unalign' : 'align') : null,
     canAmend,
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
@@ -2393,6 +2532,32 @@ export default function OrderDetailPage() {
 
         {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
+
+        {/* ══ OPERATIONS REVIEW (20261229000000) ══
+            THE VERSION IN FORCE, WHO APPROVED IT, WHO MUST REVIEW IT, AND
+            WHETHER THEY HAVE. Directly under the attention strip because it is
+            the one question an operations reader arrives with, and the strip
+            above may have just told them a version awaits them. "Not recorded"
+            for an Order approved before handoffs existed: nothing is invented.
+            A skeleton, not a claim, while the read is in flight. */}
+        {!handoffReady ? (
+          <SectionSkeleton rows={2} label="Loading operations review" />
+        ) : operationsView && (
+          <OrderOperationsReviewCard
+            view={operationsView}
+            history={operationsHistory}
+            busy={handoffBusy}
+            onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
+            onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+            // A withdrawal is the same decision on an accepted version; the
+            // dialog says so, and the database treats it as one.
+            onWithdraw={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+            currentVersion={piHistory.current}
+            previousVersion={previousPiVersion}
+            onOpenVersion={v => { void openVersionFile(v, 'view') }}
+            openingVersion={piFileBusy !== null}
+          />
+        )}
 
         {/* ── Notes ──
             OPERATIONAL CONTENT, and the one thing on Record Information that
@@ -2879,6 +3044,18 @@ export default function OrderDetailPage() {
           failure={alignError}
           onClose={() => { if (!alignBusy) setAlignDialog(null) }}
           onConfirm={note => setAlignment(alignDialog, note)}
+        />
+      )}
+      {handoffDialog !== null && operationsView?.kind === 'recorded' && (
+        <OperationsHandoffDecisionModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          decision={handoffDialog}
+          withdrawing={handoffDialog === 'clarification_needed' && operationsView.status === 'accepted'}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}
+          onConfirm={reason => decideHandoff(handoffDialog, reason)}
         />
       )}
 

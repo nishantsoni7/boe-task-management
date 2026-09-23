@@ -711,6 +711,11 @@ describe('the migration is placed correctly', () => {
       // drops nothing, so it reaches nothing here.
       '20261227000000_order_fabric_finish_approvals.sql',
       '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

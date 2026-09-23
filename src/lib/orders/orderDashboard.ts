@@ -28,6 +28,11 @@
 
 import type { OrdersCapabilities } from '@/lib/permissions/orders'
 import type { FinanceCapabilities } from '@/lib/permissions/finance'
+import {
+  AWAITING_OPERATIONS_REVIEW_LABEL,
+  AWAITING_OPERATIONS_REVIEW_SUB,
+  OPERATIONS_REVIEW_QUEUE_HREF,
+} from './operationsHandoff'
 
 /** The importer. The one way a new Order begins. */
 export const UPLOAD_PI_PATH = '/orders/import'
@@ -44,6 +49,20 @@ export type OrderDashboardCounts = {
   awaitingVerification: number | undefined
   /** Payments with a positive unallocated balance. */
   availableToAllocate: number | undefined
+  /**
+   * PI versions awaiting THIS reader's operations acceptance (20261229000000):
+   * live handoffs assigned to them, undecided. Zero for everybody who is not
+   * the assigned reviewer, which is why the card is offered only above zero.
+   */
+  operationsReview: number | undefined
+  /** Live, undecided handoffs with NO reviewer assigned — an admin's problem. */
+  operationsUnassigned: number | undefined
+  /**
+   * Live handoffs FLAGGED for clarification that this reader can see: work
+   * needing an answer from the approver, then a fresh decision — visible until
+   * it is resolved, whoever it is addressed to.
+   */
+  operationsFlagged: number | undefined
 }
 
 export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
@@ -52,6 +71,9 @@ export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
   activeOrders: undefined,
   awaitingVerification: undefined,
   availableToAllocate: undefined,
+  operationsReview: undefined,
+  operationsUnassigned: undefined,
+  operationsFlagged: undefined,
 }
 
 export type DashboardTone = 'neutral' | 'attention' | 'money'
@@ -115,6 +137,35 @@ export function orderDashboardCards(input: {
       sub: 'Submitted, waiting on you',
       href: '/orders/drafts',
       tone: (counts.reviewQueue ?? 0) > 0 ? 'attention' : 'neutral',
+    })
+  }
+
+  // ── The operations handoff (20261229000000) ──
+  //
+  // OFFERED ONLY WHEN SOMETHING IS WAITING. To the assigned operations
+  // reviewer the count is the PI versions awaiting their acceptance; to
+  // anybody else it is zero and the card is meaningless — except for the
+  // versions NOBODY is assigned to, which need an administrator, so those are
+  // counted for everyone who can see the Orders they belong to. Never drawn
+  // at zero: a permanent "0 awaiting you" would be a card about nothing.
+  const awaitingMe = counts.operationsReview ?? 0
+  const unassigned = counts.operationsUnassigned ?? 0
+  const flagged = counts.operationsFlagged ?? 0
+  if (awaitingMe > 0 || unassigned > 0 || flagged > 0) {
+    // The headline is what waits on THIS reader; the subtitle names the two
+    // things that wait on an administrator: nobody assigned, and a version the
+    // reviewer could not accept (flagged), which stays here until resolved.
+    const admin = [
+      unassigned > 0 ? `${unassigned} with no reviewer assigned` : null,
+      flagged > 0 ? `${flagged} flagged: clarification needed` : null,
+    ].filter(Boolean).join(' · ')
+    cards.push({
+      key: 'operations_review',
+      label: AWAITING_OPERATIONS_REVIEW_LABEL,
+      value: awaitingMe > 0 ? awaitingMe : unassigned + flagged,
+      sub: awaitingMe > 0 ? (admin ? `${AWAITING_OPERATIONS_REVIEW_SUB} · ${admin}` : AWAITING_OPERATIONS_REVIEW_SUB) : admin,
+      href: OPERATIONS_REVIEW_QUEUE_HREF,
+      tone: 'attention',
     })
   }
 

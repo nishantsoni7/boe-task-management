@@ -44,6 +44,9 @@ export type OrderAttentionItem = {
     | 'documents_failed'
     | 'documents_outdated'
     | 'awaiting_verification'
+    | 'operations_review'
+    | 'operations_unassigned'
+    | 'alignment_predates_version'
   label: string
   /** Red only for a genuinely overdue Order; every other gap is amber. */
   tone: 'amber' | 'red'
@@ -67,6 +70,19 @@ export type OrderAttentionInput = {
   /** The document register's own states, from buildOrderDocumentsView. */
   documentsFailed: boolean
   documentsOutdated: boolean
+  /**
+   * The PI-to-operations handoff for the version in force (20261229000000):
+   * which version, whether it is still undecided or flagged, and whether
+   * nobody is assigned to decide it. Null when the version is accepted, or
+   * when nothing was recorded. Optional: older callers raise nothing.
+   */
+  operationsReview?: {
+    versionNumber: number
+    status: 'awaiting' | 'clarification_needed'
+    unassigned: boolean
+  } | null
+  /** Production was aligned before this PI version was approved. */
+  alignmentPredatesVersion?: number | null
 }
 
 const plural = (count: number, noun: string) =>
@@ -91,7 +107,11 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   if (open && input.isOverdue) {
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
   }
-  if (open && !input.productionAligned) {
+  // ONE LINE ABOUT PRODUCTION. On an Order with an operations handoff the
+  // alignment IS the handoff decision (20261229000000), so the handoff item
+  // below says it in the words that name the version; "Production not
+  // aligned" is kept for the legacy Order that has no handoff.
+  if (open && !input.productionAligned && !input.operationsReview) {
     items.push({ key: 'production', label: 'Production not aligned', tone: 'amber' })
   }
   if (open && !input.hasSalesperson) {
@@ -108,6 +128,30 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   }
   if (input.pendingPiRevision) {
     items.push({ key: 'pi_revision', label: 'Revised PI awaiting decision', tone: 'amber' })
+  }
+  // THE OPERATIONS HANDOFF. An aligned Order whose current PI version has not
+  // been accepted is the case the strip exists for: "Production not aligned"
+  // is quiet, and a reader would otherwise take the alignment as covering a
+  // version nobody has reviewed.
+  if (open && input.alignmentPredatesVersion) {
+    items.push({
+      key: 'alignment_predates_version',
+      label: `Production was aligned before PI V${input.alignmentPredatesVersion}`,
+      tone: 'amber',
+    })
+  }
+  if (open && input.operationsReview) {
+    const r = input.operationsReview
+    if (r.unassigned) {
+      items.push({ key: 'operations_unassigned', label: 'No operations reviewer assigned', tone: 'amber' })
+    }
+    items.push({
+      key: 'operations_review',
+      label: r.status === 'clarification_needed'
+        ? `PI V${r.versionNumber} flagged by operations: clarification needed`
+        : `PI V${r.versionNumber} awaiting operations review`,
+      tone: r.status === 'clarification_needed' ? 'red' : 'amber',
+    })
   }
   if (input.pendingChangeRequests > 0) {
     items.push({

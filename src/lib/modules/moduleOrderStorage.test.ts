@@ -591,7 +591,14 @@ describe('the database half of this verification', () => {
     // And it sorts after every migration that existed before it, so it cannot
     // be applied out of order.
     const all = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all.at(-1), '20261228000000_personal_module_order.sql',
-      'the new migration must be the last one — renumber it if another branch has landed since')
+    // It has landed; later work sorts after it. What must still hold is that
+    // nothing that predated it was renumbered past it: every file before it on
+    // disk is earlier, and the only later ones are the named successors.
+    const later = all.filter(f => f > '20261228000000_personal_module_order.sql')
+    assert.deepEqual(later, [
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
+    ], 'every migration after this one is accounted for')
   })
 })

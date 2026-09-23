@@ -49,6 +49,23 @@ import {
   UNALIGN_PRODUCTION_DIALOG_TITLE,
   validateAlignmentNote,
 } from '@/lib/orders/productionAlignment'
+import {
+  ACCEPT_CONFIRM,
+  ACCEPT_DIALOG_TITLE,
+  ACCEPT_FOR_PRODUCTION_LABEL,
+  ACCEPT_NOTE_LABEL,
+  CANNOT_ACCEPT_CONFIRM,
+  CANNOT_ACCEPT_DIALOG_TITLE,
+  CANNOT_ACCEPT_LABEL,
+  CANNOT_ACCEPT_REASON_LABEL,
+  CANNOT_ACCEPT_REASON_PLACEHOLDER,
+  OPERATIONS_HANDOFF_REASON_MAX_LENGTH,
+  WITHDRAW_ACCEPTANCE_LABEL,
+  WITHDRAW_CONFIRM,
+  WITHDRAW_DIALOG_TITLE,
+  validateHandoffDecision,
+  type OperationsHandoffStatus,
+} from '@/lib/orders/operationsHandoff'
 
 const TEXTAREA: React.CSSProperties = {
   padding: '8px 10px', borderRadius: '7px',
@@ -265,6 +282,74 @@ export function ProductionAlignmentModal({
         disabled={!check.ok}
         destructive={!aligning}
         saveLabel={aligning ? ALIGN_PRODUCTION_BUTTON_LABEL : UNALIGN_PRODUCTION_BUTTON_LABEL}
+      />
+    </OrderModal>
+  )
+}
+
+// ── The operations handoff decision (20261229000000) ─────────────────────────
+
+/**
+ * ONE DIALOG, TWO ANSWERS. "Accept for production" takes an optional note;
+ * "Cannot accept" requires the reason, because a flag with no reason tells the
+ * approver nothing they can act on. Both say what they record and what they do
+ * NOT claim: no manufacturing work is done, and production alignment is not
+ * moved. decide_order_operations_handoff() re-derives the authority and the
+ * version's currency under a row lock; this dialog only collects the words.
+ */
+export function OperationsHandoffDecisionModal({
+  orderNumber, versionLabel, decision, withdrawing = false, saving, failure, onClose, onConfirm,
+}: {
+  orderNumber: string
+  versionLabel: string
+  decision: OperationsHandoffStatus
+  /** A "clarification_needed" decision on an ACCEPTED version: a withdrawal. */
+  withdrawing?: boolean
+  saving: boolean
+  failure: string | null
+  onClose: () => void
+  onConfirm: (reason: string | null) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [touched, setTouched] = useState(false)
+  const accepting = decision === 'accepted'
+  const check = validateHandoffDecision(decision, reason)
+
+  return (
+    <OrderModal
+      title={accepting ? ACCEPT_DIALOG_TITLE : withdrawing ? WITHDRAW_DIALOG_TITLE : CANNOT_ACCEPT_DIALOG_TITLE}
+      subtitle={`Order ${orderNumber} · ${versionLabel}`}
+      onClose={onClose}
+    >
+      <OrderModalNotice tone={accepting ? 'info' : 'warning'}>
+        {accepting ? ACCEPT_CONFIRM : withdrawing ? WITHDRAW_CONFIRM : CANNOT_ACCEPT_CONFIRM}
+      </OrderModalNotice>
+      <OrderField
+        label={accepting ? ACCEPT_NOTE_LABEL : CANNOT_ACCEPT_REASON_LABEL}
+        error={touched && !check.ok ? check.message : undefined}
+      >
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder={accepting ? '' : CANNOT_ACCEPT_REASON_PLACEHOLDER}
+          maxLength={OPERATIONS_HANDOFF_REASON_MAX_LENGTH}
+          disabled={saving}
+          rows={3}
+          style={TEXTAREA}
+        />
+      </OrderField>
+      {failure && <OrderModalError message={failure} />}
+      <OrderModalActions
+        onClose={onClose}
+        onSave={() => {
+          setTouched(true)
+          if (!check.ok || saving) return
+          onConfirm(check.reason)
+        }}
+        saving={saving}
+        disabled={touched && !check.ok}
+        destructive={!accepting}
+        saveLabel={accepting ? ACCEPT_FOR_PRODUCTION_LABEL : withdrawing ? WITHDRAW_ACCEPTANCE_LABEL : CANNOT_ACCEPT_LABEL}
       />
     </OrderModal>
   )
