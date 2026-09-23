@@ -476,6 +476,18 @@ export async function processUnderLease(ctx: {
   // make an otherwise identical retry look like a change.
   if (changeReason) plan.payload.change_reason = changeReason
 
+  // A REVISION IS STAGED, NOT APPLIED (20270101000000). approve_order_pi_revision
+  // stores this payload and the operations acceptance applies it later, inside
+  // its own transaction — so the terms step 18b would seed after commit travel
+  // WITH the payload and are seeded at acceptance instead.
+  if (ctx.revisionVersionId) {
+    (plan.payload as Record<string, unknown>).seed_terms = {
+      fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
+      commercial_terms_note: parsed.data.piTerms.commercialTermsNote,
+      client_city: cityFromBillingAddress(parsed.data.header.billingAddress),
+    }
+  }
+
   // The image paths this draft points at TODAY. Needed twice: to know which
   // uploads are new (so a failed attempt cleans up only its own), and to know
   // which old objects are obsolete once the replacement succeeds.
@@ -619,9 +631,13 @@ export async function processUnderLease(ctx: {
   // a re-import.
   const seededCity = cityFromBillingAddress(parsed.data.header.billingAddress)
 
-  if (parsed.data.piTerms.fabricResponsibility !== null
+  // NOT for a revision: its terms travel in the staged payload (above) and are
+  // seeded when operations accepts it — seeding now would change the PI in
+  // force before anybody accepted the revision.
+  if (!ctx.revisionVersionId
+      && (parsed.data.piTerms.fabricResponsibility !== null
       || parsed.data.piTerms.commercialTermsNote !== null
-      || seededCity !== null) {
+      || seededCity !== null)) {
     await service.rpc('seed_order_submission_pi_terms', {
       p_submission_id: submissionId,
       p_fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
@@ -662,7 +678,12 @@ export async function processUnderLease(ctx: {
       ? [priorWorkbook]
       : []
 
-  await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
+  // NOT for a revision (20270101000000): nothing was replaced — the staged
+  // payload is applied only when operations accepts it, and V1's pictures stay
+  // the pictures in force until then, and in history after.
+  if (!ctx.revisionVersionId) {
+    await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
+  }
 
   // ── 20. Counts and consequences, never content ──
   //
