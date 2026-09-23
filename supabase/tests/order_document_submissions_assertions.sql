@@ -612,7 +612,9 @@ create function pg_temp.pi_status(p_pi uuid) returns text language sql as $$
   select status from public.order_submissions where id = p_pi;
 $$;
 create function pg_temp.initial(p_pi uuid) returns public.order_document_submissions language sql as $$
-  select * from public.order_document_submissions where stage = 'initial' and pi_submission_id = p_pi order by submitted_at desc, id limit 1;
+  select * from public.order_document_submissions where stage = 'initial' and pi_submission_id = p_pi
+   -- one transaction shares one now(): find the live one by content, not by time
+   order by (status in ('rejected_admin', 'rejected_operations')), submitted_at desc limit 1;
 $$;
 
 select set_config('test.pi_i', gen_random_uuid()::text, true);
