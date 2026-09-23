@@ -24,7 +24,7 @@ const when = (iso: string | null) => (iso ? iso.slice(0, 10) : '—')
 const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
 
 const sub = (over: Partial<PersistedDocumentSubmission>): PersistedDocumentSubmission => ({
-  id: 's1', order_id: 'o1', includes_design_files: false, includes_client_po: true, design_mode: null, note: null,
+  id: 's1', stage: 'amendment', order_id: 'o1', pi_submission_id: null, includes_design_files: false, includes_client_po: true, design_mode: null, note: null,
   status: 'pending_admin', snapshot_sha256: 'a'.repeat(64), file_count: 1, resubmission_of: null,
   submitted_by: 'sales', submitted_at: '2026-09-20T10:00:00Z',
   admin_decided_by: null, admin_decided_at: null, admin_reason: null,
@@ -33,7 +33,7 @@ const sub = (over: Partial<PersistedDocumentSubmission>): PersistedDocumentSubmi
   ...over,
 })
 const viewer = (over: Partial<DocumentViewer> = {}): DocumentViewer =>
-  ({ viewerId: 'sales', isAdmin: false, currentOperationsReviewer: 'ops', canSubmit: true, viewingAs: false, ...over })
+  ({ viewerId: 'sales', isAdmin: false, canSubmit: true, viewingAs: false, ...over })
 const api = (rows: PersistedDocumentSubmission[]) =>
   ({ rows, state: 'ready' as const, names: new Map([['sales', 'Asha'], ['ops', 'Ravi'], ['admin', 'Nishant']]) })
 

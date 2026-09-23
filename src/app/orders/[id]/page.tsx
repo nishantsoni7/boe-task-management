@@ -2242,7 +2242,6 @@ export default function OrderDetailPage() {
   const docViewer: DocumentViewer = {
     viewerId: docMe,
     isAdmin: actingAsAdmin,
-    currentOperationsReviewer: operationsSplit.live?.assigned_to ?? null,
     canSubmit: !!docMe && order.status !== 'cancelled'
       && (actingAsAdmin || (ordersCaps.canCreateOrder && (order.requested_by === docMe || order.assigned_to === docMe))),
     viewingAs: !!viewAsUserId,

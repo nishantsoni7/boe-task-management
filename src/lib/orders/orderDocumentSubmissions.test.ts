@@ -21,6 +21,10 @@ import {
   uncorrectedRejections,
   validateDecisionReason,
   validateDocumentFile,
+  absenceLine,
+  missingSupporting,
+  missingSupportingQuestion,
+  piDocumentObjectPath,
   type DocumentViewer,
   type PersistedDocumentSubmission,
 } from './orderDocumentSubmissions'
@@ -34,7 +38,7 @@ function sub(over: Partial<PersistedDocumentSubmission>): PersistedDocumentSubmi
   seq += 1
   const id = over.id ?? `s${seq}`
   return {
-    id, order_id: 'o1', includes_design_files: false, includes_client_po: true, design_mode: null, note: null,
+    id, stage: 'amendment', order_id: 'o1', pi_submission_id: null, includes_design_files: false, includes_client_po: true, design_mode: null, note: null,
     status: 'pending_admin', snapshot_sha256: 'a'.repeat(64), file_count: 1, resubmission_of: null,
     submitted_by: SALES, submitted_at: `2026-09-2${seq % 10}T10:00:00Z`,
     admin_decided_by: null, admin_decided_at: null, admin_reason: null,
@@ -46,7 +50,7 @@ function sub(over: Partial<PersistedDocumentSubmission>): PersistedDocumentSubmi
 }
 
 const viewer = (over: Partial<DocumentViewer>): DocumentViewer => ({
-  viewerId: SALES, isAdmin: false, currentOperationsReviewer: OPS, canSubmit: true, viewingAs: false, ...over,
+  viewerId: SALES, isAdmin: false, canSubmit: true, viewingAs: false, ...over,
 })
 
 describe('the current accepted set', () => {
@@ -93,15 +97,34 @@ describe('who acts now', () => {
   test('operations decides only as the reviewer, only at its own stage, never under View As', () => {
     const s = sub({ status: 'awaiting_operations', operations_reviewer: OPS, admin_decided_at: 't' })
     assert.equal(submissionActions(s, viewer({ viewerId: OPS })).operationsDecide, true)
-    assert.equal(submissionActions(s, viewer({ viewerId: ADMIN, isAdmin: true, currentOperationsReviewer: OPS })).operationsDecide, false,
+    assert.equal(submissionActions(s, viewer({ viewerId: ADMIN, isAdmin: true })).operationsDecide, false,
       'an admin is not substituted')
     assert.equal(submissionActions(s, viewer({ viewerId: OPS, viewingAs: true })).operationsDecide, false)
     assert.equal(submissionActions(s, viewer({ viewerId: ADMIN, isAdmin: true })).adminDecide, false, 'admin stage is over')
   })
 
-  test('a reassigned reviewer is offered the decision', () => {
-    const s = sub({ status: 'awaiting_operations', operations_reviewer: 'old-ops', admin_decided_at: 't' })
-    assert.equal(submissionActions(s, viewer({ viewerId: OPS, currentOperationsReviewer: OPS })).operationsDecide, true)
+  test('REASSIGNMENT: the row names the reviewer, and only that person is offered the decision', () => {
+    // The database readdresses operations_reviewer inside the reassignment
+    // (20261231000000 §12). After it, the row names the NEW reviewer.
+    const after = sub({ status: 'awaiting_operations', operations_reviewer: OPS, admin_decided_at: 't' })
+    assert.equal(submissionActions(after, viewer({ viewerId: OPS })).operationsDecide, true, 'the new reviewer')
+    assert.equal(submissionActions(after, viewer({ viewerId: 'old-ops' })).operationsDecide, false, 'the former reviewer loses it')
+    const rows = [{ submission: after, orderNumber: '0001' }]
+    assert.equal(splitDocumentQueue(rows, viewer({ viewerId: OPS })).needsYou.length, 1, 'the new reviewer sees it queued')
+    assert.equal(splitDocumentQueue(rows, viewer({ viewerId: 'old-ops' })).needsYou.length, 0, 'the former reviewer does not')
+  })
+
+  test('INITIAL documents have no decision of their own and no queue row', () => {
+    const initial = sub({ stage: 'initial', pi_submission_id: 'pi1', status: 'awaiting_operations', operations_reviewer: OPS, admin_decided_at: 't' })
+    assert.deepEqual(submissionActions(initial, viewer({ viewerId: OPS })), { adminDecide: false, operationsDecide: false, resubmit: false })
+    const pendingInitial = sub({ stage: 'initial', order_id: null, pi_submission_id: 'pi1', status: 'pending_admin' })
+    assert.equal(submissionActions(pendingInitial, viewer({ viewerId: ADMIN, isAdmin: true })).adminDecide, false)
+    const q = splitDocumentQueue([initial, pendingInitial].map(s => ({ submission: s, orderNumber: '0001' })), viewer({ viewerId: OPS }))
+    assert.equal(q.needsYou.length + q.waitingOnOthers.length, 0)
+    const name = (id: string | null) => (id === OPS ? 'Ravi' : null)
+    assert.equal(currentOwnerLabel(initial, name), "Operations — Ravi, with PI V1's operations review")
+    assert.equal(nextActionLabel(initial), 'Operations to Accept for production PI V1')
+    assert.equal(currentOwnerLabel(pendingInitial, name), 'Admin — decided with the PI approval')
   })
 
   test('owner and next action say who holds it', () => {
@@ -133,7 +156,7 @@ describe('the queue, per role', () => {
   }
 
   test('Admin sees what awaits the admin decision', () => {
-    const q = splitDocumentQueue(rows(), viewer({ viewerId: ADMIN, isAdmin: true, currentOperationsReviewer: OPS }))
+    const q = splitDocumentQueue(rows(), viewer({ viewerId: ADMIN, isAdmin: true }))
     assert.deepEqual(q.needsYou.map(r => r.submission.status), ['pending_admin', 'pending_admin'])
   })
 
@@ -152,6 +175,30 @@ describe('the queue, per role', () => {
   test('View As shows no queue', () => {
     const q = splitDocumentQueue(rows(), viewer({ viewerId: ADMIN, isAdmin: true, viewingAs: true }))
     assert.equal(q.needsYou.length + q.waitingOnOthers.length, 0)
+  })
+})
+
+describe('sending the PI with its documents', () => {
+  test('the one question names exactly what is missing', () => {
+    assert.equal(missingSupportingQuestion(['design_files', 'client_po']), 'No design files or client PO are attached to this submission. Submit without them?')
+    assert.equal(missingSupportingQuestion(['client_po']), 'No client PO is attached to this submission. Submit without it?')
+    assert.equal(missingSupportingQuestion(['design_files']), 'No design files are attached to this submission. Submit without them?')
+    assert.equal(missingSupportingQuestion([]), '')
+    assert.deepEqual(missingSupporting({ designCount: 2, clientPoCount: 0 }), ['client_po'])
+    assert.deepEqual(missingSupporting({ designCount: 1, clientPoCount: 1 }), [])
+  })
+
+  test('an acknowledged absence is said as an absence, never as attached', () => {
+    const a = { missing: ['client_po'], acknowledged_by: SALES, acknowledged_at: '2026-09-20T10:00:00Z' }
+    const line = absenceLine(a, 'client_po', () => 'Asha', iso => (iso ?? '').slice(0, 10))
+    assert.equal(line, 'Not provided — Asha confirmed sending the PI without a client PO on 2026-09-20.')
+    assert.equal(absenceLine(a, 'design_files', () => 'Asha', () => ''), null)
+    assert.equal(/attached/i.test(line ?? ''), false)
+  })
+
+  test('files sent with a PI are stored under the PI, sealed by its submission', () => {
+    assert.equal(piDocumentObjectPath({ piSubmissionId: 'p', submissionId: 's', category: 'design_files', fileId: 'f', mime: 'image/png' }),
+      'pi-documents/p/s/design_files/f.png')
   })
 })
 

@@ -58,6 +58,8 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
         .from('order_document_submissions')
         .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number)`)
         .in('status', OPEN_STATUSES)
+        // Documents sent with a PI ride with the PI review and the handoff.
+        .eq('stage', 'amendment')
         .order('submitted_at', { ascending: false })
         .limit(200)
       // An absent table (migration not applied) or a refused read draws nothing.
@@ -81,7 +83,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
 
   if (!loaded || !viewerId || viewingAs) return null
   const viewer: DocumentViewer = {
-    viewerId, isAdmin, currentOperationsReviewer: null, canSubmit: true, viewingAs,
+    viewerId, isAdmin, canSubmit: true, viewingAs,
   }
   const { needsYou, waitingOnOthers } = splitDocumentQueue(loaded.rows, viewer)
   if (needsYou.length === 0 && waitingOnOthers.length === 0) return null
@@ -110,7 +112,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
             </span>
           )}
         </div>
-        <Link href={queueHref(s.order_id)} className="boe-btn boe-btn-ghost order-doc-action">
+        <Link href={queueHref(s.order_id ?? '')} className="boe-btn boe-btn-ghost order-doc-action">
           {s.status === 'pending_admin' && isAdmin ? 'Review'
             : s.status === 'awaiting_operations' && r.submission.operations_reviewer === viewerId ? 'Review'
             : s.status.startsWith('rejected') ? 'Correct' : 'Open'}

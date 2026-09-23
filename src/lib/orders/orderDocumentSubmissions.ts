@@ -35,7 +35,11 @@ export type PersistedDocumentFile = {
 
 export type PersistedDocumentSubmission = {
   id: string
-  order_id: string
+  /** 'initial': sent with the PI and decided with it. 'amendment': a change on the Order. */
+  stage: 'initial' | 'amendment'
+  /** Null only for an initial submission whose PI has no Order yet. */
+  order_id: string | null
+  pi_submission_id: string | null
   includes_design_files: boolean
   includes_client_po: boolean
   design_mode: 'add' | 'replace' | null
@@ -58,7 +62,7 @@ export type PersistedDocumentSubmission = {
 
 /** Named, never `*`. The files are embedded so one read answers the section. */
 export const ORDER_DOCUMENT_SUBMISSION_SELECT = [
-  'id', 'order_id', 'includes_design_files', 'includes_client_po', 'design_mode', 'note',
+  'id', 'stage', 'order_id', 'pi_submission_id', 'includes_design_files', 'includes_client_po', 'design_mode', 'note',
   'status', 'snapshot_sha256', 'file_count', 'resubmission_of',
   'submitted_by', 'submitted_at', 'admin_decided_by', 'admin_decided_at', 'admin_reason',
   'operations_reviewer', 'operations_decided_by', 'operations_decided_at', 'operations_reason',
@@ -224,16 +228,17 @@ export function openSubmissionFor(
 export type DocumentViewer = {
   viewerId: string | null
   isAdmin: boolean
-  /** The reviewer the live PI handoff is addressed to — it follows a
-   *  Control Center reassignment, which the submission row does not. */
-  currentOperationsReviewer: string | null
   canSubmit: boolean
   viewingAs: boolean
 }
 
 export function isOperationsReviewerFor(s: PersistedDocumentSubmission, viewer: DocumentViewer): boolean {
   if (!viewer.viewerId || viewer.viewingAs) return false
-  return s.operations_reviewer === viewer.viewerId || viewer.currentOperationsReviewer === viewer.viewerId
+  // THE ROW IS THE AUTHORITY. The database readdresses operations_reviewer
+  // inside the same transaction as a Control Center reassignment
+  // (20261231000000 §12), and the decision RPC refuses anybody else — so the
+  // Order page, the dashboard queue and the database read one answer.
+  return s.operations_reviewer === viewer.viewerId
 }
 
 /** The stage's owner, in words, for "current owner" on a card or queue row. */
@@ -241,6 +246,14 @@ export function currentOwnerLabel(
   s: PersistedDocumentSubmission,
   nameOf: (id: string | null) => string | null,
 ): string {
+  if (s.stage === 'initial') {
+    if (s.status === 'pending_admin') return 'Admin — decided with the PI approval'
+    if (s.status === 'awaiting_operations') {
+      return s.operations_reviewer
+        ? `Operations — ${nameOf(s.operations_reviewer) ?? 'assigned reviewer'}, with PI V1's operations review`
+        : 'Operations — no reviewer assigned (PI V1 operations review)'
+    }
+  }
   switch (s.status) {
     case 'pending_admin': return 'Admin'
     case 'awaiting_operations':
@@ -252,6 +265,11 @@ export function currentOwnerLabel(
 }
 
 export function nextActionLabel(s: PersistedDocumentSubmission): string {
+  if (s.stage === 'initial') {
+    if (s.status === 'pending_admin') return 'Approver to approve the PI (creating the Order) or return it'
+    if (s.status === 'awaiting_operations') return 'Operations to Accept for production PI V1'
+    if (s.status === 'rejected_admin') return 'Sales to correct and resubmit the PI'
+  }
   switch (s.status) {
     case 'pending_admin': return 'Admin to approve or reject'
     case 'awaiting_operations': return 'Operations to accept or reject'
@@ -269,6 +287,9 @@ export type SubmissionActions = {
 
 export function submissionActions(s: PersistedDocumentSubmission, viewer: DocumentViewer): SubmissionActions {
   const live = !viewer.viewingAs && !!viewer.viewerId
+  // Documents sent with a PI have no decision of their own: the PI's approval,
+  // return and operations acceptance decide them.
+  if (s.stage === 'initial') return { adminDecide: false, operationsDecide: false, resubmit: false }
   return {
     adminDecide: live && viewer.isAdmin && s.status === 'pending_admin',
     operationsDecide: live && s.status === 'awaiting_operations' && isOperationsReviewerFor(s, viewer),
@@ -339,6 +360,9 @@ export function splitDocumentQueue(
 
   for (const r of rows) {
     const s = r.submission
+    // Initial documents are not a separate task: the PI review queue and the
+    // operations handoff already carry them.
+    if (s.stage === 'initial') continue
     const own = s.submitted_by === viewer.viewerId
     if (s.status === 'pending_admin' && viewer.isAdmin) {
       needsYou.push({ ...r, mine: own })
@@ -374,4 +398,62 @@ export function describeDocumentFailure(error: { message?: string | null } | nul
     return 'That category already has a submission under review. Refresh to see it.'
   }
   return 'That did not go through. Refresh and try again.'
+}
+
+// ── Sending the PI with its supporting documents (initial submission) ────────
+
+/** A supporting category offered when a PI is sent for approval. */
+export type SupportingCategory = DocumentCategory
+
+export const SUBMIT_WITHOUT_FILES_LABEL = 'Submit without these files'
+export const SUPPORTING_DOCUMENTS_TITLE = 'Supporting documents (optional)'
+export const SUPPORTING_DOCUMENTS_NOTE =
+  'Attached files are reviewed with this PI: the approver approves them by creating the Order, and Operations accepts them with PI V1. Nothing is current on the Order before then.'
+
+/**
+ * THE ONE EXPLICIT QUESTION, naming exactly what is missing.
+ *   both   "No design files or client PO are attached to this submission. Submit without them?"
+ *   one    "No client PO is attached to this submission. Submit without it?"
+ */
+export function missingSupportingQuestion(missing: readonly SupportingCategory[]): string {
+  const design = missing.includes('design_files')
+  const po = missing.includes('client_po')
+  if (design && po) return 'No design files or client PO are attached to this submission. Submit without them?'
+  if (design) return 'No design files are attached to this submission. Submit without them?'
+  if (po) return 'No client PO is attached to this submission. Submit without it?'
+  return ''
+}
+
+/** The categories with no file, in a fixed order. */
+export function missingSupporting(input: { designCount: number; clientPoCount: number }): SupportingCategory[] {
+  const out: SupportingCategory[] = []
+  if (input.designCount === 0) out.push('design_files')
+  if (input.clientPoCount === 0) out.push('client_po')
+  return out
+}
+
+/** Where a file sent with a PI is stored: sealed once the PI is submitted. */
+export function piDocumentObjectPath(input: {
+  piSubmissionId: string
+  submissionId: string
+  category: DocumentCategory
+  fileId: string
+  mime: string
+}): string {
+  const ext = EXT_BY_MIME[input.mime]
+  if (!ext) throw new Error('unsupported document type')
+  return `pi-documents/${input.piSubmissionId}/${input.submissionId}/${input.category}/${input.fileId}.${ext}`
+}
+
+/** An acknowledged absence, as the Order's Documents section states it. */
+export type PersistedAbsence = { missing: string[]; acknowledged_by: string; acknowledged_at: string }
+
+export function absenceLine(
+  absence: PersistedAbsence | null,
+  category: DocumentCategory,
+  nameOf: (id: string | null) => string | null,
+  formatWhen: (iso: string | null) => string,
+): string | null {
+  if (!absence || !absence.missing.includes(category)) return null
+  return `Not provided — ${nameOf(absence.acknowledged_by) ?? 'the submitter'} confirmed sending the PI without ${category === 'client_po' ? 'a client PO' : 'design files'} on ${formatWhen(absence.acknowledged_at)}.`
 }
