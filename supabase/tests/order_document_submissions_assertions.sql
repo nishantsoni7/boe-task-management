@@ -500,6 +500,282 @@ begin
   perform pg_temp.check(pg_temp.notes(current_setting('test.admin2_id')::uuid, 'order_document_review_requested') = n + 1, '8. the admins are told nobody is assigned');
 end $$;
 
+
+-- ═══ 9. REASSIGNMENT DURING AN OPEN SUBMISSION ═════════════════════════════
+--
+-- The assignment is the one authority: the row's operations_reviewer (which
+-- the Order page and the dashboard queue read) follows it, the former
+-- reviewer loses the decision at the database, and the new one is told once.
+
+create function pg_temp.notes_on(p_user uuid, p_order uuid) returns bigint language sql as $$
+  select count(*) from public.notifications where user_id = p_user and entity_id = p_order and type::text = 'order_document_review_requested';
+$$;
+select set_config('test.pi_r', gen_random_uuid()::text, true);
+select pg_temp.make_pi(current_setting('test.pi_r')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT R', 700000);
+select set_config('test.order_r', pg_temp.approve(current_setting('test.pi_r')::uuid)::text, true);
+
+do $$
+declare o uuid := current_setting('test.order_r')::uuid; s uuid := gen_random_uuid();
+        sales uuid := current_setting('test.sales_id')::uuid; owner uuid := current_setting('test.owner_id')::uuid;
+        r1 uuid := current_setting('test.reviewer_id')::uuid; r2 uuid := current_setting('test.reviewer2_id')::uuid;
+        n2 bigint; n1 bigint;
+begin
+  perform pg_temp.assign(r1);
+  perform pg_temp.submit(sales, s, o, 'add', pg_temp.f(pg_temp.put(o, s, 'design_files', sales, 'image/png', 700, 'png'), 'r.png'));
+  perform pg_temp.admin_decide(owner, s, 'approved', null);
+  perform pg_temp.check((select operations_reviewer from public.order_document_submissions where id = s) = r1, '9. addressed to R1');
+
+  n2 := pg_temp.notes_on(r2, o);
+  n1 := pg_temp.notes_on(r1, o);
+  perform pg_temp.assign(r2);
+  perform pg_temp.check((select operations_reviewer from public.order_document_submissions where id = s) = r2,
+                        '9. the row follows the reassignment (what the page and the queue read)');
+  perform pg_temp.check(pg_temp.notes_on(r2, o) = n2 + 1, '9. the new reviewer is told once');
+  perform pg_temp.check(pg_temp.notes_on(r1, o) = n1, '9. the former reviewer is not told again');
+  perform pg_temp.check(exists (select 1 from public.order_document_submission_events where submission_id = s and event = 'operations_reassigned'),
+                        '9. the reassignment is on the trail');
+  perform pg_temp.expect_error(format('select pg_temp.ops_decide(%L, %L, ''accepted'', null)', r1, s),
+          'Only the assigned operations reviewer', '9. the former reviewer is refused at the database');
+  -- Re-assigning the same person changes and notifies nothing.
+  perform pg_temp.assign(r2);
+  perform pg_temp.check(pg_temp.notes_on(r2, o) = n2 + 1, '9. no duplicate on an unchanged assignment');
+
+  -- Cleared: nobody holds it, and the row says so.
+  perform pg_temp.assign(null);
+  perform pg_temp.check((select operations_reviewer from public.order_document_submissions where id = s) is null, '9. cleared → unassigned');
+  perform pg_temp.expect_error(format('select pg_temp.ops_decide(%L, %L, ''accepted'', null)', r2, s),
+          'ORDER_DOCUMENT_NO_OPERATIONS_REVIEWER', '9. nobody decides while unassigned');
+
+  perform pg_temp.assign(r2);
+  perform pg_temp.check((select operations_reviewer from public.order_document_submissions where id = s) = r2, '9. reassigned again');
+  perform pg_temp.ops_decide(r2, s, 'accepted', null);
+  perform pg_temp.check(pg_temp.status(s) = 'accepted', '9. the current reviewer accepts');
+  -- The guard admits a reviewer change ONLY while awaiting operations.
+  perform pg_temp.expect_error(format('update public.order_document_submissions set operations_reviewer = %L where id = %L', r1, s),
+          'ORDER_DOCUMENT_SUBMISSION_TRANSITION_INVALID', '9. an accepted row cannot be readdressed');
+end $$;
+
+-- ═══ 10. DOCUMENTS SENT WITH THE PI (initial submission) ═══════════════════
+
+/** A PI left in DRAFT: make_pi without the final submit. */
+create function pg_temp.make_draft(p_id uuid, p_owner uuid, p_client text, p_total numeric) returns void language plpgsql as $$
+declare
+  v_item uuid := gen_random_uuid();
+  v_wb   text := 'submissions/' || p_id::text || '/original/' || gen_random_uuid()::text || '.xlsx';
+  v_sha  text := repeat('a', 64);
+  v_img  text;
+begin
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total,
+     source_workbook_path, source_workbook_sha256, source_workbook_name, parse_warnings, parse_blocking_issues, reservation_required)
+  values (p_id, 'draft', p_owner, p_owner, p_client, p_total, 0, p_total, v_wb, v_sha, 'pi.xlsx', '[]', '[]', false);
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('order-files', v_wb, jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  insert into public.order_submission_items
+    (id, submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (v_item, p_id, 10, '1', 'ASSERT chair', 1, p_total, p_total, 0);
+  v_img := 'submissions/' || p_id::text || '/images/' || v_item::text || '/representative/0-' || v_sha || '.png';
+  insert into public.order_submission_item_images
+    (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  values (p_id, v_item, 'representative', 0, v_img, 'image/png', v_sha, 10);
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('order-files', v_img, jsonb_build_object('mimetype', 'image/png'));
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (gen_random_uuid(), 'ASSERT', p_total * 0.4, current_date, 'hdfc', 'approved_unlinked', p_owner, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  select id, p_id, amount, 'order_submission', p_owner from public.finance_payment_requests where client_name = 'ASSERT' and amount = p_total * 0.4
+   and not exists (select 1 from public.finance_payment_allocations a where a.payment_request_id = finance_payment_requests.id);
+end $$;
+
+/** A stored object under pi-documents/, as the Storage API records it. */
+create function pg_temp.put_pi(p_pi uuid, p_sub uuid, p_cat text, p_owner uuid, p_mime text default 'application/pdf',
+                               p_ext text default 'pdf') returns text language plpgsql as $$
+declare v_path text := 'pi-documents/' || p_pi || '/' || p_sub || '/' || p_cat || '/' || gen_random_uuid() || '.' || p_ext;
+begin
+  perform set_config('request.jwt.claims', '', true);
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('order-files', v_path, p_owner::text, jsonb_build_object('mimetype', p_mime, 'size', 3000));
+  return v_path;
+end $$;
+
+create function pg_temp.send(p_user uuid, p_pi uuid, p_doc uuid, p_files jsonb, p_ack text[]) returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.become(p_user);
+  v := public.submit_pi_for_review_with_documents(p_pi, null, null, null, null, p_doc, p_files, p_ack);
+  perform pg_temp.restore();
+  return v;
+end $$;
+
+create function pg_temp.pi_status(p_pi uuid) returns text language sql as $$
+  select status from public.order_submissions where id = p_pi;
+$$;
+create function pg_temp.initial(p_pi uuid) returns public.order_document_submissions language sql as $$
+  select * from public.order_document_submissions where stage = 'initial' and pi_submission_id = p_pi order by submitted_at desc, id limit 1;
+$$;
+
+select set_config('test.pi_i', gen_random_uuid()::text, true);
+select pg_temp.make_draft(current_setting('test.pi_i')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT I', 800000);
+
+do $$
+declare pi uuid := current_setting('test.pi_i')::uuid; d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid();
+        sales uuid := current_setting('test.sales_id')::uuid; owner uuid := current_setting('test.owner_id')::uuid;
+        reviewer uuid := current_setting('test.reviewer2_id')::uuid; design text; po text; v jsonb; r public.order_document_submissions;
+        n_before bigint;
+begin
+  -- Sales may upload under the draft PI; an outsider may not.
+  perform pg_temp.become(sales);
+  perform pg_temp.check(public.can_upload_pi_document_file('pi-documents/' || pi || '/' || d1 || '/client_po/' || gen_random_uuid() || '.pdf'),
+                        '10. the PI owner can upload while it is a draft');
+  perform pg_temp.restore();
+  perform pg_temp.become(current_setting('test.outsider_id')::uuid);
+  perform pg_temp.check(not public.can_upload_pi_document_file('pi-documents/' || pi || '/' || d1 || '/client_po/' || gen_random_uuid() || '.pdf'),
+                        '10. an outsider cannot upload under the PI');
+  perform pg_temp.restore();
+
+  design := pg_temp.put_pi(pi, d1, 'design_files', sales, 'image/png', 'png');
+
+  -- (a) An unconfirmed absence is refused, and the PI is NOT sent.
+  perform pg_temp.expect_error(format('select pg_temp.send(%L, %L, %L, pg_temp.f(%L, ''front.png''), %L)', sales, pi, d1, design, '{}'),
+          'ORDER_DOCUMENT_ABSENCE_NOT_CONFIRMED', '10a. a missing Client PO must be confirmed');
+  perform pg_temp.check(pg_temp.pi_status(pi) = 'draft', '10a. Cancel / an unconfirmed absence sends nothing');
+  perform pg_temp.expect_error(format('select pg_temp.send(%L, %L, %L, %L, %L)', sales, pi, null, '[]', '{client_po}'),
+          'ORDER_DOCUMENT_ABSENCE_NOT_CONFIRMED', '10a. both missing must BOTH be confirmed');
+  perform pg_temp.check(pg_temp.pi_status(pi) = 'draft', '10a. still a draft');
+
+  -- (b) Design attached, Client PO confirmed absent: the PI is sent, once.
+  n_before := (select count(*) from public.notifications);
+  v := pg_temp.send(sales, pi, d1, pg_temp.f(design, 'front.png'), '{client_po}');
+  perform pg_temp.check(pg_temp.pi_status(pi) = 'submitted', '10b. the PI is submitted through its own door');
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.id = d1 and r.status = 'pending_admin' and r.order_id is null and r.includes_design_files and not r.includes_client_po,
+                        '10b. the documents are an initial submission, pending with the PI');
+  perform pg_temp.check((select missing from public.order_pi_document_absences where pi_submission_id = pi order by acknowledged_at desc limit 1) = '{client_po}',
+                        '10b. the absent Client PO is recorded as acknowledged, not attached');
+  perform pg_temp.check((select count(*) from public.notifications) = n_before, '10b. no notification is added to the PI submission');
+  perform pg_temp.become(sales);
+  perform pg_temp.check(not public.can_upload_pi_document_file('pi-documents/' || pi || '/' || gen_random_uuid() || '/client_po/' || gen_random_uuid() || '.pdf'),
+                        '10b. nothing more can be uploaded once the PI is submitted');
+  perform pg_temp.check((select count(*) from public.order_document_submissions where id = d1) = 1, '10b. Sales reads their initial submission before any Order exists');
+  perform pg_temp.check(public.can_read_pi_document_file(design), '10b. and its file');
+  perform pg_temp.restore();
+
+  -- Direct decisions are refused: the PI's doors decide these.
+  perform pg_temp.expect_error(format('select pg_temp.admin_decide(%L, %L, ''approved'', null)', owner, d1),
+          'ORDER_DOCUMENT_DECIDED_WITH_PI', '10b. no separate admin approval of initial documents');
+  perform pg_temp.expect_error(format('update public.order_document_submissions set status = ''rejected_admin'', admin_reason = ''x'', admin_decided_at = now() where id = %L', d1),
+          'decided with that PI', '10b. the guard refuses moving an initial row outside the PI doors');
+
+  -- (c) The PI is returned: its documents go back with the PI's reason.
+  perform pg_temp.become(owner);
+  perform public.request_order_submission_changes(pi, 'Wrong ship-to address');
+  perform pg_temp.restore();
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.status = 'rejected_admin' and r.admin_reason like 'PI returned for changes: Wrong ship-to address%',
+                        '10c. the returned PI takes its documents back, with its reason');
+
+  -- (d) Resubmission: the earlier design file is carried forward, a PO is added.
+  po := pg_temp.put_pi(pi, d2, 'client_po', sales);
+  perform pg_temp.expect_error(format('select pg_temp.send(%L, %L, %L, %L, %L)', sales, pi, d2,
+            jsonb_build_array(jsonb_build_object('path', design, 'file_name', 'front.png'), jsonb_build_object('path', pg_temp.put_pi(current_setting('test.pi_a')::uuid, d2, 'client_po', sales), 'file_name', 'x.pdf')), '{}'),
+          'ORDER_DOCUMENT_FILE_PATH_INVALID', '10d. a file of another PI cannot be carried');
+  v := pg_temp.send(sales, pi, d2, jsonb_build_array(jsonb_build_object('path', design, 'file_name', 'front.png'),
+                                                     jsonb_build_object('path', po, 'file_name', 'PO-9001.pdf')), '{}');
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.id = d2 and r.status = 'pending_admin' and r.includes_client_po and r.includes_design_files and r.resubmission_of = d1,
+                        '10d. the resubmission is a new initial submission linked to the returned one');
+  perform pg_temp.check(pg_temp.status(d1) = 'rejected_admin', '10d. the returned one stays in history');
+  perform pg_temp.check((select count(*) from public.order_pi_document_absences where pi_submission_id = pi) = 1,
+                        '10d. no absence is recorded when both are attached');
+
+  -- (e) The approver creates the Order: the documents go to operations with
+  --     PI V1 — linked, admin-decided, addressed to the reviewer — and no
+  --     second handoff or notification exists.
+  perform pg_temp.assign(reviewer);
+  perform set_config('test.order_i', pg_temp.approve(pi)::text, true);
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.status = 'awaiting_operations' and r.order_id = current_setting('test.order_i')::uuid
+                        and r.admin_decided_by = owner and r.operations_reviewer = reviewer,
+                        '10e. approving the PI approves its documents and links them to the Order');
+  perform pg_temp.check((select count(*) from public.order_operations_handoffs where order_id = r.order_id) = 1, '10e. one handoff, not two');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = reviewer and entity_id = r.order_id) = 1,
+                        '10e. the reviewer is told once — by the handoff');
+  perform pg_temp.expect_error(format('select pg_temp.ops_decide(%L, %L, ''accepted'', null)', reviewer, d2),
+          'ORDER_DOCUMENT_DECIDED_WITH_PI', '10e. no separate operations task for initial documents');
+end $$;
+
+do $$
+declare o uuid := current_setting('test.order_i')::uuid; pi uuid := current_setting('test.pi_i')::uuid;
+        sales uuid := current_setting('test.sales_id')::uuid; reviewer uuid := current_setting('test.reviewer2_id')::uuid;
+        s uuid := gen_random_uuid(); h uuid; r public.order_document_submissions; n bigint;
+begin
+  -- (f) An amendment on a category still awaiting with the PI is refused.
+  perform pg_temp.expect_error(format('select pg_temp.submit(%L, %L, %L, null, pg_temp.f(%L, ''PO.pdf''))', sales, s, o,
+            pg_temp.put(o, s, 'client_po', sales)),
+          'ORDER_DOCUMENT_CATEGORY_PENDING', '10f. no amendment races the initial documents');
+
+  -- (g) "Cannot accept" leaves them awaiting; accepting the PI accepts them.
+  select id into h from public.order_operations_handoffs where order_id = o and superseded_at is null;
+  perform pg_temp.decide(reviewer, h, 'clarification_needed', 'Confirm the fabric');
+  perform pg_temp.check((pg_temp.initial(pi)).status = 'awaiting_operations', '10g. a flagged PI leaves its documents awaiting');
+  n := pg_temp.notes(sales, 'order_document_review_decided');
+  perform pg_temp.decide(reviewer, h, 'accepted', null);
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.status = 'accepted' and r.operations_decided_by = reviewer, '10g. accepting PI V1 accepts its documents');
+  perform pg_temp.check(pg_temp.notes(sales, 'order_document_review_decided') = n + 1, '10g. Sales is told once');
+  perform pg_temp.check((select count(*) from public.order_operations_handoffs where order_id = o) = 1, '10g. still one handoff');
+end $$;
+
+-- (h) ADMIN-OWN UPLOAD: an approve_order holder's own PI is auto-approved as a
+--     document (20261224) — its attachments are NOT: they wait for the Order
+--     and for operations like anybody's.
+select set_config('test.pi_own', gen_random_uuid()::text, true);
+select pg_temp.make_draft(current_setting('test.pi_own')::uuid, current_setting('test.owner_id')::uuid, 'ASSERT OWN', 600000);
+do $$
+declare pi uuid := current_setting('test.pi_own')::uuid; d uuid := gen_random_uuid(); owner uuid := current_setting('test.owner_id')::uuid;
+begin
+  perform pg_temp.send(owner, pi, d, pg_temp.f(pg_temp.put_pi(pi, d, 'client_po', owner), 'own-PO.pdf'), '{design_files}');
+  perform pg_temp.check((select pi_approved_by from public.order_submissions where id = pi) = owner, '10h. the PI decision is auto-stamped (unchanged rule)');
+  perform pg_temp.check((pg_temp.initial(pi)).status = 'pending_admin', '10h. the attachments are NOT auto-approved');
+  perform set_config('test.order_own', pg_temp.approve(pi)::text, true);
+  perform pg_temp.check((pg_temp.initial(pi)).status = 'awaiting_operations', '10h. creating the Order is the admin decision');
+  perform pg_temp.check((pg_temp.initial(pi)).status <> 'accepted', '10h. nothing is current before operations accepts');
+end $$;
+
+-- (i) A REJECTED PI rejects its documents with the PI's reason.
+select set_config('test.pi_rej', gen_random_uuid()::text, true);
+select pg_temp.make_draft(current_setting('test.pi_rej')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT REJ', 500000);
+do $$
+declare pi uuid := current_setting('test.pi_rej')::uuid; d uuid := gen_random_uuid(); sales uuid := current_setting('test.sales_id')::uuid;
+begin
+  perform pg_temp.send(sales, pi, d, pg_temp.f(pg_temp.put_pi(pi, d, 'client_po', sales), 'PO.pdf'), '{design_files}');
+  perform pg_temp.become(current_setting('test.owner_id')::uuid);
+  perform public.reject_order_submission(pi, 'Client cancelled');
+  perform pg_temp.restore();
+  perform pg_temp.check((pg_temp.initial(pi)).status = 'rejected_admin' and (pg_temp.initial(pi)).admin_reason = 'PI rejected: Client cancelled',
+                        '10i. a rejected PI rejects its documents with its reason');
+end $$;
+
+-- (j) THE OLD DOOR still works and records nothing of documents.
+select set_config('test.pi_old', gen_random_uuid()::text, true);
+select pg_temp.make_draft(current_setting('test.pi_old')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT OLD', 400000);
+do $$
+declare pi uuid := current_setting('test.pi_old')::uuid;
+begin
+  perform pg_temp.become(current_setting('test.sales_id')::uuid);
+  perform public.submit_pi_for_review(pi, null, null, null, null);
+  perform pg_temp.restore();
+  perform pg_temp.check(pg_temp.pi_status(pi) = 'submitted', '10j. submit_pi_for_review is unchanged');
+  perform pg_temp.check(not exists (select 1 from public.order_document_submissions where pi_submission_id = pi)
+                        and not exists (select 1 from public.order_pi_document_absences where pi_submission_id = pi),
+                        '10j. and records no documents and no absence');
+  perform pg_temp.check(not has_function_privilege('anon', 'public.submit_pi_for_review_with_documents(uuid, text, text, text, text, uuid, jsonb, text[])', 'EXECUTE'),
+                        '10j. anon cannot send');
+  perform pg_temp.expect_error('update public.order_pi_document_absences set missing = ''{design_files}''',
+          'ORDER_DOCUMENT_HISTORY_IMMUTABLE', '10j. an acknowledged absence cannot be rewritten');
+end $$;
+
 do $$ begin raise notice 'ALL DOCUMENT SUBMISSION ASSERTIONS PASSED'; end $$;
 
 rollback;
