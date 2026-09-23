@@ -74,20 +74,33 @@ const TONE: Record<WorkspaceTone, { dot: string; text: string }> = {
  * is something to say; the page hides it otherwise. Amber ground, red text
  * only for the genuinely overdue item — and the words carry the meaning, so
  * nothing here depends on colour alone.
+ *
+ * ACTIONS, WHEN GIVEN, SIT ON THE RIGHT: the operations reviewer's decision on
+ * the PI version the strip names. The page passes them only while that review
+ * is open and this reader may decide it; the message keeps the left, and on a
+ * narrow screen the actions wrap below it. `id` lets the notification and
+ * action-queue links land here.
  */
-export function OrderAttentionBar({ items }: { items: readonly OrderAttentionItem[] }) {
+export function OrderAttentionBar({ items, actions, id }: {
+  items: readonly OrderAttentionItem[]
+  actions?: React.ReactNode
+  id?: string
+}) {
   if (items.length === 0) return null
   return (
-    <section className="order-attention" aria-label={attentionHeading(items.length)}>
-      <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
-      <span className="order-attention-heading">{attentionHeading(items.length)}</span>
-      <ul className="order-attention-list">
-        {items.map(item => (
-          <li key={item.key} className={item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'}>
-            {item.label}
-          </li>
-        ))}
-      </ul>
+    <section id={id} className="order-attention" aria-label={attentionHeading(items.length)}>
+      <div className="order-attention-message">
+        <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
+        <span className="order-attention-heading">{attentionHeading(items.length)}</span>
+        <ul className="order-attention-list">
+          {items.map(item => (
+            <li key={item.key} className={item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'}>
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {actions && <div className="order-attention-actions">{actions}</div>}
     </section>
   )
 }

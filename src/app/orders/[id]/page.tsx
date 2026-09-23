@@ -126,7 +126,7 @@ import {
   OrderDocumentsRow,
   OrderEvidenceDialog,
   OrderFabricFinishCard,
-  OrderOperationsReviewCard,
+  OperationsReviewActions,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
@@ -151,10 +151,11 @@ import {
   RejectRevisionModal,
 } from './OrderRevisionModals'
 import {
+  OPERATIONS_REVIEW_ANCHOR,
   ORDER_OPERATIONS_HANDOFF_COLUMNS,
+  WITHDRAW_ACCEPTANCE_LABEL,
   describeHandoffFailure,
   describeOperationsHandoff,
-  describeOperationsHandoffHistory,
   splitOperationsHandoffs,
   type OperationsHandoffStatus,
   type PersistedOperationsHandoff,
@@ -1978,20 +1979,6 @@ export default function OrderDetailPage() {
     // revision_reason, from the same rows the PI history reads.
     revisionReason: piHistory.current?.revisionReason ?? null,
   }) : null
-  // The approved PI and the one it replaced, for the card's two Open buttons:
-  // the same PiVersionView objects the Documents box and the PI history use,
-  // signed on the press through openVersionFile, never a URL in the markup.
-  const previousPiVersion = piHistory.current
-    ? piHistory.history.find(v => v.status === 'superseded' && v.versionNumber === piHistory.current!.versionNumber - 1) ?? null
-    : null
-  const operationsHistory = useMemo(
-    () => describeOperationsHandoffHistory({
-      history: operationsSplit.history,
-      namesById: piNames,
-      formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
-    }),
-    [operationsSplit, piNames],
-  )
 
   /**
    * THE WHOLE CHRONOLOGY: the Order's own trail and the source PI's, merged.
@@ -2322,16 +2309,24 @@ export default function OrderDetailPage() {
     documentsOutdated: false,
   })
 
+  // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
+  // strip names the review, and only to whom view.actions offers it.
+  const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
+  const operationsDecisionOffered = operationsReviewOpen && operationsView?.kind === 'recorded'
+    && (operationsView.actions.accept || operationsView.actions.cannotAccept)
+
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
   // only decides where each one sits. The cleanup gate is the existing one,
   // unchanged: an active admin, not under View As, on a testing-phase Order
   // while cleanup is still enabled.
   const actions = arrangeOrderActions({
     // ONE DOOR. On an Order with an operations handoff (20261229000000) the
-    // alignment IS the handoff decision, taken on the Operations review card
-    // by the assigned reviewer; the header offers no second button. The
-    // legacy Order with no handoff keeps the old control and the old rule.
+    // alignment IS the handoff decision, taken on the attention strip by the
+    // assigned reviewer; the header offers no second button. The legacy
+    // Order with no handoff keeps the old control and the old rule.
     alignAction: operationsSplit.live ? null : production?.action ? (productionAligned ? 'unalign' : 'align') : null,
+    // Withdrawing an accepted version: the same reviewer, from view.actions.
+    canWithdrawAcceptance: operationsView?.kind === 'recorded' && operationsView.actions.withdraw,
     canAmend,
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
@@ -2347,6 +2342,7 @@ export default function OrderDetailPage() {
       case 'request_cancel':      return myPendingCancel ? 'Cancellation Requested' : 'Request Cancellation'
       case 'review_change_request':
         return pendingRequests.length === 1 ? 'Review change request' : `Review ${pendingRequests.length} change requests`
+      case 'withdraw_acceptance': return WITHDRAW_ACCEPTANCE_LABEL
       case 'cleanup':             return 'Clean Up Test Transaction'
     }
   }
@@ -2375,6 +2371,9 @@ export default function OrderDetailPage() {
       case 'amend':               setAmendOpen(true); return
       case 'request_change':      setRequestOpen(true); return
       case 'request_cancel':      setCancelOpen(true); return
+      // A withdrawal is the same decision on an accepted version; the dialog
+      // says so, and the database treats it as one.
+      case 'withdraw_acceptance': setHandoffError(null); setHandoffDialog('clarification_needed'); return
       case 'review_change_request':
         if (pendingRequests.length === 1) setReviewing(pendingRequests[0])
         else changeRequestsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -2530,34 +2529,25 @@ export default function OrderDetailPage() {
             nothing was dropped from the database. */}
         <OrderSummaryPanel view={summaryView} />
 
-        {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
-        <OrderAttentionBar items={attention} />
-
-        {/* ══ OPERATIONS REVIEW (20261229000000) ══
-            THE VERSION IN FORCE, WHO APPROVED IT, WHO MUST REVIEW IT, AND
-            WHETHER THEY HAVE. Directly under the attention strip because it is
-            the one question an operations reader arrives with, and the strip
-            above may have just told them a version awaits them. "Not recorded"
-            for an Order approved before handoffs existed: nothing is invented.
-            A skeleton, not a claim, while the read is in flight. */}
-        {!handoffReady ? (
-          <SectionSkeleton rows={2} label="Loading operations review" />
-        ) : operationsView && (
-          <OrderOperationsReviewCard
-            view={operationsView}
-            history={operationsHistory}
-            busy={handoffBusy}
-            onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
-            onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
-            // A withdrawal is the same decision on an accepted version; the
-            // dialog says so, and the database treats it as one.
-            onWithdraw={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
-            currentVersion={piHistory.current}
-            previousVersion={previousPiVersion}
-            onOpenVersion={v => { void openVersionFile(v, 'view') }}
-            openingVersion={piFileBusy !== null}
-          />
-        )}
+        {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it.
+            THE OPERATIONS REVIEWER DECIDES HERE (20261229000000): while the
+            strip names the PI version in force as awaiting review or flagged,
+            the assigned reviewer's Cannot accept / Accept for production sit on
+            its right. They replaced the Operations review card, whose facts the
+            strip, the Production row and the Documents box already state. The
+            notification and action-queue links land on this strip. */}
+        <OrderAttentionBar
+          id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
+          items={attention}
+          actions={operationsDecisionOffered ? (
+            <OperationsReviewActions
+              view={operationsView}
+              busy={handoffBusy}
+              onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
+              onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+            />
+          ) : undefined}
+        />
 
         {/* ── Notes ──
             OPERATIONAL CONTENT, and the one thing on Record Information that

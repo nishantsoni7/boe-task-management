@@ -1217,6 +1217,25 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
 
+  /**
+   * THE OPERATIONS REVIEW DECISION MOVES ONTO THE ATTENTION STRIP.
+   *
+   * A UI relocation on the Confirmed Order: the Operations review card is
+   * gone, its Cannot accept / Accept for production sit on the strip, and
+   * Withdraw acceptance joins the header overflow. Same RPC, same dialog, same
+   * rule. Every file is named; no migration, no permission, no money.
+   */
+  const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/[id]/OrderWorkspace.tsx',
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/lib/orders/orderWorkspace.ts',
+    'src/app/globals.css',
+    'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
+    'src/lib/orders/operationsHandoffSchema.test.ts',
+    'src/lib/orders/orderWorkspace.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1238,6 +1257,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(f) &&
     !ALLOWED_OPERATIONS_HANDOFF.has(f) &&
     !ALLOWED_ORDER_0524_HANDOFF.has(f) &&
+    !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1455,7 +1475,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
         || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file)
         || ALLOWED_OPERATIONS_HANDOFF.has(file)
-        || ALLOWED_ORDER_0524_HANDOFF.has(file),
+        || ALLOWED_ORDER_0524_HANDOFF.has(file)
+        || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
