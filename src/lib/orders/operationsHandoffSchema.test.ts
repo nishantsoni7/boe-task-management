@@ -91,7 +91,8 @@ describe('the migration is one additive, forward-only file', () => {
   test('the one existing function it re-emits is the alignment door, made the SAME door', () => {
     const defs = [...SQL.matchAll(/create or replace function public\.(\w+)\(/g)].map(m => m[1])
     assert.deepEqual([...new Set(defs)].sort(), [
-      'decide_order_operations_handoff', 'order_operations_handoff_set_alignment',
+      'decide_order_operations_handoff', 'operations_reviewer_can_open_order',
+      'operations_reviewer_covers_all_orders', 'order_operations_handoff_set_alignment',
       'order_operations_handoffs_guard', 'order_pi_versions_record_operations_handoff',
       'set_order_operations_reviewer', 'set_order_production_alignment',
     ])
@@ -118,7 +119,7 @@ describe('the migration is one additive, forward-only file', () => {
   })
 
   test('it backfills nothing', () => {
-    assert.doesNotMatch(SQL, /insert into public\.order_operations_handoffs\s*\([\s\S]*?\)\s*select/i,
+    assert.doesNotMatch(SQL, /insert into public\.order_operations_handoffs\s*\([^;]*?\)\s*select/i,
       'no INSERT ... SELECT over existing Orders')
     assert.doesNotMatch(SQL, /insert into public\.order_operations_reviewers[\s\S]*?values \('pi_handoff', '[0-9a-f-]{36}'/,
       'no guessed reviewer uuid')
@@ -187,7 +188,8 @@ describe('authority lives at the database', () => {
       assert.match(SQL, new RegExp(`grant\\s+execute on function public\\.${esc} to authenticated`))
     }
     for (const name of ['decide_order_operations_handoff', 'set_order_operations_reviewer', 'set_order_production_alignment',
-                        'order_operations_handoff_set_alignment', 'order_operations_handoffs_guard', 'order_pi_versions_record_operations_handoff']) {
+                        'order_operations_handoff_set_alignment', 'order_operations_handoffs_guard', 'order_pi_versions_record_operations_handoff',
+                        'operations_reviewer_can_open_order', 'operations_reviewer_covers_all_orders']) {
       const body = fnBody(name)
       assert.match(body, /security definer/, name)
       assert.match(body, /set search_path = public, pg_temp/, name)
@@ -216,11 +218,41 @@ describe('authority lives at the database', () => {
     assert.match(body, /v\.status = 'approved' and v\.id <> v_h\.pi_version_id/, 'a newer approved version makes this one stale')
   })
 
-  test('the reviewer is resolved through an ACTIVE user record, and an admin is never substituted', () => {
+  test('the reviewer is resolved under a SHARE lock, through an active record, only if they can open THIS Order', () => {
     const trg = fnBody('order_pi_versions_record_operations_handoff')
-    assert.match(trg, /from public\.order_operations_reviewers r\s+join public\.users u on u\.id = r\.user_id\s+where r\.duty = 'pi_handoff'\s+and u\.is_active\s+and coalesce\(u\.is_deleted, false\) = false/)
-    assert.doesNotMatch(trg, /role = 'admin'/)
-    assert.match(trg, /case when v_reviewer is null then null else v_now end/, 'unassigned stays unassigned')
+    assert.match(trg, /from public\.order_operations_reviewers r\s+where r\.duty = 'pi_handoff'\s+for share/,
+      'read under the lock set_order_operations_reviewer() must wait for')
+    assert.match(trg, /u\.id = v_configured and u\.is_active and coalesce\(u\.is_deleted, false\) = false/)
+    assert.match(trg, /elsif not public\.operations_reviewer_can_open_order\(v_configured, new\.order_id\) then\s+v_reviewer := null;\s+v_unassigned := 'reviewer_cannot_open_order'/,
+      'somebody who cannot open the Order is neither assigned nor notified')
+    assert.match(trg, /v_reviewer, case when v_reviewer is null then null else v_now end, v_unassigned/)
+    assert.match(trg, /if v_reviewer is null then\s+insert into public\.notifications[\s\S]*?where u\.role = 'admin' and u\.is_active/,
+      'an unassigned handoff is announced to the administrators, so it cannot go unseen')
+    // The ONLY admin reference is the "tell the administrators" query; nobody
+    // is assigned in the reviewer's place.
+    assert.equal((trg.match(/role = 'admin'/g) ?? []).length, 1)
+    // Order visibility, restated for a given user: module entry + the Order's own rule.
+    const open = fnBody('operations_reviewer_can_open_order')
+    for (const branch of [/u\.role = 'admin' or public\.resolve_permission\(u\.id, 'orders', 'view'\)/,
+                          /u\.team::text = 'operations'/, /o\.requested_by = u\.id/, /o\.assigned_to  = u\.id/,
+                          /public\.resolve_permission\(u\.id, 'orders', 'view_all'\)/]) {
+      assert.match(open, branch)
+    }
+    const all = fnBody('operations_reviewer_covers_all_orders')
+    assert.doesNotMatch(all, /requested_by|assigned_to/, 'covering EVERY Order cannot rest on being named on one')
+    assert.match(all, /u\.team::text = 'operations'/)
+    assert.match(all, /resolve_permission\(u\.id, 'orders', 'view_all'\)/)
+    for (const fn of ['operations_reviewer_can_open_order(uuid, uuid)', 'operations_reviewer_covers_all_orders(uuid)']) {
+      assert.match(SQL, new RegExp(`revoke execute on function public\\.${fn.replace(/[()]/g, '\\$&')} from public, anon, authenticated`))
+    }
+    assert.match(SQL, /insert into public\.order_operations_reviewers \(duty, user_id, assigned_by, assigned_at\)\s+values \('pi_handoff', null, null, now\(\)\)\s+on conflict \(duty\) do nothing/,
+      'the one lockable settings row exists from the start, with nobody assigned')
+  })
+
+  test('the approver is not told about their own approval; the earlier decision is kept; the decision door never touches the reviewer row', () => {
+    const trg = fnBody('order_pi_versions_record_operations_handoff')
+    assert.doesNotMatch(fnBody('decide_order_operations_handoff'), /order_operations_reviewers/,
+      'the decision takes orders → handoffs only, so it cannot join a cycle with the assignment')
     assert.match(trg, /if v_reviewer is not null and v_reviewer is distinct from new\.decided_by then/, 'the approver is not told about their own approval')
     assert.match(trg, /'order_operations_review_requested'::notification_type/)
     assert.match(trg, /update public\.order_operations_handoffs\s+set superseded_at = v_now,\s+superseded_by_version_id = new\.id\s+where order_id = new\.order_id\s+and superseded_at is null/,
@@ -232,7 +264,18 @@ describe('authority lives at the database', () => {
     assert.match(body, /u\.role = 'admin' and u\.is_active and coalesce\(u\.is_deleted, false\) = false/)
     assert.match(body, /ORDER_OPERATIONS_REVIEWER_INACTIVE/)
     assert.match(body, /ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS/)
-    assert.match(body, /public\.resolve_permission\(p_user_id, 'orders', 'view'\)/)
+    assert.match(body, /if not public\.operations_reviewer_covers_all_orders\(p_user_id\) then/,
+      'orders.view alone is not enough: the reviewer must be able to open every Order')
+    assert.doesNotMatch(body, /resolve_permission\(p_user_id, 'orders', 'view'\)\) then/, 'the weaker check is gone')
+    // THE LOCK, before anything is read or written — and never on orders.
+    const lock = body.indexOf("where duty = 'pi_handoff'\n     for update")
+    assert.ok(lock > 0, 'the settings row is locked FOR UPDATE')
+    assert.ok(lock < body.indexOf('insert into public.order_operations_reviewers'), '…before it is written')
+    assert.ok(lock < body.indexOf('for v_h in'), '…and before the handoffs are read, so an approval in flight is waited for')
+    assert.doesNotMatch(body, /from public\.orders[^;]*for update/, 'the assignment never locks orders (lock order: orders → reviewers → handoffs)')
+    assert.match(body, /for update of h/, 'only handoff rows are locked in the loop')
+    assert.match(body, /if p_user_id is not null and not public\.operations_reviewer_can_open_order\(p_user_id, v_h\.order_id\) then/,
+      'and each handoff is still checked per Order')
     assert.match(body, /and h\.status <> 'accepted'[\s\S]*?and o\.status <> 'cancelled'/, 'awaiting AND flagged move; accepted ones do not')
     assert.match(body, /assigned_at = case when p_user_id is null then null else v_now end/, 'clearing unassigns')
     assert.match(body, /'operations_reviewer_unassigned' else 'operations_reviewer_assigned'/)
@@ -290,7 +333,7 @@ describe('the queues and the Control Center', () => {
     assert.match(QUEUE, /\.in\('status', \['awaiting', 'clarification_needed'\]\)\s*\.is\('superseded_at', null\)/)
     assert.match(QUEUE, /cannot accept — "\$\{r\.clarification_reason \?\? 'no reason recorded'\}"/, 'the reviewer\'s reason is on the row')
     assert.match(QUEUE, /reviewer inactive/)
-    assert.match(QUEUE, /no reviewer assigned/)
+    assert.match(QUEUE, /UNASSIGNED_REASON_LABEL\[r\.unassigned_reason \?\? 'no_reviewer'\]/, 'an unassigned row says WHY')
     assert.match(QUEUE, /if \(r\.order\?\.status === 'cancelled'\) continue/)
     assert.match(QUEUE, /case 'order_operations_review':\s+return `\/orders\/\$\{id\}#\$\{OPERATIONS_REVIEW_ANCHOR\}`/)
     assert.match(QUEUE, /case 'order_operations_clarification': return `\/orders\/\$\{id\}#\$\{OPERATIONS_REVIEW_ANCHOR\}`/)
@@ -340,7 +383,7 @@ describe('the Order page', () => {
     assert.match(CARD, /view\.actions\.withdraw &&/)
     assert.match(CARD, /view\.actions\.accept &&/)
     assert.match(CARD, /view\.kind === 'not_recorded'/)
-    assert.match(CARD, /OPERATIONS_HANDOFF_UNASSIGNED_LABEL/)
+    assert.match(CARD, /\{view\.unassignedHint\}/, 'an unassigned card says why and what to do')
     assert.match(CARD, /\{REVISION_COMPARE_NOTE\}/)
     assert.match(CARD, /\{ACCEPTANCE_MEANING\}/)
     assert.match(LIB, /OPERATIONS_HANDOFF_NOT_RECORDED_LABEL = 'Not recorded'/)

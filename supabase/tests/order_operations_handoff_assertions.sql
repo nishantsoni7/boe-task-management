@@ -48,11 +48,13 @@ begin
   perform set_config('test.outsider_id', '44444444-4444-4444-4444-444444444444', true); -- no Orders relationship
   perform set_config('test.sales_id',    '55555555-5555-5555-5555-555555555555', true); -- the PI's owner
   perform set_config('test.reviewer2_id','66666666-6666-6666-6666-666666666666', true); -- a replacement reviewer
+  perform set_config('test.viewer_id',   '77777777-7777-7777-7777-777777777777', true); -- orders.view only, team design
   perform set_config('test.pi_a', gen_random_uuid()::text, true);
   perform set_config('test.pi_b', gen_random_uuid()::text, true);
   perform set_config('test.pi_c', gen_random_uuid()::text, true);
   perform set_config('test.pi_d', gen_random_uuid()::text, true);
   perform set_config('test.pi_e', gen_random_uuid()::text, true);
+  perform set_config('test.pi_f', gen_random_uuid()::text, true);
 end $$;
 
 -- ═══ 0. FIXTURES ════════════════════════════════════════════════════════════
@@ -210,11 +212,21 @@ begin
   perform pg_temp.check(h.id is not null, '1. a handoff is recorded for V1 at approval');
   perform pg_temp.check(h.version_number = 1 and h.status = 'awaiting', '1. it is V1, awaiting');
   perform pg_temp.check(h.assigned_to is null and h.assigned_at is null, '1. nobody assigned → unassigned, not an admin');
+  perform pg_temp.check(h.unassigned_reason = 'no_reviewer', '1. …and the row says why');
   perform pg_temp.check(h.approved_by = current_setting('test.owner_id')::uuid, '1. the approver is recorded');
   perform pg_temp.check(h.production_alignment_at_approval = 'not_aligned', '1. alignment snapshot: not aligned');
   perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', '1. every Order is born not aligned');
-  perform pg_temp.check((select count(*) from public.notifications where type::text like 'order_operations%') = 0,
-    '1. no reviewer → no notification (and no admin notified in their place)');
+  -- Nobody is addressed as reviewer. The ADMINISTRATORS are told there is
+  -- nobody to address — that is what keeps an unassigned handoff from going
+  -- unseen — and no non-admin hears anything.
+  perform pg_temp.check((select count(*) from public.notifications n join public.users u on u.id = n.user_id
+     where n.entity_id = o and u.role <> 'admin') = 0,
+    '1. no reviewer → no non-admin is notified (nobody in the reviewer''s place)');
+  perform pg_temp.check((select count(*) from public.notifications where entity_id = o
+     and user_id = current_setting('test.owner_id')::uuid and title like '%no operations reviewer can take it%') = 1,
+    '1. …and every active admin (the approver included) is told to assign one');
+  perform pg_temp.check((select count(*) from public.notifications where entity_id = o
+     and user_id = current_setting('test.admin2_id')::uuid) = 1, '1. …the other admin too');
   perform pg_temp.check(pg_temp.events(o, 'operations_handoff_recorded') = 1, '1. one history event');
   perform pg_temp.check((select pi_version_id from public.order_operations_handoffs where order_id = o)
      = (select id from public.order_pi_versions where order_id = o and status = 'approved'),
@@ -262,6 +274,33 @@ select pg_temp.expect_error(
   format('select pg_temp.assign(%L)', current_setting('test.outsider_id')),
   'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS', '2c. the reviewer must be able to open Orders');
 
+-- A person who holds orders.view but is NOT an admin, NOT on the operations
+-- team and holds NO orders.view_all: they can open the module, not every
+-- Order — so they cannot be the reviewer either.
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  (current_setting('test.viewer_id')::uuid, 'ASSERT Viewer', 'viewer@example.test', 'member', 'design', true, 'ASSERT-VIEW')
+on conflict (id) do nothing;
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select current_setting('test.viewer_id')::uuid, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
+  from public.permission_modules pm join public.permission_actions pa on pa.action_key = 'view'
+ where pm.module_key = 'orders'
+on conflict do nothing;
+do $$
+declare v uuid := current_setting('test.viewer_id')::uuid; o uuid := current_setting('test.order_a')::uuid;
+begin
+  perform pg_temp.check(public.resolve_permission(v, 'orders', 'view'), '2c2. precondition: the viewer holds orders.view');
+  perform pg_temp.check(not public.resolve_permission(v, 'orders', 'view_all'), '2c2. precondition: and not view_all');
+  perform pg_temp.check(not public.operations_reviewer_can_open_order(v, o), '2c2. precondition: they cannot open Order A (not admin, not operations, not on it)');
+  perform pg_temp.check(not public.operations_reviewer_covers_all_orders(v), '2c2. so they do not cover every Order');
+  perform pg_temp.expect_error(
+    format('select pg_temp.assign(%L)', v),
+    'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS', '2c2. orders.view alone does not make somebody the reviewer');
+  perform pg_temp.check((select user_id from public.order_operations_reviewers where duty = 'pi_handoff') is null, '2c2. the assignment is unchanged');
+  -- The bar, stated positively: operations team, or view_all, or admin.
+  perform pg_temp.check(public.operations_reviewer_covers_all_orders(current_setting('test.reviewer_id')::uuid), '2c3. an operations-team member with orders.view covers every Order');
+  perform pg_temp.check(public.operations_reviewer_covers_all_orders(current_setting('test.admin2_id')::uuid), '2c3. an active admin covers every Order');
+end $$;
+
 -- The real reviewer: assigned, and the waiting handoff readdressed + notified.
 do $$
 declare v jsonb; h public.order_operations_handoffs; o uuid := current_setting('test.order_a')::uuid;
@@ -294,6 +333,46 @@ begin
   perform pg_temp.check((select count(*) from public.notifications where entity_id = o) = 1, '3. exactly one notification');
   perform pg_temp.check((select count(*) from public.notifications where user_id = current_setting('test.owner_id')::uuid and entity_id = o) = 0,
     '3. the approver is not told about their own approval');
+end $$;
+
+-- ═══ 3b. THE CONFIGURED REVIEWER CANNOT OPEN THIS ORDER ═══════════════════
+--
+-- Their access changed after they were assigned: still active, still
+-- orders.view, but no longer on the operations team and never view_all. The
+-- handoff is recorded UNASSIGNED with that reason, they are not addressed or
+-- notified, and the administrators are told what to fix.
+
+update public.users set team = 'sales' where id = current_setting('test.reviewer_id')::uuid;
+select pg_temp.make_pi(current_setting('test.pi_f')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT F', 1000000);
+select set_config('test.order_f', pg_temp.approve(current_setting('test.pi_f')::uuid)::text, true);
+
+do $$
+declare h public.order_operations_handoffs; o uuid := current_setting('test.order_f')::uuid; r uuid := current_setting('test.reviewer_id')::uuid; v jsonb;
+begin
+  perform pg_temp.check(not public.operations_reviewer_can_open_order(r, o), '3b. precondition: the configured reviewer cannot open F');
+  h := pg_temp.live(o);
+  perform pg_temp.check(h.assigned_to is null and h.unassigned_reason = 'reviewer_cannot_open_order',
+    '3b. recorded unassigned, with the reason');
+  perform pg_temp.check((select count(*) from public.notifications where entity_id = o and user_id = r) = 0,
+    '3b. the reviewer who cannot open it is not notified');
+  perform pg_temp.check((select count(*) from public.notifications where entity_id = o
+     and user_id = current_setting('test.owner_id')::uuid and body like '%cannot open this Order%') = 1,
+    '3b. the administrators are told why');
+  perform pg_temp.check((select payload ->> 'unassigned_reason' from public.order_activity_log where order_id = o
+     and event_type = 'operations_handoff_recorded') = 'reviewer_cannot_open_order', '3b. and the history says so');
+  perform pg_temp.expect_error(
+    format('select pg_temp.decide(%L, %L, %L, null)', r, h.id, 'accepted'),
+    'ORDER_OPERATIONS_HANDOFF_UNASSIGNED', '3b. they cannot accept it either');
+  -- Re-saving the SAME person while their access is short is refused too.
+  perform pg_temp.expect_error(
+    format('select pg_temp.assign(%L)', r),
+    'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS', '3b. and cannot be (re)assigned while their access does not cover every Order');
+  -- Access restored: re-assigning them readdresses F (and only F is waiting on it).
+  update public.users set team = 'operations' where id = r;
+  v := pg_temp.assign(r);
+  perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 1, '3c. once they can open every Order again, the waiting handoff is readdressed');
+  h := pg_temp.live(o);
+  perform pg_temp.check(h.assigned_to = r and h.unassigned_reason is null, '3c. F now waits on them, reason cleared');
 end $$;
 
 -- ═══ 4. AUTHORITY ON THE DECISION — one door, however it is reached ════════
@@ -461,13 +540,13 @@ declare v jsonb; r1 uuid := current_setting('test.reviewer_id')::uuid; r2 uuid :
   d uuid := current_setting('test.order_d')::uuid; e uuid := current_setting('test.order_e')::uuid; b uuid := current_setting('test.order_b')::uuid;
 begin
   v := pg_temp.assign(r2);
-  -- live and unresolved: A V1 (awaiting), C (awaiting), D (flagged). Not B V2 or E (accepted).
-  perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 3, '6a. the awaiting AND the flagged handoffs move');
+  -- live and unresolved: A V1 (awaiting), C (awaiting), D (flagged), F (awaiting). Not B V2 or E (accepted).
+  perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 4, '6a. the awaiting AND the flagged handoffs move');
   perform pg_temp.check((pg_temp.live(c)).assigned_to = r2 and (pg_temp.live(d)).assigned_to = r2, '6a. C and D now wait on the replacement');
   perform pg_temp.check((pg_temp.live(d)).status = 'clarification_needed' and (pg_temp.live(d)).clarification_reason = 'D: which finish?',
     '6a. the flag and its reason survive the move');
   perform pg_temp.check((pg_temp.live(e)).assigned_to = r1 and (pg_temp.live(e)).status = 'accepted', '6a. the accepted one keeps its reviewer');
-  perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and type::text = 'order_operations_review_requested') = 3,
+  perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and type::text = 'order_operations_review_requested') = 4,
     '6a. the replacement is told once per Order');
   perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and entity_id = d and title like '%flagged for clarification%') = 1,
     '6a. …and told that D is flagged');
@@ -491,9 +570,11 @@ declare v jsonb; a uuid := current_setting('test.order_a')::uuid; c uuid := curr
 begin
   perform pg_temp.decide(r2, (pg_temp.live(c)).id, 'clarification_needed', 'C: image missing');
   v := pg_temp.assign(null);
-  -- live and unresolved now: A V1 (awaiting), C (flagged). D is accepted.
-  perform pg_temp.check((v ->> 'unassigned_handoffs')::int = 2 and (v ->> 'reassigned_handoffs')::int = 0, '6d. clearing unassigns the awaiting and the flagged handoff');
+  -- live and unresolved now: A V1 (awaiting), C (flagged), F (awaiting). D is accepted.
+  perform pg_temp.check((v ->> 'unassigned_handoffs')::int = 3 and (v ->> 'reassigned_handoffs')::int = 0, '6d. clearing unassigns the awaiting and the flagged handoffs');
   perform pg_temp.check((pg_temp.live(a)).assigned_to is null and (pg_temp.live(c)).assigned_to is null, '6d. both show unassigned');
+  perform pg_temp.check((pg_temp.live(a)).unassigned_reason = 'no_reviewer' and (pg_temp.live(c)).unassigned_reason = 'no_reviewer',
+    '6d. …with the reason: nobody is configured');
   perform pg_temp.check((pg_temp.live(c)).status = 'clarification_needed', '6d. the flag is kept — clearing resolves nothing');
   perform pg_temp.check((pg_temp.live(d)).assigned_to = r2, '6d. the accepted one keeps its reviewer');
   perform pg_temp.check(pg_temp.events(c, 'operations_reviewer_unassigned') = 1, '6d. logged as an unassignment');
@@ -518,6 +599,10 @@ begin
   perform pg_temp.approve_revision(c, current_setting('test.owner_id')::uuid);
   perform pg_temp.check((pg_temp.live(c)).version_number = 2 and (pg_temp.live(c)).assigned_to is null,
     '6g. a new handoff is recorded unassigned while the assigned reviewer is inactive');
+  perform pg_temp.check((pg_temp.live(c)).unassigned_reason = 'reviewer_inactive', '6g. …with the reason: the reviewer is inactive');
+  perform pg_temp.check((select count(*) from public.notifications where entity_id = c
+     and user_id = current_setting('test.owner_id')::uuid and body like '%no longer an active account%') = 1,
+    '6g. …and the administrators are told');
   -- r2 was told about C twice while active (the 6a replacement, the 6f
   -- re-assignment); the approval of V2 while inactive adds nothing.
   perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and entity_id = c) = 2,

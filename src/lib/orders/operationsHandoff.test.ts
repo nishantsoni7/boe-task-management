@@ -50,7 +50,7 @@ function handoff(over: Partial<PersistedOperationsHandoff> = {}): PersistedOpera
   return {
     id: 'h1', order_id: 'o1', pi_version_id: 'v1', submission_id: 's1', version_number: 1,
     approved_by: NISHANT, approved_at: '2026-09-20T10:00:00Z',
-    assigned_to: NITISH, assigned_at: '2026-09-20T10:00:00Z',
+    assigned_to: NITISH, assigned_at: '2026-09-20T10:00:00Z', unassigned_reason: null,
     production_alignment_at_approval: 'not_aligned', prior_handoff_status: null,
     status: 'awaiting',
     accepted_by: null, accepted_at: null, accepted_note: null,
@@ -188,7 +188,7 @@ describe('who may decide — drawn only; the database decides again', () => {
 
 describe('no reviewer assigned', () => {
   test('is visible, needs an administrator, and is never shown as accepted or aligned', () => {
-    const view = describeOperationsHandoff({ ...base, live: handoff({ assigned_to: null, assigned_at: null }), viewerId: NISHANT })
+    const view = describeOperationsHandoff({ ...base, live: handoff({ assigned_to: null, assigned_at: null, unassigned_reason: 'no_reviewer' }), viewerId: NISHANT })
     if (view.kind !== 'recorded') throw new Error('recorded')
     assert.equal(view.unassigned, true)
     assert.equal(view.reviewerLine, OPERATIONS_HANDOFF_UNASSIGNED_LABEL)
@@ -197,6 +197,21 @@ describe('no reviewer assigned', () => {
     assert.equal(view.readOnlyNote, OPERATIONS_HANDOFF_UNASSIGNED_HINT)
     assert.match(OPERATIONS_HANDOFF_UNASSIGNED_HINT, /Control Center/)
     assert.deepEqual(view.actions, { accept: false, cannotAccept: false, withdraw: false }, 'an admin is not offered acceptance in the reviewer\'s place')
+    assert.equal(view.unassignedReason, 'no_reviewer')
+  })
+
+  test('each reason says what an administrator must fix', () => {
+    const inactive = describeOperationsHandoff({ ...base, live: handoff({ assigned_to: null, assigned_at: null, unassigned_reason: 'reviewer_inactive' }), viewerId: NISHANT })
+    if (inactive.kind !== 'recorded') throw new Error('recorded')
+    assert.equal(inactive.reviewerLine, 'Operations reviewer is no longer active')
+    assert.match(inactive.unassignedHint ?? '', /no longer an active account/)
+    const cannot = describeOperationsHandoff({ ...base, live: handoff({ assigned_to: null, assigned_at: null, unassigned_reason: 'reviewer_cannot_open_order' }), viewerId: NITISH })
+    if (cannot.kind !== 'recorded') throw new Error('recorded')
+    assert.equal(cannot.reviewerLine, 'Operations reviewer cannot open this Order')
+    assert.match(cannot.unassignedHint ?? '', /an admin, a member of the operations team, or a holder of orders\.view_all/)
+    assert.deepEqual(cannot.actions, { accept: false, cannotAccept: false, withdraw: false },
+      'the configured reviewer who cannot open the Order is offered nothing')
+    assert.equal(cannot.readOnlyNote, cannot.unassignedHint)
   })
 })
 
@@ -281,7 +296,7 @@ describe('the reviewer assignment (Control Center)', () => {
   })
   test('refusals and confirmations are sentences, and clearing says what became unassigned', () => {
     assert.match(describeReviewerAssignmentFailure({ message: 'ORDER_OPERATIONS_REVIEWER_INACTIVE' }), /not active/)
-    assert.match(describeReviewerAssignmentFailure({ message: 'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS' }), /cannot open Orders/)
+    assert.match(describeReviewerAssignmentFailure({ message: 'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS' }), /cannot open every Order.*View all Orders/)
     assert.match(describeReviewerSaved({ name: 'Nitish', reassigned: 2 }), /Nitish is now the operations reviewer\. 2 waiting or flagged handoffs reassigned/)
     assert.match(describeReviewerSaved({ name: 'Nitish', reassigned: 0 }), /^Nitish is now the operations reviewer\.$/)
     assert.match(describeReviewerSaved({ name: null, reassigned: 0, unassigned: 3 }), /3 waiting or flagged handoffs now show as unassigned/)

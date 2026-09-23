@@ -2358,9 +2358,15 @@ accept** (reason required). On an accepted version the only remaining action is
 ### Who the reviewer is
 
 One assignment, in Control Center → Operations Handoff, held as a user id in
-`order_operations_reviewers`. The trigger resolves it at approval and requires
-the account to be active and not deleted; otherwise the handoff is recorded
-**unassigned** and stays visibly so. Choosing someone readdresses every live
+`order_operations_reviewers`. Only somebody who can open **every** Order can be
+chosen — an active admin, an active member of the operations department, or an
+active holder of `orders.view_all`, with Orders module entry; `orders.view`
+alone is refused. The trigger reads the assignment under a SHARE lock on that
+row (the assignment RPC takes the UPDATE lock, so the two serialize) and
+addresses the handoff only to a reviewer who is active and can open **that**
+Order; otherwise it is recorded **unassigned** with the reason
+(`no_reviewer`, `reviewer_inactive`, `reviewer_cannot_open_order`), stays
+visibly so, and every active admin is notified. Choosing someone readdresses every live
 unresolved handoff (awaiting **and** flagged) to them; clearing the choice
 unassigns every one of them, visibly. A former reviewer, or a deactivated one,
 can decide nothing: `decide_order_operations_handoff()` re-checks under row

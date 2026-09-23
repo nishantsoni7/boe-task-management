@@ -111,6 +111,83 @@ create policy "order_operations_reviewers_admin_select" on public.order_operatio
     where u.id = auth.uid() and u.role = 'admin' and u.is_active and coalesce(u.is_deleted, false) = false
   ));
 
+-- THE ONE SETTINGS ROW EXISTS FROM THE START, with nobody assigned. Not a
+-- decision and not a backfill: it is the row the approval trigger takes a
+-- SHARE lock on and the assignment RPC takes an UPDATE lock on, which is what
+-- serializes "who is the reviewer right now" between a PI approval and a
+-- Control Center change (see §6 and §7).
+insert into public.order_operations_reviewers (duty, user_id, assigned_by, assigned_at)
+values ('pi_handoff', null, null, now())
+on conflict (duty) do nothing;
+
+-- ── Who can be routed an Order at all ──
+--
+-- A reviewer must be able to OPEN every Order handed to them. orders.view alone
+-- opens the module, not every row: the Order's own visibility (the policies of
+-- 20260656/20260666/20260903, restated by can_view_order_as_actor) admits an
+-- active admin, the operations team, the Order's salesperson or requester, or
+-- a holder of the protected orders.view_all. These two helpers ask that rule
+-- for a GIVEN user, not for auth.uid(), so the trigger and the assignment RPC
+-- can decide before addressing anyone. INTERNAL: not callable by clients.
+
+create or replace function public.operations_reviewer_can_open_order(p_user uuid, p_order_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+      from public.users u
+      join public.orders o on o.id = p_order_id
+     where u.id = p_user
+       and u.is_active
+       and coalesce(u.is_deleted, false) = false
+       -- module entry, as module_entry_open('orders') decides it
+       and (u.role = 'admin' or public.resolve_permission(u.id, 'orders', 'view'))
+       -- the Order's own visibility, as can_view_order_as_actor decides it
+       and (
+         u.role = 'admin'
+         or u.team::text = 'operations'
+         or o.requested_by = u.id
+         or o.assigned_to  = u.id
+         or public.resolve_permission(u.id, 'orders', 'view_all')
+       )
+  );
+$$;
+
+comment on function public.operations_reviewer_can_open_order(uuid, uuid) is
+  'Whether p_user, as they are now (active, not deleted), can open Order p_order_id: module entry plus the Order''s own visibility rule, for a given user rather than auth.uid(). Internal.';
+
+revoke execute on function public.operations_reviewer_can_open_order(uuid, uuid) from public, anon, authenticated;
+
+create or replace function public.operations_reviewer_covers_all_orders(p_user uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.users u
+     where u.id = p_user
+       and u.is_active
+       and coalesce(u.is_deleted, false) = false
+       and (u.role = 'admin' or public.resolve_permission(u.id, 'orders', 'view'))
+       and (
+         u.role = 'admin'
+         or u.team::text = 'operations'
+         or public.resolve_permission(u.id, 'orders', 'view_all')
+       )
+  );
+$$;
+
+comment on function public.operations_reviewer_covers_all_orders(uuid) is
+  'Whether p_user can open EVERY Confirmed Order: an active admin, an active member of the operations team, or an active holder of orders.view_all, with Orders module entry. The bar for being assigned as the operations reviewer. Internal.';
+
+revoke execute on function public.operations_reviewer_covers_all_orders(uuid) from public, anon, authenticated;
+
 
 -- ═══ 3. The handoff, one per approved PI version ═══════════════════════════
 
@@ -125,9 +202,14 @@ create table if not exists public.order_operations_handoffs (
   -- actor is later set null.
   approved_by                      uuid references public.users(id) on delete set null,
   approved_at                      timestamptz not null,
-  -- The reviewer this handoff is addressed to. NULL = unassigned, visibly.
+  -- The reviewer this handoff is addressed to. NULL = unassigned, visibly —
+  -- and unassigned_reason says WHY, so the Order and the queues can tell an
+  -- administrator what to fix: nobody is configured, the configured person
+  -- is no longer active, or they cannot open this particular Order.
   assigned_to                      uuid references public.users(id) on delete set null,
   assigned_at                      timestamptz,
+  unassigned_reason                text
+    check (unassigned_reason is null or unassigned_reason in ('no_reviewer', 'reviewer_inactive', 'reviewer_cannot_open_order')),
   -- What production alignment said when this version was approved, BEFORE
   -- the trigger reset it. 'aligned' here means the Order was in production
   -- against an earlier version: exactly the case that needs a warning.
@@ -161,7 +243,10 @@ create table if not exists public.order_operations_handoffs (
 
   constraint order_operations_handoffs_version_key unique (pi_version_id),
   constraint order_operations_handoffs_assignment_complete
-    check ((assigned_to is null) = (assigned_at is null)),
+    check (
+      (assigned_to is null) = (assigned_at is null)
+      and (assigned_to is null) = (unassigned_reason is not null)
+    ),
   constraint order_operations_handoffs_acceptance_complete
     check (
       -- accepted: the acceptance is present and NOT withdrawn
@@ -381,7 +466,9 @@ as $$
 declare
   v_order        public.orders%rowtype;
   v_prior        public.order_operations_handoffs%rowtype;
+  v_configured   uuid;
   v_reviewer     uuid;
+  v_unassigned   text;
   v_handoff_id   uuid;
   v_now          timestamptz := now();
   v_approver     text;
@@ -405,14 +492,40 @@ begin
   end if;
   v_alignment := v_order.production_alignment;
 
-  -- The assigned reviewer, resolved NOW through their user record. Inactive or
-  -- deleted means unassigned — never an admin in their place.
-  select r.user_id into v_reviewer
+  -- WHO THE REVIEWER IS RIGHT NOW — read under a SHARE lock on the one
+  -- settings row. set_order_operations_reviewer() takes the UPDATE lock on
+  -- that same row before it changes anything, so the two serialize: either
+  -- this approval reads the reviewer AFTER a Control Center change committed,
+  -- or the change waits for this approval to commit and then readdresses the
+  -- handoff written here. Nothing can be addressed to a reviewer who was
+  -- replaced mid-approval. (Lock order everywhere: orders → reviewers →
+  -- handoffs. The assignment RPC never locks orders; the decision RPC never
+  -- locks reviewers.)
+  select r.user_id into v_configured
     from public.order_operations_reviewers r
-    join public.users u on u.id = r.user_id
    where r.duty = 'pi_handoff'
-     and u.is_active
-     and coalesce(u.is_deleted, false) = false;
+     for share;
+
+  -- ADDRESSED ONLY TO SOMEBODY WHO CAN OPEN THIS ORDER, as they are now:
+  -- active, not deleted, with module entry and this Order's own visibility.
+  -- Otherwise the handoff is recorded UNASSIGNED with the reason, and the
+  -- administrators are told. Never an admin in the reviewer's place.
+  if v_configured is null then
+    v_reviewer := null;
+    v_unassigned := 'no_reviewer';
+  elsif not exists (
+    select 1 from public.users u
+    where u.id = v_configured and u.is_active and coalesce(u.is_deleted, false) = false
+  ) then
+    v_reviewer := null;
+    v_unassigned := 'reviewer_inactive';
+  elsif not public.operations_reviewer_can_open_order(v_configured, new.order_id) then
+    v_reviewer := null;
+    v_unassigned := 'reviewer_cannot_open_order';
+  else
+    v_reviewer := v_configured;
+    v_unassigned := null;
+  end if;
 
   -- The earlier version's handoff, whatever it decided, is now history. Its
   -- decision columns are untouched; only the supersession is stamped.
@@ -426,12 +539,12 @@ begin
   insert into public.order_operations_handoffs (
     order_id, pi_version_id, submission_id, version_number,
     approved_by, approved_at,
-    assigned_to, assigned_at,
+    assigned_to, assigned_at, unassigned_reason,
     production_alignment_at_approval, prior_handoff_status
   ) values (
     new.order_id, new.id, new.submission_id, new.version_number,
     new.decided_by, coalesce(new.decided_at, v_now),
-    v_reviewer, case when v_reviewer is null then null else v_now end,
+    v_reviewer, case when v_reviewer is null then null else v_now end, v_unassigned,
     v_alignment, v_prior.status
   )
   returning id into v_handoff_id;
@@ -443,10 +556,31 @@ begin
             'version_id', new.id,
             'version_number', new.version_number,
             'assigned_to', v_reviewer,
+            'unassigned_reason', v_unassigned,
             'production_alignment', v_alignment,
             'superseded_handoff_id', v_prior.id,
             'superseded_handoff_status', v_prior.status,
             'superseded_version_number', v_prior.version_number));
+
+  -- UNASSIGNED IS AN ADMINISTRATOR'S PROBLEM, and they are told at once —
+  -- every active administrator, the approver included, because the fix
+  -- (assign somebody in Control Center) is theirs and not the reviewer's.
+  -- This is what keeps a handoff recorded before a reviewer is configured,
+  -- or while the configured one cannot open the Order, from going unseen.
+  if v_reviewer is null then
+    insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
+    select u.id, null, new.order_id, 'order_operations_review_requested'::notification_type,
+           format('Order %s: PI V%s approved, but no operations reviewer can take it. Assign one in Control Center.',
+                  v_order.display_number, new.version_number),
+           case v_unassigned
+             when 'reviewer_inactive' then 'The configured operations reviewer is no longer an active account.'
+             when 'reviewer_cannot_open_order' then 'The configured operations reviewer cannot open this Order. Choose an admin, a member of the operations team, or a holder of orders.view_all.'
+             else 'No operations reviewer is configured. Control Center → Operations Handoff.'
+           end,
+           true
+      from public.users u
+     where u.role = 'admin' and u.is_active and coalesce(u.is_deleted, false) = false;
+  end if;
 
   -- AN OLDER ALIGNMENT NEVER COVERS A NEWER VERSION. If the Order was aligned
   -- for production, that alignment was for the version just superseded (or,
@@ -539,13 +673,24 @@ begin
       raise exception 'ORDER_OPERATIONS_REVIEWER_INACTIVE: the operations reviewer must be an active account'
         using errcode = 'P0001';
     end if;
-    if not (v_target.role = 'admin' or public.resolve_permission(p_user_id, 'orders', 'view')) then
-      raise exception 'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS: the operations reviewer must be able to open Orders'
+    -- THE REVIEWER MUST BE ABLE TO OPEN EVERY ORDER routed to them. orders.view
+    -- opens the module, not every row; the bar is an admin, the operations
+    -- team, or orders.view_all (with module entry).
+    if not public.operations_reviewer_covers_all_orders(p_user_id) then
+      raise exception 'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS: the operations reviewer must be able to open every Order — an admin, a member of the operations team, or a holder of orders.view_all, with Orders access'
         using errcode = 'P0001';
     end if;
   end if;
 
-  select user_id into v_previous from public.order_operations_reviewers where duty = 'pi_handoff';
+  -- THE UPDATE LOCK on the one settings row, taken BEFORE anything else is
+  -- read or written, is what serializes this change against a PI approval in
+  -- flight: the approval trigger takes a SHARE lock on the same row to read
+  -- the reviewer, so this statement waits for any approval mid-transaction
+  -- to commit — and the loop below then sees the handoff it wrote.
+  select user_id into v_previous
+    from public.order_operations_reviewers
+   where duty = 'pi_handoff'
+     for update;
 
   insert into public.order_operations_reviewers (duty, user_id, assigned_by, assigned_at)
   values ('pi_handoff', p_user_id, v_actor, v_now)
@@ -557,20 +702,38 @@ begin
   -- assignment is cleared, so the Order and the queues say so. Accepted
   -- handoffs keep the name of whoever accepted them, and a superseded one is
   -- history. A former reviewer can decide nothing from here on: the decision
-  -- door checks assigned_to at the moment of the call.
+  -- door checks assigned_to at the moment of the call. Handoffs the new
+  -- reviewer cannot open (cannot happen under the bar above, checked anyway
+  -- per Order) stay unassigned with that reason.
   for v_h in
-    select h.id, h.order_id, h.version_number, h.status, h.assigned_to, o.display_number
+    select h.id, h.order_id, h.version_number, h.status, h.assigned_to, h.unassigned_reason, o.display_number
       from public.order_operations_handoffs h
       join public.orders o on o.id = h.order_id
      where h.superseded_at is null
        and h.status <> 'accepted'
-       and h.assigned_to is distinct from p_user_id
+       and (h.assigned_to is distinct from p_user_id
+            or (p_user_id is null and h.unassigned_reason is distinct from 'no_reviewer'))
        and o.status <> 'cancelled'
      order by h.created_at
        for update of h
   loop
+    if p_user_id is not null and not public.operations_reviewer_can_open_order(p_user_id, v_h.order_id) then
+      update public.order_operations_handoffs
+         set assigned_to = null, assigned_at = null, unassigned_reason = 'reviewer_cannot_open_order'
+       where id = v_h.id;
+      insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+      values (v_h.order_id, v_actor, 'operations_reviewer_unassigned',
+              jsonb_build_object('handoff_id', v_h.id, 'version_number', v_h.version_number,
+                                 'handoff_status', v_h.status, 'unassigned_reason', 'reviewer_cannot_open_order',
+                                 'assigned_to', null, 'previously_assigned_to', v_h.assigned_to));
+      v_unassigned := v_unassigned + 1;
+      continue;
+    end if;
+
     update public.order_operations_handoffs
-       set assigned_to = p_user_id, assigned_at = case when p_user_id is null then null else v_now end
+       set assigned_to = p_user_id,
+           assigned_at = case when p_user_id is null then null else v_now end,
+           unassigned_reason = case when p_user_id is null then 'no_reviewer' else null end
      where id = v_h.id;
 
     insert into public.order_activity_log (order_id, actor_id, event_type, payload)
@@ -578,6 +741,7 @@ begin
             case when p_user_id is null then 'operations_reviewer_unassigned' else 'operations_reviewer_assigned' end,
             jsonb_build_object('handoff_id', v_h.id, 'version_number', v_h.version_number,
                                'handoff_status', v_h.status,
+                               'unassigned_reason', case when p_user_id is null then 'no_reviewer' end,
                                'assigned_to', p_user_id, 'previously_assigned_to', v_h.assigned_to));
 
     if p_user_id is null then
@@ -928,8 +1092,14 @@ begin
   end if;
   if has_function_privilege('authenticated', 'public.order_pi_versions_record_operations_handoff()', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.order_operations_handoffs_guard()', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb)', 'EXECUTE') then
+     or has_function_privilege('authenticated', 'public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.operations_reviewer_can_open_order(uuid, uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.operations_reviewer_covers_all_orders(uuid)', 'EXECUTE') then
     raise exception 'ASSERT: internal functions must not be executable by clients';
+  end if;
+  -- The one settings row the approval trigger and the assignment RPC lock.
+  if (select count(*) from public.order_operations_reviewers where duty = 'pi_handoff') <> 1 then
+    raise exception 'ASSERT: the pi_handoff settings row must exist exactly once';
   end if;
   -- The alignment door now names the handoff door: the two cannot diverge.
   if not exists (

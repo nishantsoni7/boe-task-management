@@ -26,6 +26,7 @@ import {
   OPERATIONS_REVIEWER_NOBODY,
   OPERATIONS_REVIEWER_NOBODY_HINT,
   OPERATIONS_REVIEWER_SAVE_LABEL,
+  OPERATIONS_REVIEWER_ELIGIBILITY,
   OPERATIONS_REVIEWER_SECTION_DESCRIPTION,
   OPERATIONS_REVIEWER_SECTION_TITLE,
   describeReviewerAssignmentFailure,
@@ -336,7 +337,12 @@ function OperationsReviewerTab({ members }: { members: UserProfile[] }) {
       {error && <div className={cc.error} style={{ marginTop: 10 }}>{error}</div>}
       {saved && <div className={cc.success} style={{ marginTop: 10 }}>{saved}</div>}
 
-      <div className={cc.note} style={{ marginTop: 18 }}>
+      <div className={cc.note} style={{ marginTop: 14 }}>
+        <div className={cc.noteTitle}>Who can be chosen</div>
+        {OPERATIONS_REVIEWER_ELIGIBILITY}
+      </div>
+
+      <div className={cc.note} style={{ marginTop: 12 }}>
         <div className={cc.noteTitle}>What the reviewer does</div>
         When an administrator approves a PI, or approves a revised PI, the reviewer is notified and
         the Order shows that exact version as awaiting operations review. They open the

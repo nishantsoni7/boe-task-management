@@ -52,8 +52,6 @@ import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
   CANNOT_ACCEPT_LABEL,
-  OPERATIONS_HANDOFF_UNASSIGNED_HINT,
-  OPERATIONS_HANDOFF_UNASSIGNED_LABEL,
   OPERATIONS_REVIEW_ANCHOR,
   OPERATIONS_REVIEW_TITLE,
   ACCEPTANCE_MEANING,
@@ -554,8 +552,11 @@ export function OrderOperationsReviewCard({
               <dd className="order-status-approval-value">
                 {view.unassigned ? (
                   <>
-                    <StatusPill label={OPERATIONS_HANDOFF_UNASSIGNED_LABEL} tone="amber" />
-                    <span className="order-status-approval-by">{OPERATIONS_HANDOFF_UNASSIGNED_HINT}</span>
+                    {/* WHY nobody is assigned — configured nobody, configured
+                        somebody inactive, or somebody who cannot open this
+                        Order — and what an administrator must do about it. */}
+                    <StatusPill label={view.reviewerLine} tone="amber" />
+                    <span className="order-status-approval-by">{view.unassignedHint}</span>
                   </>
                 ) : (
                   <span className="order-status-approval-by">{view.reviewerName ?? 'Assigned'}</span>

@@ -10,7 +10,7 @@ import { formatINR } from '@/lib/currency'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { paymentViewClauses } from '@/lib/finance/paymentClassification'
-import { OPERATIONS_REVIEW_ANCHOR } from '@/lib/orders/operationsHandoff'
+import { OPERATIONS_REVIEW_ANCHOR, UNASSIGNED_REASON_LABEL, type UnassignedReason } from '@/lib/orders/operationsHandoff'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +136,7 @@ type OperationsReviewRow = {
   version_number: number
   approved_at: string
   assigned_to: string | null
+  unassigned_reason: UnassignedReason | null
   created_at: string
   status: 'awaiting' | 'clarification_needed'
   clarification_at: string | null
@@ -222,7 +223,7 @@ export default function ActionQueuePage() {
       supabase
         .from('order_operations_handoffs')
         .select(`
-          id, order_id, version_number, approved_at, assigned_to, created_at,
+          id, order_id, version_number, approved_at, assigned_to, unassigned_reason, created_at,
           status, clarification_at, clarification_reason,
           order:orders!order_id(client_name, total_value, status),
           reviewer:users!assigned_to(full_name, is_active)
@@ -354,7 +355,7 @@ export default function ActionQueuePage() {
             + (inactive ? ' (reviewer inactive)' : '')
           : r.assigned_to
             ? `PI V${r.version_number} awaiting ${reviewer}${inactive ? ' (reviewer inactive — reassign)' : ''}`
-            : `PI V${r.version_number} awaiting operations — no reviewer assigned`,
+            : `PI V${r.version_number} awaiting operations — ${UNASSIGNED_REASON_LABEL[r.unassigned_reason ?? 'no_reviewer'].toLowerCase()}`,
         clientName: r.order?.client_name ?? 'Unnamed client',
         ownerName: r.reviewer?.full_name ?? null,
         module: 'Orders',

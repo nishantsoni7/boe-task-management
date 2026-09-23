@@ -37,10 +37,34 @@
 
 export type OperationsHandoffStatus = 'awaiting' | 'accepted' | 'clarification_needed'
 
+/**
+ * WHY a handoff has nobody to review it. All three need an administrator:
+ * nobody is configured; the configured person is no longer active; or the
+ * configured person cannot open this particular Order (their access changed
+ * after they were assigned). The database records the reason at creation and
+ * on every reassignment; the page and the queues say it in words.
+ */
+export type UnassignedReason = 'no_reviewer' | 'reviewer_inactive' | 'reviewer_cannot_open_order'
+
+export const UNASSIGNED_REASON_LABEL: Record<UnassignedReason, string> = {
+  no_reviewer:                'No operations reviewer assigned',
+  reviewer_inactive:          'Operations reviewer is no longer active',
+  reviewer_cannot_open_order: 'Operations reviewer cannot open this Order',
+}
+
+export const UNASSIGNED_REASON_HINT: Record<UnassignedReason, string> = {
+  no_reviewer:
+    'An administrator must assign the operations reviewer in Control Center before this version can be accepted.',
+  reviewer_inactive:
+    'The configured operations reviewer is no longer an active account. An administrator must assign someone else in Control Center.',
+  reviewer_cannot_open_order:
+    'The configured operations reviewer cannot open this Order. An administrator must assign someone who can open every Order: an admin, a member of the operations team, or a holder of orders.view_all.',
+}
+
 /** The columns the page reads; matches the table. */
 export const ORDER_OPERATIONS_HANDOFF_COLUMNS = [
   'id', 'order_id', 'pi_version_id', 'submission_id', 'version_number',
-  'approved_by', 'approved_at', 'assigned_to', 'assigned_at',
+  'approved_by', 'approved_at', 'assigned_to', 'assigned_at', 'unassigned_reason',
   'production_alignment_at_approval', 'prior_handoff_status', 'status',
   'accepted_by', 'accepted_at', 'accepted_note',
   'acceptance_withdrawn_by', 'acceptance_withdrawn_at', 'acceptance_withdrawn_reason',
@@ -58,6 +82,7 @@ export type PersistedOperationsHandoff = {
   approved_at: string
   assigned_to: string | null
   assigned_at: string | null
+  unassigned_reason: UnassignedReason | null
   production_alignment_at_approval: 'not_aligned' | 'aligned'
   prior_handoff_status: OperationsHandoffStatus | null
   status: OperationsHandoffStatus
@@ -162,6 +187,9 @@ export type OperationsHandoffView =
       reviewerName: string | null
       reviewerLine: string
       unassigned: boolean
+      /** Why nobody is assigned, and what an administrator must do. Null when assigned. */
+      unassignedReason: UnassignedReason | null
+      unassignedHint: string | null
       /** The decision, when there is one. */
       decision: OperationsHandoffDecisionLine | null
       /** A withdrawn acceptance: what had been accepted, kept on record. */
@@ -339,9 +367,11 @@ export function describeOperationsHandoff(input: {
     approvedLine: `Approved by ${approverName ?? 'an administrator'} · ${formatWhen(live.approved_at)}`,
     reviewerName,
     reviewerLine: unassigned
-      ? OPERATIONS_HANDOFF_UNASSIGNED_LABEL
+      ? UNASSIGNED_REASON_LABEL[live.unassigned_reason ?? 'no_reviewer']
       : `Operations reviewer: ${reviewerName ?? 'assigned'}`,
     unassigned,
+    unassignedReason: unassigned ? (live.unassigned_reason ?? 'no_reviewer') : null,
+    unassignedHint: unassigned ? UNASSIGNED_REASON_HINT[live.unassigned_reason ?? 'no_reviewer'] : null,
     decision,
     withdrawn,
     revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
@@ -356,7 +386,7 @@ export function describeOperationsHandoff(input: {
     readOnlyNote: mayDecide
       ? null
       : unassigned
-        ? OPERATIONS_HANDOFF_UNASSIGNED_HINT
+        ? UNASSIGNED_REASON_HINT[live.unassigned_reason ?? 'no_reviewer']
         : input.orderStatus === 'cancelled'
           ? null
           : OPERATIONS_REVIEW_READ_ONLY_NOTE,
@@ -449,6 +479,9 @@ export function describeHandoffFailure(error: { message?: string | null } | null
 export const OPERATIONS_REVIEWER_SECTION_TITLE = 'Who reviews approved PI versions for production'
 export const OPERATIONS_REVIEWER_SECTION_DESCRIPTION =
   'One person. Every time a PI becomes a Confirmed Order, or a revised PI is approved, they are notified and asked to accept that exact version for production or say what needs clarifying. Their acceptance is their own: an administrator is never counted in their place.'
+/** Who can be chosen, in words — the same rule set_order_operations_reviewer() enforces. */
+export const OPERATIONS_REVIEWER_ELIGIBILITY =
+  'The reviewer must be able to open every Confirmed Order: an admin, a member of the Operations department, or somebody holding "View all Orders" — with Orders access and an active account. Orders access alone is not enough. If the reviewer later loses that access, new PI versions they cannot open are left unassigned and the administrators are told.'
 export const OPERATIONS_REVIEWER_NOBODY = 'Nobody is assigned'
 export const OPERATIONS_REVIEWER_NOBODY_HINT =
   'New handoffs are recorded and shown as unassigned until someone is chosen here. Choosing someone also takes over every handoff that is still waiting or flagged; clearing the choice leaves every one of them visibly unassigned.'
@@ -467,7 +500,7 @@ export function eligibleOperationsReviewers<T extends { id: string; full_name: s
 export function describeReviewerAssignmentFailure(error: { message?: string | null } | null | undefined): string {
   const m = error?.message ?? ''
   if (m.includes('ORDER_OPERATIONS_REVIEWER_INACTIVE')) return 'That account is not active. Choose an active person.'
-  if (m.includes('ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS')) return 'That person cannot open Orders. Give them Orders access first, or choose someone who has it.'
+  if (m.includes('ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS')) return 'That person cannot open every Order. Choose an admin, a member of the Operations department, or somebody holding "View all Orders".'
   if (m.includes('ORDER_OPERATIONS_REVIEWER_NOT_FOUND')) return 'That person has no user record.'
   if (m.includes('Only an administrator')) return 'Only an administrator can assign the operations reviewer.'
   return m || 'The reviewer could not be saved.'

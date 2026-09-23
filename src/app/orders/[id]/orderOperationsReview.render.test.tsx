@@ -36,7 +36,7 @@ function handoff(over: Partial<PersistedOperationsHandoff> = {}): PersistedOpera
   return {
     id: 'h1', order_id: 'o1', pi_version_id: 'v1', submission_id: 's1', version_number: 1,
     approved_by: NISHANT, approved_at: '2026-09-20T10:00:00Z',
-    assigned_to: NITISH, assigned_at: '2026-09-20T10:00:00Z',
+    assigned_to: NITISH, assigned_at: '2026-09-20T10:00:00Z', unassigned_reason: null,
     production_alignment_at_approval: 'not_aligned', prior_handoff_status: null,
     status: 'awaiting',
     accepted_by: null, accepted_at: null, accepted_note: null,
@@ -105,11 +105,18 @@ describe('the card, state by state', () => {
   })
 
   test('unassigned: says so in words, points at Control Center, offers nobody a control', () => {
-    const html = card(view(handoff({ assigned_to: null, assigned_at: null }), NISHANT))
+    const html = card(view(handoff({ assigned_to: null, assigned_at: null, unassigned_reason: 'no_reviewer' }), NISHANT))
     assert.match(html, /No operations reviewer assigned/)
     assert.match(html, /Control Center/)
     assert.doesNotMatch(html, /<button/)
     assert.doesNotMatch(html, /Accepted/)
+  })
+
+  test('unassigned because the configured reviewer cannot open this Order: says so, and what to do', () => {
+    const html = card(view(handoff({ assigned_to: null, assigned_at: null, unassigned_reason: 'reviewer_cannot_open_order' }), NITISH))
+    assert.match(html, /Operations reviewer cannot open this Order/)
+    assert.match(html, /an admin, a member of the operations team, or a holder of orders\.view_all/)
+    assert.doesNotMatch(html, /<button/)
   })
 
   test('accepted: who and when, the Order aligned against this version, and only Withdraw acceptance', () => {
