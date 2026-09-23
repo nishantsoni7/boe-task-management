@@ -258,6 +258,11 @@ describe('the file, and where it sits', () => {
       // drops nothing, so it reaches nothing here.
       '20261227000000_order_fabric_finish_approvals.sql',
       '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
   })
 

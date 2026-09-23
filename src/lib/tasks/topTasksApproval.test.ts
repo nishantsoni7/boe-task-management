@@ -274,6 +274,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // drops nothing, so it reaches nothing here.
     '20261227000000_order_fabric_finish_approvals.sql',
     '20261228000000_personal_module_order.sql',
+    // The PI-to-operations handoff: two new tables, one trigger on
+    // order_pi_versions and two RPCs. It re-emits no existing function,
+    // alters no existing table, writes no row and drops nothing, so it
+    // reaches nothing here.
+    '20261229000000_order_operations_handoff.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

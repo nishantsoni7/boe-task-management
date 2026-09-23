@@ -10,6 +10,7 @@ import { formatINR } from '@/lib/currency'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { paymentViewClauses } from '@/lib/finance/paymentClassification'
+import { OPERATIONS_REVIEW_ANCHOR } from '@/lib/orders/operationsHandoff'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ type QueueCategory =
   | 'finance_suspense'
   | 'order_pi_review'
   | 'order_change_request'
+  | 'order_operations_review'
 
 type ActionQueueItem = {
   id: string
@@ -38,6 +40,11 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
   finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Allocate suspense payment' },
   order_pi_review:             { label: 'PI review',           actionLabel: 'Review submitted PI' },
   order_change_request:        { label: 'Order change',        actionLabel: 'Review change request' },
+  // A PI version in force that operations has not yet accepted
+  // (20261229000000). Listed here so an administrator can see what is waiting
+  // on operations — and, when NOBODY is assigned to review it, that it is
+  // waiting on them to assign someone.
+  order_operations_review:     { label: 'Operations review',   actionLabel: 'Awaiting operations review' },
 }
 
 // Deep-links into the destination page's existing tab/record/modal query-param
@@ -62,6 +69,9 @@ function buildHref(category: QueueCategory, id: string): string {
     // not to the request. `id` here is therefore the ORDER's id, which is why
     // the row below reads order_id rather than the request's own.
     case 'order_change_request':        return `/orders/${id}`
+    // The Order's Operations review card names the version awaiting review
+    // and holds the two decision controls. `id` is the ORDER's id.
+    case 'order_operations_review':     return `/orders/${id}#${OPERATIONS_REVIEW_ANCHOR}`
   }
 }
 
@@ -114,6 +124,17 @@ type OrderChangeRequestRow = {
   requested_by_user: { full_name: string } | null
 }
 
+type OperationsReviewRow = {
+  id: string
+  order_id: string
+  version_number: number
+  approved_at: string
+  assigned_to: string | null
+  created_at: string
+  order: { client_name: string; total_value: number | null; status: string } | null
+  reviewer: { full_name: string } | null
+}
+
 export default function ActionQueuePage() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<ActionQueueItem[]>([])
@@ -126,6 +147,7 @@ export default function ActionQueuePage() {
 
     const [
       pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes,
+      operationsReviewRes,
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -180,10 +202,23 @@ export default function ActionQueuePage() {
           requested_by_user:users!requested_by(full_name)
         `)
         .eq('status', 'pending'),
+      // PI VERSIONS IN FORCE THAT OPERATIONS HAS NOT ACCEPTED (20261229000000):
+      // live, undecided handoffs, with the Order and the reviewer they are
+      // addressed to. order_operations_handoffs_select scopes this to Orders
+      // the reader may open; this page is admin-only besides.
+      supabase
+        .from('order_operations_handoffs')
+        .select(`
+          id, order_id, version_number, approved_at, assigned_to, created_at,
+          order:orders!order_id(client_name, total_value, status),
+          reviewer:users!assigned_to(full_name)
+        `)
+        .eq('status', 'awaiting')
+        .is('superseded_at', null),
     ])
 
     // Handle partial failure honestly rather than silently rendering an empty queue.
-    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes]
+    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes, operationsReviewRes]
       .filter(r => r.error)
       .map(r => r.error?.message)
     if (failures.length > 0) {
@@ -282,6 +317,28 @@ export default function ActionQueuePage() {
         amount: r.proposed_total_value,
         pendingSince: r.created_at,
         href: buildHref('order_change_request', r.order_id),
+      })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of ((operationsReviewRes.data ?? []) as any[]) as OperationsReviewRow[]) {
+      // A cancelled Order has nothing left to accept; the RPC refuses it, so
+      // the queue does not offer it.
+      if (r.order?.status === 'cancelled') continue
+      combined.push({
+        id: `order_operations_review:${r.id}`,
+        category: 'order_operations_review',
+        // NAMED IN WORDS: which version, and — the case that needs an
+        // administrator rather than the reviewer — that nobody is assigned.
+        actionLabel: r.assigned_to
+          ? `PI V${r.version_number} awaiting ${r.reviewer?.full_name ?? 'the operations reviewer'}`
+          : `PI V${r.version_number} awaiting operations — no reviewer assigned`,
+        clientName: r.order?.client_name ?? 'Unnamed client',
+        ownerName: r.reviewer?.full_name ?? null,
+        module: 'Orders',
+        amount: r.order?.total_value ?? null,
+        pendingSince: r.approved_at ?? r.created_at,
+        href: buildHref('order_operations_review', r.order_id),
       })
     }
 

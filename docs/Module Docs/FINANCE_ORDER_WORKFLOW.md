@@ -2302,3 +2302,81 @@ These are ordered by business impact. See §4, §6 and `PAYMENT_PHASE_PROGRESS.m
 - **Not built yet:** refunds and reversals, the dispatch readiness gate,
   fabric/finish, and payment-correction requests (§4.1–§4.5).
 - **Broad table grants remain (D8).** RLS is the only control on most tables.
+
+---
+
+## The PI-to-operations handoff, Phase 1 (`20261229000000`)
+
+> **Status: NOT APPLIED.** The migration exists in the repository and has not
+> been run against the linked database. **Migration first, then the code**: the
+> Order page reads `order_operations_handoffs` and the dashboard counts it;
+> against a database without the table those reads fail closed (the card is not
+> drawn; the count is absent, never zero).
+
+### What it records
+
+Every time a PI version becomes the one in force on a Confirmed Order — V1 when
+`approve_order_submission()` creates the Order, V2+ when
+`approve_order_pi_revision()` applies a revised workbook — an AFTER trigger on
+`order_pi_versions` records one row in `order_operations_handoffs` for **that
+exact version id**, inside the approval's own transaction. The row names who
+approved it and when, who must review it for operations, what production
+alignment said at that moment, and what the previous version's handoff had
+decided. It is UNIQUE per version, so a retried approval records nothing twice.
+
+The reviewer opens the Order and chooses **Accept for production** or **Cannot
+accept** (reason required). Acceptance means operations has reviewed the version
+and can work from it. It does **not** say manufacturing work is done, and it
+does **not** move `orders.production_alignment`, which remains the Head of
+Manufacturing's statement through `set_order_production_alignment()`.
+
+### Who the reviewer is
+
+One assignment, in Control Center → Operations Handoff, held as a user id in
+`order_operations_reviewers`. The trigger resolves it at approval and requires
+the account to be active and not deleted; otherwise the handoff is recorded
+**unassigned** and stays visibly so. An administrator is never substituted, and
+being an administrator does not let anybody accept in the reviewer's place:
+`decide_order_operations_handoff()` re-checks under row locks that the caller
+IS the assigned reviewer, that the handoff is live and undecided, that its
+version is still the Order's approved one, and that the Order is not cancelled.
+
+### A later version
+
+Approving V2 stamps V1's handoff `superseded_at` and keeps its decision for
+audit; V2 gets its own awaiting handoff. The Order page shows V2 as awaiting,
+says that V1 had been accepted, and — when the Order was aligned for production
+against V1 — warns that production was aligned before V2. Nothing claims work
+has stopped, and nothing is overwritten.
+
+### Historical Orders
+
+No backfill. An Order approved before this migration shows **Not recorded**.
+The next approved version on it (a revised PI) records a handoff from then on.
+
+### Rollout
+
+1. Assign the reviewer in Control Center → Operations Handoff **before** the
+   next PI approval, or that handoff is recorded unassigned and must be assigned
+   afterwards (which readdresses every waiting handoff and notifies them).
+2. Nothing running is interrupted: no Order column moves, no status changes,
+   and the trigger only fires on the next approval.
+3. Rollback: `drop trigger order_pi_versions_record_operations_handoff on
+   public.order_pi_versions;` stops recording; the two tables can stay.
+
+### Not in Phase 1
+
+In-app field editing, CAD/PO uploads and the full notification matrix. The
+direct amendment paths that change a Confirmed Order without a version row —
+`amend_order`, change requests, `update_order_submission_client_details`,
+`update_order_submission_schedule_terms`, `update_order_submission_pi_terms`,
+`set_order_submission_billing_percentage`, the product-line editors, and
+`/api/orders/import/process-draft` with `changeReason` — record no handoff.
+
+### Verifying it
+
+`src/lib/orders/operationsHandoff.test.ts`, `operationsHandoffSchema.test.ts`,
+`src/app/orders/[id]/orderOperationsReview.render.test.tsx`; and, against a
+disposable local stack, `supabase/tests/run_order_operations_handoff_local.sh`
+(applies the migration twice, then `order_operations_handoff_assertions.sql`
+through the real `approve_order_submission()` door).

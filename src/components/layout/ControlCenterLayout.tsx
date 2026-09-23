@@ -17,6 +17,7 @@ import cc from '@/components/controlCenter/controlCenter.module.css'
 // the note in ControlCenterNav.
 export type ControlCenterTab =
   'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
+  | 'operations-handoff'
 
 const MAIN_PATH = '/admin/control-center'
 
@@ -24,6 +25,7 @@ const MAIN_PATH = '/admin/control-center'
 export function resolveControlCenterTab(tabParam: string | null): ControlCenterTab {
   return tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
     || tabParam === 'order-numbering' || tabParam === 'order-notifications'
+    || tabParam === 'operations-handoff'
     ? tabParam : 'overview'
 }
 
@@ -58,6 +60,10 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
   'order-notifications': {
     group: 'System', title: 'Order Notifications',
     subtitle: 'Which associated people are told when a Confirmed Order changes.',
+  },
+  'operations-handoff': {
+    group: 'System', title: 'Operations Handoff',
+    subtitle: 'Who reviews each approved PI version for production and accepts it, or asks for clarification.',
   },
 }
 
@@ -332,6 +338,17 @@ function ControlCenterNav({
           href={tabHref('order-notifications')}
           replace={onMain}
           active={onMain && tab === 'order-notifications'}
+          onNavigate={onNavigate}
+        />
+        {/* Who reviews each approved PI version for production
+            (20261229000000). One person, named here by an administrator;
+            without one, every new handoff waits unassigned. */}
+        <NavItem
+          label="Operations Handoff"
+          icon={icon(BellRing)}
+          href={tabHref('operations-handoff')}
+          replace={onMain}
+          active={onMain && tab === 'operations-handoff'}
           onNavigate={onNavigate}
         />
         {/* Test Data Cleanup removes ONE transaction, found by searching for

@@ -820,6 +820,19 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // The three below were ALREADY MISSING from this ledger before the
+      // operations-handoff work began; each landed without naming itself here.
+      // None creates a task table, touches assignment authority, or names a
+      // health-check object: a PI finance sign-off removal, an append-only
+      // fabric/finish event log, and a user-scoped module-order preference.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

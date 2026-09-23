@@ -188,7 +188,9 @@ export default function OrdersDashboardPage() {
    * a derived figure would silently become a client-side aggregate the day one
    * of them gains a limit. The counts stay counts.
    */
-  const loadData = async () => {
+  // viewerId is needed by exactly one count — the handoffs addressed to THIS
+  // reader — and by nothing else here. Every other figure is scoped by RLS.
+  const loadData = async (viewerId: string) => {
     setListLoading(true)
 
     const [
@@ -199,6 +201,8 @@ export default function OrdersDashboardPage() {
       { count: reviewCount },
       { count: awaitingCount },
       availableRes,
+      opsMineRes,
+      opsUnassignedRes,
     ] = await Promise.all([
       supabase
         .from('orders')
@@ -238,6 +242,15 @@ export default function OrdersDashboardPage() {
       // hand.
       supabase.from(RECEIVED_PAYMENTS_SOURCE).select('id', { count: 'exact', head: true })
         .eq('is_available_to_allocate', true),
+
+      // THE OPERATIONS HANDOFF (20261229000000). Two counts over the live,
+      // undecided handoffs this reader can see: the ones addressed to THEM,
+      // and the ones addressed to nobody. RLS scopes both to Orders the reader
+      // may open; the card is offered only when either is above zero.
+      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
+        .eq('status', 'awaiting').is('superseded_at', null).eq('assigned_to', viewerId),
+      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
+        .eq('status', 'awaiting').is('superseded_at', null).is('assigned_to', null),
     ])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,6 +277,11 @@ export default function OrdersDashboardPage() {
       // reading "0" would say there is nothing to allocate when the truth is
       // that nothing was asked. `undefined` renders as a dash.
       availableToAllocate:  availableRes.error ? undefined : (availableRes.count ?? 0),
+      // THE OPERATIONS HANDOFF DEGRADES TO ABSENT TOO. The table arrives with
+      // 20261229000000; against a database without it the filter is refused,
+      // and an absent count draws no card rather than a false "nothing waits".
+      operationsReview:     opsMineRes.error ? undefined : (opsMineRes.count ?? 0),
+      operationsUnassigned: opsUnassignedRes.error ? undefined : (opsUnassignedRes.count ?? 0),
     })
 
     setListLoading(false)
@@ -295,7 +313,7 @@ export default function OrdersDashboardPage() {
           .single(),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
-        loadData(),
+        loadData(session.user.id),
       ])
 
       setProfile(me as UserProfile)
@@ -333,7 +351,7 @@ export default function OrdersDashboardPage() {
       title="Orders"
       subtitle={ORDER_DASHBOARD_SUBTITLE}
       onSignOut={handleSignOut}
-      onRefresh={loadData}
+      onRefresh={() => loadData(profile?.id ?? '00000000-0000-0000-0000-000000000000')}
       actions={
         // ── THE ONE WAY A NEW ORDER BEGINS ──
         //

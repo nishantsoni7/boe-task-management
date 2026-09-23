@@ -1,0 +1,271 @@
+/**
+ * THE PI-TO-OPERATIONS HANDOFF MIGRATION (20261229000000), read as text.
+ *
+ * Executing it is done by supabase/tests/run_order_operations_handoff_local.sh
+ * against a disposable stack. This file holds the migration and the code that
+ * reads it to their promises without a database:
+ *
+ *   * it is forward-only and additive: it re-emits NONE of the approval
+ *     functions, alters no existing table, and hooks the one write both
+ *     approval paths already make (a version becoming approved);
+ *   * authority is at the database: clients read only, anon executes nothing,
+ *     the decision RPC checks the assigned reviewer — not the admin role;
+ *   * nothing is backfilled;
+ *   * the notification types reach the Orders feed and open the Order at the
+ *     card; the page reads the table beside the versions and offers the two
+ *     controls; the pinned surfaces state what changed and why.
+ *
+ * Run:
+ *   npx tsx --test src/lib/orders/operationsHandoffSchema.test.ts
+ */
+
+import { test, describe } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { ORDER_NOTIFICATION_TYPES } from '@/lib/notifications'
+import { getNotificationMeta } from '@/lib/notificationMeta'
+import type { Notification } from '@/lib/types'
+
+const ROOT = process.cwd()
+// CRLF-safe: git checks files out CRLF on this machine and `$`-anchored
+// patterns cannot reach past a \r.
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
+const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
+
+const MIGRATION_FILE = 'supabase/migrations/20261229000000_order_operations_handoff.sql'
+const MIGRATION = read(MIGRATION_FILE)
+const SQL = stripSql(MIGRATION)
+const PAGE = read('src/app/orders/[id]/page.tsx')
+const CARD = read('src/app/orders/[id]/OrderStatusWorkspace.tsx')
+const LIB = read('src/lib/orders/operationsHandoff.ts')
+
+describe('the migration is one additive, forward-only file', () => {
+  test('it exists exactly once and sorts after every migration before it', () => {
+    const all = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
+    const mine = all.filter(f => f.includes('order_operations_handoff'))
+    assert.deepEqual(mine, ['20261229000000_order_operations_handoff.sql'])
+    const before = all.filter(f => f < '20261229000000_order_operations_handoff.sql')
+    assert.ok(before.includes('20261228000000_personal_module_order.sql'))
+    assert.ok(before.includes('20261119000000_order_submission_pi_review_gate_versions_and_production.sql'),
+      'the versions table it hooks predates it')
+  })
+
+  test('it creates the two tables and nothing else is altered', () => {
+    assert.match(SQL, /create table if not exists public\.order_operations_handoffs/)
+    assert.match(SQL, /create table if not exists public\.order_operations_reviewers/)
+    const alters = [...SQL.matchAll(/alter table (?:if exists )?public\.(\w+)/g)].map(m => m[1])
+    assert.deepEqual([...new Set(alters)].sort(), ['order_operations_handoffs', 'order_operations_reviewers'],
+      'no existing table is altered — production alignment, orders and order_pi_versions keep their shape')
+    assert.doesNotMatch(SQL, /drop table/)
+    assert.doesNotMatch(SQL, /alter table public\.orders\b/)
+  })
+
+  test('it re-emits NONE of the approval doors; it hooks the versions table instead', () => {
+    for (const fn of [
+      'approve_order_submission', 'approve_order_pi_revision', 'approve_pi_review',
+      'propose_order_pi_revision', 'reject_order_pi_revision', 'replace_order_submission_parse',
+      'set_order_production_alignment', 'orders_guard_amendable_columns', 'order_pi_versions_guard',
+      'submit_pi_for_review', 'resolve_permission', 'actor_has_module_permission',
+    ]) {
+      assert.doesNotMatch(SQL, new RegExp(`create or replace function public\\.${fn}\\(`), `${fn} must not be redefined`)
+    }
+    assert.match(SQL, /create trigger order_pi_versions_record_operations_handoff\s+after insert or update of status on public\.order_pi_versions/)
+    assert.match(SQL, /if new\.status <> 'approved' then\s+return null/)
+    assert.match(SQL, /if tg_op = 'UPDATE' and old\.status = 'approved' then\s+return null/, 'only the moment a version BECOMES approved')
+  })
+
+  test('it is idempotent per version, and per re-run', () => {
+    assert.match(SQL, /constraint order_operations_handoffs_version_key unique \(pi_version_id\)/)
+    assert.match(SQL, /if exists \(select 1 from public\.order_operations_handoffs h where h\.pi_version_id = new\.id\) then\s+return null/)
+    assert.match(SQL, /create unique index if not exists order_operations_handoffs_one_live_per_order\s+on public\.order_operations_handoffs \(order_id\) where superseded_at is null/)
+    for (const stmt of ['alter type notification_type add value if not exists', 'create or replace function', 'drop trigger if exists', 'drop policy if exists', 'create index if not exists']) {
+      assert.ok(SQL.includes(stmt), stmt)
+    }
+  })
+
+  test('it backfills nothing', () => {
+    assert.doesNotMatch(SQL, /insert into public\.order_operations_handoffs\s*\([\s\S]*?\)\s*select/i,
+      'no INSERT ... SELECT over existing Orders')
+    assert.doesNotMatch(SQL, /insert into public\.order_operations_reviewers[\s\S]*?values \('pi_handoff', '[0-9a-f-]{36}'/,
+      'no guessed reviewer uuid')
+    assert.doesNotMatch(MIGRATION, /58ec48e3-d252-4660-b61b-4db48fb58e9e/, 'no hard-coded person')
+    assert.doesNotMatch(SQL, /full_name\s*(=|ilike|like)\s*'/, 'nobody is identified by display name')
+  })
+})
+
+describe('authority lives at the database', () => {
+  test('clients read only; anon reads nothing; every write goes through a definer', () => {
+    for (const t of ['order_operations_handoffs', 'order_operations_reviewers']) {
+      assert.match(SQL, new RegExp(`alter table public\\.${t} enable row level security`))
+      assert.match(SQL, new RegExp(`revoke all on table public\\.${t} from public, anon, authenticated`))
+      assert.match(SQL, new RegExp(`grant select on table public\\.${t} to authenticated`))
+      assert.doesNotMatch(SQL, new RegExp(`grant (insert|update|delete|all)[^;]*on table public\\.${t}`))
+    }
+    assert.match(SQL, /create policy "order_operations_handoffs_select"[\s\S]*?using \(public\.can_view_order\(order_id\)\)/,
+      'visibility is the Order\'s own')
+    assert.match(SQL, /create policy "order_operations_handoffs_module_entry_gate"[\s\S]*?as restrictive/)
+    assert.match(SQL, /create policy "order_operations_reviewers_admin_select"[\s\S]*?u\.role = 'admin'/)
+  })
+
+  test('the RPCs are SECURITY DEFINER with a pinned search_path, authenticated may call them, anon may not', () => {
+    for (const sig of ['decide_order_operations_handoff(uuid, text, text)', 'set_order_operations_reviewer(uuid)']) {
+      const esc = sig.replace(/[()]/g, '\\$&')
+      assert.match(SQL, new RegExp(`revoke execute on function public\\.${esc} from public, anon`))
+      assert.match(SQL, new RegExp(`grant\\s+execute on function public\\.${esc} to authenticated`))
+    }
+    const defs = [...SQL.matchAll(/create or replace function public\.(\w+)\([\s\S]*?\n(?:returns [\s\S]*?)?as \$\$/g)]
+    assert.deepEqual(defs.map(d => d[1]).sort(), [
+      'decide_order_operations_handoff', 'order_operations_handoffs_guard',
+      'order_pi_versions_record_operations_handoff', 'set_order_operations_reviewer',
+    ])
+    for (const d of defs) {
+      assert.match(d[0], /security definer/, d[1])
+      assert.match(d[0], /set search_path = public, pg_temp/, d[1])
+    }
+    for (const trg of ['order_operations_handoffs_guard()', 'order_pi_versions_record_operations_handoff()']) {
+      assert.match(SQL, new RegExp(`revoke execute on function public\\.${trg.replace(/[()]/g, '\\$&')} from public, anon, authenticated`))
+    }
+  })
+
+  test('the decision is the assigned reviewer\'s — not an admin\'s, not the approver\'s', () => {
+    const body = SQL.slice(SQL.indexOf('create or replace function public.decide_order_operations_handoff'), SQL.indexOf('comment on function public.decide_order_operations_handoff'))
+    assert.match(body, /v_actor\s+uuid := public\.assert_order_submission_actor\(\)/, 'the caller is auth.uid(), active and not deleted')
+    assert.match(body, /if v_h\.assigned_to <> v_actor then\s+raise exception 'Only the assigned operations reviewer/)
+    assert.match(body, /if v_h\.assigned_to is null then\s+raise exception 'ORDER_OPERATIONS_HANDOFF_UNASSIGNED/)
+    assert.doesNotMatch(body, /role = 'admin'/, 'the admin role grants nothing here')
+    assert.doesNotMatch(body, /actor_has_module_permission\('orders', 'approve_order'\)/, 'approving is not accepting')
+    // Locks and the checks under them, in the order that cannot deadlock with approval.
+    assert.match(body, /select \* into v_order from public\.orders where id = v_order_id for update;\s*select \* into v_h from public\.order_operations_handoffs where id = p_handoff_id for update/)
+    for (const marker of ['ORDER_OPERATIONS_HANDOFF_CLOSED', 'ORDER_OPERATIONS_HANDOFF_SUPERSEDED', 'ORDER_OPERATIONS_HANDOFF_STALE',
+                          'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED', 'ORDER_OPERATIONS_HANDOFF_ALREADY_FLAGGED',
+                          'ORDER_OPERATIONS_HANDOFF_REASON_REQUIRED', 'ORDER_OPERATIONS_HANDOFF_REASON_TOO_LONG']) {
+      assert.ok(body.includes(marker), marker)
+    }
+    assert.match(body, /v\.status = 'approved' and v\.id <> v_h\.pi_version_id/, 'a newer approved version makes this one stale')
+  })
+
+  test('the reviewer is resolved through an ACTIVE user record, and an admin is never substituted', () => {
+    const trg = SQL.slice(SQL.indexOf('create or replace function public.order_pi_versions_record_operations_handoff'), SQL.indexOf('comment on function public.order_pi_versions_record_operations_handoff'))
+    assert.match(trg, /from public\.order_operations_reviewers r\s+join public\.users u on u\.id = r\.user_id\s+where r\.duty = 'pi_handoff'\s+and u\.is_active\s+and coalesce\(u\.is_deleted, false\) = false/)
+    assert.doesNotMatch(trg, /role = 'admin'/)
+    assert.match(trg, /case when v_reviewer is null then null else v_now end/, 'unassigned stays unassigned')
+    assert.match(trg, /if v_reviewer is not null and v_reviewer is distinct from new\.decided_by then/, 'the approver is not told about their own approval')
+    assert.match(trg, /'order_operations_review_requested'::notification_type/)
+    // The earlier version's decision is kept, only the supersession is stamped.
+    assert.match(trg, /update public\.order_operations_handoffs\s+set superseded_at = v_now,\s+superseded_by_version_id = new\.id\s+where order_id = new\.order_id\s+and superseded_at is null/)
+    assert.match(trg, /v_order\.production_alignment, v_prior\.status/, 'the alignment and the prior decision are snapshotted')
+    assert.doesNotMatch(trg, /update public\.orders/, 'production alignment is not moved')
+  })
+
+  test('the assignment RPC is admin-only and validates the person through their record', () => {
+    const body = SQL.slice(SQL.indexOf('create or replace function public.set_order_operations_reviewer'), SQL.indexOf('comment on function public.set_order_operations_reviewer'))
+    assert.match(body, /u\.role = 'admin' and u\.is_active and coalesce\(u\.is_deleted, false\) = false/)
+    assert.match(body, /ORDER_OPERATIONS_REVIEWER_INACTIVE/)
+    assert.match(body, /ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS/)
+    assert.match(body, /public\.resolve_permission\(p_user_id, 'orders', 'view'\)/)
+    assert.match(body, /and h\.status = 'awaiting'[\s\S]*?and o\.status <> 'cancelled'/, 'only live, undecided handoffs on open Orders are readdressed')
+  })
+
+  test('the guard freezes identity, keeps acceptances, and refuses deletion outside cleanup', () => {
+    const body = SQL.slice(SQL.indexOf('create or replace function public.order_operations_handoffs_guard'), SQL.indexOf('drop trigger if exists order_operations_handoffs_guard'))
+    assert.match(body, /if public\.in_test_data_cleanup\(\) then\s+return old/)
+    assert.match(body, /ORDER_OPERATIONS_HANDOFF_PERMANENT/)
+    assert.match(body, /ORDER_OPERATIONS_HANDOFF_FROZEN/)
+    assert.match(body, /ORDER_OPERATIONS_HANDOFF_ACCEPTED_IS_PERMANENT/)
+  })
+})
+
+describe('the notifications reach the reader and open the Order at the card', () => {
+  test('both types are on the Orders channel', () => {
+    for (const t of ['order_operations_review_requested', 'order_operations_review_decided']) {
+      assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), `${t} would be written but never shown`)
+      assert.match(SQL, new RegExp(`alter type notification_type add value if not exists '${t}'`))
+    }
+  })
+  test('the link is the Order, at the Operations review card', () => {
+    const n = { id: 'n', user_id: 'u', task_id: null, entity_id: 'order-1', type: 'order_operations_review_requested', title: 't', body: null, is_read: false, created_at: '' } as unknown as Notification
+    const meta = getNotificationMeta(n)
+    assert.equal(meta.category, 'order')
+    assert.equal(meta.href, '/orders/order-1#operations-review')
+    assert.equal(meta.badge.label, 'Operations review')
+    const d = getNotificationMeta({ ...n, type: 'order_operations_review_decided' } as unknown as Notification)
+    assert.equal(d.href, '/orders/order-1#operations-review')
+  })
+})
+
+describe('the queues and the Control Center', () => {
+  const DASHBOARD = read('src/app/orders/page.tsx')
+  const ALL = read('src/app/orders/all/page.tsx')
+  const QUEUE = read('src/app/admin/control-center/action-queue/page.tsx')
+  const CC = read('src/app/admin/control-center/page.tsx')
+  const LAYOUT = read('src/components/layout/ControlCenterLayout.tsx')
+
+  test('the dashboard counts the reader\'s own awaiting handoffs and the unassigned ones, inside its one group', () => {
+    const group = DASHBOARD.slice(DASHBOARD.indexOf('] = await Promise.all(['), DASHBOARD.indexOf('setOrders(mapped)'))
+    assert.equal((group.match(/\.from\('order_operations_handoffs'\)/g) ?? []).length, 2)
+    assert.match(group, /\.eq\('assigned_to', viewerId\)/)
+    assert.match(group, /\.is\('assigned_to', null\)/)
+    assert.match(DASHBOARD, /operationsReview:\s+opsMineRes\.error \? undefined/, 'absent, never zero, against a database without the table')
+  })
+
+  test('the Confirmed Orders list has the ?ops=awaiting queue, named in a banner with a way out', () => {
+    assert.match(ALL, /ops:\s+enumParam<'all' \| 'awaiting'>\(\['all', 'awaiting'\], 'all'\)/)
+    assert.match(ALL, /opsFilter === 'awaiting' \? loadAwaitingOps\(\) : Promise\.resolve\(\)/, 'read only when asked for')
+    assert.match(ALL, /return to === null \|\| to === profile\?\.id/, 'this reader\'s, or nobody\'s — never somebody else\'s queue')
+    assert.match(ALL, /OPERATIONS_REVIEW_QUEUE_BANNER/)
+    assert.match(ALL, /setListState\(\{ ops: 'all' \}\)/)
+  })
+
+  test('the Action Queue lists awaiting handoffs, says when nobody is assigned, and skips cancelled Orders', () => {
+    assert.match(QUEUE, /'order_operations_review'/)
+    assert.match(QUEUE, /\.eq\('status', 'awaiting'\)\s*\.is\('superseded_at', null\)/)
+    assert.match(QUEUE, /no reviewer assigned/)
+    assert.match(QUEUE, /if \(r\.order\?\.status === 'cancelled'\) continue/)
+    assert.match(QUEUE, /case 'order_operations_review':\s+return `\/orders\/\$\{id\}#\$\{OPERATIONS_REVIEW_ANCHOR\}`/)
+  })
+
+  test('Control Center assigns the reviewer through the RPC, from the live directory, by id', () => {
+    assert.match(LAYOUT, /'operations-handoff'/)
+    assert.match(CC, /tab === 'operations-handoff' && <OperationsReviewerTab members=\{members\} \/>/)
+    assert.match(CC, /supabase\.rpc\('set_order_operations_reviewer', \{\s*p_user_id: choice \|\| null,\s*\}\)/)
+    assert.match(CC, /eligibleOperationsReviewers\(members\)/)
+    assert.doesNotMatch(CC, /\.from\('order_operations_reviewers'\)\s*\.(insert|update|upsert)/, 'never written directly')
+    assert.match(CC, /OPERATIONS_REVIEWER_CLEAR_OPTION/, 'clearing is allowed and visible')
+    assert.doesNotMatch(CC, /Nitish/, 'nobody is named in code')
+  })
+})
+
+describe('the Order page', () => {
+  test('reads the handoffs beside the versions, in the same group, through one named query', () => {
+    const loader = PAGE.slice(PAGE.indexOf('const loadPiHandoff'), PAGE.indexOf('const reloadActivity'))
+    assert.match(loader, /handoffsQuery\(\),\s*\]\)/, 'in the Promise.all, not after it')
+    assert.equal((PAGE.match(/\.from\('order_operations_handoffs'\)/g) ?? []).length, 1, 'one query, named once')
+    assert.equal((PAGE.match(/handoffsQuery\(\)/g) ?? []).length, 2, 'the load and the narrow refresh')
+    assert.match(loader, /setHandoffs\(\[\]\)/, 'the no-source branch leaves a named empty state')
+  })
+  test('the decision goes through the RPC, then re-reads only the handoff and the trail', () => {
+    assert.match(PAGE, /supabase\.rpc\('decide_order_operations_handoff', \{\s*p_handoff_id: live\.id,\s*p_decision: decision,\s*p_reason: reason,\s*\}\)/)
+    const fn = PAGE.slice(PAGE.indexOf('const decideHandoff'), PAGE.indexOf('const decideHandoff') + 1800)
+    assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadActivity\(\)\]\)/)
+    assert.doesNotMatch(fn, /loadOrder\(\)/)
+  })
+  test('the card is drawn once, after the attention strip, and never claims a state while loading', () => {
+    const body = PAGE.slice(PAGE.indexOf('<OrdersLayout'))
+    assert.equal((body.match(/<OrderOperationsReviewCard/g) ?? []).length, 1)
+    assert.ok(body.indexOf('<OrderAttentionBar') < body.indexOf('<OrderOperationsReviewCard'))
+    assert.ok(body.indexOf('<OrderOperationsReviewCard') < body.indexOf('<OrderDocumentsRow>'))
+    assert.match(body, /\{!handoffReady \? \(\s*<SectionSkeleton rows=\{2\} label="Loading operations review" \/>/)
+    assert.equal((body.match(/<OperationsHandoffDecisionModal/g) ?? []).length, 1)
+  })
+  test('the card offers the two controls only from the view, and states the honest absences', () => {
+    assert.match(CARD, /id=\{OPERATIONS_REVIEW_ANCHOR\}/)
+    assert.match(CARD, /view\.actions\.cannotAccept &&/)
+    assert.match(CARD, /view\.actions\.accept &&/)
+    assert.match(CARD, /view\.kind === 'not_recorded'/)
+    assert.match(CARD, /OPERATIONS_HANDOFF_UNASSIGNED_LABEL/)
+    assert.match(LIB, /OPERATIONS_HANDOFF_NOT_RECORDED_LABEL = 'Not recorded'/)
+    assert.match(LIB, /ACCEPTANCE IS NOT COMPLETION/)
+    assert.match(LIB, /does not say any manufacturing work is done/)
+  })
+})

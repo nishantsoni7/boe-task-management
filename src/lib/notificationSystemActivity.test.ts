@@ -302,13 +302,40 @@ describe('the read side excludes system types too', () => {
     // that an APPROVAL writes no row; submit and return keep their one insert.
     // It installs nothing.
     const APPROVAL_SILENCE = '20261212000000_task_review_approval_stops_notifying.sql'
+    // A sixth, 20261229000000, is the PI-to-operations handoff: a trigger on
+    // order_pi_versions — not on notifications — tells the ONE assigned
+    // operations reviewer that a PERSON approved a PI version, inside that
+    // approval's own transaction; and two RPCs a person presses (assigning the
+    // reviewer, deciding the handoff) each write one row to one person. Every
+    // type it writes is an Orders type, never a system one, and it schedules
+    // nothing.
+    const OPERATIONS_HANDOFF = '20261229000000_order_operations_handoff.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
       REVIEW_PHASE,
       REVIEW_TRAIL_REPAIR,
       APPROVAL_SILENCE,
+      OPERATIONS_HANDOFF,
     ])
+    {
+      const sql = read(join(dir, OPERATIONS_HANDOFF))
+      assert.match(sql, /create trigger order_pi_versions_record_operations_handoff\s*\n\s*after insert or update of status on public\.order_pi_versions/,
+        `${OPERATIONS_HANDOFF}: it fires on a version becoming approved, nothing scheduled`)
+      for (const t of [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))) {
+        assert.equal(isSystemGeneratedNotificationType(t), false, `${OPERATIONS_HANDOFF} writes ${t}, which must not be a system type`)
+        assert.ok(t.startsWith('order_operations_review_'), t)
+      }
+      // Its two RPCs act as the signed-in person; its trigger acts inside the
+      // signed-in approver's own transaction, addressing the reviewer that
+      // person's approval is for.
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 2,
+        `${OPERATIONS_HANDOFF}: both RPCs act as a signed-in person`)
+      assert.match(sql, /v_reviewer is distinct from new\.decided_by/, `${OPERATIONS_HANDOFF}: the approver is never told about their own approval`)
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
+        assert.equal(sql.includes(`'${t}'`), false, `${OPERATIONS_HANDOFF} must not write ${t}`)
+      }
+    }
     assert.equal(/create\s+(or\s+replace\s+)?trigger/i.test(read(join(dir, APPROVAL_SILENCE))), false,
       `${APPROVAL_SILENCE}: it replaces the function only, and installs no trigger`)
     {
@@ -326,7 +353,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

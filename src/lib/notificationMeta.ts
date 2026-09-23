@@ -23,9 +23,14 @@ import type { Notification } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { ISSUE_PARAM } from '@/lib/objections'
 import { ORDER_UPDATE_NOTIFICATION_TYPES } from '@/lib/orders/orderUpdateNotifications'
+import { OPERATIONS_REVIEW_ANCHOR } from '@/lib/orders/operationsHandoff'
 
 /** The four Confirmed Order update types, as a set, for the href branch below. */
 const ORDER_UPDATE_TYPE_SET: ReadonlySet<string> = new Set(ORDER_UPDATE_NOTIFICATION_TYPES)
+const OPERATIONS_REVIEW_TYPE_SET: ReadonlySet<string> = new Set([
+  'order_operations_review_requested',
+  'order_operations_review_decided',
+])
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
@@ -107,6 +112,11 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   order_update_amended:      { label: 'Order amended',   color: colors.blue,  bg: colors.blueTint  },
   order_update_production:   { label: 'Production',      color: colors.blue,  bg: colors.blueTint  },
   order_update_payment:      { label: 'Payment',         color: colors.amber, bg: colors.amberTint },
+  // The PI-to-operations handoff (20261229000000). Amber for the request,
+  // because the reviewer must decide it; blue for the decision, which reports
+  // what operations said and asks nothing further of the approver here.
+  order_operations_review_requested: { label: 'Operations review', color: colors.amber, bg: colors.amberTint },
+  order_operations_review_decided:   { label: 'Operations decided', color: colors.blue, bg: colors.blueTint },
   // PI submissions — the reduced-payment exception. Amber for the request,
   // because somebody must decide it before an Order number can exist; green and
   // red for the two outcomes, which are what the salesperson is waiting on.
@@ -319,10 +329,15 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
     // page whose Activity trail explains what the sentence said. Opening it is
     // also what marks that reader's updates for this Order read, so the link
     // and the unread state cannot disagree about where "seen" happens.
+    // THE OPERATIONS HANDOFF opens the Order at its Operations review card,
+    // which names the exact PI version awaiting the reader and holds the two
+    // decision controls. entity_id is the Order.
     const href = n.entity_id
-      ? (type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type)
-          ? `/orders/${n.entity_id}`
-          : `/orders/requests/${n.entity_id}?from=all`)
+      ? (OPERATIONS_REVIEW_TYPE_SET.has(type)
+          ? `/orders/${n.entity_id}#${OPERATIONS_REVIEW_ANCHOR}`
+          : type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type)
+            ? `/orders/${n.entity_id}`
+            : `/orders/requests/${n.entity_id}?from=all`)
       : '/orders/requests'
     return {
       category: 'order',

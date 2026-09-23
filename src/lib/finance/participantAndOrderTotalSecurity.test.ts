@@ -1015,6 +1015,11 @@ describe('the applied migrations are frozen', () => {
       // preference table, no DML, and no payment, participant or order total in
       // it at all.
       '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
   })
 
@@ -1281,6 +1286,11 @@ describe('the applied migrations are frozen', () => {
       // preference table, no DML, and no payment, participant or order total in
       // it at all.
       '20261228000000_personal_module_order.sql',
+      // The PI-to-operations handoff: two new tables, one trigger on
+      // order_pi_versions and two RPCs. It re-emits no existing function,
+      // alters no existing table, writes no row and drops nothing, so it
+      // reaches nothing here.
+      '20261229000000_order_operations_handoff.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

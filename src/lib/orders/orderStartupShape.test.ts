@@ -317,7 +317,22 @@ describe('no Order screen waits more than it must', () => {
       // press, refused outright unless the reader holds Finance module entry AND
       // the id is one this Order's own list already showed. Nothing at load, and
       // the wait count is unchanged: the test above still requires exactly three.
-      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 32,
+      //
+      // THE PI-TO-OPERATIONS HANDOFF (20261229000000):
+      //
+      // DASHBOARD 10 -> 12: two `head: true` counts over the reader's live,
+      //   undecided handoffs — addressed to them, and addressed to nobody.
+      //   Both sit INSIDE the existing Promise.all, so the number of times the
+      //   dashboard waits is unchanged (the wait test above still says two).
+      // ALL 3 -> 4: the ?ops=awaiting queue's one read of the live handoffs,
+      //   issued beside the list and the badge in the same group — and only
+      //   when that filter is in the URL; a plain /orders/all still makes
+      //   three.
+      // DETAIL 32 -> 34: one read of the Order's handoffs, in the SAME group
+      //   as the PI versions it is about (so the page still waits exactly
+      //   three times), and decide_order_operations_handoff — a SAVE, fired
+      //   from the decision dialog, never at load.
+      [GUARD]: 2, [DASHBOARD]: 12, [ALL]: 4, [DETAIL]: 34,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

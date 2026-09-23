@@ -18,6 +18,11 @@ import {
   type PersistedActivity,
   type PiActivityTone,
 } from './submissionActivity'
+import {
+  OPERATIONS_HANDOFF_EVENT_LABEL,
+  OPERATIONS_HANDOFF_EVENT_TONE,
+  describeOperationsHandoffEvent,
+} from './operationsHandoff'
 
 /** One row of order_activity_log, as the Order page reads it. */
 export type OrderActivityRow = {
@@ -46,6 +51,9 @@ export type OrderHistoryEntry = {
  * words in one place.
  */
 export const ORDER_EVENT_LABEL: Record<string, string> = {
+  // The PI-to-operations handoff (20261229000000): recorded, assigned,
+  // accepted, flagged. Their words live beside the handoff's own rules.
+  ...OPERATIONS_HANDOFF_EVENT_LABEL,
   pi_revision_proposed:         'Revised PI uploaded',
   pi_revision_approved:         'Revised PI approved',
   pi_revision_rejected:         'Revised PI rejected',
@@ -58,6 +66,7 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
+  ...OPERATIONS_HANDOFF_EVENT_TONE,
   pi_revision_proposed:         'amber',
   pi_revision_approved:         'green',
   pi_revision_rejected:         'red',
@@ -105,7 +114,7 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     case 'order_workbook_replaced':
       return text(p.reason)
     default:
-      return null
+      return describeOperationsHandoffEvent(row.event_type, p)
   }
 }
 

@@ -2696,6 +2696,21 @@ body {
   color: #6B7384;
   line-height: 1.5;
 }
+/* The Operations review card's two warnings: an earlier version was accepted,
+   or production was aligned before this version. Words carry the message; the
+   tint only agrees with them. */
+.order-status-note--warn {
+  color: #9A5B00;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.order-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .order-status-empty {
   margin: 0;
   font-size: 12.5px;

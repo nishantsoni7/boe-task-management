@@ -93,6 +93,11 @@ export const ORDER_NOTIFICATION_TYPES = [
   'order_update_amended',
   'order_update_production',
   'order_update_payment',
+  // The PI-to-operations handoff (20261229000000): the reviewer is told a
+  // version awaits them; the approver is told what the reviewer decided. Both
+  // are Orders work and open the Order, so they ride the Orders channel.
+  'order_operations_review_requested',
+  'order_operations_review_decided',
 ] as const
 
 // Attendance & Payroll employee-raised issues (20260824000000).

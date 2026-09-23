@@ -18,6 +18,7 @@ import {
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
+import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
@@ -150,6 +151,11 @@ const ORDERS_LIST_PARAMS = {
   source:   optionParam(Object.keys(LEAD_SOURCE_LABEL)),
   date:     enumParam<DateFilter>(['all', '7d', '30d', 'this_month', '3m', 'this_year'], 'all'),
   sort:     enumParam<SortKey>(['newest', 'oldest', 'number_desc', 'number_asc', 'value_desc', 'value_asc'], 'newest'),
+  // The operations queue (20261229000000): only the Orders whose PI version in
+  // force is awaiting operations review — assigned to this reader, or to
+  // nobody. Reached from the dashboard card and from nowhere else on this
+  // page; a banner names it and offers the way out.
+  ops:      enumParam<'all' | 'awaiting'>(['all', 'awaiting'], 'all'),
 }
 
 function fmtAmount(n: number | null) {
@@ -273,10 +279,29 @@ export default function AllOrdersPage() {
    * lands, which is right: an absent badge is honest, a wrong one is not.
    */
   const [unread, setUnread] = useState<Map<string, number>>(new Map())
+  /**
+   * WHICH ORDERS' CURRENT PI VERSION IS AWAITING OPERATIONS (20261229000000):
+   * the live, undecided handoffs this reader can see, keyed by Order, with who
+   * they are addressed to. Read only when the ?ops=awaiting queue is open, and
+   * scoped by the Order's own RLS. The dashboard card links here.
+   */
+  const [awaitingOps, setAwaitingOps] = useState<Map<string, string | null>>(new Map())
+  const opsFilter = listState.ops
 
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = useMemo(() => createClient(), [])
+
+  const loadAwaitingOps = async () => {
+    const { data, error } = await supabase
+      .from('order_operations_handoffs')
+      .select('order_id, assigned_to')
+      .eq('status', 'awaiting')
+      .is('superseded_at', null)
+    if (error) { setAwaitingOps(new Map()); return }
+    setAwaitingOps(new Map(((data ?? []) as { order_id: string; assigned_to: string | null }[])
+      .map(r => [r.order_id, r.assigned_to])))
+  }
 
   const loadOrders = async () => {
     setListLoading(true)
@@ -357,6 +382,9 @@ export default function AllOrdersPage() {
         // two, and a third round trip in series would delay the whole table
         // for a decoration.
         loadUnread(),
+        // The operations queue, only when it was asked for. Beside the
+        // others, so the filtered list costs no extra wait.
+        opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
       ])
 
       setProfile(me as UserProfile)
@@ -412,6 +440,16 @@ export default function AllOrdersPage() {
   // instead of a total that contradicts the list once the tab is clicked.
   const baseFiltered = useMemo(() => {
     let list = orders
+    // The operations queue: Orders whose version in force awaits THIS reader
+    // (assigned to them) or NOBODY (unassigned, an administrator's problem).
+    // A handoff addressed to somebody else is not this reader's queue.
+    if (opsFilter === 'awaiting') {
+      list = list.filter(o => {
+        if (!awaitingOps.has(o.id)) return false
+        const to = awaitingOps.get(o.id) ?? null
+        return to === null || to === profile?.id
+      })
+    }
     if (assignee !== 'all') list = list.filter(o => o.assigned_to === assignee)
     if (source   !== 'all') list = list.filter(o => o.lead_source === source)
 
@@ -429,7 +467,7 @@ export default function AllOrdersPage() {
       )
     }
     return list
-  }, [orders, assignee, source, dateFilter, search])
+  }, [orders, assignee, source, dateFilter, search, opsFilter, awaitingOps, profile])
 
   const tabCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
@@ -486,6 +524,32 @@ export default function AllOrdersPage() {
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── The operations queue banner (20261229000000) ──
+          Named in words, with the one way out. The filter is a URL parameter
+          the dashboard card sets; no control on this page sets it, so a reader
+          who arrived here must be told why the list is short. */}
+      {opsFilter === 'awaiting' && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+            padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+            background: '#FFF7ED', border: '1px solid #FED7AA',
+            fontSize: '13px', color: '#9A3412',
+          }}
+        >
+          <span>{OPERATIONS_REVIEW_QUEUE_BANNER}</span>
+          <button
+            type="button"
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '4px 12px', fontSize: '12px' }}
+            onClick={() => setListState({ ops: 'all' })}
+          >
+            Show all Orders
           </button>
         </div>
       )}

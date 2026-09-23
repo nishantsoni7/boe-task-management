@@ -635,12 +635,15 @@ describe('the migration is the one this work adds, and it is additive', () => {
 
 describe('REGRESSION — the existing Finance and Orders surfaces are unchanged', () => {
   /** The files this branch changed, against the base it started from. */
+  // git QUOTES a path holding a space ("docs/Module Docs/…"), so the quotes
+  // are stripped or the docs/ exclusion below would never match such a file.
+  const unquote = (s: string) => s.replace(/^"(.*)"$/, '$1')
   const changed = execFileSync('git', ['diff', '--name-only', 'origin/main...HEAD'],
     { cwd: process.cwd(), encoding: 'utf8' })
-    .split('\n').map(s => s.trim()).filter(Boolean)
+    .split('\n').map(s => unquote(s.trim())).filter(Boolean)
   const staged = execFileSync('git', ['status', '--porcelain'],
     { cwd: process.cwd(), encoding: 'utf8' })
-    .split('\n').map(s => s.slice(3).trim()).filter(Boolean)
+    .split('\n').map(s => unquote(s.slice(3).trim())).filter(Boolean)
   const touched = new Set([...changed, ...staged])
 
   /** The six production files this feature touches, and why each one. */
@@ -790,7 +793,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable), false,
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
-      if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)) {
+      if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1147,6 +1150,41 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  /**
+   * THE AUTHORIZED PI-TO-OPERATIONS HANDOFF (20261229000000).
+   *
+   * Phase 1 of the handoff: one migration (two new tables, one trigger on
+   * order_pi_versions, two RPCs), the rules module the page reads from, the
+   * Operations review card and its dialog on the Order, the notification types
+   * and their link, the dashboard card and the Action Queue row, the Control
+   * Center assignment, and the history words. Every file is named, one by
+   * one. It reaches NO payment, allocation, balance, dispatch or order-data
+   * editing file: the untouchable lists below still hold.
+   */
+  const ALLOWED_OPERATIONS_HANDOFF = new Set([
+    'src/lib/orders/operationsHandoff.ts',
+    'src/lib/orders/orderHistory.ts',
+    'src/lib/orders/orderWorkspace.ts',
+    'src/lib/orders/orderDashboard.ts',
+    'src/lib/notifications.ts',
+    'src/lib/notificationMeta.ts',
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/app/orders/[id]/OrderRevisionModals.tsx',
+    'src/app/orders/page.tsx',
+    'src/app/orders/all/page.tsx',
+    'src/app/admin/control-center/page.tsx',
+    'src/app/admin/control-center/action-queue/page.tsx',
+    'src/components/layout/ControlCenterLayout.tsx',
+    'src/app/globals.css',
+    // The suites that hold it to its promises, and the pins it moved.
+    'src/lib/orders/operationsHandoff.test.ts',
+    'src/lib/orders/operationsHandoffSchema.test.ts',
+    'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
+    'src/lib/notificationSystemActivity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1165,7 +1203,35 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
     !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f) &&
     !ALLOWED_PERSONAL_MODULE_ORDER.has(f) &&
-    !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(f)
+    !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(f) &&
+    !ALLOWED_OPERATIONS_HANDOFF.has(f)
+
+  test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
+    for (const file of ALLOWED_OPERATIONS_HANDOFF) {
+      assert.ok(/\.(tsx?|css)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      assert.equal(/^src\/(app|lib)\/finance\//.test(file), false, `${file} is a Finance file`)
+    }
+    // A HANDOFF REACHES NO ORDER DATA. Nothing that edits a PI's figures, a
+    // payment, an allocation, alignment or dispatch rides in on it.
+    for (const untouchable of [
+      'src/lib/orders/productionAlignment.ts',
+      'src/lib/orders/orderPiVersions.ts',
+      'src/lib/orders/orderPiHandoff.ts',
+      'src/lib/orders/amendments.ts',
+      'src/lib/orders/orderPayments.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/permissions/finance.ts',
+      'src/app/api/orders/pi-revisions/approve/route.ts',
+      'src/app/api/orders/import/process-draft/route.ts',
+      'src/app/orders/[id]/OrderAmendmentModals.tsx',
+    ]) {
+      assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
+      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -1211,8 +1277,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/lib/permissions/orders.ts',
       // Orders screens. The Confirmed Order's own page.tsx and OrdersLayout.tsx
       // left this list when the redesign named them, as drafts/page.tsx did
-      // before them; their siblings below keep the prefix leak probed.
-      'src/app/orders/all/page.tsx',
+      // before them, and all/page.tsx when the operations handoff named it
+      // (its ?ops=awaiting queue); their siblings below keep the prefix leak
+      // probed.
+      'src/app/orders/notifications/page.tsx',
       'src/app/orders/[id]/OrderAmendmentModals.tsx',
       'src/app/orders/[id]/OrderPiSections.tsx',
       // src/app/orders/drafts/page.tsx WAS on this list and is not any more.
@@ -1291,8 +1359,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff/.test(f),
         `${f} does not belong to this feature`)
+    }
+    // The operations-handoff files are held to the same rule: a disposable
+    // local stack named by the caller, nothing linked, assertions that roll
+    // back.
+    if (added.some(f => /order_operations_handoff/.test(f))) {
+      const ooh = read('supabase/tests/run_order_operations_handoff_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(ooh), false,
+        'the handoff runner must not be able to reach a linked project')
+      assert.ok(ooh.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(ooh.includes('is not disposable'), 'and refuses a database holding real Orders')
+      const assertions = read('supabase/tests/order_operations_handoff_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // The personal module-order files are held to the SAME rule the expense
     // runner is held to below: a throwaway local database and nothing that can
@@ -1329,7 +1409,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
         || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
-        || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file),
+        || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file)
+        || ALLOWED_OPERATIONS_HANDOFF.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
