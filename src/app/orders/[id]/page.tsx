@@ -30,12 +30,13 @@ import {
 } from './OrderWorkspace'
 import {
   PAYMENT_DETAIL_COLUMNS,
-  PAYMENT_DETAIL_UNAVAILABLE,
+  createPaymentDetailGate,
+  loadPaymentDetailInto,
   orderPaymentDetailQuery,
   orderPaymentList,
-  paymentDetailFields,
   type OrderPaymentDetailState,
   type OrderPaymentListKind,
+  type PaymentDetailRow,
 } from '@/lib/orders/orderPaymentLists'
 import {
   arrangeOrderActions,
@@ -701,6 +702,16 @@ export default function OrderDetailPage() {
   /** That payment's Finance record: asked for on the press, never at load. */
   const [paymentDetail, setPaymentDetail] = useState<OrderPaymentDetailState | null>(null)
   /**
+   * THE GATE THE DETAIL READ IS ISSUED THROUGH.
+   *
+   * One per mounted page, created once — useState's initialiser runs exactly
+   * once, where useRef(create()) would build and discard one on every render.
+   * Every place below that stops showing a payment invalidates it, so a
+   * response that arrives afterwards is dropped rather than written into a
+   * screen it no longer describes. See createPaymentDetailGate.
+   */
+  const [paymentDetailGate] = useState(createPaymentDetailGate)
+  /**
    * MAY THIS READER SEE FINANCE'S OWN RECORD OF A PAYMENT?
    *
    * FINANCE MODULE ENTRY, and nothing finer — the same capability that used to
@@ -723,6 +734,31 @@ export default function OrderDetailPage() {
    * be different sets.
    */
   const paymentRows = paymentList === null ? [] : orderPaymentList(payments, paymentList)
+
+  /**
+   * STOP SHOWING A PAYMENT'S RECORD, AND STOP EXPECTING ONE.
+   *
+   * The two setters alone would leave a read in flight whose answer would
+   * arrive into the cleared slots and repopulate them — reopening a detail the
+   * reader had closed. Invalidating first is what makes Back and Close final.
+   */
+  const forgetPaymentDetail = () => {
+    paymentDetailGate.invalidate()
+    setPaymentDetailId(null)
+    setPaymentDetail(null)
+  }
+
+  /**
+   * A DETAIL READ BELONGS TO ONE READER AND ONE MOUNT OF THIS PAGE.
+   *
+   * Losing the Finance capability mid-flight, or leaving the page altogether,
+   * invalidates whatever was issued under the old answer: the cleanup runs on
+   * unmount and again whenever the capability changes. The dialog already
+   * refuses to DRAW a detail without the capability; this stops the write.
+   */
+  useEffect(() => {
+    return () => { paymentDetailGate.invalidate() }
+  }, [paymentDetailGate, mayViewPaymentDetails])
 
   /** The design-file dialog, and the one evidence picture a reader asked for. */
   const [designOpen, setDesignOpen] = useState(false)
@@ -1125,6 +1161,12 @@ export default function OrderDetailPage() {
 
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
+    // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
+    // OLD one describes a list this page is about to stop showing. It is
+    // superseded here rather than allowed to land afterwards; the reader's
+    // open dialog simply asks again if they are still looking at it.
+    paymentDetailGate.invalidate()
+
     const { data: o } = await orderRowQuery()
 
     if (!o) { setNotFound(true); releaseShell(); return }
@@ -1584,6 +1626,15 @@ export default function OrderDetailPage() {
    * THE READ IS THE READER'S OWN. Their session, their RLS, no service role, no
    * RPC and no new policy. A row the database refuses them is reported as
    * refused rather than drawn as a record with every field empty.
+   *
+   * AND IT IS RACE-SAFE. Opening A, pressing Back and opening B leaves A's
+   * request in flight; if it lands after B's it would, unguarded, write A's
+   * fields under B's heading. Every read is issued through paymentDetailGate,
+   * which supersedes the previous one, and loadPaymentDetailInto drops the
+   * answer to a superseded request instead of applying it. Back, Close, an
+   * Order refresh, a lost capability and unmount all invalidate it too, so a
+   * late answer can neither reopen a closed dialog nor repopulate a cleared
+   * one. Nothing here caches, and the request is still one row for one press.
    */
   const loadPaymentDetail = async (paymentId: string) => {
     const { allowed, paymentId: safeId } = orderPaymentDetailQuery({
@@ -1593,20 +1644,20 @@ export default function OrderDetailPage() {
     })
     if (!allowed || !safeId) return
 
-    setPaymentDetailId(safeId)
-    setPaymentDetail({ state: 'loading' })
-
-    const { data, error } = await supabase
-      .from('finance_payment_requests')
-      .select(PAYMENT_DETAIL_COLUMNS)
-      .eq('id', safeId)
-      .maybeSingle()
-
-    if (error || !data) {
-      setPaymentDetail({ state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE })
-      return
-    }
-    setPaymentDetail({ state: 'ready', fields: paymentDetailFields(data) })
+    await loadPaymentDetailInto({
+      gate: paymentDetailGate,
+      paymentId: safeId,
+      read: async id => {
+        const { data, error } = await supabase
+          .from('finance_payment_requests')
+          .select(PAYMENT_DETAIL_COLUMNS)
+          .eq('id', id)
+          .maybeSingle()
+        return { row: (data as PaymentDetailRow | null) ?? null, failed: Boolean(error) }
+      },
+      open: setPaymentDetailId,
+      apply: setPaymentDetail,
+    })
   }
 
   /**
@@ -2720,15 +2771,23 @@ export default function OrderDetailPage() {
           Order's allocated share — which is the figure the summary is built
           from; a split payment states its full ledger amount underneath.
 
-          TWO AUDIENCES. The list is for everybody who may read this Order: its
-          amounts are the Order's own facts and the totals above are built from
-          them. Finance's record of its own work — the proof note, the
-          clarification it asked for, where the money landed, who signed it off
-          — is for a reader holding Finance module entry, which is the door the
-          Finance record link used to stand at. It is not on the startup path
-          and is not in anybody else's browser: loadPaymentDetail asks for one
+          TWO AUDIENCES, AS THIS PAGE DRAWS THEM. The list is for everybody who
+          may read this Order: its amounts are the Order's own facts and the
+          totals above are built from them. Finance's record of its own work —
+          the proof note, the clarification it asked for, where the money
+          landed, who signed it off — is shown only to a reader holding Finance
+          module entry, which is the door the Finance record link used to stand
+          at. None of it is on the startup path, and this page does not request
+          it for a reader it will not show it to: loadPaymentDetail asks for one
           payment, on a press, having first refused both a reader without the
-          capability and an id this list never showed. */}
+          capability and an id this list never showed.
+
+          THAT IS A PRESENTATION GATE, NOT A DATABASE ONE. It restores the rule
+          the Finance record link carried and keeps these fields out of a
+          request this page would not draw. It confers no confidentiality of its
+          own and makes nobody unable to query those columns by other means;
+          RLS decides what the database hands over, and this branch leaves it
+          exactly as it was. */}
       {paymentList && (
         <OrderPaymentListDialog
           kind={paymentList}
@@ -2743,11 +2802,12 @@ export default function OrderDetailPage() {
           /* Nothing is fetched until this fires, and it refuses an id the list
              above does not contain. */
           onOpen={paymentId => { void loadPaymentDetail(paymentId) }}
-          onBack={() => { setPaymentDetailId(null); setPaymentDetail(null) }}
+          /* BOTH INVALIDATE THE READ IN FLIGHT, not just the state on screen —
+             otherwise its answer would land in the slots these just cleared. */
+          onBack={forgetPaymentDetail}
           onClose={() => {
             setPaymentList(null)
-            setPaymentDetailId(null)
-            setPaymentDetail(null)
+            forgetPaymentDetail()
           }}
         />
       )}

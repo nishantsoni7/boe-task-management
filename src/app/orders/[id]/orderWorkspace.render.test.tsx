@@ -527,6 +527,12 @@ const FIELDS = {
     human_payment_id: 'PAY-2026-0402', admin_note: 'Which invoice is this against?',
     clarification_requested_at: '2026-09-15T04:00:00Z',
   }),
+  /** Signed off by somebody the reader's RLS does show them. */
+  p3: paymentDetailFields({
+    human_payment_id: 'PAY-2026-0455',
+    approved_at: '2026-09-04T09:00:00Z',
+    approved_by_user: { full_name: 'Meera Raghunathan' },
+  }),
 }
 
 const dialog = (
@@ -665,7 +671,7 @@ describe('the payment detail', () => {
   const detail = (rows = [payment({})], kind: 'verified' | 'awaiting' = 'verified', openId = 'p1') =>
     dialog(rows, kind, {
       openId,
-      detail: { state: 'ready', fields: FIELDS[openId as 'p1' | 'p2'] ?? FIELDS.p1 },
+      detail: { state: 'ready', paymentId: openId, fields: FIELDS[openId as 'p1' | 'p2'] ?? FIELDS.p1 },
     })
 
   test('it is the SAME dialog, retitled — not a second one stacked on the first', () => {
@@ -742,7 +748,7 @@ describe('the payment detail', () => {
     // p5's fetched record carries nothing: no reference, no received-in, no notes.
     const bare = payment({ id: 'p5' })
     const body = text(dialog([bare], 'verified', {
-      openId: 'p5', detail: { state: 'ready', fields: paymentDetailFields({}) },
+      openId: 'p5', detail: { state: 'ready', paymentId: 'p5', fields: paymentDetailFields({}) },
     }))
     for (const absent of ['Payment reference', 'Received in', 'Verified on', 'Proof', 'Finance note']) {
       assert.equal(body.includes(absent), false, absent)
@@ -760,7 +766,7 @@ describe('the payment detail', () => {
 
   test('while the record is still coming, the dialog says so', () => {
     const html = dialog([payment({})], 'verified', {
-      openId: 'p1', detail: { state: 'loading' },
+      openId: 'p1', detail: { state: 'loading', paymentId: 'p1' },
     })
     assert.match(html, /role="status"/)
     const body = text(html)
@@ -771,10 +777,63 @@ describe('the payment detail', () => {
 
   test('a refused record says so, and is never drawn as an empty one', () => {
     const html = dialog([payment({})], 'verified', {
-      openId: 'p1', detail: { state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE },
+      openId: 'p1', detail: { state: 'error', paymentId: 'p1', message: PAYMENT_DETAIL_UNAVAILABLE },
     })
     assert.match(html, /role="alert"/)
     assert.ok(text(html).includes(PAYMENT_DETAIL_UNAVAILABLE))
+  })
+
+  // ── Who signed it off ──
+
+  test('WHO VERIFIED IT IS NAMED, beside when it was verified', () => {
+    const body = text(dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p3 },
+    }))
+    assert.ok(body.includes('Verified by'))
+    assert.ok(body.includes('Meera Raghunathan'))
+  })
+
+  test('and where the reader may not see that person, the line is ABSENT — never a uuid', () => {
+    // approved_by_user comes back null when the reader's RLS does not show
+    // them the approver. The record still states WHEN it was verified.
+    const fields = paymentDetailFields({
+      approved_at: '2026-09-04T09:00:00Z', approved_by_user: null,
+    })
+    const body = text(dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields },
+    }))
+    assert.equal(body.includes('Verified by'), false)
+    assert.ok(body.includes('Verified on'))
+    // Nothing that looks like an id reaches the screen.
+    assert.equal(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(body), false)
+  })
+
+  // ── A record belongs to ONE payment ──
+
+  test('A RECORD FETCHED FOR ANOTHER PAYMENT IS NOT DRAWN UNDER THIS ONE', () => {
+    // The state is a single slot, and a detail read is asynchronous: this is
+    // the shape a late response for a payment the reader LEFT would arrive in.
+    // It must read as "still loading", never as this payment's record.
+    const body = text(dialog([payment({}), payment({ id: 'p2' })], 'verified', {
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p2', fields: FIELDS.p2 },
+    }))
+    assert.equal(body.includes('PAY-2026-0402'), false, "another payment's reference was drawn")
+    assert.equal(body.includes('Which invoice is this against?'), false)
+    // And the payment actually open still states its own facts.
+    assert.ok(body.includes('Allocated to this Order'))
+  })
+
+  test('nor is another payment’s REFUSAL or SPINNER shown as this one’s', () => {
+    const refused = dialog([payment({}), payment({ id: 'p2' })], 'verified', {
+      openId: 'p1', detail: { state: 'error', paymentId: 'p2', message: PAYMENT_DETAIL_UNAVAILABLE },
+    })
+    assert.equal(refused.includes('role="alert"'), false)
+    assert.equal(text(refused).includes(PAYMENT_DETAIL_UNAVAILABLE), false)
+
+    const loading = dialog([payment({}), payment({ id: 'p2' })], 'verified', {
+      openId: 'p1', detail: { state: 'loading', paymentId: 'p2' },
+    })
+    assert.equal(loading.includes('role="status"'), false)
   })
 })
 
@@ -805,7 +864,7 @@ describe('a reader who may see the Order but NOT enter Finance', () => {
     // The capability decides, not the state. A leftover or forced openId draws
     // the list, and the fields handed in are drawn nowhere.
     const html = noFinance({
-      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 },
     })
     assert.match(html, new RegExp(`aria-label="${PAYMENT_LIST_TITLE.verified}"`))
     assert.equal(html.includes('order-pay-detail'), false)
@@ -825,9 +884,9 @@ describe('a reader who may see the Order but NOT enter Finance', () => {
   test('SEES NONE OF FINANCE\'S OWN RECORD, in any state', () => {
     for (const detail of [
       null,
-      { state: 'loading' } as const,
-      { state: 'ready', fields: FIELDS.p1 } as const,
-      { state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE } as const,
+      { state: 'loading', paymentId: 'p1' } as const,
+      { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 } as const,
+      { state: 'error', paymentId: 'p1', message: PAYMENT_DETAIL_UNAVAILABLE } as const,
     ]) {
       const body = text(noFinance({ openId: 'p1', detail }))
       for (const secret of ['PAY-2026-0311', 'Company account', 'NEFT reference N260901.',
@@ -846,7 +905,7 @@ describe('a reader who holds Finance module entry', () => {
     assert.match(list, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
 
     const open = dialog([payment({})], 'verified', {
-      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 },
     })
     assert.match(open, new RegExp(`aria-label="${PAYMENT_DETAIL_TITLE}"`))
     const body = text(open)
@@ -857,7 +916,7 @@ describe('a reader who holds Finance module entry', () => {
 
   test('and it is still ONE dialog, on this page', () => {
     const html = dialog([payment({})], 'verified', {
-      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+      openId: 'p1', detail: { state: 'ready', paymentId: 'p1', fields: FIELDS.p1 },
     })
     assert.equal((html.match(/role="dialog"/g) ?? []).length, 1)
     assert.equal(/<a |href=|\/finance/.test(html), false)

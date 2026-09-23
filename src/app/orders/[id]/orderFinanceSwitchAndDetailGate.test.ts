@@ -173,8 +173,45 @@ describe('the page asks for the Finance record only on a press, and only then', 
     assert.ok(fn.includes('canViewPaymentDetails: mayViewPaymentDetails'))
     assert.ok(fn.includes('rows: paymentRows'))
     assert.ok(fn.includes('if (!allowed || !safeId) return'), 'it returns before reading')
-    assert.ok(fn.includes(".eq('id', safeId)"), 'and asks for exactly that one row')
+    // The id it asks for is the one the guard returned, handed straight to the
+    // loader — never the caller's own string.
+    assert.ok(fn.includes('paymentId: safeId'))
+    assert.ok(fn.includes(".eq('id', id)"), 'and asks for exactly that one row')
     assert.ok(fn.includes('PAYMENT_DETAIL_COLUMNS'))
+  })
+
+  test('A LATE ANSWER CANNOT REWRITE THE SCREEN', () => {
+    // The whole read is issued through the page's one gate, and the answer is
+    // applied by loadPaymentDetailInto, which drops a superseded one. The
+    // behaviour itself is held by orderPaymentLists.test.ts with deferred
+    // promises; this holds that the page is actually wired to it.
+    const fn = page.slice(page.indexOf('const loadPaymentDetail'), page.indexOf('const viewEvidence'))
+    assert.ok(fn.includes('loadPaymentDetailInto({'))
+    assert.ok(fn.includes('gate: paymentDetailGate'))
+    assert.ok(fn.includes('apply: setPaymentDetail'))
+    // One gate per mounted page, created once.
+    assert.ok(page.includes('const [paymentDetailGate] = useState(createPaymentDetailGate)'))
+  })
+
+  test('BACK, CLOSE, A REFRESH, A LOST CAPABILITY AND UNMOUNT ALL INVALIDATE IT', () => {
+    // Back and Close go through the one helper, which invalidates BEFORE it
+    // clears — otherwise the answer would land in the slots they just cleared.
+    assert.ok(page.includes(`const forgetPaymentDetail = () => {
+    paymentDetailGate.invalidate()
+    setPaymentDetailId(null)
+    setPaymentDetail(null)
+  }`))
+    const body = page.slice(page.indexOf('<OrdersLayout'))
+    assert.ok(body.includes('onBack={forgetPaymentDetail}'))
+    assert.ok(body.includes('forgetPaymentDetail()'), 'Close must invalidate too')
+
+    // A refresh replaces the payment set the read was issued against.
+    const load = page.slice(page.indexOf('const loadOrder'), page.indexOf('const markUpdatesSeen'))
+    assert.ok(load.includes('paymentDetailGate.invalidate()'))
+
+    // A lost capability, and unmount: one cleanup covers both.
+    assert.ok(page.includes(`    return () => { paymentDetailGate.invalidate() }
+  }, [paymentDetailGate, mayViewPaymentDetails])`))
   })
 
   test('it is the READER’S OWN session — no service role, no RPC, no new policy', () => {
@@ -185,7 +222,11 @@ describe('the page asks for the Finance record only on a press, and only then', 
 
   test('a refused row is reported as refused, never drawn as an empty record', () => {
     const fn = page.slice(page.indexOf('const loadPaymentDetail'), page.indexOf('const viewEvidence'))
-    assert.ok(fn.includes("setPaymentDetail({ state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE })"))
+    // The page reports the refusal to the loader, which is what turns it into
+    // the error state — one place, so a thrown read is handled identically.
+    assert.ok(fn.includes('failed: Boolean(error)'))
+    const lists = code('src/lib/orders/orderPaymentLists.ts')
+    assert.ok(lists.includes("apply({ state: 'error', paymentId, message: PAYMENT_DETAIL_UNAVAILABLE })"))
   })
 
   test('the dialog is TOLD the capability; it does not guess', () => {
@@ -198,8 +239,19 @@ describe('the page asks for the Finance record only on a press, and only then', 
   })
 
   test('closing or going back forgets the record it fetched', () => {
-    const body = page.slice(page.indexOf('<OrdersLayout'))
-    assert.ok(body.includes('setPaymentDetail(null)'))
+    assert.ok(page.includes('setPaymentDetail(null)'))
+    assert.ok(page.includes('setPaymentDetailId(null)'))
+  })
+
+  test('THE GATE IS A PRESENTATION GATE, and says so rather than claiming more', () => {
+    // It restores the door the Finance record link stood at and keeps this page
+    // from asking for fields it will not draw. It is not column-level
+    // confidentiality, and the comments must not imply that it is.
+    const prose = read(PAGE) + read('src/lib/orders/orderPaymentLists.ts')
+    assert.ok(/RLS decides what the database hands over/.test(prose))
+    assert.ok(/not column-level confidentiality/.test(prose))
+    // No claim that anybody is technically unable to read these columns.
+    assert.equal(/only a finance reader\s+—?\s*may see/i.test(prose), false)
   })
 })
 

@@ -33,6 +33,7 @@ import {
   PAYMENT_LIST_TITLE,
   RECEIVED_IN_LABEL,
   orderPaymentById,
+  paymentDetailFor,
   type OrderPaymentDetailState,
   type OrderPaymentListKind,
   type OrderPaymentListRow,
@@ -504,7 +505,19 @@ export function OrderPaymentListDialog({
   // Order, one Escape from where they started, with a Back that returns them to
   // the list rather than to whatever the browser remembers.
   if (open) {
-    const d = detail?.state === 'ready' ? detail.fields : null
+    // THE STATE MUST BELONG TO THE PAYMENT ON SCREEN.
+    //
+    // A detail read is asynchronous and a reader can leave one payment for
+    // another while the first is still in flight. `detail` is one slot, so
+    // without this the answer for a payment the reader has LEFT would be drawn
+    // under the one they are looking at — the right-hand side of the dialog
+    // describing a different payment from the left. paymentDetailFor compares
+    // the id the state carries against the one open here and yields null on
+    // any mismatch, which draws as "still loading" rather than as a wrong
+    // record. The page invalidates the abandoned read as well; this is the
+    // half that guarantees nothing stale can REACH the screen.
+    const own = paymentDetailFor(detail, open.id)
+    const d = own?.state === 'ready' ? own.fields : null
 
     // THE ORDER'S OWN FACTS, from the row the list already had.
     const facts: { key: string; label: string; value: string }[] = [
@@ -531,6 +544,12 @@ export function OrderPaymentListDialog({
         : []),
       ...(d.approvedAtIso
         ? [{ key: 'approved', label: 'Verified on', value: formatDateTime(d.approvedAtIso) }]
+        : []),
+      // WHO, where the record names somebody the reader may see. Absent rather
+      // than guessed: no uuid, and no "Unknown user" under a heading that
+      // promises a person.
+      ...(d.approvedByName
+        ? [{ key: 'approver', label: 'Verified by', value: d.approvedByName }]
         : []),
       ...(d.clarificationAtIso
         ? [{ key: 'clarify', label: 'Clarification asked', value: formatDateTime(d.clarificationAtIso) }]
@@ -565,11 +584,11 @@ export function OrderPaymentListDialog({
 
         {/* THE REST IS STILL COMING, OR WAS REFUSED. Said either way, so a
             half-drawn record never reads as a complete one. */}
-        {detail?.state === 'loading' && (
+        {own?.state === 'loading' && (
           <p className="order-doc-loading" role="status">Loading the rest of this payment…</p>
         )}
-        {detail?.state === 'error' && (
-          <p className="order-doc-unavailable" role="alert">{detail.message}</p>
+        {own?.state === 'error' && (
+          <p className="order-doc-unavailable" role="alert">{own.message}</p>
         )}
 
         {open.isPartialShare && (
