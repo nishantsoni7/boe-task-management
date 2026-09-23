@@ -757,7 +757,7 @@ begin
 
   -- Sales hears the final outcome; on a rejection the approving admin does too.
   insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
-  select distinct x.uid, null, v_s.order_id, 'order_document_review_decided'::notification_type,
+  select distinct x.uid, null::uuid, v_s.order_id, 'order_document_review_decided'::notification_type,
          case when p_decision = 'accepted'
               then format('Order %s: %s accepted by operations and now current.', v_order.display_number, v_label)
               else format('Order %s: %s rejected by operations.', v_order.display_number, v_label) end,
