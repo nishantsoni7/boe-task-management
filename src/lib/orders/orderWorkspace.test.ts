@@ -325,6 +325,20 @@ describe('the header actions', () => {
     assert.deepEqual(layout.overflow, ['unalign'])
   })
 
+  test('withdrawing an operations acceptance sits behind the overflow, only when offered', () => {
+    const offered = arrangeOrderActions({
+      alignAction: null, canAmend: true, canRequest: false, canReviewChangeRequests: false, canCleanUp: false,
+      canWithdrawAcceptance: true,
+    })
+    assert.equal(offered.primary, null)
+    assert.deepEqual(offered.secondary, ['amend'])
+    assert.deepEqual(offered.overflow, ['withdraw_acceptance'])
+    const notOffered = arrangeOrderActions({
+      alignAction: null, canAmend: true, canRequest: false, canReviewChangeRequests: false, canCleanUp: false,
+    })
+    assert.deepEqual(notOffered.overflow, [])
+  })
+
   test('a non-admin keeps both request doors: change beside, cancellation behind the overflow', () => {
     const layout = arrangeOrderActions({
       alignAction: null, canAmend: false, canRequest: true, canReviewChangeRequests: false, canCleanUp: false,

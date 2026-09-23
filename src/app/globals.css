@@ -3052,6 +3052,10 @@ body {
      from the shop floor. */
   .order-status-action { min-height: 38px; }
   .order-history-actions .order-status-action { flex: 1 1 auto; justify-content: center; }
+  /* The attention strip's decision buttons: a full row under the message,
+     each half of it, so neither is a thumb-width target. */
+  .order-attention-actions { width: 100%; margin-left: 0; }
+  .order-attention-actions .order-status-action { flex: 1 1 0; justify-content: center; }
 }
 
 /* ── The lower workspace ──
@@ -3272,13 +3276,33 @@ body {
    dot, so three items read as three and not as a sentence. */
 .order-attention {
   display: flex;
-  align-items: baseline;
-  gap: 4px 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
   flex-wrap: wrap;
   padding: 8px 13px;
   border-radius: 8px;
   background: rgba(232,160,48,0.10);
   border: 1px solid rgba(190,140,40,0.34);
+  scroll-margin-top: 16px;
+}
+/* The message on the left; the operations reviewer's decision, when this
+   reader has one to take, on the right. Below the width both need, the
+   actions wrap under the message rather than squeezing it. */
+.order-attention-message {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.order-attention-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 .order-attention-icon {
   color: #B77A12;

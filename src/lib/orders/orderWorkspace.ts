@@ -140,7 +140,12 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
       tone: 'amber',
     })
   }
-  if (open && input.operationsReview) {
+  // A PENDING REVIEW OUTLIVES DISPATCH. decide_order_operations_handoff()
+  // refuses only a CANCELLED Order, and the review queue, the dashboard count
+  // and reviewer reassignment all treat a dispatched Order's undecided version
+  // as live work — so the strip names it until the Order is cancelled, not
+  // until it is closed. The alignment warning above stays an open-Order gap.
+  if (input.status !== 'cancelled' && input.operationsReview) {
     const r = input.operationsReview
     if (r.unassigned) {
       items.push({ key: 'operations_unassigned', label: 'No operations reviewer assigned', tone: 'amber' })
@@ -568,6 +573,7 @@ export type OrderHeaderActionKey =
   | 'request_change'
   | 'request_cancel'
   | 'review_change_request'
+  | 'withdraw_acceptance'
   | 'cleanup'
 
 export type OrderActionLayout = {
@@ -587,6 +593,11 @@ export type OrderActionInput = {
   /** This reader may review, and at least one request is pending. */
   canReviewChangeRequests: boolean
   canCleanUp: boolean
+  /**
+   * The assigned operations reviewer may withdraw the acceptance of the PI
+   * version in force. Optional: an Order with no handoff has nothing to withdraw.
+   */
+  canWithdrawAcceptance?: boolean
 }
 
 /**
@@ -595,8 +606,8 @@ export type OrderActionInput = {
  * Otherwise a pending change request the reader may decide is the next thing.
  * Otherwise nothing is filled: every remaining control is an ordinary edit.
  *
- * Removing an alignment, requesting a cancellation and the testing-phase
- * cleanup route are rare, and none of them may compete with the everyday
+ * Removing an alignment, withdrawing an operations acceptance, requesting a
+ * cancellation and the testing-phase cleanup route are rare, and none of them may compete with the everyday
  * controls, so they sit behind the overflow. Nothing is dropped.
  */
 export function arrangeOrderActions(input: OrderActionInput): OrderActionLayout {
@@ -612,6 +623,7 @@ export function arrangeOrderActions(input: OrderActionInput): OrderActionLayout 
 
   const overflow: OrderHeaderActionKey[] = []
   if (input.alignAction === 'unalign') overflow.push('unalign')
+  if (input.canWithdrawAcceptance) overflow.push('withdraw_acceptance')
   if (input.canRequest) overflow.push('request_cancel')
   if (input.canCleanUp) overflow.push('cleanup')
 
