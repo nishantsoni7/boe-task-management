@@ -130,7 +130,7 @@ begin
   return (v ->> 'order_id')::uuid;
 end $$;
 
-/** A revised version approved, through the same writes approve_order_pi_revision() makes. */
+/** A revised version put in force through the writes the revision path makes since 20270101000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
 create function pg_temp.approve_revision(p_order uuid, p_actor uuid) returns uuid language plpgsql as $$
 declare v_sub uuid; v_cur record; v_new uuid;
 begin
@@ -141,8 +141,11 @@ begin
           'submissions/' || v_sub::text || '/original/' || gen_random_uuid()::text || '.xlsx', 'rev.xlsx',
           current_setting('test.sales_id')::uuid, 'ASSERT revised figures')
   returning id into v_new;
+  update public.order_pi_versions set status = 'admin_approved', decided_by = p_actor, decided_at = now() where id = v_new;
+  perform set_config('boe.pi_revision_apply', v_sub::text, true);
   update public.order_pi_versions set status = 'superseded', superseded_at = now(), superseded_by_version_id = v_new where id = v_cur.id;
-  update public.order_pi_versions set status = 'approved', decided_by = p_actor, decided_at = now() where id = v_new;
+  update public.order_pi_versions set status = 'approved', operations_decided_by = p_actor, operations_decided_at = now(), applied_at = now() where id = v_new;
+  perform set_config('boe.pi_revision_apply', '', true);
   return v_new;
 end $$;
 
