@@ -1314,6 +1314,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/orders/[id]/orderPiRevisionPromotion.render.test.tsx',
     'src/lib/orders/orderPiRevisionPromotion.test.ts',
     'src/lib/orders/submissionImages.test.ts',
+    'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
   ])
   const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
