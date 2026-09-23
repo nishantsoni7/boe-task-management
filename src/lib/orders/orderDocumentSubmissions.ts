@@ -365,7 +365,7 @@ export function queueHref(orderId: string): string {
 
 export function describeDocumentFailure(error: { message?: string | null } | null | undefined): string {
   const raw = error?.message ?? ''
-  const coded = raw.match(/ORDER_DOCUMENT_[A-Z_]+: (.*)$/s)
+  const coded = raw.match(/ORDER_DOCUMENT_[A-Z_]+: ([\s\S]*)$/)
   if (coded) return coded[1]
   if (/row-level security|violates|permission|42501|Only /i.test(raw)) {
     return raw.startsWith('Only ') ? raw : 'You do not have permission to do that on this Order.'

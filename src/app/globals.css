@@ -2484,6 +2484,73 @@ body {
   .order-doc-action { flex: 0 1 auto; }
 }
 
+/* ── Documents: Main PI left (about 40%), Design Files and Client PO stacked
+   right (about 60%) — 20261231000000. Inside the narrower columns each
+   subsection stacks its title, body and actions rather than sharing a row. */
+.order-docs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  min-width: 0;
+}
+.order-docs-main, .order-docs-side { min-width: 0; }
+.order-docs-side { border-left: 1px solid #F0F2F5; }
+.order-docs-grid .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.order-docs-grid .order-doc-section-actions { justify-content: flex-start; }
+.order-doc-ops { margin-top: 6px; }
+
+/* A PROPOSAL IS NEVER DRAWN AS THE CURRENT FILE: its own dashed, tinted block,
+   with its stage in words. A rejection has its own block and reason. */
+.order-docsub-accepted { margin-top: 8px; }
+.order-docsub-pending, .order-docsub-rejected {
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  min-width: 0;
+}
+.order-docsub-pending { border: 1px dashed rgba(190,140,40,0.55); background: #FFFBF0; }
+.order-docsub-rejected { border: 1px solid rgba(217,79,79,0.32); background: #FFF6F5; }
+.order-docsub-pending-title { font-size: 12.5px; font-weight: 700; color: #111318; }
+.order-docsub-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.order-docsub-files { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.order-docsub-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  background: none; border: 0; padding: 2px 0; cursor: pointer;
+  font-size: 12.5px; color: #1F5FBF; text-align: left;
+}
+.order-docsub-file:hover .order-docsub-file-name { text-decoration: underline; }
+.order-docsub-file-name { overflow-wrap: anywhere; min-width: 0; }
+.order-docsub-file-size { color: #8C94A6; font-size: 11px; white-space: nowrap; }
+.order-docsub-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.order-docsub-fieldset legend { font-size: 11px; font-weight: 600; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.order-docsub-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
+.order-docsub-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid #F0F2F5; }
+.order-docsub-compare-title { margin: 0; font-size: 12px; font-weight: 700; color: #3A4150; }
+.order-docsub-decide { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.order-docsub-reject { color: #B42318; border-color: rgba(217,79,79,0.4); }
+
+/* The "Needs your action" queue on the Orders dashboard. */
+.order-docq { background: #FFFFFF; border: 1px solid rgba(190,140,40,0.45); border-radius: 10px; margin-bottom: 14px; min-width: 0; }
+.order-docq-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #F0F2F5; flex-wrap: wrap; }
+.order-docq-title { margin: 0; font-size: 13px; font-weight: 700; color: #111318; }
+.order-docq-count { font-size: 11px; font-weight: 700; background: #9A6A12; color: #FFFFFF; border-radius: 999px; padding: 1px 8px; }
+.order-docq-list { list-style: none; margin: 0; padding: 0; }
+.order-docq-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 9px 14px; min-width: 0; }
+.order-docq-row + .order-docq-row { border-top: 1px solid #F0F2F5; }
+.order-docq-main { min-width: 0; font-size: 12.5px; color: #3A4150; }
+.order-docq-main strong { color: #111318; }
+.order-docq-meta { display: block; font-size: 11.5px; color: #8C94A6; overflow-wrap: anywhere; }
+.order-docq-sub { margin: 0; padding: 8px 14px; font-size: 11px; font-weight: 700; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid #F0F2F5; }
+
+@media (max-width: 720px) {
+  .order-docs-grid { grid-template-columns: minmax(0, 1fr); }
+  .order-docs-side { border-left: 0; border-top: 1px solid #F0F2F5; }
+  .order-docs-grid .order-doc-action, .order-docsub-actions .order-doc-action { flex: 1 1 100%; justify-content: center; min-height: 36px; }
+  .order-docsub-compare { grid-template-columns: minmax(0, 1fr); }
+  .order-docsub-decide .boe-btn { flex: 1 1 100%; }
+  .order-docq-row { grid-template-columns: minmax(0, 1fr); }
+  .order-docq-row .boe-btn { width: 100%; justify-content: center; }
+}
+
 /* ── The design-file dialog ──
    A GRID THAT FILLS WHAT IT IS GIVEN. auto-fill with a minimum track means the
    same markup is four across on a desktop dialog and two on a phone, with no

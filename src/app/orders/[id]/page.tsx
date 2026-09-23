@@ -130,6 +130,15 @@ import {
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
+import {
+  DocumentCategoryBody,
+  DocumentUploadAction,
+  ReviewSubmissionModal,
+  SubmitDocumentsModal,
+  useOrderDocumentSubmissions,
+} from './OrderDocumentSubmissions'
+import type { DocumentCategory, DocumentViewer, PersistedDocumentSubmission } from '@/lib/orders/orderDocumentSubmissions'
+import { UPLOAD_NEW_PI_LABEL } from '@/lib/orders/orderDocumentSubmissions'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
 import { clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
@@ -836,6 +845,13 @@ export default function OrderDetailPage() {
   const id         = params.id as string
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
+
+  // ── Design Files and Client PO submissions (20261231000000) ──
+  // Read beside the Order; the dialogs hold which category or submission is open.
+  const docSubs = useOrderDocumentSubmissions(supabase, id)
+  const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
+  const [docReview, setDocReview] = useState<PersistedDocumentSubmission | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
 
   /**
    * THE APPROVED PI BEHIND A CONFIRMED ORDER.
@@ -2215,6 +2231,50 @@ export default function OrderDetailPage() {
    * as a mis-typed design file and no local state pretends otherwise.
    */
   const clientPo = clientPoDocument()
+
+  /**
+   * WHO ACTS ON A DOCUMENT SUBMISSION, for drawing controls only. Submitting:
+   * an admin, or the Order's requester or salesperson holding orders.create —
+   * can_submit_order_document() re-derives it (plus the source PI's owners).
+   * Deciding: submissionActions() by stage; the RPCs re-check under locks.
+   */
+  const docMe = viewAsUserId ? null : (profile?.id ?? null)
+  const docViewer: DocumentViewer = {
+    viewerId: docMe,
+    isAdmin: actingAsAdmin,
+    currentOperationsReviewer: operationsSplit.live?.assigned_to ?? null,
+    canSubmit: !!docMe && order.status !== 'cancelled'
+      && (actingAsAdmin || (ordersCaps.canCreateOrder && (order.requested_by === docMe || order.assigned_to === docMe))),
+    viewingAs: !!viewAsUserId,
+  }
+  const docWhen = (iso: string | null) => (iso ? fmtDateTime(iso) : '—')
+  const openDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
+    setDocError(null)
+    void docSubs.openFile(f).then(e => { if (e) setDocError(e) })
+  }
+  const docBody = (category: DocumentCategory) => (
+    <>
+      <DocumentCategoryBody
+        category={category}
+        api={docSubs}
+        viewer={docViewer}
+        formatWhen={docWhen}
+        onReview={s => setDocReview(s)}
+        onResubmit={s => setDocUpload({ category, resubmission: s })}
+        onOpenFile={openDocFile}
+      />
+      {docError && <p className="order-doc-unavailable" role="alert">{docError}</p>}
+    </>
+  )
+  const mainPiOperations = operationsView?.kind === 'recorded'
+    ? {
+        label: operationsView.status === 'awaiting' ? 'Awaiting Operations Acceptance' : operationsView.statusLabel,
+        tone: operationsView.tone,
+        line: operationsView.status === 'awaiting'
+          ? ` is approved by Admin and in force; Operations has not accepted it yet. `
+          : null,
+      }
+    : null
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -2593,6 +2653,20 @@ export default function OrderDetailPage() {
             onManageDesign={() => setDesignOpen(true)}
             viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
+            mainPiUpload={mayProposeRevision ? (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost order-doc-action"
+                onClick={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+              >
+                {UPLOAD_NEW_PI_LABEL}
+              </button>
+            ) : undefined}
+            mainPiOperations={mainPiOperations}
+            designSubmissions={docBody('design_files')}
+            designUpload={<DocumentUploadAction category="design_files" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
+            clientPoSubmissions={docBody('client_po')}
+            clientPoUpload={<DocumentUploadAction category="client_po" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
           />
           <OrderFabricFinishCard
             standing={approvalView}
@@ -2981,6 +3055,27 @@ export default function OrderDetailPage() {
           onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
           onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
           error={revisionDialog === null ? revisionError : null}
+        />
+      )}
+
+      {/* ── Design Files and Client PO submissions (20261231000000) ── */}
+      {docUpload && (
+        <SubmitDocumentsModal
+          orderNumber={order.display_number}
+          initialCategory={docUpload.category}
+          api={docSubs}
+          resubmissionOf={docUpload.resubmission}
+          onClose={() => setDocUpload(null)}
+        />
+      )}
+      {docReview && (
+        <ReviewSubmissionModal
+          orderNumber={order.display_number}
+          submission={docSubs.rows.find(r => r.id === docReview.id) ?? docReview}
+          api={docSubs}
+          viewer={docViewer}
+          formatWhen={docWhen}
+          onClose={() => setDocReview(null)}
         />
       )}
 

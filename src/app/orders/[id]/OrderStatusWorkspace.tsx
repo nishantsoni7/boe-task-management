@@ -204,6 +204,7 @@ export function OrderDocumentsPanel({
   mainPi, design, clientPo,
   onView, onDownload, onHistory, onManageDesign,
   viewing, downloading,
+  mainPiUpload, mainPiOperations, designSubmissions, designUpload, clientPoSubmissions, clientPoUpload,
 }: {
   mainPi: MainPiCard
   design: DesignFilesDocument
@@ -215,10 +216,24 @@ export function OrderDocumentsPanel({
   onManageDesign: () => void
   viewing: boolean
   downloading: boolean
+  /** Upload New PI — the existing revised-PI door. Absent when not offered. */
+  mainPiUpload?: React.ReactNode
+  /** Where the version in force stands with Operations, in words. */
+  mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
+  /** Accepted order-level files, the pending proposal and any rejection (20261231000000). */
+  designSubmissions?: React.ReactNode
+  designUpload?: React.ReactNode
+  clientPoSubmissions?: React.ReactNode
+  clientPoUpload?: React.ReactNode
 }) {
   return (
-    <section className="order-docs" aria-label={DOCUMENTS_TITLE}>
+    <section className="order-docs" aria-label={DOCUMENTS_TITLE} id="documents">
       <h2 className="order-docs-title">{DOCUMENTS_TITLE}</h2>
+
+      {/* MAIN PI ON THE LEFT (about 40%), DESIGN FILES AND CLIENT PO STACKED ON
+          THE RIGHT (about 60%); one column below 720px. */}
+      <div className="order-docs-grid">
+      <div className="order-docs-main">
 
       {/* ── 1. The PI this Order runs on ── */}
       <DocSection
@@ -256,6 +271,7 @@ export function OrderDocumentsPanel({
               <History size={13} strokeWidth={2} aria-hidden="true" />
               {MAIN_PI_HISTORY_LABEL}
             </button>
+            {mainPiUpload}
           </>
         }
       >
@@ -272,6 +288,13 @@ export function OrderDocumentsPanel({
               {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
               {mainPi.approvedAt && <Fact label={MAIN_PI_APPROVED_LABEL} value={mainPi.approvedAt} />}
             </dl>
+            {mainPiOperations && (
+              <p className="order-doc-lead order-doc-ops">
+                <span className="order-doc-note" style={{ margin: 0 }}>Operations:</span>
+                <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
+              </p>
+            )}
+            {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {mainPi.pendingRevision && (
               <p className="order-doc-note">
                 A revised PI is uploaded and waiting for a decision. This one stays in force until it is approved.
@@ -281,15 +304,23 @@ export function OrderDocumentsPanel({
         )}
       </DocSection>
 
+      </div>
+      <div className="order-docs-side">
+
       {/* ── 2. The design record behind the products ──
           FOUR STATES AND NO FIFTH (PR #195): loading is not "none", a refused
           read is not "none", and an empty read says so in its own words. */}
       <DocSection
         title={DOC_DESIGN_FILES_TITLE}
-        actions={design.kind === 'ready' ? (
-          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onManageDesign}>
-            {DOC_VIEW_FILES_LABEL}
-          </button>
+        actions={(design.kind === 'ready' || designUpload) ? (
+          <>
+            {design.kind === 'ready' && (
+              <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onManageDesign}>
+                {DOC_VIEW_FILES_LABEL}
+              </button>
+            )}
+            {designUpload}
+          </>
         ) : undefined}
       >
         {design.kind === 'loading' && (
@@ -311,14 +342,15 @@ export function OrderDocumentsPanel({
             <p className="order-doc-note">{design.detail}</p>
           </>
         )}
+        {designSubmissions}
       </DocSection>
 
       {/* ── 3. The client's own purchase order ──
           NO STORE EXISTS YET and this says so in one muted line rather than
           offering a control that could not keep what it took. See
           orderDocumentsPanel.ts for the audit behind that. */}
-      <DocSection title={DOC_CLIENT_PO_TITLE}>
-        {clientPo.kind === 'ready' ? (
+      <DocSection title={DOC_CLIENT_PO_TITLE} actions={clientPoUpload}>
+        {clientPoSubmissions ? clientPoSubmissions : clientPo.kind === 'ready' ? (
           <>
             <p className="order-doc-lead">
               <span className="order-doc-lead-value">{clientPo.summary}</span>
@@ -333,6 +365,8 @@ export function OrderDocumentsPanel({
           />
         )}
       </DocSection>
+      </div>
+      </div>
     </section>
   )
 }
