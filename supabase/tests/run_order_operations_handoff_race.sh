@@ -456,4 +456,81 @@ check_v2_outcome "direction 4b" "$O5"
   || fail "direction 4b: the approval must have addressed V2 to B directly, got $(revision_event "$O5" pi_revision_admin_approved 2 operations_reviewer)"
 echo "   OK: V1 readdressed to B by the change; V2 then staged for B directly; B notified once for V2"
 
+
+# ── Direction 5 (20270101000000): the OPERATIONS ACCEPTANCE of a staged V2 —
+# amendment gate, lease, parse, version switch, handoff decision, codes, in
+# ONE transaction — against a Control Center switch. The acceptance takes the
+# reviewer row SHARE first, like every decision; the switch takes it FOR
+# UPDATE. The pause fires on the acceptance's own "V1 → superseded" write,
+# after it holds the Order, the submission and the versions.
+accept_revision() {
+  local V="$1" WHO="$2" PAUSE="$3"
+  Q -t -A <<SQL
+begin;
+set local statement_timeout = '30s';
+set local race.pause = '$PAUSE';
+set local role authenticated;
+$(as_user "$WHO")
+select public.decide_order_pi_revision_operations('$V', 'accepted', 'ASSERT RACE accepted') is not null;
+commit;
+SQL
+}
+reconcile_to_v2() {
+  Q >/dev/null <<SQL
+begin;
+set local role authenticated;
+$(as_user "$OWNER")
+select public.amend_order('$1', 'ASSERT RACE reconcile to PI V2', 'ASSERT RACE revised', 1000000, 1000000);
+commit;
+SQL
+}
+
+V5=$(scalar "select id from public.order_pi_versions where order_id = '$O5' and version_number = 2")
+reconcile_to_v2 "$O5"
+echo "== direction 5a: B accepts staged V2 (Order held mid-apply) … Control Center switches to A meanwhile"
+accept_revision "$V5" "$B" 3 >"$SCRATCH/5a-accept.out" 2>&1 &
+ACCEPT_PID=$!
+wait_until_parked "decide_order_pi_revision_operations"
+T0=$(date +%s)
+ASSIGN_RC=0; assign_bounded "'$A'" >"$SCRATCH/5a-assign.out" 2>&1 || ASSIGN_RC=$?
+T1=$(date +%s)
+ACCEPT_RC=0; wait $ACCEPT_PID || ACCEPT_RC=$?
+report_pair "direction 5a" "$ACCEPT_RC" "$SCRATCH/5a-accept.out" "$ASSIGN_RC" "$SCRATCH/5a-assign.out"
+[ $((T1 - T0)) -ge 1 ] || fail "direction 5a: the change did not wait for the acceptance in flight (took $((T1 - T0))s)"
+[ "$(scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$O5'")" = "1/superseded,2/approved" ] \
+  || fail "direction 5a: V2 must be in force after B's acceptance"
+[ "$(live_v2_handoff "$O5")" = "2/$B/accepted" ] \
+  || fail "direction 5a: V2's handoff must be accepted by B and not readdressed, got $(live_v2_handoff "$O5")"
+[ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O5' and event_type = 'pi_revision_applied'")" = "1" ] \
+  || fail "direction 5a: applied exactly once"
+echo "   OK: the change waited $((T1 - T0))s; B's acceptance applied V2 once; the accepted handoff stayed with B"
+
+PI6=$(scalar "select gen_random_uuid()")
+read -r O6 PATH6 <<<"$(prepare_v2 "$PI6" "ASSERT RACE 5b $RUN" | tail -1)"
+[[ "$O6" =~ ^[0-9a-f-]{36}$ ]] || fail "direction 5b: the V2 fixture could not be prepared: $O6 $PATH6"
+approve_revision "$O6" "$PI6" "$PATH6" 0 >/dev/null
+assign_bounded "'$B'" >/dev/null
+reconcile_to_v2 "$O6"
+V6=$(scalar "select id from public.order_pi_versions where order_id = '$O6' and version_number = 2")
+[ "$(scalar "select status || '/' || operations_reviewer from public.order_pi_versions where id = '$V6'")" = "admin_approved/$B" ] \
+  || fail "direction 5b: V2 must be staged for B before the race"
+echo "== direction 5b: Control Center switch to A holds the reviewer row … B's acceptance arrives meanwhile"
+assign_bounded "'$A'" 3 >"$SCRATCH/5b-assign.out" 2>&1 &
+ASSIGN_PID=$!
+wait_until_parked "pg_sleep(3)"
+T0=$(date +%s)
+ACCEPT_RC=0; accept_revision "$V6" "$B" 0 >"$SCRATCH/5b-accept.out" 2>&1 || ACCEPT_RC=$?
+T1=$(date +%s)
+ASSIGN_RC=0; wait $ASSIGN_PID || ASSIGN_RC=$?
+grep -qi deadlock "$SCRATCH/5b-accept.out" "$SCRATCH/5b-assign.out" && fail "direction 5b: DEADLOCK"
+[ "$ASSIGN_RC" = "0" ] || fail "direction 5b: the reviewer change did not complete: $(tr '\n' ' ' <"$SCRATCH/5b-assign.out")"
+[ $((T1 - T0)) -ge 1 ] || fail "direction 5b: the acceptance did not wait for the change (took $((T1 - T0))s)"
+grep -q "Only the assigned operations reviewer" "$SCRATCH/5b-accept.out" \
+  || fail "direction 5b: B's late acceptance must be refused, got: $(tr '\n' ' ' <"$SCRATCH/5b-accept.out")"
+[ "$(scalar "select status || '/' || operations_reviewer from public.order_pi_versions where id = '$V6'")" = "admin_approved/$A" ] \
+  || fail "direction 5b: V2 must still await operations, now addressed to A"
+[ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O6' and event_type = 'pi_revision_applied'")" = "0" ] \
+  || fail "direction 5b: nothing may be applied"
+echo "   OK: B's acceptance waited $((T1 - T0))s for the switch, then was refused; V2 still staged, now for A; nothing applied"
+
 echo "ALL RACE ASSERTIONS PASSED"

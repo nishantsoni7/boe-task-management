@@ -739,6 +739,9 @@ begin
       'change_reason', left('PI revision V' || v_ver.version_number::text || ' accepted by operations: ' || v_ver.revision_reason, 500)));
   -- ACCEPTANCE NEVER WRITES THE AMENDABLE FIELDS: they were reconciled above;
   -- this restores anything the writer's own rules moved (a PI with no due date).
+  -- The writer clears the amendment context on its way out, so it is set again
+  -- for this one restoring write.
+  perform set_config('boe.amendment_context', 'order_amendment', true);
   update public.orders
      set client_name = v_pre.client_name, confirm_date = v_pre.confirm_date, due_date = v_pre.due_date,
          total_value = v_pre.total_value, total_product_value = v_pre.total_product_value
