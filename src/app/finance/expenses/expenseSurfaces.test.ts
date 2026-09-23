@@ -1234,6 +1234,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
     'src/lib/orders/operationsHandoffSchema.test.ts',
     'src/lib/orders/orderWorkspace.test.ts',
+    'src/lib/orders/operationsHandoff.test.ts',
   ])
 
   const isUnexpectedFile = (f: string) =>
@@ -1284,6 +1285,37 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
       assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
+
+  test('the operations-review-on-strip allowance is EXACTLY its nine named files, and the guard still bites beside them', () => {
+    // Pinned by value: growing it has to be a deliberate edit here.
+    assert.deepEqual([...ALLOWED_OPERATIONS_REVIEW_ON_STRIP].sort(), [
+      'src/app/globals.css',
+      'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+      'src/app/orders/[id]/OrderWorkspace.tsx',
+      'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
+      'src/app/orders/[id]/page.tsx',
+      'src/lib/orders/operationsHandoff.test.ts',
+      'src/lib/orders/operationsHandoffSchema.test.ts',
+      'src/lib/orders/orderWorkspace.test.ts',
+      'src/lib/orders/orderWorkspace.ts',
+    ])
+    for (const file of ALLOWED_OPERATIONS_REVIEW_ON_STRIP) {
+      assert.ok(/\.(tsx?|css)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(/^src\/(app|lib)\/finance\//.test(file), false, `${file} is a Finance file`)
+      assert.equal(/^src\/lib\/permissions\//.test(file), false, `${file} is a permission file`)
+      assert.equal(file.startsWith('supabase/'), false, `${file} is a migration`)
+    }
+    // Siblings of the named files are still intruders: no prefix leak.
+    for (const neighbour of [
+      'src/app/orders/[id]/OrderPiSections.tsx',
+      'src/app/orders/[id]/OrderAmendmentModals.tsx',
+      'src/lib/orders/orderPayments.ts',
+      'src/lib/permissions/orders.ts',
+    ]) {
+      assert.ok(isUnexpectedFile(neighbour), `${neighbour} must still trip the guard`)
     }
   })
 

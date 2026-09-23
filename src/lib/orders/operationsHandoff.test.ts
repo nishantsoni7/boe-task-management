@@ -363,8 +363,14 @@ describe('the attention strip and the dashboard', () => {
     assert.deepEqual(items.map(i => i.key), ['operations_review'])
     assert.deepEqual(orderAttentionItems({ ...quiet, productionAligned: false }).map(i => i.key), ['production'], 'a legacy Order keeps the old line')
   })
-  test('nothing is raised on a closed Order, and older callers raise nothing', () => {
-    assert.deepEqual(orderAttentionItems({ ...quiet, status: 'dispatched', operationsReview: { versionNumber: 1, status: 'awaiting', unassigned: true }, alignmentPredatesVersion: 1 }), [])
+  test('a dispatched Order still names its undecided review (the RPC still takes it); the alignment warning does not follow', () => {
+    assert.deepEqual(orderAttentionItems({ ...quiet, status: 'dispatched', operationsReview: { versionNumber: 1, status: 'awaiting', unassigned: true }, alignmentPredatesVersion: 1 }).map(i => i.key),
+      ['operations_unassigned', 'operations_review'])
+    assert.deepEqual(orderAttentionItems({ ...quiet, status: 'dispatched', operationsReview: { versionNumber: 1, status: 'clarification_needed', unassigned: false } }).map(i => i.label),
+      ['PI V1 flagged by operations: clarification needed'])
+  })
+  test('nothing is raised on a cancelled Order, and older callers raise nothing', () => {
+    assert.deepEqual(orderAttentionItems({ ...quiet, status: 'cancelled', operationsReview: { versionNumber: 1, status: 'awaiting', unassigned: true }, alignmentPredatesVersion: 1 }), [])
     assert.deepEqual(orderAttentionItems(quiet), [])
   })
   test('the dashboard offers an Operations Review card only when something waits — including a flagged version', () => {

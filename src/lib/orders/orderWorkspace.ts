@@ -140,7 +140,12 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
       tone: 'amber',
     })
   }
-  if (open && input.operationsReview) {
+  // A PENDING REVIEW OUTLIVES DISPATCH. decide_order_operations_handoff()
+  // refuses only a CANCELLED Order, and the review queue, the dashboard count
+  // and reviewer reassignment all treat a dispatched Order's undecided version
+  // as live work — so the strip names it until the Order is cancelled, not
+  // until it is closed. The alignment warning above stays an open-Order gap.
+  if (input.status !== 'cancelled' && input.operationsReview) {
     const r = input.operationsReview
     if (r.unassigned) {
       items.push({ key: 'operations_unassigned', label: 'No operations reviewer assigned', tone: 'amber' })

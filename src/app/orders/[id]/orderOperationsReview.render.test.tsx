@@ -24,7 +24,7 @@ import {
   describeOperationsHandoff,
   type PersistedOperationsHandoff,
 } from '@/lib/orders/operationsHandoff'
-import { orderAttentionItems } from '@/lib/orders/orderWorkspace'
+import { arrangeOrderActions, orderAttentionItems } from '@/lib/orders/orderWorkspace'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -157,6 +157,77 @@ describe('the attention strip carries the decision, state by state', () => {
 
   test('not recorded: no decision drawn', () => {
     assert.equal(renderToStaticMarkup(<OperationsReviewActions view={view(null, NITISH)} busy={false} onAccept={noop} onCannotAccept={noop} />), '')
+  })
+})
+
+describe('after dispatch, and after cancellation', () => {
+  // The page hands the view the Order's own status, and the strip's items the
+  // same one; the header overflow reads view.actions.withdraw. All three here.
+  const at = (status: string, live: PersistedOperationsHandoff, viewer: string, extra: Partial<Parameters<typeof orderAttentionItems>[0]> = {}) => {
+    const v = view(live, viewer, { orderStatus: status })
+    return {
+      html: strip(v, { status, ...extra }),
+      overflow: arrangeOrderActions({
+        alignAction: null, canAmend: false, canRequest: false, canReviewChangeRequests: false, canCleanUp: false,
+        canWithdrawAcceptance: v.kind === 'recorded' && v.actions.withdraw,
+      }).overflow,
+    }
+  }
+  const flagged = () => handoff({ status: 'clarification_needed', clarification_by: NITISH, clarification_at: '2026-09-21T09:00:00Z', clarification_reason: 'Which fabric?' })
+
+  test('dispatched, awaiting: the reviewer keeps the item AND both decisions', () => {
+    const { html } = at('dispatched', handoff(), NITISH)
+    assert.match(html, /id="operations-review"/)
+    assert.match(html, /1 item needs attention/)
+    assert.match(html, /PI V1 awaiting operations review/)
+    assert.match(html, /<button[^>]*>Cannot accept<\/button><button[^>]*>Accept for production<\/button>/)
+  })
+
+  test('dispatched, awaiting: the approving admin sees the item and no decision', () => {
+    const { html } = at('dispatched', handoff(), NISHANT)
+    assert.match(html, /PI V1 awaiting operations review/)
+    assert.doesNotMatch(html, /<button/)
+  })
+
+  test('dispatched: the open-Order gaps stay hidden, so the count is the review alone', () => {
+    const { html } = at('dispatched', handoff(), NITISH, { hasDueDate: false, hasSalesperson: false, isOverdue: true })
+    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /Due date|Salesperson/)
+  })
+
+  test('dispatched, flagged: the red item, and only Accept for the reviewer', () => {
+    const { html } = at('dispatched', flagged(), NITISH)
+    assert.match(html, /PI V1 flagged by operations: clarification needed/)
+    assert.match(html, /<button[^>]*>Accept for production/)
+    assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
+  })
+
+  test('dispatched, accepted: no strip, and Withdraw acceptance is in the overflow for the reviewer only', () => {
+    const mine = at('dispatched', accepted(), NITISH)
+    assert.equal(mine.html, '')
+    assert.deepEqual(mine.overflow, ['withdraw_acceptance'])
+    assert.deepEqual(at('dispatched', accepted(), NISHANT).overflow, [])
+  })
+
+  test('running, accepted: Withdraw acceptance in the overflow for the reviewer only', () => {
+    assert.deepEqual(at('running', accepted(), NITISH).overflow, ['withdraw_acceptance'])
+    assert.deepEqual(at('running', accepted(), NISHANT).overflow, [])
+  })
+
+  test('cancelled: the RPC refuses, so no item, no decision and no withdrawal — awaiting, flagged or accepted', () => {
+    for (const live of [handoff(), flagged()]) {
+      const { html, overflow } = at('cancelled', live, NITISH)
+      assert.equal(html, '')
+      assert.deepEqual(overflow, [])
+    }
+    assert.deepEqual(at('cancelled', accepted(), NITISH).overflow, [])
+  })
+
+  test('cancelled beside money: the other items and their count are untouched', () => {
+    const { html } = at('cancelled', handoff(), NITISH, { awaitingVerificationCount: 1 })
+    assert.match(html, /1 item needs attention/)
+    assert.match(html, /1 payment awaiting Finance verification/)
+    assert.doesNotMatch(html, /operations review|<button/)
   })
 })
 
