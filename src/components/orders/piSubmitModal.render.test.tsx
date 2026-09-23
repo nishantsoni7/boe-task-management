@@ -324,6 +324,11 @@ describe('a failed submission keeps the words on screen', () => {
 describe('this is the dialog the PI detail page opens, and the RPC it sends to', () => {
   const page = readFileSync(
     join(process.cwd(), 'src', 'app', 'orders', 'drafts', '[submissionId]', 'page.tsx'), 'utf8')
+  // The submit door's call lives in the supporting-documents sender (20261231000000 §11).
+  const supportingSource = readFileSync(
+    join(process.cwd(), 'src', 'components', 'orders', 'PiSupportingDocuments.tsx'), 'utf8')
+  const documentsMigration = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20261231000000_order_document_submissions.sql'), 'utf8').replace(/\r\n/g, '\n')
 
   test('the page imports THIS component, and there is no second submit modal', () => {
     assert.ok(/import \{[\s\S]*?\bPiSubmitConfirmModal\b[\s\S]*?\} from '@\/components\/orders\/piReviewModals'/
@@ -346,8 +351,15 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
   })
 
   test('submission goes through the ONE Phase 3 door, and no earlier one', () => {
-    assert.ok(page.includes("supabase.rpc('submit_pi_for_review'"),
+    // The dialog's submit goes through the supporting-documents sender, which
+    // calls ONE wrapper that runs submit_pi_for_review() unchanged and records
+    // the attached Design Files / Client PO in the same transaction
+    // (20261231000000 §11).
+    assert.ok(page.includes('supporting.send({ note, terms, acknowledgedMissing })'),
       'one door, whichever route the database chooses')
+    assert.ok(supportingSource.includes("supabase.rpc('submit_pi_for_review_with_documents'"))
+    assert.ok(/v_result := public.submit_pi_for_review\(p_submission_id, p_note, p_reason, p_payment_terms, p_billing_terms\);/
+      .test(documentsMigration), 'and that wrapper delegates to the one Phase 3 door')
     for (const retired of ['submit_order_submission', 'submit_order_submission_with_note',
                            'submit_order_submission_with_advance',
                            'submit_order_submission_with_advance_amount']) {
@@ -357,11 +369,11 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
   })
 
   test('the payload carries the reason and the terms, and no advance figure', () => {
-    assert.ok(page.includes('p_reason: terms.reason'))
-    assert.ok(page.includes('p_payment_terms: terms.paymentTerms'))
-    assert.ok(page.includes('p_billing_terms: terms.billingTerms'))
+    assert.ok(supportingSource.includes('p_reason: input.terms.reason'))
+    assert.ok(supportingSource.includes('p_payment_terms: input.terms.paymentTerms'))
+    assert.ok(supportingSource.includes('p_billing_terms: input.terms.billingTerms'))
     for (const forbidden of ['p_advance_amount', 'p_advance_percent', 'p_advance_condition']) {
-      assert.ok(!page.includes(forbidden),
+      assert.ok(!page.includes(forbidden) && !supportingSource.includes(forbidden),
         `${forbidden} must not be sent: the database decides the route from verified payment`)
     }
   })

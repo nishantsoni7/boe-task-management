@@ -59,6 +59,7 @@ import {
   type DocumentCategory,
   type DocumentViewer,
   type PersistedDocumentFile,
+  type PersistedAbsence,
   type PersistedDocumentSubmission,
 } from '@/lib/orders/orderDocumentSubmissions'
 import { StatusPill } from './OrderStatusWorkspace'
@@ -85,14 +86,15 @@ export type SubmitInput = {
   resubmissionOf: string | null
 }
 
-export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: string | null) {
+export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: string | null, piSubmissionId: string | null = null) {
+  const [absence, setAbsence] = useState<PersistedAbsence | null>(null)
   const [rows, setRows] = useState<PersistedDocumentSubmission[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const [names, setNames] = useState<Map<string, string>>(new Map())
 
   /** One read of the submissions (files embedded) and the names they cite. */
   const fetchAll = useCallback(async (): Promise<
-    { ok: false } | { ok: true; list: PersistedDocumentSubmission[]; names: Map<string, string> }
+    { ok: false } | { ok: true; list: PersistedDocumentSubmission[]; names: Map<string, string>; absence: PersistedAbsence | null }
   > => {
     if (!orderId) return { ok: false }
     const { data, error } = await supabase
@@ -102,22 +104,35 @@ export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: s
       .order('submitted_at', { ascending: false })
     if (error) return { ok: false }
     const list = (data ?? []) as unknown as PersistedDocumentSubmission[]
+    // THE ACKNOWLEDGED ABSENCE from the PI's submission, if its PI said so.
+    let absence: PersistedAbsence | null = null
+    if (piSubmissionId) {
+      const { data: abs } = await supabase
+        .from('order_pi_document_absences')
+        .select('missing, acknowledged_by, acknowledged_at')
+        .eq('pi_submission_id', piSubmissionId)
+        .order('acknowledged_at', { ascending: false })
+        .limit(1)
+      absence = ((abs ?? [])[0] as PersistedAbsence | undefined) ?? null
+    }
     const ids = new Set<string>()
     for (const r of list) {
       for (const uid of [r.submitted_by, r.admin_decided_by, r.operations_reviewer, r.operations_decided_by]) if (uid) ids.add(uid)
     }
+    if (absence) ids.add(absence.acknowledged_by)
     let names = new Map<string, string>()
     if (ids.size > 0) {
       const { data: users } = await supabase.from('users').select('id, full_name').in('id', [...ids])
       names = new Map((users ?? []).map((u: { id: string; full_name: string }) => [u.id, u.full_name]))
     }
-    return { ok: true, list, names }
-  }, [supabase, orderId])
+    return { ok: true, list, names, absence }
+  }, [supabase, orderId, piSubmissionId])
 
   const apply = useCallback((r: Awaited<ReturnType<typeof fetchAll>>) => {
     if (!r.ok) { setState('unavailable'); return }
     setRows(r.list)
     setNames(r.names)
+    setAbsence(r.absence)
     setState('ready')
   }, [])
 
@@ -178,7 +193,7 @@ export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: s
     return null
   }, [supabase])
 
-  return { rows, state, names, reload, submit, decide, openFile }
+  return { rows, state, names, absence, reload, submit, decide, openFile }
 }
 
 export type DocumentSubmissionsApi = ReturnType<typeof useOrderDocumentSubmissions>
@@ -202,8 +217,10 @@ function FileList({ files, onOpen }: { files: PersistedDocumentFile[]; onOpen: (
 }
 
 export function DocumentCategoryBody({
-  category, api, viewer, formatWhen, legacy, onReview, onResubmit, onOpenFile,
+  category, api, viewer, formatWhen, legacy, onReview, onResubmit, onOpenFile, absence = null,
 }: {
+  /** "Not provided — …confirmed at PI submission", when the PI said so. */
+  absence?: string | null
   category: DocumentCategory
   api: Pick<DocumentSubmissionsApi, 'rows' | 'state' | 'names'>
   viewer: DocumentViewer
@@ -244,6 +261,8 @@ export function DocumentCategoryBody({
           <p className="order-doc-note">Accepted by Operations {formatWhen(accepted.acceptedAt)}</p>
           <FileList files={accepted.files} onOpen={onOpenFile} />
         </div>
+      ) : absence && !open ? (
+        <p className="order-doc-empty">{absence}</p>
       ) : !legacy && (
         <p className="order-doc-empty">{category === 'design_files' ? NO_ACCEPTED_DESIGN_FILES : NO_ACCEPTED_CLIENT_PO}</p>
       )}
@@ -255,7 +274,9 @@ export function DocumentCategoryBody({
         return (
           <div className="order-docsub-pending" role="group" aria-label={`${CATEGORY_LABEL[category]} change pending`}>
             <p className="order-doc-lead">
-              <span className="order-docsub-pending-title">Proposed change — not in use yet</span>
+              <span className="order-docsub-pending-title">
+                {open.stage === 'initial' ? 'Sent with the PI — not in use yet' : 'Proposed change — not in use yet'}
+              </span>
               <StatusPill label={SUBMISSION_STATUS_LABEL[open.status]} tone={SUBMISSION_STATUS_TONE[open.status]} />
             </p>
             <p className="order-doc-note">

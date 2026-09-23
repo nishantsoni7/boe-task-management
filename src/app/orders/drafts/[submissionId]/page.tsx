@@ -92,6 +92,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -349,6 +350,8 @@ function PiDraftDetailPageInner() {
   const supabase = useMemo(() => createClient(), [])
 
   const submissionId = params.submissionId as string
+  // Design Files and Client PO offered where the PI is sent (20261231000000 §11).
+  const supporting = usePiSupportingDocuments(supabase, submissionId)
   /**
    * The one thing the query string is trusted for: whether to congratulate.
    *
@@ -1109,14 +1112,12 @@ function PiDraftDetailPageInner() {
   const submitForApproval = useCallback((
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
+    acknowledgedMissing: string[] = [],
   ) => runAction('submit', async () => {
-    const { data, error } = await supabase.rpc('submit_pi_for_review', {
-      p_submission_id: submissionId,
-      p_note: note,
-      p_reason: terms.reason,
-      p_payment_terms: terms.paymentTerms,
-      p_billing_terms: terms.billingTerms,
-    })
+    // ONE CALL: submit_pi_for_review_with_documents() sends the PI through
+    // submit_pi_for_review() unchanged and records the attached Design Files /
+    // Client PO (and any confirmed absence) in the same transaction.
+    const { data, error } = await supporting.send({ note, terms, acknowledgedMissing })
     if (!error) {
       // WHO IS TOLD FOLLOWS THE ROUTE THE DATABASE CHOSE, never the one the
       // browser guessed: `exception_requested` comes back from the RPC and is
@@ -1133,7 +1134,7 @@ function PiDraftDetailPageInner() {
       }
     }
     return { error }
-  }), [runAction, supabase, submissionId, loadPayments])
+  }), [runAction, submissionId, loadPayments, supporting])
 
   /**
    * Accept the proposed advance. THE PI STAYS UNDER REVIEW.
@@ -2719,6 +2720,9 @@ function PiDraftDetailPageInner() {
           offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
+          supporting={<PiSupportingDocumentsPicker state={supporting} disabled={acting} />}
+          missingSupporting={supporting.missing}
+          supportingBlocked={supporting.error}
         />
       )}
 

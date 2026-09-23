@@ -63,6 +63,12 @@ const SUBMIT_DOORS = [
   'submit_order_submission_with_note',
   'submit_order_submission_with_advance',
   'submit_order_submission_with_advance_amount',
+  // 20261231000000: validates the attached Design Files / Client PO list, then
+  // sends the PI THROUGH submit_pi_for_review() — it writes nothing to the PI
+  // itself — and records the documents in the same transaction. A gate placed
+  // in submit_pi_for_review_internal() therefore covers it with no change of
+  // its own.
+  'submit_pi_for_review_with_documents',
 ] as const
 
 // ── 1. PHASE 1 IS INVISIBLE TO THE RUNNING APPLICATION ───────────────────────

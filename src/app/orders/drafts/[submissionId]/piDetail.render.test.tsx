@@ -3405,7 +3405,9 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'request_order_submission_changes',
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
-      'submit_pi_for_review',
+      // submit_pi_for_review is reached through the supporting-documents
+      // sender (submit_pi_for_review_with_documents, 20261231000000 §11),
+      // pinned in the submit-door tests; the page itself calls no submit RPC.
       // The client and party details editor (20260928000000). The one write on
       // this page that supplies BUSINESS DATA rather than moving a status, and
       // the answer to a PI imported without a client name — which previously

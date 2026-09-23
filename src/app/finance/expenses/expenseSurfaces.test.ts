@@ -1259,6 +1259,24 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderDocumentSubmissions.ts',
     'src/lib/orders/orderDocumentSubmissions.test.ts',
     'src/app/orders/[id]/orderDocumentSubmissions.render.test.tsx',
+    // Documents sent WITH the PI (§11): the submit dialog's attachment slot and
+    // its one explicit confirmation, the picker and sender, the draft page's
+    // wiring, and the operations decision dialog naming the files it accepts.
+    'src/components/orders/PiSupportingDocuments.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/[id]/OrderRevisionModals.tsx',
+    // suites that pin the submit door's call site, the page's query count, the
+    // handoff decision's re-reads, the PI-door inventory and the submission
+    // tables' outside writers — each now names the new call or trigger
+    'src/components/orders/piSubmitModal.render.test.tsx',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/[id]/orderOperationsReview.render.test.tsx',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/orders/operationsHandoffSchema.test.ts',
+    'src/lib/orders/piFinalizationGate.test.ts',
+    'src/lib/orders/submissionSchema.test.ts',
     // migration inventories: one line each
     'src/lib/boeCredits/reviewReward.test.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',

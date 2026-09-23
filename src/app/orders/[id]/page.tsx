@@ -138,7 +138,7 @@ import {
   useOrderDocumentSubmissions,
 } from './OrderDocumentSubmissions'
 import type { DocumentCategory, DocumentViewer, PersistedDocumentSubmission } from '@/lib/orders/orderDocumentSubmissions'
-import { UPLOAD_NEW_PI_LABEL } from '@/lib/orders/orderDocumentSubmissions'
+import { UPLOAD_NEW_PI_LABEL, absenceLine } from '@/lib/orders/orderDocumentSubmissions'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
 import { clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
@@ -848,7 +848,7 @@ export default function OrderDetailPage() {
 
   // ── Design Files and Client PO submissions (20261231000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
-  const docSubs = useOrderDocumentSubmissions(supabase, id)
+  const docSubs = useOrderDocumentSubmissions(supabase, id, order?.source_order_submission_id ?? null)
   const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
   const [docReview, setDocReview] = useState<PersistedDocumentSubmission | null>(null)
   const [docError, setDocError] = useState<string | null>(null)
@@ -1678,7 +1678,9 @@ export default function OrderDetailPage() {
       // `orders` (accepting aligns; flagging or withdrawing un-aligns), and
       // appended the activity entries — so the handoff and the Order row are
       // re-read, and the trail with the row. Nothing else changed.
-      await Promise.all([reloadHandoffs(), reloadOrderRow()])
+      // Accepting the version also accepts the documents sent with the PI
+      // (20261231000000 §11e), so those are re-read with it.
+      await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
     } finally {
       setHandoffBusy(false)
     }
@@ -2261,10 +2263,18 @@ export default function OrderDetailPage() {
         onReview={s => setDocReview(s)}
         onResubmit={s => setDocUpload({ category, resubmission: s })}
         onOpenFile={openDocFile}
+        absence={absenceLine(docSubs.absence, category, id => (id ? docSubs.names.get(id) ?? null : null), docWhen)}
       />
       {docError && <p className="order-doc-unavailable" role="alert">{docError}</p>}
     </>
   )
+  // The files sent with the PI that the operations decision will accept too.
+  const initialDocumentsAwaiting = (() => {
+    const names = docSubs.rows
+      .filter(r => r.stage === 'initial' && r.status === 'awaiting_operations')
+      .flatMap(r => (r.files ?? []).map(f => `${f.file_name} (${f.category === 'client_po' ? 'Client PO' : 'Design File'})`))
+    return names.length > 0 ? names.join(', ') : null
+  })()
   const mainPiOperations = operationsView?.kind === 'recorded'
     ? {
         label: operationsView.status === 'awaiting' ? 'Awaiting Operations Acceptance' : operationsView.statusLabel,
@@ -3140,6 +3150,7 @@ export default function OrderDetailPage() {
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}
           onConfirm={reason => decideHandoff(handoffDialog, reason)}
+          alsoAccepts={initialDocumentsAwaiting}
         />
       )}
 
