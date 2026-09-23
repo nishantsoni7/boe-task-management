@@ -114,6 +114,53 @@ describe('accepted and proposed are never confused', () => {
     assert.ok(t.includes('Correct and resubmit'))
   })
 
+  test('the history keeps every submission with who decided, when and why', () => {
+    const rejected = sub({ id: 'r', status: 'rejected_admin', admin_decided_by: 'admin', admin_decided_at: '2026-09-21T00:00:00Z', admin_reason: 'PO number mismatch' })
+    const accepted = sub({ id: 'a', status: 'accepted', admin_decided_by: 'admin', admin_decided_at: '2026-09-22T00:00:00Z', operations_decided_by: 'ops', operations_decided_at: '2026-09-23T00:00:00Z' })
+    const t = text(body([rejected, accepted]))
+    assert.ok(t.includes('Submission history (2)'))
+    assert.ok(t.includes('Admin: rejected by Nishant, 2026-09-21 — PO number mismatch'))
+    assert.ok(t.includes('Operations: accepted by Ravi, 2026-09-23'))
+  })
+
+  test('documents sent with the PI are labelled as such, with no add/replace wording', () => {
+    const initial = sub({ stage: 'initial', pi_submission_id: 'pi', status: 'awaiting_operations', operations_reviewer: 'ops', admin_decided_at: 't', includes_design_files: true, includes_client_po: false, design_mode: 'add',
+      files: [{ id: 'f', category: 'design_files', storage_path: 'k', file_name: 'drawing.pdf', mime_type: 'application/pdf', size_bytes: 10 }] })
+    const html = renderToStaticMarkup(
+      <DocumentCategoryBody category="design_files" api={api([initial])} viewer={viewer({ viewerId: 'ops' })} formatWhen={when}
+        onReview={noop} onResubmit={noop} onOpenFile={noop} />)
+    const t = text(html)
+    assert.ok(t.includes('Sent with the PI — not in use yet'))
+    assert.ok(t.includes("with PI V1's operations review"))
+    assert.equal(t.includes('adds to the current design files'), false)
+    assert.equal(html.includes('Review —'), false, 'no separate decision: the handoff decides it')
+  })
+
+  test('an acknowledged absence reads as not provided, never as attached', () => {
+    const html = renderToStaticMarkup(
+      <DocumentCategoryBody category="client_po" api={api([])} viewer={viewer()} formatWhen={when}
+        onReview={noop} onResubmit={noop} onOpenFile={noop}
+        absence="Not provided — Asha confirmed sending the PI without a client PO on 2026-09-20." />)
+    const t = text(html)
+    assert.ok(t.includes('Not provided — Asha confirmed'))
+    assert.equal(/Attached|Accepted/.test(t), false)
+  })
+
+  test('beside the Order’s own design files, the PI pictures are a named secondary line', () => {
+    const html = renderToStaticMarkup(
+      <OrderDocumentsPanel
+        mainPi={mainPiCard(describePiVersionHistory([], new Map(), when))}
+        design={designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2)}
+        clientPo={clientPoDocument()}
+        onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+        viewing={false} downloading={false}
+        designSubmissions={<p>order files</p>}
+      />)
+    const t = text(html)
+    assert.ok(t.includes('PI product pictures: 2 files'))
+    assert.equal(t.includes('Attached'), false, 'no second "Attached" headline')
+  })
+
   test('the upload control is disabled while that category has a submission under review', () => {
     const html = renderToStaticMarkup(<DocumentUploadAction category="client_po" api={api([sub({})])} viewer={viewer()} onUpload={noop} />)
     assert.ok(html.includes('disabled'))

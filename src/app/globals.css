@@ -2546,7 +2546,7 @@ body {
   .order-docs-side { border-left: 0; border-top: 1px solid #F0F2F5; }
   .order-docs-grid .order-doc-action, .order-docsub-actions .order-doc-action { flex: 1 1 100%; justify-content: center; }
   .order-docsub-compare { grid-template-columns: minmax(0, 1fr); }
-  .order-docsub-decide .boe-btn { flex: 1 1 100%; }
+  .order-docsub-decide .boe-btn { flex: 1 1 100%; justify-content: center; }
   .order-docq-row { grid-template-columns: minmax(0, 1fr); }
   .order-docq-row .boe-btn { width: 100%; justify-content: center; }
 }
