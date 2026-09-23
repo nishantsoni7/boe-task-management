@@ -123,6 +123,23 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
       p_files: files,
       p_acknowledged_missing: input.acknowledgedMissing,
     })
+    // ROLLOUT SAFETY. If this code reaches a database without 20261231000000,
+    // the wrapper does not exist (PostgREST PGRST202). A PI with nothing
+    // attached is then sent exactly as before, through the one door; one WITH
+    // attachments is refused in words rather than sent without them.
+    const missingFn = (rpcErr as { code?: string } | null)?.code === 'PGRST202'
+    if (missingFn && files.length === 0) {
+      return supabase.rpc('submit_pi_for_review', {
+        p_submission_id: piSubmissionId,
+        p_note: input.note,
+        p_reason: input.terms.reason,
+        p_payment_terms: input.terms.paymentTerms,
+        p_billing_terms: input.terms.billingTerms,
+      }) as unknown as Promise<{ data: unknown; error: { message: string } | null }>
+    }
+    if (missingFn) {
+      return { data: null, error: { message: 'Attaching files to a PI is not available yet. Remove the attachments to send the PI.' } }
+    }
     if (rpcErr && /ORDER_DOCUMENT_/.test(rpcErr.message ?? '')) {
       return { data, error: { message: describeDocumentFailure(rpcErr) } }
     }
