@@ -561,6 +561,9 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
         parts.push(`replaces accepted ${versionLabel(p.superseded_version_number)}`)
       }
       if (p.production_alignment === 'aligned') parts.push('the Order was aligned for production; that alignment was reset')
+      // A one-time data fix (20261230000000) sent an approval made BEFORE
+      // handoffs existed; the approval itself keeps its own date and approver.
+      if (p.recorded_for_existing_approval === true) parts.push('sent later for an approval made before operations review existed')
       return parts.filter(Boolean).join(' · ') || null
     }
     case 'operations_reviewer_assigned':

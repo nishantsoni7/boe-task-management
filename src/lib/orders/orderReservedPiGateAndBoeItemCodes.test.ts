@@ -414,6 +414,10 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // alters no existing table, writes no row and drops nothing, so it
       // reaches nothing here.
       '20261229000000_order_operations_handoff.sql',
+      // Order 0524's one-time handoff: one DO block writing one handoff, one
+      // history row and one notification for ONE pinned Order. No DDL, and it
+      // re-emits nothing, so it reaches nothing here.
+      '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

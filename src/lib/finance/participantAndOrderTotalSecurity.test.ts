@@ -1020,6 +1020,10 @@ describe('the applied migrations are frozen', () => {
       // alters no existing table, writes no row and drops nothing, so it
       // reaches nothing here.
       '20261229000000_order_operations_handoff.sql',
+      // Order 0524's one-time handoff: one DO block writing one handoff, one
+      // history row and one notification for ONE pinned Order. No DDL, and it
+      // re-emits nothing, so it reaches nothing here.
+      '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
     ])
   })
 
@@ -1291,6 +1295,10 @@ describe('the applied migrations are frozen', () => {
       // alters no existing table, writes no row and drops nothing, so it
       // reaches nothing here.
       '20261229000000_order_operations_handoff.sql',
+      // Order 0524's one-time handoff: one DO block writing one handoff, one
+      // history row and one notification for ONE pinned Order. No DDL, and it
+      // re-emits nothing, so it reaches nothing here.
+      '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
