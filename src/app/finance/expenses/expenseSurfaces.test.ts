@@ -789,7 +789,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable), false,
         `${untouchable} is outside what a PI's own content reaches`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      // AND UNCHANGED, unless another authorized branch legitimately reaches it.
+      if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -1082,6 +1085,68 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  /**
+   * THE AUTHORIZED CONFIRMED ORDER DETAIL REDESIGN
+   * (branch feat/confirmed-order-detail-redesign).
+   *
+   * Same reasoning as the allowances above. A presentation pass over
+   * /orders/[id]: no migration, no RPC, no permission module and no money
+   * calculator is in it, which the assertion below proves rather than asserts.
+   */
+  const ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN = new Set([
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/[id]/OrderWorkspace.tsx',
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/lib/orders/orderWorkspace.ts',
+    'src/lib/orders/orderPaymentLists.ts',
+    'src/lib/orders/orderDocumentsPanel.ts',
+    'src/app/globals.css',
+    // The one shared file it reaches: a per-page opt-out for the Finance
+    // switch, defaulted so every other Orders screen keeps it.
+    'src/components/layout/OrdersLayout.tsx',
+    // The suites that hold it to its promises.
+    'src/lib/orders/orderPaymentLists.test.ts',
+    'src/app/orders/[id]/orderDetailArchitecture.test.ts',
+    'src/app/orders/[id]/orderFinanceSwitchAndDetailGate.test.ts',
+    'src/app/orders/[id]/orderWorkspace.render.test.tsx',
+    'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
+    'src/app/orders/[id]/orderCurrentStatus.render.test.tsx',
+    'src/app/orders/[id]/orderPiHandoff.render.test.tsx',
+    'src/lib/finance/crossModuleLinks.test.ts',
+    'src/lib/finance/orderFinancePosition.test.ts',
+    'src/lib/finance/paymentEntry.test.ts',
+    'src/lib/orders/orderPayments.test.ts',
+  ])
+
+  test('the Confirmed Order redesign allowance names files, never a directory', () => {
+    for (const file of ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN) {
+      assert.ok(/\.(tsx?|css)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+    }
+    // A PRESENTATION PASS REACHES NO RULE.
+    for (const untouchable of [
+      'src/lib/finance/orderFinancePosition.ts',
+      'src/lib/finance/exactMoney.ts',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/finance/allocation.ts',
+      'src/lib/orders/orderPayments.ts',
+      'src/lib/orders/orderCurrentStatus.ts',
+      'src/lib/orders/orderAdvance.ts',
+      'src/lib/orders/productionAlignment.ts',
+      'src/lib/orders/orderApprovals.ts',
+      'src/lib/orders/orderPiHandoff.ts',
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    ]) {
+      assert.equal(ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable), false,
+        `${untouchable} must not ride in on a presentation allowance`)
+      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+    }
+  })
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1099,7 +1164,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
     !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
     !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f) &&
-    !ALLOWED_PERSONAL_MODULE_ORDER.has(f)
+    !ALLOWED_PERSONAL_MODULE_ORDER.has(f) &&
+    !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(f)
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -1143,9 +1209,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // Permission files — the gate this work deliberately did not touch.
       'src/lib/permissions/finance.ts',
       'src/lib/permissions/orders.ts',
-      // Orders screens.
-      'src/app/orders/[id]/page.tsx',
+      // Orders screens. The Confirmed Order's own page.tsx and OrdersLayout.tsx
+      // left this list when the redesign named them, as drafts/page.tsx did
+      // before them; their siblings below keep the prefix leak probed.
       'src/app/orders/all/page.tsx',
+      'src/app/orders/[id]/OrderAmendmentModals.tsx',
+      'src/app/orders/[id]/OrderPiSections.tsx',
       // src/app/orders/drafts/page.tsx WAS on this list and is not any more.
       // It is not that the guard got weaker: the Draft PI business rules branch
       // legitimately renames that screen's "Created by" column to "Salesperson",
@@ -1154,8 +1223,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // place above, so the category is still probed.
       // NEAR MISSES. Each one probes for a prefix leak: a sibling in the
       // same folder as an allowed file must NOT be admitted by it.
-      'src/components/layout/OrdersLayout.tsx',
       'src/components/layout/QuickActionsExtra.tsx',
+      'src/components/layout/RecordBackLink.tsx',
       'src/app/modules/somethingElse.module.css',
       'src/app/modules/layout.tsx',
       // And something entirely unrelated.
@@ -1202,7 +1271,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // it. The property this test owns is that the VISUAL PASS did not, which
       // the membership assertion above is what actually proves; a second
       // authorized branch changing the file says nothing about this one.
-      if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)) {
+      if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)
+          && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1258,7 +1328,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
-        || ALLOWED_PERSONAL_MODULE_ORDER.has(file),
+        || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
+        || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

@@ -26,6 +26,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const PAGE = 'src/app/orders/[id]/page.tsx'
 const WORKSPACE = 'src/app/orders/[id]/OrderWorkspace.tsx'
 const SECTIONS = 'src/app/orders/[id]/OrderPiSections.tsx'
+const STATUS = 'src/app/orders/[id]/OrderStatusWorkspace.tsx'
 const CSS = 'src/app/globals.css'
 
 /** The page with its comments removed: these assertions are about what RENDERS,
@@ -49,11 +50,9 @@ describe('the page reads in one order, with no second summary', () => {
     header:   body.indexOf('className="order-command-header"'),
     summary:  body.indexOf('<OrderSummaryPanel'),
     attention: body.indexOf('<OrderAttentionBar'),
-    workspace: body.indexOf('<OrderStatusWorkspace>'),
-    currentStatus: body.indexOf('<OrderCurrentStatus>'),
+    documents: body.indexOf('<OrderDocumentsRow>'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
-    records:  body.indexOf('title="Order records"'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -66,20 +65,18 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'workspace', 'currentStatus', 'products',
-      'payment', 'records', 'activity',
+      'header', 'summary', 'attention', 'documents', 'products',
+      'payment', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
     assert.equal((body.match(/<OrderSummaryPanel/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderStatusWorkspace>/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderCurrentStatus>/g) ?? []).length, 1)
-    // Main PI sits in Current Status now, and in ONE place: a second copy a
-    // section higher would be the same document stated twice on one screen.
-    assert.equal((body.match(/<OrderMainPiCard/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderDesignFilesCard/g) ?? []).length, 1)
-    assert.equal((body.match(/<OrderManufacturingCard/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderDocumentsRow>/g) ?? []).length, 1)
+    // ONE DOCUMENTS BOX, holding the PI, the design files and the client PO.
+    // A second copy of any of them would be the same paperwork stated twice.
+    assert.equal((body.match(/<OrderDocumentsPanel/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderFabricFinishCard/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)
@@ -89,6 +86,123 @@ describe('the page reads in one order, with no second summary', () => {
 // ══ 2. The surfaces that were removed ═════════════════════════════════════════
 
 describe('the redundant surfaces are gone', () => {
+  // ── THE SEPARATE FILE CARDS ──
+  test('there is ONE Documents box, and it holds all three kinds of paperwork', () => {
+    const docs = code(STATUS)
+    for (const title of ['DOC_MAIN_PI_TITLE', 'DOC_DESIGN_FILES_TITLE', 'DOC_CLIENT_PO_TITLE']) {
+      assert.ok(docs.includes(title), title)
+    }
+    // The two cards it replaced are gone, not merely unused.
+    for (const gone of ['OrderMainPiCard', 'OrderDesignFilesCard', 'OrderCurrentStatus']) {
+      assert.equal(docs.includes('export function ' + gone), false, gone)
+      assert.equal(body.includes('<' + gone), false, gone + ' is still drawn')
+    }
+  })
+
+  test('Fabric & Finish is BESIDE the box, and is the only place the approvals are stated', () => {
+    const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
+    assert.ok(row.indexOf('<OrderDocumentsPanel') < row.indexOf('<OrderFabricFinishCard'))
+    // The Documents box does not summarise them a column away from the card
+    // that states them in full.
+    const panel = code(STATUS).slice(code(STATUS).indexOf('export function OrderDocumentsPanel'))
+    const upTo = panel.slice(0, panel.indexOf('export function OrderFabricFinishCard'))
+    assert.equal(/APPROVAL_STATUS_LABEL|approvals\.kinds/.test(upTo), false)
+  })
+
+  // ── ADVANCE RECEIVED ──
+  test('the Advance Received card is gone, and its figures live only in Payment', () => {
+    assert.equal(/OrderAdvanceCard|advanceStanding/.test(page), false)
+    assert.equal(/Advance Received/i.test(body), false)
+    assert.equal(code(STATUS).includes('export function OrderAdvanceCard'), false)
+    // The builder and its own suite are untouched: a display went, not a rule.
+    assert.ok(read('src/lib/orders/orderAdvance.ts').includes('export function advanceStanding'))
+    assert.ok(read('src/lib/orders/orderAdvance.test.ts').length > 0)
+  })
+
+  test('and the CSS of every card that left went with it', () => {
+    for (const cls of ['order-status-workspace', 'order-current-status',
+                       'order-current-status-cards', 'order-status-lines']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
+    }
+  })
+
+  // ── MANUFACTURING STATUS ──
+  //
+  // Its one real line was the production alignment, which the Sales and
+  // production group at the top of the page already states. A reader met the
+  // same alignment twice on one screen.
+  test('the lower Current Status area draws NO Manufacturing Status card', () => {
+    const current = body.slice(body.indexOf('<OrderCurrentStatus>'), body.indexOf('</OrderCurrentStatus>'))
+    assert.equal(/OrderManufacturingCard/.test(current), false, 'the card is still drawn')
+    assert.equal(/Manufacturing/i.test(body), false, 'and it is not named anywhere on the page')
+    assert.equal(/OrderManufacturingCard/.test(code(STATUS)), false, 'and it no longer exists')
+  })
+
+  test('Main PI and Design Files are both still there, in the Documents box', () => {
+    const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('<OrderFabricFinishCard'))
+    // The box is handed all three kinds of paperwork, and every control the
+    // Main PI card used to own.
+    for (const kept of ['mainPi', 'design', 'clientPo',
+                        'onView', 'onDownload', 'onHistory', 'onManageDesign',
+                        'viewing', 'downloading']) {
+      assert.ok(panel.includes(kept + '='), kept + ' was dropped from the Documents box')
+    }
+  })
+
+  test('THE MANUFACTURING DATA AND THE ALIGNMENT LOGIC ARE UNTOUCHED', () => {
+    // A display removal only. The describer, its rules and its tests stay; the
+    // alignment the page DOES still state comes from the same helper as before,
+    // and every control that SETS one is where it was.
+    const lib = read('src/lib/orders/orderCurrentStatus.ts')
+    assert.ok(lib.includes('export function describeManufacturingStatus'))
+    assert.ok(read('src/lib/orders/orderCurrentStatus.test.ts').includes('describeManufacturingStatus'))
+    assert.ok(page.includes('describeProductionAlignment({'))
+    assert.ok(page.includes('canAlignProduction'))
+    assert.ok(page.includes('<ProductionAlignmentModal'))
+  })
+
+  // ── ORDER RECORDS ──
+  //
+  // It held one thing: the source PI, named, with a Download. The PI in force —
+  // which for a converted Order IS that document — is the Main PI card, with
+  // its own View, Download and View history.
+  test('the Order records section is gone', () => {
+    assert.equal(body.includes('title="Order records"'), false, 'the section is still drawn')
+    assert.equal(/Order records/i.test(body), false, 'and it is not named on the page')
+    assert.equal(/Source PI/i.test(body), false, 'nor is the row it held')
+  })
+
+  test('and no dead page code was left behind by it', () => {
+    for (const gone of ['downloadWorkbook', 'wbPath', 'wbBusy', 'wbError',
+                        'ORDER_PI_UNAVAILABLE_BODY', 'orderPiWorkbookPath']) {
+      assert.equal(page.includes(gone), false, gone + ' is still on the page')
+    }
+    for (const cls of ['order-records-body', 'order-source-pi', 'order-doc-name', 'order-doc-meta']) {
+      assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
+    }
+    // The three the commercial breakdown and the PI history list still use.
+    for (const cls of ['order-record-section', 'order-record-head', 'order-record-title']) {
+      assert.ok(read(CSS).includes('.' + cls + ' '), cls + ' was removed and is still used')
+    }
+  })
+
+  test('BUT THE PI, ITS FILES AND ITS HISTORY ARE ALL STILL HERE', () => {
+    // Removing the section must not remove the record, the relation or the
+    // reader's way to the document.
+    assert.ok(page.includes("from('order_pi_versions')"))
+    assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'))
+    assert.ok(page.includes('describePiVersionHistory'))
+    assert.ok(page.includes('canProposePiRevision'))
+    assert.ok(page.includes('canDecidePiRevision'))
+    assert.ok(page.includes('source_order_submission_id'))
+    // The document itself: signed through the Documents box's own reads.
+    assert.ok(body.includes('<OrderDocumentsPanel'))
+    assert.ok(page.includes('openVersionFile'))
+    assert.equal((body.match(/<PiHistoryModal/g) ?? []).length, 1)
+    // And the shared helper the PI Drafts module still uses is untouched.
+    assert.ok(read('src/lib/orders/orderPiHandoff.ts').includes('export function orderPiWorkbookPath'))
+  })
+
   test('there is no Order Health card anywhere', () => {
     for (const path of [PAGE, WORKSPACE]) {
       const source = code(path)
@@ -291,8 +405,20 @@ describe('no Order fact is stated twice', () => {
     assert.equal(read(CSS).includes('.order-dates {'), false, 'and so is its styling')
   })
 
+  test('payment is stated in ONE place, below the products', () => {
+    // It used to be stated twice: the Advance Received card carried the verified
+    // share of the Order value beside the Documents, and the Payment section
+    // carried the same two figures with the rest of the position.
+    assert.ok(body.indexOf('className="order-products"') < body.indexOf('PAYMENT_SECTION_TITLE'))
+    const above = body.slice(0, body.indexOf('className="order-products"'))
+    for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
+                          'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
+      assert.equal(above.includes(figure), false, figure + ' appears above the product list')
+    }
+  })
+
   test('every payment figure lives in the payment section and nowhere else', () => {
-    // The six figures are drawn by one component, used once.
+    // The figures are drawn by one component, used once.
     assert.equal((body.match(/<PaymentSummaryFigures/g) ?? []).length, 1)
     // And the summary is handed no payment figure at all.
     const summary = body.slice(body.indexOf('<OrderSummary'), body.indexOf('<OrderAttentionBar'))
@@ -358,108 +484,170 @@ describe('no Order fact is stated twice', () => {
     assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
     // The three sections that belong on the left, in order, all before the aside.
     const left = lower.slice(main, aside)
-    for (const section of ['PAYMENT_SECTION_TITLE', 'title="Order records"', '<OrderActivityList']) {
+    for (const section of ['PAYMENT_SECTION_TITLE', '<OrderActivityList']) {
       assert.ok(left.includes(section), `${section} belongs in the left column`)
     }
   })
 })
 
-// ══ 4. Order records ══════════════════════════════════════════════════════════
+// ══ 4. The payment surface ══════════════════════════════════════════════════
 
-describe('Order records holds the documents, the source PI and the history', () => {
-  const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('<OrderActivityList'))
+describe('the payment section states a position and opens its rows', () => {
+  const pay = body.slice(body.indexOf('PAYMENT_SECTION_TITLE'), body.indexOf('order-lower-aside'))
 
-  test('it holds the SOURCE PI provenance, and no longer the version history', () => {
-    // Source PI is the document this Order was CREATED from — a permanent
-    // provenance record. The PI in force is a different fact once a revision
-    // has been approved, and it has its own card above the products. The
-    // version history moved into the modal that card opens, so no surface
-    // states it twice.
-    assert.ok(records.includes('Source PI'))
-    assert.equal(records.includes('<OrderPiHistoryCard'), false)
-    assert.equal(page.includes('<OrderPiHistoryCard'), false,
-      'the history card is not drawn anywhere on this page')
-  })
-
-  test('the PI in force is stated by the Main PI card, and once', () => {
-    assert.ok(body.includes('<OrderMainPiCard'))
-    assert.ok(page.includes('const mainPi = mainPiCard(piHistory)'))
-    assert.equal((page.match(/mainPiCard\(/g) ?? []).length, 1)
-  })
-
-  test('the whole version trail is stated by the modal, and once', () => {
-    assert.equal((body.match(/<PiHistoryModal/g) ?? []).length, 1)
-    assert.equal((page.match(/piVersionTimeline\(/g) ?? []).length, 1)
-    // Mounted only while it is open: a closed modal reads no files and signs
-    // nothing.
-    assert.ok(body.includes('{historyOpen && ('))
-  })
-
-  // ── DOCUMENTS ──
-  //
-  // The section and the Generate Document control left this page. The register,
-  // its route, its storage rule and its RLS are untouched and still tested by
-  // orderDocuments.test.ts and documentsRoute.test.ts — only the surface went.
-  test('the Documents section and the Generate control are gone from the page', () => {
-    for (const gone of ['OrderDocumentsCard', 'documentsQuery', 'documentsView',
-                        'mayGenerateDocuments', 'ORDER_DOCUMENT_COLUMNS',
-                        'buildOrderDocumentsView', 'order_document_versions']) {
-      assert.equal(page.includes(gone), false, gone + ' is still on the page')
-    }
-  })
-
-  test('and no dead presentation code was left behind', () => {
-    const sections = code(SECTIONS)
-    assert.equal(/OrderDocumentsCard/.test(sections), false)
-    assert.equal(/ORDER_DOCUMENTS_/.test(sections), false)
-    for (const cls of ['order-doc-row', 'order-doc-icon']) {
+  test('the inline PAYMENT RECORDS table is gone, with its explanatory prose', () => {
+    assert.equal(/Payment records/i.test(body), false, 'the block is still drawn')
+    assert.equal(pay.includes('<table'), false, 'a payment table is still on the page')
+    assert.equal(/Amounts are this Order/.test(body), false, 'its caption is still on the page')
+    for (const cls of ['order-pay-records', 'order-pay-records-head']) {
       assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
     }
-    // The two the Source PI reference still uses are deliberately kept.
-    assert.ok(read(CSS).includes('.order-doc-name {'))
   })
 
-  test('THE SHARED SERVICE IS UNTOUCHED — only the screen stopped asking', () => {
-    for (const kept of ['src/lib/orders/orderDocuments.ts',
-                        'src/app/api/orders/[id]/documents/route.ts']) {
-      assert.ok(read(kept).length > 0, kept)
+  test('and the duplicated figures with it', () => {
+    // Order value is in the headline's own line; Received was verified plus
+    // awaiting, both of which are named and clickable above it; the legend
+    // named the shares the two buttons name.
+    const ws = code(WORKSPACE)
+    for (const gone of ['order-pay-figures', 'order-pay-legend', 'order-pay-swatch', 'order-pay-split']) {
+      assert.equal(ws.includes(gone), false, gone + ' is still drawn')
+      assert.equal(read(CSS).includes('.' + gone + ' {'), false, gone + ' is still styled')
     }
   })
 
-  // ── The PI door ──
-  //
-  // AFTER CONVERSION, THIS PAGE IS THE SOURCE OF TRUTH. A prominent way back
-  // to the superseded draft invited operational readers to work from it, so
-  // the action is gone. Everything underneath it is untouched, and the two
-  // tests below are the halves of that: no button, and no lost record.
-  test('there is no "Open source PI" action for an ordinary reader', () => {
-    assert.equal(/Open source PI/i.test(body), false, 'the page must not offer it')
-    assert.equal(body.includes('piSubmissionHref('), false,
-      'and it must not build a route back to the draft')
+  test('the two figures are BUTTONS, and each opens its own filtered dialog', () => {
+    const ws = code(WORKSPACE)
+    assert.ok(ws.includes('onOpenList(metric.kind)'), 'the metric blocks must be controls')
+    assert.ok(/<button[\s\S]*?className={`order-pay-metric/.test(ws), 'and real buttons')
+    assert.ok(pay.includes('onOpenList={setPaymentList}'))
+    assert.equal((body.match(/<OrderPaymentListDialog/g) ?? []).length, 1,
+      'one dialog component, told which list to show and which row is open')
+    assert.ok(body.includes('rows={paymentRows}'))
   })
 
-  test('the source PI is still NAMED and its workbook still downloadable', () => {
-    // Removing the door must not remove the reference: the file this Order was
-    // built from is a record, and Download reads it rather than reopening the
-    // draft as a working surface.
-    const source = records.slice(records.indexOf('Source PI'), records.indexOf('<OrderPiHistoryCard'))
-    assert.ok(source.includes('piHandoff.workbookName'))
-    assert.ok(source.includes('downloadWorkbook'))
-    // None of what the big card used to restate.
-    for (const forbidden of ['piHandoff.dates', 'piHandoff.figures', 'piHandoff.billing', 'Total before GST']) {
-      assert.equal(source.includes(forbidden), false, `${forbidden} belongs to the Order Summary now`)
+  test('the dialog is filtered by the SAME predicates the totals use', () => {
+    const lists = code('src/lib/orders/orderPaymentLists.ts')
+    assert.ok(lists.includes('isVerifiedPaymentStatus'))
+    assert.ok(lists.includes('isAwaitingVerification'))
+    // It filters. It does not total, convert or re-derive a share.
+    assert.equal(/Math\.|parseFloat|Number\(/.test(lists), false, 'the builder must compute nothing')
+    assert.equal(lists.includes('allocatedAmount'), false,
+      'the share is withExactAmounts\' answer, read not re-derived')
+    assert.ok(lists.includes('exactAllocatedAmount'))
+  })
+
+  test('the rest of a payment opens HERE, in the same dialog', () => {
+    // It was a link into the Finance module. It is a dialog on this page now —
+    // and it kept the door it stood at, which is the next test.
+    assert.equal(page.includes('financePaymentHref'), false)
+    assert.ok(body.includes('openId={paymentDetailId}'))
+    assert.ok(body.includes('detail={paymentDetail}'))
+    assert.ok(code(WORKSPACE).includes('PAYMENT_DETAIL_BACK'))
+  })
+
+  test('AND IT KEPT THE FINANCE DOOR THE LINK STOOD AT', () => {
+    // A payment's AMOUNT on an Order is the Order's own fact, and the totals are
+    // built from it. What FINANCE wrote about that payment was reachable only
+    // through a control gated on Finance module entry, and moving that control
+    // into a dialog did not change who may open it. Row-level database access is
+    // not that gate.
+    assert.ok(page.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
+    assert.ok(body.includes('canViewDetails={mayViewPaymentDetails}'))
+    assert.ok(code(WORKSPACE).includes('const open = canViewDetails ? orderPaymentById(rows, openId) : null'),
+      'an openId without the capability must not open the detail')
+  })
+
+  test('THE SENSITIVE COLUMNS ARE NOT ON THE STARTUP PATH', () => {
+    // They were, briefly, on the argument that RLS had already allowed the row.
+    // That put Finance's notes about every payment into every reader's browser.
+    const load = page.slice(page.indexOf('const loadOrder'), page.indexOf('const markUpdatesSeen'))
+    assert.ok(load.includes(
+      ".select('id, client_name, amount, payment_date, payment_mode, order_number, status')"))
+    for (const column of ['proof_note', 'admin_note', 'sales_note', 'received_in',
+                          'approved_at', 'human_payment_id']) {
+      assert.equal(load.includes(column), false, column + ' is fetched for every reader')
+    }
+    // They arrive on the press, for one payment, behind two gates.
+    assert.ok(page.includes('const loadPaymentDetail'))
+    assert.ok(page.includes('orderPaymentDetailQuery({'))
+    assert.ok(page.includes('PAYMENT_DETAIL_COLUMNS'))
+  })
+})
+
+// ══ NO SUPPORTING DETAIL LEAVES THIS PAGE ════════════════════════════════════
+
+describe('every supporting record opens over the Order, not in another module', () => {
+  test('the content area builds no route into Finance or a PI screen', () => {
+    // A ROUTE, not a module name: Finance's own payment-entry FORM is mounted
+    // on this page as a dialog, which is the opposite of navigating to it.
+    for (const route of ['financePaymentHref', 'piSubmissionHref', 'order_document_versions']) {
+      assert.equal(page.includes(route), false, route + ' is still reachable from this page')
+    }
+    assert.equal(/href="\/finance|push\('\/finance|push\("\/finance/.test(page), false)
+    assert.equal(/href="\/orders\/drafts|push\('\/orders\/drafts/.test(page), false)
+  })
+
+  test('nor does anything the content area renders', () => {
+    // The three files that draw the Order's own body. A <Link> or an <a> in any
+    // of them is a way off the page, and the only ones allowed are Back to
+    // Orders and the sidebar, neither of which lives here.
+    for (const path of [WORKSPACE, STATUS, SECTIONS]) {
+      const source = code(path)
+      assert.equal(/from 'next\/link'/.test(source), false, path + ' imports Link')
+      assert.equal(/href=/.test(source), false, path + ' renders an href')
     }
   })
 
-  test('the PI relationship, its data and its history are all still reachable', () => {
-    // Removing the card must not remove the record.
-    assert.ok(page.includes("from('order_pi_versions')"))
-    assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'))
-    assert.ok(page.includes('describePiVersionHistory'))
-    assert.ok(page.includes('canProposePiRevision'))
-    assert.ok(page.includes('canDecidePiRevision'))
-    // And the relation itself is read, so traceability survives the button.
-    assert.ok(page.includes('source_order_submission_id'))
+  test('the page itself keeps ONE link, and it is Back to Orders', () => {
+    assert.equal(/from 'next\/link'/.test(page), false, 'no Link component is imported')
+    assert.equal((body.match(/<RecordBackLink/g) ?? []).length, 1)
+    assert.ok(body.includes('fallbackHref="/orders/all"'))
+  })
+
+  test('the Switch to Finance control is not offered from this screen', () => {
+    assert.ok(page.includes('showModuleSwitch={false}'))
+    // AND EVERY OTHER ORDERS SCREEN KEEPS IT. The layout defaults to showing it.
+    const layout = read('src/components/layout/OrdersLayout.tsx')
+    assert.ok(layout.includes('showModuleSwitch = true'))
+    assert.ok(layout.includes('{showModuleSwitch && <ModuleSwitchButton target="finance" />}'))
+  })
+
+  test('each supporting record has a dialog, and the page mounts it only when open', () => {
+    for (const [state, dialog] of [
+      ['historyOpen', '<PiHistoryModal'],
+      ['designOpen', '<OrderDesignFilesDialog'],
+      ['evidence', '<OrderEvidenceDialog'],
+      ['paymentList', '<OrderPaymentListDialog'],
+    ] as const) {
+      assert.ok(body.includes('{' + state + ' && ('), state + ' does not gate its dialog')
+      assert.equal((body.match(new RegExp(dialog, 'g')) ?? []).length, 1, dialog)
+    }
+  })
+
+  test('a proof is a dialog now, not a new tab', () => {
+    // The URL is still signed on the press, through the reader's own session.
+    assert.ok(page.includes('setEvidence({ url: null, failure: null })'))
+    const fn = page.slice(page.indexOf('const viewEvidence'), page.indexOf('const recordApprovals'))
+    assert.ok(fn.includes('createSignedUrl('), 'still signed on demand')
+    assert.equal(fn.includes('window.open'), false, 'and no longer opened in a tab')
+  })
+
+  test('THE TWO FILE HAND-OFFS ARE STILL FILE HAND-OFFS, which is allowed', () => {
+    // View and Download on the PI give the browser a workbook. A spreadsheet
+    // cannot be previewed in a dialog, and a signed storage URL is a download,
+    // not a page in another module.
+    const fn = page.slice(page.indexOf('const openVersionFile'), page.indexOf('const viewEvidence'))
+    assert.ok(fn.includes('createSignedUrl('))
+    assert.ok(fn.includes('window.open'))
+    assert.ok(fn.includes("'_blank', 'noopener,noreferrer'"))
+    // And it is a storage URL, never an app route.
+    assert.equal(/router\.push|href=/.test(fn), false)
+  })
+
+  test('no dialog navigates with the browser', () => {
+    for (const path of [PAGE, WORKSPACE, STATUS]) {
+      assert.equal(/history\.back\(\)|router\.back\(\)/.test(code(path)), false, path)
+    }
   })
 })
 
@@ -474,9 +662,13 @@ describe('the business rules this pass must not touch', () => {
     assert.equal(/Math\.round\(\(received/.test(page), false)
   })
 
-  test('the Finance link is still gated on Finance module entry', () => {
-    assert.ok(page.includes('financeCaps.canAccessFinanceModule && ('))
-    assert.ok(page.includes('financePaymentHref(p.id)'))
+  test('the Finance CAPABILITY is still resolved, and still gates Add payment', () => {
+    // The page no longer LINKS into Finance, but it still asks Finance's own
+    // resolver whether this reader may record a payment — which is the one
+    // Finance authority this screen ever acted on.
+    assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'))
+    assert.ok(page.includes(`getEffectivePermissions(supabase, session.user.id, 'finance')`))
+    assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment'))
   })
 
   // ── Add payment ──
@@ -489,18 +681,28 @@ describe('the business rules this pass must not touch', () => {
     assert.equal((body.match(/<RecordSplitPaymentModal/g) ?? []).length, 1)
     // Between the payment section's title and the section that follows it.
     const payment = body.indexOf('PAYMENT_SECTION_TITLE')
-    const records = body.indexOf('title="Order records"')
+    const after = body.indexOf('<OrderActivityList')
     const control = body.indexOf('ADD_PAYMENT_ACTION_LABEL')
-    assert.ok(payment > 0 && records > payment)
-    assert.ok(control > payment && control < records,
-      'the control belongs to the Payment section, not to the header or the records')
+    assert.ok(payment > 0 && after > payment)
+    assert.ok(control > payment && control < after,
+      'the control belongs to the Payment section, not to the header')
+    // AND ITS RULE IS UNCHANGED: the same capability, the same modal, the same
+    // refresh. This pass rearranged the section around it and touched neither.
+    assert.ok(page.includes('const mayRecordPayment = canRecordPaymentAgainstOrder({'))
+    assert.ok(body.includes('{mayRecordPayment && ('))
+    assert.ok(body.includes('{recordingPayment && mayRecordPayment && ('))
   })
 
   test('and it changes none of the figures beside it', () => {
     // The builder, the exact amounts and the absence of arithmetic are asserted
     // above; this holds that the payment section still draws the same one
     // component from the same position, with the control added beside it.
-    assert.equal((body.match(/<PaymentSummaryFigures finance={finance} loaded={recordsReady} \/>/g) ?? []).length, 1)
+    const figures = body.slice(body.indexOf('<PaymentSummaryFigures'))
+    assert.ok(figures.startsWith(`<PaymentSummaryFigures
+              finance={finance}
+              loaded={recordsReady}
+              onOpenList={setPaymentList}
+            />`), 'the component is handed the position, the load flag and a door — nothing else')
     assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
   })
 
@@ -593,14 +795,16 @@ describe('the critical path to the product table', () => {
       'no single-object signer runs while loading the table')
   })
 
-  test('the workbook and each PI version are signed ON THE CLICK, not at load', () => {
+  test('each PI version is signed ON THE CLICK, not at load', () => {
     // A page that signed every version's file up front would spend a request
     // per archived PI for something nobody opened.
-    for (const handler of ['const downloadWorkbook', 'const openVersionFile']) {
-      const at = page.indexOf(handler)
-      assert.ok(at > 0, handler)
-      assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), handler + ' signs on demand')
-    }
+    //
+    // THE SOURCE-PI WORKBOOK HANDLER IS GONE, with the Order records section
+    // that was the only thing offering it; the document itself is downloaded
+    // from the Main PI card, through this same on-demand signer.
+    const at = page.indexOf('const openVersionFile')
+    assert.ok(at > 0, 'const openVersionFile')
+    assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), 'it signs on demand')
   })
 })
 

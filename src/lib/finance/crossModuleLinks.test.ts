@@ -138,14 +138,31 @@ describe('a control is drawn only for a reader who can get through the door', ()
 
 describe('the Order screen links into Finance, and gates it', () => {
   const page = readFileSync(ORDER_PAGE, 'utf8')
+  /** Where the per-payment rows are drawn: the dialog the figures open. */
+  const workspace = readFileSync('src/app/orders/[id]/OrderWorkspace.tsx', 'utf8')
 
-  test('a payment row offers its Finance record', () => {
-    assert.ok(page.includes('financePaymentHref(p.id)'))
+  test('a payment row opens the REST OF ITS RECORD, and does it here', () => {
+    // It was a link into the Finance module: a different layout, and the Order
+    // lost behind it. Everything it went for is a column of a row this page
+    // already holds, so the dialog states it in place.
+    assert.equal(page.includes('financePaymentHref'), false, 'no route into Finance is built')
+    assert.ok(workspace.includes('PAYMENT_DETAIL_VIEW'))
+    assert.ok(page.includes('openId={paymentDetailId}'))
   })
 
-  test('and only to a reader who holds Finance module entry', () => {
-    assert.ok(page.includes('financeCaps.canAccessFinanceModule && ('),
-      'the Finance control is gated on Finance module entry')
+  test('and it keeps the Finance gate the link had', () => {
+    // A LINK IS NOT A PERMISSION, but the control that offered it WAS gated —
+    // on Finance module entry — and moving it into a dialog does not change who
+    // may open it. The brief list is the Order's own money; the record behind it
+    // is Finance's, and stays behind Finance's door.
+    assert.ok(page.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
+    assert.ok(page.includes('canViewDetails={mayViewPaymentDetails}'))
+    // And nothing sensitive is fetched for a reader who may not open it.
+    assert.ok(page.includes('orderPaymentDetailQuery({'))
+    assert.ok(page.includes('canViewPaymentDetails: mayViewPaymentDetails'))
+    // The Finance CAPABILITY is still resolved, and still gates Add payment.
+    assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'))
+    assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment'))
   })
 
   test('the capability starts empty and is resolved, not assumed from the role', () => {
@@ -221,11 +238,18 @@ describe('the Finance list links into Order Management, and gates it', () => {
 describe('neither screen reveals a record it could not already read', () => {
   test('the Order screen builds its Finance links from payments RLS already returned', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    // `p` is a row of the merged payment list, which comes from the two
-    // Order-anchored, RLS-checked reads. No id is fetched to make a link.
-    assert.ok(page.includes('financePaymentHref(p.id)'))
-    assert.ok(!page.includes('financePaymentHref(id)'),
-      'a link is never built from the route parameter or any unchecked id')
+    // The dialog's rows are orderPaymentList's, filtered from the merged payment
+    // list, which comes from the two Order-anchored, RLS-checked reads. Nothing
+    // is fetched to make a door, because the door no longer leaves the page.
+    assert.ok(page.includes('rows={paymentRows}'))
+    // And the detail read may only name an id that list already contained.
+    assert.ok(page.includes('rows: paymentRows'))
+    assert.equal(/financePaymentHref/.test(page), false, 'no Finance route is built')
+    // FINANCE'S OWN ENTRY FORM IS MOUNTED HERE, which is the opposite of going
+    // to it: the only /finance string left on the page is that import.
+    assert.equal(/router\.push\([^)]*finance/.test(page), false, 'and none is pushed either')
+    assert.equal((page.match(/@\/app\/finance\//g) ?? []).length, 1)
+    assert.ok(page.includes("import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'"))
   })
 
   test('the Finance list builds its Order links from the projection, not a second read', () => {
@@ -260,8 +284,11 @@ describe('the trail runs both ways between an Order and its PI', () => {
     const page = readFileSync(ORDER_PAGE, 'utf8')
     assert.ok(page.includes('source_order_submission_id'), 'the relation itself')
     assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'), 'the PI the Order came from')
-    assert.ok(page.includes('piHandoff.workbookName'), 'named on screen')
-    assert.ok(page.includes('downloadWorkbook'), 'and its file still downloadable')
+    // NAMED AND DOWNLOADABLE FROM THE DOCUMENTS BOX. The Order records section
+    // that used to name it is gone; for a converted Order the PI in force IS
+    // that document, and the box states its file name and signs it on demand.
+    assert.ok(page.includes('<OrderDocumentsPanel'), 'named on screen')
+    assert.ok(page.includes('openVersionFile'), 'and its file still downloadable')
     assert.ok(page.includes("from('order_pi_versions')"), 'and every PI version')
 
     // The merged chronology still interleaves the PI's own activity trail, so
@@ -269,15 +296,18 @@ describe('the trail runs both ways between an Order and its PI', () => {
     assert.ok(page.includes('mergeOrderHistory'))
   })
 
-  test('and the PI card is drawn only for an Order that HAS a PI', () => {
+  test('and an Order with no PI is told so, rather than shown an empty section', () => {
     // An Order created from an Order Request has no source PI, and gets no
-    // section about a record that does not exist — exactly as before.
+    // section about a record that does not exist — exactly as before. The
+    // Order records section that used to carry the reference is gone; the two
+    // absences keep their own quiet cards, and they are mutually exclusive.
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    assert.ok(page.indexOf("piHandoff.kind !== 'none'") < page.indexOf('title="Order records"'),
-      'Order Records is gated on the Order having a PI at all')
-    const records = page.slice(page.indexOf('title="Order records"'))
-    assert.ok(records.indexOf("piHandoff.kind === 'ready'") > 0,
-      'and the source-PI block inside it on the handoff being ready')
+    assert.equal(page.includes('title="Order records"'), false, 'the section is gone')
+    assert.ok(page.includes("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />"))
+    assert.ok(page.includes("piHandoff.kind === 'unavailable' && <OrderPiUnavailable />"))
+    // The products, the commercial breakdown and the client dialog are all
+    // still gated on the handoff being READY, exactly as before.
+    assert.ok(page.includes("piHandoff.kind === 'ready'"))
   })
 
   test('the PI already offered its Order, and that is unchanged', () => {

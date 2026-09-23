@@ -27,11 +27,11 @@ import { useCallback, useEffect, useRef } from 'react'
 import { Download, FileSpreadsheet, History, Upload, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
+import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_DOWNLOAD_LABEL,
   MAIN_PI_HISTORY_LABEL,
-  MAIN_PI_TITLE,
   MAIN_PI_UPLOADED_LABEL,
   MAIN_PI_VIEW_LABEL,
   PI_HISTORY_CURRENT_BADGE,
@@ -48,21 +48,18 @@ import {
   type PiVersionTone,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
+import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
 import {
-  ADVANCE_AMOUNT_LABEL,
-  ADVANCE_NOT_AVAILABLE,
-  ADVANCE_ORDER_VALUE_LABEL,
-  ADVANCE_TITLE,
-  type AdvanceStanding,
-} from '@/lib/orders/orderAdvance'
-import {
-  CURRENT_STATUS_TITLE,
-  DESIGN_FILES_TITLE,
-  MANUFACTURING_TITLE,
-  type CurrentStatusLine,
-  type DesignFilesView,
-  type ManufacturingStatusView,
-} from '@/lib/orders/orderCurrentStatus'
+  CLIENT_PO_UNSUPPORTED_NOTE,
+  DOCUMENTS_TITLE,
+  DOC_CLIENT_PO_TITLE,
+  DOC_DESIGN_FILES_TITLE,
+  DOC_MAIN_PI_TITLE,
+  DOC_VIEW_FILES_LABEL,
+  DOC_NOT_ATTACHED,
+  type ClientPoDocument,
+  type DesignFilesDocument,
+} from '@/lib/orders/orderDocumentsPanel'
 import {
   APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
@@ -147,111 +144,191 @@ function Fact({ label, value, tone }: { label: string; value: React.ReactNode; t
  * PI workbook and the product photographs already use, and it is why a key
  * copied out of this page stops working within the hour.
  */
-export function OrderMainPiCard({
-  card, onView, onDownload, onHistory, viewing, downloading,
+/**
+ * ONE SUBSECTION OF THE DOCUMENTS BOX: a title, what is on file, and the
+ * actions for it.
+ *
+ * THE SAME THREE-PART SHAPE FOR ALL THREE, so a reader learns the box once. The
+ * title column is fixed on desktop, which is what lines the three bodies up
+ * into a column that can be scanned rather than read; below 720px the parts
+ * stack and the actions wrap under what they act on.
+ */
+function DocSection({ title, children, actions }: {
+  title: string
+  children: React.ReactNode
+  actions?: React.ReactNode
+}) {
+  return (
+    <section className="order-doc-section" aria-label={title}>
+      <h3 className="order-doc-section-title">{title}</h3>
+      <div className="order-doc-section-body">{children}</div>
+      {actions && <div className="order-doc-section-actions">{actions}</div>}
+    </section>
+  )
+}
+
+/** An absent document, said quietly. Never an alarm: most Orders carry none. */
+function DocEmpty({ message, note }: { message: string; note?: string | null }) {
+  return (
+    <>
+      <p className="order-doc-empty">{message}</p>
+      {note && <p className="order-doc-note">{note}</p>}
+    </>
+  )
+}
+
+/**
+ * THE DOCUMENTS BOX — the PI this Order runs on, the design files behind its
+ * products, and the client's own purchase order, in one card with rules between
+ * them.
+ *
+ * WHAT IT REPLACED. A Main PI card and a Design Files card side by side, each
+ * with its own heading, its own padding and its own outline, and both restating
+ * the fabric and finish approvals that the card beside them states in full.
+ * Three separate outlines for one question — "what paperwork does this Order
+ * have?" — and a row of white space under the shorter of them.
+ *
+ * NOT ONE ACTION LEFT THE PAGE. View and Download hand the browser a file
+ * through a URL signed on the press; PI History and View files open dialogs
+ * over this page. Nothing here navigates to a PI screen, a document screen or
+ * another module.
+ */
+export function OrderDocumentsPanel({
+  mainPi, design, clientPo,
+  onView, onDownload, onHistory, onManageDesign,
+  viewing, downloading,
 }: {
-  card: MainPiCard
+  mainPi: MainPiCard
+  design: DesignFilesDocument
+  clientPo: ClientPoDocument
   onView: (version: PiVersionView) => void
   onDownload: (version: PiVersionView) => void
   onHistory: () => void
+  /** Opens the design-file dialog. Absent when there is nothing to open. */
+  onManageDesign: () => void
   viewing: boolean
   downloading: boolean
 }) {
-  const history = (
-    <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onHistory}>
-      <History size={13} strokeWidth={2} aria-hidden="true" />
-      {MAIN_PI_HISTORY_LABEL}
-    </button>
-  )
-
-  if (card.kind !== 'ready') {
-    return (
-      <CardShell title={MAIN_PI_TITLE} right={history}>
-        <p className="order-status-empty">{card.message}</p>
-      </CardShell>
-    )
-  }
-
   return (
-    <CardShell title={MAIN_PI_TITLE} right={history}>
-      <div className="order-status-lead">
-        <span className="order-status-lead-value">{card.reference}</span>
-        <StatusPill label={card.statusLabel} tone="green" />
-      </div>
+    <section className="order-docs" aria-label={DOCUMENTS_TITLE}>
+      <h2 className="order-docs-title">{DOCUMENTS_TITLE}</h2>
 
-      <dl className="order-status-facts">
-        <Fact label={MAIN_PI_UPLOADED_LABEL} value={card.uploadedAt} />
-        {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
-        {card.approvedAt && <Fact label={MAIN_PI_APPROVED_LABEL} value={card.approvedAt} />}
-      </dl>
-
-      {card.pendingRevision && (
-        <p className="order-status-note">
-          A revised PI is uploaded and waiting for a decision. This one stays in force until it is approved.
-        </p>
-      )}
-
-      <div className="order-status-actions">
-        <button
-          type="button"
-          className="boe-btn boe-btn-ghost order-status-action"
-          onClick={() => onView(card.version)}
-          disabled={!card.hasFile || viewing}
-          title={card.fileName ?? card.reference}
-        >
-          <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-          {viewing ? 'Opening…' : MAIN_PI_VIEW_LABEL}
-        </button>
-        <button
-          type="button"
-          className="boe-btn boe-btn-ghost order-status-action"
-          onClick={() => onDownload(card.version)}
-          disabled={!card.hasFile || downloading}
-          title={card.fileName ?? card.reference}
-        >
-          <Download size={13} strokeWidth={2} aria-hidden="true" />
-          {downloading ? 'Preparing…' : MAIN_PI_DOWNLOAD_LABEL}
-        </button>
-      </div>
-    </CardShell>
-  )
-}
-
-// ── 2. Advance Received ───────────────────────────────────────────────────────
-
-/**
- * HOW MUCH OF THIS ORDER IS ACTUALLY PAID FOR.
- *
- * Every figure is the shared finance position's, unchanged — verified money
- * allocated to THIS Order, over its final Order Value. See orderAdvance.ts for
- * why there is no second calculation here, why nothing is capped, and why the
- * Risky/Safe line is an operational indicator and not the confirmation gate.
- */
-export function OrderAdvanceCard({ standing }: { standing: AdvanceStanding }) {
-  return (
-    <CardShell title={ADVANCE_TITLE}>
-      <div className="order-status-lead">
-        <span className="order-status-lead-value order-status-lead-value--numeric">
-          {standing.percentLabel}
-        </span>
-        {/* Words as well as colour: a reader who cannot tell red from green
-            still reads "Risky". */}
-        {standing.classification && (
-          <StatusPill label={standing.classification.label} tone={standing.classification.tone} strong />
+      {/* ── 1. The PI this Order runs on ── */}
+      <DocSection
+        title={DOC_MAIN_PI_TITLE}
+        actions={
+          <>
+            {mainPi.kind === 'ready' && (
+              <>
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost order-doc-action"
+                  onClick={() => onView(mainPi.version)}
+                  disabled={!mainPi.hasFile || viewing}
+                  title={mainPi.fileName ?? mainPi.reference}
+                >
+                  <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                  {viewing ? 'Opening…' : MAIN_PI_VIEW_LABEL}
+                </button>
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost order-doc-action"
+                  onClick={() => onDownload(mainPi.version)}
+                  disabled={!mainPi.hasFile || downloading}
+                  title={mainPi.fileName ?? mainPi.reference}
+                >
+                  <Download size={13} strokeWidth={2} aria-hidden="true" />
+                  {downloading ? 'Preparing…' : MAIN_PI_DOWNLOAD_LABEL}
+                </button>
+              </>
+            )}
+            {/* THE HISTORY IS OFFERED WHETHER OR NOT A PI IS IN FORCE: an Order
+                whose only version is a pending revision has a history worth
+                reading, and that is exactly when a reader asks for it. */}
+            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onHistory}>
+              <History size={13} strokeWidth={2} aria-hidden="true" />
+              {MAIN_PI_HISTORY_LABEL}
+            </button>
+          </>
+        }
+      >
+        {mainPi.kind !== 'ready' ? (
+          <DocEmpty message={DOC_NOT_ATTACHED} note={mainPi.message} />
+        ) : (
+          <>
+            <p className="order-doc-lead">
+              <span className="order-doc-lead-value">{mainPi.reference}</span>
+              <StatusPill label={mainPi.statusLabel} tone="green" />
+            </p>
+            <dl className="order-doc-facts">
+              <Fact label={MAIN_PI_UPLOADED_LABEL} value={mainPi.uploadedAt} />
+              {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
+              {mainPi.approvedAt && <Fact label={MAIN_PI_APPROVED_LABEL} value={mainPi.approvedAt} />}
+            </dl>
+            {mainPi.pendingRevision && (
+              <p className="order-doc-note">
+                A revised PI is uploaded and waiting for a decision. This one stays in force until it is approved.
+              </p>
+            )}
+          </>
         )}
-      </div>
+      </DocSection>
 
-      <dl className="order-status-facts">
-        <Fact label={ADVANCE_AMOUNT_LABEL} value={standing.verifiedAmount} />
-        <Fact label={ADVANCE_ORDER_VALUE_LABEL} value={standing.orderValue ?? ADVANCE_NOT_AVAILABLE} />
-      </dl>
+      {/* ── 2. The design record behind the products ──
+          FOUR STATES AND NO FIFTH (PR #195): loading is not "none", a refused
+          read is not "none", and an empty read says so in its own words. */}
+      <DocSection
+        title={DOC_DESIGN_FILES_TITLE}
+        actions={design.kind === 'ready' ? (
+          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onManageDesign}>
+            {DOC_VIEW_FILES_LABEL}
+          </button>
+        ) : undefined}
+      >
+        {design.kind === 'loading' && (
+          <p className="order-doc-loading" role="status">{DESIGN_IMAGES_LOADING}</p>
+        )}
+        {design.kind === 'unavailable' && (
+          <>
+            <p className="order-doc-unavailable">{design.message}</p>
+            <p className="order-doc-note">{design.note}</p>
+          </>
+        )}
+        {design.kind === 'empty' && <DocEmpty message={design.message} note={design.note} />}
+        {design.kind === 'ready' && (
+          <>
+            <p className="order-doc-lead">
+              <span className="order-doc-lead-value">{design.summary}</span>
+              <StatusPill label="Attached" tone="green" />
+            </p>
+            <p className="order-doc-note">{design.detail}</p>
+          </>
+        )}
+      </DocSection>
 
-      <p className="order-status-note">{standing.note}</p>
-    </CardShell>
+      {/* ── 3. The client's own purchase order ──
+          NO STORE EXISTS YET and this says so in one muted line rather than
+          offering a control that could not keep what it took. See
+          orderDocumentsPanel.ts for the audit behind that. */}
+      <DocSection title={DOC_CLIENT_PO_TITLE}>
+        {clientPo.kind === 'ready' ? (
+          <>
+            <p className="order-doc-lead">
+              <span className="order-doc-lead-value">{clientPo.summary}</span>
+              <StatusPill label="Attached" tone="green" />
+            </p>
+            {clientPo.detail && <p className="order-doc-note">{clientPo.detail}</p>}
+          </>
+        ) : (
+          <DocEmpty
+            message={clientPo.kind === 'unsupported' ? clientPo.message : DOC_NOT_ATTACHED}
+            note={clientPo.kind === 'unsupported' ? clientPo.note : CLIENT_PO_UNSUPPORTED_NOTE}
+          />
+        )}
+      </DocSection>
+    </section>
   )
 }
-
-// ── 3. Fabric & Finish ────────────────────────────────────────────────────────
 
 /**
  * WHERE THE TWO APPROVALS STAND, AND WHEN EACH LAST MOVED.
@@ -351,100 +428,20 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
   )
 }
 
-// ── 4. Current Status: Design Files and Manufacturing ─────────────────────────
-
 /**
- * ONE LINE OF A CURRENT STATUS CARD.
+ * DOCUMENTS ON THE LEFT, FABRIC & FINISH ON THE RIGHT — two thirds and one
+ * third at desktop widths, stacked in that order below 900px.
  *
- * The value is a pill only where the line HAS a status; a count and an absence
- * are plain words, because a coloured badge around "3 files" would give a
- * number the weight of a decision.
+ * THE PROPORTION IS THE CONTENT'S. Documents holds three subsections of prose
+ * and up to three actions each; Fabric & Finish holds two statuses and their
+ * evidence. Equal columns gave the narrower card a third of a screen of white
+ * space under it, which is the emptiness this pass exists to remove.
  *
- * A `muted` line is quietened rather than hidden. A reader who does not see a
- * CAD row concludes nothing; a reader who sees "CAD & drawings — Not recorded"
- * learns that this system does not hold them, which is the true answer and the
- * only one that stops somebody hunting for the file elsewhere. The same goes
- * for a picture read that has not finished or could not be made: the line is
- * present, and quiet, and says which.
+ * ALIGNED TO THE TOP, NOT STRETCHED. Each card ends where its content ends; a
+ * stretched pair would hand the shorter one a blank tail again.
  */
-function StatusLine({ line }: { line: CurrentStatusLine }) {
-  return (
-    <div className={line.muted ? 'order-status-line order-status-line--muted' : 'order-status-line'}>
-      <dt className="order-status-fact-label">{line.label}</dt>
-      <dd className="order-status-line-value">
-        {line.tone
-          ? <StatusPill label={line.value} tone={line.tone} />
-          : <span className="order-status-line-plain">{line.value}</span>}
-        {line.detail && <span className="order-status-line-detail">{line.detail}</span>}
-      </dd>
-    </div>
-  )
-}
-
-/**
- * WHAT DESIGN WORK THIS ORDER HAS ON RECORD.
- *
- * READ-ONLY, ON PURPOSE. Fabric and Finish are the same standing the card below
- * draws in full, stated here without their dates, actors, proof buttons or
- * update control: this card answers "where does design stand", and the one
- * below is where it is moved. Nothing here uploads, edits or approves anything.
- */
-export function OrderDesignFilesCard({ view }: { view: DesignFilesView }) {
-  return (
-    <CardShell title={DESIGN_FILES_TITLE}>
-      <dl className="order-status-lines">
-        {view.lines.map(line => <StatusLine key={line.key} line={line} />)}
-      </dl>
-      <p className="order-status-note">{view.note}</p>
-    </CardShell>
-  )
-}
-
-/**
- * HOW FAR THE ORDER HAS GOT, from the two records that actually exist.
- *
- * The closing note is not boilerplate: without it a card headed "Manufacturing
- * Status" that shows only an alignment reads as though manufacturing had not
- * started, when the truth is that this system never tracked it.
- */
-export function OrderManufacturingCard({ view }: { view: ManufacturingStatusView }) {
-  return (
-    <CardShell title={MANUFACTURING_TITLE}>
-      <dl className="order-status-lines">
-        {view.lines.map(line => <StatusLine key={line.key} line={line} />)}
-      </dl>
-      <p className="order-status-note">{view.note}</p>
-    </CardShell>
-  )
-}
-
-/**
- * THE SECTION ITSELF: a heading, and the same three-column grid the workspace
- * below it uses.
- *
- * It reuses `order-status-workspace` rather than declaring a second grid, so
- * the two rows of cards can never wrap differently at the same width — one set
- * of breakpoints, one behaviour, one thing to verify.
- */
-export function OrderCurrentStatus({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="order-current-status" aria-label={CURRENT_STATUS_TITLE}>
-      <h2 className="order-current-status-title">{CURRENT_STATUS_TITLE}</h2>
-      <div className="order-status-workspace">{children}</div>
-    </section>
-  )
-}
-
-// ── The workspace ─────────────────────────────────────────────────────────────
-
-export const STATUS_WORKSPACE_LABEL = 'Order status'
-
-export function OrderStatusWorkspace({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="order-status-workspace" aria-label={STATUS_WORKSPACE_LABEL} role="group">
-      {children}
-    </div>
-  )
+export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
+  return <div className="order-docs-row">{children}</div>
 }
 
 // ── The PI history modal ──────────────────────────────────────────────────────
@@ -520,6 +517,118 @@ function Modal({ title, onClose, children, wide = false }: {
 }
 
 export { Modal as OrderModalShell }
+
+// ── The design-file dialog ────────────────────────────────────────────────────
+
+export const DESIGN_FILES_DIALOG_TITLE = 'Design files'
+export const DESIGN_FILES_DIALOG_EMPTY = 'No design files are recorded against this Order.'
+/** Said in the dialog, so nobody hunts this screen for an upload control. */
+export const DESIGN_FILES_DIALOG_NOTE =
+  'These files come from the approved PI. They are added and removed there.'
+
+/**
+ * EVERY PICTURE THIS ORDER HOLDS, WITHOUT LEAVING THE ORDER.
+ *
+ * The Documents box states how many there are; this is the list behind that
+ * number, and it opens over the page. There is no design-file screen to go to
+ * and this does not invent one.
+ *
+ * THE PICTURES ARE THE PAGE'S OWN, already resolved and already ordered by
+ * buildImageViewerItems — the same sequence the product table and the full-size
+ * viewer walk, so a picture is the same picture and in the same place wherever
+ * it is opened. Clicking one hands it to that viewer.
+ *
+ * READ-ONLY, AND HONESTLY SO. These pictures BELONG TO THE APPROVED PI, which is
+ * where they are added and removed; this Order screen has never had a way to
+ * upload one and this does not pretend otherwise. An upload control here would
+ * be a button with nothing behind it, and the control that opens this dialog is
+ * called "View files" for the same reason.
+ *
+ * ORDER-LEVEL DESIGN DOCUMENTS ARE NOT BUILT. Giving an Order its own design
+ * files — rather than its PI's — needs a table, an RLS pair, a storage policy
+ * and an upload permission, none of which exists. Until it does, this lists what
+ * the PI holds, and says so.
+ *
+ * THUMBNAILS LOAD WHEN THIS OPENS, not when the page does — the dialog is
+ * mounted only while it is open, so a reader who never asks for the list never
+ * fetches a single image.
+ */
+export function OrderDesignFilesDialog({ items, onOpen, onClose }: {
+  items: readonly PiViewerItem[]
+  onOpen: (key: string) => void
+  onClose: () => void
+}) {
+  return (
+    <Modal title={DESIGN_FILES_DIALOG_TITLE} onClose={onClose} wide>
+      {items.length === 0 ? (
+        <p className="order-doc-empty">{DESIGN_FILES_DIALOG_EMPTY}</p>
+      ) : (
+        <ul className="order-file-grid">
+          {items.map(item => (
+            <li key={item.key} className="order-file-cell">
+              <button
+                type="button"
+                className="order-file-thumb"
+                onClick={() => onOpen(item.key)}
+                aria-label={item.label}
+              >
+                {/* Native lazy loading: a long list fetches what is scrolled to
+                    rather than everything the moment the dialog opens.
+                    eslint-disable-next-line @next/next/no-img-element */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.url} alt="" loading="lazy" decoding="async" />
+              </button>
+              <p className="order-file-role">{item.roleLabel}</p>
+              <p className="order-file-meta">{item.sequence} · {item.name}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* WHERE THESE CAME FROM, AND WHERE THEY ARE CHANGED. Without it a reader
+          who finds no upload here concludes the control is missing, rather than
+          that it lives on the PI. */}
+      {items.length > 0 && <p className="order-doc-note">{DESIGN_FILES_DIALOG_NOTE}</p>}
+    </Modal>
+  )
+}
+
+// ── The approval-evidence dialog ──────────────────────────────────────────────
+
+export const EVIDENCE_DIALOG_TITLE = 'Approval evidence'
+export const EVIDENCE_DIALOG_PENDING = 'Opening…'
+
+/**
+ * ONE ERP SCREENSHOT, OVER THIS PAGE.
+ *
+ * It used to be window.open() onto a signed URL — a new tab, no title, no way
+ * back, and the Order lost behind it. The URL is still signed on the press
+ * through the reader's own session, so the evidence bucket's own policy decides
+ * at that moment exactly as before; only where the picture is shown changed.
+ *
+ * NOTHING IS SIGNED UNTIL SOMEBODY ASKS. The dialog is mounted when a proof is
+ * named and unmounted when it closes, so no proof on the page is signed at load.
+ */
+export function OrderEvidenceDialog({ url, failure, onClose }: {
+  /** The signed URL, or null while it is being minted. */
+  url: string | null
+  failure: string | null
+  onClose: () => void
+}) {
+  return (
+    <Modal title={EVIDENCE_DIALOG_TITLE} onClose={onClose} wide>
+      {failure ? (
+        <p className="order-doc-unavailable" role="alert">{failure}</p>
+      ) : url ? (
+        <div className="order-evidence-frame">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={EVIDENCE_DIALOG_TITLE} />
+        </div>
+      ) : (
+        <p className="order-doc-loading" role="status">{EVIDENCE_DIALOG_PENDING}</p>
+      )}
+    </Modal>
+  )
+}
 
 /**
  * EVERY PI VERSION THIS ORDER HAS CARRIED, newest first, without leaving the

@@ -431,23 +431,24 @@ describe('/orders/[id] itself', () => {
     // claim for a moment that it had none, and then jump.
     assert.ok(page.includes("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />"))
     assert.ok(page.includes('OrderPiNoSource,'), 'the component must be imported')
-    // AND A PI THAT COULD NOT BE READ still says so. The big Approved PI card
-    // that used to carry that sentence is gone — the Order's own facts are
-    // stated once, in the Order Summary — so the absence is now reported where
-    // the source PI is referenced, inside Order Records.
-    const records = page.slice(page.indexOf('title="Order records"'))
-    assert.ok(records.includes('ORDER_PI_UNAVAILABLE_BODY'),
-      'an unreadable PI is reported where the PI reference lives')
-    assert.ok(page.includes('  ORDER_PI_UNAVAILABLE_BODY,'), 'and the sentence is the shared one')
+    // AND A PI THAT COULD NOT BE READ still says so. The sentence used to sit
+    // inside Order records, beside the source PI reference; that section left
+    // the page and the absence did not, so it is now reported by the card
+    // written for exactly this — the same shared wording, and no figure.
+    assert.ok(page.includes("piHandoff.kind === 'unavailable' && <OrderPiUnavailable />"),
+      'an unreadable PI is reported by its own card')
+    assert.ok(page.includes('  OrderPiUnavailable,'), 'the component must be imported')
+    assert.ok(readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderPiSections.tsx'), 'utf8').includes('ORDER_PI_UNAVAILABLE_BODY'),
+      'and the sentence is the shared one')
   })
 
-  test('the no-PI panel still follows the Order records gate — there is nothing to generate', () => {
-    // Order records stays behind `kind !== 'none'`. Explaining the absence of
-    // a PI must not become a second, wider gate that draws it anyway.
-    assert.match(page, /piHandoff\.kind !== 'none' && \(/)
-    const noSourceAt = page.indexOf("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />")
-    const cardAt = page.indexOf("piHandoff.kind !== 'none' && (")
-    assert.ok(noSourceAt > cardAt, 'the explanation follows the card gate, it does not widen it')
+  test('the three PI absences are MUTUALLY EXCLUSIVE — a reader is told one thing', () => {
+    // 'none' and 'unavailable' answer the same question for different reasons,
+    // and 'ready' answers it by showing the PI. Exactly one can be true.
+    assert.ok(page.includes("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />"))
+    assert.ok(page.includes("piHandoff.kind === 'unavailable' && <OrderPiUnavailable />"))
+    assert.equal((page.match(/<OrderPiNoSource \/>/g) ?? []).length, 1)
+    assert.equal((page.match(/<OrderPiUnavailable \/>/g) ?? []).length, 1)
   })
 
   test('reads the PI through the caller\'s own session, with no service key anywhere', () => {

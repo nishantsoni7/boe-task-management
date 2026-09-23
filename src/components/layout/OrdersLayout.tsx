@@ -30,6 +30,8 @@ type OrdersLayoutProps = {
    * and reload nothing.
    */
   showRefresh?: boolean
+  /** False on the one screen that answers its own Finance questions. */
+  showModuleSwitch?: boolean
   children: React.ReactNode
 }
 
@@ -41,6 +43,7 @@ export function OrdersLayout({
   onSignOut,
   onRefresh,
   showRefresh = true,
+  showModuleSwitch = true,
   children,
 }: OrdersLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -235,7 +238,16 @@ export function OrdersLayout({
               refresh) wrap cleanly on narrow screens instead of being clipped
               by .boe-main-content's overflow-x: hidden. Desktop is unaffected. */}
           <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
-            <ModuleSwitchButton target="finance" />
+            {/* ── Switch to Finance ──
+                OFFERED ON EVERY ORDERS SCREEN BUT ONE. The Confirmed Order
+                detail page answers its own money questions — what is verified,
+                what is awaiting, what remains, and which payments make up each
+                — in a section and two dialogs of its own, so the switch there
+                only invited a reader to leave the page they were reading to
+                look up something it already states. Every other Orders screen
+                keeps it, and the button, its permission rule and the Finance
+                module are untouched. */}
+            {showModuleSwitch && <ModuleSwitchButton target="finance" />}
             {actions}
             {showRefresh && (
               <ShellRefreshButton refreshing={refreshing} onRefresh={handleRefresh} />

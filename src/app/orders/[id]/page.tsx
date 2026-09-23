@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -17,6 +16,7 @@ import {
   OrderActivityList,
   OrderAttentionBar,
   OrderDetailSkeleton,
+  OrderPaymentListDialog,
   OrderStatusPill,
   OrderSummaryPanel,
   ADD_PAYMENT_ACTION_LABEL,
@@ -28,6 +28,16 @@ import {
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
+import {
+  PAYMENT_DETAIL_COLUMNS,
+  createPaymentDetailGate,
+  loadPaymentDetailInto,
+  orderPaymentDetailQuery,
+  orderPaymentList,
+  type OrderPaymentDetailState,
+  type OrderPaymentListKind,
+  type PaymentDetailRow,
+} from '@/lib/orders/orderPaymentLists'
 import {
   arrangeOrderActions,
   orderAttentionItems,
@@ -53,7 +63,7 @@ import {
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
-import { formatMoney, formatPercent, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import { formatMoney } from '@/lib/finance/piPaymentView'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -62,7 +72,7 @@ import {
 // piSubmissionHref is deliberately NOT imported: after conversion this page is
 // the source of truth and offers no route back to the superseded draft. The PI
 // relation, its files and its version history are all still here.
-import { canRecordPaymentAgainstOrder, financePaymentHref } from '@/lib/finance/crossModuleLinks'
+import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ChevronDown } from 'lucide-react'
@@ -85,10 +95,8 @@ import {
 } from '@/lib/orders/amendments'
 import {
   ORDER_PI_HANDOFF_COLUMNS,
-  ORDER_PI_UNAVAILABLE_BODY,
   ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
   buildOrderPiHandoff,
-  orderPiWorkbookPath,
   type OrderPiHandoff,
   type OrderPiRow,
 } from '@/lib/orders/orderPiHandoff'
@@ -106,32 +114,24 @@ import {
 import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
 import { PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
-// ONE payment-mode source for Order and Finance (20261013000000).
-import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
   OrderCommercialBreakdown,
   OrderPiNoSource,
   OrderPiProducts,
+  OrderPiUnavailable,
 } from './OrderPiSections'
 import {
-  OrderAdvanceCard,
-  OrderCurrentStatus,
-  OrderDesignFilesCard,
+  OrderDesignFilesDialog,
+  OrderDocumentsPanel,
+  OrderDocumentsRow,
+  OrderEvidenceDialog,
   OrderFabricFinishCard,
-  OrderMainPiCard,
-  OrderManufacturingCard,
-  OrderStatusWorkspace,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
-import {
-  countDesignImages,
-  describeDesignFiles,
-  describeManufacturingStatus,
-  type DesignImageSummary,
-} from '@/lib/orders/orderCurrentStatus'
-import { advanceStanding } from '@/lib/orders/orderAdvance'
+import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
+import { clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
@@ -348,38 +348,11 @@ const STATUS_TONE: Record<string, WorkspaceTone> = {
   cancelled:          'red',
 }
 
-/**
- * THE COLOUR of a payment status. The WORDS come from piPaymentStatusLabel, the
- * same map the PI payment card reads, so one state cannot be called two things
- * on two screens.
- *
- * WHAT THIS CORRECTED. This screen had its own label map, and three of its five
- * entries disagreed with the PI's for the same stored value:
- *
- *   pending_approval    said "Pending". The product's word for that state is
- *                       AWAITING VERIFICATION — the business rule names it — and
- *                       "Pending" reads as though the money itself is pending
- *                       rather than Finance's look at it.
- *   approved_unlinked   said "Order No. Pending". On an ORDER's own screen that
- *                       is close to false: the money is attached to this Order,
- *                       by an allocation, which is precisely how PI conversion
- *                       moves it. Whether the payment row ALSO carries a legacy
- *                       order_id is Finance bookkeeping and says nothing to
- *                       somebody reading their Order.
- *   approved_linked     said "Received", which is the word the summary above now
- *                       uses for verified + awaiting together. Two meanings for
- *                       one word on one screen.
- *
- * Both approved statuses now read "Verified", exactly as they do on the PI.
- * The palette is this screen's own and is unchanged.
- */
-const PAYMENT_STATUS_COLOR: Record<string, string> = {
-  pending_approval:    '#92400E',
-  approved_unlinked:   '#166534',
-  approved_linked:     '#166534',
-  needs_clarification: '#1E40AF',
-  rejected:            '#991B1B',
-}
+/* THE PAYMENT STATUS PALETTE WENT WITH THE INLINE TABLE. The per-payment rows
+   live in a dialog now and state a status only where it distinguishes anything
+   — see OrderPaymentListDialog. The WORDS are unchanged and still come from
+   piPaymentStatusLabel, the PI card's own map, so the two screens cannot call
+   one status two things. */
 
 /** The width below which the PI product table becomes a stack of cards. The
  *  same breakpoint both PI screens use, so a product line does not change shape
@@ -711,12 +684,6 @@ export default function OrderDetailPage() {
   const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
   const [clientOpen,  setClientOpen]  = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
-  const [wbBusy,      setWbBusy]      = useState(false)
-  const [wbError,     setWbError]     = useState<string | null>(null)
-  // The PI's private workbook key. Held in state and NEVER rendered: the screen
-  // shows source_workbook_name, and this is only what gets handed to Supabase's
-  // own signer at the moment of a click.
-  const [wbPath,      setWbPath]      = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
 
   // ── What has landed ──
@@ -728,6 +695,74 @@ export default function OrderDetailPage() {
   // Set once and never cleared: a refresh replaces data in place and must not
   // blank a screen somebody is reading.
   const [recordsReady, setRecordsReady] = useState(false)
+  /** Which payment figure a reader opened, or null. One dialog at a time. */
+  const [paymentList, setPaymentList] = useState<OrderPaymentListKind | null>(null)
+  /** Which payment inside that list is showing its detail, or null for the list. */
+  const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null)
+  /** That payment's Finance record: asked for on the press, never at load. */
+  const [paymentDetail, setPaymentDetail] = useState<OrderPaymentDetailState | null>(null)
+  /**
+   * THE GATE THE DETAIL READ IS ISSUED THROUGH.
+   *
+   * One per mounted page, created once — useState's initialiser runs exactly
+   * once, where useRef(create()) would build and discard one on every render.
+   * Every place below that stops showing a payment invalidates it, so a
+   * response that arrives afterwards is dropped rather than written into a
+   * screen it no longer describes. See createPaymentDetailGate.
+   */
+  const [paymentDetailGate] = useState(createPaymentDetailGate)
+  /**
+   * MAY THIS READER SEE FINANCE'S OWN RECORD OF A PAYMENT?
+   *
+   * FINANCE MODULE ENTRY, and nothing finer — the same capability that used to
+   * decide whether the `Finance record` link was drawn beside a payment row.
+   * That link is gone; the door it stood at is not.
+   *
+   * IT IS FINANCE'S RESOLVER'S ANSWER, held in state from
+   * resolve_effective_permissions and empty until it lands, so no control and
+   * no field can flash before the reader is known to be entitled to it. This
+   * page re-derives nothing and checks no role.
+   */
+  const mayViewPaymentDetails = financeCaps.canAccessFinanceModule
+
+  /**
+   * THE ROWS BEHIND THE FIGURE A READER OPENED, and the only ids this screen
+   * will fetch a detail for.
+   *
+   * Built once and handed BOTH to the dialog and to the read's own guard, so
+   * the set the reader was shown and the set the page will answer about cannot
+   * be different sets.
+   */
+  const paymentRows = paymentList === null ? [] : orderPaymentList(payments, paymentList)
+
+  /**
+   * STOP SHOWING A PAYMENT'S RECORD, AND STOP EXPECTING ONE.
+   *
+   * The two setters alone would leave a read in flight whose answer would
+   * arrive into the cleared slots and repopulate them — reopening a detail the
+   * reader had closed. Invalidating first is what makes Back and Close final.
+   */
+  const forgetPaymentDetail = () => {
+    paymentDetailGate.invalidate()
+    setPaymentDetailId(null)
+    setPaymentDetail(null)
+  }
+
+  /**
+   * A DETAIL READ BELONGS TO ONE READER AND ONE MOUNT OF THIS PAGE.
+   *
+   * Losing the Finance capability mid-flight, or leaving the page altogether,
+   * invalidates whatever was issued under the old answer: the cleanup runs on
+   * unmount and again whenever the capability changes. The dialog already
+   * refuses to DRAW a detail without the capability; this stops the write.
+   */
+  useEffect(() => {
+    return () => { paymentDetailGate.invalidate() }
+  }, [paymentDetailGate, mayViewPaymentDetails])
+
+  /** The design-file dialog, and the one evidence picture a reader asked for. */
+  const [designOpen, setDesignOpen] = useState(false)
+  const [evidence, setEvidence] = useState<{ url: string | null; failure: string | null } | null>(null)
   /** Finance’s Record Payment form, open over this Order. */
   const [recordingPayment, setRecordingPayment] = useState(false)
   /** What it recorded, said once above the figures it just changed. */
@@ -828,7 +863,6 @@ export default function OrderDetailPage() {
     if (!submissionId) {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
-      setWbPath(null)
       setPiVersions([])
       setPiActivity([])
       // No PI behind this Order, so there is nothing to count and nothing
@@ -935,7 +969,6 @@ export default function OrderDetailPage() {
     if (subRes.error || !row) {
       setPiHandoff({ kind: 'unavailable' })
       setPiProducts([])
-      setWbPath(null)
       // THE SAME ABSENCE THE HANDOFF REPORTS, said by the picture line too.
       // The images may well have read cleanly, but without the submission row
       // there are no product lines to hang them on — and a count printed
@@ -970,7 +1003,6 @@ export default function OrderDetailPage() {
         ? { kind: 'unavailable' }
         : { kind: 'ready', counts: countDesignImages(images) },
     })
-    setWbPath(orderPiWorkbookPath(row))
     setPiHandoff(buildOrderPiHandoff(row, {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
@@ -1129,6 +1161,12 @@ export default function OrderDetailPage() {
 
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
+    // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
+    // OLD one describes a list this page is about to stop showing. It is
+    // superseded here rather than allowed to land afterwards; the reader's
+    // open dialog simply asks again if they are still looking at it.
+    paymentDetailGate.invalidate()
+
     const { data: o } = await orderRowQuery()
 
     if (!o) { setNotFound(true); releaseShell(); return }
@@ -1169,6 +1207,10 @@ export default function OrderDetailPage() {
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
+        // THE SEVEN COLUMNS THE FIGURES ARE BUILT FROM, and not one more. What
+        // Finance wrote about a payment is not on the startup path: see
+        // loadPaymentDetail, which asks for it on a press and only for a reader
+        // who may see it.
         .select('id, client_name, amount, payment_date, payment_mode, order_number, status')
         .eq('order_id', id)
         .order('payment_date', { ascending: false }),
@@ -1257,6 +1299,7 @@ export default function OrderDetailPage() {
     setPayments(withExactAmounts(merged, {
       linked: linkedRows, allocations: allocationRows, activeTotals,
     }))
+
 
     setActivity(mapActivityRows(aData))
 
@@ -1424,34 +1467,16 @@ export default function OrderDetailPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  /**
-   * The original uploaded workbook, downloaded through a SHORT-LIVED SIGNED URL.
-   *
-   * THE BUCKET IS PRIVATE AND STAYS PRIVATE. There is no public URL to build and
-   * none is built. The URL is minted through the reader's OWN session, so the
-   * order-files SELECT policies decide again, at the moment of the click, for
-   * this exact object — a viewer whose Order access has been withdrawn since the
-   * page loaded gets a refusal, not a stale link.
-   *
-   * THE PATH IS NEVER TAKEN FROM THE UI. It is the column the PI record itself
-   * carries, re-checked by orderPiWorkbookPath against this submission's own
-   * original/ prefix, so a malformed or foreign key never reaches the signer.
-   *
-   * A REFUSAL IS ONE QUIET LINE. It never throws the page and never explains
-   * more than it should.
-   */
-  const downloadWorkbook = async () => {
-    if (!wbPath || wbBusy) return
-    setWbBusy(true)
-    setWbError(null)
-    const { data, error } = await supabase
-      .storage
-      .from(ORDER_FILES_BUCKET)
-      .createSignedUrl(wbPath, ORDER_PI_WORKBOOK_URL_TTL_SECONDS, { download: true })
-    setWbBusy(false)
-    if (error || !data?.signedUrl) { setWbError(WORKBOOK_UNAVAILABLE); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-  }
+  /* THE SOURCE-PI WORKBOOK DOWNLOAD WENT WITH THE Order records SECTION that
+     was the only place offering it. The PI in force — which for a converted
+     Order IS that document — is downloaded from the Main PI card, through
+     openVersionFile below: the same private bucket, the same short-lived signed
+     URL minted through the reader's own session, and the same storage policies
+     deciding again at the moment of the click. Nothing about the PI's row, its
+     files or its access changed; one duplicate door closed.
+
+     orderPiWorkbookPath and ORDER_FILES_BUCKET are unchanged and still used by
+     the PI Drafts module, which still opens that original. */
 
   // ── PI versions (20261119000000) ──
 
@@ -1584,6 +1609,58 @@ export default function OrderDetailPage() {
   }
 
   /**
+   * ONE PAYMENT'S FINANCE RECORD, FETCHED ON THE PRESS.
+   *
+   * TWO GATES BEFORE A SINGLE BYTE IS ASKED FOR, and orderPaymentDetailQuery
+   * holds both:
+   *
+   *   THE READER HOLDS FINANCE MODULE ENTRY. The same capability that used to
+   *   decide whether the Finance record link was drawn at all — resolved by
+   *   Finance's own resolver, not re-derived here and not a role check.
+   *
+   *   THE ID IS ONE THIS ORDER'S OWN LIST ALREADY SHOWED. The rows are the two
+   *   Order-anchored reads, filtered by status. An id that is not among them is
+   *   one this screen never offered, and it never becomes a request — the
+   *   refusal happens here, before the network, rather than at RLS afterwards.
+   *
+   * THE READ IS THE READER'S OWN. Their session, their RLS, no service role, no
+   * RPC and no new policy. A row the database refuses them is reported as
+   * refused rather than drawn as a record with every field empty.
+   *
+   * AND IT IS RACE-SAFE. Opening A, pressing Back and opening B leaves A's
+   * request in flight; if it lands after B's it would, unguarded, write A's
+   * fields under B's heading. Every read is issued through paymentDetailGate,
+   * which supersedes the previous one, and loadPaymentDetailInto drops the
+   * answer to a superseded request instead of applying it. Back, Close, an
+   * Order refresh, a lost capability and unmount all invalidate it too, so a
+   * late answer can neither reopen a closed dialog nor repopulate a cleared
+   * one. Nothing here caches, and the request is still one row for one press.
+   */
+  const loadPaymentDetail = async (paymentId: string) => {
+    const { allowed, paymentId: safeId } = orderPaymentDetailQuery({
+      canViewPaymentDetails: mayViewPaymentDetails,
+      rows: paymentRows,
+      paymentId,
+    })
+    if (!allowed || !safeId) return
+
+    await loadPaymentDetailInto({
+      gate: paymentDetailGate,
+      paymentId: safeId,
+      read: async id => {
+        const { data, error } = await supabase
+          .from('finance_payment_requests')
+          .select(PAYMENT_DETAIL_COLUMNS)
+          .eq('id', id)
+          .maybeSingle()
+        return { row: (data as PaymentDetailRow | null) ?? null, failed: Boolean(error) }
+      },
+      open: setPaymentDetailId,
+      apply: setPaymentDetail,
+    })
+  }
+
+  /**
    * OPEN ONE ERP SCREENSHOT.
    *
    * Signed on the press through the reader's own session, so the evidence
@@ -1594,13 +1671,20 @@ export default function OrderDetailPage() {
     if (proofBusy) return
     setProofBusy(path)
     setApprovalError(null)
+    // THE DIALOG OPENS FIRST, EMPTY, so the reader sees that their click landed
+    // while the URL is being minted. It is mounted only from here, so no proof
+    // on this page is signed until somebody names one.
+    setEvidence({ url: null, failure: null })
     const { data, error } = await supabase
       .storage
       .from(APPROVAL_EVIDENCE_BUCKET)
       .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS)
     setProofBusy(null)
-    if (error || !data?.signedUrl) { setApprovalError(describeApprovalFailure(error)); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    if (error || !data?.signedUrl) {
+      setEvidence({ url: null, failure: describeApprovalFailure(error) })
+      return
+    }
+    setEvidence({ url: data.signedUrl, failure: null })
   }
 
   /**
@@ -1980,7 +2064,13 @@ export default function OrderDetailPage() {
    * Value. Nothing here recomputes it — see orderAdvance.ts for why, and for
    * why this label is an indicator rather than the confirmation gate.
    */
-  const advance = advanceStanding({ finance, formatAmount: formatMoney, formatPercent })
+  /* ADVANCE RECEIVED HAD A CARD HERE AND IT WAS A SECOND STATEMENT OF THE
+     PAYMENT SECTION'S OWN FIGURES — the verified share of the Order value, over
+     the Order value, both of which the section below the products states with
+     the rest of the position. The card is gone; orderAdvance.ts, its
+     classification rule and its tests are untouched and unreferenced by this
+     screen, which is the honest state of a display that was removed rather than
+     a rule that changed. */
 
   /** Where fabric and finish stand: the newest event of each kind. */
   const approvalView = approvalStanding({
@@ -1999,19 +2089,24 @@ export default function OrderDetailPage() {
    * the stored rows of the approved PI, and the stage is the Order's own
    * status through the page's own label map.
    */
-  const designFiles = describeDesignFiles({
-    approvals: approvalView,
-    images: piImages.summary,
-    productCount: piProducts.length,
-  })
-  const manufacturing = describeManufacturingStatus({
-    production,
-    orderStatus: order.status,
-    // The header pill's own label, read the same way it reads it, so the two
-    // statements of one status are the same string or there is no status.
-    orderStatusLabel: STATUS_META[order.status]?.label ?? order.status,
-  })
+  /**
+   * THE DESIGN-FILE SUBSECTION, in four states and no fifth (PR #195): loading
+   * is not "none", a refused read is not "none", and an empty read says so in
+   * its own words.
+   *
+   * IT NO LONGER RESTATES THE APPROVALS. Fabric and finish are drawn once, by
+   * the card beside this box, with everything this summary had to leave out.
+   */
+  const designFiles = designFilesDocument(piImages.summary, piProducts.length)
 
+  /**
+   * THE CLIENT'S OWN PURCHASE ORDER.
+   *
+   * There is nowhere to keep one yet — see orderDocumentsPanel.ts for the audit
+   * — so the slot states the absence and offers no control. Nothing is stored
+   * as a mis-typed design file and no local state pretends otherwise.
+   */
+  const clientPo = clientPoDocument()
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -2183,6 +2278,11 @@ export default function OrderDetailPage() {
 
   return (
     <OrdersLayout
+      /* NO SWITCH TO FINANCE FROM HERE. Everything a reader of this page could
+         want Finance for — the verified position, what is awaiting, and every
+         payment behind both figures — is stated on this page and opened in its
+         own dialogs. The control exists on every other Orders screen. */
+      showModuleSwitch={false}
       profile={profile}
       title="Confirmed Order"
       onSignOut={handleSignOut}
@@ -2306,18 +2406,39 @@ export default function OrderDetailPage() {
           </section>
         )}
 
-        {/* ══ 3. THE STATUS WORKSPACE ══
-            THE TWO OPERATIONAL CARDS: how much of the Order is paid for, and
-            whether fabric and finish have been signed off — the second being
-            the one place on the page either approval is moved. One row where
-            the width allows, stacked in the same order where it does not.
+        {/* ══ 3. DOCUMENTS, AND FABRIC & FINISH BESIDE THEM ══
+            THE PAPERWORK IN ONE BOX. The PI this Order runs on, the design
+            files behind its products and the client's own purchase order used
+            to be two separate cards and nothing — three outlines, three
+            headings and a column of white space under the shorter card, for one
+            question a reader asks once.
 
-            MAIN PI MOVED DOWN ONE SECTION, into Current Status, where it is
-            the first of the three things a reader wants together. The card,
-            its data, its actions and its permissions are untouched; only where
-            it sits changed. */}
-        <OrderStatusWorkspace>
-          <OrderAdvanceCard standing={advance} />
+            WHAT WENT WITH THE CARDS. The Design Files card summarised the
+            fabric and finish approvals that the card beside it states in full,
+            with their dates, their actors and their evidence. That summary is
+            gone: the approvals have one home, and it is the card on the right.
+
+            ADVANCE RECEIVED IS GONE TOO, and did not move: every figure it drew
+            is in the Payment section below the products, which is the one place
+            on this page money is stated. Its builder, orderAdvance.ts, and its
+            tests are untouched — this removed a second display of one answer,
+            not the answer.
+
+            TWO THIRDS AND ONE THIRD, because that is the shape of the content:
+            three subsections of prose against two statuses. Stacked in the same
+            order below 900px. */}
+        <OrderDocumentsRow>
+          <OrderDocumentsPanel
+            mainPi={mainPi}
+            design={designFiles}
+            clientPo={clientPo}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            onManageDesign={() => setDesignOpen(true)}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+          />
           <OrderFabricFinishCard
             standing={approvalView}
             canUpdate={mayRecordApproval}
@@ -2325,38 +2446,7 @@ export default function OrderDetailPage() {
             onViewEvidence={path => { void viewEvidence(path) }}
             busyEvidence={proofBusy}
           />
-        </OrderStatusWorkspace>
-
-        {/* ══ 3b. CURRENT STATUS ══
-            WHERE THIS ORDER ACTUALLY STANDS, immediately above the product
-            list, so management reads its position in one place instead of
-            opening the PI screen, the approval card and the summary panel in
-            turn.
-
-            READ-ONLY, ALL THREE. The only controls are the Main PI card's own
-            View, Download and View history — reads, each signed through the
-            reader's own session at the moment of the click. Nothing here
-            uploads, approves, aligns, dispatches or writes anything.
-
-            EVERY FIGURE IS SOMEBODY ELSE'S ANSWER. mainPiCard names the PI in
-            force, approvalStanding names fabric and finish, the image counts
-            are the stored rows of the approved PI, and describeProductionAlignment
-            names production. Nothing is recomputed here, so no card on this
-            page can disagree with another. Where this build records nothing —
-            CAD, a manufacturing stage, QC, packaging — the line says so rather
-            than leaving a blank to be read as "not started". */}
-        <OrderCurrentStatus>
-          <OrderMainPiCard
-            card={mainPi}
-            onView={v => { void openVersionFile(v, 'view') }}
-            onDownload={v => { void openVersionFile(v, 'download') }}
-            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            viewing={piFileBusy !== null}
-            downloading={piFileBusy !== null}
-          />
-          <OrderDesignFilesCard view={designFiles} />
-          <OrderManufacturingCard view={manufacturing} />
-        </OrderCurrentStatus>
+        </OrderDocumentsRow>
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
@@ -2379,22 +2469,31 @@ export default function OrderDetailPage() {
         <div className="order-lower-main">
 
         {/* ══ 5. PAYMENT ══
-            THE ONLY PAYMENT SURFACE ON THE PAGE. The six figures and the
-            per-payment records in one section, so nothing has to be clicked to
-            reach a second copy of the same money. Every figure is
-            buildOrderFinancePosition's and every word in the table is what it
-            always was. */}
+            THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
+
+            IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
+            blocks, a bar, a legend naming the bar's three shares, a grid of
+            three more captioned figures — one of which was the order value the
+            headline had just stated and another the sum of the two metrics —
+            and, underneath all of it, a permanently open table of every payment
+            with a paragraph explaining the table. The same rupees were on the
+            screen up to three times.
+
+            WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
+            verified (the headline, and the Verified button); how much is with
+            Finance (the Awaiting verification button); how much remains (the
+            Balance line); what share that is (the headline percentage). The
+            per-payment rows are behind the two buttons, which is where somebody
+            who wants them goes and where nobody else has to scroll past them.
+
+            EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
+            percentage, no status rule and no allocation rule changed here. */}
         <PiCard>
           <PiCardHeader
             title={PAYMENT_SECTION_TITLE}
             style={SECTION_HEADER_STYLE}
             right={recordsReady ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                  {payments.length === 0
-                    ? 'No payments recorded'
-                    : `${payments.length} payment${payments.length === 1 ? '' : 's'}`}
-                </span>
                 {/* ── Add payment ──
                     A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
                     opens record_payment_with_allocations’ one flow, seeded with
@@ -2406,7 +2505,12 @@ export default function OrderDetailPage() {
                     Order not being cancelled, which the RPC refuses anyway. A
                     reader without it is offered no control at all, not a
                     disabled one: the RPC would refuse them and a dead button
-                    only asks them to find that out. */}
+                    only asks them to find that out.
+
+                    UNCHANGED IN THIS PASS: the same gate, the same label, the
+                    same modal, the same refresh. Only the payment COUNT that
+                    used to sit beside it has gone — each figure now states its
+                    own count on its own button. */}
                 {mayRecordPayment && (
                   <button
                     type="button"
@@ -2420,7 +2524,7 @@ export default function OrderDetailPage() {
               </div>
             ) : undefined}
           />
-          <div style={{ padding: '12px 16px 14px' }}>
+          <div style={{ padding: '11px 16px 13px' }}>
             {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
                 names the payment and says plainly that verification has not
                 happened — recording money is not the same as its having
@@ -2441,188 +2545,26 @@ export default function OrderDetailPage() {
                 </button>
               </div>
             )}
-            <PaymentSummaryFigures finance={finance} loaded={recordsReady} />
-
-            {/* ── The records ──
-                THE COLUMN THAT DID NOT RECONCILE. "Amount" printed each
-                payment's FULL ledger amount, while the summary counted only
-                this Order's ALLOCATED share of it. The leading figure is this
-                Order's share — the figure the summary is built from — and a
-                split payment states its full amount underneath, so nothing is
-                hidden and the two agree.
-
-                STATUS WORDING MATCHES THE PI — see PAYMENT_STATUS_COLOR above
-                for the three labels that disagreed and why each was wrong. */}
-            {recordsReady && (
-              <div className="order-pay-records">
-                <div className="order-pay-records-head">Payment records</div>
-                {payments.length === 0 ? (
-                  <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
-                    No payment has been recorded against this Order yet.
-                    {order.total_value != null && (
-                      <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
-                      <caption style={{
-                        captionSide: 'top', textAlign: 'left', fontSize: '11px',
-                        color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
-                      }}>
-                        Amounts are this Order&apos;s share. Where a payment has been
-                        allocated, the allocation decides the share; where it has not,
-                        a payment linked to this Order counts in full.
-                      </caption>
-                      <thead>
-                        <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                          {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
-                            <th key={h || `action-${i}`} scope="col" style={{
-                              padding: '6px 12px',
-                              textAlign: h === 'This Order' ? 'right' : 'left',
-                              fontSize: '10px', fontWeight: 600, color: colors.muted,
-                              textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                            }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payments.map(p => {
-                          // One vocabulary, from the PI card's own map. An
-                          // unrecognised status says what it is rather than being
-                          // relabelled as something friendlier that might be untrue.
-                          const statusLabel = piPaymentStatusLabel(p.status)
-                          const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
-                          return (
-                            <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                              <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
-                                {/* A payment with no customer says so, from the one
-                                    shared formatter. An em dash would read as
-                                    missing data rather than as a Suspense payment. */}
-                                {customerDisplayName(p.client_name)}
-                              </td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                                <div style={{ fontWeight: 600, color: colors.primary }}>
-                                  {formatMoney(p.exactAllocatedAmount)}
-                                </div>
-                                {/* Only when the two genuinely differ. Saying "of
-                                    ₹X" under every row would be noise on the ordinary
-                                    case, where the whole payment is this Order's. */}
-                                {p.isPartialShare && (
-                                  <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
-                                    allocated from {formatMoney(p.exactAmount)} received
-                                  </div>
-                                )}
-                              </td>
-                              <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                                {fmtDate(p.payment_date)}
-                              </td>
-                              <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                                {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
-                              </td>
-                              <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
-                                {statusLabel}
-                              </td>
-                              {/* THE FINANCE RECORD — a payment's proof, its verification
-                                  history and its complete allocation across every target
-                                  live in Finance, and this is the door to them. Offered
-                                  only to a reader who holds Finance module entry, so
-                                  nobody is shown a door that shuts in their face; the
-                                  Finance page still re-reads the row under that reader's
-                                  own RLS and refuses anything they may not open. */}
-                              <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {financeCaps.canAccessFinanceModule && (
-                                  // A LINK, so the payment can be opened beside
-                                  // the Order in a new tab — the usual way to
-                                  // check one against the other.
-                                  <Link
-                                    href={financePaymentHref(p.id)}
-                                    prefetch={false}
-                                    className="boe-btn boe-btn-ghost"
-                                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                                    title={`Open this payment's full record in Finance`}
-                                  >
-                                    Finance record
-                                  </Link>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+            <PaymentSummaryFigures
+              finance={finance}
+              loaded={recordsReady}
+              onOpenList={setPaymentList}
+            />
           </div>
         </PiCard>
 
-        {/* ══ 6. ORDER RECORDS ══
-            The documents, the source PI this Order was created from, and the
-            PI's version history. The source PI is a REFERENCE and an action,
-            not a summary: the client, the dates and the pre-tax total it used
-            to restate are the Order's own facts and are stated above. */}
-        {piHandoff.kind !== 'none' && (
-          <PiCard>
-            <PiCardHeader title="Order records" style={SECTION_HEADER_STYLE} />
-            <div className="order-records-body">
-              <div className="order-record-section">
-                <div className="order-record-head">
-                  <h3 className="order-record-title">Source PI</h3>
-                </div>
-                {piHandoff.kind === 'ready' ? (
-                  <div className="order-source-pi">
-                    <div style={{ minWidth: 0 }}>
-                      <div className="order-doc-name">
-                        {piHandoff.workbookName ?? 'The approved PI'}
-                      </div>
-                      <div className="order-doc-meta">The PI this Order was created from</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
-                      {wbPath && (
-                        <button
-                          type="button"
-                          onClick={downloadWorkbook}
-                          disabled={wbBusy}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600 }}
-                        >
-                          {wbBusy ? 'Preparing…' : 'Download'}
-                        </button>
-                      )}
-                      {/* NO "OPEN SOURCE PI" BUTTON.
-                          Once the PI has converted, THIS page is the source of
-                          truth: the products, the money, the documents and the
-                          version history are all here, and a prominent door
-                          back to the superseded draft invited operational
-                          readers to work from it.
+        {/* ══ ORDER RECORDS WAS HERE, AND EVERY FACT IT HELD IS STILL ON THIS
+            PAGE. It carried one thing: the source PI, named, with a Download.
+            The PI in force — which for a converted Order IS that document —
+            is the Main PI card in Current Status, with its own View, Download
+            and View history, all signed through the reader's own session.
 
-                          NOTHING UNDERNEATH IS TOUCHED. The relation
-                          (orders.source_order_submission_id) is unchanged and
-                          still frozen, the PI's own row and files are
-                          untouched, the merged chronology below still
-                          interleaves the PI's activity trail, PI History still
-                          opens every version, and the RLS door
-                          can_view_order_submission_via_order (20260924000000)
-                          still stands — an administrator who needs the draft
-                          reaches it from the PI Drafts module as before. */}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-                    {ORDER_PI_UNAVAILABLE_BODY}
-                  </div>
-                )}
-                {wbError && (
-                  <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45, marginTop: '6px' }}>
-                    {wbError}
-                  </div>
-                )}
-              </div>
-            </div>
-          </PiCard>
-        )}
+            NOTHING UNDERNEATH IT WAS TOUCHED. orders.source_order_submission_id
+            is unchanged and still frozen, the PI's own row, its files and its
+            version history are untouched, PI History still opens every version,
+            the merged chronology below still interleaves the PI's activity
+            trail, and the RLS door can_view_order_submission_via_order
+            (20260924000000) still stands. */}
 
         {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI" and
             "the feature is not deployed" are indistinguishable from the
@@ -2631,6 +2573,14 @@ export default function OrderDetailPage() {
             Order that DOES have a PI briefly claimed it had none, then the claim
             was replaced — a false statement and a layout jump on every visit. */}
         {piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />}
+
+        {/* AND A PI THAT COULD NOT BE READ STILL SAYS SO. That sentence used to
+            sit inside Order records, beside the source PI reference; the
+            section is gone and the absence is not. It is the SAME shared
+            wording, in the card written for it — one quiet statement, no
+            figure, no retry that would not help, and no explanation of a
+            refusal the reader is not entitled to. */}
+        {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
 
         {/* ── Change requests ──
             Rendered only when there is something to show. An admin sees every
@@ -2782,6 +2732,84 @@ export default function OrderDetailPage() {
           parties, spelled out. The same component the PI screen uses. */}
       {clientOpen && piHandoff.kind === 'ready' && (
         <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
+      )}
+
+      {/* ── The design files, over this page ──
+          Mounted only while it is open, so a reader who never asks for the list
+          fetches not one thumbnail. The pictures are the page's own, already
+          resolved and already ordered; opening one hands it to the same
+          full-size viewer the product table uses. */}
+      {designOpen && (
+        <OrderDesignFilesDialog
+          items={piImages.viewerItems}
+          onOpen={key => { setDesignOpen(false); openViewer(key) }}
+          onClose={() => setDesignOpen(false)}
+        />
+      )}
+
+      {/* ── One approval screenshot, over this page ──
+          It used to be a new tab onto a signed URL. The URL is still signed on
+          the press through the reader's own session, so the evidence bucket's
+          policy decides at that moment exactly as before; only where the
+          picture is shown changed. */}
+      {evidence && (
+        <OrderEvidenceDialog
+          url={evidence.url}
+          failure={evidence.failure}
+          onClose={() => setEvidence(null)}
+        />
+      )}
+
+      {/* ── The payments behind a figure ──
+          OPENED FROM THE SUMMARY AND NOWHERE ELSE, and only ever one at a time:
+          `paymentList` holds which figure was clicked, or null.
+
+          THE ROWS ARE THE PAGE'S OWN, FILTERED AND NOTHING MORE. orderPaymentList
+          splits withExactAmounts' rows by the same two status predicates the
+          totals use, so a dialog can never show a payment the figure above it
+          did not count. Every amount shown is exactAllocatedAmount — THIS
+          Order's allocated share — which is the figure the summary is built
+          from; a split payment states its full ledger amount underneath.
+
+          TWO AUDIENCES, AS THIS PAGE DRAWS THEM. The list is for everybody who
+          may read this Order: its amounts are the Order's own facts and the
+          totals above are built from them. Finance's record of its own work —
+          the proof note, the clarification it asked for, where the money
+          landed, who signed it off — is shown only to a reader holding Finance
+          module entry, which is the door the Finance record link used to stand
+          at. None of it is on the startup path, and this page does not request
+          it for a reader it will not show it to: loadPaymentDetail asks for one
+          payment, on a press, having first refused both a reader without the
+          capability and an id this list never showed.
+
+          THAT IS A PRESENTATION GATE, NOT A DATABASE ONE. It restores the rule
+          the Finance record link carried and keeps these fields out of a
+          request this page would not draw. It confers no confidentiality of its
+          own and makes nobody unable to query those columns by other means;
+          RLS decides what the database hands over, and this branch leaves it
+          exactly as it was. */}
+      {paymentList && (
+        <OrderPaymentListDialog
+          kind={paymentList}
+          rows={paymentRows}
+          formatDate={fmtDate}
+          formatDateTime={iso => (iso ? fmtDateTime(iso) : '—')}
+          /* THE DOOR THE FINANCE RECORD LINK USED TO STAND AT. False draws the
+             list and no control, and the detail view cannot be reached at all. */
+          canViewDetails={mayViewPaymentDetails}
+          openId={paymentDetailId}
+          detail={paymentDetail}
+          /* Nothing is fetched until this fires, and it refuses an id the list
+             above does not contain. */
+          onOpen={paymentId => { void loadPaymentDetail(paymentId) }}
+          /* BOTH INVALIDATE THE READ IN FLIGHT, not just the state on screen —
+             otherwise its answer would land in the slots these just cleared. */
+          onBack={forgetPaymentDetail}
+          onClose={() => {
+            setPaymentList(null)
+            forgetPaymentDetail()
+          }}
+        />
       )}
 
       {/* ── The PI history, without leaving the Order ── */}

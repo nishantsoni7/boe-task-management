@@ -15,19 +15,27 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  OrderAdvanceCard,
+  OrderDesignFilesDialog,
   OrderFabricFinishCard,
-  OrderMainPiCard,
-  OrderStatusWorkspace,
+  OrderDocumentsPanel,
+  OrderDocumentsRow,
+  OrderEvidenceDialog,
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal } from './OrderApprovalModal'
 import {
-  ADVANCE_NOT_AVAILABLE,
-  ADVANCE_RISKY_LABEL,
-  ADVANCE_SAFE_LABEL,
-  advanceStanding,
-} from '@/lib/orders/orderAdvance'
+  CLIENT_PO_UNSUPPORTED_NOTE,
+  DOCUMENTS_TITLE,
+  DOC_CLIENT_PO_TITLE,
+  DOC_DESIGN_FILES_TITLE,
+  DOC_MAIN_PI_TITLE,
+  DOC_VIEW_FILES_LABEL,
+  DOC_NOT_ATTACHED,
+  clientPoDocument,
+  designFilesDocument,
+  type ClientPoDocument,
+  type DesignFilesDocument,
+} from '@/lib/orders/orderDocumentsPanel'
 import {
   EVIDENCE_FIELD_LABEL,
   EVIDENCE_NOT_VERIFIED_NOTE,
@@ -38,17 +46,10 @@ import {
   type PersistedApprovalEvent,
 } from '@/lib/orders/orderApprovals'
 import {
-  buildOrderFinancePosition,
-  withExactAmounts,
-  type OrderFinancePaymentRow,
-} from '@/lib/finance/orderFinancePosition'
-import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
-import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_AWAITING,
   MAIN_PI_HISTORY_LABEL,
   MAIN_PI_NONE,
-  MAIN_PI_TITLE,
   MAIN_PI_UPLOADED_LABEL,
   PI_HISTORY_MODAL_TITLE,
   REMARK_NOT_RECORDED,
@@ -83,6 +84,9 @@ const history = (rows: PersistedPiVersion[]) => describePiVersionHistory(rows, N
 
 const noop = () => {}
 
+/** The compiled-from stylesheet, for the assertions about layout and space. */
+const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
+
 /**
  * NOTHING THAT COULD OUTLIVE THE READER'S RIGHT TO IT is in the markup.
  *
@@ -98,20 +102,36 @@ function assertNoFileReference(html: string, where: string) {
   }
 }
 
-const card = (rows: PersistedPiVersion[] = [row()]) => renderToStaticMarkup(
-  <OrderMainPiCard
-    card={mainPiCard(history(rows))}
-    onView={noop} onDownload={noop} onHistory={noop}
+/** The Documents box, rendered around whichever states the test names. */
+const docs = (over: {
+  rows?: PersistedPiVersion[]
+  design?: DesignFilesDocument
+  clientPo?: ClientPoDocument
+} = {}) => renderToStaticMarkup(
+  <OrderDocumentsPanel
+    mainPi={mainPiCard(history(over.rows ?? [row()]))}
+    design={over.design ?? designFilesDocument(
+      { kind: 'ready', counts: { representative: 6, customization: 3 } }, 6,
+    )}
+    clientPo={over.clientPo ?? clientPoDocument()}
+    onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
     viewing={false} downloading={false}
   />,
 )
+
+/** Just the Main PI subsection's own markup, for the assertions about it. */
+const card = (rows: PersistedPiVersion[] = [row()]) => {
+  const html = docs({ rows })
+  const at = html.indexOf('aria-label="' + DOC_MAIN_PI_TITLE + '"')
+  return html.slice(at, html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'))
+}
 
 // ── The Main PI card ──────────────────────────────────────────────────────────
 
 describe('the Main PI card', () => {
   test('states the version, its status and both dates', () => {
     const body = text(card())
-    for (const s of [MAIN_PI_TITLE, 'PI V1', 'Approved',
+    for (const s of [DOC_MAIN_PI_TITLE, 'PI V1', 'Approved',
                      MAIN_PI_UPLOADED_LABEL, '2026-09-02',
                      MAIN_PI_APPROVED_LABEL, '2026-09-08']) {
       assert.ok(body.includes(s), s)
@@ -137,9 +157,11 @@ describe('the Main PI card', () => {
 
   test('while a file is being signed, both file actions say so and are held', () => {
     const html = renderToStaticMarkup(
-      <OrderMainPiCard
-        card={mainPiCard(history([row()]))}
-        onView={noop} onDownload={noop} onHistory={noop}
+      <OrderDocumentsPanel
+        mainPi={mainPiCard(history([row()]))}
+        design={{ kind: 'loading' }}
+        clientPo={clientPoDocument()}
+        onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
         viewing downloading
       />,
     )
@@ -179,67 +201,176 @@ describe('the Main PI card', () => {
 })
 
 
-// ── Advance Received ───────────────────────────────────────────────
+// ── THE ADVANCE RECEIVED CARD IS GONE ──
+//
+// Every figure it drew — the verified share of the Order value, over the Order
+// value — is stated by the Payment section below the products, which is the one
+// place on the page money is stated. Its builder and its own unit tests are
+// untouched; this removed a second display of one answer.
 
-/** A real finance position, built the way the page builds one. */
-function advance(verifiedAmount: number, orderValue: number | null) {
-  const rows = verifiedAmount > 0 ? [{ id: 'p1', client_name: 'Kalyan', amount: verifiedAmount,
-    payment_date: '2026-09-09', payment_mode: 'neft', order_number: '0524',
-    status: 'approved_linked', allocatedAmount: verifiedAmount, source: 'allocation' }] : []
-  const exact = withExactAmounts(rows as unknown as readonly OrderFinancePaymentRow[], {
-    linked: [],
-    allocations: rows.map(r => ({ allocated_amount: r.amount, payment: { id: r.id, amount: r.amount } })),
-    allocationTotals: new Map(rows.map(r => [r.id, r.amount])),
-  } as never)
-  return advanceStanding({
-    finance: buildOrderFinancePosition(exact, orderValue),
-    formatAmount: formatMoney, formatPercent,
-  })
-}
+describe('Advance Received is not drawn on this page', () => {
+  const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+  const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderStatusWorkspace.tsx'), 'utf8')
 
-const advanceCard = (verifiedAmount: number, orderValue: number | null) =>
-  renderToStaticMarkup(<OrderAdvanceCard standing={advance(verifiedAmount, orderValue)} />)
-
-describe('the Advance Received card', () => {
-  test('leads with the percentage and states both amounts', () => {
-    const body = text(advanceCard(500000, 1000000))
-    assert.ok(body.includes('Advance Received'))
-    assert.ok(body.includes(formatPercent('50.00')))
-    assert.ok(body.includes(formatMoney(500000)))
-    assert.ok(body.includes(formatMoney(1000000)))
+  test('the card no longer exists and the page does not draw it', () => {
+    assert.equal(/export function OrderAdvanceCard/.test(source), false)
+    const code = page.replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+    assert.equal(code.includes('OrderAdvanceCard'), false)
+    assert.equal(code.includes('advanceStanding'), false)
+    assert.equal(/Advance Received/i.test(code), false)
   })
 
-  test('EXACTLY 35% READS SAFE, in words as well as colour', () => {
-    const body = text(advanceCard(350000, 1000000))
-    assert.ok(body.includes(ADVANCE_SAFE_LABEL))
-    assert.equal(body.includes(ADVANCE_RISKY_LABEL), false)
-  })
-
-  test('just below it reads Risky, in words as well as colour', () => {
-    const body = text(advanceCard(349900, 1000000))
-    assert.ok(body.includes(ADVANCE_RISKY_LABEL))
-    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
-  })
-
-  test('an overpayment prints its real figure rather than a capped one', () => {
-    const body = text(advanceCard(1200000, 1000000))
-    assert.ok(body.includes(formatPercent('120.00')))
-    assert.equal(body.includes('100.00%'), false)
-  })
-
-  test('A ZERO ORDER VALUE SAYS `Not available` AND CLAIMS NOTHING', () => {
-    const body = text(advanceCard(100000, 0))
-    assert.ok(body.includes(ADVANCE_NOT_AVAILABLE))
-    assert.equal(body.includes(ADVANCE_RISKY_LABEL), false)
-    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
-  })
-
-  test('and says WHY, rather than leaving a blank', () => {
-    assert.match(text(advanceCard(100000, 0)), /no value/i)
+  test('BUT ITS BUILDER AND ITS RULES ARE UNTOUCHED', () => {
+    // A display was removed, not a calculation. orderAdvance.ts still states
+    // the classification rule and its own suite still holds it.
+    const lib = readFileSync(join(process.cwd(), 'src/lib/orders/orderAdvance.ts'), 'utf8')
+    assert.ok(lib.includes('export function advanceStanding'))
+    assert.ok(readFileSync(join(process.cwd(), 'src/lib/orders/orderAdvance.test.ts'), 'utf8').length > 0)
   })
 })
 
-// ── Fabric & Finish ────────────────────────────────────────────────
+// ── The Documents box ─────────────────────────────────────────────────────────
+
+describe('the Documents box holds all three kinds of paperwork', () => {
+  test('one card, three subsections, in the agreed order', () => {
+    const html = docs()
+    assert.match(html, new RegExp('aria-label="' + DOCUMENTS_TITLE + '"'))
+    assert.match(html, /<h2 class="order-docs-title">Documents<\/h2>/)
+    const body = text(html)
+    assert.ok(body.indexOf(DOC_MAIN_PI_TITLE) < body.indexOf(DOC_DESIGN_FILES_TITLE))
+    assert.ok(body.indexOf(DOC_DESIGN_FILES_TITLE) < body.indexOf(DOC_CLIENT_PO_TITLE))
+    // Each is a labelled section of its own, so a screen reader can jump to it.
+    for (const title of [DOC_MAIN_PI_TITLE, DOC_DESIGN_FILES_TITLE, DOC_CLIENT_PO_TITLE]) {
+      assert.ok(html.includes('aria-label="' + title + '"'), title)
+    }
+  })
+
+  test('the subsections are separated by a rule, not by three outlines', () => {
+    const html = docs()
+    // ONE outer card.
+    assert.equal((html.match(/class="order-docs"/g) ?? []).length, 1)
+    assert.equal((html.match(/class="order-doc-section"/g) ?? []).length, 3)
+    // And the rule between them is a border on the section, not a card each.
+    assert.match(css, /\.order-doc-section \+ \.order-doc-section \{ border-top:/)
+  })
+
+  test('THE FABRIC AND FINISH APPROVALS ARE NOT RESTATED HERE', () => {
+    // The Design Files card used to summarise them, a column away from the card
+    // that states them in full. One home each.
+    const body = text(docs())
+    assert.equal(/Fully Approved|Partially Approved|Not Approved/.test(body), false)
+    assert.equal(/screenshot on file/i.test(body), false)
+  })
+
+  test('THE DESIGN-FILE CONTROL IS NAMED FOR WHAT IT DOES', () => {
+    // It said 'View / Manage' and manages nothing: the dialog previews the
+    // pictures and offers no upload, replacement or deletion, because this
+    // Order has no way to perform any of the three. A label promising
+    // management where none exists sends somebody hunting for a control that
+    // was never built.
+    const html = docs()
+    assert.equal(DOC_VIEW_FILES_LABEL, 'View files')
+    assert.ok(text(html).includes(DOC_VIEW_FILES_LABEL))
+    // Scoped to the Design Files subsection: 'Uploaded' is the Main PI's own
+    // date label a few lines above, and is not a promise about anything.
+    const design = text(html.slice(
+      html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'),
+      html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"')))
+    assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
+      'the box must not promise an action the Order cannot perform')
+  })
+
+  test('Design Files says how many, and offers one action', () => {
+    const body = text(docs())
+    assert.ok(body.includes('9 files'))
+    assert.ok(body.includes('6 representative · 3 customization · 6 product lines'))
+    assert.ok(body.includes(DOC_VIEW_FILES_LABEL))
+  })
+
+  test('an EMPTY design record says so quietly, and offers no action', () => {
+    const html = docs({
+      design: designFilesDocument({ kind: 'ready', counts: { representative: 0, customization: 0 } }, 4),
+    })
+    const design = html.slice(html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'))
+    assert.ok(design.includes('order-doc-empty'), 'drawn in the muted empty style')
+    // No View files control on a list with nothing in it.
+    assert.equal(design.slice(0, design.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"'))
+      .includes(DOC_VIEW_FILES_LABEL), false)
+    // And it is not an alarm: no red, no warning word.
+    assert.equal(/order-doc-unavailable/.test(design), false)
+  })
+
+  test('the four document states cannot be confused with one another', () => {
+    const state = (d: DesignFilesDocument) => text(docs({ design: d }))
+    const loading = state({ kind: 'loading' })
+    const unavailable = state(designFilesDocument({ kind: 'unavailable' }, 4))
+    const empty = state(designFilesDocument({ kind: 'ready', counts: { representative: 0, customization: 0 } }, 4))
+    const ready = state(designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2))
+
+    // LOADING IS NOT NONE, and a refused read is not none either.
+    assert.ok(loading.includes('Loading'))
+    assert.equal(loading.includes('None recorded'), false)
+    assert.ok(unavailable.includes('Unavailable'))
+    assert.equal(unavailable.includes('None recorded'), false)
+    assert.ok(empty.includes('None recorded'))
+    assert.ok(ready.includes('2 files'))
+    // Only the refused read is drawn as a problem.
+    assert.ok(docs({ design: designFilesDocument({ kind: 'unavailable' }, 4) }).includes('order-doc-unavailable'))
+    assert.equal(docs({ design: { kind: 'loading' } }).includes('order-doc-unavailable'), false)
+  })
+
+  test('an Order with NO SOURCE PI says so, in its own words', () => {
+    // Not `None recorded`: nothing was expected, so nothing is missing.
+    const body = text(docs({ design: designFilesDocument({ kind: 'no_source' }, 0) }))
+    assert.ok(body.includes('No source PI'))
+    assert.equal(body.includes('None recorded'), false)
+  })
+
+  test('Client PO states its absence and offers no control it cannot honour', () => {
+    const html = docs()
+    const po = html.slice(html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"'))
+    assert.ok(text(po).includes(DOC_NOT_ATTACHED))
+    assert.ok(text(po).includes(CLIENT_PO_UNSUPPORTED_NOTE))
+    // NO UPLOAD BUTTON. There is nowhere to keep a file, and a control that
+    // could not keep what it took would be worse than none.
+    assert.equal(/<button|<input|<form/.test(po), false)
+  })
+
+  test('NO ACTION IN THE BOX NAVIGATES ANYWHERE', () => {
+    // Every control is a button; the two that hand over a file do it through a
+    // URL signed on the press, which the page mints and this never renders.
+    const html = docs()
+    assert.equal(/<a |href=/.test(html), false)
+  })
+})
+
+describe('Documents and Fabric & Finish sit side by side', () => {
+  test('the row puts the paperwork first and the approvals second', () => {
+    const html = renderToStaticMarkup(
+      <OrderDocumentsRow><div>docs</div><div>fabric</div></OrderDocumentsRow>,
+    )
+    assert.match(html, /class="order-docs-row"/)
+    const body = text(html)
+    assert.ok(body.indexOf('docs') < body.indexOf('fabric'))
+  })
+
+  test('two thirds and one third on desktop, stacked below 900px', () => {
+    assert.match(css, /\.order-docs-row \{[\s\S]*?grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/)
+    assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.order-docs-row \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+    // ALIGNED TO THE TOP: the shorter card must not be handed a blank tail.
+    assert.match(css.slice(css.indexOf('.order-docs-row {')), /align-items: start/)
+    assert.equal(/\.order-docs-row \{[^}]*overflow-x/.test(css), false)
+    // NO FIXED OR MINIMUM HEIGHT on the box or its subsections: content decides.
+    // (Sliced to the box itself — the dialog rules below it size a thumbnail
+    // and a screenshot frame, which are pictures and must be given a box.)
+    const box = css.slice(css.indexOf('.order-docs {'), css.indexOf('/* ── The design-file dialog ──'))
+    assert.equal(/min-height|(^|[^-])height:\s*\d/.test(box), false,
+      'the box must take its content height')
+  })
+})
+
+// ── Fabric & Finish ───────────────────────────────────────────────────────────
 
 const ORDER = '11111111-2222-3333-4444-555555555555'
 
@@ -443,31 +574,82 @@ describe('the Fabric & Finish update dialog', () => {
 
 // ── The workspace ─────────────────────────────────────────────────────────────
 
-describe('the status workspace', () => {
-  test('is a labelled group its children sit inside, in order', () => {
-    const html = renderToStaticMarkup(
-      <OrderStatusWorkspace>
-        <div>one</div><div>two</div><div>three</div>
-      </OrderStatusWorkspace>,
-    )
-    assert.match(html, /class="order-status-workspace"/)
-    assert.match(html, /aria-label="Order status"/)
-    const body = text(html)
-    assert.ok(body.indexOf('one') < body.indexOf('two'))
-    assert.ok(body.indexOf('two') < body.indexOf('three'))
+describe('the design-file dialog', () => {
+  const items = [
+    { key: 'r-1', row: 1, role: 'representative' as const, roleLabel: 'Representative image',
+      sequence: '1', name: 'Chair', url: 'https://example.test/a.png?token=x', label: 'Representative image of 1 Chair' },
+  ]
+  const dialog = (rows = items) =>
+    renderToStaticMarkup(<OrderDesignFilesDialog items={rows} onOpen={noop} onClose={noop} />)
+
+  test('opens over the page as a real dialog', () => {
+    const html = dialog()
+    assert.match(html, /role="dialog"/)
+    assert.match(html, /aria-modal="true"/)
+    assert.match(html, /aria-label="Design files"/)
+    assert.match(html, /aria-label="Close"/)
   })
 
-  test('its CSS stacks the three in the SAME order, with no horizontal scroll', () => {
-    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-    assert.match(css, /\.order-status-workspace \{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
-    // Two-plus-one, then a single column. A grid never scrolls sideways.
-    assert.match(css, /@media \(max-width: 1180px\)[\s\S]*?\.order-status-workspace \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
-    assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.order-status-workspace \{ grid-template-columns: minmax\(0, 1fr\); \}/)
-    assert.equal(/\.order-status-workspace \{[^}]*overflow-x/.test(css), false)
+  test('IT DOES NOT NAVIGATE. Every picture is a button, not a link', () => {
+    const html = dialog()
+    assert.equal(/<a /.test(html), false)
+    assert.match(html, /<button[^>]*class="order-file-thumb"/)
+  })
+
+  test('each picture says what it is, and carries its own accessible name', () => {
+    const html = dialog()
+    assert.ok(text(html).includes('Representative image'))
+    assert.match(html, /aria-label="Representative image of 1 Chair"/)
+    // The alt is empty because the button already names it.
+    assert.match(html, /alt=""/)
+  })
+
+  test('thumbnails are lazy, so a long list does not fetch what nobody scrolls to', () => {
+    assert.match(dialog(), /loading="lazy"/)
+  })
+
+  test('IT IS READ-ONLY, AND SAYS WHERE THE FILES COME FROM', () => {
+    // These are the approved PI's own product images, inherited at conversion;
+    // the PI screen is where one is added or removed. Order-level design
+    // documents do not exist, so nothing here offers to manage one.
+    const html = dialog()
+    assert.ok(text(html).includes('These files come from the approved PI'))
+    for (const control of ['<input', '<form', 'Upload', 'Replace', 'Delete']) {
+      assert.equal(html.includes(control), false, control + ' is offered by a read-only dialog')
+    }
+  })
+
+  test('an empty list says so rather than showing an empty grid', () => {
+    const body = text(dialog([]))
+    assert.ok(body.includes('No design files are recorded against this Order.'))
+    assert.equal(dialog([]).includes('order-file-grid'), false)
   })
 })
 
-// ── The PI history modal ──────────────────────────────────────────────────────
+describe('the approval-evidence dialog', () => {
+  test('shows the picture over this page instead of in a new tab', () => {
+    const html = renderToStaticMarkup(
+      <OrderEvidenceDialog url="https://example.test/proof.png?token=x" failure={null} onClose={noop} />,
+    )
+    assert.match(html, /role="dialog"/)
+    assert.match(html, /class="order-evidence-frame"/)
+    assert.equal(/<a |target="_blank"/.test(html), false)
+  })
+
+  test('says it is opening before the URL exists, and says so plainly if it fails', () => {
+    const pending = renderToStaticMarkup(<OrderEvidenceDialog url={null} failure={null} onClose={noop} />)
+    assert.match(pending, /role="status"/)
+    assert.equal(/<img/.test(pending), false, 'nothing is fetched until there is a URL')
+
+    const failed = renderToStaticMarkup(
+      <OrderEvidenceDialog url={null} failure="That file is not available to you right now." onClose={noop} />,
+    )
+    assert.match(failed, /role="alert"/)
+    assert.ok(text(failed).includes('not available'))
+  })
+})
+
+// ── The PI history modal ──// ── The PI history modal ──────────────────────────────────────────────────────
 
 const modal = (rows: PersistedPiVersion[], over: Partial<{
   canPropose: boolean; canDecide: boolean; busyId: string | null; error: string | null
@@ -588,7 +770,7 @@ describe('/orders/[id] wires the workspace the way the module intends', () => {
   test('the Main PI card is fed by mainPiCard, and the modal by the timeline', () => {
     assert.ok(page.includes('const mainPi = mainPiCard(piHistory)'))
     assert.ok(page.includes('const piTimeline = piVersionTimeline(piHistory)'))
-    assert.ok(page.includes('card={mainPi}'))
+    assert.ok(page.includes('mainPi={mainPi}'))
     assert.ok(page.includes('entries={piTimeline}'))
   })
 
