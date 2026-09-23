@@ -47,8 +47,21 @@ export const DOC_CLIENT_PO_TITLE = 'Client PO'
  */
 export const DOC_NOT_ATTACHED = 'Not attached'
 
-/** The one action each attached subsection offers, named once. */
-export const DOC_MANAGE_LABEL = 'View / Manage'
+/**
+ * WHAT THE DESIGN-FILE CONTROL DOES, NAMED FOR WHAT IT DOES.
+ *
+ * It was "View / Manage", and it manages nothing: the dialog it opens previews
+ * the pictures and offers no upload, no replacement and no deletion, because
+ * this Order has no way to perform any of the three. A label promising
+ * management where none exists sends somebody looking for a control that was
+ * never built, and then to somebody else to ask where it went.
+ *
+ * ORDER-LEVEL DESIGN-DOCUMENT UPLOAD DOES NOT EXIST YET. These pictures belong
+ * to the approved PI and are added and removed there. Giving the Order its own
+ * design documents needs the same backend work a Client PO needs — see the note
+ * further down this file — and until that lands the honest word is "View".
+ */
+export const DOC_VIEW_FILES_LABEL = 'View files'
 
 // ── The four states a subsection can be in ────────────────────────────────────
 //
@@ -87,6 +100,13 @@ const fileCount = (total: number): string => `${total} file${total === 1 ? '' : 
 
 /**
  * THE DESIGN FILES SUBSECTION.
+ *
+ * READ-ONLY, AND HONESTLY LABELLED. Every picture here BELONGS TO THE APPROVED
+ * PI — it is the PI's own product imagery, inherited by the Order at conversion
+ * — and the PI screen is where one is added or removed. The Order has no design
+ * document of its own, no upload path and no store to put one in, so this
+ * subsection previews and counts, and says "View files" rather than pretending
+ * to manage anything.
  *
  * THE PICTURES ARE COUNTED FROM THE ROWS, not from the URLs the page managed to
  * sign. A picture the storage policy refused this reader is still a picture the

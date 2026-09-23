@@ -55,7 +55,7 @@ import {
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
-  DOC_MANAGE_LABEL,
+  DOC_VIEW_FILES_LABEL,
   DOC_NOT_ATTACHED,
   type ClientPoDocument,
   type DesignFilesDocument,
@@ -189,7 +189,7 @@ function DocEmpty({ message, note }: { message: string; note?: string | null }) 
  * have?" — and a row of white space under the shorter of them.
  *
  * NOT ONE ACTION LEFT THE PAGE. View and Download hand the browser a file
- * through a URL signed on the press; PI History and View / Manage open dialogs
+ * through a URL signed on the press; PI History and View files open dialogs
  * over this page. Nothing here navigates to a PI screen, a document screen or
  * another module.
  */
@@ -281,7 +281,7 @@ export function OrderDocumentsPanel({
         title={DOC_DESIGN_FILES_TITLE}
         actions={design.kind === 'ready' ? (
           <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onManageDesign}>
-            {DOC_MANAGE_LABEL}
+            {DOC_VIEW_FILES_LABEL}
           </button>
         ) : undefined}
       >
@@ -522,6 +522,9 @@ export { Modal as OrderModalShell }
 
 export const DESIGN_FILES_DIALOG_TITLE = 'Design files'
 export const DESIGN_FILES_DIALOG_EMPTY = 'No design files are recorded against this Order.'
+/** Said in the dialog, so nobody hunts this screen for an upload control. */
+export const DESIGN_FILES_DIALOG_NOTE =
+  'These files come from the approved PI. They are added and removed there.'
 
 /**
  * EVERY PICTURE THIS ORDER HOLDS, WITHOUT LEAVING THE ORDER.
@@ -535,10 +538,16 @@ export const DESIGN_FILES_DIALOG_EMPTY = 'No design files are recorded against t
  * viewer walk, so a picture is the same picture and in the same place wherever
  * it is opened. Clicking one hands it to that viewer.
  *
- * READ-ONLY, AND HONESTLY SO. These pictures belong to the approved PI, which
- * is where they are added and removed; this Order screen has never had a way to
+ * READ-ONLY, AND HONESTLY SO. These pictures BELONG TO THE APPROVED PI, which is
+ * where they are added and removed; this Order screen has never had a way to
  * upload one and this does not pretend otherwise. An upload control here would
- * be a button with nothing behind it.
+ * be a button with nothing behind it, and the control that opens this dialog is
+ * called "View files" for the same reason.
+ *
+ * ORDER-LEVEL DESIGN DOCUMENTS ARE NOT BUILT. Giving an Order its own design
+ * files — rather than its PI's — needs a table, an RLS pair, a storage policy
+ * and an upload permission, none of which exists. Until it does, this lists what
+ * the PI holds, and says so.
  *
  * THUMBNAILS LOAD WHEN THIS OPENS, not when the page does — the dialog is
  * mounted only while it is open, so a reader who never asks for the list never
@@ -575,6 +584,10 @@ export function OrderDesignFilesDialog({ items, onOpen, onClose }: {
           ))}
         </ul>
       )}
+      {/* WHERE THESE CAME FROM, AND WHERE THEY ARE CHANGED. Without it a reader
+          who finds no upload here concludes the control is missing, rather than
+          that it lives on the PI. */}
+      {items.length > 0 && <p className="order-doc-note">{DESIGN_FILES_DIALOG_NOTE}</p>}
     </Modal>
   )
 }

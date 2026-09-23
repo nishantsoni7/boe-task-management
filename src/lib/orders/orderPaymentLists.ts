@@ -62,10 +62,24 @@ export const PAYMENT_LIST_EMPTY: Record<OrderPaymentListKind, string> = {
  * is built from — said out loud, because a reader checking a row against a bank
  * statement needs to know the difference is a split and not a missing payment.
  */
-export const PAYMENT_LIST_CAPTION =
+const CAPTION_BASE =
   "Amounts are this Order's allocated share. Where a payment is split across " +
-  'records, the rest of it belongs elsewhere and is counted here in neither ' +
-  'figure. Open a payment to see the whole of it.'
+  'records, the rest of it belongs elsewhere and is counted here in neither figure.'
+
+/**
+ * THE CAPTION, AND WHETHER IT INVITES ANYTHING.
+ *
+ * A reader who cannot open a payment must not be told to. The allocation rule
+ * is the same sentence for everybody; only the invitation is conditional.
+ */
+export function paymentListCaption(canViewDetails: boolean): string {
+  return canViewDetails
+    ? CAPTION_BASE + ' Open a payment to see the whole of it.'
+    : CAPTION_BASE
+}
+
+/** The rule alone, for callers that only need the words. */
+export const PAYMENT_LIST_CAPTION = CAPTION_BASE
 
 /** One payment, as a list row draws it. Every field is the row's own. */
 export type OrderPaymentListRow = {
@@ -86,32 +100,22 @@ export type OrderPaymentListRow = {
   reference: string | null
   /** The stored status key, for the list that needs to tell two apart. */
   status: string
-  /**
-   * THE REST OF THE ROW, for the detail view behind this one.
-   *
-   * NOT A SECOND READ, AND NOT A WIDER ONE. Every field below is a COLUMN of a
-   * row this screen already holds: RLS on finance_payment_requests is
-   * row-level, so a reader who was shown the payment at all was already
-   * entitled to all of it. Selecting more columns of the same rows moves no
-   * gate and exposes nothing that a different reader could not see before.
-   *
-   * Absent where the record is absent. Nothing here is substituted, and a
-   * missing note is a missing note rather than an empty string.
-   */
-  detail: OrderPaymentDetailFields
-}
-
-/** Everything absent, for a row whose detail the caller did not supply. */
-export const NO_PAYMENT_DETAIL: OrderPaymentDetailFields = {
-  humanId: null, receivedIn: null, proofNote: null, salesNote: null, adminNote: null,
-  approvedAtIso: null, rejectedAtIso: null, clarificationAtIso: null, approvedById: null,
 }
 
 /**
- * What the detail view of one payment can state.
+ * THE FIELDS A FINANCE READER — AND ONLY A FINANCE READER — MAY SEE.
  *
- * Each one is stored on the payment itself. The screen decides what to draw;
- * this decides nothing but what is carried.
+ * WHY THESE ARE NOT ON THE ROW ABOVE. Row-level access to a payment is not the
+ * same permission as seeing what Finance wrote about it. Everybody who may read
+ * this Order may read its payment AMOUNTS, because the Order's own totals are
+ * built from them; the proof note, the clarification Finance asked for and the
+ * moment somebody signed it off are Finance's record of its own work, and the
+ * screen that used to show them did so behind a Finance-module door.
+ *
+ * THAT DOOR IS BACK. These travel separately from the list, are fetched
+ * separately, and are fetched only for a reader who holds Finance module entry
+ * — the same capability that used to decide whether the Finance record link was
+ * drawn at all. See orderPaymentDetailQuery.
  */
 export type OrderPaymentDetailFields = {
   /** The human payment id, which is what Finance and the client both quote. */
@@ -138,10 +142,7 @@ const orNull = (value: string | null | undefined): string | null => {
   return text === '' ? null : text
 }
 
-const asRow = (
-  row: OrderFinancePaymentRow,
-  detail: OrderPaymentDetailFields,
-): OrderPaymentListRow => ({
+const asRow = (row: OrderFinancePaymentRow): OrderPaymentListRow => ({
   id: row.id,
   client: row.client_name ?? null,
   dateIso: row.payment_date ?? null,
@@ -151,7 +152,6 @@ const asRow = (
   mode: row.payment_mode ?? null,
   reference: row.order_number ?? null,
   status: row.status,
-  detail,
 })
 
 /**
@@ -185,6 +185,31 @@ export function paymentDetailFields(row: {
     approvedById: orNull(row.approved_by),
   }
 }
+
+/**
+ * THE COLUMNS THE DETAIL READ ASKS FOR, and no others.
+ *
+ * Named here so the query and the type cannot drift, and so a reviewer can see
+ * in one place exactly what a Finance reader is shown beyond the brief list.
+ */
+export const PAYMENT_DETAIL_COLUMNS =
+  'id, human_payment_id, request_number, received_in, proof_note, sales_note, ' +
+  'admin_note, approved_at, approved_by, rejected_at, clarification_requested_at'
+
+/**
+ * How the page's lazy detail read is going, for the dialog to draw.
+ *
+ * A REFUSED READ IS NOT AN EMPTY RECORD. RLS may legitimately refuse this row
+ * to this reader even though the brief list showed it, and the dialog says so
+ * rather than printing a payment with every field blank.
+ */
+export type OrderPaymentDetailState =
+  | { state: 'loading' }
+  | { state: 'ready'; fields: OrderPaymentDetailFields }
+  | { state: 'error'; message: string }
+
+export const PAYMENT_DETAIL_UNAVAILABLE =
+  'The rest of this payment is not available to you right now.'
 
 /** Finds one row of a list by payment id. The list is short; this is a scan. */
 export function orderPaymentById(
@@ -220,11 +245,35 @@ export const PAYMENT_DETAIL_SPLIT_NOTE =
 export function orderPaymentList(
   rows: readonly OrderFinancePaymentRow[],
   kind: OrderPaymentListKind,
-  /** Payment id → the rest of its own row. Missing ids carry nothing. */
-  details?: ReadonlyMap<string, OrderPaymentDetailFields>,
 ): OrderPaymentListRow[] {
   const keep = kind === 'verified' ? isVerifiedPaymentStatus : isAwaitingVerification
-  return rows
-    .filter(row => keep(row.status))
-    .map(row => asRow(row, details?.get(row.id) ?? NO_PAYMENT_DETAIL))
+  return rows.filter(row => keep(row.status)).map(asRow)
+}
+
+/**
+ * WHETHER THE PAGE MAY FETCH ONE PAYMENT'S DETAIL, AND FOR WHICH ID.
+ *
+ * TWO CONDITIONS, BOTH REQUIRED:
+ *
+ *   1. THE READER HOLDS FINANCE MODULE ENTRY — the same capability that used to
+ *      decide whether the Finance record link was drawn at all. Nothing finer
+ *      and nothing new; that door moved from a link to a dialog, and this is it.
+ *
+ *   2. THE ID IS ONE THIS ORDER'S OWN LIST ALREADY CONTAINS. The rows came from
+ *      two reads anchored to this Order and filtered by status, so an id that is
+ *      not among them is an id this screen never showed — and a screen must not
+ *      turn a typed or tampered id into a read, even one RLS would refuse. The
+ *      refusal happens before the request, not after it.
+ *
+ * IT AUTHORIZES NOTHING. RLS still decides whether the row comes back; this only
+ * stops the page asking about something it has no business asking about.
+ */
+export function orderPaymentDetailQuery(input: {
+  canViewPaymentDetails: boolean
+  rows: readonly OrderPaymentListRow[]
+  paymentId: string | null
+}): { allowed: boolean; paymentId: string | null } {
+  if (!input.canViewPaymentDetails) return { allowed: false, paymentId: null }
+  const known = orderPaymentById(input.rows, input.paymentId)
+  return known ? { allowed: true, paymentId: known.id } : { allowed: false, paymentId: null }
 }

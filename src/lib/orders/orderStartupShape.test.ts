@@ -308,7 +308,16 @@ describe('no Order screen waits more than it must', () => {
       // from the Main PI card, through openVersionFile's signer, which is
       // counted here already. Nothing at load either way; this screen simply
       // stopped offering the same file through two doors.
-      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 31,
+      //
+      // DETAIL 31 -> 32: one payment's Finance record, fetched when somebody
+      // presses View details. It is the RESTORATION of a boundary rather than a
+      // new feature: those columns were briefly selected for every payment on
+      // the startup path, which put Finance's notes about every payment into
+      // every reader's browser. They are a separate read now — ONE row, on a
+      // press, refused outright unless the reader holds Finance module entry AND
+      // the id is one this Order's own list already showed. Nothing at load, and
+      // the wait count is unchanged: the test above still requires exactly three.
+      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 32,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

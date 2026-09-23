@@ -31,6 +31,7 @@ import {
 import {
   PAYMENT_DETAIL_BACK,
   PAYMENT_DETAIL_TITLE,
+  PAYMENT_DETAIL_UNAVAILABLE,
   PAYMENT_DETAIL_VIEW,
   PAYMENT_LIST_EMPTY,
   PAYMENT_LIST_TITLE,
@@ -515,29 +516,37 @@ describe('the payment summary figures', () => {
 
 // ── The payments behind a figure ───────────────────────────────
 
-const DETAILS = new Map([
-  ['p1', paymentDetailFields({
+/** What the lazy read returns for each payment, once it has been allowed. */
+const FIELDS = {
+  p1: paymentDetailFields({
     human_payment_id: 'PAY-2026-0311', received_in: 'company_account',
     proof_note: 'NEFT reference N260901.', sales_note: 'Advance on 0524.',
     approved_at: '2026-09-02T10:14:00Z',
-  })],
-  ['p2', paymentDetailFields({
+  }),
+  p2: paymentDetailFields({
     human_payment_id: 'PAY-2026-0402', admin_note: 'Which invoice is this against?',
     clarification_requested_at: '2026-09-15T04:00:00Z',
-  })],
-])
+  }),
+}
 
 const dialog = (
   rows: OrderFinancePaymentRow[],
   kind: 'verified' | 'awaiting',
-  over: { openId?: string | null } = {},
+  over: {
+    openId?: string | null
+    /** Finance module entry. DEFAULTS TO TRUE so the list tests are unchanged. */
+    canViewDetails?: boolean
+    detail?: Parameters<typeof OrderPaymentListDialog>[0]['detail']
+  } = {},
 ) => renderToStaticMarkup(
   <OrderPaymentListDialog
     kind={kind}
-    rows={orderPaymentList(rows, kind, DETAILS)}
+    rows={orderPaymentList(rows, kind)}
     formatDate={iso => (iso === null ? '—' : `${iso} formatted`)}
     formatDateTime={iso => (iso === null ? '—' : `${iso} at`)}
+    canViewDetails={over.canViewDetails ?? true}
     openId={over.openId ?? null}
+    detail={over.detail ?? null}
     onOpen={() => {}}
     onBack={() => {}}
     onClose={() => {}}
@@ -654,7 +663,10 @@ describe('the payments behind a figure', () => {
 
 describe('the payment detail', () => {
   const detail = (rows = [payment({})], kind: 'verified' | 'awaiting' = 'verified', openId = 'p1') =>
-    dialog(rows, kind, { openId })
+    dialog(rows, kind, {
+      openId,
+      detail: { state: 'ready', fields: FIELDS[openId as 'p1' | 'p2'] ?? FIELDS.p1 },
+    })
 
   test('it is the SAME dialog, retitled — not a second one stacked on the first', () => {
     const html = detail()
@@ -727,9 +739,11 @@ describe('the payment detail', () => {
   })
 
   test('a field the record has not got is absent, never blank or invented', () => {
-    // p5 carries no detail row at all: no reference, no received-in, no notes.
+    // p5's fetched record carries nothing: no reference, no received-in, no notes.
     const bare = payment({ id: 'p5' })
-    const body = text(dialog([bare], 'verified', { openId: 'p5' }))
+    const body = text(dialog([bare], 'verified', {
+      openId: 'p5', detail: { state: 'ready', fields: paymentDetailFields({}) },
+    }))
     for (const absent of ['Payment reference', 'Received in', 'Verified on', 'Proof', 'Finance note']) {
       assert.equal(body.includes(absent), false, absent)
     }
@@ -742,6 +756,111 @@ describe('the payment detail', () => {
     const html = dialog([payment({})], 'verified', { openId: 'nope' })
     assert.match(html, new RegExp(`aria-label="${PAYMENT_LIST_TITLE.verified}"`))
     assert.ok(html.includes('order-pay-list-row'))
+  })
+
+  test('while the record is still coming, the dialog says so', () => {
+    const html = dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'loading' },
+    })
+    assert.match(html, /role="status"/)
+    const body = text(html)
+    // The Order's own facts are already there; Finance's are not claimed yet.
+    assert.ok(body.includes('Allocated to this Order'))
+    assert.equal(body.includes('Payment reference'), false)
+  })
+
+  test('a refused record says so, and is never drawn as an empty one', () => {
+    const html = dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE },
+    })
+    assert.match(html, /role="alert"/)
+    assert.ok(text(html).includes(PAYMENT_DETAIL_UNAVAILABLE))
+  })
+})
+
+// ── Two audiences ─────────────────────────────────────────────────────────────
+
+describe('a reader who may see the Order but NOT enter Finance', () => {
+  const noFinance = (over: Parameters<typeof dialog>[2] = {}) =>
+    dialog([payment({}), payment({ id: 'p5', isPartialShare: true, amount: 500000,
+      exactAmount: '500000.00', exactAllocatedAmount: '200000.00', allocatedAmount: 200000 })],
+      'verified', { ...over, canViewDetails: false })
+
+  test('still gets the brief list the Order is built from', () => {
+    const body = text(noFinance())
+    for (const s of ['₹7,50,000.00', 'Date', 'Mode', 'Client', 'Vittaazio']) {
+      assert.ok(body.includes(s), s)
+    }
+    // And the allocation fact, which is the Order's own, not Finance's.
+    assert.ok(body.includes('allocated from ₹5,00,000.00 received'))
+  })
+
+  test('IS OFFERED NO View details CONTROL AT ALL', () => {
+    const html = noFinance()
+    assert.equal(text(html).includes(PAYMENT_DETAIL_VIEW), false)
+    assert.equal(html.includes('order-pay-list-link'), false)
+  })
+
+  test('CANNOT REACH THE DETAIL VIEW even with an openId and a fetched record', () => {
+    // The capability decides, not the state. A leftover or forced openId draws
+    // the list, and the fields handed in are drawn nowhere.
+    const html = noFinance({
+      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+    })
+    assert.match(html, new RegExp(`aria-label="${PAYMENT_LIST_TITLE.verified}"`))
+    assert.equal(html.includes('order-pay-detail'), false)
+    assert.equal(text(html).includes(PAYMENT_DETAIL_BACK), false)
+  })
+
+  test('IS NOT INVITED TO OPEN WHAT IT CANNOT OPEN', () => {
+    // The allocation rule is the same sentence for everybody; the invitation
+    // that follows it is not.
+    const body = text(noFinance())
+    assert.ok(body.includes("Amounts are this Order's allocated share"))
+    assert.equal(body.includes('Open a payment to see the whole of it'), false)
+    // And a Finance reader still gets it.
+    assert.ok(text(dialog([payment({})], 'verified')).includes('Open a payment to see the whole of it'))
+  })
+
+  test('SEES NONE OF FINANCE\'S OWN RECORD, in any state', () => {
+    for (const detail of [
+      null,
+      { state: 'loading' } as const,
+      { state: 'ready', fields: FIELDS.p1 } as const,
+      { state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE } as const,
+    ]) {
+      const body = text(noFinance({ openId: 'p1', detail }))
+      for (const secret of ['PAY-2026-0311', 'Company account', 'NEFT reference N260901.',
+                            'Advance on 0524.', 'Payment reference', 'Received in',
+                            'Verified on', 'Proof', 'Sales note', 'Finance note']) {
+        assert.equal(body.includes(secret), false, secret + ' reached a non-Finance reader')
+      }
+    }
+  })
+})
+
+describe('a reader who holds Finance module entry', () => {
+  test('is offered View details and can open the record in the same dialog', () => {
+    const list = dialog([payment({})], 'verified')
+    assert.ok(text(list).includes(PAYMENT_DETAIL_VIEW))
+    assert.match(list, /<button[^>]*class="boe-btn boe-btn-ghost order-pay-list-link"/)
+
+    const open = dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+    })
+    assert.match(open, new RegExp(`aria-label="${PAYMENT_DETAIL_TITLE}"`))
+    const body = text(open)
+    assert.ok(body.includes('PAY-2026-0311'))
+    assert.ok(body.includes('Company account'))
+    assert.ok(body.includes('NEFT reference N260901.'))
+  })
+
+  test('and it is still ONE dialog, on this page', () => {
+    const html = dialog([payment({})], 'verified', {
+      openId: 'p1', detail: { state: 'ready', fields: FIELDS.p1 },
+    })
+    assert.equal((html.match(/role="dialog"/g) ?? []).length, 1)
+    assert.equal(/<a |href=|\/finance/.test(html), false)
   })
 })
 
@@ -986,13 +1105,43 @@ describe('the customization cell on the Order', () => {
 // ── The loading shell ─────────────────────────────────────────────────────────
 
 describe('the loading shell', () => {
-  test('is announced as busy and has the workspace shape', () => {
+  test('is announced as busy and has the REDESIGNED page’s shape', () => {
     const html = renderToStaticMarkup(<OrderDetailSkeleton />)
     assert.match(html, /role="status"/)
     assert.match(html, /aria-busy="true"/)
-    assert.ok(html.includes('order-command-header'))
-    assert.ok(html.includes('order-summary'))
-    assert.ok(html.includes('order-products'))
+    // Every section of the page it stands in for, in the page's own classes.
+    for (const cls of ['order-command-header', 'order-facts', 'order-sum-groups',
+                       'order-sum-group', 'order-sum-row', 'order-docs-row',
+                       'order-docs', 'order-doc-section', 'order-products',
+                       'order-lower', 'order-lower-main', 'order-lower-aside',
+                       'order-pay-metrics', 'order-commercial']) {
+      assert.ok(html.includes(cls), cls + ' is missing from the loading shell')
+    }
     assert.ok(!/\d/.test(text(html)), 'no figure is invented while loading')
+  })
+
+  test('THE OLD SUMMARY SKELETON CANNOT COME BACK', () => {
+    // It drew a flat row of six fact cells and a commercial rail beside them,
+    // under class names whose rules were deleted with the band they belonged to
+    // — so it rendered unstyled blocks and the page jumped when the data landed.
+    const html = renderToStaticMarkup(<OrderDetailSkeleton />)
+    for (const dead of ['order-summary-facts', 'order-summary-commercial',
+                        'class="order-fact"', 'class="order-summary"']) {
+      assert.equal(html.includes(dead), false, dead + ' is back in the loading shell')
+    }
+    // And the classes it DOES use are all ones the stylesheet still defines, so
+    // the shell cannot silently become unstyled again.
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+    for (const cls of ['order-facts', 'order-sum-group', 'order-sum-row', 'order-docs-row',
+                       'order-docs', 'order-doc-section', 'order-lower', 'order-commercial',
+                       'order-pay-metrics', 'order-status-card']) {
+      assert.ok(css.includes('.' + cls + ' {'), cls + ' has no rule in globals.css')
+    }
+  })
+
+  test('it is static: no animation, no timer, no read', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderWorkspace.tsx'), 'utf8')
+    const fn = source.slice(source.indexOf('export function OrderDetailSkeleton'))
+    assert.equal(/setTimeout|setInterval|useEffect|animation|supabase/.test(fn), false)
   })
 })

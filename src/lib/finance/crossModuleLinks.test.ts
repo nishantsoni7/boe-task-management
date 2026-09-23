@@ -150,12 +150,16 @@ describe('the Order screen links into Finance, and gates it', () => {
     assert.ok(page.includes('openId={paymentDetailId}'))
   })
 
-  test('and it exposes nothing a reader could not already see', () => {
-    // finance_payment_requests is guarded ROW BY ROW. The detail is more
-    // columns of rows this page was already shown, from the same two reads —
-    // so no gate moved and no second query appeared.
-    assert.equal((page.match(/from\('finance_payment_requests'\)/g) ?? []).length, 1)
-    assert.ok(page.includes('paymentDetailFields('))
+  test('and it keeps the Finance gate the link had', () => {
+    // A LINK IS NOT A PERMISSION, but the control that offered it WAS gated —
+    // on Finance module entry — and moving it into a dialog does not change who
+    // may open it. The brief list is the Order's own money; the record behind it
+    // is Finance's, and stays behind Finance's door.
+    assert.ok(page.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
+    assert.ok(page.includes('canViewDetails={mayViewPaymentDetails}'))
+    // And nothing sensitive is fetched for a reader who may not open it.
+    assert.ok(page.includes('orderPaymentDetailQuery({'))
+    assert.ok(page.includes('canViewPaymentDetails: mayViewPaymentDetails'))
     // The Finance CAPABILITY is still resolved, and still gates Add payment.
     assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'))
     assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment'))
@@ -237,7 +241,9 @@ describe('neither screen reveals a record it could not already read', () => {
     // The dialog's rows are orderPaymentList's, filtered from the merged payment
     // list, which comes from the two Order-anchored, RLS-checked reads. Nothing
     // is fetched to make a door, because the door no longer leaves the page.
-    assert.ok(page.includes('rows={orderPaymentList(payments, paymentList, paymentDetails)}'))
+    assert.ok(page.includes('rows={paymentRows}'))
+    // And the detail read may only name an id that list already contained.
+    assert.ok(page.includes('rows: paymentRows'))
     assert.equal(/financePaymentHref/.test(page), false, 'no Finance route is built')
     // FINANCE'S OWN ENTRY FORM IS MOUNTED HERE, which is the opposite of going
     // to it: the only /finance string left on the page is that import.

@@ -29,9 +29,12 @@ import {
   type OrderActivityItem,
 } from './OrderWorkspace'
 import {
+  PAYMENT_DETAIL_COLUMNS,
+  PAYMENT_DETAIL_UNAVAILABLE,
+  orderPaymentDetailQuery,
   orderPaymentList,
   paymentDetailFields,
-  type OrderPaymentDetailFields,
+  type OrderPaymentDetailState,
   type OrderPaymentListKind,
 } from '@/lib/orders/orderPaymentLists'
 import {
@@ -695,14 +698,32 @@ export default function OrderDetailPage() {
   const [paymentList, setPaymentList] = useState<OrderPaymentListKind | null>(null)
   /** Which payment inside that list is showing its detail, or null for the list. */
   const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null)
+  /** That payment's Finance record: asked for on the press, never at load. */
+  const [paymentDetail, setPaymentDetail] = useState<OrderPaymentDetailState | null>(null)
   /**
-   * The rest of each payment's own row, keyed by payment id.
+   * MAY THIS READER SEE FINANCE'S OWN RECORD OF A PAYMENT?
    *
-   * SAME ROWS, MORE COLUMNS. finance_payment_requests is guarded row by row, so
-   * a reader shown a payment at all was already entitled to every column of it;
-   * widening the select adds no round trip and moves no gate.
+   * FINANCE MODULE ENTRY, and nothing finer — the same capability that used to
+   * decide whether the `Finance record` link was drawn beside a payment row.
+   * That link is gone; the door it stood at is not.
+   *
+   * IT IS FINANCE'S RESOLVER'S ANSWER, held in state from
+   * resolve_effective_permissions and empty until it lands, so no control and
+   * no field can flash before the reader is known to be entitled to it. This
+   * page re-derives nothing and checks no role.
    */
-  const [paymentDetails, setPaymentDetails] = useState<ReadonlyMap<string, OrderPaymentDetailFields>>(new Map())
+  const mayViewPaymentDetails = financeCaps.canAccessFinanceModule
+
+  /**
+   * THE ROWS BEHIND THE FIGURE A READER OPENED, and the only ids this screen
+   * will fetch a detail for.
+   *
+   * Built once and handed BOTH to the dialog and to the read's own guard, so
+   * the set the reader was shown and the set the page will answer about cannot
+   * be different sets.
+   */
+  const paymentRows = paymentList === null ? [] : orderPaymentList(payments, paymentList)
+
   /** The design-file dialog, and the one evidence picture a reader asked for. */
   const [designOpen, setDesignOpen] = useState(false)
   const [evidence, setEvidence] = useState<{ url: string | null; failure: string | null } | null>(null)
@@ -1144,14 +1165,11 @@ export default function OrderDetailPage() {
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
-        // THE REST OF THE ROW COMES WITH IT. Same query, same rows, same
-        // row-level policy — the detail dialog is answered from what this read
-        // already returns rather than from a second one.
-        .select(
-          'id, client_name, amount, payment_date, payment_mode, order_number, status, ' +
-          'human_payment_id, request_number, received_in, proof_note, sales_note, admin_note, ' +
-          'approved_at, approved_by, rejected_at, clarification_requested_at',
-        )
+        // THE SEVEN COLUMNS THE FIGURES ARE BUILT FROM, and not one more. What
+        // Finance wrote about a payment is not on the startup path: see
+        // loadPaymentDetail, which asks for it on a press and only for a reader
+        // who may see it.
+        .select('id, client_name, amount, payment_date, payment_mode, order_number, status')
         .eq('order_id', id)
         .order('payment_date', { ascending: false }),
 
@@ -1163,9 +1181,7 @@ export default function OrderDetailPage() {
         // table ever gains a second reference to the ledger.
         .select('id, allocated_amount, status, ' +
                 'payment:finance_payment_requests!finance_payment_allocations_payment_fk(' +
-                'id, client_name, amount, payment_date, payment_mode, order_number, status, ' +
-                'human_payment_id, request_number, received_in, proof_note, sales_note, ' +
-                'admin_note, approved_at, approved_by, rejected_at, clarification_requested_at)')
+                'id, client_name, amount, payment_date, payment_mode, order_number, status)')
         .eq('order_id', id)
         .eq('status', 'active'),
 
@@ -1242,21 +1258,6 @@ export default function OrderDetailPage() {
       linked: linkedRows, allocations: allocationRows, activeTotals,
     }))
 
-    // THE REST OF EACH ROW, KEYED BY PAYMENT ID. Both reads are consulted and
-    // the allocation's embedded payment wins where a payment appears in both —
-    // the same precedence mergeOrderPayments applies to the row itself, so the
-    // detail and the figure can never come from different copies.
-    const details = new Map<string, OrderPaymentDetailFields>()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const row of (linkedRows ?? []) as any[]) {
-      if (row?.id) details.set(row.id, paymentDetailFields(row))
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const row of (allocationRows ?? []) as any[]) {
-      const payment = row?.payment
-      if (payment?.id) details.set(payment.id, paymentDetailFields(payment))
-    }
-    setPaymentDetails(details)
 
     setActivity(mapActivityRows(aData))
 
@@ -1563,6 +1564,49 @@ export default function OrderDetailPage() {
     setPiFileBusy(null)
     if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  /**
+   * ONE PAYMENT'S FINANCE RECORD, FETCHED ON THE PRESS.
+   *
+   * TWO GATES BEFORE A SINGLE BYTE IS ASKED FOR, and orderPaymentDetailQuery
+   * holds both:
+   *
+   *   THE READER HOLDS FINANCE MODULE ENTRY. The same capability that used to
+   *   decide whether the Finance record link was drawn at all — resolved by
+   *   Finance's own resolver, not re-derived here and not a role check.
+   *
+   *   THE ID IS ONE THIS ORDER'S OWN LIST ALREADY SHOWED. The rows are the two
+   *   Order-anchored reads, filtered by status. An id that is not among them is
+   *   one this screen never offered, and it never becomes a request — the
+   *   refusal happens here, before the network, rather than at RLS afterwards.
+   *
+   * THE READ IS THE READER'S OWN. Their session, their RLS, no service role, no
+   * RPC and no new policy. A row the database refuses them is reported as
+   * refused rather than drawn as a record with every field empty.
+   */
+  const loadPaymentDetail = async (paymentId: string) => {
+    const { allowed, paymentId: safeId } = orderPaymentDetailQuery({
+      canViewPaymentDetails: mayViewPaymentDetails,
+      rows: paymentRows,
+      paymentId,
+    })
+    if (!allowed || !safeId) return
+
+    setPaymentDetailId(safeId)
+    setPaymentDetail({ state: 'loading' })
+
+    const { data, error } = await supabase
+      .from('finance_payment_requests')
+      .select(PAYMENT_DETAIL_COLUMNS)
+      .eq('id', safeId)
+      .maybeSingle()
+
+    if (error || !data) {
+      setPaymentDetail({ state: 'error', message: PAYMENT_DETAIL_UNAVAILABLE })
+      return
+    }
+    setPaymentDetail({ state: 'ready', fields: paymentDetailFields(data) })
   }
 
   /**
@@ -2676,19 +2720,35 @@ export default function OrderDetailPage() {
           Order's allocated share — which is the figure the summary is built
           from; a split payment states its full ledger amount underneath.
 
-          THE FINANCE DOOR IS THE TABLE'S OWN GATE, unchanged: offered only to a
-          reader who holds Finance module entry, and Finance still re-reads the
-          row under that reader's own RLS. */}
+          TWO AUDIENCES. The list is for everybody who may read this Order: its
+          amounts are the Order's own facts and the totals above are built from
+          them. Finance's record of its own work — the proof note, the
+          clarification it asked for, where the money landed, who signed it off
+          — is for a reader holding Finance module entry, which is the door the
+          Finance record link used to stand at. It is not on the startup path
+          and is not in anybody else's browser: loadPaymentDetail asks for one
+          payment, on a press, having first refused both a reader without the
+          capability and an id this list never showed. */}
       {paymentList && (
         <OrderPaymentListDialog
           kind={paymentList}
-          rows={orderPaymentList(payments, paymentList, paymentDetails)}
+          rows={paymentRows}
           formatDate={fmtDate}
           formatDateTime={iso => (iso ? fmtDateTime(iso) : '—')}
+          /* THE DOOR THE FINANCE RECORD LINK USED TO STAND AT. False draws the
+             list and no control, and the detail view cannot be reached at all. */
+          canViewDetails={mayViewPaymentDetails}
           openId={paymentDetailId}
-          onOpen={setPaymentDetailId}
-          onBack={() => setPaymentDetailId(null)}
-          onClose={() => { setPaymentList(null); setPaymentDetailId(null) }}
+          detail={paymentDetail}
+          /* Nothing is fetched until this fires, and it refuses an id the list
+             above does not contain. */
+          onOpen={paymentId => { void loadPaymentDetail(paymentId) }}
+          onBack={() => { setPaymentDetailId(null); setPaymentDetail(null) }}
+          onClose={() => {
+            setPaymentList(null)
+            setPaymentDetailId(null)
+            setPaymentDetail(null)
+          }}
         />
       )}
 

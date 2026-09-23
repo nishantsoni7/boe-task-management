@@ -522,7 +522,7 @@ describe('the payment section states a position and opens its rows', () => {
     assert.ok(pay.includes('onOpenList={setPaymentList}'))
     assert.equal((body.match(/<OrderPaymentListDialog/g) ?? []).length, 1,
       'one dialog component, told which list to show and which row is open')
-    assert.ok(body.includes('rows={orderPaymentList(payments, paymentList, paymentDetails)}'))
+    assert.ok(body.includes('rows={paymentRows}'))
   })
 
   test('the dialog is filtered by the SAME predicates the totals use', () => {
@@ -537,25 +537,40 @@ describe('the payment section states a position and opens its rows', () => {
   })
 
   test('the rest of a payment opens HERE, in the same dialog', () => {
-    // It was a link into the Finance module. Everything it went for is a column
-    // of a row this page already holds, so the dialog states it in place.
+    // It was a link into the Finance module. It is a dialog on this page now —
+    // and it kept the door it stood at, which is the next test.
     assert.equal(page.includes('financePaymentHref'), false)
     assert.ok(body.includes('openId={paymentDetailId}'))
-    assert.ok(body.includes('onBack={() => setPaymentDetailId(null)}'))
+    assert.ok(body.includes('detail={paymentDetail}'))
     assert.ok(code(WORKSPACE).includes('PAYMENT_DETAIL_BACK'))
   })
 
-  test('THE DETAIL IS THE SAME ROWS, WIDENED — not a second read and not a wider gate', () => {
-    // finance_payment_requests is guarded row by row, so a reader shown a
-    // payment was already entitled to every column of it. The page asks the two
-    // reads it already issues for the rest of those columns.
-    for (const column of ['human_payment_id', 'proof_note', 'admin_note',
-                          'approved_at', 'rejected_at', 'clarification_requested_at']) {
-      assert.ok(page.includes(column), column + ' is not read')
+  test('AND IT KEPT THE FINANCE DOOR THE LINK STOOD AT', () => {
+    // A payment's AMOUNT on an Order is the Order's own fact, and the totals are
+    // built from it. What FINANCE wrote about that payment was reachable only
+    // through a control gated on Finance module entry, and moving that control
+    // into a dialog did not change who may open it. Row-level database access is
+    // not that gate.
+    assert.ok(page.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
+    assert.ok(body.includes('canViewDetails={mayViewPaymentDetails}'))
+    assert.ok(code(WORKSPACE).includes('const open = canViewDetails ? orderPaymentById(rows, openId) : null'),
+      'an openId without the capability must not open the detail')
+  })
+
+  test('THE SENSITIVE COLUMNS ARE NOT ON THE STARTUP PATH', () => {
+    // They were, briefly, on the argument that RLS had already allowed the row.
+    // That put Finance's notes about every payment into every reader's browser.
+    const load = page.slice(page.indexOf('const loadOrder'), page.indexOf('const markUpdatesSeen'))
+    assert.ok(load.includes(
+      ".select('id, client_name, amount, payment_date, payment_mode, order_number, status')"))
+    for (const column of ['proof_note', 'admin_note', 'sales_note', 'received_in',
+                          'approved_at', 'human_payment_id']) {
+      assert.equal(load.includes(column), false, column + ' is fetched for every reader')
     }
-    // No third query appeared to fetch them.
-    assert.equal((page.match(/from\('finance_payment_requests'\)/g) ?? []).length, 1)
-    assert.ok(page.includes('setPaymentDetails(details)'))
+    // They arrive on the press, for one payment, behind two gates.
+    assert.ok(page.includes('const loadPaymentDetail'))
+    assert.ok(page.includes('orderPaymentDetailQuery({'))
+    assert.ok(page.includes('PAYMENT_DETAIL_COLUMNS'))
   })
 })
 

@@ -1107,6 +1107,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // The suites that hold it to its promises.
     'src/lib/orders/orderPaymentLists.test.ts',
     'src/app/orders/[id]/orderDetailArchitecture.test.ts',
+    'src/app/orders/[id]/orderFinanceSwitchAndDetailGate.test.ts',
     'src/app/orders/[id]/orderWorkspace.render.test.tsx',
     'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
     'src/app/orders/[id]/orderCurrentStatus.render.test.tsx',

@@ -28,11 +28,12 @@ import {
   PAYMENT_DETAIL_SPLIT_NOTE,
   PAYMENT_DETAIL_TITLE,
   PAYMENT_DETAIL_VIEW,
-  PAYMENT_LIST_CAPTION,
+  paymentListCaption,
   PAYMENT_LIST_EMPTY,
   PAYMENT_LIST_TITLE,
   RECEIVED_IN_LABEL,
   orderPaymentById,
+  type OrderPaymentDetailState,
   type OrderPaymentListKind,
   type OrderPaymentListRow,
 } from '@/lib/orders/orderPaymentLists'
@@ -443,19 +444,34 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
  * payments BY status. A reader who wants to know which payments make up a figure
  * clicks the figure; everybody else gets a section four lines long.
  *
- * THE AMOUNT IS THIS ORDER'S SHARE. `allocated` is the exact figure the summary
- * above is built from -- never the payment's full ledger amount -- so the rows
- * and the total they belong to cannot disagree. A payment that is only partly
- * this Order's says so under its own amount, which is the one case where the
- * full amount is worth printing at all.
+ * ── TWO AUDIENCES, TWO AMOUNTS OF RECORD ──
  *
- * IT DECIDES NOTHING AND OPENS NOTHING IT MAY NOT. The Finance link is drawn
- * only when the page passes one -- the page draws it on Finance module entry,
- * exactly as the table did -- and Finance re-reads the row under the reader's
- * own RLS whatever this renders.
+ * THE LIST IS FOR EVERYBODY WHO MAY READ THE ORDER. Its amounts are the Order's
+ * own — the share allocated to it, when it was paid, how, by whom, and whether
+ * Finance has decided yet. Those are facts about the Order, the totals above are
+ * built from them, and a reader who may see the Order may see them.
+ *
+ * THE DETAIL IS FOR A FINANCE READER. The proof note, the clarification Finance
+ * asked for, where the money landed and who signed it off are Finance's record
+ * of its own work. They sat behind a Finance-module door when this was a link
+ * into Finance, and they sit behind the same door now: `canViewDetails` is that
+ * capability, `View details` is drawn only for it, and the page fetches the
+ * fields only when it is true. A reader without it is offered no control, shown
+ * no field, and — because the page never asks — has none of it in their browser.
+ *
+ * ROW-LEVEL ACCESS IS NOT THE SAME PERMISSION. That a reader may see a payment's
+ * amount on their Order does not mean they may read Finance's notes about it,
+ * and this component does not treat the two as one answer.
+ *
+ * THE AMOUNT IS THIS ORDER'S SHARE. `allocated` is the exact figure the summary
+ * above is built from — never the payment's full ledger amount — so the rows and
+ * the total they belong to cannot disagree. A payment that is only partly this
+ * Order's says so under its own amount, which is the one case where the full
+ * amount is worth printing at all.
  */
 export function OrderPaymentListDialog({
-  kind, rows, formatDate, formatDateTime, openId, onOpen, onBack, onClose,
+  kind, rows, formatDate, formatDateTime,
+  canViewDetails, openId, detail, onOpen, onBack, onClose,
 }: {
   kind: OrderPaymentListKind
   rows: readonly OrderPaymentListRow[]
@@ -463,13 +479,23 @@ export function OrderPaymentListDialog({
   formatDate: (iso: string | null) => string
   /** The page's own timestamp formatting, for the moments Finance decided. */
   formatDateTime: (iso: string | null) => string
+  /**
+   * Finance module entry, resolved by the page — the same capability that used
+   * to decide whether the Finance record link existed. False hides the control
+   * AND the detail view; it is not a styling hint.
+   */
+  canViewDetails: boolean
   /** The payment whose detail is showing, or null for the list. */
   openId: string | null
+  /** The lazily fetched record for that payment, or null before it is asked for. */
+  detail: OrderPaymentDetailState | null
   onOpen: (paymentId: string) => void
   onBack: () => void
   onClose: () => void
 }) {
-  const open = orderPaymentById(rows, openId)
+  // BOTH CONDITIONS, NOT EITHER. An openId without the capability draws the
+  // list, so a state left over from anything cannot become a detail view.
+  const open = canViewDetails ? orderPaymentById(rows, openId) : null
 
   // ── THE DETAIL, IN THE SAME DIALOG ──
   //
@@ -478,9 +504,11 @@ export function OrderPaymentListDialog({
   // Order, one Escape from where they started, with a Back that returns them to
   // the list rather than to whatever the browser remembers.
   if (open) {
-    const d = open.detail
+    const d = detail?.state === 'ready' ? detail.fields : null
+
+    // THE ORDER'S OWN FACTS, from the row the list already had.
     const facts: { key: string; label: string; value: string }[] = [
-      { key: 'share', label: "Allocated to this Order", value: formatMoney(open.allocated) },
+      { key: 'share', label: 'Allocated to this Order', value: formatMoney(open.allocated) },
       // Stated ONLY when it differs. Printing "Full payment" equal to the share
       // on every ordinary row would invite a reader to look for a difference
       // that is not there.
@@ -490,9 +518,14 @@ export function OrderPaymentListDialog({
       { key: 'date', label: 'Payment date', value: formatDate(open.dateIso) },
       { key: 'mode', label: 'Mode', value: PAYMENT_MODE_LABEL[open.mode ?? ''] ?? open.mode ?? '\u2014' },
       { key: 'payer', label: 'Payer', value: customerDisplayName(open.client) },
-      ...(d.humanId ? [{ key: 'ref', label: 'Payment reference', value: d.humanId }] : []),
       ...(open.reference ? [{ key: 'order', label: 'Order reference', value: open.reference }] : []),
       { key: 'status', label: 'Verification', value: piPaymentStatusLabel(open.status) },
+    ]
+
+    // FINANCE'S OWN RECORD, from the read the page made only because this
+    // reader holds Finance module entry.
+    const financeFacts: { key: string; label: string; value: string }[] = d ? [
+      ...(d.humanId ? [{ key: 'ref', label: 'Payment reference', value: d.humanId }] : []),
       ...(d.receivedIn
         ? [{ key: 'in', label: 'Received in', value: RECEIVED_IN_LABEL[d.receivedIn] ?? d.receivedIn }]
         : []),
@@ -505,15 +538,15 @@ export function OrderPaymentListDialog({
       ...(d.rejectedAtIso
         ? [{ key: 'rejected', label: 'Rejected on', value: formatDateTime(d.rejectedAtIso) }]
         : []),
-    ]
+    ] : []
 
     // WHAT SOMEBODY WROTE ABOUT IT. Each is drawn only where it exists; an
     // empty heading over nothing is worse than no heading.
-    const notes: { key: string; label: string; value: string }[] = [
+    const notes: { key: string; label: string; value: string }[] = d ? [
       ...(d.proofNote ? [{ key: 'proof', label: 'Proof', value: d.proofNote }] : []),
       ...(d.salesNote ? [{ key: 'sales', label: 'Sales note', value: d.salesNote }] : []),
       ...(d.adminNote ? [{ key: 'admin', label: 'Finance note', value: d.adminNote }] : []),
-    ]
+    ] : []
 
     return (
       <OrderModalShell title={PAYMENT_DETAIL_TITLE} onClose={onClose}>
@@ -522,13 +555,22 @@ export function OrderPaymentListDialog({
         </button>
 
         <dl className="order-pay-detail">
-          {facts.map(fact => (
+          {[...facts, ...financeFacts].map(fact => (
             <div key={fact.key} className="order-pay-detail-row">
               <dt>{fact.label}</dt>
               <dd>{fact.value}</dd>
             </div>
           ))}
         </dl>
+
+        {/* THE REST IS STILL COMING, OR WAS REFUSED. Said either way, so a
+            half-drawn record never reads as a complete one. */}
+        {detail?.state === 'loading' && (
+          <p className="order-doc-loading" role="status">Loading the rest of this payment…</p>
+        )}
+        {detail?.state === 'error' && (
+          <p className="order-doc-unavailable" role="alert">{detail.message}</p>
+        )}
 
         {open.isPartialShare && (
           <p className="order-pay-list-note">{PAYMENT_DETAIL_SPLIT_NOTE}</p>
@@ -594,21 +636,24 @@ export function OrderPaymentListDialog({
                     </div>
                   )}
                 </dl>
-                {/* THE DOOR TO THE REST OF THE RECORD, and it opens HERE. This
-                    was a link into Finance — a different module, a different
-                    layout, and the Order lost behind it. Everything it went for
-                    is on the row this dialog already holds. */}
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-ghost order-pay-list-link"
-                  onClick={() => onOpen(row.id)}
-                >
-                  {PAYMENT_DETAIL_VIEW}
-                </button>
+                {/* THE DOOR TO FINANCE'S OWN RECORD, and it opens HERE rather
+                    than in the Finance module. Drawn on the SAME capability
+                    that used to decide whether the Finance record link existed:
+                    a reader without it gets the list and no control, which is
+                    exactly what they got before. */}
+                {canViewDetails && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-pay-list-link"
+                    onClick={() => onOpen(row.id)}
+                  >
+                    {PAYMENT_DETAIL_VIEW}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
-          <p className="order-pay-list-note">{PAYMENT_LIST_CAPTION}</p>
+          <p className="order-pay-list-note">{paymentListCaption(canViewDetails)}</p>
         </>
       )}
     </OrderModalShell>
@@ -904,19 +949,34 @@ export function SectionSkeleton({ rows = 3, label = 'Loading' }: { rows?: number
 }
 
 /**
- * The whole workspace before the Order row has landed: the command header, the
- * main column and the health rail, each in the shape of what is about to
- * appear, so the shell does not jump when the data arrives. Static blocks, no
- * animation — the same treatment the Control Center uses.
+ * THE PAGE BEFORE THE ORDER ROW HAS LANDED, IN THE SHAPE THE ORDER ROW WILL
+ * TAKE.
+ *
+ * IT WAS THE SHAPE OF A PAGE THAT NO LONGER EXISTS. This drew a flat row of six
+ * fact cells with a commercial rail beside them — the summary band two passes
+ * ago — under class names (.order-summary, .order-summary-facts, .order-fact,
+ * .order-summary-commercial) whose rules were deleted along with the band. So it
+ * rendered unstyled blocks at the wrong size in the wrong place, and the page
+ * jumped the moment the data arrived, which is the one thing a skeleton exists
+ * to prevent.
+ *
+ * IT USES THE REAL LAYOUT CLASSES NOW. The three-group panel, the Documents row
+ * and the lower workspace are the same grids the loaded page uses, so the blocks
+ * sit where the content will and the transition is a fill rather than a reflow.
+ * A skeleton built from its own private geometry drifts the moment the page
+ * moves; this one cannot, because it shares the page's.
+ *
+ * STATIC, AND IT FETCHES NOTHING. No animation, no timers, no reads — the same
+ * treatment the Control Center uses.
  */
 export function OrderDetailSkeleton() {
   return (
     <div className="order-detail-page" role="status" aria-busy="true" aria-label="Loading order">
       <div style={{ marginBottom: 10 }}><SkeletonBlock w={54} h={12} /></div>
       <div className="order-command-header" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <SkeletonBlock w={160} h={26} />
-          <SkeletonBlock w={200} h={14} />
+          <SkeletonBlock w={104} h={22} radius={999} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <SkeletonBlock w={110} h={34} radius={8} />
@@ -924,25 +984,90 @@ export function OrderDetailSkeleton() {
           <SkeletonBlock w={150} h={34} radius={8} />
         </div>
       </div>
-      <section className="order-summary">
-        <div className="order-summary-facts">
-          {[0, 1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="order-fact">
-              <SkeletonBlock w={72} h={10} />
-              <div style={{ marginTop: 6 }}><SkeletonBlock w={132} h={13} /></div>
-            </div>
+
+      {/* THE COMPACT OVERVIEW: three groups of label/value rows — four, three
+          and three — in the panel's own grid. */}
+      <section className="order-facts">
+        <div className="order-sum-groups">
+          {[4, 3, 3].map((rows, group) => (
+            <section key={group} className="order-sum-group">
+              <div style={{ marginBottom: 9 }}><SkeletonBlock w={104} h={12} /></div>
+              {Array.from({ length: rows }, (_, rowIndex) => (
+                <div key={rowIndex} className="order-sum-row">
+                  <SkeletonBlock w={70} h={11} />
+                  <div style={{ justifySelf: 'end' }}><SkeletonBlock w={112} h={12} /></div>
+                </div>
+              ))}
+            </section>
           ))}
         </div>
-        <div className="order-summary-commercial">
-          <SkeletonBlock w="60%" h={14} />
-          <div style={{ marginTop: 10 }}><SkeletonBlock w="80%" h={20} /></div>
-          <div style={{ marginTop: 16 }}><SkeletonBlock w="100%" h={120} /></div>
-        </div>
       </section>
+
+      {/* Documents two thirds, Fabric & Finish one third — the row's own grid. */}
+      <div className="order-docs-row">
+        <section className="order-docs">
+          <div style={{ padding: '9px 14px', borderBottom: '1px solid #F0F2F5' }}>
+            <SkeletonBlock w={88} h={11} />
+          </div>
+          {[0, 1, 2].map(i => (
+            <div key={i} className="order-doc-section">
+              <SkeletonBlock w={76} h={12} />
+              <div>
+                <SkeletonBlock w={132} h={15} />
+                <div style={{ marginTop: 6 }}><SkeletonBlock w="62%" h={11} /></div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <SkeletonBlock w={70} h={26} radius={6} />
+              </div>
+            </div>
+          ))}
+        </section>
+        <div className="order-status-card">
+          <div className="order-status-card-head"><SkeletonBlock w={104} h={11} /></div>
+          <div className="order-status-card-body">
+            {[0, 1].map(i => (
+              <div key={i}>
+                <SkeletonBlock w={52} h={10} />
+                <div style={{ marginTop: 6 }}><SkeletonBlock w={148} h={20} radius={999} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="order-products">
         <SectionSkeleton rows={4} label="Loading products" />
       </div>
-      <SectionSkeleton rows={2} label="Loading payment" />
+
+      {/* Payment and the commercial breakdown, in the lower workspace's grid. */}
+      <div className="order-lower">
+        <div className="order-lower-main">
+          <div className="order-status-card">
+            <div className="order-status-card-head"><SkeletonBlock w={70} h={11} /></div>
+            <div className="order-status-card-body">
+              <SkeletonBlock w={152} h={28} />
+              <SkeletonBlock w={248} h={12} />
+              <div className="order-pay-metrics">
+                {[0, 1].map(i => (
+                  <div key={i} className="order-pay-metric">
+                    <SkeletonBlock w={92} h={10} />
+                    <div style={{ marginTop: 7 }}><SkeletonBlock w={112} h={16} /></div>
+                  </div>
+                ))}
+              </div>
+              <SkeletonBlock w="100%" h={10} radius={999} />
+            </div>
+          </div>
+        </div>
+        <aside className="order-lower-aside">
+          <div className="order-commercial">
+            <SkeletonBlock w={132} h={11} />
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[0, 1, 2, 3, 4].map(i => <SkeletonBlock key={i} w="100%" h={12} />)}
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }

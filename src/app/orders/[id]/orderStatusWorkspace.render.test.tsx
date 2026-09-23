@@ -29,7 +29,7 @@ import {
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
-  DOC_MANAGE_LABEL,
+  DOC_VIEW_FILES_LABEL,
   DOC_NOT_ATTACHED,
   clientPoDocument,
   designFilesDocument,
@@ -263,11 +263,29 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/screenshot on file/i.test(body), false)
   })
 
+  test('THE DESIGN-FILE CONTROL IS NAMED FOR WHAT IT DOES', () => {
+    // It said 'View / Manage' and manages nothing: the dialog previews the
+    // pictures and offers no upload, replacement or deletion, because this
+    // Order has no way to perform any of the three. A label promising
+    // management where none exists sends somebody hunting for a control that
+    // was never built.
+    const html = docs()
+    assert.equal(DOC_VIEW_FILES_LABEL, 'View files')
+    assert.ok(text(html).includes(DOC_VIEW_FILES_LABEL))
+    // Scoped to the Design Files subsection: 'Uploaded' is the Main PI's own
+    // date label a few lines above, and is not a promise about anything.
+    const design = text(html.slice(
+      html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'),
+      html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"')))
+    assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
+      'the box must not promise an action the Order cannot perform')
+  })
+
   test('Design Files says how many, and offers one action', () => {
     const body = text(docs())
     assert.ok(body.includes('9 files'))
     assert.ok(body.includes('6 representative · 3 customization · 6 product lines'))
-    assert.ok(body.includes(DOC_MANAGE_LABEL))
+    assert.ok(body.includes(DOC_VIEW_FILES_LABEL))
   })
 
   test('an EMPTY design record says so quietly, and offers no action', () => {
@@ -276,9 +294,9 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     })
     const design = html.slice(html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'))
     assert.ok(design.includes('order-doc-empty'), 'drawn in the muted empty style')
-    // No View / Manage on a list with nothing in it.
+    // No View files control on a list with nothing in it.
     assert.equal(design.slice(0, design.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"'))
-      .includes(DOC_MANAGE_LABEL), false)
+      .includes(DOC_VIEW_FILES_LABEL), false)
     // And it is not an alarm: no red, no warning word.
     assert.equal(/order-doc-unavailable/.test(design), false)
   })
@@ -588,6 +606,17 @@ describe('the design-file dialog', () => {
 
   test('thumbnails are lazy, so a long list does not fetch what nobody scrolls to', () => {
     assert.match(dialog(), /loading="lazy"/)
+  })
+
+  test('IT IS READ-ONLY, AND SAYS WHERE THE FILES COME FROM', () => {
+    // These are the approved PI's own product images, inherited at conversion;
+    // the PI screen is where one is added or removed. Order-level design
+    // documents do not exist, so nothing here offers to manage one.
+    const html = dialog()
+    assert.ok(text(html).includes('These files come from the approved PI'))
+    for (const control of ['<input', '<form', 'Upload', 'Replace', 'Delete']) {
+      assert.equal(html.includes(control), false, control + ' is offered by a read-only dialog')
+    }
   })
 
   test('an empty list says so rather than showing an empty grid', () => {
