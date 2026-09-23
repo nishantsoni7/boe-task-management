@@ -563,11 +563,12 @@ begin
     get stacked diagnostics v_msg = message_text;
     assert v_msg like 'ORDER_PI_VERSION_TRANSITION_INVALID%', v_msg;
   end;
-  -- two versions cannot both be current, whatever the caller;
+  -- two versions cannot both be current, whatever the caller (since
+  -- 20270101000000 the guard refuses pending → approved before the index can);
   begin
     update public.order_pi_versions set status = 'approved', decided_by = v_admin, decided_at = now() where id = v_v3;
     raise exception 'two approved versions on one Order must be refused';
-  exception when unique_violation then
+  exception when unique_violation or sqlstate '42501' then
     null;
   end;
   -- history cannot be deleted;
@@ -589,11 +590,17 @@ begin
   assert (select status from public.order_pi_versions where id = v_v3) = 'pending';
   assert (select status from public.order_pi_versions where id = v_v1) = 'approved';
 
-  -- The one legal way V3 becomes current: V1 superseded first, then V3 approved.
+  -- The one legal way V3 becomes current (20270101000000): an admin approval
+  -- stages it, and only inside the operations acceptance is V1 superseded and
+  -- V3 approved.
+  update public.order_pi_versions
+     set status = 'admin_approved', decided_by = v_admin, decided_at = now() where id = v_v3;
+  perform set_config('boe.pi_revision_apply', (select submission_id::text from public.order_pi_versions where id = v_v3), true);
   update public.order_pi_versions
      set status = 'superseded', superseded_at = now(), superseded_by_version_id = v_v3 where id = v_v1;
   update public.order_pi_versions
-     set status = 'approved', decided_by = v_admin, decided_at = now() where id = v_v3;
+     set status = 'approved', operations_decided_by = v_admin, operations_decided_at = now(), applied_at = now() where id = v_v3;
+  perform set_config('boe.pi_revision_apply', '', true);
   assert (select count(*) from public.order_pi_versions where order_id = v_order and status = 'approved') = 1,
     'exactly one current version';
   assert (select workbook_path from public.order_pi_versions where id = v_v1) is not null,
