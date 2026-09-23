@@ -39,7 +39,7 @@ describe('an admin-approved revision is a proposal, never the PI in force', () =
     assert.equal(h.current?.versionNumber, 1)
     assert.equal(h.pending?.versionNumber, 2)
     assert.equal(h.pending?.statusLabel, 'Approved by Admin — awaiting Operations')
-    assert.equal(h.pending?.decisionLine, 'Approved by Admin by Meera · 2026-09-20')
+    assert.equal(h.pending?.decisionLine, 'Admin-approved by Meera · 2026-09-20')
     assert.equal(h.pending?.operationsReviewer, 'Kavya')
   })
 
