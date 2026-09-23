@@ -5,34 +5,45 @@
 // decides every authority question again under row locks; this module only
 // turns the row into words, and decides whether a control is DRAWN.
 //
-// THE THREE STATES OF THE VERSION IN FORCE, in words first:
-//   Awaiting operations review   recorded, nobody has decided
-//   Accepted for production      the reviewer can work from this version
-//   Clarification needed         the reviewer cannot, and said why
+// ONE OPERATIONS DECISION, AND WHAT THE TWO WORDS MEAN
+// ----------------------------------------------------
+// ACCEPTANCE is the operations reviewer's decision about ONE PI version:
+// "operations has reviewed this exact version and can work from it". It says
+// nothing about manufacturing progress.
 //
+// ALIGNMENT (orders.production_alignment) is what the Order carries as a
+// result. For an Order with a handoff, accepting the version in force ALIGNS
+// the Order, withdrawing or flagging takes the alignment back, and approving a
+// later version RESETS it (the alignment covered the earlier version). So the
+// Order is aligned exactly when its current version is accepted, and the old
+// "Align for Production" control is the same door: the page draws ONE set of
+// controls, on the Operations review card, for the assigned reviewer only.
+//
+// A LEGACY Order (approved before handoffs were recorded, never revised since)
+// has no handoff: it reads "Not recorded", its alignment is whatever it was,
+// and the old control and the old permission still apply to it.
+//
+// THE STATES OF THE VERSION IN FORCE, in words first:
+//   Awaiting operations review   recorded, nobody has decided
+//   Accepted for production      the reviewer can work from it; the Order is aligned
+//   Clarification needed         the reviewer cannot, and said why; not aligned
+//                                (after an acceptance, this is a WITHDRAWAL, and the
+//                                acceptance stays on record)
 // PLUS TWO HONEST ABSENCES:
 //   Not recorded     an Order approved before handoffs existed. Nothing is
 //                    invented for it; the words say so.
 //   Not assigned     no active operations reviewer is configured. The handoff
 //                    is real and awaiting, and an administrator must act.
-//
-// ACCEPTANCE IS NOT COMPLETION. It says operations has reviewed and can work
-// from this version; it says nothing about manufacturing.
-//
-// ALIGNMENT IS A DIFFERENT STATEMENT. orders.production_alignment is the Head
-// of Manufacturing's feasibility answer; the handoff is the reviewer's answer
-// about the document. When a later version is approved on an Order that was
-// aligned against an earlier one, the page says so — it does not move the
-// alignment, and it does not pretend the alignment covers the new version.
 
 export type OperationsHandoffStatus = 'awaiting' | 'accepted' | 'clarification_needed'
 
-/** The columns the page reads; matches the table, with the actor names embedded. */
+/** The columns the page reads; matches the table. */
 export const ORDER_OPERATIONS_HANDOFF_COLUMNS = [
   'id', 'order_id', 'pi_version_id', 'submission_id', 'version_number',
   'approved_by', 'approved_at', 'assigned_to', 'assigned_at',
   'production_alignment_at_approval', 'prior_handoff_status', 'status',
   'accepted_by', 'accepted_at', 'accepted_note',
+  'acceptance_withdrawn_by', 'acceptance_withdrawn_at', 'acceptance_withdrawn_reason',
   'clarification_by', 'clarification_at', 'clarification_reason',
   'superseded_at', 'superseded_by_version_id', 'created_at',
 ].join(', ')
@@ -53,6 +64,9 @@ export type PersistedOperationsHandoff = {
   accepted_by: string | null
   accepted_at: string | null
   accepted_note: string | null
+  acceptance_withdrawn_by: string | null
+  acceptance_withdrawn_at: string | null
+  acceptance_withdrawn_reason: string | null
   clarification_by: string | null
   clarification_at: string | null
   clarification_reason: string | null
@@ -74,7 +88,7 @@ export const OPERATIONS_HANDOFF_STATUS_LABEL: Record<OperationsHandoffStatus, st
 
 export const OPERATIONS_HANDOFF_NOT_RECORDED_LABEL = 'Not recorded'
 export const OPERATIONS_HANDOFF_NOT_RECORDED_HINT =
-  'This Order was approved before operations handoffs were recorded. No acceptance is claimed for it.'
+  'This Order was approved before operations handoffs were recorded. No acceptance is claimed for it, and its production alignment is set the old way, from the header.'
 export const OPERATIONS_HANDOFF_UNASSIGNED_LABEL = 'No operations reviewer assigned'
 export const OPERATIONS_HANDOFF_UNASSIGNED_HINT =
   'An administrator must assign the operations reviewer in Control Center before this version can be accepted.'
@@ -82,12 +96,16 @@ export const OPERATIONS_HANDOFF_UNASSIGNED_HREF = '/admin/control-center?tab=ope
 
 export const ACCEPT_FOR_PRODUCTION_LABEL = 'Accept for production'
 export const CANNOT_ACCEPT_LABEL = 'Cannot accept'
+export const WITHDRAW_ACCEPTANCE_LABEL = 'Withdraw acceptance'
 export const ACCEPT_DIALOG_TITLE = 'Accept this PI version for production'
 export const CANNOT_ACCEPT_DIALOG_TITLE = 'Cannot accept this PI version'
+export const WITHDRAW_DIALOG_TITLE = 'Withdraw the acceptance of this PI version'
 export const ACCEPT_CONFIRM =
-  'This records that operations has reviewed this exact PI version and can work from it. It does not say any manufacturing work is done, and it does not change production alignment.'
+  'This records that operations has reviewed this exact PI version and can work from it, and it aligns the Order for production against this version. It does not say any manufacturing work is done.'
 export const CANNOT_ACCEPT_CONFIRM =
-  'This flags the version for clarification and tells the approver why. The Order is not changed. Once the question is settled you can accept this same version, or a revised PI will bring a new one.'
+  'This flags the version for clarification and tells the approver why. The Order stays not aligned for production. Once the question is settled you can accept this same version, or a revised PI will bring a new one.'
+export const WITHDRAW_CONFIRM =
+  'This takes back the acceptance of this version and the production alignment that came with it, and tells the approver why. The acceptance stays on record with its date. Nothing is said about work already done.'
 export const ACCEPT_NOTE_LABEL = 'Note (optional)'
 export const CANNOT_ACCEPT_REASON_LABEL = 'What needs clarifying'
 export const CANNOT_ACCEPT_REASON_PLACEHOLDER = 'Say what stops operations from working from this version'
@@ -97,12 +115,20 @@ export const OPERATIONS_HANDOFF_REASON_TOO_LONG = `The reason may be at most ${O
 
 /** The card's read-only line for a reader who cannot decide. */
 export const OPERATIONS_REVIEW_READ_ONLY_NOTE =
-  'Only the assigned operations reviewer can accept a version or flag it for clarification.'
+  'Only the assigned operations reviewer can accept a version or flag it for clarification. Being an administrator does not count.'
 
-export const ALIGNMENT_PREDATES_VERSION_WARNING = (version: number, alignedOn: number | null) =>
-  alignedOn
-    ? `Production was aligned against PI V${alignedOn}. PI V${version} has not been reviewed by operations yet.`
-    : `Production was aligned before PI V${version} was approved. PI V${version} has not been reviewed by operations yet.`
+/** What the two words mean, said once on the card. */
+export const ACCEPTANCE_MEANING =
+  'Accepting says operations has reviewed this exact PI version and can work from it, and it aligns the Order for production against this version. It does not say any manufacturing work is done.'
+
+/** A revised workbook: what the card can and cannot show. */
+export const REVISION_COMPARE_NOTE =
+  'A field-by-field comparison of the two workbooks is not available yet. Open the current PI and the previous one to compare them.'
+export const OPEN_CURRENT_PI_LABEL = (version: number) => `Open current PI (V${version})`
+export const OPEN_PREVIOUS_PI_LABEL = (version: number) => `Open previous PI (V${version})`
+
+export const ALIGNMENT_PREDATES_VERSION_WARNING = (version: number) =>
+  `Production was aligned before PI V${version} was approved. That alignment has been reset; it does not cover PI V${version}, which has not been reviewed by operations yet.`
 
 // ── The view ─────────────────────────────────────────────────────────────────
 
@@ -138,12 +164,18 @@ export type OperationsHandoffView =
       unassigned: boolean
       /** The decision, when there is one. */
       decision: OperationsHandoffDecisionLine | null
+      /** A withdrawn acceptance: what had been accepted, kept on record. */
+      withdrawn: { acceptedBy: string | null; acceptedAt: string | null; by: string | null; at: string | null; reason: string | null } | null
+      /** The revised workbook's reason, for V2+; null for V1. */
+      revisionReason: string | null
       /** Set when the previous version had been accepted and this one has not. */
       priorAcceptedNotice: string | null
       /** Set when the Order was aligned for production before this version. */
       alignmentWarning: string | null
+      /** What the Order's alignment says as a result of this handoff. */
+      alignment: { label: string; line: string | null; aligned: boolean }
       /** Which control, if any, this reader is offered. */
-      actions: { accept: boolean; cannotAccept: boolean }
+      actions: { accept: boolean; cannotAccept: boolean; withdraw: boolean }
       /** Why no control is offered, for a reader who cannot decide. */
       readOnlyNote: string | null
     }
@@ -178,7 +210,7 @@ export function splitOperationsHandoffs(rows: readonly PersistedOperationsHandof
  * Whether this reader may DECIDE the live handoff. Drawn only; the database
  * re-derives the whole rule under a lock. Never under View As, and never for
  * an admin who is not the assigned reviewer — being an admin is not being
- * operations.
+ * operations. An accepted version can still be decided: withdrawn.
  */
 export function canDecideOperationsHandoff(input: {
   viewerId: string | null
@@ -191,7 +223,30 @@ export function canDecideOperationsHandoff(input: {
   if (handoff.superseded_at !== null) return false
   if (handoff.assigned_to === null || handoff.assigned_to !== viewerId) return false
   if (orderStatus === 'cancelled') return false
-  return handoff.status !== 'accepted'
+  return true
+}
+
+/** The alignment the Order carries, as a consequence of this handoff. */
+export function describeHandoffAlignment(input: {
+  live: PersistedOperationsHandoff
+  reviewerName: string | null
+  formatWhen: (iso: string | null) => string
+}): { label: string; line: string | null; aligned: boolean } {
+  const { live } = input
+  if (live.status === 'accepted') {
+    return {
+      aligned: true,
+      label: `Aligned · ${versionLabel(live.version_number)}`,
+      line: `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`,
+    }
+  }
+  return {
+    aligned: false,
+    label: 'Not Aligned',
+    line: live.status === 'clarification_needed'
+      ? `${versionLabel(live.version_number)} flagged for clarification`
+      : `Awaiting operations acceptance of ${versionLabel(live.version_number)}`,
+  }
 }
 
 export function describeOperationsHandoff(input: {
@@ -206,6 +261,8 @@ export function describeOperationsHandoff(input: {
   /** The Order's current alignment and when it was set. */
   productionAligned: boolean
   productionAlignedAt: string | null
+  /** The live version's revision reason (order_pi_versions.revision_reason), for V2+. */
+  revisionReason?: string | null
 }): OperationsHandoffView {
   const { live, namesById, formatWhen } = input
   if (!live) {
@@ -241,23 +298,27 @@ export function describeOperationsHandoff(input: {
           }
         : null
 
+  const withdrawn = live.acceptance_withdrawn_at
+    ? {
+        acceptedBy: name(live.accepted_by),
+        acceptedAt: live.accepted_at ? formatWhen(live.accepted_at) : null,
+        by: name(live.acceptance_withdrawn_by),
+        at: formatWhen(live.acceptance_withdrawn_at),
+        reason: live.acceptance_withdrawn_reason,
+      }
+    : null
+
   const priorAcceptedNotice =
     live.prior_handoff_status === 'accepted' && live.status !== 'accepted'
       ? `An earlier version was accepted for production. ${versionLabel(live.version_number)} has not been.`
       : null
 
-  // The alignment predates this version when it was set before the version
-  // was approved. The handoff also records what alignment said at approval,
-  // which is the same question asked of the row rather than of two clocks;
-  // either signal alone is enough to warn.
-  const alignedBefore =
-    input.productionAligned && (
-      live.production_alignment_at_approval === 'aligned' ||
-      (input.productionAlignedAt !== null && input.productionAlignedAt < live.approved_at)
-    )
+  // The handoff records what alignment said when this version was approved:
+  // 'aligned' means the Order was in production against an earlier version,
+  // and the database reset it. Warn until this version is accepted.
   const alignmentWarning =
-    alignedBefore && live.status !== 'accepted'
-      ? ALIGNMENT_PREDATES_VERSION_WARNING(live.version_number, null)
+    live.production_alignment_at_approval === 'aligned' && live.status !== 'accepted'
+      ? ALIGNMENT_PREDATES_VERSION_WARNING(live.version_number)
       : null
 
   const mayDecide = canDecideOperationsHandoff({
@@ -282,17 +343,21 @@ export function describeOperationsHandoff(input: {
       : `Operations reviewer: ${reviewerName ?? 'assigned'}`,
     unassigned,
     decision,
+    withdrawn,
+    revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
     priorAcceptedNotice,
     alignmentWarning,
+    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen }),
     actions: {
-      accept: mayDecide,
+      accept: mayDecide && live.status !== 'accepted',
       cannotAccept: mayDecide && live.status === 'awaiting',
+      withdraw: mayDecide && live.status === 'accepted',
     },
     readOnlyNote: mayDecide
       ? null
       : unassigned
         ? OPERATIONS_HANDOFF_UNASSIGNED_HINT
-        : live.status === 'accepted' || input.orderStatus === 'cancelled'
+        : input.orderStatus === 'cancelled'
           ? null
           : OPERATIONS_REVIEW_READ_ONLY_NOTE,
   }
@@ -315,7 +380,7 @@ export function describeOperationsHandoffHistory(input: {
     return {
       key: h.id,
       versionLabel: versionLabel(h.version_number),
-      statusLabel: h.status === 'awaiting' ? 'Not decided' : status,
+      statusLabel: h.status === 'awaiting' ? 'Not decided' : h.acceptance_withdrawn_at ? `${status} (acceptance withdrawn)` : status,
       tone: h.status === 'awaiting' ? 'neutral' : OPERATIONS_HANDOFF_TONE[h.status],
       line,
       note: h.status === 'accepted' ? h.accepted_note : h.status === 'clarification_needed' ? h.clarification_reason : null,
@@ -367,6 +432,12 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   if (m.includes('ORDER_OPERATIONS_HANDOFF_NOT_FOUND')) {
     return 'That handoff no longer exists. Refresh the page.'
   }
+  if (m.includes('not active')) {
+    return 'Your account is not active.'
+  }
+  if (m.includes('do not have access to this Order')) {
+    return 'You no longer have access to this Order.'
+  }
   if (m.includes('Only the assigned operations reviewer') || m.includes('permission') || m.includes('42501')) {
     return 'Only the assigned operations reviewer can decide this. Being an administrator does not count.'
   }
@@ -380,7 +451,7 @@ export const OPERATIONS_REVIEWER_SECTION_DESCRIPTION =
   'One person. Every time a PI becomes a Confirmed Order, or a revised PI is approved, they are notified and asked to accept that exact version for production or say what needs clarifying. Their acceptance is their own: an administrator is never counted in their place.'
 export const OPERATIONS_REVIEWER_NOBODY = 'Nobody is assigned'
 export const OPERATIONS_REVIEWER_NOBODY_HINT =
-  'New handoffs are recorded and shown as unassigned until someone is chosen here. Choosing someone also assigns every handoff that is still waiting.'
+  'New handoffs are recorded and shown as unassigned until someone is chosen here. Choosing someone also takes over every handoff that is still waiting or flagged; clearing the choice leaves every one of them visibly unassigned.'
 export const OPERATIONS_REVIEWER_SAVE_LABEL = 'Save reviewer'
 export const OPERATIONS_REVIEWER_CLEAR_OPTION = 'No reviewer (leave handoffs unassigned)'
 
@@ -402,10 +473,15 @@ export function describeReviewerAssignmentFailure(error: { message?: string | nu
   return m || 'The reviewer could not be saved.'
 }
 
-export function describeReviewerSaved(input: { name: string | null; reassigned: number }): string {
-  if (!input.name) return 'No operations reviewer is assigned. New handoffs will wait unassigned until one is chosen.'
+export function describeReviewerSaved(input: { name: string | null; reassigned: number; unassigned?: number }): string {
+  if (!input.name) {
+    const n = input.unassigned ?? 0
+    return n > 0
+      ? `No operations reviewer is assigned. ${n} waiting or flagged handoff${n === 1 ? '' : 's'} now show${n === 1 ? 's' : ''} as unassigned until someone is chosen.`
+      : 'No operations reviewer is assigned. New handoffs will wait unassigned until one is chosen.'
+  }
   const tail = input.reassigned > 0
-    ? ` ${input.reassigned} waiting handoff${input.reassigned === 1 ? '' : 's'} reassigned to them, and they have been notified.`
+    ? ` ${input.reassigned} waiting or flagged handoff${input.reassigned === 1 ? '' : 's'} reassigned to them, and they have been notified.`
     : ''
   return `${input.name} is now the operations reviewer.${tail}`
 }
@@ -417,26 +493,30 @@ export const AWAITING_OPERATIONS_REVIEW_SUB = 'PI versions awaiting your accepta
 export const AWAITING_OPERATIONS_REVIEW_SUB_ADMIN = 'PI versions awaiting operations'
 /** The Confirmed Orders list, filtered to Orders whose version in force awaits operations. */
 export const OPERATIONS_REVIEW_QUEUE_HREF = '/orders/all?ops=awaiting'
-export const OPERATIONS_REVIEW_QUEUE_BANNER = 'Showing Orders whose current PI version is awaiting operations review'
+export const OPERATIONS_REVIEW_QUEUE_BANNER = 'Showing Orders whose current PI version is awaiting operations review or flagged for clarification'
 
-/** The Order-history words for the four events the migration writes. */
+/** The Order-history words for the events the migration writes. */
 export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
-  operations_handoff_recorded:             'Sent to operations for review',
-  operations_reviewer_assigned:            'Operations reviewer assigned',
-  operations_handoff_accepted:             'Accepted for production by operations',
-  operations_handoff_clarification_needed: 'Operations cannot accept: clarification needed',
+  operations_handoff_recorded:              'Sent to operations for review',
+  operations_reviewer_assigned:             'Operations reviewer assigned',
+  operations_reviewer_unassigned:           'Operations reviewer unassigned',
+  operations_handoff_accepted:              'Accepted for production by operations',
+  operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
+  operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
 }
 
 export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone> = {
-  operations_handoff_recorded:             'amber',
-  operations_reviewer_assigned:            'neutral',
-  operations_handoff_accepted:             'green',
-  operations_handoff_clarification_needed: 'red',
+  operations_handoff_recorded:              'amber',
+  operations_reviewer_assigned:             'neutral',
+  operations_reviewer_unassigned:           'amber',
+  operations_handoff_accepted:              'green',
+  operations_handoff_clarification_needed:  'red',
+  operations_handoff_acceptance_withdrawn:  'red',
 }
 
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
-/** One sentence of detail for each of the four events, from its payload. */
+/** One sentence of detail for each event, from its payload. */
 export function describeOperationsHandoffEvent(eventType: string, payload: Record<string, unknown> | null | undefined): string | null {
   const p = payload ?? {}
   const v = typeof p.version_number === 'number' ? versionLabel(p.version_number) : null
@@ -447,16 +527,42 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
       if (p.superseded_handoff_status === 'accepted' && typeof p.superseded_version_number === 'number') {
         parts.push(`replaces accepted ${versionLabel(p.superseded_version_number)}`)
       }
-      if (p.production_alignment === 'aligned') parts.push('Order was already aligned for production')
+      if (p.production_alignment === 'aligned') parts.push('the Order was aligned for production; that alignment was reset')
       return parts.filter(Boolean).join(' · ') || null
     }
     case 'operations_reviewer_assigned':
-      return v
+    case 'operations_reviewer_unassigned':
+      return [v, p.handoff_status === 'clarification_needed' ? 'flagged for clarification' : null].filter(Boolean).join(' · ') || null
     case 'operations_handoff_accepted':
-      return [v, p.after_clarification === true ? 'after clarification' : null, text(p.note)].filter(Boolean).join(' · ') || null
+      return [v, p.after_withdrawal === true ? 'after a withdrawal' : p.after_clarification === true ? 'after clarification' : null, text(p.note)].filter(Boolean).join(' · ') || null
     case 'operations_handoff_clarification_needed':
+    case 'operations_handoff_acceptance_withdrawn':
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null
     default:
       return null
+  }
+}
+
+/**
+ * The alignment event, when a handoff wrote it: the existing history label
+ * ("Production alignment changed") keeps its words; this adds WHY, from the
+ * payload the handoff functions attach. Null for the legacy or manual path.
+ */
+export function describeAlignmentEventReason(payload: Record<string, unknown> | null | undefined): string | null {
+  const p = payload ?? {}
+  const v = typeof p.version_number === 'number' ? versionLabel(p.version_number) : null
+  switch (p.reason) {
+    case 'pi_version_approved':
+      return typeof p.covered_version_number === 'number'
+        ? `reset: ${v ?? 'a new version'} approved; the alignment covered ${versionLabel(p.covered_version_number)}`
+        : `reset: ${v ?? 'a new version'} approved; the alignment predated version tracking`
+    case 'operations_handoff_accepted':
+      return v ? `${v} accepted by operations` : 'accepted by operations'
+    case 'operations_handoff_clarification_needed':
+      return v ? `${v} flagged for clarification` : 'flagged for clarification'
+    case 'operations_handoff_acceptance_withdrawn':
+      return v ? `acceptance of ${v} withdrawn` : 'acceptance withdrawn'
+    default:
+      return p.legacy_order === true ? 'set the old way (no handoff on this Order)' : null
   }
 }

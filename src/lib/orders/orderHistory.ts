@@ -21,6 +21,7 @@ import {
 import {
   OPERATIONS_HANDOFF_EVENT_LABEL,
   OPERATIONS_HANDOFF_EVENT_TONE,
+  describeAlignmentEventReason,
   describeOperationsHandoffEvent,
 } from './operationsHandoff'
 
@@ -100,7 +101,10 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     case 'production_alignment_changed': {
       const from = p.from === 'aligned' ? 'Aligned' : 'Not Aligned'
       const to = p.to === 'aligned' ? 'Aligned' : 'Not Aligned'
-      return [`${from} → ${to}`, text(p.note)].filter(Boolean).join(' · ')
+      // WHY it moved, when a handoff moved it (20261229000000): accepted,
+      // flagged, withdrawn, or reset by a newer version. Null for the manual
+      // path on a legacy Order, whose words are unchanged.
+      return [`${from} → ${to}`, describeAlignmentEventReason(p), text(p.note)].filter(Boolean).join(' · ')
     }
     case 'payment_verified':
     case 'payment_rejected': {

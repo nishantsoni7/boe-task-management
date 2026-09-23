@@ -296,7 +296,8 @@ export default function AllOrdersPage() {
     const { data, error } = await supabase
       .from('order_operations_handoffs')
       .select('order_id, assigned_to')
-      .eq('status', 'awaiting')
+      // Awaiting AND flagged: a flagged version is still unresolved work.
+      .in('status', ['awaiting', 'clarification_needed'])
       .is('superseded_at', null)
     if (error) { setAwaitingOps(new Map()); return }
     setAwaitingOps(new Map(((data ?? []) as { order_id: string; assigned_to: string | null }[])

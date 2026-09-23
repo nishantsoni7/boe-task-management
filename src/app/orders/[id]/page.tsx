@@ -1657,9 +1657,11 @@ export default function OrderDetailPage() {
       if (profile?.id && profile.full_name) {
         setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
       }
-      // The RPC wrote one handoff row and one activity entry, and notified the
-      // approver from inside the database. Nothing else changed.
-      await Promise.all([reloadHandoffs(), reloadActivity()])
+      // The RPC wrote one handoff row, moved the four alignment columns on
+      // `orders` (accepting aligns; flagging or withdrawing un-aligns), and
+      // appended the activity entries — so the handoff and the Order row are
+      // re-read, and the trail with the row. Nothing else changed.
+      await Promise.all([reloadHandoffs(), reloadOrderRow()])
     } finally {
       setHandoffBusy(false)
     }
@@ -1972,7 +1974,16 @@ export default function OrderDetailPage() {
     orderStatus: order.status,
     productionAligned: order.production_alignment === 'aligned',
     productionAlignedAt: order.production_aligned_at ?? null,
+    // WHY the version in force was revised: the approved version's own
+    // revision_reason, from the same rows the PI history reads.
+    revisionReason: piHistory.current?.revisionReason ?? null,
   }) : null
+  // The approved PI and the one it replaced, for the card's two Open buttons:
+  // the same PiVersionView objects the Documents box and the PI history use,
+  // signed on the press through openVersionFile, never a URL in the markup.
+  const previousPiVersion = piHistory.current
+    ? piHistory.history.find(v => v.status === 'superseded' && v.versionNumber === piHistory.current!.versionNumber - 1) ?? null
+    : null
   const operationsHistory = useMemo(
     () => describeOperationsHandoffHistory({
       history: operationsSplit.history,
@@ -2248,13 +2259,18 @@ export default function OrderDetailPage() {
     orderStatus: order.status,
   })
 
+  // THE PRODUCTION ROW SAYS WHICH VERSION. On an Order with a handoff the
+  // alignment follows the acceptance of the version in force, so the badge
+  // names that version and the acceptance behind it (or what is awaited); the
+  // four columns themselves are unchanged and still read from the row.
+  const handoffAlignment = operationsView?.kind === 'recorded' ? operationsView.alignment : null
   const recordFacts = orderRecordFacts({
     status: order.status,
     salespersonName: order.assigned_to_name ?? null,
     leadSource,
     productionAligned,
-    productionLabel: production?.label ?? '—',
-    productionLine: production?.line ?? null,
+    productionLabel: handoffAlignment?.label ?? production?.label ?? '—',
+    productionLine: handoffAlignment ? handoffAlignment.line : (production?.line ?? null),
   })
 
   /**
@@ -2311,7 +2327,11 @@ export default function OrderDetailPage() {
   // unchanged: an active admin, not under View As, on a testing-phase Order
   // while cleanup is still enabled.
   const actions = arrangeOrderActions({
-    alignAction: production?.action ? (productionAligned ? 'unalign' : 'align') : null,
+    // ONE DOOR. On an Order with an operations handoff (20261229000000) the
+    // alignment IS the handoff decision, taken on the Operations review card
+    // by the assigned reviewer; the header offers no second button. The
+    // legacy Order with no handoff keeps the old control and the old rule.
+    alignAction: operationsSplit.live ? null : production?.action ? (productionAligned ? 'unalign' : 'align') : null,
     canAmend,
     canRequest,
     canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
@@ -2529,6 +2549,13 @@ export default function OrderDetailPage() {
             busy={handoffBusy}
             onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
             onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+            // A withdrawal is the same decision on an accepted version; the
+            // dialog says so, and the database treats it as one.
+            onWithdraw={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+            currentVersion={piHistory.current}
+            previousVersion={previousPiVersion}
+            onOpenVersion={v => { void openVersionFile(v, 'view') }}
+            openingVersion={piFileBusy !== null}
           />
         )}
 
@@ -3024,6 +3051,7 @@ export default function OrderDetailPage() {
           orderNumber={order.display_number}
           versionLabel={operationsView.versionLabel}
           decision={handoffDialog}
+          withdrawing={handoffDialog === 'clarification_needed' && operationsView.status === 'accepted'}
           saving={handoffBusy}
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}

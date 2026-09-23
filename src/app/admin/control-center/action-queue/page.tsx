@@ -21,6 +21,7 @@ type QueueCategory =
   | 'order_pi_review'
   | 'order_change_request'
   | 'order_operations_review'
+  | 'order_operations_clarification'
 
 type ActionQueueItem = {
   id: string
@@ -45,6 +46,10 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
   // on operations — and, when NOBODY is assigned to review it, that it is
   // waiting on them to assign someone.
   order_operations_review:     { label: 'Operations review',   actionLabel: 'Awaiting operations review' },
+  // The reviewer said "Cannot accept", with a reason. Work for the approver:
+  // answer the question, then the reviewer decides again — or a revised PI
+  // brings a new version.
+  order_operations_clarification: { label: 'Needs clarification', actionLabel: 'Resolve operations clarification' },
 }
 
 // Deep-links into the destination page's existing tab/record/modal query-param
@@ -72,6 +77,7 @@ function buildHref(category: QueueCategory, id: string): string {
     // The Order's Operations review card names the version awaiting review
     // and holds the two decision controls. `id` is the ORDER's id.
     case 'order_operations_review':     return `/orders/${id}#${OPERATIONS_REVIEW_ANCHOR}`
+    case 'order_operations_clarification': return `/orders/${id}#${OPERATIONS_REVIEW_ANCHOR}`
   }
 }
 
@@ -131,8 +137,11 @@ type OperationsReviewRow = {
   approved_at: string
   assigned_to: string | null
   created_at: string
+  status: 'awaiting' | 'clarification_needed'
+  clarification_at: string | null
+  clarification_reason: string | null
   order: { client_name: string; total_value: number | null; status: string } | null
-  reviewer: { full_name: string } | null
+  reviewer: { full_name: string; is_active: boolean | null } | null
 }
 
 export default function ActionQueuePage() {
@@ -206,14 +215,19 @@ export default function ActionQueuePage() {
       // live, undecided handoffs, with the Order and the reviewer they are
       // addressed to. order_operations_handoffs_select scopes this to Orders
       // the reader may open; this page is admin-only besides.
+      // AWAITING AND FLAGGED: a version operations cannot accept is work
+      // needing resolution — an answer from the approver, then a fresh
+      // decision — not a notification somebody may have read. The reviewer's
+      // reason rides along so the row says what is being asked.
       supabase
         .from('order_operations_handoffs')
         .select(`
           id, order_id, version_number, approved_at, assigned_to, created_at,
+          status, clarification_at, clarification_reason,
           order:orders!order_id(client_name, total_value, status),
-          reviewer:users!assigned_to(full_name)
+          reviewer:users!assigned_to(full_name, is_active)
         `)
-        .eq('status', 'awaiting')
+        .in('status', ['awaiting', 'clarification_needed'])
         .is('superseded_at', null),
     ])
 
@@ -325,20 +339,28 @@ export default function ActionQueuePage() {
       // A cancelled Order has nothing left to accept; the RPC refuses it, so
       // the queue does not offer it.
       if (r.order?.status === 'cancelled') continue
+      const flagged = r.status === 'clarification_needed'
+      const reviewer = r.reviewer?.full_name ?? 'the operations reviewer'
+      const inactive = !!r.assigned_to && r.reviewer?.is_active === false
       combined.push({
         id: `order_operations_review:${r.id}`,
-        category: 'order_operations_review',
-        // NAMED IN WORDS: which version, and — the case that needs an
-        // administrator rather than the reviewer — that nobody is assigned.
-        actionLabel: r.assigned_to
-          ? `PI V${r.version_number} awaiting ${r.reviewer?.full_name ?? 'the operations reviewer'}`
-          : `PI V${r.version_number} awaiting operations — no reviewer assigned`,
+        category: flagged ? 'order_operations_clarification' : 'order_operations_review',
+        // NAMED IN WORDS: which version; the reviewer's own reason when it is
+        // flagged; and the two cases that need an ADMINISTRATOR rather than
+        // the reviewer — nobody assigned, or an assigned reviewer who is no
+        // longer active.
+        actionLabel: flagged
+          ? `PI V${r.version_number}: ${reviewer} cannot accept — "${r.clarification_reason ?? 'no reason recorded'}"`
+            + (inactive ? ' (reviewer inactive)' : '')
+          : r.assigned_to
+            ? `PI V${r.version_number} awaiting ${reviewer}${inactive ? ' (reviewer inactive — reassign)' : ''}`
+            : `PI V${r.version_number} awaiting operations — no reviewer assigned`,
         clientName: r.order?.client_name ?? 'Unnamed client',
         ownerName: r.reviewer?.full_name ?? null,
         module: 'Orders',
         amount: r.order?.total_value ?? null,
-        pendingSince: r.approved_at ?? r.created_at,
-        href: buildHref('order_operations_review', r.order_id),
+        pendingSince: (flagged ? r.clarification_at : null) ?? r.approved_at ?? r.created_at,
+        href: buildHref(flagged ? 'order_operations_clarification' : 'order_operations_review', r.order_id),
       })
     }
 

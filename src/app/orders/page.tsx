@@ -203,6 +203,7 @@ export default function OrdersDashboardPage() {
       availableRes,
       opsMineRes,
       opsUnassignedRes,
+      opsFlaggedRes,
     ] = await Promise.all([
       supabase
         .from('orders')
@@ -251,6 +252,11 @@ export default function OrdersDashboardPage() {
         .eq('status', 'awaiting').is('superseded_at', null).eq('assigned_to', viewerId),
       supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
         .eq('status', 'awaiting').is('superseded_at', null).is('assigned_to', null),
+      // FLAGGED: the reviewer said "Cannot accept". Work needing resolution,
+      // whoever it is addressed to, so it is counted for everyone who can see
+      // the Order.
+      supabase.from('order_operations_handoffs').select('id', { count: 'exact', head: true })
+        .eq('status', 'clarification_needed').is('superseded_at', null),
     ])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -282,6 +288,7 @@ export default function OrdersDashboardPage() {
       // and an absent count draws no card rather than a false "nothing waits".
       operationsReview:     opsMineRes.error ? undefined : (opsMineRes.count ?? 0),
       operationsUnassigned: opsUnassignedRes.error ? undefined : (opsUnassignedRes.count ?? 0),
+      operationsFlagged:    opsFlaggedRes.error ? undefined : (opsFlaggedRes.count ?? 0),
     })
 
     setListLoading(false)

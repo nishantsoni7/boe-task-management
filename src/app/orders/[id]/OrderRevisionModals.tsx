@@ -60,6 +60,9 @@ import {
   CANNOT_ACCEPT_REASON_LABEL,
   CANNOT_ACCEPT_REASON_PLACEHOLDER,
   OPERATIONS_HANDOFF_REASON_MAX_LENGTH,
+  WITHDRAW_ACCEPTANCE_LABEL,
+  WITHDRAW_CONFIRM,
+  WITHDRAW_DIALOG_TITLE,
   validateHandoffDecision,
   type OperationsHandoffStatus,
 } from '@/lib/orders/operationsHandoff'
@@ -295,11 +298,13 @@ export function ProductionAlignmentModal({
  * version's currency under a row lock; this dialog only collects the words.
  */
 export function OperationsHandoffDecisionModal({
-  orderNumber, versionLabel, decision, saving, failure, onClose, onConfirm,
+  orderNumber, versionLabel, decision, withdrawing = false, saving, failure, onClose, onConfirm,
 }: {
   orderNumber: string
   versionLabel: string
   decision: OperationsHandoffStatus
+  /** A "clarification_needed" decision on an ACCEPTED version: a withdrawal. */
+  withdrawing?: boolean
   saving: boolean
   failure: string | null
   onClose: () => void
@@ -312,12 +317,12 @@ export function OperationsHandoffDecisionModal({
 
   return (
     <OrderModal
-      title={accepting ? ACCEPT_DIALOG_TITLE : CANNOT_ACCEPT_DIALOG_TITLE}
+      title={accepting ? ACCEPT_DIALOG_TITLE : withdrawing ? WITHDRAW_DIALOG_TITLE : CANNOT_ACCEPT_DIALOG_TITLE}
       subtitle={`Order ${orderNumber} · ${versionLabel}`}
       onClose={onClose}
     >
       <OrderModalNotice tone={accepting ? 'info' : 'warning'}>
-        {accepting ? ACCEPT_CONFIRM : CANNOT_ACCEPT_CONFIRM}
+        {accepting ? ACCEPT_CONFIRM : withdrawing ? WITHDRAW_CONFIRM : CANNOT_ACCEPT_CONFIRM}
       </OrderModalNotice>
       <OrderField
         label={accepting ? ACCEPT_NOTE_LABEL : CANNOT_ACCEPT_REASON_LABEL}
@@ -344,7 +349,7 @@ export function OperationsHandoffDecisionModal({
         saving={saving}
         disabled={touched && !check.ok}
         destructive={!accepting}
-        saveLabel={accepting ? ACCEPT_FOR_PRODUCTION_LABEL : CANNOT_ACCEPT_LABEL}
+        saveLabel={accepting ? ACCEPT_FOR_PRODUCTION_LABEL : withdrawing ? WITHDRAW_ACCEPTANCE_LABEL : CANNOT_ACCEPT_LABEL}
       />
     </OrderModal>
   )

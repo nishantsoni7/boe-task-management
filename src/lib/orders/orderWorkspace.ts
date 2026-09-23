@@ -107,7 +107,11 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   if (open && input.isOverdue) {
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
   }
-  if (open && !input.productionAligned) {
+  // ONE LINE ABOUT PRODUCTION. On an Order with an operations handoff the
+  // alignment IS the handoff decision (20261229000000), so the handoff item
+  // below says it in the words that name the version; "Production not
+  // aligned" is kept for the legacy Order that has no handoff.
+  if (open && !input.productionAligned && !input.operationsReview) {
     items.push({ key: 'production', label: 'Production not aligned', tone: 'amber' })
   }
   if (open && !input.hasSalesperson) {

@@ -57,6 +57,12 @@ export type OrderDashboardCounts = {
   operationsReview: number | undefined
   /** Live, undecided handoffs with NO reviewer assigned — an admin's problem. */
   operationsUnassigned: number | undefined
+  /**
+   * Live handoffs FLAGGED for clarification that this reader can see: work
+   * needing an answer from the approver, then a fresh decision — visible until
+   * it is resolved, whoever it is addressed to.
+   */
+  operationsFlagged: number | undefined
 }
 
 export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
@@ -67,6 +73,7 @@ export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
   availableToAllocate: undefined,
   operationsReview: undefined,
   operationsUnassigned: undefined,
+  operationsFlagged: undefined,
 }
 
 export type DashboardTone = 'neutral' | 'attention' | 'money'
@@ -143,12 +150,20 @@ export function orderDashboardCards(input: {
   // at zero: a permanent "0 awaiting you" would be a card about nothing.
   const awaitingMe = counts.operationsReview ?? 0
   const unassigned = counts.operationsUnassigned ?? 0
-  if (awaitingMe > 0 || unassigned > 0) {
+  const flagged = counts.operationsFlagged ?? 0
+  if (awaitingMe > 0 || unassigned > 0 || flagged > 0) {
+    // The headline is what waits on THIS reader; the subtitle names the two
+    // things that wait on an administrator: nobody assigned, and a version the
+    // reviewer could not accept (flagged), which stays here until resolved.
+    const admin = [
+      unassigned > 0 ? `${unassigned} with no reviewer assigned` : null,
+      flagged > 0 ? `${flagged} flagged: clarification needed` : null,
+    ].filter(Boolean).join(' · ')
     cards.push({
       key: 'operations_review',
       label: AWAITING_OPERATIONS_REVIEW_LABEL,
-      value: awaitingMe > 0 ? awaitingMe : unassigned,
-      sub: awaitingMe > 0 ? AWAITING_OPERATIONS_REVIEW_SUB : `${unassigned} with no reviewer assigned`,
+      value: awaitingMe > 0 ? awaitingMe : unassigned + flagged,
+      sub: awaitingMe > 0 ? (admin ? `${AWAITING_OPERATIONS_REVIEW_SUB} · ${admin}` : AWAITING_OPERATIONS_REVIEW_SUB) : admin,
       href: OPERATIONS_REVIEW_QUEUE_HREF,
       tone: 'attention',
     })

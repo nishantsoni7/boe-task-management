@@ -5,27 +5,48 @@
 -- WHAT THIS IS FOR
 -- ----------------
 -- Commercial approval is one person's decision; running the Order is another
--- person's. Today the second person finds out by word of mouth. From this
--- migration on, EVERY time a PI version becomes the one in force — V1 when a
--- submitted PI becomes a Confirmed Order, V2+ when a revised workbook is
--- approved — a handoff row is recorded for THAT version, the assigned
--- operations reviewer is notified in-app, and the Order shows, in words,
--- whether that exact version is awaiting review, accepted for production, or
--- flagged for clarification.
+-- person's. From this migration on, EVERY time a PI version becomes the one in
+-- force — V1 when a submitted PI becomes a Confirmed Order, V2+ when a revised
+-- workbook is approved — a handoff row is recorded for THAT version, the
+-- assigned operations reviewer is notified in-app, and the Order shows, in
+-- words, whether that exact version is awaiting review, accepted for
+-- production, or flagged for clarification.
 --
--- WHAT IT IS NOT
--- --------------
--- * Not a claim that manufacturing work is done. Acceptance means "operations
---   has reviewed this version and can work from it", nothing more.
--- * Not production alignment. orders.production_alignment and
---   set_order_production_alignment() are untouched: alignment is the Head of
---   Manufacturing's statement about feasibility; the handoff is the reviewer's
---   statement about the document. The page states both and relates them.
--- * Not a notification matrix. Two types: one to the reviewer when a version
---   is approved, one to the approver when the reviewer decides.
--- * Not a backfill. No Order approved before this migration gets a handoff
---   row; the page says "not recorded" for them. Inventing acceptances nobody
---   made would be a false record.
+-- ONE OPERATIONS DECISION, AND WHAT THE TWO WORDS MEAN AFTER THIS FILE
+-- --------------------------------------------------------------------
+-- ACCEPTANCE (this file) is the operations reviewer's decision about ONE PI
+-- version: "operations has reviewed this exact version and can work from it".
+-- It is not a claim that manufacturing work is done.
+--
+-- ALIGNMENT (orders.production_alignment, 20261119000000) was the Head of
+-- Manufacturing's per-Order feasibility answer, moved by
+-- set_order_production_alignment() under orders.align_production. From this
+-- file on, for every Order that carries a handoff, ALIGNMENT IS THE RESULT OF
+-- ACCEPTANCE AND NOTHING ELSE:
+--
+--   * accepting the version in force ALIGNS the Order (the four alignment
+--     columns are written inside the same transaction, by the reviewer);
+--   * withdrawing that acceptance ("Cannot accept" on an accepted version,
+--     reason required) takes the alignment back;
+--   * approving a LATER version RESETS the alignment to not_aligned — the
+--     alignment covered the earlier version, and the new one is unaccepted —
+--     and records that reset on the Order's history with what it covered;
+--   * set_order_production_alignment() is re-emitted to be the SAME door: on
+--     an Order with a handoff it routes to the handoff decision, so the
+--     assigned reviewer is the only person who can align it, whatever
+--     permission or role the caller holds. Being an admin, or holding
+--     orders.align_production, no longer aligns such an Order.
+--
+-- So an older alignment can never make a newer, unaccepted PI look ready:
+-- the database resets it the moment the newer version is approved, and only
+-- accepting that version can align the Order again.
+--
+-- LEGACY ORDERS. An Order approved before this file has no handoff row and is
+-- shown as "Not recorded". Its alignment, if any, is kept exactly as it is and
+-- still moves under the OLD rule (orders.align_production) — until a revised
+-- PI is approved on it, at which point a handoff is recorded, the alignment is
+-- reset, and the new rule applies. Nothing is backfilled: inventing
+-- acceptances nobody made would be a false record.
 --
 -- WHO THE REVIEWER IS
 -- -------------------
@@ -33,10 +54,11 @@
 -- order_operations_reviewers as a user id — never a display name, never a
 -- guessed id in this file. The trigger resolves it at the moment of approval
 -- and requires the person to be active and not deleted; otherwise the handoff
--- is recorded UNASSIGNED and stays visibly so until an administrator assigns
--- someone (which assigns every live unassigned handoff at once). Being an
--- administrator does not make somebody the reviewer, and an administrator is
--- not substituted when the reviewer is missing.
+-- is recorded UNASSIGNED and stays visibly so. Assigning someone readdresses
+-- every live, unresolved handoff (awaiting AND flagged) to them; clearing the
+-- assignment unassigns every live, unresolved handoff, visibly. A former
+-- reviewer can no longer decide anything. An administrator is never
+-- substituted.
 --
 -- HOW IT IS TRANSACTIONAL AND IDEMPOTENT
 -- --------------------------------------
@@ -45,15 +67,14 @@
 -- own transaction (approve_order_submission §14b; approve_order_pi_revision).
 -- Neither function is re-emitted. The handoff table is UNIQUE on the version
 -- id, and the trigger returns early if a handoff for that version exists, so a
--- retried approval (both functions are themselves idempotent) cannot record a
--- second handoff or a second notification.
+-- retried approval cannot record a second handoff or a second notification.
 --
 -- AUTHORITY, AT THE DATABASE
 -- --------------------------
 -- decide_order_operations_handoff() re-checks under row locks that the caller
--- IS the assigned reviewer (not merely an admin), that the handoff is live and
--- undecided, that its version is still the Order's approved one, and that the
--- Order is not cancelled. Clients hold SELECT only on both tables.
+-- IS the assigned reviewer (not merely an admin), is active, can open the
+-- Order, that the handoff is live and its version still the Order's approved
+-- one, and that the Order is not cancelled. Clients hold SELECT only.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -67,10 +88,6 @@ alter type notification_type add value if not exists 'order_operations_review_de
 
 
 -- ═══ 2. The reviewer assignment ════════════════════════════════════════════
---
--- One row per duty; Phase 1 has one duty. user_id NULL means "nobody is
--- assigned" and is a legitimate, visible state — not an error and not a
--- fallback to an admin.
 
 create table if not exists public.order_operations_reviewers (
   duty        text primary key check (duty = 'pi_handoff'),
@@ -80,7 +97,7 @@ create table if not exists public.order_operations_reviewers (
 );
 
 comment on table public.order_operations_reviewers is
-  'The one operations reviewer a PI-to-operations handoff is addressed to, chosen by an administrator in Control Center. Written only by set_order_operations_reviewer(). A NULL user_id means no reviewer is assigned, and new handoffs are recorded unassigned until one is.';
+  'The one operations reviewer a PI-to-operations handoff is addressed to, chosen by an administrator in Control Center. Written only by set_order_operations_reviewer(). A NULL user_id means no reviewer is assigned: new handoffs are recorded unassigned and every live unresolved one is unassigned.';
 
 alter table public.order_operations_reviewers enable row level security;
 revoke all on table public.order_operations_reviewers from public, anon, authenticated;
@@ -111,8 +128,9 @@ create table if not exists public.order_operations_handoffs (
   -- The reviewer this handoff is addressed to. NULL = unassigned, visibly.
   assigned_to                      uuid references public.users(id) on delete set null,
   assigned_at                      timestamptz,
-  -- What production alignment said when this version was approved. Later
-  -- versions on an aligned Order are exactly the case that needs a warning.
+  -- What production alignment said when this version was approved, BEFORE
+  -- the trigger reset it. 'aligned' here means the Order was in production
+  -- against an earlier version: exactly the case that needs a warning.
   production_alignment_at_approval text not null
     check (production_alignment_at_approval in ('not_aligned', 'aligned')),
   -- The decision state of the handoff this one superseded, if any — so the
@@ -124,6 +142,13 @@ create table if not exists public.order_operations_handoffs (
   accepted_by                      uuid references public.users(id) on delete set null,
   accepted_at                      timestamptz,
   accepted_note                    text,
+  -- An acceptance can be WITHDRAWN by the same reviewer, with a reason: the
+  -- version goes back to clarification_needed and the Order's alignment is
+  -- taken back. The acceptance columns are KEPT so the row still says who
+  -- accepted and when; the withdrawal says who took it back and why.
+  acceptance_withdrawn_by          uuid references public.users(id) on delete set null,
+  acceptance_withdrawn_at          timestamptz,
+  acceptance_withdrawn_reason      text,
   clarification_by                 uuid references public.users(id) on delete set null,
   clarification_at                 timestamptz,
   clarification_reason             text,
@@ -139,8 +164,16 @@ create table if not exists public.order_operations_handoffs (
     check ((assigned_to is null) = (assigned_at is null)),
   constraint order_operations_handoffs_acceptance_complete
     check (
-      (status = 'accepted' and accepted_by is not null and accepted_at is not null)
-      or (status <> 'accepted' and accepted_by is null and accepted_at is null and accepted_note is null)
+      -- accepted: the acceptance is present and NOT withdrawn
+      (status = 'accepted' and accepted_by is not null and accepted_at is not null
+        and acceptance_withdrawn_at is null and acceptance_withdrawn_by is null and acceptance_withdrawn_reason is null)
+      -- not accepted: either never accepted, or accepted and then withdrawn
+      or (status <> 'accepted' and (
+           (accepted_by is null and accepted_at is null and accepted_note is null
+             and acceptance_withdrawn_at is null and acceptance_withdrawn_by is null and acceptance_withdrawn_reason is null)
+           or (accepted_by is not null and accepted_at is not null
+             and acceptance_withdrawn_at is not null and acceptance_withdrawn_by is not null and acceptance_withdrawn_reason is not null)
+      ))
     ),
   constraint order_operations_handoffs_clarification_complete
     check (
@@ -154,11 +187,12 @@ create table if not exists public.order_operations_handoffs (
     check (
       (accepted_note is null or char_length(accepted_note) <= 1000)
       and (clarification_reason is null or char_length(clarification_reason) <= 1000)
+      and (acceptance_withdrawn_reason is null or char_length(acceptance_withdrawn_reason) <= 1000)
     )
 );
 
 comment on table public.order_operations_handoffs is
-  'One row per PI version that became the version in force on a Confirmed Order (V1 at approval, V2+ at revision approval). Records who approved it, who must review it for operations, and that reviewer''s decision. Written only by the order_pi_versions trigger and the two RPCs; clients read. Superseded rows are kept as the audit of earlier versions. Orders approved before this table existed have no row, and are shown as "not recorded".';
+  'One row per PI version that became the version in force on a Confirmed Order (V1 at approval, V2+ at revision approval). Records who approved it, who must review it for operations, and that reviewer''s decision. Accepting ALIGNS the Order for production; withdrawing or flagging takes the alignment back; a later version supersedes the row (its decision kept) and resets the alignment. Written only by the order_pi_versions trigger and the RPCs; clients read. Orders approved before this table existed have no row, and are shown as "not recorded".';
 
 -- Exactly one LIVE handoff per Order: the one for the version in force.
 create unique index if not exists order_operations_handoffs_one_live_per_order
@@ -167,10 +201,10 @@ create index if not exists order_operations_handoffs_order_idx
   on public.order_operations_handoffs (order_id, version_number desc);
 create index if not exists order_operations_handoffs_awaiting_idx
   on public.order_operations_handoffs (assigned_to)
-  where status = 'awaiting' and superseded_at is null;
+  where status <> 'accepted' and superseded_at is null;
 
 
--- ═══ 4. The guard: identity frozen, acceptance permanent, no client writes ══
+-- ═══ 4. The guard: identity frozen, decisions are events, no client writes ═
 
 create or replace function public.order_operations_handoffs_guard()
 returns trigger
@@ -203,23 +237,41 @@ begin
         'ORDER_OPERATIONS_HANDOFF_FROZEN: the version, the approver and the approval time of a handoff cannot be changed'
         using errcode = 'P0001';
     end if;
-    if old.status = 'accepted' and new.status <> 'accepted' then
+    -- An acceptance is never silently edited or reverted to "awaiting": it is
+    -- either in force, or withdrawn with a reason (an event on the Order).
+    if old.status = 'accepted' and new.status = 'awaiting' then
       raise exception
-        'ORDER_OPERATIONS_HANDOFF_ACCEPTED_IS_PERMANENT: an acceptance is not taken back; a later PI version records a new handoff'
+        'ORDER_OPERATIONS_HANDOFF_ACCEPTED_IS_PERMANENT: an acceptance is withdrawn with a reason, never erased'
         using errcode = 'P0001';
     end if;
-    if old.status = 'accepted' and (
-         new.accepted_by is distinct from old.accepted_by
+    if old.status = 'accepted' and new.status = 'clarification_needed' and (
+         new.acceptance_withdrawn_at is null
+         or new.accepted_by is distinct from old.accepted_by
          or new.accepted_at is distinct from old.accepted_at
          or new.accepted_note is distinct from old.accepted_note) then
       raise exception
-        'ORDER_OPERATIONS_HANDOFF_ACCEPTED_IS_PERMANENT: who accepted, when and with what note cannot be rewritten'
+        'ORDER_OPERATIONS_HANDOFF_ACCEPTED_IS_PERMANENT: withdrawing keeps who accepted, when and with what note'
+        using errcode = 'P0001';
+    end if;
+    if old.status = new.status and (
+         new.accepted_by is distinct from old.accepted_by
+         or new.accepted_at is distinct from old.accepted_at
+         or new.accepted_note is distinct from old.accepted_note
+         or new.acceptance_withdrawn_by is distinct from old.acceptance_withdrawn_by
+         or new.acceptance_withdrawn_at is distinct from old.acceptance_withdrawn_at
+         or new.acceptance_withdrawn_reason is distinct from old.acceptance_withdrawn_reason
+         or new.clarification_by is distinct from old.clarification_by
+         or new.clarification_at is distinct from old.clarification_at
+         or new.clarification_reason is distinct from old.clarification_reason) then
+      raise exception
+        'ORDER_OPERATIONS_HANDOFF_DECISION_IS_AN_EVENT: a decision''s actor, time and words change only with the decision itself'
         using errcode = 'P0001';
     end if;
     if old.superseded_at is not null and (
          new.superseded_at is distinct from old.superseded_at
          or new.superseded_by_version_id is distinct from old.superseded_by_version_id
-         or new.status is distinct from old.status) then
+         or new.status is distinct from old.status
+         or new.assigned_to is distinct from old.assigned_to) then
       raise exception
         'ORDER_OPERATIONS_HANDOFF_SUPERSEDED: a superseded handoff is history and cannot change'
         using errcode = 'P0001';
@@ -256,7 +308,69 @@ create policy "order_operations_handoffs_module_entry_gate" on public.order_oper
   with check (public.module_entry_open('orders'));
 
 
--- ═══ 5. Recording the handoff, inside the approval's own transaction ═══════
+-- ═══ 5. Moving the Order's alignment from a handoff decision ═══════════════
+--
+-- INTERNAL. The one place the four alignment columns are written on behalf of
+-- a handoff: by acceptance (→ aligned), by withdrawal or a flag (→ not
+-- aligned), and by the trigger when a later version is approved (→ not
+-- aligned). It opens the same production_alignment context
+-- set_order_production_alignment() opens, so orders_guard_amendable_columns
+-- admits the write, and it records the SAME production_alignment_changed
+-- event that function records — with the version and the reason — so the
+-- Order's history reads as one story. Idempotent: no change, no event.
+
+create or replace function public.order_operations_handoff_set_alignment(
+  p_order_id  uuid,
+  p_actor     uuid,
+  p_aligned   boolean,
+  p_note      text,
+  p_detail    jsonb
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_order  public.orders%rowtype;
+  v_target text := case when p_aligned then 'aligned' else 'not_aligned' end;
+  v_now    timestamptz := now();
+begin
+  select * into v_order from public.orders where id = p_order_id for update;
+  if not found then
+    return false;
+  end if;
+  if v_order.production_alignment = v_target then
+    return false;
+  end if;
+
+  perform set_config('boe.production_alignment_context', 'production_alignment', true);
+  update public.orders
+     set production_alignment      = v_target,
+         production_aligned_by     = case when p_aligned then p_actor else null end,
+         production_aligned_at     = case when p_aligned then v_now else null end,
+         production_alignment_note = p_note,
+         updated_at                = v_now
+   where id = p_order_id;
+  perform set_config('boe.production_alignment_context', '', true);
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (p_order_id, p_actor, 'production_alignment_changed',
+          jsonb_build_object('from', v_order.production_alignment, 'to', v_target, 'note', p_note,
+                             'previous_aligned_by', v_order.production_aligned_by,
+                             'previous_aligned_at', v_order.production_aligned_at)
+          || coalesce(p_detail, '{}'::jsonb));
+  return true;
+end;
+$$;
+
+comment on function public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb) is
+  'Internal: writes the Order''s production alignment on behalf of a handoff decision or a version change, inside the production_alignment context, and records production_alignment_changed with the version and reason. Not callable by any client role.';
+
+revoke execute on function public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb) from public, anon, authenticated;
+
+
+-- ═══ 6. Recording the handoff, inside the approval's own transaction ═══════
 
 create or replace function public.order_pi_versions_record_operations_handoff()
 returns trigger
@@ -271,6 +385,7 @@ declare
   v_handoff_id   uuid;
   v_now          timestamptz := now();
   v_approver     text;
+  v_alignment    text;
 begin
   -- Only the moment a version BECOMES the one in force.
   if new.status <> 'approved' then
@@ -288,6 +403,7 @@ begin
   if not found then
     return null;
   end if;
+  v_alignment := v_order.production_alignment;
 
   -- The assigned reviewer, resolved NOW through their user record. Inactive or
   -- deleted means unassigned — never an admin in their place.
@@ -316,7 +432,7 @@ begin
     new.order_id, new.id, new.submission_id, new.version_number,
     new.decided_by, coalesce(new.decided_at, v_now),
     v_reviewer, case when v_reviewer is null then null else v_now end,
-    v_order.production_alignment, v_prior.status
+    v_alignment, v_prior.status
   )
   returning id into v_handoff_id;
 
@@ -327,10 +443,26 @@ begin
             'version_id', new.id,
             'version_number', new.version_number,
             'assigned_to', v_reviewer,
-            'production_alignment', v_order.production_alignment,
+            'production_alignment', v_alignment,
             'superseded_handoff_id', v_prior.id,
             'superseded_handoff_status', v_prior.status,
             'superseded_version_number', v_prior.version_number));
+
+  -- AN OLDER ALIGNMENT NEVER COVERS A NEWER VERSION. If the Order was aligned
+  -- for production, that alignment was for the version just superseded (or,
+  -- on a legacy Order, for whatever was current before tracking); the new
+  -- version is unaccepted, so the Order goes back to not_aligned NOW, with the
+  -- reset on its history saying what the alignment had covered. Nothing about
+  -- the earlier alignment or acceptance is erased.
+  if v_alignment = 'aligned' then
+    perform public.order_operations_handoff_set_alignment(
+      new.order_id, new.decided_by, false, null,
+      jsonb_build_object('reason', 'pi_version_approved',
+                         'version_id', new.id, 'version_number', new.version_number,
+                         'covered_version_number', v_prior.version_number,
+                         'covered_handoff_status', v_prior.status,
+                         'handoff_id', v_handoff_id));
+  end if;
 
   -- The reviewer hears about it — unless they are the approver, who was
   -- looking at the screen. The handoff itself is still recorded as awaiting:
@@ -346,9 +478,9 @@ begin
         when v_prior.status = 'accepted' then
           format('You accepted PI V%s earlier. Open the Order, review what changed in V%s, then choose Accept for production or Cannot accept.',
                  v_prior.version_number, new.version_number)
-        when v_order.production_alignment = 'aligned' then
-          format('This Order is already aligned for production. Review PI V%s and choose Accept for production or Cannot accept.',
-                 new.version_number)
+        when v_alignment = 'aligned' then
+          format('This Order was aligned for production before PI V%s; that alignment has been reset. Review PI V%s and choose Accept for production or Cannot accept.',
+                 new.version_number, new.version_number)
         else
           format('Open the Order, review PI V%s, then choose Accept for production or Cannot accept.',
                  new.version_number)
@@ -362,7 +494,7 @@ end;
 $$;
 
 comment on function public.order_pi_versions_record_operations_handoff() is
-  'AFTER trigger on order_pi_versions: when a version becomes approved, supersedes the Order''s live handoff (keeping its decision), records a new awaiting handoff for this version addressed to the assigned, active operations reviewer (or unassigned), logs operations_handoff_recorded on the Order, and notifies the reviewer once. Idempotent per version.';
+  'AFTER trigger on order_pi_versions: when a version becomes approved, supersedes the Order''s live handoff (keeping its decision), records a new awaiting handoff for this version addressed to the assigned, active operations reviewer (or unassigned), resets a production alignment that covered the earlier version (recorded on the history), logs operations_handoff_recorded, and notifies the reviewer once. Idempotent per version.';
 
 revoke execute on function public.order_pi_versions_record_operations_handoff() from public, anon, authenticated;
 
@@ -372,7 +504,7 @@ create trigger order_pi_versions_record_operations_handoff
   for each row execute function public.order_pi_versions_record_operations_handoff();
 
 
--- ═══ 6. Assigning the reviewer (Control Center, administrators only) ═══════
+-- ═══ 7. Assigning the reviewer (Control Center, administrators only) ═══════
 
 create or replace function public.set_order_operations_reviewer(p_user_id uuid)
 returns jsonb
@@ -381,12 +513,13 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_actor    uuid := public.assert_order_submission_actor();
-  v_target   public.users%rowtype;
-  v_previous uuid;
-  v_moved    integer := 0;
-  v_h        record;
-  v_now      timestamptz := now();
+  v_actor      uuid := public.assert_order_submission_actor();
+  v_target     public.users%rowtype;
+  v_previous   uuid;
+  v_moved      integer := 0;
+  v_unassigned integer := 0;
+  v_h          record;
+  v_now        timestamptz := now();
 begin
   if not exists (
     select 1 from public.users u
@@ -419,58 +552,69 @@ begin
   on conflict (duty) do update
     set user_id = excluded.user_id, assigned_by = excluded.assigned_by, assigned_at = excluded.assigned_at;
 
-  -- Every LIVE, UNDECIDED handoff is readdressed to the new reviewer — the
-  -- unassigned ones, and the ones the previous reviewer never decided. Decided
-  -- handoffs keep the name of whoever decided them.
-  if p_user_id is not null then
-    for v_h in
-      select h.id, h.order_id, h.version_number, h.assigned_to, o.display_number
-        from public.order_operations_handoffs h
-        join public.orders o on o.id = h.order_id
-       where h.superseded_at is null
-         and h.status = 'awaiting'
-         and h.assigned_to is distinct from p_user_id
-         and o.status <> 'cancelled'
-       order by h.created_at
-         for update of h
-    loop
-      update public.order_operations_handoffs
-         set assigned_to = p_user_id, assigned_at = v_now
-       where id = v_h.id;
+  -- EVERY LIVE, UNRESOLVED HANDOFF — awaiting or flagged — follows the
+  -- assignment: readdressed to the new reviewer, or UNASSIGNED when the
+  -- assignment is cleared, so the Order and the queues say so. Accepted
+  -- handoffs keep the name of whoever accepted them, and a superseded one is
+  -- history. A former reviewer can decide nothing from here on: the decision
+  -- door checks assigned_to at the moment of the call.
+  for v_h in
+    select h.id, h.order_id, h.version_number, h.status, h.assigned_to, o.display_number
+      from public.order_operations_handoffs h
+      join public.orders o on o.id = h.order_id
+     where h.superseded_at is null
+       and h.status <> 'accepted'
+       and h.assigned_to is distinct from p_user_id
+       and o.status <> 'cancelled'
+     order by h.created_at
+       for update of h
+  loop
+    update public.order_operations_handoffs
+       set assigned_to = p_user_id, assigned_at = case when p_user_id is null then null else v_now end
+     where id = v_h.id;
 
-      insert into public.order_activity_log (order_id, actor_id, event_type, payload)
-      values (v_h.order_id, v_actor, 'operations_reviewer_assigned',
-              jsonb_build_object('handoff_id', v_h.id, 'version_number', v_h.version_number,
-                                 'assigned_to', p_user_id, 'previously_assigned_to', v_h.assigned_to));
+    insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+    values (v_h.order_id, v_actor,
+            case when p_user_id is null then 'operations_reviewer_unassigned' else 'operations_reviewer_assigned' end,
+            jsonb_build_object('handoff_id', v_h.id, 'version_number', v_h.version_number,
+                               'handoff_status', v_h.status,
+                               'assigned_to', p_user_id, 'previously_assigned_to', v_h.assigned_to));
 
+    if p_user_id is null then
+      v_unassigned := v_unassigned + 1;
+    else
       if p_user_id is distinct from v_actor then
         insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
         values (
           p_user_id, null, v_h.order_id, 'order_operations_review_requested'::notification_type,
-          format('Order %s: PI V%s is awaiting your operations review.', v_h.display_number, v_h.version_number),
+          case when v_h.status = 'clarification_needed'
+            then format('Order %s: PI V%s is flagged for clarification and now waits on you.', v_h.display_number, v_h.version_number)
+            else format('Order %s: PI V%s is awaiting your operations review.', v_h.display_number, v_h.version_number)
+          end,
           format('You have been assigned as the operations reviewer. Open the Order, review PI V%s, then choose Accept for production or Cannot accept.', v_h.version_number),
           true
         );
       end if;
       v_moved := v_moved + 1;
-    end loop;
-  end if;
+    end if;
+  end loop;
 
   return jsonb_build_object(
     'user_id', p_user_id,
     'previous_user_id', v_previous,
-    'reassigned_handoffs', v_moved);
+    'reassigned_handoffs', v_moved,
+    'unassigned_handoffs', v_unassigned);
 end;
 $$;
 
 comment on function public.set_order_operations_reviewer(uuid) is
-  'Control Center: an active administrator names the one operations reviewer (an active user who can open Orders), or clears the assignment with NULL. Every live, undecided handoff is readdressed to the new reviewer, logged on each Order, and the reviewer is notified once per Order. Decided handoffs are untouched.';
+  'Control Center: an active administrator names the one operations reviewer (an active user who can open Orders), or clears the assignment with NULL. Every live, unresolved handoff (awaiting or flagged) is readdressed to the new reviewer — or unassigned when cleared — and logged on each Order; a new reviewer is notified once per Order. Accepted handoffs are untouched.';
 
 revoke execute on function public.set_order_operations_reviewer(uuid) from public, anon;
 grant  execute on function public.set_order_operations_reviewer(uuid) to authenticated;
 
 
--- ═══ 7. The reviewer's decision ════════════════════════════════════════════
+-- ═══ 8. The reviewer's decision — the one operations decision ══════════════
 
 create or replace function public.decide_order_operations_handoff(
   p_handoff_id uuid,
@@ -491,6 +635,8 @@ declare
   v_reason   text := nullif(btrim(coalesce(p_reason, '')), '');
   v_now      timestamptz := now();
   v_name     text;
+  v_event    text;
+  v_withdraw boolean := false;
 begin
   if p_decision is null or p_decision not in ('accepted', 'clarification_needed') then
     raise exception 'ORDER_OPERATIONS_HANDOFF_DECISION_UNKNOWN: the decision must be accepted or clarification_needed'
@@ -503,12 +649,6 @@ begin
   if v_reason is not null and char_length(v_reason) > 1000 then
     raise exception 'ORDER_OPERATIONS_HANDOFF_REASON_TOO_LONG: the reason may be at most 1000 characters (this one is %)',
       char_length(v_reason) using errcode = 'P0001';
-  end if;
-
-  -- The reviewer must be able to open Orders at all; an admin passes, anyone
-  -- else through the permission engine.
-  if not public.actor_has_module_permission('orders', 'view') then
-    raise exception 'You do not have access to Orders' using errcode = '42501';
   end if;
 
   -- LOCK ORDER: the Order first, then the handoff — the same order the
@@ -524,7 +664,8 @@ begin
     raise exception 'ORDER_OPERATIONS_HANDOFF_NOT_FOUND: that handoff no longer exists' using errcode = 'P0002';
   end if;
 
-  -- ── Authority: the assigned reviewer, and nobody in their place ──
+  -- ── Authority: the assigned reviewer, active, able to open this Order, and
+  --    nobody in their place ──
   if v_h.assigned_to is null then
     raise exception 'ORDER_OPERATIONS_HANDOFF_UNASSIGNED: no operations reviewer is assigned; an administrator must assign one in Control Center'
       using errcode = 'P0001';
@@ -533,8 +674,11 @@ begin
     raise exception 'Only the assigned operations reviewer can decide this handoff'
       using errcode = '42501';
   end if;
+  if not public.can_view_order_as_actor(v_h.order_id) then
+    raise exception 'You do not have access to this Order' using errcode = '42501';
+  end if;
 
-  -- ── State: live, undecided, and about the version in force ──
+  -- ── State: live, about the version in force, on an open Order ──
   if v_order.status = 'cancelled' then
     raise exception 'ORDER_OPERATIONS_HANDOFF_CLOSED: Order % is cancelled', v_order.display_number
       using errcode = 'P0001';
@@ -550,7 +694,7 @@ begin
     raise exception 'ORDER_OPERATIONS_HANDOFF_STALE: PI V% is no longer the approved version of Order %',
       v_h.version_number, v_order.display_number using errcode = 'P0001';
   end if;
-  if v_h.status = 'accepted' then
+  if v_h.status = 'accepted' and p_decision = 'accepted' then
     raise exception 'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED: PI V% was already accepted for production', v_h.version_number
       using errcode = 'P0001';
   end if;
@@ -561,25 +705,55 @@ begin
 
   -- ── The decision ──
   if p_decision = 'accepted' then
+    -- From awaiting, or from clarification_needed once the question is
+    -- settled (including after a withdrawal: the new acceptance replaces the
+    -- withdrawn one, and both are on the history as events).
     update public.order_operations_handoffs
-       set status = 'accepted', accepted_by = v_actor, accepted_at = v_now, accepted_note = v_reason
+       set status = 'accepted',
+           accepted_by = v_actor, accepted_at = v_now, accepted_note = v_reason,
+           acceptance_withdrawn_by = null, acceptance_withdrawn_at = null, acceptance_withdrawn_reason = null
      where id = v_h.id;
+    v_event := 'operations_handoff_accepted';
     insert into public.order_activity_log (order_id, actor_id, event_type, payload)
-    values (v_h.order_id, v_actor, 'operations_handoff_accepted',
+    values (v_h.order_id, v_actor, v_event,
             jsonb_build_object('handoff_id', v_h.id, 'version_id', v_h.pi_version_id,
                                'version_number', v_h.version_number, 'note', v_reason,
                                'after_clarification', v_h.status = 'clarification_needed',
-                               'production_alignment', v_order.production_alignment));
+                               'after_withdrawal', v_h.acceptance_withdrawn_at is not null));
+    -- ACCEPTING ALIGNS. The Order is in production against THIS version, by
+    -- this reviewer, from now.
+    perform public.order_operations_handoff_set_alignment(
+      v_h.order_id, v_actor, true, v_reason,
+      jsonb_build_object('reason', 'operations_handoff_accepted', 'handoff_id', v_h.id,
+                         'version_id', v_h.pi_version_id, 'version_number', v_h.version_number));
   else
-    update public.order_operations_handoffs
-       set status = 'clarification_needed', clarification_by = v_actor,
-           clarification_at = v_now, clarification_reason = v_reason
-     where id = v_h.id;
+    v_withdraw := v_h.status = 'accepted';
+    if v_withdraw then
+      -- WITHDRAWING an acceptance: the acceptance stays on the row as what
+      -- happened; the withdrawal says who took it back and why.
+      update public.order_operations_handoffs
+         set status = 'clarification_needed',
+             acceptance_withdrawn_by = v_actor, acceptance_withdrawn_at = v_now, acceptance_withdrawn_reason = v_reason,
+             clarification_by = v_actor, clarification_at = v_now, clarification_reason = v_reason
+       where id = v_h.id;
+      v_event := 'operations_handoff_acceptance_withdrawn';
+    else
+      update public.order_operations_handoffs
+         set status = 'clarification_needed', clarification_by = v_actor,
+             clarification_at = v_now, clarification_reason = v_reason
+       where id = v_h.id;
+      v_event := 'operations_handoff_clarification_needed';
+    end if;
     insert into public.order_activity_log (order_id, actor_id, event_type, payload)
-    values (v_h.order_id, v_actor, 'operations_handoff_clarification_needed',
+    values (v_h.order_id, v_actor, v_event,
             jsonb_build_object('handoff_id', v_h.id, 'version_id', v_h.pi_version_id,
                                'version_number', v_h.version_number, 'reason', v_reason,
-                               'production_alignment', v_order.production_alignment));
+                               'previously_accepted_at', case when v_withdraw then v_h.accepted_at end));
+    -- A FLAGGED OR WITHDRAWN VERSION IS NOT ONE THE ORDER IS ALIGNED AGAINST.
+    perform public.order_operations_handoff_set_alignment(
+      v_h.order_id, v_actor, false, v_reason,
+      jsonb_build_object('reason', v_event, 'handoff_id', v_h.id,
+                         'version_id', v_h.pi_version_id, 'version_number', v_h.version_number));
   end if;
 
   -- The approver hears the outcome, unless they decided it themselves.
@@ -588,9 +762,13 @@ begin
     insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
     values (
       v_h.approved_by, null, v_h.order_id, 'order_operations_review_decided'::notification_type,
-      case when p_decision = 'accepted'
-        then format('Order %s: %s accepted PI V%s for production.', v_order.display_number, coalesce(v_name, 'The operations reviewer'), v_h.version_number)
-        else format('Order %s: %s cannot accept PI V%s. Clarification needed.', v_order.display_number, coalesce(v_name, 'The operations reviewer'), v_h.version_number)
+      case
+        when p_decision = 'accepted' then
+          format('Order %s: %s accepted PI V%s for production.', v_order.display_number, coalesce(v_name, 'The operations reviewer'), v_h.version_number)
+        when v_withdraw then
+          format('Order %s: %s withdrew the acceptance of PI V%s. Clarification needed.', v_order.display_number, coalesce(v_name, 'The operations reviewer'), v_h.version_number)
+        else
+          format('Order %s: %s cannot accept PI V%s. Clarification needed.', v_order.display_number, coalesce(v_name, 'The operations reviewer'), v_h.version_number)
       end,
       v_reason,
       true
@@ -599,18 +777,115 @@ begin
 
   return jsonb_build_object(
     'handoff_id', v_h.id, 'order_id', v_h.order_id, 'version_id', v_h.pi_version_id,
-    'version_number', v_h.version_number, 'status', p_decision);
+    'version_number', v_h.version_number, 'status', p_decision,
+    'production_alignment', case when p_decision = 'accepted' then 'aligned' else 'not_aligned' end,
+    'withdrawn', v_withdraw);
 end;
 $$;
 
 comment on function public.decide_order_operations_handoff(uuid, text, text) is
-  'The assigned operations reviewer accepts a PI version for production, or flags it as needing clarification (reason required, at most 1000 characters). Re-checks under row locks: caller is the assigned active reviewer with Orders access; the handoff is live, undecided (or flagged, moving to accepted) and about the Order''s current approved version; the Order is not cancelled. Writes the decision, one Order history event, and one notification to the approver. Acceptance means operations has reviewed and can work from this version — not that manufacturing work is done.';
+  'The assigned operations reviewer accepts a PI version for production — which ALIGNS the Order — or flags it as needing clarification (reason required, at most 1000 characters), which takes the alignment back; on an accepted version, a flag is a withdrawal that keeps the acceptance on record. Re-checks under row locks: caller is the assigned, active reviewer who can open the Order; the handoff is live and about the Order''s current approved version; the Order is not cancelled. Writes the decision, the Order history events, and one notification to the approver. Acceptance means operations has reviewed and can work from this version, not that manufacturing work is done.';
 
 revoke execute on function public.decide_order_operations_handoff(uuid, text, text) from public, anon;
 grant  execute on function public.decide_order_operations_handoff(uuid, text, text) to authenticated;
 
 
--- ═══ 8. Apply-time assertions ══════════════════════════════════════════════
+-- ═══ 9. set_order_production_alignment(), re-emitted: the SAME door ════════
+--
+-- RE-EMITTED IN FULL from 20261119000000 §8. It differs in exactly one place:
+-- an Order that carries a live handoff routes BOTH directions through
+-- decide_order_operations_handoff(), so the assigned reviewer is the only
+-- person who can align it (accept) or take the alignment back (withdraw /
+-- flag, reason required) — whatever permission or role the caller holds. An
+-- Order with NO handoff (approved before 20261229000000, never revised since)
+-- keeps the previous rule, word for word.
+
+create or replace function public.set_order_production_alignment(
+  p_order_id uuid,
+  p_aligned  boolean,
+  p_note     text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor  uuid := public.assert_order_submission_actor();
+  v_order  public.orders%rowtype;
+  v_target text := case when coalesce(p_aligned, false) then 'aligned' else 'not_aligned' end;
+  v_note   text := nullif(btrim(coalesce(p_note, '')), '');
+  v_now    timestamptz := now();
+  v_live   uuid;
+begin
+  -- ── An Order with a handoff has ONE operations decision, and this is it ──
+  select h.id into v_live
+    from public.order_operations_handoffs h
+   where h.order_id = p_order_id and h.superseded_at is null;
+  if v_live is not null then
+    return public.decide_order_operations_handoff(
+      v_live,
+      case when coalesce(p_aligned, false) then 'accepted' else 'clarification_needed' end,
+      v_note);
+  end if;
+
+  -- ── A legacy Order: the rule of 20261119000000, unchanged ──
+  if not public.actor_has_module_permission('orders', 'align_production') then
+    raise exception 'You do not have permission to align an Order for production'
+      using errcode = '42501';
+  end if;
+
+  if v_note is not null and char_length(v_note) > 500 then
+    raise exception
+      'ORDER_PRODUCTION_ALIGNMENT_NOTE_TOO_LONG: the note may be at most 500 characters (this one is %)',
+      char_length(v_note)
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_order from public.orders where id = p_order_id for update;
+  if not found then
+    raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002';
+  end if;
+
+  if v_order.status = 'cancelled' then
+    raise exception
+      'ORDER_PRODUCTION_ALIGNMENT_CLOSED: Order % is cancelled', v_order.display_number
+      using errcode = 'P0001';
+  end if;
+
+  if v_order.production_alignment = v_target then
+    return jsonb_build_object(
+      'order_id', v_order.id, 'production_alignment', v_target, 'unchanged', true);
+  end if;
+
+  perform set_config('boe.production_alignment_context', 'production_alignment', true);
+  update public.orders
+     set production_alignment      = v_target,
+         production_aligned_by     = case when v_target = 'aligned' then v_actor else null end,
+         production_aligned_at     = case when v_target = 'aligned' then v_now else null end,
+         production_alignment_note = v_note,
+         updated_at                = v_now
+   where id = p_order_id;
+  perform set_config('boe.production_alignment_context', '', true);
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (p_order_id, v_actor, 'production_alignment_changed',
+          jsonb_build_object('from', v_order.production_alignment, 'to', v_target, 'note', v_note,
+                             'legacy_order', true));
+
+  return jsonb_build_object(
+    'order_id', v_order.id, 'production_alignment', v_target, 'unchanged', false);
+end;
+$$;
+
+comment on function public.set_order_production_alignment(uuid, boolean, text) is
+  'Aligns a Confirmed Order for production, or takes the alignment back. On an Order that carries an operations handoff (20261229000000) this IS the handoff decision: aligning accepts the version in force and un-aligning flags it (reason required), and only the assigned operations reviewer may do either. On a legacy Order with no handoff, the rule of 20261119000000 applies unchanged: orders.align_production (or an active admin), optional note of at most 500 characters, cancelled Orders refused, idempotent.';
+
+revoke execute on function public.set_order_production_alignment(uuid, boolean, text) from public, anon;
+grant  execute on function public.set_order_production_alignment(uuid, boolean, text) to authenticated;
+
+
+-- ═══ 10. Apply-time assertions ═════════════════════════════════════════════
 
 do $$
 begin
@@ -643,14 +918,25 @@ begin
     raise exception 'ASSERT: order_operations_reviewers must be written only through set_order_operations_reviewer()';
   end if;
   if has_function_privilege('anon', 'public.decide_order_operations_handoff(uuid, text, text)', 'EXECUTE')
-     or has_function_privilege('anon', 'public.set_order_operations_reviewer(uuid)', 'EXECUTE') then
-    raise exception 'ASSERT: anon must not execute the handoff RPCs';
+     or has_function_privilege('anon', 'public.set_order_operations_reviewer(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.set_order_production_alignment(uuid, boolean, text)', 'EXECUTE') then
+    raise exception 'ASSERT: anon must not execute the handoff or alignment RPCs';
   end if;
-  if not has_function_privilege('authenticated', 'public.decide_order_operations_handoff(uuid, text, text)', 'EXECUTE') then
-    raise exception 'ASSERT: authenticated must execute decide_order_operations_handoff';
+  if not has_function_privilege('authenticated', 'public.decide_order_operations_handoff(uuid, text, text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.set_order_production_alignment(uuid, boolean, text)', 'EXECUTE') then
+    raise exception 'ASSERT: authenticated must execute the decision door and the alignment door';
   end if;
   if has_function_privilege('authenticated', 'public.order_pi_versions_record_operations_handoff()', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.order_operations_handoffs_guard()', 'EXECUTE') then
-    raise exception 'ASSERT: trigger functions must not be executable by clients';
+     or has_function_privilege('authenticated', 'public.order_operations_handoffs_guard()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb)', 'EXECUTE') then
+    raise exception 'ASSERT: internal functions must not be executable by clients';
+  end if;
+  -- The alignment door now names the handoff door: the two cannot diverge.
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'set_order_production_alignment'
+      and p.prosrc like '%public.decide_order_operations_handoff(%'
+  ) then
+    raise exception 'ASSERT: set_order_production_alignment must route a handoff Order through decide_order_operations_handoff';
   end if;
 end $$;

@@ -56,6 +56,11 @@ import {
   OPERATIONS_HANDOFF_UNASSIGNED_LABEL,
   OPERATIONS_REVIEW_ANCHOR,
   OPERATIONS_REVIEW_TITLE,
+  ACCEPTANCE_MEANING,
+  OPEN_CURRENT_PI_LABEL,
+  OPEN_PREVIOUS_PI_LABEL,
+  REVISION_COMPARE_NOTE,
+  WITHDRAW_ACCEPTANCE_LABEL,
   type OperationsHandoffTone,
   type OperationsHandoffView,
   type describeOperationsHandoffHistory,
@@ -467,34 +472,51 @@ const HANDOFF_TONE: Record<OperationsHandoffTone, StatusTone> = {
  * THE PI-TO-OPERATIONS HANDOFF FOR THE VERSION IN FORCE (20261229000000).
  *
  * WHAT IT STATES, IN WORDS: which PI version is current, who approved it and
- * when, who must review it for operations, and whether that exact version is
- * awaiting review, accepted for production, or flagged for clarification. An
- * Order approved before handoffs were recorded says "Not recorded" — nothing
- * is invented for it.
+ * when, why it was revised (V2+), who must review it for operations, whether
+ * that exact version is awaiting review, accepted for production, or flagged
+ * for clarification — and what the Order's production alignment says as a
+ * result. An Order approved before handoffs were recorded says "Not
+ * recorded"; nothing is invented for it.
  *
- * TWO CONTROLS, FOR ONE PERSON. "Accept for production" and "Cannot accept"
- * are drawn only for the assigned operations reviewer, never under View As,
- * and never for an administrator in their place — being an admin is not being
- * operations. decide_order_operations_handoff() re-derives all of that under
- * a row lock, so a call from somebody who never saw the buttons is refused
- * just the same.
+ * ONE SET OF CONTROLS, FOR ONE PERSON. "Accept for production", "Cannot
+ * accept" and "Withdraw acceptance" are drawn only for the assigned operations
+ * reviewer, never under View As, and never for an administrator in their place
+ * — being an admin is not being operations. They are the SAME door the old
+ * "Align for Production" header button used to open: on an Order with a
+ * handoff that button is gone, because accepting IS aligning.
+ * decide_order_operations_handoff() re-derives all of that under a row lock,
+ * so a call from somebody who never saw the buttons is refused just the same.
  *
- * ACCEPTANCE IS NOT COMPLETION, and it is not alignment. The card says so, and
- * warns when production was aligned against an earlier version than the one
- * now in force.
+ * A REVISED WORKBOOK: the revision reason is shown, and the current and the
+ * previous PI can be opened side by side. No field-by-field comparison is
+ * claimed, because none exists yet; the note says so.
  */
-export function OrderOperationsReviewCard({ view, history, busy, onAccept, onCannotAccept }: {
+export function OrderOperationsReviewCard({
+  view, history, busy, onAccept, onCannotAccept, onWithdraw,
+  currentVersion, previousVersion, onOpenVersion, openingVersion,
+}: {
   view: OperationsHandoffView
   history: ReturnType<typeof describeOperationsHandoffHistory>
   busy: boolean
   onAccept: () => void
   onCannotAccept: () => void
+  onWithdraw: () => void
+  /** The approved PI version and the one it replaced, for the two Open buttons. */
+  currentVersion: PiVersionView | null
+  previousVersion: PiVersionView | null
+  onOpenVersion: (version: PiVersionView) => void
+  openingVersion: boolean
 }) {
-  const controls = view.kind === 'recorded' && (view.actions.accept || view.actions.cannotAccept) ? (
+  const controls = view.kind === 'recorded' && (view.actions.accept || view.actions.cannotAccept || view.actions.withdraw) ? (
     <span className="order-status-actions">
       {view.actions.cannotAccept && (
         <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onCannotAccept} disabled={busy}>
           {CANNOT_ACCEPT_LABEL}
+        </button>
+      )}
+      {view.actions.withdraw && (
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onWithdraw} disabled={busy}>
+          {WITHDRAW_ACCEPTANCE_LABEL}
         </button>
       )}
       {view.actions.accept && (
@@ -521,6 +543,11 @@ export function OrderOperationsReviewCard({ view, history, busy, onAccept, onCan
                 <StatusPill label={view.statusLabel} tone={HANDOFF_TONE[view.tone]} strong />
                 <span className="order-status-approval-at">{view.approvedLine}</span>
               </dd>
+              {view.revisionReason && (
+                <dd className="order-status-approval-value">
+                  <span className="order-status-approval-by">Revised because: <MultilineText>{view.revisionReason}</MultilineText></span>
+                </dd>
+              )}
             </div>
             <div className="order-status-approval">
               <dt className="order-status-fact-label">Operations reviewer</dt>
@@ -548,11 +575,44 @@ export function OrderOperationsReviewCard({ view, history, busy, onAccept, onCan
                     <span className="order-status-approval-by"><MultilineText>{view.decision.note}</MultilineText></span>
                   )}
                 </dd>
+                {view.withdrawn && (
+                  <dd className="order-status-approval-value">
+                    <span className="order-status-approval-by">
+                      Accepted earlier{view.withdrawn.acceptedBy ? ` by ${view.withdrawn.acceptedBy}` : ''}{view.withdrawn.acceptedAt ? ` · ${view.withdrawn.acceptedAt}` : ''};
+                      {' '}withdrawn{view.withdrawn.by ? ` by ${view.withdrawn.by}` : ''} · {view.withdrawn.at}
+                    </span>
+                  </dd>
+                )}
               </div>
             )}
+            <div className="order-status-approval">
+              <dt className="order-status-fact-label">Production alignment</dt>
+              <dd className="order-status-approval-value">
+                <StatusPill label={view.alignment.label} tone={view.alignment.aligned ? 'green' : 'amber'} />
+                {view.alignment.line && <span className="order-status-approval-at">{view.alignment.line}</span>}
+              </dd>
+            </div>
           </dl>
           {view.priorAcceptedNotice && <p className="order-status-note order-status-note--warn">{view.priorAcceptedNotice}</p>}
           {view.alignmentWarning && <p className="order-status-note order-status-note--warn">{view.alignmentWarning}</p>}
+          {(currentVersion || previousVersion) && (
+            <div className="order-status-actions order-status-actions--start">
+              {currentVersion && (
+                <button type="button" className="boe-btn boe-btn-ghost order-status-action" disabled={openingVersion || !currentVersion.workbookPath}
+                        onClick={() => onOpenVersion(currentVersion)}>
+                  {OPEN_CURRENT_PI_LABEL(currentVersion.versionNumber)}
+                </button>
+              )}
+              {previousVersion && (
+                <button type="button" className="boe-btn boe-btn-ghost order-status-action" disabled={openingVersion || !previousVersion.workbookPath}
+                        onClick={() => onOpenVersion(previousVersion)}>
+                  {OPEN_PREVIOUS_PI_LABEL(previousVersion.versionNumber)}
+                </button>
+              )}
+            </div>
+          )}
+          {previousVersion && <p className="order-status-note">{REVISION_COMPARE_NOTE}</p>}
+          <p className="order-status-note">{ACCEPTANCE_MEANING}</p>
           {view.readOnlyNote && <p className="order-status-note">{view.readOnlyNote}</p>}
           {history.length > 0 && (
             <details className="order-approval-history">

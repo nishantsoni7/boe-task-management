@@ -2311,7 +2311,9 @@ These are ordered by business impact. See §4, §6 and `PAYMENT_PHASE_PROGRESS.m
 > been run against the linked database. **Migration first, then the code**: the
 > Order page reads `order_operations_handoffs` and the dashboard counts it;
 > against a database without the table those reads fail closed (the card is not
-> drawn; the count is absent, never zero).
+> drawn; the count is absent, never zero). The full sequence, and the
+> forward-fix that undoes it, are in
+> `docs/runbooks/order-operations-handoff-rollout-and-rollback.md`.
 
 ### What it records
 
@@ -2324,45 +2326,69 @@ approved it and when, who must review it for operations, what production
 alignment said at that moment, and what the previous version's handoff had
 decided. It is UNIQUE per version, so a retried approval records nothing twice.
 
+### One operations decision: what acceptance and alignment mean now
+
 The reviewer opens the Order and chooses **Accept for production** or **Cannot
-accept** (reason required). Acceptance means operations has reviewed the version
-and can work from it. It does **not** say manufacturing work is done, and it
-does **not** move `orders.production_alignment`, which remains the Head of
-Manufacturing's statement through `set_order_production_alignment()`.
+accept** (reason required). On an accepted version the only remaining action is
+**Withdraw acceptance** (reason required).
+
+* **Acceptance** is the reviewer's decision about one PI version: operations
+  has reviewed that exact version and can work from it. It says nothing about
+  manufacturing progress.
+* **Alignment** (`orders.production_alignment`) is, on every Order that carries
+  a handoff, the *result* of acceptance and nothing else: accepting the version
+  in force aligns the Order (the four alignment columns are written in the same
+  transaction, by the reviewer, with the version on the history event);
+  flagging or withdrawing takes the alignment back; approving a later version
+  **resets** it to not aligned, because the alignment covered the earlier
+  version, and records on the history what it had covered. So an older
+  alignment can never make a newer, unaccepted version look ready.
+* `set_order_production_alignment()` is re-emitted to be the **same door**: on
+  an Order with a handoff it routes to `decide_order_operations_handoff()`, so
+  only the assigned reviewer can align it, whatever role or permission the
+  caller holds — being an admin, or holding `orders.align_production`, no
+  longer aligns such an Order. The header "Align for Production" button is not
+  drawn on those Orders; the card's controls are the one decision.
+* A **legacy** Order (approved before this migration, never revised since) has
+  no handoff: it reads "Not recorded", keeps its alignment as it was, and the
+  old rule and the old header button still apply — until a revised PI is
+  approved on it, at which point a handoff is recorded, the alignment is reset
+  (remembered on the handoff and the history), and the new rule applies.
 
 ### Who the reviewer is
 
 One assignment, in Control Center → Operations Handoff, held as a user id in
 `order_operations_reviewers`. The trigger resolves it at approval and requires
 the account to be active and not deleted; otherwise the handoff is recorded
-**unassigned** and stays visibly so. An administrator is never substituted, and
-being an administrator does not let anybody accept in the reviewer's place:
-`decide_order_operations_handoff()` re-checks under row locks that the caller
-IS the assigned reviewer, that the handoff is live and undecided, that its
-version is still the Order's approved one, and that the Order is not cancelled.
+**unassigned** and stays visibly so. Choosing someone readdresses every live
+unresolved handoff (awaiting **and** flagged) to them; clearing the choice
+unassigns every one of them, visibly. A former reviewer, or a deactivated one,
+can decide nothing: `decide_order_operations_handoff()` re-checks under row
+locks that the caller is the assigned reviewer, active, able to open the Order,
+that the handoff is live and its version still the Order's approved one, and
+that the Order is not cancelled. An administrator is never substituted.
 
 ### A later version
 
 Approving V2 stamps V1's handoff `superseded_at` and keeps its decision for
-audit; V2 gets its own awaiting handoff. The Order page shows V2 as awaiting,
-says that V1 had been accepted, and — when the Order was aligned for production
-against V1 — warns that production was aligned before V2. Nothing claims work
-has stopped, and nothing is overwritten.
+audit; V2 gets its own awaiting handoff; the alignment is reset as above. The
+Order page shows V2 as awaiting, the revision reason, says that V1 had been
+accepted, warns that the alignment was reset, and offers **Open current PI
+(V2)** and **Open previous PI (V1)**. No field-by-field comparison is claimed;
+a later in-app revision phase will provide one.
+
+### Clarification needed is work, not a notification
+
+A flagged version stays on the Order (attention strip and card, with the
+reviewer's reason), on the Orders dashboard card, in the `?ops=awaiting` list,
+and in Control Center → Action Queue as **Needs clarification** with the reason
+on the row, linking to the Order's card — until the reviewer accepts it or a
+revised PI brings a new version.
 
 ### Historical Orders
 
 No backfill. An Order approved before this migration shows **Not recorded**.
 The next approved version on it (a revised PI) records a handoff from then on.
-
-### Rollout
-
-1. Assign the reviewer in Control Center → Operations Handoff **before** the
-   next PI approval, or that handoff is recorded unassigned and must be assigned
-   afterwards (which readdresses every waiting handoff and notifies them).
-2. Nothing running is interrupted: no Order column moves, no status changes,
-   and the trigger only fires on the next approval.
-3. Rollback: `drop trigger order_pi_versions_record_operations_handoff on
-   public.order_pi_versions;` stops recording; the two tables can stay.
 
 ### Not in Phase 1
 
@@ -2371,7 +2397,8 @@ direct amendment paths that change a Confirmed Order without a version row —
 `amend_order`, change requests, `update_order_submission_client_details`,
 `update_order_submission_schedule_terms`, `update_order_submission_pi_terms`,
 `set_order_submission_billing_percentage`, the product-line editors, and
-`/api/orders/import/process-draft` with `changeReason` — record no handoff.
+`/api/orders/import/process-draft` with `changeReason` — record no handoff and
+do not move the alignment.
 
 ### Verifying it
 
@@ -2379,4 +2406,5 @@ direct amendment paths that change a Confirmed Order without a version row —
 `src/app/orders/[id]/orderOperationsReview.render.test.tsx`; and, against a
 disposable local stack, `supabase/tests/run_order_operations_handoff_local.sh`
 (applies the migration twice, then `order_operations_handoff_assertions.sql`
-through the real `approve_order_submission()` door).
+through the real `approve_order_submission()` door, both alignment doors, and
+the reassignment, clearing and deactivation cases).

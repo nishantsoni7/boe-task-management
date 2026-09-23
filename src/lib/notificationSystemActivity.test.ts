@@ -329,8 +329,8 @@ describe('the read side excludes system types too', () => {
       // Its two RPCs act as the signed-in person; its trigger acts inside the
       // signed-in approver's own transaction, addressing the reviewer that
       // person's approval is for.
-      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 2,
-        `${OPERATIONS_HANDOFF}: both RPCs act as a signed-in person`)
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 3,
+        `${OPERATIONS_HANDOFF}: the two handoff RPCs and the re-emitted alignment door all act as a signed-in person`)
       assert.match(sql, /v_reviewer is distinct from new\.decided_by/, `${OPERATIONS_HANDOFF}: the approver is never told about their own approval`)
       for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
         assert.equal(sql.includes(`'${t}'`), false, `${OPERATIONS_HANDOFF} must not write ${t}`)

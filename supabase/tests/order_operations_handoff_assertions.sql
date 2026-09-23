@@ -6,19 +6,25 @@
 --                   V1, inside its own transaction; a retry records nothing new
 --   * recipient     resolved through order_operations_reviewers + an ACTIVE user
 --                   record; nobody assigned → unassigned, visibly, no admin in
---                   their place; assigning later readdresses the waiting ones
+--                   their place
+--   * assignment    choosing someone readdresses every live UNRESOLVED handoff
+--                   (awaiting AND flagged); clearing UNASSIGNS them all; the
+--                   former reviewer can then decide nothing; a deactivated
+--                   reviewer can decide nothing and new handoffs go unassigned
 --   * notification  the reviewer is told once per handoff; the approver is told
 --                   the decision; the approver is never told their own approval
---   * authority     decide_order_operations_handoff(): an admin who is not the
---                   reviewer is refused; an outsider is refused; the reviewer
---                   is not; a second acceptance is refused; a flag needs a
---                   reason; a flag can be followed by acceptance
+--   * ONE DECISION  accepting ALIGNS the Order; flagging / withdrawing takes the
+--                   alignment back; set_order_production_alignment() on a
+--                   handoff Order IS that decision — an admin holding
+--                   orders.align_production is refused, the reviewer is not
 --   * versions      approving V2 supersedes V1's handoff KEEPING its decision,
---                   records a new awaiting handoff, snapshots the alignment and
---                   the prior decision; accepting the superseded one is refused
+--                   RESETS the alignment (recorded), records a new awaiting
+--                   handoff snapshotting the alignment and the prior decision;
+--                   accepting the superseded one is refused
+--   * legacy        an Order with no handoff keeps the 20261119 alignment rule
 --   * closure       a cancelled Order's handoff cannot be decided
 --   * privileges    anon executes nothing; clients read only; the guard refuses
---                   deletion and any rewrite of an acceptance
+--                   deletion and any silent edit of a decision
 --
 -- Runs entirely inside ONE transaction that ends in ROLLBACK.
 --
@@ -41,23 +47,28 @@ begin
   perform set_config('test.admin2_id',   '33333333-3333-3333-3333-333333333333', true); -- another active admin
   perform set_config('test.outsider_id', '44444444-4444-4444-4444-444444444444', true); -- no Orders relationship
   perform set_config('test.sales_id',    '55555555-5555-5555-5555-555555555555', true); -- the PI's owner
+  perform set_config('test.reviewer2_id','66666666-6666-6666-6666-666666666666', true); -- a replacement reviewer
   perform set_config('test.pi_a', gen_random_uuid()::text, true);
   perform set_config('test.pi_b', gen_random_uuid()::text, true);
   perform set_config('test.pi_c', gen_random_uuid()::text, true);
+  perform set_config('test.pi_d', gen_random_uuid()::text, true);
+  perform set_config('test.pi_e', gen_random_uuid()::text, true);
 end $$;
 
 -- ═══ 0. FIXTURES ════════════════════════════════════════════════════════════
 
 insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
-  (current_setting('test.reviewer_id')::uuid, 'ASSERT Reviewer', 'reviewer@example.test', 'member', 'operations', true, 'ASSERT-OPS'),
-  (current_setting('test.admin2_id')::uuid,   'ASSERT Admin Two', 'admin2@example.test',  'admin',  'management', true, 'ASSERT-ADM'),
-  (current_setting('test.outsider_id')::uuid, 'ASSERT Outsider', 'out@example.test',      'member', 'design',     true, 'ASSERT-OUT'),
-  (current_setting('test.sales_id')::uuid,    'ASSERT Sales',    'sales@example.test',    'member', 'sales',      true, 'ASSERT-SAL')
+  (current_setting('test.reviewer_id')::uuid,  'ASSERT Reviewer',   'reviewer@example.test',  'member', 'operations', true, 'ASSERT-OPS'),
+  (current_setting('test.reviewer2_id')::uuid, 'ASSERT Reviewer 2', 'reviewer2@example.test', 'member', 'operations', true, 'ASSERT-OPS2'),
+  (current_setting('test.admin2_id')::uuid,    'ASSERT Admin Two',  'admin2@example.test',    'admin',  'management', true, 'ASSERT-ADM'),
+  (current_setting('test.outsider_id')::uuid,  'ASSERT Outsider',   'out@example.test',       'member', 'design',     true, 'ASSERT-OUT'),
+  (current_setting('test.sales_id')::uuid,     'ASSERT Sales',      'sales@example.test',     'member', 'sales',      true, 'ASSERT-SAL')
 on conflict (id) do nothing;
 
 insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
-select current_setting('test.reviewer_id')::uuid, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
-  from public.permission_modules pm join public.permission_actions pa on pa.action_key = 'view'
+select u, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
+  from unnest(array[current_setting('test.reviewer_id')::uuid, current_setting('test.reviewer2_id')::uuid]) as u,
+       public.permission_modules pm join public.permission_actions pa on pa.action_key = 'view'
  where pm.module_key = 'orders'
 on conflict do nothing;
 
@@ -66,7 +77,11 @@ begin
   execute 'set local role authenticated';
   perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
 end $$;
-create function pg_temp.restore() returns void language plpgsql as $$ begin execute 'reset role'; end $$;
+create function pg_temp.restore() returns void language plpgsql as $$
+begin
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+end $$;
 
 create function pg_temp.make_pi(p_id uuid, p_owner uuid, p_client text, p_total numeric) returns void language plpgsql as $$
 declare
@@ -152,6 +167,36 @@ end $$;
 create function pg_temp.live(p_order uuid) returns public.order_operations_handoffs language sql as $$
   select * from public.order_operations_handoffs where order_id = p_order and superseded_at is null;
 $$;
+create function pg_temp.alignment(p_order uuid) returns text language sql as $$
+  select production_alignment from public.orders where id = p_order;
+$$;
+create function pg_temp.decide(p_user uuid, p_handoff uuid, p_decision text, p_reason text) returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.become(p_user);
+  v := public.decide_order_operations_handoff(p_handoff, p_decision, p_reason);
+  perform pg_temp.restore();
+  return v;
+end $$;
+create function pg_temp.assign(p_user uuid) returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.become(current_setting('test.owner_id')::uuid);
+  v := public.set_order_operations_reviewer(p_user);
+  perform pg_temp.restore();
+  return v;
+end $$;
+create function pg_temp.align(p_user uuid, p_order uuid, p_aligned boolean, p_note text) returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.become(p_user);
+  v := public.set_order_production_alignment(p_order, p_aligned, p_note);
+  perform pg_temp.restore();
+  return v;
+end $$;
+create function pg_temp.events(p_order uuid, p_type text) returns bigint language sql as $$
+  select count(*) from public.order_activity_log where order_id = p_order and event_type = p_type;
+$$;
 
 -- ═══ 1. NO REVIEWER ASSIGNED: recorded, unassigned, no admin substituted ═══
 
@@ -167,10 +212,10 @@ begin
   perform pg_temp.check(h.assigned_to is null and h.assigned_at is null, '1. nobody assigned → unassigned, not an admin');
   perform pg_temp.check(h.approved_by = current_setting('test.owner_id')::uuid, '1. the approver is recorded');
   perform pg_temp.check(h.production_alignment_at_approval = 'not_aligned', '1. alignment snapshot: not aligned');
+  perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', '1. every Order is born not aligned');
   perform pg_temp.check((select count(*) from public.notifications where type::text like 'order_operations%') = 0,
     '1. no reviewer → no notification (and no admin notified in their place)');
-  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o and event_type = 'operations_handoff_recorded') = 1,
-    '1. one history event');
+  perform pg_temp.check(pg_temp.events(o, 'operations_handoff_recorded') = 1, '1. one history event');
   perform pg_temp.check((select pi_version_id from public.order_operations_handoffs where order_id = o)
      = (select id from public.order_pi_versions where order_id = o and status = 'approved'),
     '1. the handoff names the exact approved version id');
@@ -187,12 +232,15 @@ begin
   perform pg_temp.check((select count(*) from public.order_operations_handoffs where order_id = o) = 1, '1b. still exactly one handoff');
 end $$;
 
--- Deciding an unassigned handoff is refused for everybody, admin included.
-select pg_temp.become(current_setting('test.owner_id')::uuid);
+-- Deciding an unassigned handoff is refused for everybody, admin included —
+-- through BOTH doors.
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_a')::uuid)).id, 'accepted'),
+  format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.owner_id'), (pg_temp.live(current_setting('test.order_a')::uuid)).id, 'accepted'),
   'ORDER_OPERATIONS_HANDOFF_UNASSIGNED', '1c. an admin cannot accept an unassigned handoff');
-select pg_temp.restore();
+select pg_temp.expect_error(
+  format('select pg_temp.align(%L, %L, true, null)', current_setting('test.owner_id'), current_setting('test.order_a')),
+  'ORDER_OPERATIONS_HANDOFF_UNASSIGNED', '1d. nor align it through the alignment door — the two are one');
+select pg_temp.check(pg_temp.alignment(current_setting('test.order_a')::uuid) = 'not_aligned', '1d. and the Order stays not aligned');
 
 -- ═══ 2. ASSIGNING THE REVIEWER ═════════════════════════════════════════════
 
@@ -205,35 +253,30 @@ select pg_temp.restore();
 
 -- An inactive person → refused.
 update public.users set is_active = false where id = current_setting('test.outsider_id')::uuid;
-select pg_temp.become(current_setting('test.owner_id')::uuid);
 select pg_temp.expect_error(
-  format('select public.set_order_operations_reviewer(%L)', current_setting('test.outsider_id')),
+  format('select pg_temp.assign(%L)', current_setting('test.outsider_id')),
   'ORDER_OPERATIONS_REVIEWER_INACTIVE', '2b. an inactive account cannot be the reviewer');
-select pg_temp.restore();
 update public.users set is_active = true where id = current_setting('test.outsider_id')::uuid;
-select pg_temp.become(current_setting('test.owner_id')::uuid);
 -- A person who cannot open Orders → refused.
 select pg_temp.expect_error(
-  format('select public.set_order_operations_reviewer(%L)', current_setting('test.outsider_id')),
+  format('select pg_temp.assign(%L)', current_setting('test.outsider_id')),
   'ORDER_OPERATIONS_REVIEWER_CANNOT_OPEN_ORDERS', '2c. the reviewer must be able to open Orders');
 
 -- The real reviewer: assigned, and the waiting handoff readdressed + notified.
 do $$
 declare v jsonb; h public.order_operations_handoffs; o uuid := current_setting('test.order_a')::uuid;
 begin
-  v := public.set_order_operations_reviewer(current_setting('test.reviewer_id')::uuid);
+  v := pg_temp.assign(current_setting('test.reviewer_id')::uuid);
   perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 1, '2d. the one waiting handoff was readdressed');
   h := pg_temp.live(o);
   perform pg_temp.check(h.assigned_to = current_setting('test.reviewer_id')::uuid and h.assigned_at is not null, '2d. assigned to the reviewer');
   perform pg_temp.check((select count(*) from public.notifications
      where user_id = current_setting('test.reviewer_id')::uuid and entity_id = o and type::text = 'order_operations_review_requested') = 1,
     '2d. the reviewer is notified once');
-  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o and event_type = 'operations_reviewer_assigned') = 1,
-    '2d. the assignment is on the Order history');
+  perform pg_temp.check(pg_temp.events(o, 'operations_reviewer_assigned') = 1, '2d. the assignment is on the Order history');
   perform pg_temp.check((select user_id from public.order_operations_reviewers where duty = 'pi_handoff') = current_setting('test.reviewer_id')::uuid,
     '2d. the assignment row holds the reviewer id');
 end $$;
-select pg_temp.restore();
 
 -- ═══ 3. WITH A REVIEWER: approval notifies them, once ══════════════════════
 
@@ -253,92 +296,121 @@ begin
     '3. the approver is not told about their own approval');
 end $$;
 
--- ═══ 4. AUTHORITY ON THE DECISION ══════════════════════════════════════════
+-- ═══ 4. AUTHORITY ON THE DECISION — one door, however it is reached ════════
 
--- An active admin who is NOT the reviewer: refused.
-select pg_temp.become(current_setting('test.admin2_id')::uuid);
+-- An active admin who is NOT the reviewer: refused, through both doors.
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
+  format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.admin2_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
   'Only the assigned operations reviewer', '4a. being an admin is not being the reviewer');
-select pg_temp.restore();
+select pg_temp.expect_error(
+  format('select pg_temp.align(%L, %L, true, null)', current_setting('test.admin2_id'), current_setting('test.order_b')),
+  'Only the assigned operations reviewer', '4a2. an admin holding orders.align_production cannot align a handoff Order');
 -- The owner who approved it: refused too.
-select pg_temp.become(current_setting('test.owner_id')::uuid);
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
+  format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.owner_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
   'Only the assigned operations reviewer', '4b. the approver cannot accept in the reviewer''s place');
-select pg_temp.restore();
 -- An outsider with no Orders access: refused before anything is read.
-select pg_temp.become(current_setting('test.outsider_id')::uuid);
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
-  'You do not have access to Orders', '4c. an outsider is refused');
-select pg_temp.restore();
+  format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.outsider_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'accepted'),
+  'Only the assigned operations reviewer', '4c. an outsider is refused');
 
 -- The reviewer: a flag needs a reason; an unknown decision is refused.
-select pg_temp.become(current_setting('test.reviewer_id')::uuid);
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, %L)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'clarification_needed', '   '),
+  format('select pg_temp.decide(%L, %L, %L, %L)', current_setting('test.reviewer_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'clarification_needed', '   '),
   'ORDER_OPERATIONS_HANDOFF_REASON_REQUIRED', '4d. a flag with no reason is refused');
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'done'),
+  format('select pg_temp.align(%L, %L, false, null)', current_setting('test.reviewer_id'), current_setting('test.order_b')),
+  'ORDER_OPERATIONS_HANDOFF_REASON_REQUIRED', '4d2. un-aligning through the old door needs the same reason');
+select pg_temp.expect_error(
+  format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.reviewer_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'done'),
   'ORDER_OPERATIONS_HANDOFF_DECISION_UNKNOWN', '4e. only the two decisions exist');
 select pg_temp.expect_error(
-  format('select public.decide_order_operations_handoff(%L, %L, %L)', (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'clarification_needed', repeat('x', 1001)),
+  format('select pg_temp.decide(%L, %L, %L, %L)', current_setting('test.reviewer_id'), (pg_temp.live(current_setting('test.order_b')::uuid)).id, 'clarification_needed', repeat('x', 1001)),
   'ORDER_OPERATIONS_HANDOFF_REASON_TOO_LONG', '4f. the reason is bounded');
 
--- The reviewer flags it, then accepts after clarification.
+-- The reviewer flags it, then accepts after clarification — and acceptance ALIGNS.
 do $$
-declare h public.order_operations_handoffs; o uuid := current_setting('test.order_b')::uuid; v jsonb;
+declare h public.order_operations_handoffs; o uuid := current_setting('test.order_b')::uuid; v jsonb; r uuid := current_setting('test.reviewer_id')::uuid;
 begin
-  v := public.decide_order_operations_handoff((pg_temp.live(o)).id, 'clarification_needed', 'Fabric code on line 1 is not one we stock');
+  v := pg_temp.decide(r, (pg_temp.live(o)).id, 'clarification_needed', 'Fabric code on line 1 is not one we stock');
   h := pg_temp.live(o);
-  perform pg_temp.check(h.status = 'clarification_needed' and h.clarification_by = current_setting('test.reviewer_id')::uuid
+  perform pg_temp.check(h.status = 'clarification_needed' and h.clarification_by = r
     and h.clarification_reason like 'Fabric code%', '4g. flagged, with actor, time and reason');
+  perform pg_temp.check(h.accepted_at is null and h.acceptance_withdrawn_at is null, '4g. a first flag is not a withdrawal');
   perform pg_temp.check((select count(*) from public.notifications where user_id = current_setting('test.owner_id')::uuid
      and entity_id = o and type::text = 'order_operations_review_decided') = 1, '4g. the approver is told');
-  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o
-     and event_type = 'operations_handoff_clarification_needed') = 1, '4g. on the history');
+  perform pg_temp.check(pg_temp.events(o, 'operations_handoff_clarification_needed') = 1, '4g. on the history');
+  perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', '4g. flagged: not aligned (and no spurious alignment event)');
+  perform pg_temp.check(pg_temp.events(o, 'production_alignment_changed') = 0, '4g. not aligned → not aligned writes no alignment event');
   -- flagging twice is refused
   perform pg_temp.expect_error(
-    format('select public.decide_order_operations_handoff(%L, %L, %L)', h.id, 'clarification_needed', 'again'),
+    format('select pg_temp.decide(%L, %L, %L, %L)', r, h.id, 'clarification_needed', 'again'),
     'ORDER_OPERATIONS_HANDOFF_ALREADY_FLAGGED', '4h. a second flag is refused');
-  -- then accepted
-  v := public.decide_order_operations_handoff(h.id, 'accepted', 'Fabric confirmed by phone');
+  -- then accepted: the Order is aligned, by the reviewer, against this version
+  v := pg_temp.decide(r, h.id, 'accepted', 'Fabric confirmed by phone');
   h := pg_temp.live(o);
-  perform pg_temp.check(h.status = 'accepted' and h.accepted_by = current_setting('test.reviewer_id')::uuid and h.accepted_at is not null,
+  perform pg_temp.check(h.status = 'accepted' and h.accepted_by = r and h.accepted_at is not null,
     '4i. accepted after clarification, with actor and time');
   perform pg_temp.check(h.clarification_reason like 'Fabric code%', '4i. the earlier flag is kept for audit');
   perform pg_temp.check((select payload ->> 'after_clarification' from public.order_activity_log where order_id = o
      and event_type = 'operations_handoff_accepted') = 'true', '4i. history says it followed a clarification');
+  perform pg_temp.check(v ->> 'production_alignment' = 'aligned', '4i. the decision reports the alignment it produced');
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '4i. ACCEPTING ALIGNS THE ORDER');
+  perform pg_temp.check((select production_aligned_by from public.orders where id = o) = r, '4i. aligned BY the reviewer');
+  perform pg_temp.check((select production_alignment_note from public.orders where id = o) = 'Fabric confirmed by phone', '4i. the note travels');
+  perform pg_temp.check((select payload ->> 'version_number' from public.order_activity_log where order_id = o
+     and event_type = 'production_alignment_changed' and payload ->> 'to' = 'aligned') = '1',
+    '4i. the alignment event names the version it covers');
   perform pg_temp.expect_error(
-    format('select public.decide_order_operations_handoff(%L, %L, null)', h.id, 'accepted'),
+    format('select pg_temp.decide(%L, %L, %L, null)', r, h.id, 'accepted'),
     'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED', '4j. a second acceptance is refused');
   perform pg_temp.expect_error(
-    format('select public.decide_order_operations_handoff(%L, %L, %L)', h.id, 'clarification_needed', 'too late'),
-    'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED', '4k. an acceptance cannot be turned into a flag');
+    format('select pg_temp.align(%L, %L, true, null)', r, o),
+    'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED', '4j2. and so is re-aligning through the old door');
 end $$;
-select pg_temp.restore();
 
--- ═══ 5. A LATER VERSION: the acceptance does not carry over ════════════════
-
--- Align the Order for production against V1 first, so the snapshot has something to say.
+-- Withdrawing an acceptance: "Cannot accept" (or un-align) on an accepted
+-- version, reason required, keeps the acceptance on record, takes the
+-- alignment back; then accepting again re-aligns.
 do $$
+declare h public.order_operations_handoffs; o uuid := current_setting('test.order_b')::uuid; v jsonb; r uuid := current_setting('test.reviewer_id')::uuid; t timestamptz;
 begin
-  perform pg_temp.become(current_setting('test.owner_id')::uuid);
-  perform public.set_order_production_alignment(current_setting('test.order_b')::uuid, true, 'aligned on V1');
-  perform pg_temp.restore();
+  t := (pg_temp.live(o)).accepted_at;
+  perform pg_temp.expect_error(
+    format('select pg_temp.decide(%L, %L, %L, null)', r, (pg_temp.live(o)).id, 'clarification_needed'),
+    'ORDER_OPERATIONS_HANDOFF_REASON_REQUIRED', '4k. a withdrawal needs a reason');
+  v := pg_temp.align(r, o, false, 'Line 1 quantity looks wrong');
+  h := pg_temp.live(o);
+  perform pg_temp.check((v ->> 'withdrawn')::boolean, '4k. un-aligning an accepted version IS a withdrawal');
+  perform pg_temp.check(h.status = 'clarification_needed', '4k. back to clarification needed');
+  perform pg_temp.check(h.accepted_by = r and h.accepted_at = t, '4k. who accepted and when is KEPT');
+  perform pg_temp.check(h.acceptance_withdrawn_by = r and h.acceptance_withdrawn_reason = 'Line 1 quantity looks wrong', '4k. the withdrawal says who and why');
+  perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', '4k. the alignment is taken back');
+  perform pg_temp.check(pg_temp.events(o, 'operations_handoff_acceptance_withdrawn') = 1, '4k. on the history as a withdrawal');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = current_setting('test.owner_id')::uuid
+     and entity_id = o and title like '%withdrew%') = 1, '4k. the approver is told it was withdrawn');
+  v := pg_temp.decide(r, h.id, 'accepted', 'Quantity confirmed');
+  h := pg_temp.live(o);
+  perform pg_temp.check(h.status = 'accepted' and h.acceptance_withdrawn_at is null and h.accepted_note = 'Quantity confirmed',
+    '4l. accepted again; the new acceptance replaces the withdrawn one');
+  perform pg_temp.check((select payload ->> 'after_withdrawal' from public.order_activity_log where order_id = o
+     and event_type = 'operations_handoff_accepted' and payload ->> 'note' = 'Quantity confirmed') = 'true',
+    '4l. history says it followed a withdrawal');
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '4l. re-aligned');
 end $$;
+
+-- ═══ 5. A LATER VERSION: the acceptance and the alignment do not carry ═════
 
 select set_config('test.v2_b', pg_temp.approve_revision(current_setting('test.order_b')::uuid, current_setting('test.owner_id')::uuid)::text, true);
 
 do $$
-declare h public.order_operations_handoffs; old public.order_operations_handoffs; o uuid := current_setting('test.order_b')::uuid;
+declare h public.order_operations_handoffs; old public.order_operations_handoffs; o uuid := current_setting('test.order_b')::uuid; e record;
 begin
   h := pg_temp.live(o);
   perform pg_temp.check(h.version_number = 2 and h.status = 'awaiting', '5. V2 has its own awaiting handoff');
   perform pg_temp.check(h.pi_version_id = current_setting('test.v2_b')::uuid, '5. tied to the exact V2 version id');
   perform pg_temp.check(h.prior_handoff_status = 'accepted', '5. it records that V1 had been accepted');
-  perform pg_temp.check(h.production_alignment_at_approval = 'aligned', '5. and that the Order was already aligned');
+  perform pg_temp.check(h.production_alignment_at_approval = 'aligned', '5. and that the Order WAS aligned when V2 arrived');
   perform pg_temp.check(h.assigned_to = current_setting('test.reviewer_id')::uuid, '5. addressed to the reviewer');
   select * into old from public.order_operations_handoffs where order_id = o and version_number = 1;
   perform pg_temp.check(old.superseded_at is not null and old.superseded_by_version_id = current_setting('test.v2_b')::uuid,
@@ -346,93 +418,212 @@ begin
   perform pg_temp.check(old.status = 'accepted' and old.accepted_by is not null, '5. V1''s acceptance is preserved for audit');
   perform pg_temp.check((select count(*) from public.order_operations_handoffs where order_id = o and superseded_at is null) = 1,
     '5. exactly one live handoff');
-  perform pg_temp.check((select production_alignment from public.orders where id = o) = 'aligned',
-    '5. production alignment itself is NOT moved by the handoff');
-  -- (every row in this transaction shares one now(), so the V2 notification is
-  -- found by what it says rather than by order)
+  -- THE OLDER ALIGNMENT DOES NOT COVER V2
+  perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', '5. THE ALIGNMENT IS RESET when a newer version is approved');
+  perform pg_temp.check((select production_aligned_by from public.orders where id = o) is null, '5. and the aligned-by/at columns are cleared');
+  select * into e from public.order_activity_log where order_id = o and event_type = 'production_alignment_changed'
+    and payload ->> 'reason' = 'pi_version_approved';
+  perform pg_temp.check(e.id is not null, '5. the reset is on the history');
+  perform pg_temp.check(e.payload ->> 'covered_version_number' = '1' and e.payload ->> 'to' = 'not_aligned'
+     and e.payload ->> 'previous_aligned_by' = current_setting('test.reviewer_id'), '5. …saying what the alignment had covered and who had set it');
   perform pg_temp.check((select count(*) from public.notifications where entity_id = o and type::text = 'order_operations_review_requested'
      and body like 'You accepted PI V1 earlier%') = 1, '5. the notification says the earlier acceptance does not carry');
   -- accepting the superseded V1 handoff is refused
-  perform pg_temp.become(current_setting('test.reviewer_id')::uuid);
   perform pg_temp.expect_error(
-    format('select public.decide_order_operations_handoff(%L, %L, null)', old.id, 'accepted'),
+    format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.reviewer_id'), old.id, 'accepted'),
     'ORDER_OPERATIONS_HANDOFF_SUPERSEDED', '5b. a stale (superseded) acceptance is refused');
-  perform pg_temp.restore();
+  -- accepting V2 aligns again, against V2
+  perform pg_temp.decide(current_setting('test.reviewer_id')::uuid, h.id, 'accepted', null);
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '5c. accepting V2 aligns the Order again');
+  -- (ids are random and every row shares one now(), so the event is found by
+  -- what it says)
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o
+     and event_type = 'production_alignment_changed' and payload ->> 'to' = 'aligned' and payload ->> 'version_number' = '2') = 1,
+    '5c. …against V2');
 end $$;
 
--- ═══ 6. A CANCELLED ORDER ══════════════════════════════════════════════════
+-- ═══ 6. REASSIGNMENT: replacement, clearing, deactivation, a flagged case ══
 
+-- Fixture: C awaiting, D flagged, E accepted (all addressed to the reviewer).
 select pg_temp.make_pi(current_setting('test.pi_c')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT C', 1000000);
 select set_config('test.order_c', pg_temp.approve(current_setting('test.pi_c')::uuid)::text, true);
+select pg_temp.make_pi(current_setting('test.pi_d')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT D', 1000000);
+select set_config('test.order_d', pg_temp.approve(current_setting('test.pi_d')::uuid)::text, true);
+select pg_temp.make_pi(current_setting('test.pi_e')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT E', 1000000);
+select set_config('test.order_e', pg_temp.approve(current_setting('test.pi_e')::uuid)::text, true);
+select pg_temp.decide(current_setting('test.reviewer_id')::uuid, (pg_temp.live(current_setting('test.order_d')::uuid)).id, 'clarification_needed', 'D: which finish?');
+select pg_temp.decide(current_setting('test.reviewer_id')::uuid, (pg_temp.live(current_setting('test.order_e')::uuid)).id, 'accepted', null);
+
+-- 6a. REPLACEMENT moves the awaiting AND the flagged case; not the accepted one.
 do $$
+declare v jsonb; r1 uuid := current_setting('test.reviewer_id')::uuid; r2 uuid := current_setting('test.reviewer2_id')::uuid;
+  a uuid := current_setting('test.order_a')::uuid; c uuid := current_setting('test.order_c')::uuid;
+  d uuid := current_setting('test.order_d')::uuid; e uuid := current_setting('test.order_e')::uuid; b uuid := current_setting('test.order_b')::uuid;
 begin
-  perform pg_temp.become(current_setting('test.owner_id')::uuid);
-  perform public.cancel_order(current_setting('test.order_c')::uuid, 'ASSERT cancelled');
-  perform pg_temp.restore();
-  perform pg_temp.become(current_setting('test.reviewer_id')::uuid);
+  v := pg_temp.assign(r2);
+  -- live and unresolved: A V1 (awaiting), C (awaiting), D (flagged). Not B V2 or E (accepted).
+  perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 3, '6a. the awaiting AND the flagged handoffs move');
+  perform pg_temp.check((pg_temp.live(c)).assigned_to = r2 and (pg_temp.live(d)).assigned_to = r2, '6a. C and D now wait on the replacement');
+  perform pg_temp.check((pg_temp.live(d)).status = 'clarification_needed' and (pg_temp.live(d)).clarification_reason = 'D: which finish?',
+    '6a. the flag and its reason survive the move');
+  perform pg_temp.check((pg_temp.live(e)).assigned_to = r1 and (pg_temp.live(e)).status = 'accepted', '6a. the accepted one keeps its reviewer');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and type::text = 'order_operations_review_requested') = 3,
+    '6a. the replacement is told once per Order');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and entity_id = d and title like '%flagged for clarification%') = 1,
+    '6a. …and told that D is flagged');
+  perform pg_temp.check(pg_temp.events(d, 'operations_reviewer_assigned') = 1, '6a. logged on the Order');
+  -- THE FORMER REVIEWER CAN NO LONGER DECIDE, through either door.
   perform pg_temp.expect_error(
-    format('select public.decide_order_operations_handoff(%L, %L, null)', (pg_temp.live(current_setting('test.order_c')::uuid)).id, 'accepted'),
-    'ORDER_OPERATIONS_HANDOFF_CLOSED', '6. a cancelled Order''s handoff cannot be accepted');
-  perform pg_temp.restore();
+    format('select pg_temp.decide(%L, %L, %L, null)', r1, (pg_temp.live(c)).id, 'accepted'),
+    'Only the assigned operations reviewer', '6b. the former reviewer cannot accept');
+  perform pg_temp.expect_error(
+    format('select pg_temp.align(%L, %L, true, null)', r1, d),
+    'Only the assigned operations reviewer', '6b. nor align the flagged one');
+  -- The replacement resolves the flagged case.
+  perform pg_temp.decide(r2, (pg_temp.live(d)).id, 'accepted', 'finish confirmed');
+  perform pg_temp.check((pg_temp.live(d)).status = 'accepted' and pg_temp.alignment(d) = 'aligned', '6c. the replacement accepts D, which aligns it');
 end $$;
 
--- Reassigning the reviewer skips the cancelled Order's handoff and readdresses the live awaiting one.
+-- 6d. CLEARING unassigns every live unresolved handoff, visibly.
 do $$
-declare v jsonb;
+declare v jsonb; a uuid := current_setting('test.order_a')::uuid; c uuid := current_setting('test.order_c')::uuid;
+  d uuid := current_setting('test.order_d')::uuid; r2 uuid := current_setting('test.reviewer2_id')::uuid;
 begin
-  perform pg_temp.become(current_setting('test.owner_id')::uuid);
-  v := public.set_order_operations_reviewer(current_setting('test.admin2_id')::uuid);
-  perform pg_temp.restore();
-  -- Live and awaiting: A's V1 (never decided) and B's V2. Not C (cancelled),
-  -- and not B's V1 (decided, superseded).
-  perform pg_temp.check((v ->> 'reassigned_handoffs')::int = 2, '6b. only the live awaiting handoffs (A V1, B V2) move; cancelled C does not');
-  perform pg_temp.check((pg_temp.live(current_setting('test.order_b')::uuid)).assigned_to = current_setting('test.admin2_id')::uuid,
-    '6b. V2 of B now waits on the new reviewer');
-  perform pg_temp.check((select accepted_by from public.order_operations_handoffs where order_id = current_setting('test.order_b')::uuid and version_number = 1)
-     = current_setting('test.reviewer_id')::uuid, '6b. the decided V1 keeps who decided it');
-  -- clearing the assignment
-  perform pg_temp.become(current_setting('test.owner_id')::uuid);
-  v := public.set_order_operations_reviewer(null);
-  perform pg_temp.restore();
-  perform pg_temp.check((select user_id from public.order_operations_reviewers where duty = 'pi_handoff') is null, '6c. cleared');
+  perform pg_temp.decide(r2, (pg_temp.live(c)).id, 'clarification_needed', 'C: image missing');
+  v := pg_temp.assign(null);
+  -- live and unresolved now: A V1 (awaiting), C (flagged). D is accepted.
+  perform pg_temp.check((v ->> 'unassigned_handoffs')::int = 2 and (v ->> 'reassigned_handoffs')::int = 0, '6d. clearing unassigns the awaiting and the flagged handoff');
+  perform pg_temp.check((pg_temp.live(a)).assigned_to is null and (pg_temp.live(c)).assigned_to is null, '6d. both show unassigned');
+  perform pg_temp.check((pg_temp.live(c)).status = 'clarification_needed', '6d. the flag is kept — clearing resolves nothing');
+  perform pg_temp.check((pg_temp.live(d)).assigned_to = r2, '6d. the accepted one keeps its reviewer');
+  perform pg_temp.check(pg_temp.events(c, 'operations_reviewer_unassigned') = 1, '6d. logged as an unassignment');
+  perform pg_temp.check((select user_id from public.order_operations_reviewers where duty = 'pi_handoff') is null, '6d. the assignment is cleared');
+  perform pg_temp.expect_error(
+    format('select pg_temp.decide(%L, %L, %L, null)', r2, (pg_temp.live(c)).id, 'accepted'),
+    'ORDER_OPERATIONS_HANDOFF_UNASSIGNED', '6e. the former reviewer cannot decide an unassigned handoff');
 end $$;
 
--- ═══ 7. PRIVILEGES AND THE GUARD ═══════════════════════════════════════════
+-- 6f. DEACTIVATION: an inactive reviewer can decide nothing; new handoffs go unassigned.
+do $$
+declare r2 uuid := current_setting('test.reviewer2_id')::uuid; c uuid := current_setting('test.order_c')::uuid; v jsonb;
+begin
+  perform pg_temp.assign(r2);
+  perform pg_temp.check((pg_temp.live(c)).assigned_to = r2, '6f. re-assigned to reviewer 2');
+  update public.users set is_active = false where id = r2;
+  perform pg_temp.expect_error(
+    format('select pg_temp.decide(%L, %L, %L, null)', r2, (pg_temp.live(c)).id, 'accepted'),
+    'This account is not active', '6f. a deactivated reviewer is refused at the door');
+  perform pg_temp.check((pg_temp.live(c)).assigned_to = r2, '6f. the handoff still names them (visibly stale, for an admin to reassign)');
+  -- a new version approved now finds no ACTIVE reviewer → unassigned
+  perform pg_temp.approve_revision(c, current_setting('test.owner_id')::uuid);
+  perform pg_temp.check((pg_temp.live(c)).version_number = 2 and (pg_temp.live(c)).assigned_to is null,
+    '6g. a new handoff is recorded unassigned while the assigned reviewer is inactive');
+  -- r2 was told about C twice while active (the 6a replacement, the 6f
+  -- re-assignment); the approval of V2 while inactive adds nothing.
+  perform pg_temp.check((select count(*) from public.notifications where user_id = r2 and entity_id = c) = 2,
+    '6g. and the inactive reviewer is not notified again');
+  update public.users set is_active = true where id = r2;
+end $$;
+
+-- ═══ 7. A CANCELLED ORDER ══════════════════════════════════════════════════
+
+do $$
+declare o uuid := current_setting('test.order_a')::uuid;
+begin
+  perform pg_temp.assign(current_setting('test.reviewer_id')::uuid);
+  perform pg_temp.become(current_setting('test.owner_id')::uuid);
+  perform public.cancel_order(o, 'ASSERT cancelled');
+  perform pg_temp.restore();
+  perform pg_temp.expect_error(
+    format('select pg_temp.decide(%L, %L, %L, null)', current_setting('test.reviewer_id'), (pg_temp.live(o)).id, 'accepted'),
+    'ORDER_OPERATIONS_HANDOFF_CLOSED', '7. a cancelled Order''s handoff cannot be accepted');
+  perform pg_temp.expect_error(
+    format('select pg_temp.align(%L, %L, true, null)', current_setting('test.reviewer_id'), o),
+    'ORDER_OPERATIONS_HANDOFF_CLOSED', '7. nor aligned');
+end $$;
+
+-- ═══ 8. A LEGACY ORDER keeps the 20261119 alignment rule ═══════════════════
+--
+-- Simulated by removing the handoff under the test-data-cleanup context (the
+-- only path that may delete one): what remains is an Order that predates
+-- handoff recording.
+do $$
+declare o uuid := current_setting('test.order_e')::uuid; v jsonb;
+begin
+  perform set_config('boe.cleanup_context', 'test_data_cleanup', true);
+  delete from public.order_operations_handoffs where order_id = o;
+  perform set_config('boe.cleanup_context', '', true);
+  -- E was aligned by acceptance; without a handoff it now reads as a legacy alignment.
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '8. the legacy alignment is untouched');
+  -- an align_production holder (an admin) may take it back and set it, as before
+  v := pg_temp.align(current_setting('test.admin2_id')::uuid, o, false, 'legacy note');
+  perform pg_temp.check((v ->> 'unchanged')::boolean = false and pg_temp.alignment(o) = 'not_aligned', '8a. an admin un-aligns a legacy Order');
+  v := pg_temp.align(current_setting('test.admin2_id')::uuid, o, true, 'legacy align');
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '8b. and aligns it');
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o
+     and event_type = 'production_alignment_changed' and payload ->> 'legacy_order' = 'true' and payload ->> 'to' = 'aligned') = 1,
+    '8b. the event says it was the legacy rule');
+  -- but somebody without the permission still cannot
+  perform pg_temp.expect_error(
+    format('select pg_temp.align(%L, %L, false, null)', current_setting('test.sales_id'), o),
+    'You do not have permission to align', '8c. the 20261119 permission rule is unchanged for legacy Orders');
+  -- a revised PI on it starts the new rule: alignment reset, handoff recorded
+  perform pg_temp.approve_revision(o, current_setting('test.owner_id')::uuid);
+  perform pg_temp.check((pg_temp.live(o)).version_number = 2 and (pg_temp.live(o)).prior_handoff_status is null,
+    '8d. the first handoff on a legacy Order records no prior decision');
+  perform pg_temp.check((pg_temp.live(o)).production_alignment_at_approval = 'aligned' and pg_temp.alignment(o) = 'not_aligned',
+    '8d. …and the legacy alignment is reset, remembered on the handoff');
+  perform pg_temp.expect_error(
+    format('select pg_temp.align(%L, %L, true, null)', current_setting('test.admin2_id'), o),
+    'Only the assigned operations reviewer', '8e. from here on, only the reviewer can align it');
+end $$;
+
+-- ═══ 9. PRIVILEGES AND THE GUARD ═══════════════════════════════════════════
 
 do $$
 begin
-  perform pg_temp.check(not has_function_privilege('anon', 'public.decide_order_operations_handoff(uuid, text, text)', 'EXECUTE'), '7. anon cannot decide');
-  perform pg_temp.check(not has_function_privilege('anon', 'public.set_order_operations_reviewer(uuid)', 'EXECUTE'), '7. anon cannot assign');
-  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_handoffs', 'INSERT'), '7. clients cannot insert handoffs');
-  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_handoffs', 'UPDATE'), '7. clients cannot update handoffs');
-  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_reviewers', 'UPDATE'), '7. clients cannot rewrite the assignment');
-  perform pg_temp.check(has_table_privilege('authenticated', 'public.order_operations_handoffs', 'SELECT'), '7. clients read handoffs (under RLS)');
+  perform pg_temp.check(not has_function_privilege('anon', 'public.decide_order_operations_handoff(uuid, text, text)', 'EXECUTE'), '9. anon cannot decide');
+  perform pg_temp.check(not has_function_privilege('anon', 'public.set_order_operations_reviewer(uuid)', 'EXECUTE'), '9. anon cannot assign');
+  perform pg_temp.check(not has_function_privilege('authenticated', 'public.order_operations_handoff_set_alignment(uuid, uuid, boolean, text, jsonb)', 'EXECUTE'), '9. clients cannot write alignment directly');
+  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_handoffs', 'INSERT'), '9. clients cannot insert handoffs');
+  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_handoffs', 'UPDATE'), '9. clients cannot update handoffs');
+  perform pg_temp.check(not has_table_privilege('authenticated', 'public.order_operations_reviewers', 'UPDATE'), '9. clients cannot rewrite the assignment');
+  perform pg_temp.check(has_table_privilege('authenticated', 'public.order_operations_handoffs', 'SELECT'), '9. clients read handoffs (under RLS)');
 end $$;
 
--- The reviewer can see the handoff of an Order they may open; the outsider sees none.
+-- The reviewer can see the handoffs of an Order they may open; the outsider sees none.
 do $$
 declare n int;
 begin
   perform pg_temp.become(current_setting('test.reviewer_id')::uuid);
   select count(*) into n from public.order_operations_handoffs where order_id = current_setting('test.order_b')::uuid;
   perform pg_temp.restore();
-  perform pg_temp.check(n = 2, '7b. the reviewer reads both of B''s handoffs under RLS');
+  perform pg_temp.check(n = 2, '9b. the reviewer reads both of B''s handoffs under RLS');
   perform pg_temp.become(current_setting('test.outsider_id')::uuid);
   select count(*) into n from public.order_operations_handoffs;
   perform pg_temp.restore();
-  perform pg_temp.check(n = 0, '7c. an outsider reads nothing');
+  perform pg_temp.check(n = 0, '9c. an outsider reads nothing');
 end $$;
 
--- The guard: no deletion, no rewrite of an acceptance, no un-superseding.
+-- The guard: no deletion, no silent edit of a decision, no un-superseding.
 select pg_temp.expect_error(
   format('delete from public.order_operations_handoffs where order_id = %L', current_setting('test.order_b')),
-  'ORDER_OPERATIONS_HANDOFF_PERMANENT', '7d. handoffs are never deleted');
+  'ORDER_OPERATIONS_HANDOFF_PERMANENT', '9d. handoffs are never deleted');
 select pg_temp.expect_error(
-  format('update public.order_operations_handoffs set status = %L, accepted_by = null, accepted_at = null where order_id = %L and version_number = 1', 'awaiting', current_setting('test.order_b')),
-  'ORDER_OPERATIONS_HANDOFF', '7e. an acceptance cannot be undone, even by the owner role');
+  format('update public.order_operations_handoffs set status = %L, accepted_by = null, accepted_at = null where order_id = %L and version_number = 2', 'awaiting', current_setting('test.order_b')),
+  'ORDER_OPERATIONS_HANDOFF', '9e. an acceptance cannot be erased back to awaiting, even by the owner role');
+select pg_temp.expect_error(
+  format('update public.order_operations_handoffs set accepted_note = %L where order_id = %L and version_number = 2', 'edited', current_setting('test.order_b')),
+  'ORDER_OPERATIONS_HANDOFF_DECISION_IS_AN_EVENT', '9f. a decision''s words cannot be edited in place');
 select pg_temp.expect_error(
   format('update public.order_operations_handoffs set version_number = 9 where order_id = %L and version_number = 2', current_setting('test.order_b')),
-  'ORDER_OPERATIONS_HANDOFF_FROZEN', '7f. identity is frozen');
+  'ORDER_OPERATIONS_HANDOFF_FROZEN', '9g. identity is frozen');
+-- A direct write to the alignment columns is still refused outside the context.
+-- (B is aligned after 5c, so the write below is a real change, not a no-op)
+select pg_temp.check(pg_temp.alignment(current_setting('test.order_b')::uuid) = 'aligned', '9h. precondition: B is aligned');
+select pg_temp.expect_error(
+  format('update public.orders set production_alignment = %L where id = %L', 'not_aligned', current_setting('test.order_b')),
+  'ORDER_PRODUCTION_ALIGNMENT_PATH_REQUIRED', '9h. the alignment columns still move only through the context');
 
 do $$ begin raise notice 'ALL HANDOFF ASSERTIONS PASSED'; end $$;
 

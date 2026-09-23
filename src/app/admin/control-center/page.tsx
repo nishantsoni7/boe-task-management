@@ -265,8 +265,12 @@ function OperationsReviewerTab({ members }: { members: UserProfile[] }) {
       setError(describeReviewerAssignmentFailure(writeErr))
       return
     }
-    const result = (data ?? {}) as { reassigned_handoffs?: number }
-    setSaved(describeReviewerSaved({ name: nameOf(choice || null), reassigned: result.reassigned_handoffs ?? 0 }))
+    const result = (data ?? {}) as { reassigned_handoffs?: number; unassigned_handoffs?: number }
+    setSaved(describeReviewerSaved({
+      name: nameOf(choice || null),
+      reassigned: result.reassigned_handoffs ?? 0,
+      unassigned: result.unassigned_handoffs ?? 0,
+    }))
     await load()
   }
 
