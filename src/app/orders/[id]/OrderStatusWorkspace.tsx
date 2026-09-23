@@ -333,7 +333,14 @@ export function OrderDocumentsPanel({
           </>
         )}
         {design.kind === 'empty' && <DocEmpty message={design.message} note={design.note} />}
-        {design.kind === 'ready' && (
+        {design.kind === 'ready' && (designSubmissions ? (
+          // BESIDE THE ORDER'S OWN DESIGN FILES, the PI's product pictures are a
+          // secondary line with their own name — two "Attached" headlines one
+          // above the other read as one set counted twice.
+          <p className="order-doc-note" style={{ marginTop: 0 }}>
+            <strong>PI product pictures:</strong> {design.summary} · {design.detail} · from the approved PI
+          </p>
+        ) : (
           <>
             <p className="order-doc-lead">
               <span className="order-doc-lead-value">{design.summary}</span>
@@ -341,7 +348,7 @@ export function OrderDocumentsPanel({
             </p>
             <p className="order-doc-note">{design.detail}</p>
           </>
-        )}
+        ))}
         {designSubmissions}
       </DocSection>
 

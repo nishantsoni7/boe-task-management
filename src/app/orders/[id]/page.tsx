@@ -2280,7 +2280,7 @@ export default function OrderDetailPage() {
         label: operationsView.status === 'awaiting' ? 'Awaiting Operations Acceptance' : operationsView.statusLabel,
         tone: operationsView.tone,
         line: operationsView.status === 'awaiting'
-          ? ` is approved by Admin and in force; Operations has not accepted it yet. `
+          ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
           : null,
       }
     : null

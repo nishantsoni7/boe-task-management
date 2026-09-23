@@ -281,8 +281,8 @@ export function DocumentCategoryBody({
             </p>
             <p className="order-doc-note">
               {files.length} file{files.length === 1 ? '' : 's'}
-              {category === 'design_files' && open.design_mode === 'replace' && ' · replaces the current design files'}
-              {category === 'design_files' && open.design_mode === 'add' && ' · adds to the current design files'}
+              {category === 'design_files' && open.stage === 'amendment' && open.design_mode === 'replace' && ' · replaces the current design files'}
+              {category === 'design_files' && open.stage === 'amendment' && open.design_mode === 'add' && ' · adds to the current design files'}
               {' · '}submitted by {nameOf(open.submitted_by) ?? 'Sales'} {formatWhen(open.submitted_at)}
             </p>
             <p className="order-doc-note"><strong>Waiting on:</strong> {currentOwnerLabel(open, nameOf)}</p>
@@ -324,6 +324,48 @@ export function DocumentCategoryBody({
           </div>
         )
       })}
+
+      {/* ── THE PERMANENT TRAIL: every submission of this category, accepted,
+          rejected or open, with who submitted, approved and accepted it, when,
+          and why. Nothing replaced is lost; this is where it is read. ── */}
+      {(() => {
+        const history = api.rows
+          .filter(r => (category === 'design_files' ? r.includes_design_files : r.includes_client_po))
+          .slice()
+          .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))
+        if (history.length === 0) return null
+        return (
+          <details className="order-approval-history">
+            <summary className="order-approval-history-summary">Submission history ({history.length})</summary>
+            <ol className="order-approval-history-list">
+              {history.map(r => (
+                <li key={r.id} className="order-approval-history-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <span className="order-approval-history-status">
+                    {SUBMISSION_STATUS_LABEL[r.status]}
+                    {r.stage === 'initial' ? ' · sent with the PI' : r.design_mode === 'replace' && category === 'design_files' ? ' · replaced the set' : ''}
+                  </span>
+                  <span className="order-approval-history-meta">
+                    Submitted by {nameOf(r.submitted_by) ?? 'Sales'}, {formatWhen(r.submitted_at)}
+                  </span>
+                  {r.admin_decided_at && (
+                    <span className="order-approval-history-meta">
+                      Admin: {r.status === 'rejected_admin' ? 'rejected' : 'approved'} by {nameOf(r.admin_decided_by) ?? 'Admin'}, {formatWhen(r.admin_decided_at)}
+                      {r.admin_reason ? ` — ${r.admin_reason}` : ''}
+                    </span>
+                  )}
+                  {r.operations_decided_at && (
+                    <span className="order-approval-history-meta">
+                      Operations: {r.status === 'accepted' ? 'accepted' : 'rejected'} by {nameOf(r.operations_decided_by) ?? 'Operations'}, {formatWhen(r.operations_decided_at)}
+                      {r.operations_reason ? ` — ${r.operations_reason}` : ''}
+                    </span>
+                  )}
+                  <FileList files={(r.files ?? []).filter(f => f.category === category)} onOpen={onOpenFile} />
+                </li>
+              ))}
+            </ol>
+          </details>
+        )
+      })()}
     </>
   )
 }
