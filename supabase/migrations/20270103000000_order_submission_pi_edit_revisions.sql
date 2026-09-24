@@ -489,6 +489,10 @@ begin
   -- Only a PI that has already become an Order.
   if old.order_id is null or old.status <> 'approved' then return new; end if;
   if public.order_pi_is_versioned_write_allowed(new.id) then return new; end if;
+  -- While a revision awaits Operations, #205's freeze refuses the same edit in
+  -- its own, more specific words; this guard steps aside so that is the one
+  -- a person reads.
+  if public.order_submission_has_revision_awaiting_operations(new.id) then return new; end if;
   foreach k in array public.order_pi_content_keys() loop
     if (to_jsonb(new) -> k) is distinct from (to_jsonb(old) -> k) then
       raise exception 'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION: this PI is approved and in force on an Order. Use Edit PI to propose a new version; the current one stays in force until the new one is approved.'
@@ -519,6 +523,9 @@ begin
     return coalesce(new, old);
   end if;
   if public.order_pi_is_versioned_write_allowed(v_sub) then return coalesce(new, old); end if;
+  -- #205's freeze answers for lines while a revision awaits Operations.
+  if tg_table_name = 'order_submission_items'
+     and public.order_submission_has_revision_awaiting_operations(v_sub) then return coalesce(new, old); end if;
   raise exception 'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION: this PI is approved and in force on an Order. Use Edit PI to propose a new version; the current one stays in force until the new one is approved.'
     using errcode = 'P0001';
 end;
