@@ -134,6 +134,8 @@ describe('adding, removing and changing products', () => {
     assert.deepEqual(items.map(i => i.product_name), ['Lounge chair', 'Side table'])
     assert.notEqual(items[1].id, B)
     assert.equal(items[1].source_row, 34)
+    assert.equal((items[1] as unknown as { item_sequence: string }).item_sequence, 'B003',
+      'an added line takes the next free sequence, so the PI stays submittable')
     assert.equal(items[1].total_amount, 15000)
     assert.equal((p.payload.commercial as { gross_product_amount: number }).gross_product_amount, 215000)
     const images = p.payload.item_images as { item_id: string }[]

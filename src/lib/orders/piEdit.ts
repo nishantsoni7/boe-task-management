@@ -415,6 +415,23 @@ export function buildEditProposal(input: {
   const byId = new Map(current.items.map(i => [i.id, i]))
   let nextRow = Math.max(0, ...current.items.map(i => i.source_row)) + 1
 
+  // A line needs a sequence (B001 …) to be submittable. One added here gets the
+  // next free one after every sequence the PI already uses, in order.
+  // Sequences of lines removed here stay taken: a code once printed for one
+  // product is never handed to another.
+  const used = new Set([
+    ...priced.lines.map(l => l.item.item_sequence.trim()),
+    ...current.items.map(i => (i.item_sequence ?? '').trim()),
+  ].filter(Boolean))
+  let nextSeq = Math.max(0, ...[...used].map(s => Number(/^B(\d+)$/i.exec(s)?.[1] ?? 0)))
+  const sequenceFor = (typed: string): string => {
+    if (typed.trim() !== '') return typed.trim()
+    let s: string
+    do { nextSeq += 1; s = `B${String(nextSeq).padStart(3, '0')}` } while (used.has(s))
+    used.add(s)
+    return s
+  }
+
   const items: Record<string, unknown>[] = []
   const images: Record<string, unknown>[] = []
   priced.lines.forEach((line, order) => {
@@ -440,7 +457,7 @@ export function buildEditProposal(input: {
     items.push({
       id,
       source_row: sourceRow,
-      item_sequence: blankToNull(line.item.item_sequence),
+      item_sequence: sequenceFor(line.item.item_sequence),
       source_product_code: blankToNull(line.item.source_product_code),
       product_name: line.item.product_name.trim(),
       quantity: line.quantity,
