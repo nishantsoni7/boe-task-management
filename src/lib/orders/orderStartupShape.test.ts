@@ -403,7 +403,11 @@ describe('no Order screen waits more than it must', () => {
       // which uploads the attached Design Files / Client PO and calls
       // submit_pi_for_review_with_documents. A SAVE on a press, so the startup
       // path is unchanged and the wait test above still requires three.
-      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 27 -> 26 (20270102000000): reserve_order_number_for_submission
+      // is retired — a PI Draft no longer reserves a number, so the page's
+      // Reserve action and its one RPC went with it. A write on a press, never
+      // on the startup path.
+      [DRAFTS]: 4, [PI_DETAIL]: 26, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

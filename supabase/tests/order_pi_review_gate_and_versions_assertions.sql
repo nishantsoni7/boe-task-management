@@ -209,11 +209,13 @@ begin
     assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_REASON_REQUIRED%', v_msg;
   end;
   perform pg_temp.become(v_sales);
-  v_res := public.submit_pi_for_review(v_b, null, 'client pays balance on delivery', '50% before dispatch', null);
+  v_res := public.submit_pi_for_review(v_b, null, 'Other: client pays balance on delivery', '50% before dispatch', null);
   perform pg_temp.restore();
   assert v_res ->> 'payment_route' = 'exception' and (v_res ->> 'exception_requested')::boolean;
   assert (select advance_exception_reason from public.order_submissions where id = v_b)
-       = 'client pays balance on delivery', 'B: the reason is stored permanently';
+       = 'Other: client pays balance on delivery', 'B: the reason is stored permanently';
+  assert (select advance_exception_reason_code from public.order_submissions where id = v_b)
+       = 'other', 'B: and its category (20270102000000)';
   assert (select advance_exception_status from public.order_submissions where id = v_b) = 'pending';
   assert exists (select 1 from public.order_submission_activity
                  where submission_id = v_b and action = 'advance_exception_requested'
@@ -234,7 +236,7 @@ begin
   perform pg_temp.become(v_sales);
   v_sum := public.pi_submission_payment_summary(v_c);
   assert v_sum ->> 'submission_position' = 'no_payment';
-  v_res := public.submit_pi_for_review(v_c, null, 'repeat client, pays on delivery', '100% before dispatch', null);
+  v_res := public.submit_pi_for_review(v_c, null, 'Sample order', null, null);
   perform pg_temp.restore();
   assert (select advance_exception_status from public.order_submissions where id = v_c) = 'pending',
     'C: the no-payment exception is recorded';

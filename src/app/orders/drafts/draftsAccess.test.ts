@@ -53,6 +53,9 @@ import {
   persistedProducts,
   toNumber,
   PI_DRAFT_DETAIL_COLUMNS,
+  PI_DRAFT_LIST_COLUMNS,
+  GRAND_TOTAL_UNAVAILABLE,
+  NUMBER_NOT_ALLOTTED,
   type PersistedItem,
   type PersistedItemImage,
   type PersistedSubmission,
@@ -769,16 +772,35 @@ describe('the drafts list', () => {
     assert.equal(entry.grandTotal, '₹2,95,000')
   })
 
-  test('a missing money figure shows a dash, never a zero', () => {
+  test('a missing money figure is never a zero, and a missing grand total says so', () => {
     // ₹0 would be a figure nobody wrote, and the two are independent: a workbook
     // can print one and not the other.
     const noProduct = describeDraftListEntry(submission({ gross_product_amount: null }), formatInr)
     assert.equal(noProduct.productValue, '—')
     assert.equal(noProduct.grandTotal, '₹2,95,000', 'and the other figure is unaffected')
+    assert.equal(noProduct.grandTotalMissing, false)
 
+    // A missing GRAND TOTAL is the one that stops the PI being sent, so the
+    // list names it rather than drawing a dash a reader skims past.
     const noTotal = describeDraftListEntry(submission({ grand_total: null }), formatInr)
-    assert.equal(noTotal.grandTotal, '—')
+    assert.equal(noTotal.grandTotal, GRAND_TOTAL_UNAVAILABLE)
+    assert.equal(noTotal.grandTotalMissing, true)
     assert.equal(noTotal.productValue, '₹2,50,000')
+    assert.ok(read(LIST_PAGE).includes('GRAND_TOTAL_UNAVAILABLE_NOTE'), 'and the row can say why')
+  })
+
+  test('each row names the draft and its number, and invents neither (20270102000000)', () => {
+    const fresh = describeDraftListEntry(submission({ draft_reference: 'PID-00007', reserved_order_number: null }), formatInr)
+    assert.equal(fresh.reference, 'PID-00007')
+    assert.equal(fresh.numberLine, NUMBER_NOT_ALLOTTED)
+    const held = describeDraftListEntry(submission({ draft_reference: 'PID-00003', reserved_order_number: '0525' }), formatInr)
+    assert.equal(held.numberLine, 'Reserved number 0525')
+    // Only the genuine reservation is ever read: the workbook's own B20 is not.
+    const copied = describeDraftListEntry(
+      submission({ reserved_order_number: null, source_order_number: '0412' } as Partial<PersistedSubmission>), formatInr)
+    assert.equal(copied.numberLine, NUMBER_NOT_ALLOTTED)
+    assert.ok(PI_DRAFT_LIST_COLUMNS.includes('draft_reference') && PI_DRAFT_LIST_COLUMNS.includes('reserved_order_number'))
+    assert.ok(read(LIST_PAGE).includes('{entry.reference} · {entry.numberLine}'))
   })
 
   test('the row states both money figures, and never one as the other', () => {
@@ -2052,11 +2074,13 @@ describe('the submit dialog states the payment position and asks only what is un
     assert.ok(!source.includes('parseFloat('), 'no second parser')
   })
 
-  test('below the requirement it asks for a reason and payment terms, and marks them', () => {
+  test('below the requirement it asks for one of three reasons, and nothing else (20270102000000)', () => {
     assert.ok(source.includes('{meetsStandard === false && ('))
     assert.ok(source.includes('PAYMENT_REASON_LABEL'))
-    assert.ok(source.includes('PAYMENT_TERMS_LABEL'))
-    assert.ok(source.includes('BILLING_TERMS_LABEL'))
+    assert.ok(source.includes('EXCEPTION_REASON_OPTIONS.map'), 'the three reasons are drawn from one list')
+    assert.ok(source.includes("terms.reasonChoice === 'other' && field("), 'and only Other asks for a remark')
+    assert.ok(!source.includes('PAYMENT_TERMS_LABEL,'), 'Payment terms are no longer demanded below the requirement')
+    assert.ok(source.includes('BILLING_TERMS_LABEL'), 'billing terms are still offered where they always were')
   })
 
   test('at or above the requirement it asks for nothing mandatory', () => {

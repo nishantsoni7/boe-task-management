@@ -55,6 +55,7 @@ import {
   PI_DRAFT_LIST_COLUMNS,
   PI_DRAFT_LIST_STATUSES,
   PI_REVIEW_EMPTY_TEXT,
+  GRAND_TOTAL_UNAVAILABLE_NOTE,
   describeDraftListEntry,
   type PersistedSubmission,
   type PiDraftListEntry,
@@ -511,6 +512,12 @@ export default function PiDraftsPage() {
               <tr key={entry.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <td style={{ padding: '10px 14px', fontWeight: 600, color: colors.primary, minWidth: '160px' }}>
                   {entry.client}
+                  {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270102000000): a
+                      reserved number only where an older draft genuinely holds one,
+                      otherwise the plain statement that none is allotted yet. */}
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', fontWeight: 400, whiteSpace: 'nowrap' }}>
+                    {entry.reference} · {entry.numberLine}
+                  </div>
                 </td>
                 {/* The workbook's own author, with the date the document
                     carries. Two facts about the PI, not about this system. */}
@@ -534,7 +541,11 @@ export default function PiDraftsPage() {
                 <td style={{ padding: '10px 14px', textAlign: 'right', color: colors.secondary, whiteSpace: 'nowrap' }}>
                   {entry.productValue}
                 </td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                <td
+                  style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap',
+                    color: entry.grandTotalMissing ? colors.red : colors.primary }}
+                  title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
+                >
                   {entry.grandTotal}
                 </td>
                 <td style={{ padding: '10px 14px' }}>
@@ -589,6 +600,9 @@ export default function PiDraftsPage() {
                 <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
                   {entry.client}
                 </div>
+                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                  {entry.reference} · {entry.numberLine}
+                </div>
                 {/* The workbook's own author, under the client. The narrow
                     layout has no room for a column each, so the two people
                     become two labelled lines below rather than a guessing game
@@ -621,7 +635,10 @@ export default function PiDraftsPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
                 <span style={{ fontSize: '11px', color: colors.muted }}>Grand total</span>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{entry.grandTotal}</span>
+                <span
+                  style={{ fontSize: '14px', fontWeight: 700, color: entry.grandTotalMissing ? colors.red : colors.primary }}
+                  title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
+                >{entry.grandTotal}</span>
               </div>
             </div>
 

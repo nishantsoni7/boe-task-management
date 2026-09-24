@@ -121,10 +121,12 @@ import {
   PAYMENT_POSITION_HINT,
   PAYMENT_POSITION_LABEL,
   PAYMENT_REASON_LABEL,
+  EXCEPTION_REASON_OPTIONS,
+  EXCEPTION_REASON_NOT_A_DECISION,
+  OTHER_REMARK_LABEL,
+  OTHER_REMARK_PLACEHOLDER,
   PAYMENT_REASON_MAX_LENGTH,
-  PAYMENT_REASON_PLACEHOLDER,
   PAYMENT_STANDARD_PERCENT,
-  PAYMENT_TERMS_LABEL,
   PAYMENT_TERMS_MAX_LENGTH,
   PAYMENT_TERMS_OPTIONAL_LABEL,
   PAYMENT_TERMS_PLACEHOLDER,
@@ -405,10 +407,10 @@ function PaymentPositionPanel({
         </div>
       )}
 
-      {/* Below the requirement the two fields are MANDATORY and marked so. The
-          reason is what management is being asked to accept; the terms are how
-          the rest of the money is expected to arrive, and a request to start
-          early without them is a request nobody can weigh. */}
+      {/* BELOW THE REQUIREMENT: ONE OF THREE REASONS, and nothing else
+          (20270102000000). "Other" asks for a remark. The stored Payment and
+          Billing terms are carried as they are; they are edited on the PI, not
+          here. Choosing a reason asks — an admin decides. */}
       {meetsStandard === false && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: '9px',
@@ -423,9 +425,37 @@ function PaymentPositionPanel({
               {reasonPrompt}
             </div>
           )}
-          {field('reason', PAYMENT_REASON_LABEL, PAYMENT_REASON_PLACEHOLDER, PAYMENT_REASON_MAX_LENGTH, 3)}
-          {field('paymentTerms', PAYMENT_TERMS_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
-          {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
+          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <legend style={{ ...KEY_STYLE, padding: 0, marginBottom: '4px' }}>{PAYMENT_REASON_LABEL}</legend>
+            {EXCEPTION_REASON_OPTIONS.map(option => (
+              <label
+                key={option.value}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', cursor: disabled ? 'default' : 'pointer',
+                  padding: '8px 10px', borderRadius: '6px', fontSize: '13px', color: colors.primary,
+                  border: `1px solid ${terms.reasonChoice === option.value ? colors.blue : colors.border}`,
+                  background: terms.reasonChoice === option.value ? colors.blueTint : colors.base,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="pi-exception-reason"
+                  value={option.value}
+                  checked={terms.reasonChoice === option.value}
+                  disabled={disabled}
+                  onChange={() => onTerms('reasonChoice', option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </fieldset>
+          {terms.reasonChoice === 'other' && field(
+            'otherRemark', OTHER_REMARK_LABEL, OTHER_REMARK_PLACEHOLDER,
+            PAYMENT_REASON_MAX_LENGTH - 'Other: '.length, 2,
+          )}
+          <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+            {EXCEPTION_REASON_NOT_A_DECISION}
+          </div>
         </div>
       )}
 

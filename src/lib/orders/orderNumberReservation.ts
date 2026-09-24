@@ -41,7 +41,15 @@
  * says so, rather than asking for a step that no longer does anything.
  */
 export const RESERVATION_INSTRUCTION =
-  'This does not need to be added to the PI file — BOE assigns it to the Order automatically when the PI is approved.'
+  'It becomes the Order number when this PI is approved; until then no Order number is allotted. It does not need to be added to the PI file.'
+
+/**
+ * What a draft with no reservation says (20270102000000): every new draft, and
+ * every older one that never took a number. There is nothing to press — the
+ * Order number is allotted when the PI is approved, from the one series.
+ */
+export const NUMBER_ALLOTTED_AT_APPROVAL =
+  'BOE allots the Order number when this PI is approved. The reference inside the PI file is not one.'
 
 /**
  * The columns the reservation panel reads, named here so they and the module
@@ -297,33 +305,15 @@ export function describeReservation(input: {
     }
   }
 
-  const blocked = reservationBlockedReason(input)
-  const required = Boolean(input.reservationRequired)
-
-  // A NEW DRAFT IS NOT BEING OFFERED A CHOICE. Its number is issued the moment
-  // its first PI is uploaded, by the database, with no control to press — so the
-  // wording says what is about to happen rather than inviting a decision. The
-  // only reason it can be sitting here with no number is that no PI file has
-  // been uploaded yet, which is what the blocked reason will already say.
-  if (required) {
-    return {
-      state: blocked ? 'blocked' : 'available',
-      number: null,
-      standing: blocked
-        ? `No Order number has been reserved for this PI yet. ${NO_PI_NUMBER_NOTE}`
-        : `An Order number is issued for this PI as soon as its PI file is uploaded. ${NO_PI_NUMBER_NOTE}`,
-      blockedReason: blocked,
-      canCopy: false,
-    }
-  }
-
+  // NO RESERVATION, AND NOTHING TO RESERVE (20270102000000). A PI Draft no
+  // longer takes a number — not automatically, not by a button — so there is
+  // no choice to offer and no blocked reason to give. The Order number is
+  // allotted when the PI is approved.
   return {
-    state: blocked ? 'blocked' : 'available',
+    state: 'blocked',
     number: null,
-    standing: blocked
-      ? `No Order number has been reserved for this PI. ${NO_PI_NUMBER_NOTE}`
-      : `${NO_PI_NUMBER_NOTE} Reserve one now if the revised PI has to carry it — it is taken from the Order series and held for this PI alone.`,
-    blockedReason: blocked,
+    standing: NUMBER_ALLOTTED_AT_APPROVAL,
+    blockedReason: null,
     canCopy: false,
   }
 }

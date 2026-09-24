@@ -60,6 +60,7 @@ import {
   PAYMENT_REASON_REQUIRED,
   PAYMENT_TERMS_REQUIRED,
   PAYMENT_TERMS_TOO_LONG,
+  EXCEPTION_REASON_INVALID,
 } from './paymentGate'
 
 // ── Labels ────────────────────────────────────────────────────────────────────
@@ -398,6 +399,9 @@ const FAILURE_MESSAGES: readonly { marker: string; code: string; message: string
     message: PAYMENT_TERMS_REQUIRED },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_REASON_REQUIRED', code: 'PAYMENT_REASON_REQUIRED',
     message: PAYMENT_REASON_REQUIRED },
+  // 20270102000000: a reason outside the three.
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_REASON_INVALID', code: 'PAYMENT_REASON_REQUIRED',
+    message: EXCEPTION_REASON_INVALID },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_PENDING', code: 'EXCEPTION_PENDING',
     message: PAYMENT_EXCEPTION_PENDING },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_REJECTED', code: 'EXCEPTION_REJECTED',

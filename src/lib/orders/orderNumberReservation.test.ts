@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 
 import {
   NO_PI_NUMBER_NOTE,
+  NUMBER_ALLOTTED_AT_APPROVAL,
   NUMBER_LABEL,
   PI_RESERVATION_COLUMNS,
   RESERVATION_INSTRUCTION,
@@ -43,7 +44,9 @@ const draft = {
 describe('when a number may be reserved', () => {
   test('a draft with a workbook, by somebody who may replace it', () => {
     assert.equal(reservationBlockedReason(draft), null)
-    assert.equal(describeReservation(draft).state, 'available')
+    // 20270102000000: nothing is offered even so — a PI Draft no longer
+    // reserves, and the panel never draws the action.
+    assert.equal(describeReservation(draft).state, 'blocked')
   })
 
   test('a returned PI is still a stage at which the revised file can be uploaded', () => {
@@ -158,19 +161,16 @@ describe('what the panel says', () => {
     assert.match(view.standing, /reserved 0042, but the Confirmed Order was created as 0099/)
   })
 
-  test('no number, and one cannot be taken: the reason is carried, not swallowed', () => {
-    const view = describeReservation({ ...draft, status: 'submitted' })
-    assert.equal(view.state, 'blocked')
-    assert.equal(view.number, null)
-    assert.equal(view.canCopy, false)
-    assert.match(view.blockedReason ?? '', /draft or has been returned/)
-  })
-
-  test('no number, and one can be: the invitation explains what reserving means', () => {
-    const view = describeReservation(draft)
-    assert.equal(view.state, 'available')
-    assert.equal(view.blockedReason, null)
-    assert.match(view.standing, /held for this PI alone/)
+  test('no number: nothing to reserve, and the approval allots it (20270102000000)', () => {
+    for (const input of [draft, { ...draft, status: 'submitted' }, { ...draft, hasWorkbook: false }]) {
+      const view = describeReservation(input)
+      assert.equal(view.state, 'blocked')
+      assert.equal(view.number, null)
+      assert.equal(view.canCopy, false)
+      assert.equal(view.blockedReason, null, 'no reason to give: there is no action')
+      assert.equal(view.standing, NUMBER_ALLOTTED_AT_APPROVAL)
+      assert.doesNotMatch(view.standing, /Reserve|held for this PI/)
+    }
   })
 
   test('there is never a copy control without a number beside it', () => {
@@ -201,12 +201,15 @@ describe('the numbers are named apart, and the missing one is named too', () => 
 
   test('and the absence is STATED wherever there is no reservation', () => {
     for (const input of [draft, { ...draft, status: 'submitted' }]) {
-      assert.ok(describeReservation(input).standing.includes(NO_PI_NUMBER_NOTE),
+      assert.ok(describeReservation(input).standing.includes('The reference inside the PI file is not one'),
         'an empty space is not a statement')
     }
     // Never said beside a real number — it would contradict the number above it.
     const held = describeReservation({ ...draft, reserved: '0042' })
     assert.ok(!held.standing.includes(NO_PI_NUMBER_NOTE))
+    assert.ok(!held.standing.includes(NUMBER_ALLOTTED_AT_APPROVAL))
+    // A held number is not yet the Order's, and the sentence says so.
+    assert.match(held.standing, /until then no Order number is allotted/)
   })
 })
 
@@ -305,33 +308,25 @@ describe('the number read out of a workbook, normalized the way SQL normalizes i
 describe('the panel does not offer a decision that is not being made', () => {
   const newDraft = { ...draft, reservationRequired: true }
 
-  test('a NEW draft is told its number is coming, not invited to take one', () => {
+  // 20270102000000: no draft reserves, whichever rule it was created under —
+  // a draft of the 20261009000000 era that never took a number, and every
+  // draft since, are told the same true thing and offered nothing.
+  test('an old-rule draft with no number is told the approval allots it, and offered nothing', () => {
     const view = describeReservation(newDraft)
-    assert.equal(view.state, 'available')
-    assert.match(view.standing, /issued for this PI as soon as its PI file is uploaded/)
-    // Neither submission (20261121000000) nor Order creation (20261124000000)
-    // requires the PI file to carry the number, so nothing here claims either.
-    assert.doesNotMatch(view.standing, /must carry it/)
-    // No invitation, and no suggestion that skipping it is possible.
-    assert.doesNotMatch(view.standing, /Reserve one now|if the revised PI has to carry it/)
+    assert.equal(view.standing, NUMBER_ALLOTTED_AT_APPROVAL)
+    assert.doesNotMatch(view.standing, /issued for this PI as soon as|Reserve one now|must carry it/)
   })
 
-  test('a GRANDFATHERED draft is still offered the choice', () => {
+  test('a grandfathered draft is no longer offered the choice either', () => {
     const view = describeReservation({ ...draft, reservationRequired: false })
-    assert.match(view.standing, /Reserve one now/)
-  })
-
-  test('either way the absence of a PI number is stated', () => {
-    for (const input of [newDraft, draft]) {
-      assert.ok(describeReservation(input).standing.includes(NO_PI_NUMBER_NOTE))
-    }
-  })
-
-  test('a blocked NEW draft says the number has not arrived YET', () => {
-    const view = describeReservation({ ...newDraft, hasWorkbook: false })
+    assert.doesNotMatch(view.standing, /Reserve one now/)
     assert.equal(view.state, 'blocked')
-    assert.match(view.standing, /has been reserved for this PI yet/)
-    assert.match(view.blockedReason ?? '', /Upload the PI file first/)
+  })
+
+  test('no draft is ever told a number is on its way before approval', () => {
+    for (const input of [newDraft, draft, { ...newDraft, hasWorkbook: false }]) {
+      assert.doesNotMatch(describeReservation(input).standing, /as soon as its PI file is uploaded|reserved for this PI yet/)
+    }
   })
 })
 

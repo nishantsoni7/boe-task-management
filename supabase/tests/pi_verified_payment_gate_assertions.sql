@@ -555,7 +555,8 @@ end $$;
 -- 7. SUBMISSION — the route is the database's, and the terms are mandatory
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- 10/11. Below 40%, including at zero, a reason AND Payment Terms are required.
+-- 10/11. Below 40%, including at zero, one of the three reasons is required
+-- (20270102000000; Payment Terms became optional).
 -- 12/13. The owner may ask; an unrelated salesperson may not.
 --
 -- NOTE: submit_pi_for_review() also re-checks the workbook and every product
@@ -586,19 +587,20 @@ begin
       format('expected the reason refusal, got: %s', v_msg);
   end;
 
-  -- A reason but no Payment Terms: still refused, and for the right reason.
+  -- A reason outside the three (20270102000000): refused, and for the right
+  -- reason. Payment Terms are no longer what is missing here — they are optional.
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', current_setting('test.sales_id'))::text, true);
   begin
     perform public.submit_pi_for_review(v_pi, null, 'Client pays on delivery', null, null);
     reset role;
-    raise exception '10. Payment Terms must be mandatory below the requirement';
+    raise exception '10. a reason other than the three offered must be refused';
   exception when sqlstate 'P0001' then
     get stacked diagnostics v_msg = message_text;
     reset role;
-    assert v_msg like 'ORDER_SUBMISSION_PAYMENT_TERMS_REQUIRED%',
-      format('expected the terms refusal, got: %s', v_msg);
+    assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_REASON_INVALID%',
+      format('expected the reason-category refusal, got: %s', v_msg);
   end;
 
   -- 13. AN UNRELATED SALESPERSON CANNOT ASK on somebody else's PI.

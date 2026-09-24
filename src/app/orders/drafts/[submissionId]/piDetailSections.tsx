@@ -52,9 +52,9 @@ import {
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import {
   NUMBER_LABEL,
-  RESERVE_ACTION_LABEL,
   type ReservationView,
 } from '@/lib/orders/orderNumberReservation'
+import { NUMBER_NOT_ALLOTTED } from '@/lib/orders/draftsView'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
   COMMERCIAL_TERMS_ABSENT,
@@ -81,6 +81,7 @@ import {
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUS_TITLE,
   RESERVED_ORDER_LABEL,
+  DRAFT_REFERENCE_LABEL,
   STORED_COPY_NOTE,
   SUBMITTED_BY_LABEL,
   buildPaymentMetrics,
@@ -155,16 +156,14 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
  * issued by the database and immutable once issued, so there is no input here.
  */
 export function PiContextRow({
-  reservation, confirmedNumber, reserving, reservationFailure, onReserve, onCopy, copied,
+  reservation, confirmedNumber, draftReference, onCopy, copied,
   context, statusLabel, tone,
 }: {
   reservation: ReservationView
   /** The Confirmed Order's number, once there is one and this viewer can read it. */
   confirmedNumber: string | null
-  reserving: boolean
-  reservationFailure: string | null
-  /** The compatibility Reserve action, or null wherever the RPC would refuse it. */
-  onReserve: (() => void) | null
+  /** The draft's own PID- reference (20270102000000), or null before it. */
+  draftReference: string | null
   onCopy: (value: string) => void
   copied: boolean
   context: SubmissionContext
@@ -181,9 +180,14 @@ export function PiContextRow({
             {RESERVED_ORDER_LABEL}
           </div>
 
+          {/* 20270102000000: a held reservation reads "Reserved number 0525",
+              and until the Order exists the page also says, in words, that no
+              Order number is allotted — a reserved number is not yet one. */}
           {number ? (
             <div className="pi-detail-context-number-row">
-              <span className="pi-detail-context-number">{number}</span>
+              <span className="pi-detail-context-number">
+                {reservation.state === 'used' ? number : `Reserved number ${number}`}
+              </span>
               {reservation.canCopy && (
                 <button
                   type="button"
@@ -198,18 +202,16 @@ export function PiContextRow({
                 </button>
               )}
             </div>
-          ) : onReserve ? (
-            <button
-              type="button"
-              onClick={onReserve}
-              disabled={reserving}
-              className="boe-btn boe-btn-primary"
-              style={{ alignSelf: 'flex-start' }}
-            >
-              {reserving ? 'Reserving…' : RESERVE_ACTION_LABEL}
-            </button>
           ) : (
-            <div className="pi-detail-context-absent">Not reserved</div>
+            <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
+          )}
+          {number && reservation.state !== 'used' && !confirmedNumber && (
+            <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
+          )}
+          {draftReference && (
+            <div className="pi-detail-context-note">
+              {DRAFT_REFERENCE_LABEL} <strong>{draftReference}</strong>
+            </div>
           )}
 
           {/* ONE LINE saying where the number stands. The blocked reason takes
@@ -227,9 +229,6 @@ export function PiContextRow({
             </div>
           )}
 
-          {reservationFailure && (
-            <div role="alert" className="pi-detail-context-error">{reservationFailure}</div>
-          )}
         </section>
 
         <section className="pi-detail-context-cell" aria-label={context.heading}>

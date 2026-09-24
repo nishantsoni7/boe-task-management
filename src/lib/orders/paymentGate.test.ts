@@ -39,9 +39,14 @@ import {
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_REASON_MAX_LENGTH,
   PAYMENT_REASON_REQUIRED,
+  OTHER_REMARK_REQUIRED,
+  OTHER_REMARK_MIN_LENGTH,
+  EXCEPTION_REASON_OPTIONS,
+  composeExceptionReason,
+  readExceptionReason,
+  PAYMENT_REASON_TOO_LONG,
   PAYMENT_STANDARD_PERCENT,
   PAYMENT_TERMS_MAX_LENGTH,
-  PAYMENT_TERMS_REQUIRED,
   PAYMENT_TERMS_TOO_LONG,
   asPaymentPosition,
   paymentPositionLines,
@@ -135,65 +140,66 @@ describe('what the submit dialog may send', () => {
       { reason: null, paymentTerms: null, billingTerms: null })
   })
 
-  test('below the requirement, a reason AND payment terms are both required', () => {
+  test('below the requirement, one of the three reasons is required — and only that (20270102000000)', () => {
     const none = validateSubmissionTerms({ meetsStandard: false, terms: terms() })
     assert.equal(none.ok, false)
     assert.equal(none.ok === false && none.message, PAYMENT_REASON_REQUIRED)
 
-    const reasonOnly = validateSubmissionTerms({
-      meetsStandard: false, terms: terms({ reason: 'client pays on delivery' }),
-    })
-    assert.equal(reasonOnly.ok, false)
-    assert.equal(reasonOnly.ok === false && reasonOnly.message, PAYMENT_TERMS_REQUIRED)
-
-    const both = validateSubmissionTerms({
-      meetsStandard: false,
-      terms: terms({ reason: 'client pays on delivery', paymentTerms: '50% before dispatch' }),
-    })
-    assert.equal(both.ok, true)
+    // Payment Terms are no longer demanded: a chosen reason is enough.
+    for (const [choice, stored] of [['against_client_po', 'Against client PO'], ['sample_order', 'Sample order']] as const) {
+      const r = validateSubmissionTerms({ meetsStandard: false, terms: terms({ reasonChoice: choice }) })
+      assert.equal(r.ok, true)
+      assert.equal(r.ok && r.value.reason, stored, 'the stored words are the database’s words')
+      assert.equal(r.ok && r.value.paymentTerms, null)
+    }
   })
 
-  test('ZERO payment is the same rule — a reason and terms, never a waiver', () => {
-    // Zero is not a special case with a softer requirement. It is the case the
-    // business most needs asked explicitly.
+  test('"Other" needs a real remark, and is stored as "Other: <remark>"', () => {
+    for (const remark of ['', '   ', 'too short']) {
+      const r = validateSubmissionTerms({ meetsStandard: false, terms: terms({ reasonChoice: 'other', otherRemark: remark }) })
+      assert.equal(r.ok, false)
+      assert.equal(r.ok === false && r.message, OTHER_REMARK_REQUIRED)
+    }
+    const ok = validateSubmissionTerms({
+      meetsStandard: false, terms: terms({ reasonChoice: 'other', otherRemark: '  repeat client, pays on delivery ' }),
+    })
+    assert.equal(ok.ok && ok.value.reason, 'Other: repeat client, pays on delivery')
+    assert.equal(OTHER_REMARK_MIN_LENGTH, 10, 'the database’s own minimum')
+  })
+
+  test('exactly three options, in this order, with these words', () => {
+    assert.deepEqual(EXCEPTION_REASON_OPTIONS.map(o => o.label), ['Against client PO', 'Sample order', 'Other'])
+  })
+
+  test('a stored reason reads back into the same choice; free text from before opens unchosen', () => {
+    assert.deepEqual(readExceptionReason('Against client PO'), { choice: 'against_client_po', remark: '' })
+    assert.deepEqual(readExceptionReason('Sample order'), { choice: 'sample_order', remark: '' })
+    assert.deepEqual(readExceptionReason('Other: long-standing client'), { choice: 'other', remark: 'long-standing client' })
+    assert.deepEqual(readExceptionReason('client pays on delivery'), { choice: '', remark: '' })
+    assert.deepEqual(readExceptionReason(null), { choice: '', remark: '' })
+    assert.equal(composeExceptionReason('other', 'short'), null)
+  })
+
+  test('ZERO payment is the same rule — a reason, never a waiver', () => {
     const zero = validateSubmissionTerms({ meetsStandard: false, terms: terms() })
     assert.equal(zero.ok, false)
   })
 
-  test('billing terms stay optional on both routes', () => {
+  test('terms stay optional on both routes, and are sent TRIMMED when present', () => {
     for (const meetsStandard of [true, false]) {
       const result = validateSubmissionTerms({
         meetsStandard,
-        terms: terms({ reason: 'r', paymentTerms: 'p' }),
+        terms: terms({ reasonChoice: 'sample_order', paymentTerms: '  50% now ', billingTerms: '   ' }),
       })
-      assert.equal(result.ok, true, `billing terms must not be required (meets=${meetsStandard})`)
+      assert.equal(result.ok, true, `terms must not be required (meets=${meetsStandard})`)
+      assert.equal(result.ok && result.value.paymentTerms, '50% now')
       assert.equal(result.ok && result.value.billingTerms, null)
     }
   })
 
-  test('whitespace is not an answer', () => {
+  test('a reason chosen before the payment landed is NOT sent as an exception', () => {
     const result = validateSubmissionTerms({
-      meetsStandard: false, terms: terms({ reason: '   ', paymentTerms: '  ' }),
-    })
-    assert.equal(result.ok, false)
-    assert.equal(result.ok === false && result.message, PAYMENT_REASON_REQUIRED)
-  })
-
-  test('what is sent is TRIMMED, and an empty field becomes an absence', () => {
-    const result = validateSubmissionTerms({
-      meetsStandard: false,
-      terms: terms({ reason: '  why  ', paymentTerms: '  50% now ', billingTerms: '   ' }),
-    })
-    assert.equal(result.ok, true)
-    assert.deepEqual(result.ok && result.value,
-      { reason: 'why', paymentTerms: '50% now', billingTerms: null })
-  })
-
-  test('a reason typed before the payment landed is NOT sent as an exception', () => {
-    // Reaching the requirement while a reason sits in the box must not raise a
-    // request nobody has to answer.
-    const result = validateSubmissionTerms({
-      meetsStandard: true, terms: terms({ reason: 'client pays on delivery' }),
+      meetsStandard: true, terms: terms({ reasonChoice: 'against_client_po' }),
     })
     assert.equal(result.ok, true)
     assert.equal(result.ok && result.value.reason, null)
@@ -204,10 +210,13 @@ describe('what the submit dialog may send', () => {
     assert.equal(PAYMENT_TERMS_MAX_LENGTH, 500)
     const long = validateSubmissionTerms({
       meetsStandard: false,
-      terms: terms({ reason: 'r', paymentTerms: 'x'.repeat(PAYMENT_TERMS_MAX_LENGTH + 1) }),
+      terms: terms({ reasonChoice: 'sample_order', paymentTerms: 'x'.repeat(PAYMENT_TERMS_MAX_LENGTH + 1) }),
     })
-    assert.equal(long.ok, false)
     assert.equal(long.ok === false && long.message, PAYMENT_TERMS_TOO_LONG)
+    const longRemark = validateSubmissionTerms({
+      meetsStandard: false, terms: terms({ reasonChoice: 'other', otherRemark: 'x'.repeat(PAYMENT_REASON_MAX_LENGTH) }),
+    })
+    assert.equal(longRemark.ok === false && longRemark.message, PAYMENT_REASON_TOO_LONG)
   })
 
   test('an unreadable payment position fails CLOSED', () => {
@@ -218,8 +227,8 @@ describe('what the submit dialog may send', () => {
 
   test('an untouched form is recognised, so nobody is scolded for not typing', () => {
     assert.equal(submissionTermsUntouched(EMPTY_SUBMISSION_TERMS), true)
-    assert.equal(submissionTermsUntouched({ ...EMPTY_SUBMISSION_TERMS, reason: 'x' }), false)
-    assert.equal(submissionTermsUntouched({ ...EMPTY_SUBMISSION_TERMS, reason: '   ' }), true)
+    assert.equal(submissionTermsUntouched({ ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other' }), false)
+    assert.equal(submissionTermsUntouched({ ...EMPTY_SUBMISSION_TERMS, otherRemark: '   ' }), true)
   })
 })
 

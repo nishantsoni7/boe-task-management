@@ -630,6 +630,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
       // Revised-PI promotion (20270101000000), held by its own suites.
       if (f === 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
+      // PI numbering at conversion, draft reference, three reasons (20270102000000).
+      if (f === 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -801,7 +803,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable), false,
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
-      if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)) {
+      if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -884,8 +887,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/lib/orders/confirmedPdf.ts',
     ]) {
       assert.equal(ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(untouchable), false,
-        `${untouchable} is outside what removing the duplicate approval reaches`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      `${untouchable} is outside what removing the duplicate approval reaches`)
+      // …unless PI numbering (20270102000000) reaches it on purpose: the three
+      // reasons live in paymentGate.ts and the footer fingerprint in the parser.
+      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -1327,6 +1334,42 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT = new Set([
     'src/app/orders/[id]/MoreActionsMenu.tsx',
   ])
+  /**
+   * PI NUMBERING AT CONVERSION, THE DRAFT REFERENCE, THE THREE REASONS AND THE
+   * FOOTER FINGERPRINT (20270102000000).
+   *
+   * A new PI Draft reserves no Order number (the Order takes one when the PI is
+   * approved), carries a PID- reference, shows "Reserved number …" only where an
+   * older draft genuinely holds one, states a missing Grand Total instead of a
+   * dash, and asks for one of three reasons below 40%. The parser finds a
+   * shifted footer by its labels. Touches the PI Draft screens, the submit
+   * dialog and the parser ON PURPOSE — they are what this work changes.
+   */
+  const ALLOWED_PI_NUMBERING_AND_EDITING = new Set([
+    'src/lib/pi/masterSheetParser.ts',
+    'src/lib/pi/masterSheetParser.test.ts',
+    'src/lib/pi/types.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/draftsView.ts',
+    'src/lib/orders/orderNumberReservation.ts',
+    'src/lib/orders/orderNumberReservation.test.ts',
+    'src/lib/orders/paymentGate.ts',
+    'src/lib/orders/paymentGate.test.ts',
+    'src/lib/orders/reviewDecision.test.ts',
+    'src/lib/orders/submissionWorkflow.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/app/orders/drafts/page.tsx',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/components/orders/piSubmitModal.render.test.tsx',
+    'src/components/orders/PiSupportingDocuments.tsx',
+    'src/components/orders/piDraftAttachments.render.test.tsx',
+  ])
+  const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
 
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
@@ -1366,6 +1409,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
     !ALLOWED_REVISED_PI_PROMOTION.has(f) &&
     !ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT.has(f) &&
+    !ALLOWED_PI_NUMBERING_AND_EDITING.has(f) &&
+    f !== PI_NUMBERING_MIGRATION &&
     f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
@@ -1539,7 +1584,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // the membership assertion above is what actually proves; a second
       // authorized branch changing the file says nothing about this one.
       if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)
-          && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)) {
+          && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1560,8 +1606,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const f of added) {
       // order_pi_review_gate_and_versions is edited, not added: the revised-PI
       // promotion moves its helpers onto the staged approval path.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions/.test(f),
+      // PI numbering (20270102000000) adds its own suite and race runner, and
+      // edits the two suites whose below-40% reasons are now one of three.
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate/.test(f),
         `${f} does not belong to this feature`)
+    }
+    // The PI numbering race runner is held to the same rule.
+    if (added.some(f => /order_submission_numbering/.test(f))) {
+      const runner = read('supabase/tests/run_order_submission_numbering_race.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(runner), false,
+        'the numbering race runner must not be able to reach a linked project')
+      assert.ok(runner.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(runner.includes('is not disposable'), 'and refuses a database holding real Orders')
+      const assertions = read('supabase/tests/order_submission_numbering_at_conversion_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // The revised-PI promotion runner is held to the same rule.
     if (added.some(f => /order_pi_revision_promotion/.test(f))) {
@@ -1646,7 +1704,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
         || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
-        || ALLOWED_REVISED_PI_PROMOTION.has(file),
+        || ALLOWED_REVISED_PI_PROMOTION.has(file)
+        || ALLOWED_PI_NUMBERING_AND_EDITING.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
