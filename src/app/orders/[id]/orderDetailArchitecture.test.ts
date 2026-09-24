@@ -99,9 +99,10 @@ describe('the redundant surfaces are gone', () => {
     }
   })
 
-  test('Fabric & Finish is BESIDE the box, and is the only place the approvals are stated', () => {
+  test('Fabric & Finish is a strip ABOVE the box, and is the only place the approvals are stated', () => {
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.ok(row.indexOf('<OrderDocumentsPanel') < row.indexOf('<OrderFabricFinishCard'))
+    assert.ok(row.indexOf('<OrderFabricFinishCard') >= 0)
+    assert.ok(row.indexOf('<OrderFabricFinishCard') < row.indexOf('<OrderDocumentsPanel'))
     // The Documents box does not summarise them a column away from the card
     // that states them in full.
     const panel = code(STATUS).slice(code(STATUS).indexOf('export function OrderDocumentsPanel'))
@@ -139,7 +140,7 @@ describe('the redundant surfaces are gone', () => {
   })
 
   test('Main PI and Design Files are both still there, in the Documents box', () => {
-    const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('<OrderFabricFinishCard'))
+    const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('</OrderDocumentsRow>'))
     // The box is handed all three kinds of paperwork, and every control the
     // Main PI card used to own.
     for (const kept of ['mainPi', 'design', 'clientPo',

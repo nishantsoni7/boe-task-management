@@ -38,6 +38,17 @@ export const DOC_MAIN_PI_TITLE = 'Main PI'
 export const DOC_DESIGN_FILES_TITLE = 'Design Files'
 export const DOC_CLIENT_PO_TITLE = 'Client PO'
 
+/** The Main PI row's one primary action, and its secondary one in the ⋯ menu. */
+export const DOC_VIEW_PI_LABEL = 'View PI'
+export const DOC_DOWNLOAD_PI_LABEL = 'Download PI'
+/** The quiet link to the PI versions and every supporting-file submission. */
+export const DOCUMENTS_HISTORY_LABEL = 'History'
+export const DOCUMENTS_HISTORY_TITLE = 'Document history'
+/** When a supporting file became current (its Operations acceptance). */
+export const DOC_ACCEPTED_LABEL = 'Accepted'
+/** The approved PI's own product pictures — read-only, opened in a dialog. */
+export const DOC_PI_PICTURES_LABEL = (total: number) => `PI product pictures (${total})`
+
 /**
  * WHAT AN EMPTY DOCUMENT SLOT SAYS, and it says it quietly.
  *

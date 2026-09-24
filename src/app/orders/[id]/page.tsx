@@ -138,17 +138,25 @@ import {
   type RevisionDifferences,
 } from '@/lib/orders/orderPiVersions'
 import {
-  DocumentCategoryBody,
-  DocumentUploadAction,
   ReviewSubmissionModal,
+  SubmissionHistoryList,
   SubmitDocumentsModal,
+  uploadAvailability,
   useOrderDocumentSubmissions,
 } from './OrderDocumentSubmissions'
 import type { DocumentCategory, DocumentViewer, PersistedDocumentSubmission } from '@/lib/orders/orderDocumentSubmissions'
-import { UPLOAD_NEW_PI_LABEL, absenceLine } from '@/lib/orders/orderDocumentSubmissions'
+import {
+  UPDATE_DOCUMENTS_LABEL,
+  UPLOAD_CLIENT_PO_LABEL,
+  UPLOAD_DESIGN_FILES_LABEL,
+  UPLOAD_NEW_PI_LABEL,
+  absenceLine,
+  documentChanges,
+  supportingRow,
+} from '@/lib/orders/orderDocumentSubmissions'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { DOC_DOWNLOAD_PI_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
@@ -2328,21 +2336,40 @@ export default function OrderDetailPage() {
     setDocError(null)
     void docSubs.openFile(f).then(e => { if (e) setDocError(e) })
   }
-  const docBody = (category: DocumentCategory) => (
-    <>
-      <DocumentCategoryBody
-        category={category}
-        api={docSubs}
-        viewer={docViewer}
-        formatWhen={docWhen}
-        onReview={s => setDocReview(s)}
-        onResubmit={s => setDocUpload({ category, resubmission: s })}
-        onOpenFile={openDocFile}
-        absence={absenceLine(docSubs.absence, category, id => (id ? docSubs.names.get(id) ?? null : null), docWhen)}
-      />
-      {docError && <p className="order-doc-unavailable" role="alert">{docError}</p>}
-    </>
-  )
+  const docNameOf = (uid: string | null) => (uid ? docSubs.names.get(uid) ?? null : null)
+  // WHAT IS CURRENT, per category — accepted submissions only — and WHAT IS
+  // CHANGING, each submission once. Both are the lib's answers; the card draws.
+  const docSupporting = {
+    design: supportingRow(docSubs, 'design_files', absenceLine(docSubs.absence, 'design_files', docNameOf, docWhen)),
+    clientPo: supportingRow(docSubs, 'client_po', absenceLine(docSubs.absence, 'client_po', docNameOf, docWhen)),
+    formatWhen: docWhen,
+  }
+  const docChanges = docSubs.state === 'ready' ? documentChanges(docSubs.rows, docViewer, docNameOf, docWhen) : []
+
+  /**
+   * ONE "UPDATE DOCUMENTS" CONTROL instead of an upload button per row: New PI
+   * (the existing revised-PI door), Design Files and Client PO (the submission
+   * dialog). Each is offered on exactly the rule its own button was drawn on; a
+   * category with a submission already under review is listed, disabled, with
+   * the reason. Nothing is offered to a reader who may do none of the three.
+   */
+  type DocUpdateKey = 'pi' | DocumentCategory
+  const docUpdateItems: MoreActionItem<DocUpdateKey>[] = []
+  if (mayProposeRevision) docUpdateItems.push({ key: 'pi', label: UPLOAD_NEW_PI_LABEL })
+  for (const category of ['design_files', 'client_po'] as const) {
+    const upload = uploadAvailability(category, docSubs, docViewer)
+    if (!upload.offered) continue
+    docUpdateItems.push({
+      key: category,
+      label: `${category === 'design_files' ? UPLOAD_DESIGN_FILES_LABEL : UPLOAD_CLIENT_PO_LABEL}${upload.blockedReason ? ' — change under review' : ''}`,
+      disabled: upload.blockedReason !== null,
+      title: upload.blockedReason ?? undefined,
+    })
+  }
+  const runDocUpdate = (key: DocUpdateKey) => {
+    if (key === 'pi') { setRevisionError(null); setRevisionDialog({ kind: 'propose' }); return }
+    setDocUpload({ category: key, resubmission: null })
+  }
   // The files sent with the PI that the operations decision will accept too.
   const initialDocumentsAwaiting = (() => {
     const names = docSubs.rows
@@ -2352,7 +2379,7 @@ export default function OrderDetailPage() {
   })()
   const mainPiOperations = operationsView?.kind === 'recorded'
     ? {
-        label: operationsView.status === 'awaiting' ? 'Awaiting Operations Acceptance' : operationsView.statusLabel,
+        label: operationsView.status === 'awaiting' ? 'Waiting for Operations' : operationsView.statusLabel,
         tone: operationsView.tone,
         line: operationsView.status === 'awaiting'
           ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
@@ -2705,28 +2732,34 @@ export default function OrderDetailPage() {
           </section>
         )}
 
-        {/* ══ 3. DOCUMENTS, AND FABRIC & FINISH BESIDE THEM ══
-            THE PAPERWORK IN ONE BOX. The PI this Order runs on, the design
-            files behind its products and the client's own purchase order used
-            to be two separate cards and nothing — three outlines, three
-            headings and a column of white space under the shorter card, for one
-            question a reader asks once.
+        {/* ══ 3. FABRIC & FINISH, THEN DOCUMENTS ══
+            BOTH FULL WIDTH, STACKED. They used to share a two-thirds / one-third
+            row: Fabric & Finish was a short card beside a tall one, and the
+            Documents card split again 40/60 with an empty Main PI column under
+            its buttons. Now the approvals are a one-line strip and the paperwork
+            is rows that use the whole width.
 
-            WHAT WENT WITH THE CARDS. The Design Files card summarised the
-            fabric and finish approvals that the card beside it states in full,
-            with their dates, their actors and their evidence. That summary is
-            gone: the approvals have one home, and it is the card on the right.
+            THE DOCUMENTS CARD ANSWERS TWO QUESTIONS, IN THIS ORDER: is anything
+            changing (a panel drawn only when something is pending or rejected,
+            each submission once, with its owner and this reader's one control),
+            and what is current (Main PI · V1 with its two dates and View PI, then
+            the accepted Design Files and Client PO, which open on a click).
 
-            ADVANCE RECEIVED IS GONE TOO, and did not move: every figure it drew
-            is in the Payment section below the products, which is the one place
-            on this page money is stated. Its builder, orderAdvance.ts, and its
-            tests are untouched — this removed a second display of one answer,
-            not the answer.
+            EVERY FORMER ACTION STILL HAS A ROUTE: Download PI and PI history in
+            the Main PI row's ⋯ menu; every PI version and every supporting-file
+            submission behind History; New PI, Design Files and Client PO in the
+            one Update documents menu; the reviews in the existing dialogs.
 
-            TWO THIRDS AND ONE THIRD, because that is the shape of the content:
-            three subsections of prose against two statuses. Stacked in the same
-            order below 900px. */}
+            ADVANCE RECEIVED IS STILL GONE, and did not move: every figure it drew
+            is in the Payment section below the products. */}
         <OrderDocumentsRow>
+          <OrderFabricFinishCard
+            standing={approvalView}
+            canUpdate={mayRecordApproval}
+            onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
+            onViewEvidence={path => { void viewEvidence(path) }}
+            busyEvidence={proofBusy}
+          />
           <OrderDocumentsPanel
             mainPi={mainPi}
             design={designFiles}
@@ -2737,17 +2770,43 @@ export default function OrderDetailPage() {
             onManageDesign={() => setDesignOpen(true)}
             viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
-            mainPiUpload={mayProposeRevision ? (
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost order-doc-action"
-                onClick={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-              >
-                {UPLOAD_NEW_PI_LABEL}
-              </button>
+            mainPiMenu={mainPi.kind === 'ready' ? (
+              <MoreActionsMenu<'download' | 'history'>
+                ariaLabel="More PI actions"
+                triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
+                items={[
+                  {
+                    key: 'download',
+                    label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
+                    disabled: !mainPi.hasFile || piFileBusy !== null,
+                  },
+                  { key: 'history', label: 'PI history' },
+                ]}
+                onSelect={key => {
+                  if (key === 'download') { void openVersionFile(mainPi.version, 'download'); return }
+                  setRevisionError(null)
+                  setHistoryOpen(true)
+                }}
+              />
+            ) : undefined}
+            updateMenu={docUpdateItems.length > 0 ? (
+              <MoreActionsMenu<DocUpdateKey>
+                label={UPDATE_DOCUMENTS_LABEL}
+                triggerClassName="boe-btn boe-btn-ghost order-doc-action"
+                items={docUpdateItems}
+                onSelect={runDocUpdate}
+              />
             ) : undefined}
             mainPiOperations={mainPiOperations}
+            supporting={docSupporting}
+            changes={docChanges}
+            onReviewChange={s => setDocReview(s)}
+            onResubmitChange={s => setDocUpload({ category: s.includes_design_files ? 'design_files' : 'client_po', resubmission: s })}
+            onOpenFile={openDocFile}
+            fileError={docError}
             onReviewRevision={mayReviewRevision ? () => { void openRevisionReview() } : undefined}
+            onApproveRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) } : undefined}
+            onRejectRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) } : undefined}
             onOpenProposal={v => { void openVersionFile(v, 'view') }}
             revisionApproverInactive={revisionApproverInactive}
             reapprove={mayReapproveRevision ? {
@@ -2758,17 +2817,6 @@ export default function OrderDetailPage() {
               onConfirm: () => { void reapproveRevision() },
               onCancel: () => setReapproveConfirming(false),
             } : undefined}
-            designSubmissions={docBody('design_files')}
-            designUpload={<DocumentUploadAction category="design_files" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
-            clientPoSubmissions={docBody('client_po')}
-            clientPoUpload={<DocumentUploadAction category="client_po" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
-          />
-          <OrderFabricFinishCard
-            standing={approvalView}
-            canUpdate={mayRecordApproval}
-            onUpdate={() => { setApprovalError(null); setApprovalOpen(true) }}
-            onViewEvidence={path => { void viewEvidence(path) }}
-            busyEvidence={proofBusy}
           />
         </OrderDocumentsRow>
 
@@ -3150,6 +3198,7 @@ export default function OrderDetailPage() {
           onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
           onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
           error={revisionDialog === null ? revisionError : null}
+          supporting={<SubmissionHistoryList api={docSubs} formatWhen={docWhen} onOpenFile={openDocFile} />}
         />
       )}
 

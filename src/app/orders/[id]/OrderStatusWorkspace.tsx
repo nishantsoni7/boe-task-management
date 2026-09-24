@@ -1,37 +1,28 @@
 'use client'
 
-// THE THREE-COLUMN STATUS WORKSPACE, above the product list.
+// THE AREA BETWEEN THE ORDER SUMMARY AND THE PRODUCT LIST.
 //
 // PAGE-OWNED, like OrderWorkspace.tsx and OrderPiSections.tsx beside it.
 // EVERY COMPONENT HERE IS A FUNCTION OF ITS PROPS: nothing fetches, writes,
-// authorizes or decides. Which PI is in force is orderMainPi's answer; what the
-// advance comes to is the shared finance position's; who may move a Fabric or
-// Finish status is the database's, re-derived under a row lock every time.
-// These draw the answers.
+// authorizes or decides. Which PI is in force is orderMainPi's answer; which
+// supporting files are current is orderDocumentSubmissions'; who may move a
+// Fabric or Finish status is the database's, re-derived under a row lock every
+// time. These draw the answers.
 //
-// TWO ROWS OF CARDS, EACH IN ONE FIXED ORDER, sharing one grid and therefore
-// one set of breakpoints:
+// TWO FULL-WIDTH BLOCKS, IN ONE FIXED ORDER, on every screen size:
 //
-//   Order status     Advance Received, Fabric & Finish — the operational cards,
-//                    the second of which is the one place either approval is
-//                    moved.
-//   Current Status   Main PI, Design Files, Manufacturing Status — read-only,
-//                    directly above the product list, for a reader who wants
-//                    the Order's position without opening three screens.
-//
-// They stack in those same orders on a narrow screen, so a person describing
-// the screen over the phone is describing the same thing whatever the other
-// person is holding.
+//   Fabric & Finish  a one-line strip: two statuses and one Update action.
+//   Documents        what is changing (only when something is), then the
+//                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, History, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Upload, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
 import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_DOWNLOAD_LABEL,
-  MAIN_PI_HISTORY_LABEL,
   MAIN_PI_UPLOADED_LABEL,
   MAIN_PI_VIEW_LABEL,
   PI_HISTORY_CURRENT_BADGE,
@@ -46,7 +37,6 @@ import {
   REJECT_REVISION_BUTTON_LABEL,
   UPLOAD_REVISION_BUTTON_LABEL,
   type PiVersionTone,
-  PROPOSED_REVISION_TITLE,
   REAPPROVE_REVISION_CONFIRM,
   REAPPROVE_REVISION_LABEL,
   REAPPROVE_REVISION_NOTE,
@@ -66,7 +56,11 @@ import {
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
-  DOC_VIEW_FILES_LABEL,
+  DOC_ACCEPTED_LABEL,
+  DOC_PI_PICTURES_LABEL,
+  DOC_VIEW_PI_LABEL,
+  DOCUMENTS_HISTORY_LABEL,
+  DOCUMENTS_HISTORY_TITLE,
   DOC_NOT_ATTACHED,
   type ClientPoDocument,
   type DesignFilesDocument,
@@ -79,6 +73,16 @@ import {
   FABRIC_FINISH_UPDATE_LABEL,
   type ApprovalStanding,
 } from '@/lib/orders/orderApprovals'
+import {
+  CORRECT_AND_RESUBMIT_LABEL,
+  DOCUMENT_CHANGES_TITLE,
+  DOCUMENT_CURRENT_LABEL,
+  NEEDS_YOUR_ACTION_TITLE,
+  REVIEW_CHANGE_LABEL,
+  type DocumentChangeView,
+  type PersistedDocumentFile,
+  type SupportingRowView,
+} from '@/lib/orders/orderDocumentSubmissions'
 
 // ── Shared chrome ─────────────────────────────────────────────────────────────
 
@@ -114,107 +118,152 @@ export function StatusPill({ label, tone, strong = false }: {
   )
 }
 
-function CardShell({ title, right, children, id }: {
-  title: string
-  right?: React.ReactNode
-  children: React.ReactNode
-  /** A fragment target, so a notification can open the page AT this card. */
-  id?: string
+// ── 1. Documents ──────────────────────────────────────────────────────────────
+
+/** One file, opened on the press through the page's signer. Never a URL. */
+function FileLinks({ files, onOpen, limit = 3 }: {
+  files: readonly PersistedDocumentFile[]
+  onOpen: (f: PersistedDocumentFile) => void
+  /** How many names to show before the rest fold behind "N more". */
+  limit?: number
 }) {
-  return (
-    <section className="order-status-card" aria-label={title} id={id}>
-      <div className="order-status-card-head">
-        <h3 className="order-status-card-title">{title}</h3>
-        {right}
-      </div>
-      <div className="order-status-card-body">{children}</div>
-    </section>
+  const link = (f: PersistedDocumentFile) => (
+    <li key={f.id}>
+      <button type="button" className="order-doc-file" onClick={() => onOpen(f)} title={`Open ${f.file_name}`}>
+        <FileText size={13} strokeWidth={2} aria-hidden="true" />
+        <span className="order-doc-file-name">{f.file_name}</span>
+      </button>
+    </li>
   )
-}
-
-/** A label above its value, the shape all three cards state a fact in. */
-function Fact({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
-  return (
-    <div className="order-status-fact">
-      <dt className="order-status-fact-label">{label}</dt>
-      <dd className="order-status-fact-value" style={tone ? { color: tone } : undefined}>{value}</dd>
-    </div>
-  )
-}
-
-// ── 1. Main PI ────────────────────────────────────────────────────────────────
-
-/**
- * THE PI THIS ORDER IS ACTUALLY RUNNING ON.
- *
- * The latest APPROVED version — never the latest upload. A pending revision is
- * reported as a line under the facts rather than as the headline, because the
- * document in force has not changed until somebody approves it.
- *
- * NO URL IS EVER BUILT INTO THE MARKUP. View and Download both call back to the
- * page, which signs the object on the click through the reader's own session;
- * the storage policy decides again at that moment. That is the same pattern the
- * PI workbook and the product photographs already use, and it is why a key
- * copied out of this page stops working within the hour.
- */
-/**
- * ONE SUBSECTION OF THE DOCUMENTS BOX: a title, what is on file, and the
- * actions for it.
- *
- * THE SAME THREE-PART SHAPE FOR ALL THREE, so a reader learns the box once. The
- * title column is fixed on desktop, which is what lines the three bodies up
- * into a column that can be scanned rather than read; below 720px the parts
- * stack and the actions wrap under what they act on.
- */
-function DocSection({ title, children, actions }: {
-  title: string
-  children: React.ReactNode
-  actions?: React.ReactNode
-}) {
-  return (
-    <section className="order-doc-section" aria-label={title}>
-      <h3 className="order-doc-section-title">{title}</h3>
-      <div className="order-doc-section-body">{children}</div>
-      {actions && <div className="order-doc-section-actions">{actions}</div>}
-    </section>
-  )
-}
-
-/** An absent document, said quietly. Never an alarm: most Orders carry none. */
-function DocEmpty({ message, note }: { message: string; note?: string | null }) {
+  const shown = files.slice(0, limit)
+  const rest = files.slice(limit)
   return (
     <>
-      <p className="order-doc-empty">{message}</p>
-      {note && <p className="order-doc-note">{note}</p>}
+      <ul className="order-doc-files">{shown.map(link)}</ul>
+      {rest.length > 0 && (
+        <details className="order-doc-files-more">
+          <summary>{rest.length} more</summary>
+          <ul className="order-doc-files">{rest.map(link)}</ul>
+        </details>
+      )}
     </>
   )
 }
 
+/** A label above its value, for the dates on a document row. */
+function DocMeta({ items }: { items: readonly { label: string; value: string }[] }) {
+  if (items.length === 0) return null
+  return (
+    <dl className="order-doc-dates">
+      {items.map(item => (
+        <div key={item.label} className="order-doc-dates-item">
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /**
- * THE DOCUMENTS BOX — the PI this Order runs on, the design files behind its
- * products, and the client's own purchase order, in one card with rules between
- * them.
+ * ONE CURRENT DOCUMENT, ONE ROW: what it is, what is on file, when, and the one
+ * thing a reader does with it. The same three columns for all three rows, so the
+ * card is scanned rather than read; on a narrow screen they stack.
+ */
+function DocRow({ title, status, children, meta, actions, primary = false }: {
+  title: string
+  /** The Main PI: the first and most prominent row. */
+  primary?: boolean
+  status?: React.ReactNode
+  children?: React.ReactNode
+  meta?: React.ReactNode
+  actions?: React.ReactNode
+}) {
+  return (
+    <section className={primary ? 'order-doc-section order-doc-section--primary' : 'order-doc-section'} aria-label={title.split(' · ')[0]}>
+      <div className="order-doc-row-main">
+        <p className="order-doc-row-head">
+          <span className="order-doc-row-title">{title}</span>
+          {status}
+        </p>
+        {children}
+      </div>
+      <div className="order-doc-row-meta">{meta}</div>
+      <div className="order-doc-row-actions">{actions}</div>
+    </section>
+  )
+}
+
+/** A proposed PI, as the changes panel states it. */
+type PiChange = {
+  proposal: PiVersionView
+  stage: { owner: string; next: string } | null
+}
+
+/**
+ * THE DOCUMENTS CARD — which PI and which supporting files are CURRENT, and,
+ * only when there is one, what is changing.
  *
- * WHAT IT REPLACED. A Main PI card and a Design Files card side by side, each
- * with its own heading, its own padding and its own outline, and both restating
- * the fabric and finish approvals that the card beside them states in full.
- * Three separate outlines for one question — "what paperwork does this Order
- * have?" — and a row of white space under the shorter of them.
+ * READ TOP TO BOTTOM:
  *
- * NOT ONE ACTION LEFT THE PAGE. View and Download hand the browser a file
- * through a URL signed on the press; PI History and View files open dialogs
- * over this page. Nothing here navigates to a PI screen, a document screen or
- * another module.
+ *   header      "Documents", a quiet History link, and ONE "Update documents"
+ *               menu for somebody allowed to submit (New PI, Design Files,
+ *               Client PO). Four equal upload buttons became one control.
+ *   changes     drawn ONLY while something is pending or rejected. Each
+ *               submission once — a change to both categories used to appear
+ *               under each of them — with what it changes, where it stands,
+ *               who holds it and the one control this reader owns on it.
+ *   rows        Main PI · V1 with one status, its two dates and View PI; then
+ *               Design Files and Client PO, each the accepted file names, which
+ *               open the file. Nothing proposed is ever drawn in these rows.
+ *
+ * NOT ONE ACTION LEFT THE PAGE. Opening a file signs it on the press through
+ * the reader's own session; Download and the PI history sit behind the row's
+ * ⋯ menu and the History link; the reviews open the existing dialogs. Which
+ * control is drawn is the page's courtesy — every RPC re-decides it.
  */
 export function OrderDocumentsPanel({
   mainPi, design, clientPo,
   onView, onDownload, onHistory, onManageDesign,
   viewing, downloading,
-  mainPiUpload, mainPiOperations, designSubmissions, designUpload, clientPoSubmissions, clientPoUpload,
-  onReviewRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
+  mainPiOperations, mainPiMenu, updateMenu,
+  supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
+  onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
 }: {
-  /** The operations reviewer's control on a revision awaiting them (20270101000000). */
+  mainPi: MainPiCard
+  /** The approved PI's own product pictures (read-only; opened in a dialog). */
+  design: DesignFilesDocument
+  /** Used only when the Order has no supporting-document read (legacy). */
+  clientPo?: ClientPoDocument
+  onView: (version: PiVersionView) => void
+  onDownload: (version: PiVersionView) => void
+  onHistory: () => void
+  /** Opens the PI product-picture dialog. */
+  onManageDesign: () => void
+  viewing: boolean
+  downloading: boolean
+  /** Where the version in force stands with Operations, in words. */
+  mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
+  /** The Main PI row's ⋯ menu (Download PI, PI history). Absent: Download is a quiet button. */
+  mainPiMenu?: React.ReactNode
+  /** The single "Update documents" control, or nothing for a reader who may not submit. */
+  updateMenu?: React.ReactNode
+  /** What is on file for each supporting category (accepted submissions only). */
+  supporting?: { design: SupportingRowView; clientPo: SupportingRowView; formatWhen: (iso: string | null) => string }
+  /** Design Files / Client PO submissions pending or rejected. */
+  changes?: readonly DocumentChangeView[]
+  onReviewChange?: (s: DocumentChangeView['submission']) => void
+  onResubmitChange?: (s: DocumentChangeView['submission']) => void
+  onOpenFile?: (f: PersistedDocumentFile) => void
+  /** A file that could not be opened, said once under the rows. */
+  fileError?: string | null
+  /** The operations reviewer's control on a staged revision (20270101000000). */
   onReviewRevision?: () => void
+  /** An admin's decision on a revision still pending Admin. */
+  onApproveRevision?: (version: PiVersionView) => void
+  onRejectRevision?: (version: PiVersionView) => void
+  /** Opens the proposed workbook through the page's signer. */
+  onOpenProposal?: (version: PiVersionView) => void
   /** The admin who approved the proposal is no longer active (20270101000000 §6b). */
   revisionApproverInactive?: boolean
   /** An active admin's recovery control, with its page-owned confirm step. */
@@ -226,126 +275,95 @@ export function OrderDocumentsPanel({
     onConfirm: () => void
     onCancel: () => void
   }
-  /** Opens the proposed workbook through the page's signer. */
-  onOpenProposal?: (version: PiVersionView) => void
-  mainPi: MainPiCard
-  design: DesignFilesDocument
-  clientPo: ClientPoDocument
-  onView: (version: PiVersionView) => void
-  onDownload: (version: PiVersionView) => void
-  onHistory: () => void
-  /** Opens the design-file dialog. Absent when there is nothing to open. */
-  onManageDesign: () => void
-  viewing: boolean
-  downloading: boolean
-  /** Upload New PI — the existing revised-PI door. Absent when not offered. */
-  mainPiUpload?: React.ReactNode
-  /** Where the version in force stands with Operations, in words. */
-  mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
-  /** Accepted order-level files, the pending proposal and any rejection (20261231000000). */
-  designSubmissions?: React.ReactNode
-  designUpload?: React.ReactNode
-  clientPoSubmissions?: React.ReactNode
-  clientPoUpload?: React.ReactNode
 }) {
+  const open = (f: PersistedDocumentFile) => onOpenFile?.(f)
+  const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
+    ? { proposal: mainPi.proposal, stage: revisionStage(mainPi.proposal, revisionApproverInactive) }
+    : null
+  const piNeedsYou = !!piChange && (
+    !!onReviewRevision
+    || (!!onApproveRevision && piChange.proposal.status === 'pending')
+    || (!!reapprove && piChange.proposal.status === 'admin_approved')
+  )
+  const needsYou = piNeedsYou || changes.some(c => c.action !== null)
+  const hasChanges = !!piChange || changes.length > 0
+
+  // THE ONE STATUS ON THE MAIN PI ROW. Accepted by Operations (or an Order with
+  // no handoff at all) is simply Current; anything short of that says so.
+  const piStatus = mainPiOperations && mainPiOperations.tone !== 'green'
+    ? <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
+    : <StatusPill label={DOCUMENT_CURRENT_LABEL} tone="green" />
+
   return (
     <section className="order-docs" aria-label={DOCUMENTS_TITLE} id="documents">
-      <h2 className="order-docs-title">{DOCUMENTS_TITLE}</h2>
+      <div className="order-docs-head">
+        <h2 className="order-docs-title">{DOCUMENTS_TITLE}</h2>
+        <div className="order-docs-head-actions">
+          {/* THE HISTORY IS OFFERED WHETHER OR NOT A PI IS IN FORCE: an Order
+              whose only version is a pending revision has a history worth
+              reading, and that is exactly when a reader asks for it. */}
+          <button type="button" className="order-docs-link" onClick={onHistory}>
+            <History size={13} strokeWidth={2} aria-hidden="true" />
+            {DOCUMENTS_HISTORY_LABEL}
+          </button>
+          {updateMenu}
+        </div>
+      </div>
 
-      {/* MAIN PI ON THE LEFT (about 40%), DESIGN FILES AND CLIENT PO STACKED ON
-          THE RIGHT (about 60%); one column below 720px. */}
-      <div className="order-docs-grid">
-      <div className="order-docs-main">
-
-      {/* ── 1. The PI this Order runs on ── */}
-      <DocSection
-        title={DOC_MAIN_PI_TITLE}
-        actions={
-          <>
-            {mainPi.kind === 'ready' && (
-              <>
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-ghost order-doc-action"
-                  onClick={() => onView(mainPi.version)}
-                  disabled={!mainPi.hasFile || viewing}
-                  title={mainPi.fileName ?? mainPi.reference}
-                >
-                  <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                  {viewing ? 'Opening…' : MAIN_PI_VIEW_LABEL}
-                </button>
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-ghost order-doc-action"
-                  onClick={() => onDownload(mainPi.version)}
-                  disabled={!mainPi.hasFile || downloading}
-                  title={mainPi.fileName ?? mainPi.reference}
-                >
-                  <Download size={13} strokeWidth={2} aria-hidden="true" />
-                  {downloading ? 'Preparing…' : MAIN_PI_DOWNLOAD_LABEL}
-                </button>
-              </>
-            )}
-            {/* THE HISTORY IS OFFERED WHETHER OR NOT A PI IS IN FORCE: an Order
-                whose only version is a pending revision has a history worth
-                reading, and that is exactly when a reader asks for it. */}
-            <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onHistory}>
-              <History size={13} strokeWidth={2} aria-hidden="true" />
-              {MAIN_PI_HISTORY_LABEL}
-            </button>
-            {mainPiUpload}
-          </>
-        }
-      >
-        {mainPi.kind !== 'ready' ? (
-          <DocEmpty message={DOC_NOT_ATTACHED} note={mainPi.message} />
-        ) : (
-          <>
-            <p className="order-doc-lead">
-              <span className="order-doc-lead-value">{mainPi.reference}</span>
-              <StatusPill label={mainPi.statusLabel} tone="green" />
-            </p>
-            <dl className="order-doc-facts">
-              <Fact label={MAIN_PI_UPLOADED_LABEL} value={mainPi.uploadedAt} />
-              {/* Absent rather than guessed: see MainPiCard.approvedAt. */}
-              {mainPi.approvedAt && <Fact label={MAIN_PI_APPROVED_LABEL} value={mainPi.approvedAt} />}
-            </dl>
-            {mainPiOperations && (
-              <p className="order-doc-lead order-doc-ops">
-                <span className="order-doc-note" style={{ margin: 0 }}>Operations:</span>
-                <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
-              </p>
-            )}
-            {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
-            {mainPi.proposal && (() => {
-              // THE PROPOSAL, BESIDE THE PI IN FORCE AND NEVER IN ITS PLACE
-              // (20270101000000): its own dashed block, its stage in words, and
-              // who holds it now. The headline above stays the accepted PI.
-              const p = mainPi.proposal
-              const stage = revisionStage(p, revisionApproverInactive)
+      {/* ── WHAT IS CHANGING — only when something is ── */}
+      {hasChanges && (
+        <div className={needsYou ? 'order-doc-changes order-doc-changes--you' : 'order-doc-changes'}
+             role="group" aria-label={needsYou ? NEEDS_YOUR_ACTION_TITLE : DOCUMENT_CHANGES_TITLE}>
+          <h3 className="order-doc-changes-title">{needsYou ? NEEDS_YOUR_ACTION_TITLE : DOCUMENT_CHANGES_TITLE}</h3>
+          <ul className="order-doc-change-list">
+            {piChange && (() => {
+              const p = piChange.proposal
+              const version = `V${p.versionNumber}`
               return (
-                <div className="order-docsub-pending" role="group" aria-label={`${p.label} proposed`}>
-                  <p className="order-doc-lead">
-                    <span className="order-docsub-pending-title">{PROPOSED_REVISION_TITLE(p.versionNumber)}</span>
-                    <StatusPill label={p.statusLabel} tone={p.tone} />
-                  </p>
-                  <p className="order-doc-note">
-                    Uploaded by {p.uploadedBy} · {p.uploadedAt}
-                    {p.decisionLine && ` · ${p.decisionLine}`}
-                  </p>
-                  {stage && <p className="order-doc-note"><strong>Waiting on:</strong> {stage.owner} · Next: {stage.next}</p>}
-                  {p.revisionReason && <p className="order-doc-note">Reason: “{p.revisionReason}”</p>}
-                  <p className="order-doc-note">{mainPi.reference} stays in force — its lines, pictures, figures and documents — until {p.label} is accepted by Operations.</p>
-                  <div className="order-docsub-actions">
-                    {onOpenProposal && p.workbookPath && (
-                      <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={() => onOpenProposal(p)}>
-                        Open {p.label}
-                      </button>
+                <li className="order-doc-change" aria-label={`${p.label} proposed`}>
+                  <div className="order-doc-change-main">
+                    <p className="order-doc-change-head">
+                      <span className="order-doc-change-title">New PI · {version}</span>
+                      <StatusPill label={p.status === 'pending' ? 'Waiting for Admin' : 'Waiting for Operations'} tone={p.tone} />
+                    </p>
+                    {p.revisionReason && <p className="order-doc-change-line">What changed: “{p.revisionReason}”</p>}
+                    <p className="order-doc-change-line order-doc-change-muted">
+                      Uploaded by {p.uploadedBy}, {p.uploadedAt}{p.decisionLine && ` · ${p.decisionLine}`}
+                    </p>
+                    {piChange.stage && (
+                      <p className="order-doc-change-line"><strong>With:</strong> {piChange.stage.owner} · <strong>Next:</strong> {piChange.stage.next}</p>
                     )}
+                    <p className="order-doc-change-line order-doc-change-muted">
+                      {mainPi.kind === 'ready' ? `V${mainPi.version.versionNumber}` : 'The current PI'} stays current until Operations accepts {version}.
+                    </p>
+                    {onOpenProposal && p.workbookPath && (
+                      <ul className="order-doc-files">
+                        <li>
+                          <button type="button" className="order-doc-file" onClick={() => onOpenProposal(p)} title={`Open ${p.label}`}>
+                            <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                            <span className="order-doc-file-name">{p.workbookName ?? `Open ${p.label}`}</span>
+                          </button>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+                  <div className="order-doc-change-actions">
                     {onReviewRevision && (
                       <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={onReviewRevision}>
                         {REVIEW_REVISION_LABEL(p.versionNumber)}
                       </button>
+                    )}
+                    {onApproveRevision && p.status === 'pending' && (
+                      <>
+                        <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={() => onApproveRevision(p)}>
+                          {APPROVE_REVISION_BUTTON_LABEL}
+                        </button>
+                        {onRejectRevision && (
+                          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={() => onRejectRevision(p)}>
+                            {REJECT_REVISION_BUTTON_LABEL}
+                          </button>
+                        )}
+                      </>
                     )}
                     {reapprove && !reapprove.confirming && (
                       <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={reapprove.onStart}>
@@ -354,9 +372,9 @@ export function OrderDocumentsPanel({
                     )}
                   </div>
                   {reapprove?.confirming && (
-                    <div role="group" aria-label={REAPPROVE_REVISION_LABEL(p.versionNumber)}>
-                      <p className="order-doc-note">{REAPPROVE_REVISION_NOTE(p.versionNumber)}</p>
-                      <div className="order-docsub-actions">
+                    <div className="order-doc-change-confirm" role="group" aria-label={REAPPROVE_REVISION_LABEL(p.versionNumber)}>
+                      <p className="order-doc-change-line">{REAPPROVE_REVISION_NOTE(p.versionNumber)}</p>
+                      <div className="order-doc-change-actions">
                         <button type="button" className="boe-btn boe-btn-primary order-doc-action" disabled={reapprove.busy} onClick={reapprove.onConfirm}>
                           {REAPPROVE_REVISION_CONFIRM}
                         </button>
@@ -366,99 +384,190 @@ export function OrderDocumentsPanel({
                       </div>
                     </div>
                   )}
-                  {reapprove?.error && <p className="order-doc-note" role="alert" style={{ color: colors.red }}>{reapprove.error}</p>}
-                </div>
+                  {reapprove?.error && <p className="order-doc-change-line" role="alert" style={{ color: colors.red }}>{reapprove.error}</p>}
+                </li>
               )
             })()}
-          </>
+
+            {changes.map(c => (
+              <li key={c.submission.id} className={c.tone === 'red' ? 'order-doc-change order-doc-change--rejected' : 'order-doc-change'}
+                  aria-label={`${c.title}: ${c.statusLabel}`}>
+                <div className="order-doc-change-main">
+                  <p className="order-doc-change-head">
+                    <span className="order-doc-change-title">{c.title}</span>
+                    <StatusPill label={c.statusLabel} tone={c.tone} />
+                  </p>
+                  {c.effect && <p className="order-doc-change-line">{c.effect}</p>}
+                  {c.rejection && <p className="order-doc-change-line"><strong>Reason:</strong> {c.rejection}</p>}
+                  <p className="order-doc-change-line order-doc-change-muted">{c.submittedLine}</p>
+                  <p className="order-doc-change-line"><strong>With:</strong> {c.owner} · <strong>Next:</strong> {c.next}</p>
+                  {c.note && <p className="order-doc-change-line order-doc-change-muted">Note: “{c.note}”</p>}
+                  {c.status !== 'rejected_admin' && c.status !== 'rejected_operations' && c.files.length > 0 && (
+                    <FileLinks files={c.files} onOpen={open} />
+                  )}
+                </div>
+                {c.action && (
+                  <div className="order-doc-change-actions">
+                    {c.action === 'resubmit' ? (
+                      <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={() => onResubmitChange?.(c.submission)}>
+                        {CORRECT_AND_RESUBMIT_LABEL}
+                      </button>
+                    ) : (
+                      <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={() => onReviewChange?.(c.submission)}>
+                        {REVIEW_CHANGE_LABEL}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* ── WHAT IS CURRENT ── */}
+      <div className="order-docs-rows">
+        {mainPi.kind !== 'ready' ? (
+          <DocRow title={DOC_MAIN_PI_TITLE}>
+            <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
+            <p className="order-doc-note">{mainPi.message}</p>
+          </DocRow>
+        ) : (
+          <DocRow
+            title={`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}
+            primary
+            status={piStatus}
+            meta={<DocMeta items={[
+              { label: MAIN_PI_UPLOADED_LABEL, value: mainPi.uploadedAt },
+              // Absent rather than guessed: see MainPiCard.approvedAt.
+              ...(mainPi.approvedAt ? [{ label: MAIN_PI_APPROVED_LABEL, value: mainPi.approvedAt }] : []),
+            ]} />}
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
+                  onClick={() => onView(mainPi.version)}
+                  disabled={!mainPi.hasFile || viewing}
+                  title={mainPi.fileName ?? mainPi.reference}
+                >
+                  <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                  {viewing ? 'Opening…' : DOC_VIEW_PI_LABEL}
+                </button>
+                {mainPiMenu ?? (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-doc-action"
+                    onClick={() => onDownload(mainPi.version)}
+                    disabled={!mainPi.hasFile || downloading}
+                    aria-label={MAIN_PI_DOWNLOAD_LABEL}
+                    title={MAIN_PI_DOWNLOAD_LABEL}
+                  >
+                    <Download size={13} strokeWidth={2} aria-hidden="true" />
+                    {downloading ? 'Preparing…' : null}
+                  </button>
+                )}
+              </>
+            }
+          >
+            {mainPi.fileName && <p className="order-doc-note order-doc-row-file">{mainPi.fileName}</p>}
+            {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
+          </DocRow>
         )}
-      </DocSection>
 
-      </div>
-      <div className="order-docs-side">
+        {/* ── Design Files: the Order's accepted files, then the PI's own
+            product pictures as a quiet secondary link. ── */}
+        {(() => {
+          const row = supporting?.design
+          const pictures = design.kind === 'ready' ? (
+            <button type="button" className="order-docs-link order-docs-link--small" onClick={onManageDesign}>
+              {DOC_PI_PICTURES_LABEL(design.total)}
+            </button>
+          ) : null
+          if (!row) {
+            // No supporting-document read (legacy): the PI pictures are the row.
+            return (
+              <DocRow title={DOC_DESIGN_FILES_TITLE} actions={pictures}>
+                {design.kind === 'loading' && <p className="order-doc-loading" role="status">{DESIGN_IMAGES_LOADING}</p>}
+                {design.kind === 'unavailable' && <><p className="order-doc-unavailable">{design.message}</p><p className="order-doc-note">{design.note}</p></>}
+                {design.kind === 'empty' && <><p className="order-doc-empty">{design.message}</p>{design.note && <p className="order-doc-note">{design.note}</p>}</>}
+                {design.kind === 'ready' && <><p className="order-doc-row-value">{design.summary}</p><p className="order-doc-note">{design.detail}</p></>}
+              </DocRow>
+            )
+          }
+          return (
+            <DocRow
+              title={DOC_DESIGN_FILES_TITLE}
+              status={row.kind === 'files' && row.files.length > 1 ? <span className="order-doc-count">{fileCountLabel(row.files.length)}</span> : undefined}
+              meta={row.kind === 'files' && row.acceptedAt ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(row.acceptedAt) }]} /> : undefined}
+              actions={pictures}
+            >
+              <SupportingBody row={row} onOpen={open} />
+            </DocRow>
+          )
+        })()}
 
-      {/* ── 2. The design record behind the products ──
-          FOUR STATES AND NO FIFTH (PR #195): loading is not "none", a refused
-          read is not "none", and an empty read says so in its own words. */}
-      <DocSection
-        title={DOC_DESIGN_FILES_TITLE}
-        actions={(design.kind === 'ready' || designUpload) ? (
-          <>
-            {design.kind === 'ready' && (
-              <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onManageDesign}>
-                {DOC_VIEW_FILES_LABEL}
-              </button>
+        {/* ── Client PO: the accepted copy, or a plain statement that none is on file. ── */}
+        {supporting ? (
+          <DocRow
+            title={DOC_CLIENT_PO_TITLE}
+            status={supporting.clientPo.kind === 'files' && supporting.clientPo.files.length > 1
+              ? <span className="order-doc-count">{fileCountLabel(supporting.clientPo.files.length)}</span> : undefined}
+            meta={supporting.clientPo.kind === 'files' && supporting.clientPo.acceptedAt
+              ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.clientPo.acceptedAt) }]} /> : undefined}
+          >
+            <SupportingBody row={supporting.clientPo} onOpen={open} />
+          </DocRow>
+        ) : (
+          <DocRow title={DOC_CLIENT_PO_TITLE}>
+            {clientPo?.kind === 'ready' ? (
+              <p className="order-doc-row-value">{clientPo.summary}</p>
+            ) : (
+              <>
+                <p className="order-doc-empty">{clientPo?.kind === 'unsupported' ? clientPo.message : DOC_NOT_ATTACHED}</p>
+                <p className="order-doc-note">{clientPo?.kind === 'unsupported' ? clientPo.note : CLIENT_PO_UNSUPPORTED_NOTE}</p>
+              </>
             )}
-            {designUpload}
-          </>
-        ) : undefined}
-      >
-        {design.kind === 'loading' && (
-          <p className="order-doc-loading" role="status">{DESIGN_IMAGES_LOADING}</p>
+          </DocRow>
         )}
-        {design.kind === 'unavailable' && (
-          <>
-            <p className="order-doc-unavailable">{design.message}</p>
-            <p className="order-doc-note">{design.note}</p>
-          </>
-        )}
-        {design.kind === 'empty' && <DocEmpty message={design.message} note={design.note} />}
-        {design.kind === 'ready' && (designSubmissions ? (
-          // BESIDE THE ORDER'S OWN DESIGN FILES, the PI's product pictures are a
-          // secondary line with their own name — two "Attached" headlines one
-          // above the other read as one set counted twice.
-          <p className="order-doc-note" style={{ marginTop: 0 }}>
-            <strong>PI product pictures:</strong> {design.summary} · {design.detail} · from the approved PI
-          </p>
-        ) : (
-          <>
-            <p className="order-doc-lead">
-              <span className="order-doc-lead-value">{design.summary}</span>
-              <StatusPill label="Attached" tone="green" />
-            </p>
-            <p className="order-doc-note">{design.detail}</p>
-          </>
-        ))}
-        {designSubmissions}
-      </DocSection>
-
-      {/* ── 3. The client's own purchase order ──
-          NO STORE EXISTS YET and this says so in one muted line rather than
-          offering a control that could not keep what it took. See
-          orderDocumentsPanel.ts for the audit behind that. */}
-      <DocSection title={DOC_CLIENT_PO_TITLE} actions={clientPoUpload}>
-        {clientPoSubmissions ? clientPoSubmissions : clientPo.kind === 'ready' ? (
-          <>
-            <p className="order-doc-lead">
-              <span className="order-doc-lead-value">{clientPo.summary}</span>
-              <StatusPill label="Attached" tone="green" />
-            </p>
-            {clientPo.detail && <p className="order-doc-note">{clientPo.detail}</p>}
-          </>
-        ) : (
-          <DocEmpty
-            message={clientPo.kind === 'unsupported' ? clientPo.message : DOC_NOT_ATTACHED}
-            note={clientPo.kind === 'unsupported' ? clientPo.note : CLIENT_PO_UNSUPPORTED_NOTE}
-          />
-        )}
-      </DocSection>
       </div>
-      </div>
+      {fileError && <p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
     </section>
   )
 }
 
+/** What is on file for one supporting category — accepted files only. */
+function SupportingBody({ row, onOpen }: { row: SupportingRowView; onOpen: (f: PersistedDocumentFile) => void }) {
+  if (row.kind === 'loading') return <p className="order-doc-loading" role="status">Loading…</p>
+  if (row.kind === 'unavailable') return <p className="order-doc-unavailable">These files could not be read.</p>
+  if (row.kind === 'none') {
+    return (
+      <>
+        <p className="order-doc-empty">{row.message}</p>
+        {row.note && <p className="order-doc-note">{row.note}</p>}
+      </>
+    )
+  }
+  return <FileLinks files={row.files} onOpen={onOpen} />
+}
+
+const fileCountLabel = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+
 /**
- * WHERE THE TWO APPROVALS STAND, AND WHEN EACH LAST MOVED.
+ * WHERE FABRIC AND FINISH STAND — one compact strip above the Documents card.
  *
- * A date is drawn only for a status that HAS one: `Not Approved` is where every
- * Order starts, and dating it would date an event that never happened.
+ * Two status items and one Update action. The status is WORDS with a small dot
+ * beside them, not two large tinted pills: "Not Approved" is where every Order
+ * starts, and drawing it as a pair of red badges made the calmest state on the
+ * page its loudest.
+ *
+ * A date and a name are drawn only for a status that HAS an event: Not
+ * Approved is where every Order starts, and dating it would date an event that
+ * never happened. The permanent trail is behind a disclosure per kind.
  *
  * THE UPDATE CONTROL IS A COURTESY, NOT THE SECURITY. It is drawn for the
  * assigned salesperson, an admin or a manager, and never under View As — and
- * record_order_approval_event() re-derives every bit of that under a row lock,
- * so a direct call from somebody who never saw the button is refused just the
- * same.
+ * record_order_approval_event() re-derives every bit of that under a row lock.
  */
 export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvidence, busyEvidence }: {
   standing: ApprovalStanding
@@ -469,27 +578,19 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
   busyEvidence: string | null
 }) {
   return (
-    <CardShell
-      title={FABRIC_FINISH_TITLE}
-      right={canUpdate ? (
-        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>
-          {FABRIC_FINISH_UPDATE_LABEL}
-        </button>
-      ) : undefined}
-    >
-      <dl className="order-status-approvals">
+    <section className="order-ff" aria-label={FABRIC_FINISH_TITLE}>
+      <h2 className="order-ff-title">{FABRIC_FINISH_TITLE}</h2>
+      <dl className="order-ff-items">
         {standing.kinds.map(kind => (
-          <div key={kind.kind} className="order-status-approval">
-            <dt className="order-status-fact-label">{kind.label}</dt>
-            <dd className="order-status-approval-value">
-              <StatusPill label={APPROVAL_STATUS_LABEL[kind.status]} tone={kind.tone} />
-              {/* WHEN AND WHO, only where there is an event to name. Not
-                  Approved is where every Order starts; dating it or crediting
-                  somebody with it would report an event that never happened. */}
+          <div key={kind.kind} className="order-ff-item">
+            <dt className="order-ff-label">{kind.label}</dt>
+            <dd className="order-ff-value">
+              <span className={`order-ff-status order-ff-status--${kind.tone}`}>
+                <span className="order-ff-dot" aria-hidden="true" />
+                {APPROVAL_STATUS_LABEL[kind.status]}
+              </span>
               {kind.at && <span className="order-status-approval-at">{kind.at}</span>}
-              {kind.approver && (
-                <span className="order-status-approval-by">by {kind.approver}</span>
-              )}
+              {kind.approver && <span className="order-status-approval-by">by {kind.approver}</span>}
               {kind.evidencePath && (
                 <button
                   type="button"
@@ -500,63 +601,60 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
                   {busyEvidence === kind.evidencePath ? 'Opening…' : EVIDENCE_VIEW_LABEL}
                 </button>
               )}
+              {/* THE PERMANENT TRAIL, and only when there is one — append-only,
+                  so a status this kind has left is still on record with its
+                  actor, its moment and its proof. Closed by default. */}
+              {kind.history.length > 0 && (
+                <details className="order-approval-history">
+                  <summary className="order-approval-history-summary">
+                    {APPROVAL_HISTORY_LABEL} ({kind.history.length})
+                  </summary>
+                  <ol className="order-approval-history-list">
+                    {kind.history.map(event => (
+                      <li key={event.id} className="order-approval-history-row">
+                        <span className="order-approval-history-status">{event.statusLabel}</span>
+                        <span className="order-approval-history-meta">
+                          {event.at} · {event.actor}
+                        </span>
+                        {event.evidencePath && (
+                          <button
+                            type="button"
+                            className="order-status-proof"
+                            onClick={() => onViewEvidence(event.evidencePath as string)}
+                            disabled={busyEvidence === event.evidencePath}
+                          >
+                            {busyEvidence === event.evidencePath ? 'Opening…' : EVIDENCE_VIEW_LABEL}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
             </dd>
-
-            {/* THE PERMANENT TRAIL, and only when there is one. The table is
-                append-only, so a status this kind has left is still on record
-                with its actor, its moment and its proof. It sits behind a
-                disclosure because the question a reader opens this page with is
-                where fabric and finish stand NOW — a card that led with four
-                superseded states would answer a question nobody asked.
-
-                A native <details>: it opens with a keyboard, it is announced,
-                and it needs no state of its own. */}
-            {kind.history.length > 0 && (
-              <details className="order-approval-history">
-                <summary className="order-approval-history-summary">
-                  {APPROVAL_HISTORY_LABEL} ({kind.history.length})
-                </summary>
-                <ol className="order-approval-history-list">
-                  {kind.history.map(event => (
-                    <li key={event.id} className="order-approval-history-row">
-                      <span className="order-approval-history-status">{event.statusLabel}</span>
-                      <span className="order-approval-history-meta">
-                        {event.at} · {event.actor}
-                      </span>
-                      {event.evidencePath && (
-                        <button
-                          type="button"
-                          className="order-status-proof"
-                          onClick={() => onViewEvidence(event.evidencePath as string)}
-                          disabled={busyEvidence === event.evidencePath}
-                        >
-                          {busyEvidence === event.evidencePath ? 'Opening…' : EVIDENCE_VIEW_LABEL}
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </details>
-            )}
           </div>
         ))}
       </dl>
-      {!canUpdate && <p className="order-status-note">{standing.readOnlyNote}</p>}
-    </CardShell>
+      <div className="order-ff-end">
+        {canUpdate ? (
+          <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>
+            {FABRIC_FINISH_UPDATE_LABEL}
+          </button>
+        ) : (
+          <p className="order-status-note">{standing.readOnlyNote}</p>
+        )}
+      </div>
+    </section>
   )
 }
 
 /**
- * DOCUMENTS ON THE LEFT, FABRIC & FINISH ON THE RIGHT — two thirds and one
- * third at desktop widths, stacked in that order below 900px.
+ * FABRIC & FINISH, THEN DOCUMENTS — full width, stacked, one gap between them.
  *
- * THE PROPORTION IS THE CONTENT'S. Documents holds three subsections of prose
- * and up to three actions each; Fabric & Finish holds two statuses and their
- * evidence. Equal columns gave the narrower card a third of a screen of white
- * space under it, which is the emptiness this pass exists to remove.
- *
- * ALIGNED TO THE TOP, NOT STRETCHED. Each card ends where its content ends; a
- * stretched pair would hand the shorter one a blank tail again.
+ * It was a two-thirds / one-third row, which left the Fabric & Finish card a
+ * short box beside a tall one and the Documents card a 40/60 split of its own
+ * with an empty Main PI column. Both are full width now: the approvals as a
+ * one-line strip, the paperwork as rows that use the whole width.
  */
 export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
   return <div className="order-docs-row">{children}</div>
@@ -810,7 +908,7 @@ export function OrderEvidenceDialog({ url, failure, onClose }: {
  */
 export function PiHistoryModal({
   entries, onClose, onView, onDownload, busyId,
-  canPropose, onPropose, canDecide, onApprove, onReject, error,
+  canPropose, onPropose, canDecide, onApprove, onReject, error, supporting,
 }: {
   entries: readonly PiTimelineEntry[]
   onClose: () => void
@@ -824,9 +922,15 @@ export function PiHistoryModal({
   onApprove: (version: PiVersionView) => void
   onReject: (version: PiVersionView) => void
   error: string | null
+  /**
+   * THE DESIGN FILES AND CLIENT PO SUBMISSIONS, when the page has them: one
+   * History link on the Documents card opens both trails, PI versions first.
+   */
+  supporting?: React.ReactNode
 }) {
   return (
-    <Modal title={PI_HISTORY_MODAL_TITLE} onClose={onClose} wide>
+    <Modal title={supporting ? DOCUMENTS_HISTORY_TITLE : PI_HISTORY_MODAL_TITLE} onClose={onClose} wide>
+      {supporting && <h3 className="order-history-section-title">PI versions</h3>}
       {canPropose && (
         <div className="order-history-toolbar">
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onPropose}>
@@ -927,6 +1031,12 @@ export function PiHistoryModal({
             )
           })}
         </ol>
+      )}
+      {supporting && (
+        <>
+          <h3 className="order-history-section-title">Design Files and Client PO</h3>
+          {supporting}
+        </>
       )}
     </Modal>
   )

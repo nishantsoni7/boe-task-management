@@ -31,7 +31,7 @@ const history = describePiVersionHistory([
   row({}),
 ], NAMES, when)
 
-const panel = (onReview?: () => void) => renderToStaticMarkup(
+const panel = (onReview?: () => void, admin?: { onApprove: () => void; onReject: () => void }) => renderToStaticMarkup(
   <OrderDocumentsPanel
     mainPi={mainPiCard(history)}
     design={designFilesDocument({ kind: 'ready', counts: { representative: 1, customization: 0 } }, 1)}
@@ -39,21 +39,43 @@ const panel = (onReview?: () => void) => renderToStaticMarkup(
     onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
     viewing={false} downloading={false}
     onReviewRevision={onReview} onOpenProposal={noop}
+    onApproveRevision={admin?.onApprove} onRejectRevision={admin?.onReject}
   />,
 )
 
-describe('the Main PI section keeps V1 in force and shows V2 apart', () => {
-  test('V1 is the headline; V2 is a proposal with its stage and owner', () => {
-    const t = text(panel())
-    assert.ok(t.indexOf('PI V1') < t.indexOf('Proposed PI V2 — not in force yet'))
-    assert.ok(t.includes('Approved by Admin — awaiting Operations'))
-    assert.ok(t.includes('Waiting on: Operations — Kavya · Next: Operations to accept or reject'))
-    assert.ok(t.includes('PI V1 stays in force'))
-    assert.ok(t.includes('Open PI V2'))
+describe('V1 stays the current PI; V2 is a change, shown apart', () => {
+  test('V1 is the current row; V2 is in the changes panel with its stage and owner', () => {
+    const html = panel()
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
+    const rows = text(html.slice(html.indexOf('class="order-docs-rows"')))
+    assert.ok(rows.includes('Main PI · V1 Current'))
+    assert.equal(rows.includes('V2'), false, 'a proposed PI never looks like the current one')
+    assert.ok(changes.includes('New PI · V2 Waiting for Operations'))
+    assert.ok(changes.includes('What changed: “client changed qty”'))
+    assert.ok(changes.includes('With: Operations — Kavya · Next: Operations to accept or reject'))
+    assert.ok(changes.includes('V1 stays current until Operations accepts V2.'))
+    assert.match(html, /title="Open PI V2"/)
   })
   test('the review control is drawn only when the page offers it (the reviewer)', () => {
     assert.equal(panel().includes('Review PI V2 — Accept or Reject'), false)
     assert.ok(panel(noop).includes('Review PI V2 — Accept or Reject'))
+    assert.ok(text(panel(noop)).includes('Needs your action'))
+    assert.ok(text(panel()).includes('Document changes'), 'Sales sees where it stands, not an action')
+  })
+  test('Admin approves or rejects a V2 still pending Admin from the panel — and only then', () => {
+    const pending = describePiVersionHistory([
+      row({ id: 'v2', version_number: 2, status: 'pending', workbook_path: 'k2', decided_by: null, decided_at: null, revision_reason: 'qty' }),
+      row({}),
+    ], NAMES, when)
+    const html = renderToStaticMarkup(
+      <OrderDocumentsPanel mainPi={mainPiCard(pending)}
+        design={designFilesDocument({ kind: 'ready', counts: { representative: 1, customization: 0 } }, 1)}
+        onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop} viewing={false} downloading={false}
+        onApproveRevision={noop} onRejectRevision={noop} />)
+    assert.ok(text(html).includes('Waiting for Admin'))
+    assert.ok(text(html).includes('Approve revision') && text(html).includes('Reject revision'))
+    // Once staged for Operations, the admin decision is over.
+    assert.equal(text(panel(undefined, { onApprove: noop, onReject: noop })).includes('Approve revision'), false)
   })
 })
 
@@ -71,7 +93,7 @@ describe('the approving admin is no longer active (§6b)', () => {
   )
   test('the stage says why it waits, and the admin is offered Re-approve', () => {
     const t = text(reapprovePanel(false))
-    assert.ok(t.includes('Waiting on: Admin — the approving administrator is no longer active · Next: An active admin to re-approve it, or Operations to reject it'))
+    assert.ok(t.includes('With: Admin — the approving administrator is no longer active · Next: An active admin to re-approve it, or Operations to reject it'))
     assert.ok(t.includes('Re-approve PI V2'))
     assert.equal(t.includes('Confirm re-approval'), false, 'one press only opens the confirmation')
   })

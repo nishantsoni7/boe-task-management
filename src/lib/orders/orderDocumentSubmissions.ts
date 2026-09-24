@@ -104,8 +104,6 @@ export const SUBMIT_DOCUMENTS_NOTE =
   'Nothing on this Order changes yet. An administrator reviews these files first, then Operations must accept them before they replace the current documents. The current accepted files stay in use until then.'
 export const DESIGN_MODE_ADD_LABEL = 'Add files — keep the current design files and add these'
 export const DESIGN_MODE_REPLACE_LABEL = 'Replace current files — these become the whole design set (the old files stay in history)'
-export const NO_ACCEPTED_DESIGN_FILES = 'No design files accepted on this Order yet'
-export const NO_ACCEPTED_CLIENT_PO = 'No client PO accepted on this Order yet'
 export const CATEGORY_PENDING_BLOCKS_UPLOAD = (label: string) =>
   `${label} already has a submission under review. Wait for its decision before submitting another.`
 
@@ -347,6 +345,154 @@ export function sentWithPi(rows: readonly PersistedDocumentSubmission[]): {
 export function uncorrectedRejections(rows: readonly PersistedDocumentSubmission[]): PersistedDocumentSubmission[] {
   const corrected = new Set(rows.map(r => r.resubmission_of).filter((x): x is string => !!x))
   return rows.filter(r => (r.status === 'rejected_admin' || r.status === 'rejected_operations') && !corrected.has(r.id))
+}
+
+// ── The Documents card: what is current, and what is changing ────────────────
+//
+// ONE VOCABULARY FOR THE CARD. The accepted rows say "on file" and carry no
+// status of their own beyond the Main PI's one pill; a change says only where it
+// stands — waiting for Admin, waiting for Operations, or rejected — so a reader
+// never meets "Approved", "Accepted" and "Accepted for production" side by side
+// for one file. The finer stage names (SUBMISSION_STATUS_LABEL) stay in the
+// review dialog and the history, where the distinction is the point.
+
+export const DOCUMENT_CURRENT_LABEL = 'Current'
+export const NO_DESIGN_FILES_ON_FILE = 'No design files on file'
+export const NO_CLIENT_PO_ON_FILE = 'No client PO on file'
+export const UPDATE_DOCUMENTS_LABEL = 'Update documents'
+export const DOCUMENT_CHANGES_TITLE = 'Document changes'
+export const NEEDS_YOUR_ACTION_TITLE = 'Needs your action'
+export const REVIEW_CHANGE_LABEL = 'Review change'
+
+/** Where a change stands, in the card's own words. */
+export const CHANGE_STATUS_LABEL: Record<DocumentSubmissionStatus, string> = {
+  pending_admin: 'Waiting for Admin',
+  awaiting_operations: 'Waiting for Operations',
+  accepted: 'Current',
+  rejected_admin: 'Rejected by Admin',
+  rejected_operations: 'Rejected by Operations',
+}
+
+/** One accepted-document row: what is on file for a category, and nothing proposed. */
+export type SupportingRowView =
+  | { kind: 'loading' }
+  | { kind: 'unavailable' }
+  | { kind: 'none'; message: string; note: string | null }
+  | { kind: 'files'; files: PersistedDocumentFile[]; acceptedAt: string | null }
+
+/**
+ * THE ACCEPTED ROW FOR ONE CATEGORY, from accepted submissions only.
+ *
+ * An absent file says "No … on file" and never implies one was accepted. The
+ * acknowledged absence from the PI's submission is a quiet note under it, and
+ * only while nothing newer is under review for that category.
+ */
+export function supportingRow(
+  api: { rows: readonly PersistedDocumentSubmission[]; state: 'loading' | 'ready' | 'unavailable' },
+  category: DocumentCategory,
+  absence: string | null,
+): SupportingRowView {
+  if (api.state === 'loading') return { kind: 'loading' }
+  if (api.state === 'unavailable') return { kind: 'unavailable' }
+  const accepted = currentAcceptedFiles(api.rows, category)
+  if (accepted.files.length > 0) return { kind: 'files', files: accepted.files, acceptedAt: accepted.acceptedAt }
+  return {
+    kind: 'none',
+    message: category === 'design_files' ? NO_DESIGN_FILES_ON_FILE : NO_CLIENT_PO_ON_FILE,
+    note: openSubmissionFor(api.rows, category) ? null : absence,
+  }
+}
+
+/** One proposed or rejected submission, as the "Document changes" panel draws it. */
+export type DocumentChangeView = {
+  submission: PersistedDocumentSubmission
+  /** "New Design Files", "New Client PO", "Design Files + Client PO sent with PI V1". */
+  title: string
+  status: DocumentSubmissionStatus
+  statusLabel: string
+  tone: SubmissionTone
+  /** What the change does to the files on file, in words. */
+  effect: string
+  /** "Submitted by Asha, 20 Sept · approved by Nishant, 21 Sept". */
+  submittedLine: string
+  /** Who holds it now, and what they do next. */
+  owner: string
+  next: string
+  note: string | null
+  /** The rejection, when there is one: "The PO is not signed — Nishant (Admin), 21 Sept". */
+  rejection: string | null
+  /** The proposed files themselves, never drawn as current. */
+  files: PersistedDocumentFile[]
+  /** The viewer's own control on it, if any. */
+  action: 'admin_review' | 'operations_review' | 'resubmit' | null
+}
+
+const countFiles = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+
+/**
+ * THE CHANGES IN FLIGHT, ONCE EACH.
+ *
+ * A submission covering both categories used to be drawn under each of them; it
+ * is one entry here. Open submissions come first (at most one per category, the
+ * database's own rule), then any rejection its submitter — or an admin — still
+ * has to correct, unless a newer submission for the same files is already open.
+ */
+export function documentChanges(
+  rows: readonly PersistedDocumentSubmission[],
+  viewer: DocumentViewer,
+  nameOf: (id: string | null) => string | null,
+  formatWhen: (iso: string | null) => string,
+): DocumentChangeView[] {
+  const open = rows.filter(r => r.status === 'pending_admin' || r.status === 'awaiting_operations')
+  const covered = new Set(open.flatMap(categoriesOf))
+  const rejected = uncorrectedRejections(rows)
+    .filter(r => r.submitted_by === viewer.viewerId || viewer.isAdmin)
+    .filter(r => !categoriesOf(r).some(c => covered.has(c)))
+    .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))
+    .slice(0, 1)
+
+  return [...open, ...rejected].map(s => {
+    const effects: string[] = []
+    const designFiles = (s.files ?? []).filter(f => f.category === 'design_files')
+    const poFiles = (s.files ?? []).filter(f => f.category === 'client_po')
+    if (s.stage === 'initial') {
+      effects.push(`${countFiles((s.files ?? []).length)} sent with the PI — decided with its Operations review`)
+    } else {
+      if (s.includes_design_files) {
+        effects.push(s.design_mode === 'add'
+          ? `Would add ${countFiles(designFiles.length)} to the current design files`
+          : currentAcceptedFiles(rows, 'design_files').files.length > 0
+            ? `Would replace the current design files with ${countFiles(designFiles.length)}`
+            : `Would be the first design files (${countFiles(designFiles.length)})`)
+      }
+      if (s.includes_client_po) {
+        effects.push(currentAcceptedFiles(rows, 'client_po').files.length > 0
+          ? `Would replace the current client PO with ${countFiles(poFiles.length)}`
+          : `Would be the first client PO (${countFiles(poFiles.length)})`)
+      }
+    }
+    const submitted = [`Submitted by ${nameOf(s.submitted_by) ?? 'Sales'}, ${formatWhen(s.submitted_at)}`]
+    if (s.admin_decided_at && s.status !== 'rejected_admin') {
+      submitted.push(`approved by ${nameOf(s.admin_decided_by) ?? 'Admin'}, ${formatWhen(s.admin_decided_at)}`)
+    }
+    const rej = rejectionOf(s)
+    const actions = submissionActions(s, viewer)
+    return {
+      submission: s,
+      title: s.stage === 'initial' ? `${categoriesLabel(s)} sent with the PI` : `New ${categoriesLabel(s)}`,
+      status: s.status,
+      statusLabel: CHANGE_STATUS_LABEL[s.status],
+      tone: SUBMISSION_STATUS_TONE[s.status],
+      effect: effects.join(' · '),
+      submittedLine: submitted.join(' · '),
+      owner: currentOwnerLabel(s, nameOf),
+      next: nextActionLabel(s),
+      note: s.note,
+      rejection: rej ? `${rej.reason} — ${nameOf(rej.by) ?? rej.stage} (${rej.stage}), ${formatWhen(rej.at)}` : null,
+      files: s.files ?? [],
+      action: actions.adminDecide ? 'admin_review' : actions.operationsDecide ? 'operations_review' : actions.resubmit ? 'resubmit' : null,
+    }
+  })
 }
 
 // ── The "Needs your action" queue ────────────────────────────────────────────

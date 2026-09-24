@@ -9,13 +9,15 @@
 // person whose stage it is — never under View As — and hiding one is a
 // courtesy: the database refuses the same call from anybody else.
 //
-// NOTHING PROPOSED IS DRAWN AS CURRENT. The accepted block is derived from
-// accepted submissions only (currentAcceptedFiles); a pending proposal sits in
-// its own bordered block, labelled with its stage and owner, underneath.
+// NOTHING PROPOSED IS DRAWN AS CURRENT. The Documents card's rows are derived
+// from accepted submissions only (supportingRow); a pending or rejected
+// submission is one entry in its "Document changes" panel (documentChanges),
+// labelled with its stage and owner. This file keeps the hook, the two dialogs
+// and the permanent trail the History dialog lists.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { FileText, Upload } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import {
   OrderModal, OrderField, OrderModalActions, OrderModalError, OrderModalNotice,
@@ -25,7 +27,6 @@ import {
   ADMIN_REJECT_LABEL,
   CATEGORY_LABEL,
   CATEGORY_PENDING_BLOCKS_UPLOAD,
-  CORRECT_AND_RESUBMIT_LABEL,
   DECISION_REASON_MAX_LENGTH,
   DESIGN_MODE_ADD_LABEL,
   DESIGN_MODE_REPLACE_LABEL,
@@ -33,8 +34,6 @@ import {
   MAX_CLIENT_PO_FILES,
   MAX_DESIGN_FILES,
   NOTE_MAX_LENGTH,
-  NO_ACCEPTED_CLIENT_PO,
-  NO_ACCEPTED_DESIGN_FILES,
   OPS_ACCEPT_LABEL,
   OPS_REJECT_LABEL,
   ORDER_DOCUMENT_SUBMISSION_SELECT,
@@ -43,17 +42,13 @@ import {
   SUBMIT_DOCUMENTS_CONFIRM,
   SUBMIT_DOCUMENTS_NOTE,
   SUBMIT_DOCUMENTS_TITLE,
-  UPLOAD_CLIENT_PO_LABEL,
-  UPLOAD_DESIGN_FILES_LABEL,
   categoriesLabel,
   currentAcceptedFiles,
-  currentOwnerLabel,
   describeDocumentFailure,
   documentObjectPath,
   openSubmissionFor,
   rejectionOf,
   submissionActions,
-  uncorrectedRejections,
   validateDecisionReason,
   validateDocumentFile,
   type DocumentCategory,
@@ -198,7 +193,7 @@ export function useOrderDocumentSubmissions(supabase: SupabaseClient, orderId: s
 
 export type DocumentSubmissionsApi = ReturnType<typeof useOrderDocumentSubmissions>
 
-// ── One category's body: accepted, then the proposal, then a rejection ───────
+// ── The permanent trail, for the History dialog ──────────────────────────────
 
 function FileList({ files, onOpen }: { files: PersistedDocumentFile[]; onOpen: (f: PersistedDocumentFile) => void }) {
   return (
@@ -216,181 +211,71 @@ function FileList({ files, onOpen }: { files: PersistedDocumentFile[]; onOpen: (
   )
 }
 
-export function DocumentCategoryBody({
-  category, api, viewer, formatWhen, legacy, onReview, onResubmit, onOpenFile, absence = null,
-}: {
-  /** "Not provided — …confirmed at PI submission", when the PI said so. */
-  absence?: string | null
-  category: DocumentCategory
+/**
+ * EVERY DESIGN FILES AND CLIENT PO SUBMISSION ON THE ORDER — accepted, rejected
+ * or open — newest first, with who submitted, approved and accepted it, when,
+ * and why. Nothing replaced is lost; this is where it is read.
+ *
+ * It used to be a disclosure under each category, open in place on the page.
+ * It is one list now, inside the Documents History dialog, so the card itself
+ * shows only what is current and what is changing.
+ */
+export function SubmissionHistoryList({ api, formatWhen, onOpenFile }: {
   api: Pick<DocumentSubmissionsApi, 'rows' | 'state' | 'names'>
-  viewer: DocumentViewer
   formatWhen: (iso: string | null) => string
-  /** What the Order already shows for this category (the PI's own pictures). */
-  legacy?: React.ReactNode
-  onReview: (s: PersistedDocumentSubmission) => void
-  onResubmit: (s: PersistedDocumentSubmission) => void
   onOpenFile: (f: PersistedDocumentFile) => void
 }) {
   const nameOf = (id: string | null) => (id ? api.names.get(id) ?? null : null)
-  const accepted = useMemo(() => currentAcceptedFiles(api.rows, category), [api.rows, category])
-  const open = useMemo(() => openSubmissionFor(api.rows, category), [api.rows, category])
-  const rejected = useMemo(
-    () => uncorrectedRejections(api.rows).filter(r => (category === 'design_files' ? r.includes_design_files : r.includes_client_po))
-      .filter(r => r.submitted_by === viewer.viewerId || viewer.isAdmin)
-      .slice(0, 1),
-    [api.rows, category, viewer.viewerId, viewer.isAdmin],
-  )
-
-  if (api.state === 'loading') return <>{legacy}<p className="order-doc-loading" role="status">Loading submissions…</p></>
-  if (api.state === 'unavailable') {
-    return <>{legacy}<p className="order-doc-unavailable">Document submissions could not be read.</p></>
-  }
-
+  if (api.state === 'loading') return <p className="order-doc-loading" role="status">Loading submissions…</p>
+  if (api.state === 'unavailable') return <p className="order-doc-unavailable">Document submissions could not be read.</p>
+  const history = api.rows.slice().sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))
+  if (history.length === 0) return <p className="order-status-empty">No Design Files or Client PO have been submitted on this Order.</p>
   return (
-    <>
-      {legacy}
-      {/* ── ACCEPTED: the only thing Operations works from ── */}
-      {accepted.files.length > 0 ? (
-        <div className="order-docsub-accepted">
-          <p className="order-doc-lead">
-            <span className="order-doc-lead-value">
-              {accepted.files.length} accepted file{accepted.files.length === 1 ? '' : 's'}
-            </span>
-            <StatusPill label="Accepted" tone="green" />
-          </p>
-          <p className="order-doc-note">Accepted by Operations {formatWhen(accepted.acceptedAt)}</p>
-          <FileList files={accepted.files} onOpen={onOpenFile} />
-        </div>
-      ) : absence && !open ? (
-        <p className="order-doc-empty">{absence}</p>
-      ) : !legacy && (
-        <p className="order-doc-empty">{category === 'design_files' ? NO_ACCEPTED_DESIGN_FILES : NO_ACCEPTED_CLIENT_PO}</p>
-      )}
-
-      {/* ── PROPOSED: never the current file ── */}
-      {open && (() => {
-        const actions = submissionActions(open, viewer)
-        const files = (open.files ?? []).filter(f => f.category === category)
-        return (
-          <div className="order-docsub-pending" role="group" aria-label={`${CATEGORY_LABEL[category]} change pending`}>
-            <p className="order-doc-lead">
-              <span className="order-docsub-pending-title">
-                {open.stage === 'initial' ? 'Sent with the PI — not in use yet' : 'Proposed change — not in use yet'}
-              </span>
-              <StatusPill label={SUBMISSION_STATUS_LABEL[open.status]} tone={SUBMISSION_STATUS_TONE[open.status]} />
-            </p>
-            <p className="order-doc-note">
-              {files.length} file{files.length === 1 ? '' : 's'}
-              {category === 'design_files' && open.stage === 'amendment' && open.design_mode === 'replace' && ' · replaces the current design files'}
-              {category === 'design_files' && open.stage === 'amendment' && open.design_mode === 'add' && ' · adds to the current design files'}
-              {' · '}submitted by {nameOf(open.submitted_by) ?? 'Sales'} {formatWhen(open.submitted_at)}
-            </p>
-            <p className="order-doc-note"><strong>Waiting on:</strong> {currentOwnerLabel(open, nameOf)}</p>
-            {open.note && <p className="order-doc-note">“{open.note}”</p>}
-            <FileList files={files} onOpen={onOpenFile} />
-            {(actions.adminDecide || actions.operationsDecide) && (
-              <div className="order-docsub-actions">
-                <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={() => onReview(open)}>
-                  {actions.adminDecide ? 'Review — Approve or Reject' : 'Review — Accept or Reject'}
-                </button>
-              </div>
-            )}
+    <ol className="order-history-list">
+      {history.map(r => (
+        <li key={r.id} className="order-history-row">
+          <div className="order-history-row-head">
+            <span className="order-history-version">{categoriesLabel(r)}</span>
+            <StatusPill label={SUBMISSION_STATUS_LABEL[r.status]} tone={SUBMISSION_STATUS_TONE[r.status]} />
           </div>
-        )
-      })()}
-
-      {/* ── REJECTED: visible to Sales with the reason, until corrected ── */}
-      {!open && rejected.map(r => {
-        const rej = rejectionOf(r)
-        const actions = submissionActions(r, viewer)
-        return (
-          <div key={r.id} className="order-docsub-rejected" role="group" aria-label={`${CATEGORY_LABEL[category]} submission rejected`}>
-            <p className="order-doc-lead">
-              <span className="order-docsub-pending-title">Last submission rejected</span>
-              <StatusPill label={SUBMISSION_STATUS_LABEL[r.status]} tone="red" />
-            </p>
-            {rej && (
-              <p className="order-doc-note">
-                <strong>{rej.stage} reason:</strong> {rej.reason} — {nameOf(rej.by) ?? rej.stage}, {formatWhen(rej.at)}
-              </p>
-            )}
-            {actions.resubmit && (
-              <div className="order-docsub-actions">
-                <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={() => onResubmit(r)}>
-                  {CORRECT_AND_RESUBMIT_LABEL}
-                </button>
-              </div>
-            )}
+          <div className="order-history-meta">
+            {r.stage === 'initial' ? 'Sent with the PI · ' : r.includes_design_files && r.design_mode === 'replace' ? 'Replaced the design set · ' : r.includes_design_files && r.design_mode === 'add' ? 'Added to the design set · ' : ''}
+            Submitted by {nameOf(r.submitted_by) ?? 'Sales'}, {formatWhen(r.submitted_at)}
           </div>
-        )
-      })}
-
-      {/* ── THE PERMANENT TRAIL: every submission of this category, accepted,
-          rejected or open, with who submitted, approved and accepted it, when,
-          and why. Nothing replaced is lost; this is where it is read. ── */}
-      {(() => {
-        const history = api.rows
-          .filter(r => (category === 'design_files' ? r.includes_design_files : r.includes_client_po))
-          .slice()
-          .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))
-        if (history.length === 0) return null
-        return (
-          <details className="order-approval-history">
-            <summary className="order-approval-history-summary">Submission history ({history.length})</summary>
-            <ol className="order-approval-history-list">
-              {history.map(r => (
-                <li key={r.id} className="order-approval-history-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <span className="order-approval-history-status">
-                    {SUBMISSION_STATUS_LABEL[r.status]}
-                    {r.stage === 'initial' ? ' · sent with the PI' : r.design_mode === 'replace' && category === 'design_files' ? ' · replaced the set' : ''}
-                  </span>
-                  <span className="order-approval-history-meta">
-                    Submitted by {nameOf(r.submitted_by) ?? 'Sales'}, {formatWhen(r.submitted_at)}
-                  </span>
-                  {r.admin_decided_at && (
-                    <span className="order-approval-history-meta">
-                      Admin: {r.status === 'rejected_admin' ? 'rejected' : 'approved'} by {nameOf(r.admin_decided_by) ?? 'Admin'}, {formatWhen(r.admin_decided_at)}
-                      {r.admin_reason ? ` — ${r.admin_reason}` : ''}
-                    </span>
-                  )}
-                  {r.operations_decided_at && (
-                    <span className="order-approval-history-meta">
-                      Operations: {r.status === 'accepted' ? 'accepted' : 'rejected'} by {nameOf(r.operations_decided_by) ?? 'Operations'}, {formatWhen(r.operations_decided_at)}
-                      {r.operations_reason ? ` — ${r.operations_reason}` : ''}
-                    </span>
-                  )}
-                  <FileList files={(r.files ?? []).filter(f => f.category === category)} onOpen={onOpenFile} />
-                </li>
-              ))}
-            </ol>
-          </details>
-        )
-      })()}
-    </>
+          {r.admin_decided_at && (
+            <div className="order-history-meta">
+              Admin: {r.status === 'rejected_admin' ? 'rejected' : 'approved'} by {nameOf(r.admin_decided_by) ?? 'Admin'}, {formatWhen(r.admin_decided_at)}
+              {r.admin_reason ? ` — ${r.admin_reason}` : ''}
+            </div>
+          )}
+          {r.operations_decided_at && (
+            <div className="order-history-meta">
+              Operations: {r.status === 'accepted' ? 'accepted' : 'rejected'} by {nameOf(r.operations_decided_by) ?? 'Operations'}, {formatWhen(r.operations_decided_at)}
+              {r.operations_reason ? ` — ${r.operations_reason}` : ''}
+            </div>
+          )}
+          {r.note && <div className="order-history-meta">Note: “{r.note}”</div>}
+          <FileList files={r.files ?? []} onOpen={onOpenFile} />
+        </li>
+      ))}
+    </ol>
   )
 }
 
-/** The upload control for a category, or the reason there is none. */
-export function DocumentUploadAction({ category, api, viewer, onUpload }: {
-  category: DocumentCategory
-  api: Pick<DocumentSubmissionsApi, 'rows' | 'state'>
-  viewer: DocumentViewer
-  onUpload: (category: DocumentCategory) => void
-}) {
-  if (!viewer.canSubmit || viewer.viewingAs || api.state !== 'ready') return null
-  const blocked = openSubmissionFor(api.rows, category) !== null
-  return (
-    <button
-      type="button"
-      className="boe-btn boe-btn-ghost order-doc-action"
-      onClick={() => onUpload(category)}
-      disabled={blocked}
-      title={blocked ? CATEGORY_PENDING_BLOCKS_UPLOAD(CATEGORY_LABEL[category]) : undefined}
-    >
-      <Upload size={13} strokeWidth={2} aria-hidden="true" />
-      {category === 'design_files' ? UPLOAD_DESIGN_FILES_LABEL : UPLOAD_CLIENT_PO_LABEL}
-    </button>
-  )
+/**
+ * WHETHER A CATEGORY CAN TAKE A NEW SUBMISSION NOW, for the Update documents
+ * menu: not while one is already under review (the database allows one open
+ * submission per category), and not for a reader who may not submit at all.
+ */
+export function uploadAvailability(
+  category: DocumentCategory,
+  api: Pick<DocumentSubmissionsApi, 'rows' | 'state'>,
+  viewer: DocumentViewer,
+): { offered: boolean; blockedReason: string | null } {
+  if (!viewer.canSubmit || viewer.viewingAs || api.state !== 'ready') return { offered: false, blockedReason: null }
+  return openSubmissionFor(api.rows, category) !== null
+    ? { offered: true, blockedReason: CATEGORY_PENDING_BLOCKS_UPLOAD(CATEGORY_LABEL[category]) }
+    : { offered: true, blockedReason: null }
 }
 
 // ── Submit dialog ────────────────────────────────────────────────────────────
