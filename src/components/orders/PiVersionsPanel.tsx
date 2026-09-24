@@ -10,8 +10,9 @@
 // The Admin opens a proposed version to see it against the one in force —
 // changed fields with old and new values, products added, removed and changed
 // with their quantity, price and total deltas, photo changes — and authorizes
-// or rejects it there. Authorizing puts nothing in force: Operations accepts
-// it (20270101000000), and until then the current version stays usable.
+// or rejects it there. Approving puts it in force and amends the Order to its
+// values (20270104000000); Operations is then sent it for review. Every version
+// opens its own PDF, rendered from its own content.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -28,6 +29,12 @@ import {
   type PiContentItem,
 } from '@/lib/orders/piEdit'
 import { EDIT_PI_LABEL, PiDiffView, PiEditor, loadPiContentAsViewer } from './PiEditor'
+import {
+  PI_EDITED_VERSION_WORKBOOK_NOTE,
+  PI_VERSION_PDF_DOWNLOAD_LABEL,
+  PI_VERSION_PDF_VIEW_LABEL,
+  piVersionPdfHref,
+} from '@/lib/orders/piVersionPdf'
 
 export type PiVersionRow = {
   id: string
@@ -189,7 +196,7 @@ export function PiVersionsPanel({
             <div style={{ fontSize: '12.5px', color: colors.primary, lineHeight: 1.4 }}>{versionSummary(v)}</div>
             {v.source_kind === 'edit' && v.status === 'approved' && (
               <div style={{ fontSize: '11.5px', color: colors.secondary }}>
-                These details are the PI in force; confirmed documents are generated from them. The original uploaded workbook is kept unchanged as V1&apos;s file.
+                {PI_EDITED_VERSION_WORKBOOK_NOTE(v.version_number)}
               </div>
             )}
             {v.revision_reason && v.version_number > 1 && (
@@ -221,7 +228,7 @@ export function PiVersionsPanel({
           }} />
       )}
       {open && (
-        <PiVersionDialog supabase={supabase} version={open} submissionId={submissionId} isAdmin={isAdmin}
+        <PiVersionDialog supabase={supabase} version={open} orderId={orderId} submissionId={submissionId} isAdmin={isAdmin}
           onClose={() => setOpen(null)}
           onDecided={message => { setOpen(null); setNotice(message); refresh() }} />
       )}
@@ -230,9 +237,10 @@ export function PiVersionsPanel({
 }
 
 /** One version: its products and figures, and — while proposed — how it differs from the one in force. */
-function PiVersionDialog({ supabase, version, submissionId, isAdmin, onClose, onDecided }: {
+function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, onClose, onDecided }: {
   supabase: SupabaseClient
   version: PiVersionRow
+  orderId: string
   submissionId: string
   isAdmin: boolean
   onClose: () => void
@@ -274,7 +282,7 @@ function PiVersionDialog({ supabase, version, submissionId, isAdmin, onClose, on
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setFailure(body.message ?? 'This revision could not be approved just now.'); return }
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId })
-      onDecided(`PI V${version.version_number} approved. It takes effect when Operations accepts it; the current PI stays in force until then.`)
+      onDecided(`PI V${version.version_number} approved — it is now the PI in force${body.order_amendment ? ', and the Order was amended to its values' : ''}. Operations has been sent it for review.`)
     } finally { setBusy(false) }
   }
   const reject = async () => {
@@ -292,6 +300,19 @@ function PiVersionDialog({ supabase, version, submissionId, isAdmin, onClose, on
       <div className="boe-modal-sheet" style={{ maxWidth: '860px' }}>
         <div className="boe-modal-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <strong style={{ flex: 1, fontSize: '15px' }}>PI V{version.version_number} · {VERSION_STATUS_LABEL[version.status]}</strong>
+          {/* THIS version's own PDF, rendered from its own content (20270104000000). */}
+          {content && !unavailable && (
+            <>
+              <button type="button" className="boe-btn boe-btn-ghost"
+                onClick={() => window.open(piVersionPdfHref(orderId, version.id, false), '_blank', 'noopener,noreferrer')}>
+                {PI_VERSION_PDF_VIEW_LABEL(version.version_number)}
+              </button>
+              <button type="button" className="boe-btn boe-btn-ghost" aria-label={`Download PI V${version.version_number} as PDF`}
+                onClick={() => window.open(piVersionPdfHref(orderId, version.id, true), '_blank', 'noopener,noreferrer')}>
+                {PI_VERSION_PDF_DOWNLOAD_LABEL}
+              </button>
+            </>
+          )}
           <button type="button" className="boe-btn boe-btn-ghost" onClick={onClose} disabled={busy}>Close</button>
         </div>
         <div className="boe-modal-body">
@@ -345,7 +366,7 @@ function PiVersionDialog({ supabase, version, submissionId, isAdmin, onClose, on
               ) : (
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <span style={{ flex: 1, fontSize: '11.5px', color: colors.muted, minWidth: '200px' }}>
-                    Approving authorizes it. It takes effect when Operations accepts it; the current PI stays in force until then.
+                    Approving puts it in force now and amends the Order to its values (recorded with the old and new values). Operations is then sent it for review.
                   </span>
                   <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setRejecting(true)} disabled={busy}>Reject…</button>
                   <button type="button" className="boe-btn boe-btn-primary" onClick={() => void approve()} disabled={busy}>

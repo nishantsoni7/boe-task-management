@@ -88,7 +88,8 @@ describe('what the editor promises', () => {
     assert.match(EDIT_PI_PROPOSE_NOTE, /stays in force until an Admin approves/)
   })
   test('the original workbook is never passed off as the revised PI', () => {
-    assert.match(EDIT_PI_WORKBOOK_NOTE, /original uploaded workbook is kept unchanged/)
+    assert.match(EDIT_PI_WORKBOOK_NOTE, /uploaded workbook stays V1's file and is never changed/)
+    assert.match(EDIT_PI_WORKBOOK_NOTE, /no workbook of its own/)
   })
   test('the browser never prices the PI for the server, and never proposes directly', () => {
     const editor = readFileSync('src/components/orders/PiEditor.tsx', 'utf8')

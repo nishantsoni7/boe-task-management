@@ -38,9 +38,14 @@ export const DOC_MAIN_PI_TITLE = 'Main PI'
 export const DOC_DESIGN_FILES_TITLE = 'Design Files'
 export const DOC_CLIENT_PO_TITLE = 'Client PO'
 
-/** The Main PI row's one primary action, and its secondary one in the ⋯ menu. */
-export const DOC_VIEW_PI_LABEL = 'View PI'
-export const DOC_DOWNLOAD_PI_LABEL = 'Download PI'
+/**
+ * The Main PI row's UPLOADED-WORKBOOK actions, named for what they open: the
+ * .xlsx Sales uploaded, not the PI document. The PI itself is the PDF
+ * (piVersionPdf.ts), generated from the version's details (20270104000000).
+ */
+export const DOC_VIEW_PI_LABEL = 'Uploaded workbook'
+export const DOC_DOWNLOAD_PI_LABEL = 'Download uploaded workbook (.xlsx)'
+export const DOC_DOWNLOAD_PI_PDF_LABEL = 'Download PI PDF'
 /** The quiet link to the PI versions and every supporting-file submission. */
 export const DOCUMENTS_HISTORY_LABEL = 'History'
 export const DOCUMENTS_HISTORY_TITLE = 'Document history'

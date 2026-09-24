@@ -45,6 +45,7 @@ import {
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
 import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
+import { PI_EDITED_VERSION_WORKBOOK_NOTE, PI_VERSION_PDF_VIEW_LABEL } from '@/lib/orders/piVersionPdf'
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
   CANNOT_ACCEPT_LABEL,
@@ -229,6 +230,7 @@ export function OrderDocumentsPanel({
   mainPiOperations, mainPiMenu, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
+  onOpenPdf,
 }: {
   mainPi: MainPiCard
   /** The approved PI's own product pictures (read-only; opened in a dialog). */
@@ -275,6 +277,12 @@ export function OrderDocumentsPanel({
     onConfirm: () => void
     onCancel: () => void
   }
+  /**
+   * Opens a PI version's PDF, rendered from that version's own details
+   * (20270104000000) — a file hand-off, like the workbook's. Absent: the row
+   * offers only the uploaded workbook.
+   */
+  onOpenPdf?: (versionId: string, download: boolean) => void
 }) {
   const open = (f: PersistedDocumentFile) => onOpenFile?.(f)
   const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
@@ -449,6 +457,19 @@ export function OrderDocumentsPanel({
             ]} />}
             actions={
               <>
+                {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
+                    own details — for a workbook version and an edited one alike. */}
+                {onOpenPdf && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
+                    onClick={() => onOpenPdf(mainPi.version.id, false)}
+                    title="Generated from this version's details"
+                  >
+                    <FileText size={13} strokeWidth={2} aria-hidden="true" />
+                    {PI_VERSION_PDF_VIEW_LABEL(mainPi.version.versionNumber)}
+                  </button>
+                )}
                 {mainPi.version.editedInApp ? (
                   /* EDITED IN THE APP (20270103000000): this version has no
                      workbook of its own, and the original upload is V1's file,
@@ -457,7 +478,7 @@ export function OrderDocumentsPanel({
                     type="button"
                     className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
                     onClick={() => document.querySelector('section[aria-label="PI versions"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    title="Edited in the app — its details are in PI versions; the original workbook stays with V1"
+                    title={PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}
                   >
                     <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
                     View in PI versions

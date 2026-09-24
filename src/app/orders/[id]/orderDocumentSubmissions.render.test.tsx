@@ -58,6 +58,7 @@ const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence
       mainPi={mainPiCard(describePiVersionHistory([V1], NAMES, when))}
       design={designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2)}
       onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+      onOpenPdf={noop}
       viewing={false} downloading={false}
       updateMenu={over.updateMenu}
       supporting={{
@@ -91,11 +92,14 @@ describe('the Documents card', () => {
     assert.equal(/order-docs-grid|order-docs-main|order-docs-side/.test(html), false)
   })
 
-  test('the Main PI row: one status, the two dates, and View PI', () => {
+  test('the Main PI row: one status, the two dates, the PI PDF and the uploaded workbook', () => {
     const t = rowsOf(card([accepted]))
     assert.ok(t.includes('Main PI · V1 Current'))
     assert.ok(t.includes('Uploaded 2026-09-01') && t.includes('Approved 2026-09-02'))
-    assert.ok(t.includes('View PI'))
+    // Each action says what it opens (20270104000000): the PI itself is the
+    // PDF generated from V1's details; the .xlsx is the file Sales uploaded.
+    assert.ok(t.includes('View PI V1 (PDF)'))
+    assert.ok(t.includes('Uploaded workbook'))
     // ONE vocabulary: the current file is never labelled three ways at once.
     assert.equal(/Accepted for production|Approved by Admin/.test(t), false)
   })

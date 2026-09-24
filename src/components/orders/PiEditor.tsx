@@ -47,9 +47,9 @@ import {
 
 export const EDIT_PI_LABEL = 'Edit PI'
 export const EDIT_PI_PROPOSE_NOTE =
-  'This PI is approved and in force. Your changes become a new version: the current PI stays in force until an Admin approves the new one and Operations accepts it.'
+  'This PI is approved and in force. Your changes become a new version: the current PI stays in force until an Admin approves the new one. Approval puts it in force and amends the Order to its values; Operations is then sent it for review.'
 export const EDIT_PI_WORKBOOK_NOTE =
-  'The original uploaded workbook is kept unchanged as the source file. The revised PI is these details, and its PDF is generated from them.'
+  "The uploaded workbook stays V1's file and is never changed. An edited version has no workbook of its own: it is these details, and its PDF is generated from them."
 
 type Mode = 'propose' | 'apply'
 

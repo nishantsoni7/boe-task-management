@@ -645,6 +645,16 @@ describe('every supporting record opens over the Order, not in another module', 
     assert.equal(/router\.push|href=/.test(fn), false)
   })
 
+  test('A PI VERSION\'S PDF IS A FILE HAND-OFF TOO (20270104000000)', () => {
+    // Rendered by the server from that version's own details. The browser is
+    // handed a PDF document in a new tab — never an app page.
+    const fn = page.slice(page.indexOf('const openVersionPdf'), page.indexOf('const viewEvidence'))
+    assert.ok(fn.includes('piVersionPdfHref('))
+    assert.ok(fn.includes("'_blank', 'noopener,noreferrer'"))
+    assert.equal(/router\.push|href=/.test(fn), false)
+    assert.ok(read('src/lib/orders/piVersionPdf.ts').includes('/pi-versions/${versionId}/pdf'))
+  })
+
   test('no dialog navigates with the browser', () => {
     for (const path of [PAGE, WORKSPACE, STATUS]) {
       assert.equal(/history\.back\(\)|router\.back\(\)/.test(code(path)), false, path)

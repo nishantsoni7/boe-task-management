@@ -156,7 +156,8 @@ import {
 } from '@/lib/orders/orderDocumentSubmissions'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { DOC_DOWNLOAD_PI_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
@@ -1800,6 +1801,13 @@ export default function OrderDetailPage() {
    * bucket's SELECT policy — which asks can_view_order — decides again at that
    * moment. No proof is signed at load, and a key never reaches the markup.
    */
+  // A PI VERSION'S PDF (20270104000000): the third file hand-off. Rendered by
+  // the server from that version's own details; the browser gets a document,
+  // never another module's page.
+  const openVersionPdf = (versionId: string, download: boolean) => {
+    window.open(piVersionPdfHref(id, versionId, download), '_blank', 'noopener,noreferrer')
+  }
+
   const viewEvidence = async (path: string) => {
     if (proofBusy) return
     setProofBusy(path)
@@ -2767,15 +2775,17 @@ export default function OrderDetailPage() {
             clientPo={clientPo}
             onView={v => { void openVersionFile(v, 'view') }}
             onDownload={v => { void openVersionFile(v, 'download') }}
+            onOpenPdf={openVersionPdf}
             onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
             onManageDesign={() => setDesignOpen(true)}
             viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
             mainPiMenu={mainPi.kind === 'ready' ? (
-              <MoreActionsMenu<'download' | 'history'>
+              <MoreActionsMenu<'pdf' | 'download' | 'history'>
                 ariaLabel="More PI actions"
                 triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
                 items={[
+                  { key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` },
                   {
                     key: 'download',
                     label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
@@ -2784,6 +2794,7 @@ export default function OrderDetailPage() {
                   { key: 'history', label: 'PI history' },
                 ]}
                 onSelect={key => {
+                  if (key === 'pdf') { openVersionPdf(mainPi.version.id, true); return }
                   if (key === 'download') { void openVersionFile(mainPi.version, 'download'); return }
                   setRevisionError(null)
                   setHistoryOpen(true)
@@ -2823,8 +2834,8 @@ export default function OrderDetailPage() {
 
         {/* ══ 3b. PI VERSIONS AND EDIT PI (20270103000000) ══
             V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
-            An edit becomes a pending version; the PI in force stays in force
-            until an Admin authorizes it and Operations accepts it. */}
+            An edit becomes a pending version; an Admin's approval puts it in
+            force and amends the Order (20270104000000). */}
         {order.source_order_submission_id && handoffReady && (
           <PiVersionsPanel
             supabase={supabase}
