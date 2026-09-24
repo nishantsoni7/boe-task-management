@@ -314,6 +314,17 @@ describe('the read side excludes system types too', () => {
     // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
     // row to ONE person, once. It installs no trigger, function or job.
     const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
+    // An eighth, 20261231000000, is Order document submissions (Design Files
+    // and Client PO). Four RPCs a PERSON presses (create, the admin decision,
+    // the operations decision, sending a PI with its documents) act as that
+    // signed-in person; the three that notify tell the next owner inside that
+    // person's own transaction. Two AFTER triggers also write one Orders-type
+    // row each, and only inside a person's own action: the operations
+    // reviewer ACCEPTING a PI version (on order_operations_handoffs) tells the
+    // submitter their documents were accepted with it, and Control Center
+    // REASSIGNING the reviewer (on order_operations_reviewers) tells the new
+    // reviewer what now waits on them. Orders types only; nothing scheduled.
+    const DOCUMENT_SUBMISSIONS = '20261231000000_order_document_submissions.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -322,7 +333,25 @@ describe('the read side excludes system types too', () => {
       APPROVAL_SILENCE,
       OPERATIONS_HANDOFF,
       ORDER_0524_HANDOFF,
+      DOCUMENT_SUBMISSIONS,
     ])
+    {
+      const sql = read(join(dir, DOCUMENT_SUBMISSIONS))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      assert.ok(types.length >= 5, `${DOCUMENT_SUBMISSIONS}: its notification writes are all found`)
+      for (const t of types) {
+        assert.equal(isSystemGeneratedNotificationType(t), false, `${DOCUMENT_SUBMISSIONS} writes ${t}, which must not be a system type`)
+        assert.ok(t.startsWith('order_document_review_'), t)
+      }
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 4,
+        `${DOCUMENT_SUBMISSIONS}: the four RPCs act as a signed-in person`)
+      // Its AFTER triggers sit only on tables a PERSON'S action writes — never
+      // on a schedule, a job or the notifications table itself.
+      const afterTriggers = [...sql.matchAll(/create\s+trigger\s+\w+\s+after\s+[\w\s,]+?\s+on\s+public\.(\w+)/gi)].map(m => m[1]).sort()
+      assert.deepEqual(afterTriggers, ['order_operations_handoffs', 'order_operations_reviewers', 'order_submissions'],
+        `${DOCUMENT_SUBMISSIONS}: AFTER triggers only where a person decides`)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${DOCUMENT_SUBMISSIONS}: nothing is scheduled`)
+    }
     {
       const sql = read(join(dir, ORDER_0524_HANDOFF))
       assert.equal(/create\s+(or\s+replace\s+)?(trigger|function)/i.test(sql), false,
@@ -365,7 +394,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

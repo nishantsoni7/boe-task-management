@@ -552,6 +552,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      '20261231000000_order_document_submissions.sql',
     ])
   })
 

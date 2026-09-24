@@ -418,7 +418,9 @@ describe('the detail page renders only what it fetched', () => {
       // and is the owner's channel for a record that has left their hands.
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
-      'submit_pi_for_review',
+      // submit_pi_for_review is reached through the supporting-documents
+      // sender (submit_pi_for_review_with_documents, 20261231000000 §11),
+      // pinned in the submit-door tests; the page itself calls no submit RPC.
       // update_order_submission_client_details (20260928000000) writes ten
       // named TEXT columns — client, contact, and the two parties — and
       // nothing else. Its allow-list is enforced in the database, not here:
@@ -1830,6 +1832,7 @@ describe('PI Drafts offers Upload PI', () => {
 
 describe('the resubmission reply reaches the database and the trail', () => {
   const source = read(DETAIL_PAGE)
+  const supportingSource = read('src/components/orders/PiSupportingDocuments.tsx')
 
   test('the field is offered only when management asked for changes', () => {
     assert.ok(source.includes('offerReply={submissionOffersReply(submission.status)}'),
@@ -1844,13 +1847,17 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // NO ADVANCE FIGURE IS SENT AT ALL. The database sums FINANCE-VERIFIED
     // payment itself and chooses the standard or the reduced-payment route, so a
     // browser can neither declare an advance nor claim a payment position.
-    assert.ok(source.includes("await supabase.rpc('submit_pi_for_review', {"))
-    assert.ok(source.includes('p_note: note,'))
-    assert.ok(source.includes('p_reason: terms.reason,'))
-    assert.ok(source.includes('p_payment_terms: terms.paymentTerms,'))
-    assert.ok(source.includes('p_billing_terms: terms.billingTerms,'))
+    // Since 20261231000000 that one call is submit_pi_for_review_with_documents,
+    // made by the supporting-documents sender: it runs submit_pi_for_review()
+    // unchanged and records the attached files in the same transaction.
+    assert.ok(source.includes('await supporting.send({ note, terms, acknowledgedMissing })'))
+    assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
+    assert.ok(supportingSource.includes('p_note: input.note,'))
+    assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))
+    assert.ok(supportingSource.includes('p_payment_terms: input.terms.paymentTerms,'))
+    assert.ok(supportingSource.includes('p_billing_terms: input.terms.billingTerms,'))
     for (const forbidden of ['p_advance_percent', 'p_advance_amount', 'p_advance_condition']) {
-      assert.ok(!source.includes(forbidden),
+      assert.ok(!source.includes(forbidden) && !supportingSource.includes(forbidden),
         `${forbidden} must not be sent — a declaration is not a payment`)
     }
   })

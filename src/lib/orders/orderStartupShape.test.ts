@@ -390,7 +390,13 @@ describe('no Order screen waits more than it must', () => {
       // calls it. A SAVE rather than a load, so the startup path is unchanged
       // and the wait test above still requires exactly three — what changed is
       // that this screen now makes one fewer write of any kind.
-      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 28 -> 27 (20261231000000). The submit call MOVED, it did not
+      // go: submit_pi_for_review is now reached through the supporting-
+      // documents sender (src/components/orders/PiSupportingDocuments.tsx),
+      // which uploads the attached Design Files / Client PO and calls
+      // submit_pi_for_review_with_documents. A SAVE on a press, so the startup
+      // path is unchanged and the wait test above still requires three.
+      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

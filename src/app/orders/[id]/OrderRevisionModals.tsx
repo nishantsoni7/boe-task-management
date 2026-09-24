@@ -298,8 +298,14 @@ export function ProductionAlignmentModal({
  * version's currency under a row lock; this dialog only collects the words.
  */
 export function OperationsHandoffDecisionModal({
-  orderNumber, versionLabel, decision, withdrawing = false, saving, failure, onClose, onConfirm,
+  orderNumber, versionLabel, decision, withdrawing = false, saving, failure, onClose, onConfirm, alsoAccepts = null,
 }: {
+  /**
+   * The Design Files / Client PO sent with this PI (20261231000000 §11e):
+   * accepting the version accepts them too. Said in the dialog so nobody
+   * accepts files they were not shown.
+   */
+  alsoAccepts?: string | null
   orderNumber: string
   versionLabel: string
   decision: OperationsHandoffStatus
@@ -324,6 +330,13 @@ export function OperationsHandoffDecisionModal({
       <OrderModalNotice tone={accepting ? 'info' : 'warning'}>
         {accepting ? ACCEPT_CONFIRM : withdrawing ? WITHDRAW_CONFIRM : CANNOT_ACCEPT_CONFIRM}
       </OrderModalNotice>
+      {alsoAccepts && !withdrawing && (
+        <OrderModalNotice tone="info">
+          {accepting
+            ? `Accepting also makes the documents sent with this PI current: ${alsoAccepts}.`
+            : `The documents sent with this PI stay awaiting until this version is accepted: ${alsoAccepts}.`}
+        </OrderModalNotice>
+      )}
       <OrderField
         label={accepting ? ACCEPT_NOTE_LABEL : CANNOT_ACCEPT_REASON_LABEL}
         error={touched && !check.ok ? check.message : undefined}

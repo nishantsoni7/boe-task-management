@@ -32,6 +32,8 @@ import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
 import { PI_FORMAT_ACTION, PI_FORMAT_FILENAME } from '@/lib/orders/piFormat'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
+import { DocumentActionQueue } from '@/components/orders/DocumentActionQueue'
+import { useViewAs } from '@/contexts/ViewAsContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -167,6 +169,7 @@ export default function OrdersDashboardPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId } = useViewAs()
 
   /**
    * The list, and every figure above it.
@@ -429,6 +432,16 @@ export default function OrdersDashboardPage() {
           accent={colors.blue}
         />
       </div>
+
+      {/* ── Needs your action: Design Files and Client PO submissions (20261231000000),
+          filtered to this reader's role. Draws nothing when nothing waits. ── */}
+      <DocumentActionQueue
+        supabase={supabase}
+        viewerId={profile?.id ?? null}
+        isAdmin={profile?.role === 'admin'}
+        viewingAs={!!viewAsUserId}
+        formatWhen={iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+      />
 
       {/* ── Running Orders list ── */}
       <div style={{

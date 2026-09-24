@@ -33,6 +33,11 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
+import {
+  SUBMIT_WITHOUT_FILES_LABEL,
+  missingSupportingQuestion,
+  type SupportingCategory,
+} from '@/lib/orders/orderDocumentSubmissions'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import {
   BOE_STANDARD_COMMERCIAL_TERMS,
@@ -477,6 +482,9 @@ export function PiSubmitConfirmModal({
   offerReply,
   onCancel,
   onConfirm,
+  supporting,
+  missingSupporting,
+  supportingBlocked,
 }: {
   client: string
   grandTotal: string
@@ -509,7 +517,19 @@ export function PiSubmitConfirmModal({
   onConfirm: (
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
+    /** The supporting categories the submitter confirmed going without. */
+    acknowledgedMissing?: string[],
   ) => void
+  /**
+   * DESIGN FILES AND CLIENT PO (20261231000000), drawn inside this dialog by the
+   * caller. Absent on a screen that does not offer them: the dialog is then
+   * exactly what it was.
+   */
+  supporting?: React.ReactNode
+  /** Categories with no file. Non-empty → one explicit confirmation first. */
+  missingSupporting?: readonly SupportingCategory[]
+  /** Why Submit must wait on the attachments (e.g. an invalid file). */
+  supportingBlocked?: string | null
 }) {
   /**
    * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
@@ -558,7 +578,11 @@ export function PiSubmitConfirmModal({
       ? null
       : (checked as { ok: false; message: string }).message
 
-  const blocked = submitting || tooLong || !checked.ok
+  const blocked = submitting || tooLong || !checked.ok || !!supportingBlocked
+  // THE ONE EXPLICIT CONFIRMATION for a missing supporting category. Cancel
+  // returns to the form and sends nothing.
+  const [confirmingMissing, setConfirmingMissing] = useState(false)
+  const missing = missingSupporting ?? []
 
   useScrollLock(true)
 
@@ -573,7 +597,8 @@ export function PiSubmitConfirmModal({
     // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
     // reaches the database is what it stores — no leading spaces, and nothing at
     // all where the field was only whitespace.
-    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value)
+    if (missing.length > 0 && !confirmingMissing) { setConfirmingMissing(true); return }
+    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing])
   }
 
   return (
@@ -609,6 +634,8 @@ export function PiSubmitConfirmModal({
             invalid={termsMessage}
             onTerms={(key, value) => setTerms(current => ({ ...current, [key]: value }))}
           />
+
+          {supporting}
 
           <div style={{
             fontSize: '12px', color: colors.primary, lineHeight: 1.5,
@@ -661,6 +688,26 @@ export function PiSubmitConfirmModal({
 
           {failure && <FailureNote message={failure} />}
 
+          {confirmingMissing ? (
+            <div role="alertdialog" aria-label="Submit without supporting files" style={{
+              border: '1px solid rgba(190,140,40,0.45)', background: '#FFFBF0', borderRadius: '8px',
+              padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px',
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.45 }}>
+                {missingSupportingQuestion(missing)}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setConfirmingMissing(false)} disabled={submitting} style={cancelStyle(submitting)}>
+                  Cancel
+                </button>
+                <button type="button" onClick={confirm} disabled={blocked}
+                        style={{ ...confirmStyle('#DC1F2E', blocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                  <Send size={13} strokeWidth={2} />
+                  {submitting ? 'Submitting…' : SUBMIT_WITHOUT_FILES_LABEL}
+                </button>
+              </div>
+            </div>
+          ) : (
           <Footer>
             <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
               Cancel
@@ -675,6 +722,7 @@ export function PiSubmitConfirmModal({
               {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}
             </button>
           </Footer>
+          )}
         </div>
       </div>
     </div>
