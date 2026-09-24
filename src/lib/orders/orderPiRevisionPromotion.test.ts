@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import {
   PI_VERSION_STATUS_LABEL,
   canDecideRevisionOperations,
+  canReapproveRevision,
   describePiVersionHistory,
   describeRevisionOperationsFailure,
   revisionStage,
@@ -32,6 +33,26 @@ const row = (over: Partial<PersistedPiVersion>): PersistedPiVersion => ({
 const v1 = row({})
 const v2 = row({ id: 'v2', version_number: 2, status: 'admin_approved', workbook_path: 'k2', revision_reason: 'client changed qty',
   decided_at: '2026-09-20T00:00:00Z', operations_reviewer: 'ops' })
+
+describe('the approving admin is no longer active (§6b)', () => {
+  const h = describePiVersionHistory([v2, v1], NAMES, when)
+  const inactive = new Set(['admin'])
+  test('an active admin is offered re-approval, and nobody else', () => {
+    assert.equal(canReapproveRevision(h.pending, { isAdmin: true, viewingAs: false, inactiveUserIds: inactive }), true)
+    assert.equal(canReapproveRevision(h.pending, { isAdmin: false, viewingAs: false, inactiveUserIds: inactive }), false, 'not a non-admin')
+    assert.equal(canReapproveRevision(h.pending, { isAdmin: true, viewingAs: true, inactiveUserIds: inactive }), false, 'never under View As')
+    assert.equal(canReapproveRevision(h.pending, { isAdmin: true, viewingAs: false, inactiveUserIds: new Set() }), false, 'not while the approver is active')
+    const pending = describePiVersionHistory([row({ id: 'p', version_number: 2, status: 'pending', decided_by: null, decided_at: null }), v1], NAMES, when)
+    assert.equal(canReapproveRevision(pending.pending, { isAdmin: true, viewingAs: false, inactiveUserIds: inactive }), false, 'not a pending revision')
+  })
+  test('the stage says why it waits and who can move it', () => {
+    assert.deepEqual(revisionStage(h.pending!, true), {
+      owner: 'Admin — the approving administrator is no longer active',
+      next: 'An active admin to re-approve it, or Operations to reject it',
+    })
+    assert.equal(h.pending?.decidedById, 'admin')
+  })
+})
 
 describe('an admin-approved revision is a proposal, never the PI in force', () => {
   test('V1 stays current; V2 is the open revision with its own words', () => {
@@ -106,6 +127,9 @@ describe('refusals, in sentences', () => {
       /^PI V2 changes the Order's commercial data/)
     assert.match(describeRevisionOperationsFailure({ message: 'duplicate key value violates unique constraint "order_pi_versions_one_pending_per_order"' }),
       /already open/)
+    assert.equal(describeRevisionOperationsFailure({ message: 'ORDER_PI_REVISION_APPROVER_INACTIVE: the administrator who approved PI V2 is no longer active. An active administrator must re-approve PI V2 before it can be accepted, or you can reject it.' }),
+      'The administrator who approved PI V2 is no longer active. An active administrator must re-approve PI V2 before it can be accepted, or you can reject it.',
+      'a sentence starts with a capital')
     assert.equal(describeRevisionOperationsFailure({ message: 'Only the assigned operations reviewer can accept or reject a revised PI' }),
       'Only the assigned operations reviewer can accept or reject a revised PI')
   })

@@ -112,6 +112,15 @@ begin
     if public.in_test_data_cleanup() then return old; end if;
     raise exception 'ORDER_PI_REVISION_STAGE_IMMUTABLE: a staged revision cannot be deleted' using errcode = '42501';
   end if;
+  -- A RE-APPROVAL (§6b) re-attributes the stage to the active admin who
+  -- re-approved it, and changes nothing else.
+  if current_setting('boe.pi_revision_reapprove', true) = old.version_id::text
+     and old.applied_at is null and new.applied_at is null and new.applied_by is null
+     and new.superseded_snapshot is null
+     and new.version_id = old.version_id and new.submission_id = old.submission_id
+     and new.payload = old.payload then
+    return new;
+  end if;
   -- Only the one-time application may be recorded; the payload never changes.
   if new.version_id is distinct from old.version_id or new.submission_id is distinct from old.submission_id
      or new.payload is distinct from old.payload or new.staged_by is distinct from old.staged_by
@@ -187,6 +196,16 @@ begin
   end if;
 
   if new.status is not distinct from old.status then
+    -- A RE-APPROVAL (§6b): the admin decision of a revision awaiting operations
+    -- is re-attributed when the admin who took it is no longer active.
+    if old.status = 'admin_approved'
+       and current_setting('boe.pi_revision_reapprove', true) = old.id::text
+       and new.decision_reason is not distinct from old.decision_reason
+       and new.operations_decided_by is null and new.operations_decided_at is null
+       and new.operations_reason is null and new.applied_at is null
+       and new.operations_reviewer is not distinct from old.operations_reviewer then
+      return new;
+    end if;
     -- A standing decision cannot be re-worded either.
     if old.status <> 'pending'
        and (new.decided_by is distinct from old.decided_by
@@ -724,8 +743,8 @@ begin
   -- 2. The approving admin's authority is what the parse writer re-checks.
   if not exists (select 1 from public.users u where u.id = v_stage.staged_by and u.role = 'admin'
                   and u.is_active and coalesce(u.is_deleted, false) = false) then
-    raise exception 'ORDER_PI_REVISION_APPROVER_INACTIVE: the administrator who approved PI V% is no longer active; an administrator must approve it again',
-      v_ver.version_number using errcode = 'P0001';
+    raise exception 'ORDER_PI_REVISION_APPROVER_INACTIVE: the administrator who approved PI V% is no longer active. An active administrator must re-approve PI V% before it can be accepted, or you can reject it.',
+      v_ver.version_number, v_ver.version_number using errcode = 'P0001';
   end if;
 
   -- 3. Keep what is about to be replaced.
@@ -836,6 +855,98 @@ comment on function public.decide_order_pi_revision_operations(uuid, text, text)
   'The assigned operations reviewer accepts or rejects a revised PI an admin approved (admin_approved). Reject: reason required; nothing current changes. Accept: refused while the staged PI differs from the Order on an amendable field (amend the Order first); otherwise applies the staged parse through replace_order_submission_parse under a lease, supersedes the previous version, approves this one, records and accepts its operations handoff, and assigns product codes — in ONE transaction. Re-checks under row locks: caller is the current, active reviewer who can open the Order; the version is still awaiting operations; the Order is open.';
 revoke execute on function public.decide_order_pi_revision_operations(uuid, text, text) from public, anon;
 grant  execute on function public.decide_order_pi_revision_operations(uuid, text, text) to authenticated;
+
+
+-- ═══ 6b. Re-approval, when the approving admin is no longer active ═════════
+--
+-- The acceptance applies the staged parse as the admin who approved it, and the
+-- parse writer re-checks that admin. If they were deactivated (or deleted)
+-- after approving, the revision could never be accepted, and an admin_approved
+-- version cannot be approved again through the pending door. This is the one
+-- way out that keeps the same staged parse: another ACTIVE admin re-approves
+-- it. It re-attributes the admin decision and the stage to that admin, records
+-- it and tells the reviewer — and changes nothing else: not the payload, not
+-- the reviewer, not the PI in force. It is refused while the original approver
+-- is still active, so it can never be used to take over somebody's approval.
+-- (Rejecting remains the reviewer's, as before.)
+
+create or replace function public.reapprove_order_pi_revision(p_version_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor    uuid := public.assert_order_submission_actor();
+  v_order_id uuid;
+  v_order    public.orders%rowtype;
+  v_ver      public.order_pi_versions%rowtype;
+  v_stage    public.order_pi_revision_staged_parses%rowtype;
+  v_now      timestamptz := now();
+  v_name     text;
+begin
+  if not exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin'
+                  and u.is_active and coalesce(u.is_deleted, false) = false) then
+    raise exception 'You do not have permission to decide a revised PI' using errcode = '42501';
+  end if;
+
+  select order_id into v_order_id from public.order_pi_versions where id = p_version_id;
+  if v_order_id is null then
+    raise exception 'ORDER_PI_VERSION_NOT_FOUND: that PI version does not exist' using errcode = 'P0002';
+  end if;
+
+  -- LOCK ORDER, as every decision: reviewers → orders → submission → versions.
+  perform 1 from public.order_operations_reviewers where duty = 'pi_handoff' for share;
+  select * into v_order from public.orders where id = v_order_id for update;
+  select * into v_ver from public.order_pi_versions where id = p_version_id;
+  perform 1 from public.order_submissions where id = v_ver.submission_id for update;
+  select * into v_ver from public.order_pi_versions where id = p_version_id for update;
+
+  if v_ver.status <> 'admin_approved' then
+    raise exception 'ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS: PI V% is % — only a revision awaiting operations can be re-approved. Refresh to see its current state.',
+      v_ver.version_number, v_ver.status using errcode = 'P0001';
+  end if;
+  if v_order.status = 'cancelled' then
+    raise exception 'ORDER_PI_REVISION_ORDER_CLOSED: Order % is cancelled', v_order.display_number using errcode = 'P0001';
+  end if;
+  select * into v_stage from public.order_pi_revision_staged_parses where version_id = v_ver.id for update;
+  if not found or v_stage.applied_at is not null then
+    raise exception 'ORDER_PI_REVISION_NOT_STAGED: PI V% has no approved parse waiting to be applied', v_ver.version_number using errcode = 'P0001';
+  end if;
+  if exists (select 1 from public.users u where u.id = v_stage.staged_by and u.role = 'admin'
+              and u.is_active and coalesce(u.is_deleted, false) = false) then
+    raise exception 'ORDER_PI_REVISION_APPROVER_ACTIVE: PI V% was approved by an administrator who is still active; it does not need re-approval',
+      v_ver.version_number using errcode = 'P0001';
+  end if;
+
+  perform set_config('boe.pi_revision_reapprove', v_ver.id::text, true);
+  update public.order_pi_revision_staged_parses set staged_by = v_actor, staged_at = v_now where version_id = v_ver.id;
+  update public.order_pi_versions set decided_by = v_actor, decided_at = v_now where id = v_ver.id;
+  perform set_config('boe.pi_revision_reapprove', '', true);
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (v_order.id, v_actor, 'pi_revision_admin_reapproved',
+          jsonb_build_object('version_id', v_ver.id, 'version_number', v_ver.version_number,
+                             'previously_approved_by', v_stage.staged_by, 'operations_reviewer', v_ver.operations_reviewer));
+
+  select nullif(btrim(u.full_name), '') into v_name from public.users u where u.id = v_actor;
+  if v_ver.operations_reviewer is not null and v_ver.operations_reviewer <> v_actor then
+    insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
+    values (v_ver.operations_reviewer, null, v_order.id, 'order_operations_review_requested'::notification_type,
+            format('Order %s: PI V%s re-approved by %s — it can be accepted now.',
+                   v_order.display_number, v_ver.version_number, coalesce(v_name, 'an administrator')),
+            'The administrator who first approved it is no longer active.', true);
+  end if;
+
+  return jsonb_build_object('version_id', v_ver.id, 'version_number', v_ver.version_number,
+                            'status', 'admin_approved', 'reapproved_by', v_actor,
+                            'previously_approved_by', v_stage.staged_by);
+end;
+$$;
+comment on function public.reapprove_order_pi_revision(uuid) is
+  'Recovery only: an ACTIVE admin re-approves a revision awaiting operations whose approving admin is no longer active, so the reviewer can accept it. Re-attributes the admin decision and the stage; the staged parse, the reviewer and the PI in force are unchanged. Refused while the original approver is active.';
+revoke execute on function public.reapprove_order_pi_revision(uuid) from public, anon;
+grant  execute on function public.reapprove_order_pi_revision(uuid) to authenticated;
 
 
 -- ═══ 7. Reassignment readdresses revisions awaiting operations ═════════════

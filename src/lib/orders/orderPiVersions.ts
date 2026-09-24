@@ -149,6 +149,8 @@ export type PiVersionView = {
   /** "Approved by X · date" / "Rejected by X · date", or null while pending. */
   decisionLine: string | null
   decisionReason: string | null
+  /** Who took the admin decision, by id (null while pending). */
+  decidedById: string | null
   /** The operations reviewer a revision awaits (admin_approved), by id. */
   operationsReviewerId: string | null
   /** Their name, or null when nobody is assigned. */
@@ -220,6 +222,7 @@ export function describePiVersionHistory(
           ? `${decisionVerb} by ${name(row.decided_by)} · ${formatWhen(row.decided_at)}`
           : null,
         decisionReason: row.decision_reason && row.decision_reason.trim() !== '' ? row.decision_reason.trim() : null,
+        decidedById: row.decided_by ?? null,
         operationsReviewerId: row.operations_reviewer ?? null,
         operationsReviewer: row.operations_reviewer ? name(row.operations_reviewer) : null,
         operationsLine: row.operations_decided_at
@@ -428,9 +431,20 @@ export const AMENDMENT_REQUIRED_NOTE =
 export const REJECT_REVISION_OPS_NOTE =
   'Rejecting keeps the current PI in force and changes nothing on this Order. Sales and the approving admin see your reason.'
 
+export const REAPPROVE_REVISION_LABEL = (versionNumber: number) => `Re-approve ${piVersionLabel(versionNumber)}`
+export const REAPPROVE_REVISION_CONFIRM = 'Confirm re-approval'
+export const REAPPROVE_REVISION_NOTE = (versionNumber: number) =>
+  `The administrator who approved ${piVersionLabel(versionNumber)} is no longer active, so Operations cannot accept it. Re-approving records your approval of the same file; nothing in force changes until Operations accepts it.`
+
 /** Who holds a revision now, in words — for the Main PI section and queues. */
-export function revisionStage(v: PiVersionView): { owner: string; next: string } | null {
+export function revisionStage(v: PiVersionView, approverInactive = false): { owner: string; next: string } | null {
   if (v.status === 'pending') return { owner: 'Admin', next: 'Admin to approve or reject' }
+  if (v.status === 'admin_approved' && approverInactive) {
+    return {
+      owner: 'Admin — the approving administrator is no longer active',
+      next: 'An active admin to re-approve it, or Operations to reject it',
+    }
+  }
   if (v.status === 'admin_approved') {
     return {
       owner: v.operationsReviewer ? `Operations — ${v.operationsReviewer}` : 'Operations — no reviewer assigned',
@@ -445,11 +459,25 @@ export function canDecideRevisionOperations(v: PiVersionView | null, viewerId: s
   return !!v && !viewingAs && !!viewerId && v.status === 'admin_approved' && v.operationsReviewerId === viewerId
 }
 
+/**
+ * The recovery control (20270101000000 §6b): an active admin, not under View
+ * As, on a revision awaiting operations whose approving admin is no longer
+ * active. reapprove_order_pi_revision() re-derives every part of it.
+ */
+export function canReapproveRevision(v: PiVersionView | null, input: {
+  isAdmin: boolean
+  viewingAs: boolean
+  inactiveUserIds: ReadonlySet<string>
+}): boolean {
+  return !!v && input.isAdmin && !input.viewingAs && v.status === 'admin_approved'
+    && !!v.decidedById && input.inactiveUserIds.has(v.decidedById)
+}
+
 /** A database refusal, as a sentence (the text after the marker when there is one). */
 export function describeRevisionOperationsFailure(error: { message?: string | null } | null | undefined): string {
   const raw = error?.message ?? ''
   const coded = raw.match(/ORDER_PI_REVISION_[A-Z_]+: ([\s\S]*)$/)
-  if (coded) return coded[1]
+  if (coded) return coded[1].charAt(0).toUpperCase() + coded[1].slice(1)
   if (raw.startsWith('Only ') || raw.startsWith('You do not')) return raw
   if (/order_pi_versions_one_pending_per_order/.test(raw)) {
     return 'A revised PI for this Order is already open (awaiting Admin or Operations). Wait for its decision first.'

@@ -338,7 +338,10 @@ describe('no Order screen waits more than it must', () => {
       //   when the operations reviewer OPENS the revision review, and
       //   decide_order_pi_revision_operations, fired from that dialog. Neither
       //   runs at load, so the page still waits exactly three times.
-      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 36,
+      // DETAIL 36 -> 37 (20270101000000 §6b): reapprove_order_pi_revision, a
+      //   SAVE fired from an admin's confirmed Re-approve, and only when the
+      //   admin who approved the revision is no longer active. Nothing at load.
+      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 37,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
