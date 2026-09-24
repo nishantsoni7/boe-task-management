@@ -259,6 +259,41 @@ $$;
 create function pg_temp.live_handoff(p_order uuid) returns text language sql as $$
   select version_number || '/' || status from public.order_operations_handoffs where order_id = p_order and superseded_at is null;
 $$;
+/** EVERYTHING a reader of the PI in force sees, as one value: the Order row,
+ *  the PI's parse-owned columns (the frozen list, incl. billing %), its lines
+ *  in full, its images and whether their stored objects still exist, the
+ *  product codes, the generated PDF/Excel records, and V1's version row. */
+create function pg_temp.current_state(p_order uuid) returns text language sql as $$
+  with o as (select * from public.orders where id = p_order),
+       s as (select * from public.order_submissions where id = (select source_order_submission_id from o))
+  select md5(concat_ws(' | ',
+    (select (to_jsonb(o) - 'updated_at')::text from o),
+    (select jsonb_object_agg(k, to_jsonb(s) -> k)::text from s, unnest(array[
+      'parse_fingerprint', 'client_name', 'creation_date', 'source_created_by', 'boe_gst', 'contact_number',
+      'bill_to_name', 'bill_to_phone', 'bill_to_gst', 'billing_address', 'ship_to_name', 'ship_to_phone',
+      'ship_to_gst', 'shipping_address', 'order_confirmation_date', 'dispatch_commitment', 'due_date',
+      'source_order_number', 'source_workbook_path', 'source_workbook_name', 'source_workbook_size_bytes',
+      'source_workbook_sha256', 'template_version', 'parse_warnings', 'parse_blocking_issues',
+      'gross_product_amount', 'discount_amount', 'subtotal_after_discount', 'fabric_cost', 'fabric_cost_meaning',
+      'fabric_cost_text', 'packing_cost', 'packing_cost_meaning', 'packing_cost_text', 'transportation_amount',
+      'transportation_text', 'total_before_gst', 'gst_amount', 'grand_total', 'billing_percentage',
+      'fabric_responsibility', 'commercial_terms_note', 'client_city', 'payment_terms', 'billing_terms']) k),
+    (select jsonb_agg(to_jsonb(i) - 'updated_at' order by i.id)::text from public.order_submission_items i where i.submission_id = (select id from s)),
+    (select jsonb_agg(to_jsonb(m) || jsonb_build_object('stored', exists (select 1 from storage.objects so
+               where so.bucket_id = 'order-files' and so.name = m.storage_path)) order by m.id)::text
+       from public.order_submission_item_images m where m.submission_id = (select id from s)),
+    (select jsonb_agg(to_jsonb(c) order by c.id)::text from public.order_product_codes c where c.order_id = p_order),
+    (select jsonb_agg(to_jsonb(d) - 'updated_at' order by d.id)::text from public.order_document_versions d where d.order_id = p_order),
+    (select (to_jsonb(v) - 'updated_at')::text from public.order_pi_versions v where v.order_id = p_order and v.version_number = 1)));
+$$;
+/** A generated PI PDF/Excel for the Order, as the documents route leaves it. */
+create function pg_temp.put_pdf(p_order uuid) returns void language plpgsql as $$
+declare v_base text := 'orders/' || p_order || '/versions/1/' || gen_random_uuid();
+begin
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.order_document_versions (order_id, version, status, excel_path, pdf_path, completed_at)
+  values (p_order, 1, 'ready', v_base || '.xlsx', v_base || '.pdf', now());
+end $$;
 
 -- ═══ 1. A MATCHING V2: staged, then accepted ═══════════════════════════════
 
@@ -274,8 +309,9 @@ do $$
 declare o uuid := current_setting('test.order_m')::uuid; v uuid; r jsonb;
         owner uuid := current_setting('test.owner_id')::uuid; sales uuid := current_setting('test.sales_id')::uuid;
         reviewer uuid := current_setting('test.reviewer_id')::uuid; admin2 uuid := current_setting('test.admin2_id')::uuid;
-        before_fig text; before_lines text; before_codes bigint; n_rev bigint; d jsonb;
+        before_fig text; before_lines text; before_codes bigint; n_rev bigint; d jsonb; before_state text;
 begin
+  perform pg_temp.put_pdf(o);
   before_fig := pg_temp.figures(o); before_lines := pg_temp.lines(o);
   before_codes := (select count(*) from public.order_product_codes where order_id = o);
   perform pg_temp.check(pg_temp.vstatus(o) = '1/approved' and pg_temp.live_handoff(o) = '1/accepted', '1. V1 in force, accepted, aligned');
@@ -283,7 +319,19 @@ begin
   v := pg_temp.propose(o);
   perform set_config('test.v_m', v::text, true);
   n_rev := (select count(*) from public.notifications where user_id = reviewer and entity_id = o);
+  before_state := pg_temp.current_state(o);
+  -- A route deployed before 20270101000000 sends no seed_terms; it is refused
+  -- before anything is staged, so it never reaches its own image cleanup.
+  perform pg_temp.expect_error(format('select pg_temp.stage(%L, pg_temp.payload(%L, ''ASSERT MATCH'', 500000, 2) - ''seed_terms'')', v, v),
+          'ORDER_PI_REVISION_CLIENT_UPDATE_REQUIRED', '1. a pre-staging route''s approval is refused');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/pending' and pg_temp.current_state(o) = before_state
+                        and not exists (select 1 from public.order_pi_revision_staged_parses where version_id = v),
+                        '1. …and nothing is staged or changed');
   r := pg_temp.stage(v, pg_temp.payload(v, 'ASSERT MATCH', 500000, 2));
+  perform pg_temp.check(pg_temp.current_state(o) = before_state,
+    '1. staging leaves the Order, the PI''s own columns (incl. billing %), its lines, images and stored files, codes, PDF records and V1 byte-identical');
+  perform pg_temp.check((select superseded_at is null from public.order_document_versions where order_id = o and version = 1),
+    '1. the generated PDF stays current while V2 is only staged');
 
   -- ── STAGED: nothing current moved ──
   perform pg_temp.check(r ->> 'status' = 'admin_approved', '1. admin approval stages');
@@ -342,6 +390,9 @@ begin
   perform pg_temp.check(not exists (select 1 from public.notifications where user_id = reviewer and entity_id = o and type::text = 'order_operations_review_requested' and title like '%PI V2 is awaiting%'),
                         '1. the reviewer is not asked to review what they just accepted');
   perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o and event_type = 'pi_revision_applied') = 1, '1. applied once, on the history');
+  perform pg_temp.check((select superseded_at is not null from public.order_document_versions where order_id = o and version = 1),
+    '1. only the acceptance retires V1''s generated PDF');
+  perform pg_temp.check(pg_temp.current_state(o) <> before_state, '1. (the state fingerprint does see a promotion)');
 
   -- ── Stale tabs ──
   perform pg_temp.expect_error(format('select pg_temp.ops(%L, %L, ''accepted'', null)', reviewer, v),
@@ -358,11 +409,13 @@ select pg_temp.make_pi(current_setting('test.pi_d')::uuid, current_setting('test
 select set_config('test.order_d', pg_temp.approve(current_setting('test.pi_d')::uuid)::text, true);
 
 do $$
-declare o uuid := current_setting('test.order_d')::uuid; v uuid; d jsonb; before_fig text; before_lines text;
+declare o uuid := current_setting('test.order_d')::uuid; v uuid; d jsonb; before_fig text; before_lines text; before_state text;
         owner uuid := current_setting('test.owner_id')::uuid; reviewer uuid := current_setting('test.reviewer_id')::uuid;
 begin
+  perform pg_temp.put_pdf(o);
   before_fig := pg_temp.figures(o); before_lines := pg_temp.lines(o);
   v := pg_temp.propose(o);
+  before_state := pg_temp.current_state(o);
   perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT DIFF Pvt Ltd', 750000, 3));
   perform pg_temp.become(reviewer);
   d := public.order_pi_revision_differences(v);
@@ -376,6 +429,8 @@ begin
           'Order value: Order has 600000', '2. …naming each difference');
   perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/admin_approved' and pg_temp.figures(o) = before_fig and pg_temp.lines(o) = before_lines,
                         '2. a refused acceptance changes nothing');
+  perform pg_temp.check(pg_temp.current_state(o) = before_state,
+                        '2. …not the PI''s own columns, lines, images, codes, PDF records or V1 either');
 
   -- The reconciliation path: the existing amendment door.
   perform pg_temp.become(owner);
@@ -395,14 +450,18 @@ select pg_temp.make_pi(current_setting('test.pi_r')::uuid, current_setting('test
 select set_config('test.order_r', pg_temp.approve(current_setting('test.pi_r')::uuid)::text, true);
 
 do $$
-declare o uuid := current_setting('test.order_r')::uuid; v uuid; v3 uuid; before_fig text; before_lines text; before_h text;
+declare o uuid := current_setting('test.order_r')::uuid; v uuid; v3 uuid; before_fig text; before_lines text; before_h text; before_state text;
         sales uuid := current_setting('test.sales_id')::uuid; owner uuid := current_setting('test.owner_id')::uuid;
         reviewer uuid := current_setting('test.reviewer_id')::uuid;
 begin
+  perform pg_temp.put_pdf(o);
   before_fig := pg_temp.figures(o); before_lines := pg_temp.lines(o); before_h := pg_temp.live_handoff(o);
   v := pg_temp.propose(o);
+  before_state := pg_temp.current_state(o);
   perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT REJ', 400000, 4));
   perform pg_temp.ops(reviewer, v, 'rejected', 'Rate on line 1 is last season''s');
+  perform pg_temp.check(pg_temp.current_state(o) = before_state,
+                        '3. rejection leaves the Order, the PI''s own columns, lines, images, codes, PDF records and V1 byte-identical');
   perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/rejected', '3. rejected; V1 still in force');
   perform pg_temp.check(pg_temp.figures(o) = before_fig and pg_temp.lines(o) = before_lines and pg_temp.live_handoff(o) = before_h,
                         '3. figures, lines and V1''s handoff untouched');

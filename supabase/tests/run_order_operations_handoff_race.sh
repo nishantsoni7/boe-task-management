@@ -330,7 +330,8 @@ select public.approve_order_pi_revision('$V2', '$OWNER', jsonb_build_object(
   'commercial', jsonb_build_object('gross_product_amount', 1000000, 'grand_total', 1000000),
   'items', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'source_row', 10, 'item_sequence', '1',
            'product_name', 'ASSERT chair', 'quantity', 2, 'cost_per_piece', 500000, 'total_amount', 1000000)),
-  'item_images', '[]'::jsonb)) is not null;
+  'item_images', '[]'::jsonb,
+  'seed_terms', jsonb_build_object('fabric_responsibility', null, 'commercial_terms_note', null, 'client_city', null))) is not null;
 commit;
 select public.finish_order_submission_processing('$PI', '$TOK');
 SQL

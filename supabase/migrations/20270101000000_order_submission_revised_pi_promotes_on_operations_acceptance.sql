@@ -521,6 +521,20 @@ begin
       using errcode = 'P0001';
   end if;
 
+  -- ── A ROUTE FROM BEFORE THE STAGING (new) ──
+  -- The staging route always sends seed_terms, because the terms are seeded at
+  -- acceptance. A route deployed before this migration does not — and after
+  -- this call returned it would seed V2's terms and DELETE the pictures of the
+  -- PI still in force (its step 19). So its payload is refused here, before
+  -- anything is staged, and that route fails before step 18b. Between applying
+  -- this migration and deploying the code, a revision cannot be approved; it
+  -- stays pending and nothing current changes.
+  if jsonb_typeof(p_payload -> 'seed_terms') is distinct from 'object' then
+    raise exception
+      'ORDER_PI_REVISION_CLIENT_UPDATE_REQUIRED: this version of the app cannot approve a revised PI. Reload once the update is live and approve it again.'
+      using errcode = 'P0001';
+  end if;
+
   -- ── STAGE (new) ──
   -- The processing token is the route's lease for THIS request; a new one is
   -- taken when the payload is applied.

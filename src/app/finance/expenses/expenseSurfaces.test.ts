@@ -1307,6 +1307,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    */
   const ALLOWED_REVISED_PI_PROMOTION = new Set([
     'src/app/api/orders/import/process-draft/route.ts',
+    // its header comment: approval now stages the revision
+    'src/app/api/orders/pi-revisions/approve/route.ts',
+    // pins the staging route's skipped steps 18b and 19
+    'src/lib/orders/processDraftRoute.test.ts',
     'src/app/api/orders/submissions/notify/route.ts',
     'src/lib/orders/orderPiVersions.ts',
     'src/lib/orders/orderMainPi.ts',

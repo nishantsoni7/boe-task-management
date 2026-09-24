@@ -556,6 +556,24 @@ describe('the phase boundary holds', () => {
     assert.ok(!route.includes('finance_payment'))
     assert.ok(!route.includes('advance'))
   })
+
+  // A REVISION IS STAGED, NOT APPLIED (20270101000000). Admin approval of V2 may
+  // change nothing current, so the two post-commit steps that WRITE to the PI in
+  // force are skipped for it: seeding the terms (they travel in the payload and
+  // are seeded at acceptance) and deleting "obsolete" objects (V1's pictures and
+  // workbook are still the ones in force).
+  test('a revision seeds no terms and deletes no object after the staging commit', () => {
+    assert.match(route, /if \(ctx\.revisionVersionId\) \{\s*\(plan\.payload as Record<string, unknown>\)\.seed_terms = \{/,
+      'the terms travel with the staged payload')
+    assert.match(route, /if \(!ctx\.revisionVersionId\s*&& \([\s\S]{0,300}?\)\) \{\s*await service\.rpc\('seed_order_submission_pi_terms'/,
+      'step 18b is skipped for a revision')
+    assert.equal([...route.matchAll(/seed_order_submission_pi_terms/g)].length, 1, 'and there is no second seeding call')
+    assert.match(route, /if \(!ctx\.revisionVersionId\) \{\s*await removeObjects\(service, \[\.\.\.obsoleteImages, \.\.\.obsoleteWorkbook\]\)/,
+      'step 19 is skipped for a revision')
+    assert.equal([...route.matchAll(/removeObjects\(service,/g)].length, 2,
+      'the only other delete is a failed attempt removing its OWN new uploads')
+    assert.match(route, /removeObjects\(service, created\.filter\(p => !referenced\.has\(p\)\)\)/)
+  })
 })
 
 // ══ 9. Privacy ═══════════════════════════════════════════════════════════════

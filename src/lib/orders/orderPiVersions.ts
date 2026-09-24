@@ -422,7 +422,7 @@ export const ACCEPT_REVISION_LABEL = (versionNumber: number) => `Accept ${piVers
 export const REJECT_REVISION_OPS_LABEL = 'Reject'
 export const PROPOSED_REVISION_TITLE = (versionNumber: number) => `Proposed ${piVersionLabel(versionNumber)} — not in force yet`
 export const ACCEPT_REVISION_NOTE =
-  'Accepting puts the proposed PI in force: its product lines and pictures replace the current ones (which are kept in history), product codes are issued for new lines, the confirmed documents are regenerated from it, and production is aligned against it.'
+  'Accepting puts the proposed PI in force: its product lines and pictures replace the current ones (which are kept in history), product codes are issued for new lines, the current confirmed documents are retired so the next ones are generated from it, and production is aligned against it.'
 export const AMENDMENT_REQUIRED_NOTE =
   'The proposed PI changes this Order’s commercial data. It cannot be accepted until the Order is amended to these values: use Request a Change on this Order (an admin approves it), then accept.'
 export const REJECT_REVISION_OPS_NOTE =
