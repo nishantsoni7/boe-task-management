@@ -28,6 +28,11 @@ case "$BOE_DB_CONTAINER" in
   *) echo "refusing: $BOE_DB_CONTAINER is not a local Supabase database container" >&2; exit 2 ;;
 esac
 
+# Each session's output. Unset, it goes to a fresh temporary folder: a default
+# of /dev/null would make "/dev/null.a.commit", which cannot be created, and the
+# session would never run.
+RACE_LOG="${RACE_LOG:-$(mktemp -d)/race}"
+
 psql_in() { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 scalar()  { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -Atc "$1"; }
 
@@ -102,7 +107,7 @@ round() {
 
   # A: approve X, then hold the transaction open until told to finish.
   ( { echo "begin;"; confirm_sql "$x"; echo "select pg_sleep(6);"; echo "$ending;"; } \
-      | docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q > "${RACE_LOG:-/dev/null}.a.$ending" 2>&1 ) &
+      | docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q > "${RACE_LOG}.a.$ending" 2>&1 ) &
   local pa=$!
   for _ in $(seq 1 100); do
     [ "$(scalar "select count(*) from pg_stat_activity where query like '%pg_sleep(6)%' and state = 'active' and pid <> pg_backend_pid()")" -ge 1 ] && break
@@ -110,7 +115,7 @@ round() {
   done
   # B: approve Y while A holds the cycle row.
   ( { echo "begin;"; confirm_sql "$y"; echo "commit;"; } \
-      | docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q > "${RACE_LOG:-/dev/null}.b.$ending" 2>&1 ) &
+      | docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q > "${RACE_LOG}.b.$ending" 2>&1 ) &
   local pb=$!
   wait_for_lock_wait "$y"
   echo "  B is waiting on the lock while A holds it"
