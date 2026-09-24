@@ -469,8 +469,12 @@ begin
   perform pg_temp.check((select count(*) from public.notifications where user_id = sales and entity_id = o and title like '%rejected PI V2%') = 1, '3. Sales is told');
   perform pg_temp.check((select count(*) from public.notifications where user_id = owner and entity_id = o and title like '%rejected PI V2%') = 1, '3. the approving admin is told');
   perform pg_temp.check(not exists (select 1 from public.order_pi_revision_staged_parses where version_id = v and applied_at is not null), '3. never applied');
-  -- The PI is no longer frozen, and a corrected V3 can be proposed.
-  update public.order_submissions set commercial_terms_note = 'ASSERT unfrozen' where id = current_setting('test.pi_r')::uuid;
+  -- The PI is no longer frozen BY THE REVISION, and a corrected V3 can be
+  -- proposed. Since 20270103000000 an approved PI is still never edited in
+  -- place: the refusal is now the versioning rule's, not the freeze's.
+  perform pg_temp.expect_error(
+    format('update public.order_submissions set commercial_terms_note = %L where id = %L', 'ASSERT unfrozen', current_setting('test.pi_r')),
+    'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION', '3. no longer frozen by the revision, and still changed only as a version');
   v3 := pg_temp.propose(o);
   perform pg_temp.check((select version_number from public.order_pi_versions where id = v3) = 3, '3. a corrected V3 can be proposed');
 end $$;
