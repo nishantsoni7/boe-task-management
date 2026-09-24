@@ -1322,6 +1322,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
+  // Calmer Confirmed Order documents (#206): the ⋯ menu moved out of
+  // OrderStatusWorkspace.tsx into its own module, unchanged in what it does.
+  const ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT = new Set([
+    'src/app/orders/[id]/MoreActionsMenu.tsx',
+  ])
+
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
     'src/app/orders/[id]/OrderWorkspace.tsx',
@@ -1359,6 +1365,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
     !ALLOWED_REVISED_PI_PROMOTION.has(f) &&
+    !ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT.has(f) &&
     f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
