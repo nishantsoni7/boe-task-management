@@ -222,5 +222,8 @@ describe('the comparison an Admin reads', () => {
     const summary = summarizeChanges(diff, x => `₹${x}`)
     assert.ok(summary.includes('1 product added') && summary.includes('1 product removed'))
     assert.ok(summary.some(l => l.startsWith('Grand total −₹')))
+    // The summary STORED with a proposal is written in rupees, as screens show them.
+    const stored = summarizeChanges(diff)
+    assert.ok(stored.some(l => /^Grand total −₹\d{1,3}(,\d{2})*(,\d{3})?$/.test(l)), stored.join(' | '))
   })
 })

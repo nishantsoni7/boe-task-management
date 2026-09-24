@@ -90,7 +90,7 @@ export function normalizeVersionContent(detail: { source: string; content: Recor
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '')
 
 export function PiVersionsPanel({
-  supabase, orderId, submissionId, mayEdit, isAdmin, onChanged,
+  supabase, orderId, submissionId, mayEdit, isAdmin, onChanged, refreshKey,
 }: {
   supabase: SupabaseClient
   orderId: string
@@ -100,6 +100,9 @@ export function PiVersionsPanel({
   /** An active admin, not under View As: may authorize or reject a pending version. */
   isAdmin: boolean
   onChanged: () => void
+  /** Changes whenever the page re-reads the versions (e.g. after Operations
+   *  accepts one in #205's dialog), so this strip never shows a stale state. */
+  refreshKey?: string
 }) {
   const [versions, setVersions] = useState<PiVersionRow[] | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
@@ -127,7 +130,7 @@ export function PiVersionsPanel({
       }
     })()
     return () => { live = false }
-  }, [supabase, orderId, reloadKey])
+  }, [supabase, orderId, reloadKey, refreshKey])
 
   // Open on the current version, so the newest decision is one swipe away.
   useEffect(() => {
@@ -184,6 +187,11 @@ export function PiVersionsPanel({
               {v.source_kind === 'edit' ? ' · edited in the app' : v.version_number > 1 ? ' · new workbook' : ''}
             </div>
             <div style={{ fontSize: '12.5px', color: colors.primary, lineHeight: 1.4 }}>{versionSummary(v)}</div>
+            {v.source_kind === 'edit' && v.status === 'approved' && (
+              <div style={{ fontSize: '11.5px', color: colors.secondary }}>
+                These details are the PI in force; confirmed documents are generated from them. The original uploaded workbook is kept unchanged as V1&apos;s file.
+              </div>
+            )}
             {v.revision_reason && v.version_number > 1 && (
               <div style={{ fontSize: '11.5px', color: colors.secondary }}>Reason: {v.revision_reason}</div>
             )}

@@ -336,6 +336,11 @@ export function OrderDocumentsPanel({
                     <p className="order-doc-change-line order-doc-change-muted">
                       {mainPi.kind === 'ready' ? `V${mainPi.version.versionNumber}` : 'The current PI'} stays current until Operations accepts {version}.
                     </p>
+                    {p.editedInApp && (
+                      <p className="order-doc-change-line order-doc-change-muted">
+                        Edited in the app — compare it with the current PI under PI versions.
+                      </p>
+                    )}
                     {onOpenProposal && p.workbookPath && (
                       <ul className="order-doc-files">
                         <li>
@@ -444,16 +449,31 @@ export function OrderDocumentsPanel({
             ]} />}
             actions={
               <>
-                <button
-                  type="button"
-                  className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
-                  onClick={() => onView(mainPi.version)}
-                  disabled={!mainPi.hasFile || viewing}
-                  title={mainPi.fileName ?? mainPi.reference}
-                >
-                  <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                  {viewing ? 'Opening…' : DOC_VIEW_PI_LABEL}
-                </button>
+                {mainPi.version.editedInApp ? (
+                  /* EDITED IN THE APP (20270103000000): this version has no
+                     workbook of its own, and the original upload is V1's file,
+                     never this one's. Its details are the PI; show them there. */
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
+                    onClick={() => document.querySelector('section[aria-label="PI versions"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    title="Edited in the app — its details are in PI versions; the original workbook stays with V1"
+                  >
+                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                    View in PI versions
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
+                    onClick={() => onView(mainPi.version)}
+                    disabled={!mainPi.hasFile || viewing}
+                    title={mainPi.fileName ?? mainPi.reference}
+                  >
+                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                    {viewing ? 'Opening…' : DOC_VIEW_PI_LABEL}
+                  </button>
+                )}
                 {mainPiMenu ?? (
                   <button
                     type="button"

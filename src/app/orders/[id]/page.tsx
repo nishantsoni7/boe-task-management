@@ -2834,6 +2834,7 @@ export default function OrderDetailPage() {
               && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
             isAdmin={actingAsAdmin && !viewAsUserId}
             onChanged={() => { void loadOrder() }}
+            refreshKey={piVersions.map(v => `${v.id}:${v.status}`).join(',')}
           />
         )}
 
