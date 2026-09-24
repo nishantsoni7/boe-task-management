@@ -843,8 +843,11 @@ describe('the billing declaration, as the third figure', () => {
       'the authority is asked of the database')
     assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
       'and so is the admin authority, which the owner rule cannot answer')
-    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'),
-      'and both answers together are what the card is given')
+    // Since 20270103000000 the billing percentage is edited inside the one Edit
+    // PI, which both answers together open; the card's own control is off.
+    assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'),
+      'and both answers together are what opens Edit PI')
+    assert.ok(page.includes('canEditBilling={false}'), 'the per-field billing door is no longer drawn')
     assert.ok(!/canEditBilling=\{actions\./.test(page),
       'not describeSubmissionActions, which knows only about the owner')
     const code = page
@@ -3523,7 +3526,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     for (const [name, region] of regions) {
       assert.ok(!region.includes('canApprovePayments'), `${name} must not read the payment authority`)
     }
-    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'))
+    // The one Edit PI (20270103000000) carries the billing percentage; it is
+    // opened by the same two authorities and never by the payment authority.
+    assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'))
+    assert.ok(!slice('const mayEditPi =', '\n').includes('canApprovePayments'))
   })
 })
 
