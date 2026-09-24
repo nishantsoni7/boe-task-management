@@ -320,7 +320,7 @@ begin
   perform pg_temp.become(v_admin);
   v_det := public.order_pi_version_detail(v_v2);
   perform pg_temp.restore();
-  assert v_det ->> 'source' = 'proposal';
+  assert v_det ->> 'source' = 'live', 'V2 is in force, so it is read from the PI itself: ' || (v_det ->> 'source');
 
   -- The payment followed the Order at conversion and was not touched since.
   assert (select count(*) from public.finance_payment_allocations
