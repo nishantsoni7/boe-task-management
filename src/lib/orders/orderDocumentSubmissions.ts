@@ -320,6 +320,29 @@ export function rejectionOf(s: PersistedDocumentSubmission): { stage: 'Admin' | 
   return null
 }
 
+// ── Sent with a submitted PI, before its Order exists ───────────────────────
+
+export const SENT_WITH_PI_TITLE = 'Sent with this PI'
+
+/**
+ * The documents a submitted PI carries while no Order exists yet, with who acts
+ * next. The Order page names the owner once the Order is created; until then
+ * this is the only place the PI page shows them — including on an approver's
+ * OWN PI, whose PI decision is auto-stamped (20261224000000) while its
+ * attachments still wait for the Order and then for operations.
+ */
+export function sentWithPi(rows: readonly PersistedDocumentSubmission[]): {
+  submission: PersistedDocumentSubmission
+  owner: string
+  next: string
+} | null {
+  const pending = rows
+    .filter(r => r.stage === 'initial' && r.status === 'pending_admin')
+    .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))[0]
+  if (!pending) return null
+  return { submission: pending, owner: currentOwnerLabel(pending, () => null), next: nextActionLabel(pending) }
+}
+
 /** Rejected submissions not yet superseded by a correction. */
 export function uncorrectedRejections(rows: readonly PersistedDocumentSubmission[]): PersistedDocumentSubmission[] {
   const corrected = new Set(rows.map(r => r.resubmission_of).filter((x): x is string => !!x))

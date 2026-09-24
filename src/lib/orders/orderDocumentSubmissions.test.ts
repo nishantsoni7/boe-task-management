@@ -25,6 +25,7 @@ import {
   missingSupporting,
   missingSupportingQuestion,
   piDocumentObjectPath,
+  sentWithPi,
   type DocumentViewer,
   type PersistedDocumentSubmission,
 } from './orderDocumentSubmissions'
@@ -125,6 +126,19 @@ describe('who acts now', () => {
     assert.equal(currentOwnerLabel(initial, name), "Operations — Ravi, with PI V1's operations review")
     assert.equal(nextActionLabel(initial), 'Operations to Accept for production PI V1')
     assert.equal(currentOwnerLabel(pendingInitial, name), 'Admin — decided with the PI approval')
+  })
+
+  test('a submitted PI names who acts next on the documents sent with it', () => {
+    const old = sub({ id: 'd1', stage: 'initial', order_id: null, pi_submission_id: 'pi1', status: 'rejected_admin', submitted_at: '2026-01-01T00:00:00Z' })
+    const pending = sub({ id: 'd2', stage: 'initial', order_id: null, pi_submission_id: 'pi1', status: 'pending_admin', submitted_at: '2026-01-02T00:00:00Z' })
+    const shown = sentWithPi([old, pending])
+    assert.equal(shown?.submission.id, 'd2', 'the pending set, not the returned one')
+    assert.equal(shown?.owner, 'Admin — decided with the PI approval')
+    assert.equal(shown?.next, 'Approver to approve the PI (creating the Order) or return it')
+    assert.equal(sentWithPi([old]), null, 'nothing pending, nothing shown')
+    assert.equal(sentWithPi([sub({ stage: 'initial', status: 'awaiting_operations' })]), null,
+      'once the Order exists, the Order page names the owner')
+    assert.equal(sentWithPi([sub({ stage: 'amendment', status: 'pending_admin' })]), null, 'an amendment is the Order page\'s')
   })
 
   test('owner and next action say who holds it', () => {

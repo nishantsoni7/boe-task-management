@@ -739,13 +739,32 @@ select set_config('test.pi_own', gen_random_uuid()::text, true);
 select pg_temp.make_draft(current_setting('test.pi_own')::uuid, current_setting('test.owner_id')::uuid, 'ASSERT OWN', 600000);
 do $$
 declare pi uuid := current_setting('test.pi_own')::uuid; d uuid := gen_random_uuid(); owner uuid := current_setting('test.owner_id')::uuid;
+        reviewer uuid := (select user_id from public.order_operations_reviewers where duty = 'pi_handoff');
+        o uuid; h public.order_operations_handoffs; r public.order_document_submissions;
 begin
+  perform pg_temp.check(reviewer is not null and reviewer <> owner, '10h. (fixture) the reviewer is somebody other than the admin');
   perform pg_temp.send(owner, pi, d, pg_temp.f(pg_temp.put_pi(pi, d, 'client_po', owner), 'own-PO.pdf'), '{design_files}');
   perform pg_temp.check((select pi_approved_by from public.order_submissions where id = pi) = owner, '10h. the PI decision is auto-stamped (unchanged rule)');
   perform pg_temp.check((pg_temp.initial(pi)).status = 'pending_admin', '10h. the attachments are NOT auto-approved');
-  perform set_config('test.order_own', pg_temp.approve(pi)::text, true);
-  perform pg_temp.check((pg_temp.initial(pi)).status = 'awaiting_operations', '10h. creating the Order is the admin decision');
+  o := pg_temp.approve(pi);
+  perform set_config('test.order_own', o::text, true);
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.status = 'awaiting_operations' and r.order_id = o and r.admin_decided_by = owner,
+                        '10h. creating the Order is the admin decision');
   perform pg_temp.check((pg_temp.initial(pi)).status <> 'accepted', '10h. nothing is current before operations accepts');
+  -- The next owner is named, and it is not the admin who sent it.
+  perform pg_temp.check(r.operations_reviewer = reviewer, '10h. the attachments name the operations reviewer as next owner');
+  h := pg_temp.live(o);
+  perform pg_temp.check(h.version_number = 1 and h.status = 'awaiting' and h.assigned_to = reviewer and h.approved_by = owner,
+                        '10h. the admin''s own PI reaches the existing operations handoff, addressed to the reviewer');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = reviewer and entity_id = o) = 1,
+                        '10h. the reviewer is told once');
+  -- The reviewer accepts PI V1 through the existing door; the attachments go with it.
+  perform pg_temp.decide(reviewer, h.id, 'accepted', null);
+  r := pg_temp.initial(pi);
+  perform pg_temp.check(r.status = 'accepted' and r.operations_decided_by = reviewer,
+                        '10h. accepting the handoff accepts the admin''s attachments');
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', '10h. and aligns the Order');
 end $$;
 
 -- (i) A REJECTED PI rejects its documents with the PI's reason.
