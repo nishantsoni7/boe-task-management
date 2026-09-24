@@ -345,11 +345,13 @@ export async function resolveSalespersonContact(
  * Everything that happens while this request owns the submission.
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
- * applies a REVISED PI to an approved Order (20261119000000). It runs the very
- * same download, parse, image upload and cleanup — there is one parser path in
- * this product — and differs only at step 17, where `revisionVersionId` sends
- * the payload through approve_order_pi_revision() so the parse, the version
- * decision and the previous version's supersession land in one transaction.
+ * STAGES a REVISED PI on an approved Order (20261119000000, staged since
+ * 20270101000000). It runs the very same download, parse and image upload —
+ * there is one parser path in this product — and differs where
+ * `revisionVersionId` is set: step 17 sends the payload to
+ * approve_order_pi_revision(), which stores it for the operations acceptance
+ * without applying it, and steps 18b and 19 (terms seeding, obsolete-object
+ * cleanup) are skipped because the PI in force has not changed.
  */
 export async function processUnderLease(ctx: {
   service: ServiceClient
