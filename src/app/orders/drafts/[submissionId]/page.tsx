@@ -92,7 +92,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
+import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -150,7 +150,6 @@ import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision
 import {
   describeReservation,
   reservationApprovalMessage,
-  reservationErrorMessage,
 } from '@/lib/orders/orderNumberReservation'
 import {
   PI_PAYMENT_PROOF_RETRY,
@@ -189,7 +188,7 @@ import {
   describeAdvance,
   describeAdvanceActions,
 } from '@/lib/orders/advanceRequirement'
-import { asPaymentPosition } from '@/lib/orders/paymentGate'
+import { asPaymentPosition, readExceptionReason } from '@/lib/orders/paymentGate'
 import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
@@ -412,13 +411,11 @@ function PiDraftDetailPageInner() {
    */
   const [canAdminAmend, setCanAdminAmend] = useState(false)
 
-  // ── The reserved Order number ──
+  // ── The Order number ──
   //
-  // The number itself arrives WITH the record — it is four columns on the row
-  // the page already reads, spread into PI_DRAFT_DETAIL_COLUMNS — so nothing is
-  // held here but the in-flight and failure state of the one action.
-  const [reserving, setReserving] = useState(false)
-  const [reservationFailure, setReservationFailure] = useState<string | null>(null)
+  // The number (a held reservation, if an older draft has one) arrives WITH the
+  // record. There is no action: since 20270102000000 a PI Draft reserves no
+  // number, and the Order's is allotted when the PI is approved.
   const [copiedNumber, setCopiedNumber] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
@@ -961,29 +958,6 @@ function PiDraftDetailPageInner() {
     void run()
     return () => { active = false }
   }, [supabase, submissionId])
-
-  /**
-   * Takes the next Order number and holds it for this PI.
-   *
-   * IDEMPOTENT AT BOTH ENDS. The RPC returns the existing reservation rather
-   * than taking a second number, and `reserving` keeps a second click from
-   * even asking — so a double-click, a refresh mid-flight and a retried request
-   * all end with the same one number.
-   *
-   * ON SUCCESS THE PAGE RE-READS rather than patching state from the reply: the
-   * panel's standing depends on the workbook hash as well as the number, and one
-   * read of the record is the truth about both.
-   */
-  const reserveOrderNumber = useCallback(async () => {
-    if (reserving) return
-    setReserving(true)
-    setReservationFailure(null)
-    const { error } = await supabase.rpc(
-      'reserve_order_number_for_submission', { p_submission_id: submissionId })
-    setReserving(false)
-    if (error) { setReservationFailure(reservationErrorMessage(error)); return }
-    await loadDraft({ quiet: true })
-  }, [supabase, submissionId, reserving, loadDraft])
 
   /**
    * Puts the number on the clipboard, and says so.
@@ -2101,21 +2075,7 @@ function PiDraftDetailPageInner() {
         <PiContextRow
           reservation={reservationView}
           confirmedNumber={draft.orderDisplayNumber}
-          reserving={reserving}
-          reservationFailure={reservationFailure}
-          /* THE COMPATIBILITY ACTION, and only that. A PI created after
-             20261009000000 takes its number automatically as soon as its file
-             is uploaded, so there is nothing for anybody to press — offering a
-             button there would suggest a decision that is not being made. The
-             control exists for the grandfathered population, which reserves by
-             hand or not at all.
-
-             Offered only where the RPC would accept it. The RPC re-derives
-             every one of these conditions under its own lock, so this is a
-             drawing rule and authorizes nothing. */
-          onReserve={reservationView.state === 'available' && !submission.reservation_required
-            ? () => { setCopiedNumber(false); void reserveOrderNumber() }
-            : null}
+          draftReference={submission.draft_reference ?? null}
           onCopy={copyOrderNumber}
           copied={copiedNumber}
           context={submissionContext}
@@ -2259,6 +2219,9 @@ function PiDraftDetailPageInner() {
             />
             {submission.status === 'submitted' && (
               <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
+            )}
+            {(submission.status === 'draft' || submission.status === 'needs_changes') && (
+              <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
             )}
           </div>
         </div>
@@ -2714,7 +2677,9 @@ function PiDraftDetailPageInner() {
           // returned for an unrelated correction does not silently drop the
           // commercial terms while the employee fixes something else.
           initialTerms={{
-            reason: payments?.exception_reason ?? '',
+            // A reason given before the three existed opens unchosen.
+            reasonChoice: readExceptionReason(payments?.exception_reason).choice,
+            otherRemark: readExceptionReason(payments?.exception_reason).remark,
             paymentTerms: payments?.payment_terms ?? '',
             billingTerms: payments?.billing_terms ?? '',
           }}

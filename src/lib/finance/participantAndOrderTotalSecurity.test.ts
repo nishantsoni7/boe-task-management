@@ -1026,6 +1026,7 @@ describe('the applied migrations are frozen', () => {
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
       '20261231000000_order_document_submissions.sql',
       '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
     ])
   })
 
@@ -1303,6 +1304,7 @@ describe('the applied migrations are frozen', () => {
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
       '20261231000000_order_document_submissions.sql',
       '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

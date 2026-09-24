@@ -113,6 +113,7 @@ import { ADVANCE_NOT_A_PAYMENT_NOTE, buildCommercialRows, formatInr } from '@/li
 import {
   draftStatusLabel,
   draftStatusTone,
+  NUMBER_NOT_ALLOTTED,
   persistedCommercial,
   type PersistedSubmission,
 } from '@/lib/orders/draftsView'
@@ -385,7 +386,7 @@ const contextHtml = (over: {
   piApprovedLine?: string | null
   rejectedLine?: string | null
   reservation?: ReservationView
-  onReserve?: (() => void) | null
+  draftReference?: string | null
   copied?: boolean
   confirmedNumber?: string | null
 } = {}) => {
@@ -394,9 +395,7 @@ const contextHtml = (over: {
     <PiContextRow
       reservation={over.reservation ?? HELD}
       confirmedNumber={over.confirmedNumber ?? null}
-      reserving={false}
-      reservationFailure={null}
-      onReserve={over.onReserve ?? null}
+      draftReference={over.draftReference === undefined ? 'PID-00042' : over.draftReference}
       onCopy={() => {}}
       copied={over.copied ?? false}
       context={buildSubmissionContext({
@@ -422,7 +421,7 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.equal((html.match(/class="pi-detail-context-cell"/g) ?? []).length, 2)
     const t = text(html)
     assert.ok(t.indexOf(RESERVED_ORDER_LABEL) < t.indexOf(SALESPERSON_LABEL),
-      'Reserved Order no. on the left, who the PI is from on the right')
+      'the Order number on the left, who the PI is from on the right')
     assert.ok(html.includes(`aria-label="${SUBMISSION_CELL_HEADING}"`),
       'and the whole cell is named for assistive technology, not just its first label')
   })
@@ -430,27 +429,34 @@ describe('the context row puts the reserved number beside where review stands', 
   test('the number is prominent, copyable, and explained in exactly one line', () => {
     const html = contextHtml()
     assert.ok(html.includes('class="pi-detail-context-number"'))
-    assert.ok(text(html).includes('0521'))
+    assert.ok(text(html).includes('Reserved number 0521'),
+      'a held reservation reads "Reserved number 0521" (20270102000000)')
+    assert.ok(text(html).includes(NUMBER_NOT_ALLOTTED),
+      'and, until the Order exists, says in words that no Order number is allotted')
+    assert.ok(text(html).includes('Draft reference PID-00042'), 'beside the draft’s own reference')
     assert.ok(html.includes('aria-label="Copy Order number 0521"'))
     assert.equal((text(html).match(/Reserved for this PI/g) ?? []).length, 1)
     assert.ok(text(contextHtml({ copied: true })).includes('Copied'))
   })
 
-  test('no number: the Reserve control only where it is offered, otherwise a quiet absence', () => {
+  test('no number: "Order number not allotted", the draft reference, and no Reserve control', () => {
     const none: ReservationView = {
-      state: 'available', number: null, standing: 'No Order number is held for this PI yet.',
+      state: 'blocked', number: null, standing: 'BOE allots the Order number when this PI is approved.',
       blockedReason: null, canCopy: false,
     }
-    assert.ok(buttonLabels(contextHtml({ reservation: none, onReserve: () => {} })).includes(RESERVE_ACTION_LABEL))
     const quiet = contextHtml({ reservation: none })
-    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL))
-    assert.ok(text(quiet).includes('Not reserved'))
+    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL), 'a PI Draft no longer reserves (20270102000000)')
+    assert.ok(text(quiet).includes(NUMBER_NOT_ALLOTTED))
+    assert.equal((text(quiet).match(/Order number not allotted/g) ?? []).length, 1, 'said once')
+    assert.ok(text(quiet).includes('Draft reference PID-00042'))
     assert.ok(!quiet.includes('Copy Order number'), 'nothing to copy')
+    assert.ok(!text(quiet).includes('Reserved number'), 'and no number is implied')
   })
 
   test('the Confirmed Order number, once there is one, keeps its own label', () => {
     const t = text(contextHtml({ status: 'approved', confirmedNumber: '0521' }))
     assert.ok(t.includes('Confirmed Order number 0521'))
+    assert.ok(!t.includes(NUMBER_NOT_ALLOTTED), 'and "not allotted" is gone once it is')
   })
 
   test('THE SALESPERSON LEADS, and the badge sits beside them', () => {

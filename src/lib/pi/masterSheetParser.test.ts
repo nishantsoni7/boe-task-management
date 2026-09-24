@@ -1197,6 +1197,85 @@ describe('commercial summary', () => {
     assert.equal(commercial.grandTotal.cell, 'I122')
   })
 
+  // A production draft (2026-09-24) had one product row deleted from the band:
+  // everything below it sat one row higher, and the fixed cells stored the
+  // grand total as GST and left Grand total empty.
+  const shiftedFooter = (offset: number): Record<string, CellSpec | null> => {
+    const moved: Record<string, CellSpec | null> = {}
+    const at = (address: string) => address.replace(/\d+$/, n => String(Number(n) + offset))
+    const figures: Record<string, CellSpec> = {
+      ...DEFAULT_COMMERCIAL,
+      I115: num(500), I116: num(19500), I117: num(7000), I118: num(1200),
+      I119: text('as applicable'), I120: num(27700), I121: num(4986), I122: num(32686),
+    }
+    for (const address of Object.keys(figures)) moved[address] = null
+    for (const [address, spec] of Object.entries(figures)) moved[at(address)] = spec
+    return moved
+  }
+
+  test('a footer moved up by a deleted product row is found by its labels and read in full', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2),
+      anchors: anchorsFor(2),
+      commercial: shiftedFooter(-1),
+      extraCells: { A113: null, E113: null, A112: num(45010), E112: num(45050), E111: null },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    const { commercial, template, header } = result.data
+    assert.equal(template.footerOffset, -1)
+    assert.equal(template.lastProductRow, LAST_PRODUCT_ROW - 1)
+    assert.equal(commercial.discount, 500)
+    assert.equal(commercial.subtotalAfterDiscount.amount, 19500)
+    assert.equal(commercial.totalBeforeGst.amount, 27700)
+    assert.equal(commercial.gst.amount, 4986)
+    assert.equal(commercial.grandTotal.amount, 32686)
+    assert.equal(commercial.grandTotal.cell, 'I121')
+    const baseline = expectOk(await parseBoePiWorkbook(buildPiWorkbook({ products: inventProducts(2), anchors: anchorsFor(2) }))).data.header
+    assert.ok(header.orderConfirmationDate?.iso)
+    assert.equal(header.orderConfirmationDate?.iso, baseline.orderConfirmationDate?.iso)
+    assert.equal(header.dispatchCommitment?.iso, baseline.dispatchCommitment?.iso)
+    assert.equal(countOf(result.warnings, 'FOOTER_SHIFTED'), 1)
+    assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
+  })
+
+  test('a footer moved down by an added row is read one row down', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2), commercial: shiftedFooter(2),
+    })
+    const { commercial, template } = expectOk(await parseBoePiWorkbook(wb)).data
+    assert.equal(template.footerOffset, 2)
+    assert.equal(commercial.grandTotal.amount, 32686)
+    assert.equal(commercial.grandTotal.cell, 'I124')
+  })
+
+  test('the footer in its template place reads offset 0 and says nothing', async () => {
+    const result = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+    })))
+    assert.equal(result.data.template.footerOffset, 0)
+    assert.equal(countOf(result.warnings, 'FOOTER_SHIFTED'), 0)
+    assert.equal(countOf(result.warnings, 'FOOTER_NOT_VERIFIED'), 0)
+  })
+
+  test('a footer whose labels line up nowhere is read at the template rows and flagged', async () => {
+    const result = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { G120: text('Net amount') },
+    })))
+    assert.equal(result.data.template.footerOffset, 0)
+    assert.equal(countOf(result.warnings, 'FOOTER_NOT_VERIFIED'), 1)
+  })
+
+  test('Total + GST that does not make the grand total is reported, and the grand total kept', async () => {
+    const result = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { I120: num(10000), I121: num(1800), I122: num(12000) },
+    })))
+    assert.equal(result.data.commercial.grandTotal.amount, 12000)
+    const warning = result.warnings.find(w => w.code === 'GRAND_TOTAL_MISMATCH')
+    assert.equal(warning?.computed, 11800)
+  })
+
   test('GST is never recalculated — a wrong-looking GST is returned as stored', async () => {
     const wb = buildPiWorkbook({
       products: inventProducts(2),

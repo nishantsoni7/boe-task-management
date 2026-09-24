@@ -220,6 +220,8 @@ describe('the submission rule reads ATTACHED payment', () => {
   test('0% attached: the same rule, never a waiver', () => {
     const r = validateSubmissionTerms({ meetsStandard: false, terms: terms({ paymentTerms: '50% now' }) })
     assert.equal(r.ok, false, 'terms alone are not a reason')
+    const chosen = validateSubmissionTerms({ meetsStandard: false, terms: terms({ reasonChoice: 'against_client_po' }) })
+    assert.equal(chosen.ok, true, 'one of the three is (20270102000000)')
   })
 
   test('the three submission positions are the three the server can return', () => {
@@ -231,9 +233,9 @@ describe('the submission rule reads ATTACHED payment', () => {
 
   test('the reason prompt names the attached figure, or says there is none', () => {
     assert.equal(submissionReasonPrompt('attached_partial', '27%'),
-      'Only 27% payment is currently attached. Please explain why this PI should be sent for approval.')
+      'Only 27% payment is currently attached. Choose why this PI should still be sent for approval.')
     assert.equal(submissionReasonPrompt('no_payment', '0%'),
-      'No payment is attached to this PI. Please explain why this PI should be sent for approval.')
+      'No payment is attached to this PI. Choose why it should still be sent for approval.')
     assert.ok(submissionReasonPrompt('attached_partial', null).includes('less than 40%'))
   })
 

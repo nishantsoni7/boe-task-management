@@ -162,12 +162,12 @@ export function submissionReasonPrompt(
   attachedPercentLabel: string | null,
 ): string {
   if (position === 'no_payment') {
-    return 'No payment is attached to this PI. Please explain why this PI should be sent for approval.'
+    return 'No payment is attached to this PI. Choose why it should still be sent for approval.'
   }
   const figure = attachedPercentLabel && attachedPercentLabel.trim() !== ''
     ? attachedPercentLabel.trim()
     : `less than ${PAYMENT_STANDARD_PERCENT}%`
-  return `Only ${figure} payment is currently attached. Please explain why this PI should be sent for approval.`
+  return `Only ${figure} payment is currently attached. Choose why this PI should still be sent for approval.`
 }
 
 // ── The words a refusal uses ──────────────────────────────────────────────────
@@ -204,15 +204,65 @@ export const PAYMENT_TERMS_OPTIONAL_LABEL = 'Payment terms (optional)'
 export const PAYMENT_TERMS_PLACEHOLDER = 'e.g. 30% advance, 30% during production, 40% before dispatch'
 export const BILLING_TERMS_LABEL = 'Billing terms (optional)'
 export const BILLING_TERMS_PLACEHOLDER = 'e.g. 100% invoice before dispatch'
-export const PAYMENT_REASON_LABEL = `Reason for requesting Order confirmation below ${PAYMENT_STANDARD_PERCENT}% *`
-export const PAYMENT_REASON_PLACEHOLDER =
-  'Say why BOE should confirm this Order before the standard payment has been received…'
+export const PAYMENT_REASON_LABEL = `Why should this PI go ahead below ${PAYMENT_STANDARD_PERCENT}%? *`
+
+// ── The three reasons (20270102000000) ────────────────────────────────────────
+//
+// EXACTLY THREE, and the words are the ones stored. The database accepts only
+// 'Against client PO', 'Sample order' or 'Other: <remark>' and files each under
+// advance_exception_reason_code, so what the admin reads is what was chosen.
+// Choosing one is a REQUEST: the exception stays pending until an admin with
+// the exception permission decides it, and the Order gate still refuses until
+// then.
+
+export type ExceptionReasonChoice = 'against_client_po' | 'sample_order' | 'other'
+
+export const EXCEPTION_REASON_OPTIONS: readonly { value: ExceptionReasonChoice; label: string }[] = [
+  { value: 'against_client_po', label: 'Against client PO' },
+  { value: 'sample_order',      label: 'Sample order' },
+  { value: 'other',             label: 'Other' },
+]
+
+/** The shortest remark "Other" accepts — the database's rule, stated once here. */
+export const OTHER_REMARK_MIN_LENGTH = 10
+export const OTHER_REMARK_LABEL = 'Remark *'
+export const OTHER_REMARK_PLACEHOLDER = 'Say what makes this order different, so an admin can decide'
+export const OTHER_REMARK_REQUIRED =
+  `Add a remark of at least ${OTHER_REMARK_MIN_LENGTH} characters to explain Other.`
+export const EXCEPTION_REASON_NOT_A_DECISION =
+  'Choosing a reason does not approve anything. An admin decides whether this PI may go ahead below the standard payment.'
+export const EXCEPTION_REASON_INVALID =
+  `Choose Against client PO, Sample order, or Other with a remark of at least ${OTHER_REMARK_MIN_LENGTH} characters.`
+
+/** The text stored for a choice, exactly as the database expects it. */
+export function composeExceptionReason(choice: ExceptionReasonChoice | '', remark: string): string | null {
+  if (choice === 'against_client_po') return 'Against client PO'
+  if (choice === 'sample_order') return 'Sample order'
+  if (choice === 'other') {
+    const text = remark.trim()
+    return text.length >= OTHER_REMARK_MIN_LENGTH ? `Other: ${text}` : null
+  }
+  return null
+}
+
+/**
+ * A stored reason read back into the dialog. A reason written before the three
+ * existed (free text) is not forced into a category: it opens unchosen, so the
+ * employee picks one again rather than having one picked for them.
+ */
+export function readExceptionReason(stored: string | null | undefined): { choice: ExceptionReasonChoice | ''; remark: string } {
+  const text = (stored ?? '').trim()
+  if (text === 'Against client PO') return { choice: 'against_client_po', remark: '' }
+  if (text === 'Sample order') return { choice: 'sample_order', remark: '' }
+  if (text.startsWith('Other: ')) return { choice: 'other', remark: text.slice('Other: '.length) }
+  return { choice: '', remark: '' }
+}
 
 export const PAYMENT_TERMS_MAX_LENGTH = 500
 export const PAYMENT_REASON_MAX_LENGTH = 1000
 
 export const PAYMENT_REASON_REQUIRED =
-  `Say why an Order should be confirmed below ${PAYMENT_STANDARD_PERCENT}%.`
+  `Choose why this PI should go ahead below ${PAYMENT_STANDARD_PERCENT}%.`
 export const PAYMENT_TERMS_REQUIRED =
   'Enter the agreed payment terms.'
 export const PAYMENT_REASON_TOO_LONG =
@@ -223,13 +273,16 @@ export const PAYMENT_POSITION_UNKNOWN =
   'The payment position for this PI could not be read. Reload the page before submitting.'
 
 export type PiSubmissionTerms = {
-  reason: string
+  /** One of the three, or '' while nothing is chosen. */
+  reasonChoice: ExceptionReasonChoice | ''
+  /** The remark "Other" requires. Ignored for the other two. */
+  otherRemark: string
   paymentTerms: string
   billingTerms: string
 }
 
 export const EMPTY_SUBMISSION_TERMS: PiSubmissionTerms = {
-  reason: '', paymentTerms: '', billingTerms: '',
+  reasonChoice: '', otherRemark: '', paymentTerms: '', billingTerms: '',
 }
 
 export type SubmissionTermsValidation =
@@ -258,26 +311,30 @@ export function validateSubmissionTerms(input: {
   meetsStandard: boolean | null
   terms: PiSubmissionTerms
 }): SubmissionTermsValidation {
-  const reason = input.terms.reason.trim()
+  const { reasonChoice } = input.terms
+  const remark = input.terms.otherRemark.trim()
   const paymentTerms = input.terms.paymentTerms.trim()
   const billingTerms = input.terms.billingTerms.trim()
 
   if (input.meetsStandard === null) return { ok: false, message: PAYMENT_POSITION_UNKNOWN }
 
-  if (reason.length > PAYMENT_REASON_MAX_LENGTH) return { ok: false, message: PAYMENT_REASON_TOO_LONG }
+  if (remark.length > PAYMENT_REASON_MAX_LENGTH - 'Other: '.length) return { ok: false, message: PAYMENT_REASON_TOO_LONG }
   if (paymentTerms.length > PAYMENT_TERMS_MAX_LENGTH) return { ok: false, message: PAYMENT_TERMS_TOO_LONG }
   if (billingTerms.length > PAYMENT_TERMS_MAX_LENGTH) return { ok: false, message: PAYMENT_TERMS_TOO_LONG }
 
+  // Below the requirement: one of the three, and a real remark for Other.
+  // Payment Terms are no longer demanded (20270102000000).
+  const reason = composeExceptionReason(reasonChoice, remark)
   if (!input.meetsStandard) {
-    if (reason === '') return { ok: false, message: PAYMENT_REASON_REQUIRED }
-    if (paymentTerms === '') return { ok: false, message: PAYMENT_TERMS_REQUIRED }
+    if (reasonChoice === '') return { ok: false, message: PAYMENT_REASON_REQUIRED }
+    if (reason === null) return { ok: false, message: OTHER_REMARK_REQUIRED }
   }
 
   return {
     ok: true,
     value: {
       // The reason belongs to the exception and to nothing else.
-      reason: input.meetsStandard || reason === '' ? null : reason,
+      reason: input.meetsStandard ? null : reason,
       paymentTerms: paymentTerms === '' ? null : paymentTerms,
       billingTerms: billingTerms === '' ? null : billingTerms,
     },
@@ -290,7 +347,8 @@ export function validateSubmissionTerms(input: {
  * sentence about a reason they were about to type is scolding, not help.
  */
 export function submissionTermsUntouched(terms: PiSubmissionTerms): boolean {
-  return terms.reason.trim() === ''
+  return terms.reasonChoice === ''
+      && terms.otherRemark.trim() === ''
       && terms.paymentTerms.trim() === ''
       && terms.billingTerms.trim() === ''
 }
