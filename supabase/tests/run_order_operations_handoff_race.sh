@@ -280,7 +280,7 @@ begin
 end $f$;
 drop trigger if exists zz_race_pause on public.order_pi_versions;
 create trigger zz_race_pause before update on public.order_pi_versions
-  for each row when (new.status in ('superseded', 'admin_approved')) execute function public.zz_race_pause();
+  for each row when (new.status in ('superseded', 'admin_approved', 'rejected')) execute function public.zz_race_pause();
 SQL
 
 # A confirmed Order with V1 approved and its handoff awaiting reviewer A, and a
@@ -533,5 +533,115 @@ grep -q "Only the assigned operations reviewer" "$SCRATCH/5b-accept.out" \
 [ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O6' and event_type = 'pi_revision_applied'")" = "0" ] \
   || fail "direction 5b: nothing may be applied"
 echo "   OK: B's acceptance waited $((T1 - T0))s for the switch, then was refused; V2 still staged, now for A; nothing applied"
+
+
+# ── Direction 6 (20270101000000): TWO DECISIONS ON THE SAME V2 AT ONCE ──
+# Two admin tabs approving, and one reviewer's two tabs (or a double click)
+# deciding. The first session is parked INSIDE its own version write, holding
+# every lock it takes; the second must wait for it and then be refused on the
+# state the first left — never apply twice, never decide both ways.
+decide_revision() {
+  local V="$1" WHO="$2" DECISION="$3" PAUSE="$4"
+  Q -t -A <<SQL
+begin;
+set local statement_timeout = '30s';
+set local race.pause = '$PAUSE';
+set local role authenticated;
+$(as_user "$WHO")
+select public.decide_order_pi_revision_operations('$V', '$DECISION', 'ASSERT RACE $DECISION') is not null;
+commit;
+SQL
+}
+# An Order with V1 in force and V2 staged for reviewer B, reconciled so it can
+# be accepted. Prints "<order id> <V2 id>".
+staged_for_b() {
+  local PI="$1" CLIENT="$2" O P
+  read -r O P <<<"$(prepare_v2 "$PI" "$CLIENT" | tail -1)"
+  approve_revision "$O" "$PI" "$P" 0 >/dev/null
+  assign_bounded "'$B'" >/dev/null
+  reconcile_to_v2 "$O"
+  echo "$O $(scalar "select id from public.order_pi_versions where order_id = '$O' and version_number = 2")"
+}
+versions_of() { scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$1'"; }
+applied_count() { scalar "select count(*) from public.order_activity_log where order_id = '$1' and event_type = 'pi_revision_applied'"; }
+
+# 6a. Two admin approvals of one pending V2: exactly one stages it.
+PI7=$(scalar "select gen_random_uuid()")
+read -r O7 PATH7 <<<"$(prepare_v2 "$PI7" "ASSERT RACE 6a $RUN" | tail -1)"
+echo "== direction 6a: two admin approvals of the same pending V2"
+approve_revision "$O7" "$PI7" "$PATH7" 3 >"$SCRATCH/6a-first.out" 2>&1 &
+FIRST_PID=$!
+wait_until_parked "approve_order_pi_revision"
+SECOND_RC=0; approve_revision "$O7" "$PI7" "$PATH7" 0 >"$SCRATCH/6a-second.out" 2>&1 || SECOND_RC=$?
+FIRST_RC=0; wait $FIRST_PID || FIRST_RC=$?
+grep -qi deadlock "$SCRATCH/6a-first.out" "$SCRATCH/6a-second.out" && fail "direction 6a: DEADLOCK"
+[ "$FIRST_RC" = "0" ] || fail "direction 6a: the first approval did not complete: $(tr '\n' ' ' <"$SCRATCH/6a-first.out")"
+[ "$SECOND_RC" != "0" ] || fail "direction 6a: the second approval must be refused"
+grep -qE "ORDER_SUBMISSION_PROCESSING|ORDER_PI_REVISION_NOT_PENDING|already being processed|lease" "$SCRATCH/6a-second.out" \
+  || fail "direction 6a: the second approval must be refused by the lease or as no longer pending, got: $(tr '\n' ' ' <"$SCRATCH/6a-second.out")"
+[ "$(versions_of "$O7")" = "1/approved,2/admin_approved" ] || fail "direction 6a: V2 staged once, V1 in force; got $(versions_of "$O7")"
+[ "$(scalar "select count(*) from public.order_pi_revision_staged_parses s join public.order_pi_versions v on v.id = s.version_id where v.order_id = '$O7'")" = "1" ] \
+  || fail "direction 6a: exactly one staged parse"
+[ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O7' and event_type = 'pi_revision_admin_approved'")" = "1" ] \
+  || fail "direction 6a: one admin approval on the history"
+echo "   OK: the second approval was refused ($(grep -oE 'ORDER_[A-Z_]+' "$SCRATCH/6a-second.out" | head -1)); V2 staged once; V1 in force"
+
+# 6b. Accept (parked mid-apply) vs reject from the reviewer's other tab.
+PI8=$(scalar "select gen_random_uuid()")
+read -r O8 V8 <<<"$(staged_for_b "$PI8" "ASSERT RACE 6b $RUN")"
+echo "== direction 6b: B accepts V2 (parked mid-apply) … B's other tab rejects it meanwhile"
+decide_revision "$V8" "$B" accepted 3 >"$SCRATCH/6b-accept.out" 2>&1 &
+FIRST_PID=$!
+wait_until_parked "decide_order_pi_revision_operations"
+SECOND_RC=0; decide_revision "$V8" "$B" rejected 0 >"$SCRATCH/6b-reject.out" 2>&1 || SECOND_RC=$?
+FIRST_RC=0; wait $FIRST_PID || FIRST_RC=$?
+grep -qi deadlock "$SCRATCH/6b-accept.out" "$SCRATCH/6b-reject.out" && fail "direction 6b: DEADLOCK"
+[ "$FIRST_RC" = "0" ] || fail "direction 6b: the acceptance did not complete: $(tr '\n' ' ' <"$SCRATCH/6b-accept.out")"
+grep -q "ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS" "$SCRATCH/6b-reject.out" \
+  || fail "direction 6b: the late rejection must be refused, got: $(tr '\n' ' ' <"$SCRATCH/6b-reject.out")"
+[ "$(versions_of "$O8")" = "1/superseded,2/approved" ] && [ "$(applied_count "$O8")" = "1" ] \
+  || fail "direction 6b: V2 in force, applied once; got $(versions_of "$O8") / $(applied_count "$O8")"
+[ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O8' and event_type = 'pi_revision_operations_rejected'")" = "0" ] \
+  || fail "direction 6b: no rejection may be recorded"
+echo "   OK: the rejection waited, then was refused; V2 applied once"
+
+# 6c. Reject (parked) vs accept from the other tab: V1 stays in force.
+PI9=$(scalar "select gen_random_uuid()")
+read -r O9 V9 <<<"$(staged_for_b "$PI9" "ASSERT RACE 6c $RUN")"
+LINES9=$(scalar "select string_agg(product_name || 'x' || quantity::int, ',') from public.order_submission_items where submission_id = '$PI9'")
+echo "== direction 6c: B rejects V2 (parked) … B's other tab accepts it meanwhile"
+decide_revision "$V9" "$B" rejected 3 >"$SCRATCH/6c-reject.out" 2>&1 &
+FIRST_PID=$!
+wait_until_parked "decide_order_pi_revision_operations"
+SECOND_RC=0; decide_revision "$V9" "$B" accepted 0 >"$SCRATCH/6c-accept.out" 2>&1 || SECOND_RC=$?
+FIRST_RC=0; wait $FIRST_PID || FIRST_RC=$?
+grep -qi deadlock "$SCRATCH/6c-reject.out" "$SCRATCH/6c-accept.out" && fail "direction 6c: DEADLOCK"
+[ "$FIRST_RC" = "0" ] || fail "direction 6c: the rejection did not complete: $(tr '\n' ' ' <"$SCRATCH/6c-reject.out")"
+grep -q "ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS" "$SCRATCH/6c-accept.out" \
+  || fail "direction 6c: the late acceptance must be refused, got: $(tr '\n' ' ' <"$SCRATCH/6c-accept.out")"
+[ "$(versions_of "$O9")" = "1/approved,2/rejected" ] && [ "$(applied_count "$O9")" = "0" ] \
+  || fail "direction 6c: V1 in force, nothing applied; got $(versions_of "$O9") / $(applied_count "$O9")"
+[ "$(scalar "select string_agg(product_name || 'x' || quantity::int, ',') from public.order_submission_items where submission_id = '$PI9'")" = "$LINES9" ] \
+  || fail "direction 6c: V1's lines must be untouched"
+echo "   OK: the acceptance waited, then was refused; V2 rejected; V1 and its lines untouched"
+
+# 6d. Two acceptances (double click / two tabs): applied exactly once.
+PI10=$(scalar "select gen_random_uuid()")
+read -r O10 V10 <<<"$(staged_for_b "$PI10" "ASSERT RACE 6d $RUN")"
+echo "== direction 6d: B accepts V2 twice at once"
+decide_revision "$V10" "$B" accepted 3 >"$SCRATCH/6d-first.out" 2>&1 &
+FIRST_PID=$!
+wait_until_parked "decide_order_pi_revision_operations"
+SECOND_RC=0; decide_revision "$V10" "$B" accepted 0 >"$SCRATCH/6d-second.out" 2>&1 || SECOND_RC=$?
+FIRST_RC=0; wait $FIRST_PID || FIRST_RC=$?
+grep -qi deadlock "$SCRATCH/6d-first.out" "$SCRATCH/6d-second.out" && fail "direction 6d: DEADLOCK"
+[ "$FIRST_RC" = "0" ] || fail "direction 6d: the first acceptance did not complete"
+grep -q "ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS" "$SCRATCH/6d-second.out" \
+  || fail "direction 6d: the second acceptance must be refused, got: $(tr '\n' ' ' <"$SCRATCH/6d-second.out")"
+[ "$(versions_of "$O10")" = "1/superseded,2/approved" ] && [ "$(applied_count "$O10")" = "1" ] \
+  || fail "direction 6d: applied exactly once; got $(versions_of "$O10") / $(applied_count "$O10")"
+[ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O10' and version_number = 2")" = "1" ] \
+  || fail "direction 6d: one V2 handoff"
+echo "   OK: the second acceptance waited, then was refused; applied once, one V2 handoff"
 
 echo "ALL RACE ASSERTIONS PASSED"
