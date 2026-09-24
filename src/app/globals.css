@@ -4072,11 +4072,30 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   border-color: #C9CFDA;
 }
 
-/* In the sidebar it lines up with the nav above it — icon and label from the
-   left, like Home — rather than centring itself like a banner. */
+/* IN THE SIDEBAR IT IS A NAV ROW, not a button. A bordered white block
+   directly under Home was still the most button-like thing on the Modules
+   page, and it pulled the eye away from the modules. Here it takes the shape
+   of the nav item above it — same height, same left edge, same grey label,
+   same hover — and keeps its amber icon as the one sign that it is an action
+   rather than a place. The sidebar is only on screen with a pointer (>= 768px),
+   so the phone's 44px touch minimum does not apply to this copy. */
 .boe-quick-actions-sidebar .boe-quick-action {
   justify-content: flex-start;
-  padding-left: 12px;
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #505A70;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 7px;
+}
+
+.boe-quick-actions-sidebar .boe-quick-action:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.055);
+  border-color: transparent;
+  color: #111318;
 }
 
 /* Stated here because this button no longer inherits .boe-btn-primary:disabled.
@@ -4113,27 +4132,81 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
 }
 
 /* ── Page copy (<= 767px) ──
-   SEPARATED BY A RULE, not by a tinted box. The button is itself amber-tinted
-   now, so a tinted container around it was tint on tint — it washed the button
-   out and cost it the prominence the section exists for. A hairline and its
-   spacing do the separating instead, which is quieter and matches how the rest
-   of this UI divides a page. */
+   ONE COMPACT PILL ABOVE THE MODULES, not a labelled section. It used to carry
+   an uppercase QUICK ACTIONS heading, a full-width button and a divider — three
+   layers of chrome for one action, and the widest thing on the first screen a
+   phone shows. Now it is a single outlined pill, as wide as its label, with
+   its amber mark: findable in one glance, and smaller than any module card
+   below it. The 14px gap is the only separation. */
 .boe-quick-actions-page {
   display: none;
-  margin-bottom: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  margin-bottom: 14px;
 }
 
-/* The launcher’s own MODULES label, to the value: the two sit one above the
-   other and any difference between them would read as a mistake. */
+/* The heading stays in the document for assistive technology — the section is
+   still named — but is not drawn: the button's own label says the same. */
 .boe-quick-actions-page-label {
-  margin: 0 0 10px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #8C94A6;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: clip;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.boe-quick-actions-page .boe-quick-action-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.boe-quick-actions-page .boe-quick-action {
+  width: auto;
+  min-height: 44px;
+  padding: 0 16px 0 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+/* ── A capped content column (BoeOsLayout contentMaxWidth) ──
+   The header row and the page body keep their 22px gutters on a narrow
+   screen and grow them symmetrically on a wide one, so both sit in one
+   centred column of --boe-content-max. Padding rather than a wrapper, so the
+   header's sticky background and bottom border still span the full width
+   while its title and its action line up with the content beneath. */
+@media (min-width: 768px) {
+  .boe-main-content-capped > .boe-page-header,
+  .boe-main-content-capped > .boe-page-body {
+    padding-left: max(22px, calc((100% - var(--boe-content-max, 1200px)) / 2));
+    padding-right: max(22px, calc((100% - var(--boe-content-max, 1200px)) / 2));
+  }
+
+  .boe-main-content-capped > .boe-page-body {
+    padding-top: 24px;
+  }
+
+  /* The heading outranks the cards beneath it. The shell's 18px title sat
+     barely above a 15.5px module name, so the page had no clear top. */
+  .boe-main-content-capped .boe-page-title {
+    font-size: 22px;
+    letter-spacing: -0.015em;
+  }
+
+  .boe-main-content-capped .boe-page-subtitle {
+    font-size: 13.5px;
+  }
+}
+
+/* The title keeps the leading edge when the header wraps. The header row is
+   space-between, so once its action slot drops to a second line (edit mode on
+   a phone) the title group was pushed to the far right, away from the menu
+   button it belongs beside. */
+.boe-main-content-capped .boe-page-title-group {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 @media (max-width: 767px) {

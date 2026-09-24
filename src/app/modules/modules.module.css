@@ -1,34 +1,31 @@
-/* ── Modules launcher: the panel, the tiles and the edit handle ─────────────
+/* ── Modules launcher: the grid, the tiles and the edit handle ──────────────
    LIGHT ONLY, and nothing in this file has a dark variant — neither does the
    app, which carries no prefers-color-scheme block anywhere in globals.css.
 
    THE PAGE HEADER IS NOT IN THIS FILE. The title, the supporting line and the
    Edit order control live in the app header (BoeOsLayout), styled by the
-   shared .boe-page-* and .boe-header-actions rules every other shell already
-   uses. What this file styles is the launcher and, below the controls, the
-   drag handle they share.
+   shared .boe-page-* and .boe-header-actions rules. This page asks the shell
+   for a 1200px content column (`contentMaxWidth`), so the header and the grid
+   share one left edge and one right edge — Edit order sits exactly above the
+   last column — and the launcher reads as a deliberate block rather than a
+   strip stretched across a 1920px screen.
 
-   THE LAYOUT IDEA: ONE LAUNCHER, NOT THIRTEEN CARDS. On a desktop the modules
-   sit in a single white panel as compact tiles — an icon and a name, with no
-   border of their own at rest. Thirteen separately bordered, separately
-   shadowed boxes on grey made thirteen equal objects and a page that stopped
-   wherever the last one happened to land; one panel is one object with a
-   finished edge, and each tile only shows its extent when it is the one being
-   pointed at. On a phone the panel steps aside and each tile becomes its own
-   centred card, which is the shape a thumb wants.
+   THE TILE. Each module is its own white card: a 48px icon at the top, the
+   name beneath it at a size you can read across a room. Big enough to feel
+   like a front door, small enough that four sit across a laptop screen and
+   three rows hold thirteen modules. Somewhere between the old 390px boxes that
+   were mostly air and the 72px table rows that followed them.
 
-   ONE NEUTRAL PALETTE, AND COLOUR ONLY FOR MEANING. Every module used to wear
-   its own accent — thirteen unrelated hues competing for attention on a page
-   whose only job is "pick one". Now every icon is the same ink on the same
-   soft grey, recognised by its shape and its name, and colour is left to the
-   two things that mean something: the red notification badge, and the ink
-   inversion that marks the tile under the pointer or the keyboard.
+   ONE RESTRAINED PALETTE. Every icon is the same ink on the same soft grey,
+   recognised by its shape and its name. The one colour is BOE red, and it
+   appears only on the card under the pointer or the keyboard — the icon takes
+   a red tint, the way the sidebar marks the page you are on — plus the red
+   notification badge, which means something.
 
-     #141922  ink — names, the active icon tile, the focus ring
-     #3D4657  icon at rest
-     #F2F4F7  icon tile at rest / #E8EBF0 its hairline
-     #F5F6F8  tile hover, #EEF0F3 tile pressed
-     #E4E7EC  panel and card border
+     #141922  ink — names, the focus ring
+     #1F2633  icon at rest, on #F3F4F6 with a #ECEEF2 hairline
+     #DC1F2E  BOE red — the icon of the card being pointed at
+     #E3E6EB  card border at rest, #CBD1DA under the pointer
      #D94F4F  notification badge
 
    A LAUNCHER CARD IS AN ICON, ITS BADGE AND A NAME. At every width. No
@@ -37,123 +34,96 @@
 
 /* ── The size container ──────────────────────────────────────────────────────
    COLUMNS FOLLOW THE WIDTH THE GRID ACTUALLY HAS, not the window. A viewport
-   query has to subtract the 260px sidebar and the page gutters in its head, and
-   gets it wrong the moment either changes; a container query measures the one
-   number that decides how many tiles fit. */
+   query has to subtract the sidebar, the gutters and the content column in its
+   head; a container query measures the one number that decides how many
+   tiles fit. */
 .launcher {
   container-type: inline-size;
 }
 
-/* ── The panel ───────────────────────────────────────────────────────────────
-   One white surface on the shell's grey. The 8px inset is what lets a tile's
-   hover fill and focus ring sit inside the panel's edge instead of colliding
-   with it, and the 4px gap keeps two neighbouring hovers from touching. */
-.grid {
-  /* --cols   the column count for this width (the steps below)
-     --n      how many tiles this person has, when that is fewer than any step
-              can hold; 99 means "enough to fill every row"
-     --tile   one tile's width when the panel spans the whole container */
-  --cols: 2;
-  --n: 99;
-  --pad: 8px;
-  --gap: 4px;
-  --tile: calc((100cqi - 2 * var(--pad) - 2px - (var(--cols) - 1) * var(--gap)) / var(--cols));
-
-  display: grid;
-  /* auto-fill against a minimum a hair under one tile: at full width that is
-     exactly --cols tracks, and in a panel narrowed to --n tiles it is exactly
-     --n. The 1px of slack absorbs sub-pixel rounding, never a whole tile. */
-  grid-template-columns: repeat(auto-fill, minmax(calc(var(--tile) - 1px), 1fr));
-  gap: var(--gap);
-  padding: var(--pad);
-  box-sizing: border-box;
-  /* A PANEL AS WIDE AS ITS TILES. Somebody with two modules gets a panel two
-     tiles wide, not a full-width white bar with two names at one end. Every
-     tile stays the width it has in a full panel, so the launcher looks the
-     same size whether it holds two modules or thirteen; with enough tiles to
-     fill a row the calc exceeds 100% and min() hands back the full width. */
-  width: min(100%, calc(var(--n) * var(--tile) + (var(--n) - 1) * var(--gap) + 2 * var(--pad) + 2px));
-  background: #fff;
-  border: 1px solid #E4E7EC;
-  border-radius: 16px;
-  box-shadow:
-    0 1px 2px rgba(20, 25, 34, 0.04),
-    0 12px 32px -20px rgba(20, 25, 34, 0.14);
-}
-
-/* Fewer tiles than the widest step holds. Counted by the grid itself, so the
-   page passes nothing and a card the gate removes is simply not counted. */
-.grid:has(> :last-child:nth-child(1)) { --n: 1; }
-.grid:has(> :last-child:nth-child(2)) { --n: 2; }
-.grid:has(> :last-child:nth-child(3)) { --n: 3; }
-.grid:has(> :last-child:nth-child(4)) { --n: 4; }
-
-/* THE STEPS, measured on the panel's own width:
+/* ── The grid ───────────────────────────────────────────────────────────────
+   THE STEPS, measured on the grid's own width:
 
      container   columns   typical screen                 tile width
-     >= 1360px   5         1920 (1616px of grid)          ~318px
-     >=  920px   4         1366–1600 (1062–1296px)        ~258–318px
-     >=  600px   3         1024 (720px)                   ~232px
-     below       2         tablet portrait, small window
+     >= 900px    4         1920 (1200px column), 1366     ~288px, ~253px
+     >= 620px    3         1024 (720px)                   ~229px
+     below       2         tablet portrait, phone
 
-   Five across a wide screen puts thirteen modules in three rows and eight in
-   two, instead of four rows of 390px boxes that were mostly empty inside. */
-@container (min-width: 600px) {
+   Four, not five, at the top: the widest step is capped by the 1200px column,
+   and at that width four tiles are ~288px — room for "Performance Management"
+   on one line at a readable size. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@container (min-width: 620px) {
   .grid {
-    --cols: 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@container (min-width: 920px) {
+@container (min-width: 900px) {
   .grid {
-    --cols: 4;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@container (min-width: 1360px) {
+@container (min-width: 1240px) {
   .grid {
-    --cols: 5;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
 /* ── The tile ────────────────────────────────────────────────────────────────
-   A ROW: icon, then name. The WHOLE TILE is the button, so the hover fill
-   shows exactly the area a click lands in.
+   A COLUMN: the icon at the top-left, the name anchored to the bottom-left.
+   The whole card is the button.
 
    min-height is A FLOOR AND NEVER A CEILING: a name that wraps to two lines
-   grows the tile rather than being cut by it, and the grid's default
-   `align-items: stretch` keeps every tile in that row the same height. */
+   grows the card rather than being cut by it, and the grid's default
+   `align-items: stretch` keeps every card in that row the same height. */
 .card {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 13px;
-  min-height: 72px;
-  padding: 12px 14px;
-  border-radius: 11px;
-  background: transparent;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 128px;
+  padding: 20px 20px 18px;
+  background: #fff;
+  border: 1px solid #E3E6EB;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.14s ease, box-shadow 0.14s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
-/* HOVER, FOCUS AND PRESS ARE ONE LANGUAGE. The tile fills, the icon tile
-   turns ink — for a mouse and for a keyboard alike.
-   Focus adds a 2px ink ring so a keyboard user can never mistake it for a
-   stray pointer, and pressing deepens the fill and settles the icon. */
+/* HOVER, FOCUS AND PRESS ARE ONE LANGUAGE. The card lifts a little, its edge
+   firms up and the icon takes BOE red — for a mouse and a keyboard alike.
+   Focus adds an ink ring outside the card so it can never be mistaken for a
+   stray pointer, and pressing sets the card back down. */
 .card:hover,
 .card:focus-visible {
-  background: #F5F6F8;
+  border-color: #CBD1DA;
+  box-shadow:
+    0 1px 2px rgba(20, 25, 34, 0.04),
+    0 12px 28px -14px rgba(20, 25, 34, 0.22);
+  transform: translateY(-2px);
 }
 
 .card:focus-visible {
-  box-shadow: 0 0 0 2px #141922;
+  outline: 2px solid #141922;
+  outline-offset: 2px;
 }
 
 .card:active {
-  background: #EEF0F3;
+  transform: none;
+  background: #FAFAFB;
+  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
 }
 
 .iconWrap {
@@ -162,149 +132,111 @@
 }
 
 .iconBox {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #F2F4F7;
-  border: 1px solid #E8EBF0;
-  color: #3D4657;
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+  background: #F3F4F6;
+  border: 1px solid #ECEEF2;
+  color: #1F2633;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
 .card:hover .iconBox,
 .card:focus-visible .iconBox {
-  background: #141922;
-  border-color: #141922;
-  color: #fff;
-}
-
-.card:active .iconBox {
-  transform: scale(0.96);
+  background: rgba(220, 31, 46, 0.08);
+  border-color: rgba(220, 31, 46, 0.18);
+  color: #DC1F2E;
 }
 
 /* The module icons are authored at 26px. One rule sizes every one of them for
    the tile instead of editing thirteen SVGs. */
 .iconBox svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 
 .badge {
   position: absolute;
-  top: -5px;
-  right: -6px;
+  top: -6px;
+  right: -7px;
   background: #D94F4F;
   color: #fff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   border-radius: 999px;
-  min-width: 18px;
-  height: 18px;
+  min-width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 5px;
   border: 2px solid #fff;
   letter-spacing: 0.01em;
   z-index: 1;
 }
 
-/* Takes the rest of the row, and `min-width: 0` is what
-   lets a long name wrap instead of forcing the row wider than its column. */
+/* The full width of the card, so a long name has the whole line to use, and
+   `min-width: 0` is what lets it wrap rather than widen the column. */
 .titleWrap {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
 }
 
 /* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. The name is the only
-   text on the tile, so a clipped one is the single thing that could still leave
-   it unreadable. A long name wraps to two lines and arrives whole. */
+   text on the card, so a clipped one is the single thing that could still
+   leave it unreadable. A long name wraps to two lines and arrives whole. */
 .title {
-  font-size: 14px;
+  font-size: 15.5px;
   font-weight: 600;
   color: #141922;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-/* ── Wide screens: a touch more presence ──
-   With five columns there is room to spare in every tile, so the icon and the
-   name step up rather than leaving the extra width as air. */
-@container (min-width: 1360px) {
-  .grid {
-    --pad: 10px;
-  }
-
-  .card {
-    min-height: 88px;
-    padding: 16px 18px;
-    gap: 15px;
-    border-radius: 12px;
-  }
-
-  .iconBox {
-    width: 46px;
-    height: 46px;
-    border-radius: 12px;
-  }
-
-  .iconBox svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .title {
-    font-size: 15px;
-  }
-}
-
-/* ── Small screens: separate centred cards, <= 767px ─────────────────────────
+/* ── Small screens: centred cards, <= 767px ─────────────────────────────────
    767px is the SIDEBAR'S OWN BREAKPOINT (globals.css) — where the permanent
-   sidebar becomes a drawer and Quick Actions move into the page — so "small
-   screen" means one thing across the whole launcher.
+   sidebar becomes a drawer — so "small screen" means one thing across the
+   whole launcher.
 
-   THE PANEL STEPS ASIDE HERE. On a phone the thing being tapped is a thumb-sized
-   target, and a target reads best as its own card: white, bordered, icon above
-   a centred name, the whole card the button. Two columns, so thirteen modules
-   are a short scroll rather than a long list. */
+   Two columns of centred cards: icon above name, the whole card the button,
+   no description. There is no hover on a touch screen, so the lift goes and a
+   press dims the card instead. */
 @media (max-width: 767px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: auto;
-    gap: 10px;
-    padding: 0;
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    gap: 12px;
   }
 
   .card {
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 10px;
-    min-height: 112px;
-    padding: 16px 10px 14px;
-    background: #fff;
-    border: 1px solid #E4E7EC;
-    border-radius: 14px;
-    box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+    gap: 12px;
+    min-height: 124px;
+    padding: 18px 12px 16px;
   }
 
   .card:hover {
-    background: #fff;
+    transform: none;
+    border-color: #E3E6EB;
+    box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+  }
+
+  .card:hover .iconBox {
+    background: #F3F4F6;
+    border-color: #ECEEF2;
+    color: #1F2633;
   }
 
   .card:active {
-    background: #F5F6F8;
-    border-color: #D5DAE2;
+    background: #F7F8FA;
+    border-color: #CBD1DA;
   }
 
   /* Centres the icon AND its badge in one move: .badge is positioned against
@@ -313,24 +245,8 @@
     align-self: center;
   }
 
-  .iconBox {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-  }
-
-  .iconBox svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .titleWrap {
-    flex: 0 0 auto;
-    width: 100%;
-  }
-
   .title {
-    font-size: 13.5px;
+    font-size: 14px;
   }
 }
 
@@ -343,39 +259,33 @@
   }
 
   .card {
-    min-height: 96px;
+    min-height: 104px;
   }
 }
 
 /* ── Personal card order: the controls and the handle ───────────────────────
-   The "Edit order" work, unchanged in behaviour.
-
-   THE ROW THAT USED TO HOLD THEM IS GONE. These controls now sit in the app
+   The "Edit order" work, unchanged in behaviour. The controls sit in the app
    header's own `.boe-header-actions` slot, which supplies the position, the
-   spacing and the wrapping — so the heading row this file used to declare, and
-   the divider it carried, both went with the duplicate heading block that is
-   no longer drawn. The app header's own bottom border is the only rule under
-   the title now, and the grid begins directly beneath it with nothing but the
-   page body's padding in between.
+   spacing and the wrapping.
 
    Normal mode renders none of these classes apart from `.orderEditButton`. */
 
-/* ── Normal mode: one quiet action ──
-   Text-weight, in the muted grey of the supporting line, so it reads as a
-   utility beside the heading rather than a call to action competing with
-   thirteen cards. */
+/* ── Normal mode: one quiet but findable action ──
+   A small outlined button at the right-hand end of the header, above the last
+   column. Outlined so it is recognisably a control; grey, 12.5px and 32px tall
+   so it is plainly secondary to the modules below it. */
 .orderEditButton {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 5px 9px;
-  font-size: 11.5px;
+  gap: 6px;
+  height: 32px;
+  background: #fff;
+  border: 1px solid #E4E7EC;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #697386;
+  color: #4A5261;
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   flex-shrink: 0;
@@ -383,8 +293,8 @@
 
 .orderEditButton:hover {
   color: #141922;
-  background: #F2F4F7;
-  border-color: #E4E7EC;
+  background: #F7F8FA;
+  border-color: #C9CFDA;
 }
 
 .orderEditButton:focus-visible,
@@ -400,7 +310,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -416,10 +326,12 @@
 .orderButtonPrimary {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border-radius: 8px;
-  padding: 6px 11px;
-  font-size: 12px;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 9px;
+  padding: 0 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -429,7 +341,7 @@
 .orderButton {
   background: #fff;
   border: 1px solid #E4E7EC;
-  color: #697386;
+  color: #4A5261;
 }
 
 .orderButton:hover:not(:disabled) {
@@ -456,46 +368,46 @@
 }
 
 .orderHint {
-  font-size: 11px;
-  color: #697386;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #5B6475;
   text-align: right;
-  max-width: 320px;
+  max-width: 440px;
 }
 
 /* A failed save, beside the arrangement it belongs to. */
 .orderError {
   display: block;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #B42318;
   background: #FEF3F2;
   border: 1px solid #FECDCA;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 7px 11px;
   text-align: right;
   max-width: 360px;
 }
 
 /* ── The drag handle ──
-   Absolutely positioned, so it costs the tile no layout: at the right-hand end
-   of a desktop tile, vertically centred on the name, and in the top-right
-   corner of a phone card. */
+   Absolutely positioned in the card's top-right corner, which the tile leaves
+   empty, so it costs the card no layout and never covers the icon or the
+   name. 32px, the whole of it the touch target. */
 .dragHandle {
   position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
+  top: 12px;
+  right: 12px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 1px solid #E4E7EC;
-  border-radius: 8px;
+  border-radius: 9px;
   background: #F8F9FB;
-  color: #697386;
+  color: #5B6475;
   cursor: grab;
   /* THE ONE DECLARATION THAT MAKES TOUCH WORK. Without it the browser claims a
      vertical drag that starts here as a page scroll and the card never moves.
@@ -514,23 +426,17 @@
   cursor: grabbing;
 }
 
-/* ── The launcher in edit mode ──
-   Two signals and no banner. The panel's border turns dashed — "this is being
-   arranged" — and every tile becomes a visible white piece with its own
-   hairline, so it is clear what moves. Hover makes no promise here: a tile in
-   edit mode does not navigate, so it neither fills nor turns its icon ink. */
-.gridEditing {
-  border-style: dashed;
-  border-color: #C9CFDA;
-  background: #FAFBFC;
-  box-shadow: none;
-}
-
+/* ── The card in edit mode ──
+   THE SAME CARD, VISIBLY LOOSENED. The edge turns dashed and the surface a
+   shade off white — "these can move" — and the handle appears in the corner.
+   Hover makes no promise: a card in edit mode does not navigate, so it
+   neither lifts nor turns its icon red. */
 .cardEditing {
   cursor: default;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px #E4E7EC;
-  padding-right: 48px;
+  border-style: dashed;
+  border-color: #C3CAD5;
+  background: #FCFCFD;
+  box-shadow: none;
   /* The card is not a link any more, and text selection during a drag looks
      like a bug. */
   user-select: none;
@@ -538,24 +444,28 @@
 
 .cardEditing:hover,
 .cardEditing:active {
-  background: #fff;
-}
-
-.cardEditing:hover .iconBox,
-.cardEditing:active .iconBox {
-  background: #F2F4F7;
-  border-color: #E8EBF0;
-  color: #3D4657;
   transform: none;
+  border-color: #C3CAD5;
+  background: #FCFCFD;
+  box-shadow: none;
 }
 
-/* The tile in hand. The grid reflowing IS the signal and the gap the tile
-   leaves is the placeholder; this only says which one is held. */
-.cardDragging {
+.cardEditing:hover .iconBox {
+  background: #F3F4F6;
+  border-color: #ECEEF2;
+  color: #1F2633;
+}
+
+/* The card in hand: solid ink edge, lifted. The grid reflowing IS the signal
+   and the gap the card leaves is the placeholder; this only says which one is
+   held. */
+.cardDragging,
+.cardDragging:hover {
   z-index: 3;
-  box-shadow:
-    0 0 0 1px #141922,
-    0 10px 24px rgba(20, 25, 34, 0.14);
+  border-style: solid;
+  border-color: #141922;
+  background: #fff;
+  box-shadow: 0 16px 32px -12px rgba(20, 25, 34, 0.28);
 }
 
 .cardDragging .dragHandle {
@@ -567,66 +477,69 @@
 
 /* ── Small screens ── */
 @media (max-width: 767px) {
-  /* The controls take the full width and centre, like everything else on a
-     narrow launcher, instead of crowding the right edge. */
+  /* The controls take the full width under the heading, like everything else
+     on a narrow launcher, instead of crowding the right edge. */
   .orderEditing {
     align-items: stretch;
     width: 100%;
+    gap: 8px;
   }
 
   .orderActions {
-    justify-content: center;
+    justify-content: stretch;
   }
 
   .orderHint,
   .orderError {
-    text-align: center;
+    text-align: left;
     max-width: 100%;
   }
 
-  /* A phone card is a centred column, so the handle moves to its top-right
-     corner, clear of the icon below, and the card keeps its own dashed edge
-     in place of the panel's. */
+  .orderHint {
+    font-size: 13px;
+  }
+
+  /* The corner of a centred phone card, clear of the icon below it. */
   .dragHandle {
-    top: 6px;
-    right: 6px;
-    transform: none;
-    width: 32px;
-    height: 32px;
-  }
-
-  .gridEditing {
-    background: transparent;
-  }
-
-  .cardEditing {
-    padding-right: 10px;
-    box-shadow: none;
-    border-style: dashed;
-    border-color: #C9CFDA;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
   }
 }
 
 @media (max-width: 639px) {
-  .orderButton,
-  .orderButtonPrimary {
-    padding: 7px 10px;
-    font-size: 11.5px;
-    /* Three controls, one row, no overflow at 320px. */
-    flex: 1 1 auto;
-    justify-content: center;
+  /* Cancel and Save side by side, each half the width and a real 40px tap
+     target with a 13px label; Reset to default — the least common of the
+     three — drops to its own quieter row beneath them rather than squeezing
+     all three into thirds of a 390px screen. */
+  .orderActions {
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
   }
 
-  .orderActions {
-    gap: 6px;
-    width: 100%;
+  .orderButton,
+  .orderButtonPrimary {
+    height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+    flex: 1 1 0;
+  }
+
+  .orderActions > :first-child {
+    order: 3;
+    flex-basis: 100%;
+    height: 36px;
+    background: transparent;
+    border-color: transparent;
+    color: #5B6475;
   }
 }
 
-
 /* ── Reduced motion ──
-   Every piece of feedback stays — the fill, the ink icon, the focus ring — and
-   only movement goes: nothing eases and the icon does not settle when pressed. */
+   Every piece of feedback stays — the firmer edge, the shadow, the red icon,
+   the focus ring — and only movement goes: nothing eases and nothing lifts. */
 @media (prefers-reduced-motion: reduce) {
   .card,
   .iconBox,
@@ -637,7 +550,8 @@
     transition: none;
   }
 
-  .card:active .iconBox {
+  .card:hover,
+  .card:focus-visible {
     transform: none;
   }
 }

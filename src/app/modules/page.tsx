@@ -690,6 +690,11 @@ export default function BoeOsHomePage() {
           subtitle="Select a module to continue"
           onSignOut={handleSignOut}
           quickActions={quickActions}
+          // ONE CONTENT COLUMN. The header and the grid share a 1200px column,
+          // centred in whatever the sidebar leaves, so the title, Edit order
+          // and the cards line up on the same two edges instead of the cards
+          // stretching across a 1920px screen. Four ~288px cards fill it.
+          contentMaxWidth={1400}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
           // only its position on the screen is different.
@@ -711,8 +716,12 @@ export default function BoeOsHomePage() {
               that it must be reachable in one tap from the first screen after
               sign-in. Above 767px the permanent sidebar carries this same list
               and CSS hides the copy below, so it is on screen exactly once at
-              every width. */}
-          <QuickActionList actions={quickActions} variant="page" />
+              every width.
+
+              NOT WHILE ARRANGING. In edit mode the first phone screen belongs to
+              Save, Cancel and the cards being moved; the action returns the
+              moment edit mode closes. */}
+          {!editingOrder && <QuickActionList actions={quickActions} variant="page" />}
 
           {/* NO SECOND HEADING HERE. The page's title, its supporting line and
               the Edit order control are all in the one header above, passed to
@@ -720,18 +729,15 @@ export default function BoeOsHomePage() {
               no heading block, no divider and no reserved space left behind —
               the header's own bottom border is the only rule on the screen.
 
-              ONE LAUNCHER PANEL, NOT THIRTEEN CARDS. On a desktop the grid is a
-              single white surface and each module is a compact tile inside it,
-              so the page reads as one finished object rather than a field of
-              identical boxes. `.launcher` is the size container the column
-              count is measured against — the width the grid actually gets
-              after the sidebar, not the window. Below 768px the panel steps
-              aside and each tile is its own centred card again.
+              `.launcher` is the size container the column count is measured
+              against — the width the grid actually gets, not the window. Each
+              module is its own card: icon above name, left-aligned on a
+              desktop, centred on a phone.
 
-              Edit mode adds a handle to every tile, absolutely positioned so it
-              costs the tile no layout, and marks the panel as being arranged. */}
+              Edit mode is the same grid of the same cards, loosened: each card
+              turns dashed and gains a handle in its empty top-right corner. */}
           <div className={styles.launcher}>
-            <div className={`${styles.grid}${editingOrder ? ` ${styles.gridEditing}` : ''}`}>
+            <div className={styles.grid}>
               {modules.map((mod, index) => (
                 <ModuleCard
                   key={mod.key}

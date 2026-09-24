@@ -208,8 +208,15 @@ describe('Quick Add Expense on the launcher', () => {
     assert.ok(modules.indexOf('variant="page"') < modules.indexOf('styles.grid'))
   })
 
-  test('the touch target clears 44px at every width', () => {
-    assert.ok(/\.boe-quick-action \{[^}]*min-height: 46px;/.test(read(OS_CSS)))
+  test('the touch target clears 44px wherever a finger can reach it', () => {
+    const css = read(OS_CSS)
+    assert.ok(/\.boe-quick-action \{[^}]*min-height: 46px;/.test(css), 'the base button')
+    // The page copy is the one a phone shows, so it keeps a full touch target.
+    const page = css.match(/\.boe-quick-actions-page \.boe-quick-action \{[^}]*min-height: (\d+)px;/)
+    assert.ok(page && Number(page[1]) >= 44, 'the phone copy is at least 44px tall')
+    // The sidebar copy is displayed only while the sidebar is permanent
+    // (>= 768px, a pointer), where it is a nav row like Home above it.
+    assert.ok(/\.boe-quick-actions-sidebar \.boe-quick-action \{[^}]*min-height: 34px;/.test(css))
   })
 })
 
