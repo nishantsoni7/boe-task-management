@@ -158,6 +158,7 @@ import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
+import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
@@ -837,6 +838,7 @@ export default function OrderDetailPage() {
     | null
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
+  const [lineReview, setLineReview] = useState<{ version: PiVersionView; review: PiLineReviewData } | null>(null)
   // ── The operations decision on a revised PI (20270101000000) ──
   const [revOpsOpen,  setRevOpsOpen]  = useState(false)
   const [revOpsDiff,  setRevOpsDiff]  = useState<RevisionDifferences | null | 'unavailable'>(null)
@@ -1613,21 +1615,21 @@ export default function OrderDetailPage() {
    * and the server reads the bytes it holds, applies them and decides the
    * version rows in one transaction.
    */
-  const approveRevision = async (version: PiVersionView) => {
+  const approveRevision = async (version: PiVersionView, lineMap?: Record<string, string>) => {
     if (!order?.source_order_submission_id || revisionBusy) return
     setRevisionBusy(true)
     setRevisionError(null)
     try {
-      const res = await fetch('/api/orders/pi-revisions/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ versionId: version.id }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
-        setRevisionError(describePiRevisionFailure(body?.error ?? body?.message ?? '', 'approve'))
+      const { ok, body, review } = await requestPiRevisionApproval(version.id, lineMap)
+      // A revised workbook whose lines cannot all be matched by item number:
+      // the admin matches them, then approves again (20270104000000).
+      if (review) { setLineReview({ version, review }); return }
+      if (!ok) {
+        const b = body as { error?: string; message?: string }
+        setRevisionError(describePiRevisionFailure(b.error ?? b.message ?? '', 'approve'))
         return
       }
+      setLineReview(null)
       setRevisionDialog(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
       await loadOrder()
@@ -3297,6 +3299,17 @@ export default function OrderDetailPage() {
           onClose={() => { if (!revisionBusy) setRevisionDialog(null) }}
           onConfirm={() => approveRevision(revisionDialog.version)}
         />
+      )}
+      {lineReview && (
+        <div className="boe-modal-overlay" role="dialog" aria-modal="true" aria-label={PI_LINE_REVIEW_TITLE}>
+          <div className="boe-modal-sheet" style={{ maxWidth: '640px' }}>
+            <div className="boe-modal-body">
+              <PiLineReview versionNumber={lineReview.version.versionNumber} review={lineReview.review} busy={revisionBusy}
+                onConfirm={lineMap => { void approveRevision(lineReview.version, lineMap) }}
+                onCancel={() => setLineReview(null)} />
+            </div>
+          </div>
+        </div>
       )}
       {revisionDialog?.kind === 'reject' && (
         <RejectRevisionModal

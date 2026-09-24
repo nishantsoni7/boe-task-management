@@ -24,7 +24,23 @@ import { processUnderLease } from '@/app/api/orders/import/process-draft/route'
 
 export const runtime = 'nodejs'
 
-type ApproveRequest = { versionId?: unknown }
+type ApproveRequest = { versionId?: unknown; lineMap?: unknown }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** {new item id: old item id | 'new'} — ids only; the database re-checks every one. */
+function readLineMap(v: unknown): Record<string, string> | null | 'invalid' {
+  if (v === undefined || v === null) return null
+  if (typeof v !== 'object' || Array.isArray(v)) return 'invalid'
+  const out: Record<string, string> = {}
+  const entries = Object.entries(v as Record<string, unknown>)
+  if (entries.length > 400) return 'invalid'
+  for (const [k, val] of entries) {
+    if (!UUID_RE.test(k) || typeof val !== 'string' || !(val === 'new' || UUID_RE.test(val))) return 'invalid'
+    out[k] = val
+  }
+  return out
+}
 
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ error: code, message }, { status })
@@ -49,6 +65,8 @@ export async function POST(req: NextRequest) {
   }
   const versionId = typeof body.versionId === 'string' ? body.versionId : ''
   if (!isUuid(versionId)) return fail(400, 'BAD_REQUEST', 'A valid version id is required.')
+  const lineMap = readLineMap(body.lineMap)
+  if (lineMap === 'invalid') return fail(400, 'BAD_REQUEST', 'The product matching could not be read.')
 
   const admin = adminClient()
   if (!admin.ok) {
@@ -149,6 +167,7 @@ export async function POST(req: NextRequest) {
         ? submission.source_workbook_path
         : null,
       revisionVersionId: versionId,
+      lineMap,
     })
   } finally {
     await service.rpc('finish_order_submission_processing', {

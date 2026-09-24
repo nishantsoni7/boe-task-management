@@ -365,6 +365,12 @@ export async function processUnderLease(ctx: {
   priorWorkbookPath: string | null
   /** The pending order_pi_versions row this parse approves, if any. */
   revisionVersionId?: string | null
+  /**
+   * The admin's matching of a revised workbook's ambiguous lines to the lines
+   * in force ({new item id: old item id | 'new'}), when the database asked for
+   * it (ORDER_PI_REVISION_LINES_NEED_REVIEW, 20270104000000).
+   */
+  lineMap?: Record<string, string> | null
 }): Promise<NextResponse> {
   const { service, submissionId, workbookPath, actorId, processingToken,
           afterSubmission, changeReason } = ctx
@@ -477,6 +483,7 @@ export async function processUnderLease(ctx: {
   // not part of what makes two uploads the same file, and including it would
   // make an otherwise identical retry look like a change.
   if (changeReason) plan.payload.change_reason = changeReason
+  if (ctx.revisionVersionId && ctx.lineMap) (plan.payload as Record<string, unknown>).line_map = ctx.lineMap
 
   // A REVISION'S TERMS TRAVEL WITH ITS PAYLOAD (20270101000000): the database
   // seeds them inside the approval's own transaction (20270104000000), so a
@@ -597,6 +604,13 @@ export async function processUnderLease(ctx: {
         .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+|ORDER_CLOSED/)?.[0]
       if (marker) {
         await rollbackCreated()
+        // The lines the admin must match — item ids, numbers, names and
+        // quantities of THIS workbook and of the lines in force. Nothing else.
+        if (marker === 'ORDER_PI_REVISION_LINES_NEED_REVIEW') {
+          let review: unknown = null
+          try { review = JSON.parse(String((rpcErr as { details?: unknown }).details ?? '')) } catch { review = null }
+          return fail(409, marker, 'Some product lines of the revised PI must first be matched to the products in force.', { review })
+        }
         return fail(409, marker, 'The revised PI was not applied.')
       }
     }

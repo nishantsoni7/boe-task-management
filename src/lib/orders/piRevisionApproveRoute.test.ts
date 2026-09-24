@@ -26,6 +26,7 @@ const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
 const ROUTE = 'src/app/api/orders/pi-revisions/approve/route.ts'
 const PIPELINE = 'src/app/api/orders/import/process-draft/route.ts'
 const ORDER_PAGE = 'src/app/orders/[id]/page.tsx'
+const LINE_REVIEW = 'src/components/orders/PiLineReview.tsx'
 const route = read(ROUTE)
 
 describe('the approve route', () => {
@@ -33,7 +34,10 @@ describe('the approve route', () => {
     assert.ok(existsSync(join(ROOT, ROUTE)))
     assert.ok(route.includes('export async function POST'))
     assert.ok(route.includes("export const runtime = 'nodejs'"))
-    assert.ok(read(ORDER_PAGE).includes("'/api/orders/pi-revisions/approve'"))
+    // Both callers (the Order page and PI versions) go through one helper
+    // (20270104000000), which posts to exactly this path.
+    assert.ok(read(ORDER_PAGE).includes('requestPiRevisionApproval(version.id, lineMap)'))
+    assert.ok(read(LINE_REVIEW).includes("fetch('/api/orders/pi-revisions/approve'"))
   })
 
   test('the body carries one id, and the actor comes from the session', () => {
@@ -90,7 +94,10 @@ describe('the approve route', () => {
   test('no service key exists in any client page, and the Order page hands up only the version id', () => {
     const page = read(ORDER_PAGE)
     assert.ok(!/service_role|SERVICE_ROLE/.test(page))
-    assert.ok(page.includes('body: JSON.stringify({ versionId: version.id })'))
+    // The version id, and — only when the database asked for it — the
+    // admin's matching of ambiguous workbook lines. Nothing else.
+    assert.ok(read(LINE_REVIEW).includes('JSON.stringify(lineMap ? { versionId, lineMap } : { versionId })'))
     assert.ok(!page.includes("rpc('approve_order_pi_revision'"), 'the service-role door is unreachable from the browser')
+    assert.ok(!read(LINE_REVIEW).includes("rpc('approve_order_pi_revision'"))
   })
 })

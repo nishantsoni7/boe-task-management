@@ -51,15 +51,21 @@
 --   those ids just before the parse are re-attached to the same ids after it.
 --   A removed line's code stays orphaned and retired; an added line gets the
 --   next sequence, which is always above every code ever issued. A WORKBOOK
---   revision carries no line identity (fresh ids, row-position sequences), so
---   its lines are coded afresh, exactly as before.
+--   revision's item ids are derived from the ROW, so they say nothing about
+--   the product: there a line continues the line in force with the same item
+--   number (column J), unique on both sides; a blank or duplicated number is
+--   matched by the admin (line_map) or the approval is refused, listing them.
 --
---   The item sequence (B001 …) of a removed line is retired too: an edit
---   revision that gives an added line — or re-numbers a continuing one to —
---   a sequence any earlier line of this Order held is refused.
+--   The item sequence (B001 …) of a removed line is retired too: a revision
+--   of either kind that gives it to any other product is refused.
 --
 -- ALSO HERE
 --
+--   * Workbook revisions keep codes too: a line continues the line in force
+--     with the same item number; a blank or duplicated number must be matched
+--     by the admin before the approval goes through (§4).
+--   * A reserved Order number is never issued to anything else, even after
+--     its draft is deleted (§4c: order_reserved_number_ledger).
 --   * The Finance "Allocated Against" read names a PI Draft by its stable
 --     draft reference (PID-00012) instead of its workbook file name; same
 --     result shape.
@@ -263,6 +269,10 @@ declare
   v_pre_codes jsonb;
   v_pre_items jsonb;
   v_retired   text;
+  v_map       jsonb := '{}'::jsonb;   -- new item id → the item id it continues
+  v_review    jsonb := '[]'::jsonb;
+  v_explicit  text;
+  n           record;
   v_name      text;
   v_reason    text;
   v_handoff   uuid;
@@ -370,6 +380,89 @@ begin
       using errcode = '42501';
   end if;
 
+  -- ── WHICH PRODUCT EACH NEW LINE IS ──
+  -- Decided BEFORE anything is written, from the lines in force now.
+  --   edit       a continuing line keeps its item id (renamed or not); a line
+  --              with an id not in force is new.
+  --   workbook   the parse route derives item ids from the ROW, so an id says
+  --              nothing about the product on it. A line continues the line in
+  --              force with the SAME item number (column J) — unique on both
+  --              sides. A blank or duplicated number is AMBIGUOUS: the admin
+  --              matches it (payload.line_map: {new id: old id | "new"}) or the
+  --              approval is refused with the lines to match, changing nothing.
+  -- Either way an item number a line of this Order EVER held may only stay
+  -- with the product that held it; on any other line it is refused.
+  select coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'seq', nullif(upper(btrim(coalesce(i.item_sequence, ''))), ''),
+                                               'name', i.product_name,
+                                               'code', (select 'BE' || lpad(c.boe_sequence::text, 3, '0') from public.order_product_codes c
+                                                         where c.order_id = v_order.id and c.submission_item_id = i.id))
+                            order by i.sort_order, i.source_row), '[]'::jsonb)
+    into v_pre_items
+    from public.order_submission_items i where i.submission_id = v_sub.id;
+
+  if v_ver.source_kind = 'edit' then
+    select coalesce(jsonb_object_agg(e ->> 'id', e ->> 'id'), '{}'::jsonb) into v_map
+      from jsonb_array_elements(p_payload -> 'items') e
+     where exists (select 1 from jsonb_array_elements(v_pre_items) p where p.value ->> 'id' = e ->> 'id');
+  else
+    for n in
+      select e ->> 'id' as id, nullif(upper(btrim(coalesce(e ->> 'item_sequence', ''))), '') as seq,
+             e ->> 'product_name' as name, e ->> 'quantity' as qty
+        from jsonb_array_elements(p_payload -> 'items') e
+    loop
+      v_explicit := p_payload -> 'line_map' ->> n.id;
+      if v_explicit = 'new' then
+        continue;
+      elsif v_explicit is not null then
+        if not exists (select 1 from jsonb_array_elements(v_pre_items) p where p.value ->> 'id' = v_explicit) then
+          raise exception 'ORDER_PI_REVISION_LINE_MAP_INVALID: a line of PI V% is matched to a product that is not in force',
+            v_ver.version_number using errcode = 'P0001';
+        end if;
+        v_map := v_map || jsonb_build_object(n.id, v_explicit);
+      elsif n.seq is null
+         or (select count(*) from jsonb_array_elements(p_payload -> 'items') e2
+              where nullif(upper(btrim(coalesce(e2 ->> 'item_sequence', ''))), '') = n.seq) > 1
+         or (select count(*) from jsonb_array_elements(v_pre_items) p where p.value ->> 'seq' = n.seq) > 1 then
+        v_review := v_review || jsonb_build_object('id', n.id, 'seq', n.seq, 'name', n.name, 'qty', n.qty,
+          'why', case when n.seq is null then 'no item number' else 'item number used more than once' end);
+      elsif exists (select 1 from jsonb_array_elements(v_pre_items) p where p.value ->> 'seq' = n.seq) then
+        v_map := v_map || jsonb_build_object(n.id,
+          (select p.value ->> 'id' from jsonb_array_elements(v_pre_items) p where p.value ->> 'seq' = n.seq));
+      end if;   -- otherwise: a new product
+    end loop;
+
+    if (select count(*) from jsonb_each_text(v_map)) <> (select count(distinct value) from jsonb_each_text(v_map)) then
+      raise exception 'ORDER_PI_REVISION_LINE_MAP_INVALID: two lines of PI V% continue the same product',
+        v_ver.version_number using errcode = 'P0001';
+    end if;
+    if jsonb_array_length(v_review) > 0 then
+      raise exception using errcode = 'P0001',
+        message = format('ORDER_PI_REVISION_LINES_NEED_REVIEW: %s product line(s) of PI V%s cannot be matched to the lines in force by item number. Match each to the product it continues, or mark it new, and approve again.',
+                         jsonb_array_length(v_review), v_ver.version_number),
+        detail = jsonb_build_object('lines', v_review, 'candidates', v_pre_items)::text;
+    end if;
+  end if;
+
+  -- A RETIRED ITEM NUMBER IS NEVER HANDED OUT AGAIN.
+  select string_agg(distinct e ->> 'item_sequence', ', ') into v_retired
+    from jsonb_array_elements(p_payload -> 'items') e
+   where nullif(upper(btrim(coalesce(e ->> 'item_sequence', ''))), '') = any (
+           public.order_item_sequences_ever_used(v_order.id)
+           || array(select p.value ->> 'seq' from jsonb_array_elements(v_pre_items) p where p.value ->> 'seq' is not null))
+     and not exists (select 1 from jsonb_array_elements(v_pre_items) p
+                      where p.value ->> 'id' = v_map ->> (e ->> 'id')
+                        and p.value ->> 'seq' = upper(btrim(e ->> 'item_sequence')));
+  if v_retired is not null then
+    if v_ver.source_kind = 'edit' then
+      raise exception
+        'ORDER_PI_EDIT_SEQUENCE_RETIRED: PI V% gives % to a product, but that item number already belonged to another product on this Order. Choose a new number.',
+        v_ver.version_number, v_retired using errcode = 'P0001';
+    end if;
+    raise exception
+      'ORDER_PI_REVISION_SEQUENCE_RETIRED: PI V% gives % to a product, but that item number belonged to another product on this Order. Renumber it in the workbook and upload it again.',
+      v_ver.version_number, v_retired using errcode = 'P0001';
+  end if;
+
   -- ── THE LEASE ──
   -- The workbook route parses under its own lease and sends its token; an edit
   -- revision has nothing to parse and arrives without one, so it is taken here.
@@ -388,9 +481,6 @@ begin
     into v_pre_codes
     from public.order_product_codes c
    where c.order_id = v_order.id and c.submission_item_id is not null;
-  select coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'seq', upper(btrim(i.item_sequence)))), '[]'::jsonb)
-    into v_pre_items
-    from public.order_submission_items i where i.submission_id = v_sub.id;
 
   -- With each line's BOE code as it stood, so the outgoing version's PDF can
   -- print its own codes — a removed line's code is orphaned a moment later.
@@ -486,40 +576,23 @@ begin
   perform set_config('boe.pi_revision_apply', '', true);
 
   -- ── PRODUCT CODES ──
-  -- An edit revision: a continuing line keeps its item id, so it gets back the
-  -- code it held. A workbook revision's lines are all new ids and match nothing.
-  if v_ver.source_kind = 'edit' then
-    with back as (
-      update public.order_product_codes c
-         set submission_item_id = (p.value ->> 'item_id')::uuid
-        from jsonb_array_elements(v_pre_codes) p
-       where c.id = (p.value ->> 'code_id')::uuid
-         and c.submission_item_id is null
-         and exists (select 1 from public.order_submission_items i
-                      where i.submission_id = v_sub.id and i.id = (p.value ->> 'item_id')::uuid)
-      returning c.submission_item_id, c.boe_sequence
-    )
-    select coalesce(jsonb_agg(jsonb_build_object('submission_item_id', submission_item_id,
-                                                 'boe_item_code', 'BE' || lpad(boe_sequence::text, 3, '0'))), '[]'::jsonb)
-      into v_relinked from back;
-
-    -- A RETIRED SEQUENCE IS NEVER HANDED OUT AGAIN: a line that is new, or
-    -- whose sequence changed, may not take one any line of this Order held.
-    select string_agg(distinct i.item_sequence, ', ') into v_retired
-      from public.order_submission_items i
-     where i.submission_id = v_sub.id
-       and nullif(btrim(coalesce(i.item_sequence, '')), '') is not null
-       and upper(btrim(i.item_sequence)) = any (public.order_item_sequences_ever_used(v_order.id)
-                                                || array(select p.value ->> 'seq' from jsonb_array_elements(v_pre_items) p))
-       and not exists (select 1 from jsonb_array_elements(v_pre_items) p
-                        where (p.value ->> 'id')::uuid = i.id and p.value ->> 'seq' = upper(btrim(i.item_sequence)));
-    if v_retired is not null then
-      raise exception
-        'ORDER_PI_EDIT_SEQUENCE_RETIRED: PI V% gives % to a product, but that item number already belonged to another product on this Order. Choose a new number.',
-        v_ver.version_number, v_retired
-        using errcode = 'P0001';
-    end if;
-  end if;
+  -- Each continuing line gets back the code the line it continues held (the
+  -- parse orphaned it a moment ago); removed lines' codes stay retired; new
+  -- lines get the next BOE sequence, above every code ever issued.
+  with back as (
+    update public.order_product_codes c
+       set submission_item_id = (m.key)::uuid
+      from jsonb_each_text(v_map) m
+      join jsonb_array_elements(v_pre_codes) p on p.value ->> 'item_id' = m.value
+     where c.id = (p.value ->> 'code_id')::uuid
+       and c.submission_item_id is null
+       and exists (select 1 from public.order_submission_items i
+                    where i.submission_id = v_sub.id and i.id = (m.key)::uuid)
+    returning c.submission_item_id, c.boe_sequence
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('submission_item_id', submission_item_id,
+                                               'boe_item_code', 'BE' || lpad(boe_sequence::text, 3, '0'))), '[]'::jsonb)
+    into v_relinked from back;
   v_codes := public.assign_order_product_codes(v_order.id, p_actor_id);
 
   -- ── RECORDS ──
@@ -637,6 +710,118 @@ revoke execute on function public.order_pi_version_detail(uuid) from public, ano
 grant  execute on function public.order_pi_version_detail(uuid) to authenticated;
 
 
+-- ═══ 4c. A reserved Order number is never issued to anything else ══════════
+--
+-- THE RULE. An Order number a PI Draft ever reserved (production: 0524, 0525)
+-- is recorded here once and for good. The Confirmed Order number cycle can
+-- never be set at or below it — whether its draft is live, rejected,
+-- converted, or permanently deleted. Only Test Data Cleanup, removing a TEST
+-- draft, removes that draft's entry.
+--
+-- WHY. 20261009000000's floor (order_number_cycle_respects_reservations) read
+-- the reservations of the drafts that EXIST. A draft holding 0525 is in a
+-- deletable status; deleting it dropped the floor to 0524, and
+-- set_next_confirmed_order_number(525) — which only asks "above the highest
+-- ORDER" — would then have handed a number already printed on a customer's PI
+-- to a different Order. Reservations are retired (20270102000000), so this
+-- ledger only ever holds the numbers that were reserved before that.
+
+create table if not exists public.order_reserved_number_ledger (
+  number        text primary key check (number ~ '^[0-9]+$'),
+  submission_id uuid,                        -- no FK: the entry outlives its draft
+  recorded_at   timestamptz not null default now()
+);
+comment on table public.order_reserved_number_ledger is
+  'Every Order number a PI Draft ever reserved, kept after the draft is rejected, converted or deleted. The number cycle can never be set at or below any of them (order_number_cycle_respects_reservations). Written by trigger only; removed only by Test Data Cleanup. 20270104000000.';
+alter table public.order_reserved_number_ledger enable row level security;
+revoke all on public.order_reserved_number_ledger from public, anon, authenticated;
+
+insert into public.order_reserved_number_ledger (number, submission_id)
+select s.reserved_order_number, s.id from public.order_submissions s
+ where s.reserved_order_number ~ '^[0-9]+$'
+on conflict (number) do nothing;
+
+create or replace function public.order_reserved_number_ledger_guard()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' and public.in_test_data_cleanup() then return old; end if;
+  raise exception 'ORDER_RESERVED_NUMBER_PERMANENT: a reserved Order number stays reserved' using errcode = '42501';
+end;
+$$;
+revoke execute on function public.order_reserved_number_ledger_guard() from public, anon, authenticated, service_role;
+drop trigger if exists order_reserved_number_ledger_guard on public.order_reserved_number_ledger;
+create trigger order_reserved_number_ledger_guard
+  before update or delete on public.order_reserved_number_ledger
+  for each row execute function public.order_reserved_number_ledger_guard();
+
+create or replace function public.order_submissions_record_reserved_number()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' then
+    -- Test Data Cleanup takes a test draft's entry with it; nothing else does.
+    if public.in_test_data_cleanup() then
+      delete from public.order_reserved_number_ledger where submission_id = old.id;
+    end if;
+    return old;
+  end if;
+  if new.reserved_order_number ~ '^[0-9]+$' then
+    insert into public.order_reserved_number_ledger (number, submission_id)
+    values (new.reserved_order_number, new.id)
+    on conflict (number) do nothing;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.order_submissions_record_reserved_number() from public, anon, authenticated, service_role;
+drop trigger if exists order_submissions_record_reserved_number on public.order_submissions;
+create trigger order_submissions_record_reserved_number
+  after insert or update of reserved_order_number or delete on public.order_submissions
+  for each row execute function public.order_submissions_record_reserved_number();
+
+-- The floor, as 20261009000000 §6, reading the ledger as well as the live rows.
+create or replace function public.order_number_cycle_respects_reservations()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_reserved bigint;
+  v_count    bigint;
+begin
+  if tg_op = 'UPDATE' and new.next_number is not distinct from old.next_number then
+    return new;
+  end if;
+
+  select count(*), coalesce(max(n::bigint), 0) into v_count, v_reserved
+    from (select s.reserved_order_number as n from public.order_submissions s where s.reserved_order_number ~ '^[0-9]+$'
+          union
+          select l.number from public.order_reserved_number_ledger l) r;
+
+  if v_count = 0 then
+    return new;
+  end if;
+
+  if new.next_number <= v_reserved then
+    raise exception
+      'ORDER_NUMBER_CYCLE_BEHIND_RESERVATION: Order numbers up to % were reserved for PI Drafts; the next Order number cannot be set to % — it would hand out a number that is already on a customer''s document',
+      public.format_confirmed_order_number(v_reserved),
+      public.format_confirmed_order_number(new.next_number)
+      using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+revoke execute on function public.order_number_cycle_respects_reservations() from public, anon, authenticated;
+
+
 -- ═══ 5. Finance: a PI Draft is named by its stable reference ═══════════════
 --
 -- Same result shape as 20261216000000 §3; target_reference for a PI Draft is
@@ -746,6 +931,11 @@ begin
      or has_function_privilege('anon', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE') then
     raise exception 'ASSERT: approve_order_pi_revision must stay service-role only';
+  end if;
+  if exists (select 1 from public.order_submissions s
+              where s.reserved_order_number ~ '^[0-9]+$'
+                and not exists (select 1 from public.order_reserved_number_ledger l where l.number = s.reserved_order_number)) then
+    raise exception 'ASSERT: every reserved Order number is in the ledger';
   end if;
   if has_function_privilege('authenticated', 'public.order_item_sequences_ever_used(uuid)', 'EXECUTE') then
     raise exception 'ASSERT: order_item_sequences_ever_used is server-only';

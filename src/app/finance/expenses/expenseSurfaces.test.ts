@@ -1355,6 +1355,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
     'src/lib/orders/piVersionPdf.ts',
     'src/lib/orders/piVersionPdf.test.ts',
+    'src/components/orders/PiLineReview.tsx',
+    'src/components/orders/piLineReview.render.test.tsx',
     'src/lib/finance/allocatedAgainst.ts',
     'src/lib/finance/allocatedAgainst.test.ts',
     'src/app/finance/received/allocatedAgainst.render.test.tsx',

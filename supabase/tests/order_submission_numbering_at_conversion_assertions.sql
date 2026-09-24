@@ -18,6 +18,9 @@
 --                    until an admin decides it; Payment Terms are optional
 --   8. payments      the draft's active allocations follow it into the Order,
 --                    once, and a reversed one stays in the draft's history
+--  11. retired       a reserved number stays retired after its draft is
+--                    rejected and deleted (ledger, 20270104000000); only Test
+--                    Data Cleanup removes a test draft's entry
 --  10. production    production's shape (a held reservation one below the
 --                    cycle): a re-upload keeps it, new PIs approved first never
 --                    take it, nobody can move the cycle back onto it, a rolled-
@@ -590,6 +593,90 @@ begin
     'and the unique index would refuse one anyway';
 
   raise notice '10. production shape: held reservation, interleaved approvals, rollback, no collision OK';
+end $$;
+
+-- ═══ 11. A RESERVED NUMBER STAYS RETIRED AFTER ITS DRAFT IS GONE ═════════════
+--
+-- The rule (20270104000000 §4c): an Order number a PI Draft ever reserved is
+-- never issued to anything else — the cycle can never be set at or below it,
+-- whether its draft is live, rejected, converted or permanently deleted. Only
+-- Test Data Cleanup, removing a TEST draft, takes its entry away.
+
+do $$
+declare
+  v_r     uuid := gen_random_uuid();
+  v_rej   uuid;
+  v_num   text;
+  v_n     bigint;
+  v_msg   text;
+begin
+  -- REJECTED: the real door. The row stays, so its number stays held.
+  v_rej := gen_random_uuid();
+  perform pg_temp.make_pi(v_rej, 'ASSERT reserved then rejected', 500000, true);
+  perform pg_temp.pay(v_rej, 250000, 'approved_unlinked');
+  perform pg_temp.become(current_setting('test.sales_id')::uuid);
+  perform public.submit_pi_for_review(v_rej, null, null, null, null);
+  perform pg_temp.restore();
+  perform pg_temp.become(current_setting('test.admin_id')::uuid);
+  perform public.reject_order_submission(v_rej, 'ASSERT not going ahead');
+  perform pg_temp.restore();
+  assert (select status from public.order_submissions where id = v_rej) = 'rejected', 'the draft is rejected';
+  assert exists (select 1 from public.order_reserved_number_ledger l join public.order_submissions s on s.reserved_order_number = l.number
+                  where s.id = v_rej), 'a rejected draft''s number is in the ledger';
+
+  -- DELETED: a reserved draft never sent anywhere, removed for good.
+  perform pg_temp.make_pi(v_r, 'ASSERT reserved then deleted', 500000, true);
+  v_num := (select reserved_order_number from public.order_submissions where id = v_r);
+  v_n := v_num::bigint;
+  assert exists (select 1 from public.order_reserved_number_ledger where number = v_num and submission_id = v_r),
+    'the reservation is in the ledger';
+  assert v_n > (select reserved_order_number::bigint from public.order_submissions where id = v_rej),
+    'fixture: the deleted draft holds the highest reservation, so only the ledger can hold the floor';
+
+  -- Permanently deleted, through the purge marker the deletion door sets.
+  perform set_config('boe.order_submission_purge_id', v_r::text, true);
+  delete from public.order_submissions where id = v_r;
+  perform set_config('boe.order_submission_purge_id', '', true);
+  assert not exists (select 1 from public.order_submissions where id = v_r), 'the draft is gone';
+  assert exists (select 1 from public.order_reserved_number_ledger where number = v_num), 'its number is still recorded';
+
+  -- The cycle cannot come back onto it: not by the admin door…
+  perform pg_temp.become(current_setting('test.admin_id')::uuid);
+  begin
+    perform public.set_next_confirmed_order_number(v_n);
+    v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text;
+  end;
+  perform pg_temp.restore();
+  assert v_msg like 'ORDER_NUMBER_CYCLE_BEHIND_RESERVATION%', 'the admin door refuses the deleted draft''s number: ' || v_msg;
+  -- …nor by a raw UPDATE.
+  begin
+    update public.order_number_cycle set next_number = v_n where id = true;
+    v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text;
+  end;
+  assert v_msg like 'ORDER_NUMBER_CYCLE_BEHIND_RESERVATION%', 'nor a raw write: ' || v_msg;
+
+  -- The ledger itself cannot be edited or emptied.
+  begin
+    delete from public.order_reserved_number_ledger where number = v_num;
+    v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text;
+  end;
+  assert v_msg like 'ORDER_RESERVED_NUMBER_PERMANENT%', 'the ledger is permanent: ' || v_msg;
+  assert not has_table_privilege('authenticated', 'public.order_reserved_number_ledger', 'SELECT'), 'and not client-readable';
+
+  -- Test Data Cleanup is the one exception: a test draft takes its entry with it.
+  v_r := gen_random_uuid();
+  perform pg_temp.make_pi(v_r, 'ASSERT test draft', 1000, true);
+  v_num := (select reserved_order_number from public.order_submissions where id = v_r);
+  perform set_config('boe.cleanup_context', 'test_data_cleanup', true);
+  delete from public.order_submissions where id = v_r;
+  perform set_config('boe.cleanup_context', '', true);
+  assert not exists (select 1 from public.order_reserved_number_ledger where number = v_num),
+    'Test Data Cleanup removed the test draft''s entry';
+
+  raise notice '11. a reserved number stays retired after its draft is rejected and deleted OK';
 end $$;
 
 do $$ begin raise notice 'ALL NUMBERING ASSERTIONS PASSED'; end $$;

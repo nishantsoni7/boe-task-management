@@ -29,6 +29,7 @@ import {
   type PiContentItem,
 } from '@/lib/orders/piEdit'
 import { EDIT_PI_LABEL, PiDiffView, PiEditor, loadPiContentAsViewer } from './PiEditor'
+import { PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from './PiLineReview'
 import {
   PI_EDITED_VERSION_WORKBOOK_NOTE,
   PI_VERSION_PDF_DOWNLOAD_LABEL,
@@ -253,6 +254,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const [review, setReview] = useState<PiLineReviewData | null>(null)
 
   useEffect(() => {
     let live = true
@@ -273,14 +275,15 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
   const open = version.status === 'pending' || version.status === 'admin_approved'
   const diff = useMemo(() => (open && content && current ? diffPi(current, content) : null), [open, content, current])
 
-  const approve = async () => {
+  const approve = async (lineMap?: Record<string, string>) => {
     setBusy(true); setFailure(null)
     try {
-      const res = await fetch('/api/orders/pi-revisions/approve', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionId: version.id }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setFailure(body.message ?? 'This revision could not be approved just now.'); return }
+      const { ok, body, review: needsReview } = await requestPiRevisionApproval(version.id, lineMap)
+      // A revised WORKBOOK whose lines cannot all be matched by item number:
+      // the admin matches them here, and approves again (20270104000000).
+      if (needsReview) { setReview(needsReview); return }
+      if (!ok) { setFailure(typeof body.message === 'string' ? body.message : 'This revision could not be approved just now.'); return }
+      setReview(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId })
       onDecided(`PI V${version.version_number} approved — it is now the PI in force${body.order_amendment ? ', and the Order was amended to its values' : ''}. Operations has been sent it for review.`)
     } finally { setBusy(false) }
@@ -377,6 +380,10 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
             </div>
           )}
           {failure && <div role="alert" style={{ color: colors.red, fontSize: '12.5px' }}>{failure}</div>}
+          {review && (
+            <PiLineReview versionNumber={version.version_number} review={review} busy={busy}
+              onConfirm={lineMap => { void approve(lineMap) }} onCancel={() => setReview(null)} />
+          )}
         </div>
       </div>
     </div>

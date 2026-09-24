@@ -18,6 +18,12 @@
 --   5. refusals  no Grand Total; a value change on a dispatched Order
 --   6. finance   a PI Draft allocation reads as its PID; once converted, as
 --                the Order's number, and the moved allocation is the same row
+--   6. workbook  (section 6) a revised WORKBOOK's lines keep their codes by
+--                item number even when the row-derived ids land on another
+--                product; an unnumbered line is not guessed (the approval
+--                asks, listing it and the candidates, and nothing moves) and is
+--                matched by the admin; one product, one continuing line; a
+--                removed product's number is refused even marked "new"
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- PREREQUISITES: TEST-001 admin 1111…, sales 5555…, operations 7777…, finance
@@ -394,6 +400,188 @@ begin
   assert md5(public.order_pi_content_of(v_sub)::text || (select total_value::text from public.orders where id = v_order)) = v_fp,
     'neither refusal moved anything';
   raise notice '5. no Grand Total / dispatched Order refused, nothing moved OK';
+end $$;
+
+-- ═══ 6. WORKBOOK REVISIONS KEEP CODES BY ITEM NUMBER, OR ASK ═══════════════
+--
+-- The parse route derives a line's id from its ROW (deterministicItemId), so a
+-- revised workbook's row-33 line has the id V1's row-33 line had — whatever
+-- product now sits there. Here the ids are made exactly that way, which is the
+-- worst case: the stool (row 33) is removed, the table moves up onto row 33 and
+-- takes the stool's id, a new bench lands on row 34 and takes the table's id.
+
+create function pg_temp.wb_propose(p_order uuid, p_reason text) returns uuid language plpgsql as $$
+declare v_sub uuid; v_path text; v uuid;
+begin
+  select source_order_submission_id into v_sub from public.orders where id = p_order;
+  v_path := 'submissions/' || v_sub || '/original/' || gen_random_uuid() || '.xlsx';
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_path,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  perform pg_temp.become(current_setting('test.sales_id')::uuid);
+  v := (public.propose_order_pi_revision(p_order, v_path, 'revised.xlsx', p_reason) ->> 'version_id')::uuid;
+  perform pg_temp.restore();
+  return v;
+end $$;
+
+-- A parsed workbook: p_lines [{row, seq, name, qty, rate}], ids derived from the row.
+create function pg_temp.wb_payload(p_version uuid, p_lines jsonb, p_line_map jsonb default null) returns jsonb language plpgsql as $$
+declare v_sub uuid; v_path text; o public.orders%rowtype; v_items jsonb := '[]'::jsonb; v_gross numeric := 0; l jsonb; n int := 0;
+begin
+  select submission_id, workbook_path into v_sub, v_path from public.order_pi_versions where id = p_version;
+  select * into o from public.orders where source_order_submission_id = v_sub;
+  for l in select value from jsonb_array_elements(p_lines) loop
+    v_items := v_items || jsonb_build_object(
+      'id', pg_temp.row_id(v_sub, (l ->> 'row')::int), 'source_row', (l ->> 'row')::int,
+      'item_sequence', l ->> 'seq', 'product_name', l ->> 'name',
+      'quantity', (l ->> 'qty')::numeric, 'cost_per_piece', (l ->> 'rate')::numeric,
+      'total_amount', (l ->> 'qty')::numeric * (l ->> 'rate')::numeric, 'sort_order', n);
+    v_gross := v_gross + (l ->> 'qty')::numeric * (l ->> 'rate')::numeric;
+    n := n + 1;
+  end loop;
+  return jsonb_build_object(
+    'header', jsonb_build_object('client_name', o.client_name, 'order_confirmation_date', o.confirm_date, 'due_date', o.due_date),
+    'commercial', jsonb_build_object('gross_product_amount', v_gross, 'discount_amount', 0,
+                                     'total_before_gst', v_gross, 'gst_amount', 0, 'grand_total', v_gross),
+    'source', jsonb_build_object('workbook_path', v_path, 'workbook_sha256', repeat('f', 64)),
+    'parse', jsonb_build_object('warnings', '[]'::jsonb, 'blocking_issues', '[]'::jsonb),
+    'items', v_items, 'item_images', '[]'::jsonb,
+    'seed_terms', jsonb_build_object('fabric_responsibility', 'client'),
+    'fingerprint', encode(sha256(convert_to(v_items::text || v_path, 'UTF8')), 'hex'))
+    || case when p_line_map is null then '{}'::jsonb else jsonb_build_object('line_map', p_line_map) end;
+end $$;
+
+-- The id V1 gave the line on this row (the route's rule: a function of the row).
+create function pg_temp.row_id(p_sub uuid, p_row int) returns uuid language sql as $$
+  select nullif(current_setting('test.row_' || replace(p_sub::text, '-', '') || '_' || p_row, true), '')::uuid
+$$;
+
+do $$
+declare
+  v_sub   uuid := gen_random_uuid();
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_wb    text := 'submissions/' || v_sub || '/original/' || gen_random_uuid() || '.xlsx';
+  v_res   jsonb;
+  v_order uuid;
+  r       int;
+begin
+  insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
+  values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
+  update public.order_submissions
+     set client_name = 'ASSERT workbook client', gross_product_amount = 60000, discount_amount = 0,
+         grand_total = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+   where id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  -- Ids made the route's way, remembered per row (rows 32-36).
+  for r in 32..36 loop perform set_config('test.row_' || replace(v_sub::text, '-', '') || '_' || r, gen_random_uuid()::text, true); end loop;
+  insert into public.order_submission_items (id, submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (pg_temp.row_id(v_sub, 32), v_sub, 32, 'B001', 'ASSERT wb chair', 2, 10000, 20000, 0),
+         (pg_temp.row_id(v_sub, 33), v_sub, 33, 'B002', 'ASSERT wb stool', 2, 10000, 20000, 1),
+         (pg_temp.row_id(v_sub, 34), v_sub, 34, 'B003', 'ASSERT wb table', 2, 10000, 20000, 2);
+  insert into public.order_submission_item_images (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  select v_sub, i.id, 'representative', 0,
+         'submissions/' || v_sub || '/images/' || i.id || '/representative/0-' || repeat('c', 64) || '.png', 'image/png', repeat('c', 64), i.source_row
+    from public.order_submission_items i where i.submission_id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata)
+  select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images m where m.submission_id = v_sub;
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (gen_random_uuid(), 'ASSERT wb', 30000, current_date, 'hdfc', 'approved_unlinked', v_sales, null)
+  returning id into v_order;   -- (reused below as a scratch id)
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_order, v_sub, 30000, 'order_submission', v_sales);
+
+  perform pg_temp.become(v_sales);
+  perform public.submit_pi_for_review(v_sub, null, null, null, null);
+  perform pg_temp.restore();
+  perform pg_temp.become(v_admin);
+  if (select pi_approved_at from public.order_submissions where id = v_sub) is null then
+    perform public.approve_pi_review(v_sub);
+  end if;
+  v_res := public.approve_order_submission(v_sub, v_sales, current_date, current_date + 30, 'reference');
+  perform pg_temp.restore();
+  perform set_config('test.wb_sub', v_sub::text, true);
+  perform set_config('test.wb_order', v_res ->> 'order_id', true);
+  assert pg_temp.codes(v_sub) = '{"ASSERT wb chair": "BE001", "ASSERT wb stool": "BE002", "ASSERT wb table": "BE003"}'::jsonb,
+    'V1 codes: ' || pg_temp.codes(v_sub)::text;
+end $$;
+
+do $$
+declare
+  v_sub   uuid := current_setting('test.wb_sub')::uuid;
+  v_order uuid := current_setting('test.wb_order')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_ver   uuid;
+  v_msg   text;
+  v_det   text;
+  v_fp    text;
+  v_codes jsonb;
+begin
+  -- V2: chair renamed and more of them; stool removed; the table moves up to
+  -- row 33 (so it carries the STOOL's row id); a bench is added on row 34 (the
+  -- TABLE's old row id).
+  v_ver := pg_temp.wb_propose(v_order, 'ASSERT wb V2');
+  perform public.approve_order_pi_revision(v_ver, v_admin, pg_temp.wb_payload(v_ver, jsonb_build_array(
+    jsonb_build_object('row', 32, 'seq', 'B001', 'name', 'ASSERT wb armchair (renamed)', 'qty', 3, 'rate', 10000),
+    jsonb_build_object('row', 33, 'seq', 'B003', 'name', 'ASSERT wb table', 'qty', 2, 'rate', 10000),
+    jsonb_build_object('row', 34, 'seq', 'B004', 'name', 'ASSERT wb bench (added)', 'qty', 1, 'rate', 8000))));
+  assert (select status from public.order_pi_versions where id = v_ver) = 'approved', 'workbook V2 is current';
+  assert pg_temp.codes(v_sub) = '{"ASSERT wb armchair (renamed)": "BE001", "ASSERT wb table": "BE003", "ASSERT wb bench (added)": "BE004"}'::jsonb,
+    'matched by item number, not by row id: ' || pg_temp.codes(v_sub)::text;
+  assert (select submission_item_id is null from public.order_product_codes where order_id = v_order and boe_sequence = 2),
+    'the removed stool''s BE002 is retired, even though its row id is back on the table';
+  assert (select total_value from public.orders where id = v_order) = 58000, 'the Order was amended to V2';
+
+  -- V3: the table's line has lost its number → the approval asks, changes nothing.
+  v_fp := md5(public.order_pi_content_of(v_sub)::text); v_codes := pg_temp.codes(v_sub);
+  v_ver := pg_temp.wb_propose(v_order, 'ASSERT wb V3');
+  perform set_config('test.wb_v3', v_ver::text, true);
+  begin
+    perform public.approve_order_pi_revision(v_ver, v_admin, pg_temp.wb_payload(v_ver, jsonb_build_array(
+      jsonb_build_object('row', 32, 'seq', 'B001', 'name', 'ASSERT wb armchair (renamed)', 'qty', 3, 'rate', 10000),
+      jsonb_build_object('row', 33, 'seq', '',     'name', 'ASSERT wb table, oak', 'qty', 2, 'rate', 11000),
+      jsonb_build_object('row', 34, 'seq', 'B004', 'name', 'ASSERT wb bench (added)', 'qty', 1, 'rate', 8000),
+      jsonb_build_object('row', 35, 'seq', 'B005', 'name', 'ASSERT wb lamp (added)', 'qty', 1, 'rate', 3000))));
+    v_msg := 'NO ERROR';
+  exception when others then
+    get stacked diagnostics v_msg = message_text, v_det = pg_exception_detail;
+  end;
+  assert v_msg like 'ORDER_PI_REVISION_LINES_NEED_REVIEW%', 'an unnumbered line is not guessed: ' || v_msg;
+  assert (v_det::jsonb -> 'lines' -> 0 ->> 'name') = 'ASSERT wb table, oak'
+     and (v_det::jsonb -> 'lines' -> 0 ->> 'why') = 'no item number'
+     and jsonb_array_length(v_det::jsonb -> 'candidates') = 3, 'the refusal names the line and the candidates: ' || coalesce(v_det, 'none');
+  assert md5(public.order_pi_content_of(v_sub)::text) = v_fp and pg_temp.codes(v_sub) = v_codes
+     and (select status from public.order_pi_versions where id = v_ver) = 'pending', 'and nothing moved';
+
+  -- Two lines may not continue the same product.
+  v_msg := pg_temp.fails_with(format('select public.approve_order_pi_revision(%L, %L, pg_temp.wb_payload(%L, %L::jsonb, %L::jsonb))',
+    v_ver, v_admin, v_ver,
+    jsonb_build_array(jsonb_build_object('row', 32, 'seq', 'B001', 'name', 'a', 'qty', 1, 'rate', 1),
+                      jsonb_build_object('row', 33, 'seq', '', 'name', 'b', 'qty', 1, 'rate', 1)),
+    jsonb_build_object(pg_temp.row_id(v_sub, 33), (select id from public.order_submission_items where submission_id = v_sub and item_sequence = 'B001'))));
+  assert v_msg like 'ORDER_PI_REVISION_LINE_MAP_INVALID%', 'one product, one continuing line: ' || v_msg;
+
+  -- The admin matches it to the table: it keeps BE003; the lamp gets BE005.
+  perform public.approve_order_pi_revision(v_ver, v_admin, pg_temp.wb_payload(v_ver, jsonb_build_array(
+      jsonb_build_object('row', 32, 'seq', 'B001', 'name', 'ASSERT wb armchair (renamed)', 'qty', 3, 'rate', 10000),
+      jsonb_build_object('row', 33, 'seq', '',     'name', 'ASSERT wb table, oak', 'qty', 2, 'rate', 11000),
+      jsonb_build_object('row', 34, 'seq', 'B004', 'name', 'ASSERT wb bench (added)', 'qty', 1, 'rate', 8000),
+      jsonb_build_object('row', 35, 'seq', 'B005', 'name', 'ASSERT wb lamp (added)', 'qty', 1, 'rate', 3000)),
+    jsonb_build_object(pg_temp.row_id(v_sub, 33),
+      (select i.id from public.order_submission_items i where i.submission_id = v_sub and i.item_sequence = 'B003'))));
+  assert pg_temp.codes(v_sub) = '{"ASSERT wb armchair (renamed)": "BE001", "ASSERT wb table, oak": "BE003", "ASSERT wb bench (added)": "BE004", "ASSERT wb lamp (added)": "BE005"}'::jsonb,
+    'the matched line keeps its code: ' || pg_temp.codes(v_sub)::text;
+
+  -- V4 gives the stool's old number to a new product: refused, even marked new.
+  v_ver := pg_temp.wb_propose(v_order, 'ASSERT wb V4');
+  v_msg := pg_temp.fails_with(format('select public.approve_order_pi_revision(%L, %L, pg_temp.wb_payload(%L, %L::jsonb, %L::jsonb))',
+    v_ver, v_admin, v_ver,
+    jsonb_build_array(jsonb_build_object('row', 32, 'seq', 'B001', 'name', 'ASSERT wb armchair (renamed)', 'qty', 3, 'rate', 10000),
+                      jsonb_build_object('row', 36, 'seq', 'B002', 'name', 'ASSERT wb mirror', 'qty', 1, 'rate', 5000)),
+    jsonb_build_object(pg_temp.row_id(v_sub, 36), 'new')));
+  assert v_msg like 'ORDER_PI_REVISION_SEQUENCE_RETIRED%', 'a removed product''s number is never reused: ' || v_msg;
+  assert (select count(*) from public.order_product_codes where order_id = v_order) = 5, 'five codes ever, none reused';
+  raise notice '6. workbook revisions: matched by item number, ambiguous lines asked, retired numbers refused OK';
 end $$;
 
 do $$ begin raise notice 'ALL IN-FORCE-AT-APPROVAL ASSERTIONS PASSED'; end $$;
