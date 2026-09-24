@@ -51,7 +51,11 @@ describe('the approve route', () => {
     assert.ok(route.includes('me.is_active !== true || me.is_deleted === true'))
     assert.ok(route.includes("if (me.role !== 'admin') {"))
     assert.ok(route.includes("fail(403, 'FORBIDDEN'"))
-    assert.ok(!route.includes('approve_order'), 'holding orders.approve_order is not this authority')
+    // The permission KEY, exactly: since 20270103000000 the route also calls
+    // the approve_order_pi_revision RPC by name for an edit revision.
+    assert.ok(!/['"]approve_order['"]/.test(route), 'holding orders.approve_order is not this authority')
+    assert.ok(route.indexOf("me.role !== 'admin'") < route.indexOf("service.rpc('approve_order_pi_revision'"),
+      'and the admin check comes before an edit revision is staged')
     const adminAt = route.indexOf("me.role !== 'admin'")
     const leaseAt = route.indexOf("service.rpc('begin_order_submission_processing'")
     assert.ok(adminAt > 0 && adminAt < leaseAt)

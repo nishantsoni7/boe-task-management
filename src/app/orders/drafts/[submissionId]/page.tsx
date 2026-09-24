@@ -92,6 +92,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
@@ -417,6 +418,7 @@ function PiDraftDetailPageInner() {
   // record. There is no action: since 20270102000000 a PI Draft reserves no
   // number, and the Order's is allotted when the PI is approved.
   const [copiedNumber, setCopiedNumber] = useState(false)
+  const [piEditorOpen, setPiEditorOpen] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
   /**
@@ -1844,7 +1846,14 @@ function PiDraftDetailPageInner() {
    * is asked in four places in the markup below, and four copies of the same
    * expression is four chances for one of them to drift.
    */
-  const canEditProducts = canEditSubmission || canAdminAmend
+  // ONE "EDIT PI" (20270103000000). The per-field doors (client, terms,
+  // schedule, billing %, product text, reorder) are no longer drawn: the whole
+  // PI is edited in one place. On a PI that is not yet an Order it is written
+  // directly; once it is an Order it can only change as a new version, from the
+  // Order page (the database refuses anything else).
+  const piIsOrder = Boolean(submission.order_id)
+  const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder
+  const canEditProducts = false
 
   const ownsSubmission = viewerId !== null && (
     submission.created_by === viewerId || submission.submitted_by === viewerId)
@@ -2083,6 +2092,34 @@ function PiDraftDetailPageInner() {
           tone={tone}
         />
 
+        {/* ── 1b. EDIT PI (20270103000000) ── one action for the whole PI. */}
+        {(mayEditPi || (piIsOrder && submission.status === 'approved')) && (
+          <div className="pi-edit-bar" style={{
+            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+            border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '10px 14px', background: colors.base,
+          }}>
+            <span style={{ flex: 1, fontSize: '12.5px', color: colors.secondary, minWidth: '220px' }}>
+              {mayEditPi
+                ? 'Client, dates, terms, products, quantities, prices and photos are all edited in one place.'
+                : 'This PI is approved and in force. It changes only as a new version, proposed from its Order.'}
+            </span>
+            {mayEditPi ? (
+              <button type="button" className="boe-btn boe-btn-primary" onClick={() => setPiEditorOpen(true)}>
+                {EDIT_PI_LABEL}
+              </button>
+            ) : approvedOrder ? (
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => router.push(orderHref(approvedOrder.orderId))}>
+                {EDIT_PI_LABEL} on the Order
+              </button>
+            ) : null}
+          </div>
+        )}
+        {piEditorOpen && (
+          <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
+            onClose={() => setPiEditorOpen(false)}
+            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }) }} />
+        )}
+
         {/* ── 2. The PI overview ──
             Who it is for, who prepared and submitted it, when it was confirmed
             and when it is due — beside what it is worth. */}
@@ -2095,11 +2132,11 @@ function PiDraftDetailPageInner() {
              only; every other state is read-only for everyone. The RPC behind
              the dialog re-derives exactly this, so the control and the write
              cannot disagree. */
-          canEditBilling={canEditSubmission || canAdminAmend}
+          canEditBilling={false}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           /* The same two authorities the billing control uses. The owner rule
              covers a draft; the admin rule covers every stage after it. */
-          canEditDetails={canEditSubmission || canAdminAmend}
+          canEditDetails={false}
           onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
           onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
           /* The owner's channel, offered only where they have no edit door:
@@ -2162,12 +2199,10 @@ function PiDraftDetailPageInner() {
                  at a submitted PI is not the person who fills these in. */
               readiness={actions.canSubmit ? submissionReadiness : null}
               onFixReadiness={
-                canEditSubmission || canAdminAmend
+                mayEditPi
                   ? section => {
-                      setClientFailure(null)
-                      setProductFailure(null)
                       if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                      setEditSection(section)
+                      setPiEditorOpen(true)
                     }
                   : null
               }
@@ -2457,9 +2492,7 @@ function PiDraftDetailPageInner() {
               view={breakdown}
               fabricResponsibility={submission.fabric_responsibility ?? null}
               commercialTerms={submission.commercial_terms_note ?? null}
-              onEditTerms={canEditSubmission || canAdminAmend
-                ? () => { setClientFailure(null); setEditSection('terms') }
-                : null}
+              onEditTerms={null}
             />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}

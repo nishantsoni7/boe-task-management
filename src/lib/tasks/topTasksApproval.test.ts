@@ -286,6 +286,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20261231000000_order_document_submissions.sql',
     '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
     '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+    '20270103000000_order_submission_pi_edit_revisions.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
