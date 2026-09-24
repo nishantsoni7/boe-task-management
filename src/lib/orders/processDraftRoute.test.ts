@@ -683,7 +683,15 @@ describe('service-role isolation', () => {
       }
     }
     walk('src')
-    assert.deepEqual(callers, [ROUTE], 'exactly one caller, and it is the server route')
+    // Since 20270103000000 the Edit PI route is the second caller: it builds
+    // and prices the payload on the server, under the same lease, and the
+    // writer re-derives the actor's authority exactly as it does for a workbook.
+    const EDIT_ROUTE = 'src/app/api/orders/pi-edits/route.ts'
+    assert.deepEqual(callers.sort(), [EDIT_ROUTE, ROUTE].sort(), 'exactly two callers, both server routes')
+    for (const caller of callers) {
+      assert.ok(caller.startsWith('src/app/api/'), `${caller} is server code`)
+      assert.ok(!raw(caller).includes("'use client'"))
+    }
   })
 
   test('the payload builder is server-only and says so by importing node crypto', () => {

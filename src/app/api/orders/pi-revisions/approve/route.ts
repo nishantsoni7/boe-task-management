@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   // ── 3. The version is pending, and names a PI this pipeline can work on ──
   const { data: version, error: verErr } = await service
     .from('order_pi_versions')
-    .select('id, order_id, submission_id, version_number, status, workbook_path, revision_reason')
+    .select('id, order_id, submission_id, version_number, status, workbook_path, revision_reason, source_kind, proposal')
     .eq('id', versionId)
     .maybeSingle()
   if (verErr) return fail(500, 'LOOKUP_FAILED', 'Could not load this revision.')
@@ -99,6 +99,27 @@ export async function POST(req: NextRequest) {
   // what the parser records as the amendment reason.
   const reason = typeof version.revision_reason === 'string' ? version.revision_reason.trim() : ''
   if (reason === '') return fail(409, 'ORDER_PI_REVISION_REASON_REQUIRED', 'This revision carries no reason.')
+
+  // AN EDIT REVISION (20270103000000) has no new workbook to parse: its
+  // complete proposed PI was built and priced by the server when it was
+  // proposed, and is staged exactly as a parsed workbook would be. Everything
+  // after this — Operations acceptance, promotion, V1 kept in force until then
+  // — is the same path.
+  if (version.source_kind === 'edit') {
+    const proposal = version.proposal as { payload?: Record<string, unknown> } | null
+    if (!proposal?.payload) return fail(409, 'ORDER_PI_REVISION_INVALID', 'This revision carries no proposed PI.')
+    const { data, error } = await service.rpc('approve_order_pi_revision', {
+      p_version_id: versionId, p_actor_id: user.id, p_payload: proposal.payload,
+    })
+    if (error) {
+      const m = error.message ?? ''
+      if (/ORDER_PI_REVISION_NOT_PENDING/.test(m)) return fail(409, 'ORDER_PI_REVISION_NOT_PENDING', 'This revision has already been decided.')
+      if (/ORDER_PI_REVISION_STALE/.test(m)) return fail(409, 'ORDER_PI_REVISION_STALE', 'A newer PI version is already in force.')
+      if (/ORDER_PI_REVISION_ORDER_CLOSED/.test(m)) return fail(409, 'ORDER_PI_REVISION_ORDER_CLOSED', 'This Order is cancelled.')
+      return fail(500, 'APPROVE_FAILED', 'This revision could not be approved just now. Nothing was changed.')
+    }
+    return NextResponse.json({ ok: true, staged: true, ...(data as object) })
+  }
 
   // ── 4. TAKE THE SUBMISSION, exactly as a save does ──
   const processingToken = crypto.randomUUID()

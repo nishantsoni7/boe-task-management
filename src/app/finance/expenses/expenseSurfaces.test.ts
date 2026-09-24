@@ -632,6 +632,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
       // PI numbering at conversion, draft reference, three reasons (20270102000000).
       if (f === 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql') continue
+      // Edit PI: an approved PI changes only as a new version (20270103000000).
+      if (f === 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1368,8 +1370,22 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/orders/piSubmitModal.render.test.tsx',
     'src/components/orders/PiSupportingDocuments.tsx',
     'src/components/orders/piDraftAttachments.render.test.tsx',
+    // Edit PI (20270103000000): one editor, versions, and the Admin's comparison.
+    'src/lib/orders/piEdit.ts',
+    'src/lib/orders/piEdit.test.ts',
+    'src/lib/orders/piEditServer.ts',
+    'src/app/api/orders/pi-edits/route.ts',
+    'src/app/api/orders/pi-edits/photo/route.ts',
+    'src/app/api/orders/pi-revisions/approve/route.ts',
+    'src/lib/orders/piRevisionApproveRoute.test.ts',
+    'src/lib/orders/processDraftRoute.test.ts',
+    'src/components/orders/PiEditor.tsx',
+    'src/components/orders/PiVersionsPanel.tsx',
+    'src/components/orders/piEditor.render.test.tsx',
+    'src/app/orders/[id]/page.tsx',
   ])
   const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
+  const PI_EDIT_MIGRATION = 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql'
 
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
@@ -1411,6 +1427,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT.has(f) &&
     !ALLOWED_PI_NUMBERING_AND_EDITING.has(f) &&
     f !== PI_NUMBERING_MIGRATION &&
+    f !== PI_EDIT_MIGRATION &&
     f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
@@ -1608,7 +1625,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270102000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.

@@ -229,6 +229,7 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // One payment, its allocations and every gate belong to
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
+import { PiVersionsPanel } from '@/components/orders/PiVersionsPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2819,6 +2820,22 @@ export default function OrderDetailPage() {
             } : undefined}
           />
         </OrderDocumentsRow>
+
+        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270103000000) ══
+            V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
+            An edit becomes a pending version; the PI in force stays in force
+            until an Admin authorizes it and Operations accepts it. */}
+        {order.source_order_submission_id && handoffReady && (
+          <PiVersionsPanel
+            supabase={supabase}
+            orderId={order.id}
+            submissionId={order.source_order_submission_id}
+            mayEdit={!viewAsUserId && order.status !== 'cancelled'
+              && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
+            isAdmin={actingAsAdmin && !viewAsUserId}
+            onChanged={() => { void loadOrder() }}
+          />
+        )}
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
