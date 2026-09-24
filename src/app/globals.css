@@ -4024,7 +4024,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   gap: 8px;
 }
 
-/* TINTED, NOT FILLED.
+/* QUIET, NOT TINTED.
 
    This button is NOT .boe-btn-primary. A filled #E8A030 slab was the loudest
    thing in a column of quiet nav items, against "neutral-heavy palette",
@@ -4032,15 +4032,16 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
    — and against the note on .boe-record-action above, which already states the
    rule for this codebase: one dominant primary is the only filled button.
 
-   So it takes the shape .boe-btn-danger already establishes for a coloured but
-   quiet action — low-alpha fill, matching hairline, coloured mark — in amber:
+   It then became an amber-tinted block, which was still the only coloured
+   surface on the Modules page once the module icons went neutral: the sidebar
+   shortcut out-shouted the thing the page is for. So it now takes the surface
+   the launcher itself uses and keeps one mark of identity:
 
-     fill    rgba(232,160,48,0.12), the same tint .boe-nav-badge.amber uses
-     border  the same hue at 0.34, so the edge is real on #F8F9FA and #F4F5F7
-     label   --color-boe-primary, 16.1:1 on that fill
-     icon    #C4831A, the amber foreground .boe-nav-badge.amber already pairs
-             with this exact tint. Decorative and aria-hidden, so it carries
-             the identity while the label carries the contrast.
+     surface #fff with the #E4E7EC hairline, the launcher's own card pair
+     label   --color-boe-primary, full contrast on white
+     icon    #C4831A, the amber foreground .boe-nav-badge.amber already uses.
+             Decorative and aria-hidden, so it carries the identity while the
+             label carries the contrast.
 
    Full width on both surfaces, and never below the 44px touch minimum —
    .boe-btn only reaches that at <= 767px and this has to be tappable at every
@@ -4052,9 +4053,10 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   font-size: 13.5px;
   font-weight: 600;
   gap: 8px;
-  background: rgba(232, 160, 48, 0.12);
+  background: #fff;
   color: var(--color-boe-primary);
-  border: 1px solid rgba(232, 160, 48, 0.34);
+  border: 1px solid #E4E7EC;
+  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
 }
 
 /* lucide renders stroke="currentColor", so setting colour on the svg is the
@@ -4063,11 +4065,18 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   color: #C4831A;
 }
 
-/* Deepens the tint rather than changing hue, the way .boe-btn-danger:hover
-   does. Label contrast only improves. */
+/* The launcher tiles' own hover: a soft grey fill and a firmer edge. Label
+   contrast only improves. */
 .boe-quick-action:hover:not(:disabled) {
-  background: rgba(232, 160, 48, 0.2);
-  border-color: rgba(232, 160, 48, 0.5);
+  background: #F5F6F8;
+  border-color: #C9CFDA;
+}
+
+/* In the sidebar it lines up with the nav above it — icon and label from the
+   left, like Home — rather than centring itself like a banner. */
+.boe-quick-actions-sidebar .boe-quick-action {
+  justify-content: flex-start;
+  padding-left: 12px;
 }
 
 /* Stated here because this button no longer inherits .boe-btn-primary:disabled.

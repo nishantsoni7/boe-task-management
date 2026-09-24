@@ -258,11 +258,11 @@ describe('a long module name arrives whole', () => {
 })
 
 describe('the mobile card centres its icon and its name', () => {
-  /** The <= 767px block, which is where the centring lives. */
+  /** The first <= 767px block, which is where the card's phone shape lives. */
   const SMALL = (() => {
     const at = CSS.indexOf('@media (max-width: 767px)')
     assert.notEqual(at, -1, 'the small-screen block must still exist')
-    return CSS.slice(at, CSS.indexOf('@media (max-width: 639px)'))
+    return CSS.slice(at, CSS.indexOf('@media (max-width: 339px)'))
   })()
 
   test('the card centres its children and its text', () => {
@@ -278,21 +278,32 @@ describe('the mobile card centres its icon and its name', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*width:\s*100%/.test(SMALL))
   })
 
-  test('the arrow leaves the flow, so a wrapped name keeps the full width', () => {
-    // On a desktop the arrow is the third item in a row. On a phone the card is
-    // a column, and an arrow left in that flow would either sit under the name
-    // or take width from it — so here it comes out of the flow into the corner.
-    assert.ok(/\.arrow\s*\{[^}]*position:\s*absolute/.test(SMALL))
+  test('ON A PHONE EACH TILE IS ITS OWN CARD AGAIN — the panel steps aside', () => {
+    // The desktop launcher is one white panel. A thumb wants separate targets,
+    // so below the sidebar breakpoint the panel loses its surface and every
+    // tile takes a card's: white, bordered, rounded.
+    assert.ok(/\.grid\s*\{[^}]*background:\s*transparent/.test(SMALL),
+      'the panel surface goes')
+    assert.ok(/\.grid\s*\{[^}]*border:\s*0/.test(SMALL), 'and so does its edge')
+    assert.ok(/\.card\s*\{[^}]*background:\s*#fff/i.test(SMALL), 'each tile is a white card')
+    assert.ok(/\.card\s*\{[^}]*border:\s*1px solid #E4E7EC/i.test(SMALL), 'with its own border')
+  })
+
+  test('a phone card is a real tap target', () => {
+    const floor = SMALL.match(/\.card\s*\{[^}]*min-height:\s*(\d+)px/)
+    assert.ok(floor, 'the phone card has a floor')
+    assert.ok(Number(floor[1]) >= 88,
+      `a phone card must stay comfortably tappable — found ${floor[1]}px`)
   })
 
   test('DESKTOP IS NOT CENTRED ON THE INLINE AXIS — the centring is scoped here', () => {
     assert.equal(/text-align:\s*center/.test(DESKTOP_CARD), false,
       'the desktop card keeps its left edge')
-    // `align-items: center` IS now set on the desktop card, and on a ROW that is
-    // the VERTICAL axis: it centres the icon, the name and the arrow against one
-    // another. It says nothing about the left edge, which the assertion above is
-    // what really guards. The phone card re-declares the card as a COLUMN, where
-    // the same property means horizontal — which is why this reads the two
+    // `align-items: center` IS set on the desktop card, and on a ROW that is the
+    // VERTICAL axis: it centres the icon and the name against one another. It
+    // says nothing about the left edge, which the assertion above is what
+    // really guards. The phone card re-declares the card as a COLUMN, where the
+    // same property means horizontal — which is why this reads the two
     // directions apart rather than looking for one property name in both.
     assert.ok(/flex-direction:\s*row/.test(DESKTOP_CARD),
       'the desktop card is a row, so align-items is its vertical axis')
@@ -303,25 +314,19 @@ describe('the mobile card centres its icon and its name', () => {
 
 // ── The desktop card is a ROW ────────────────────────────────────────────────
 //
-// The layout contract this redesign is actually about. The card used to be a
-// 132px column — a 56px icon stacked above a name — and once the description
-// and the "Open →" footer were removed that left most of a 240px-wide box
-// empty. Laid on its side the same two things need 92px, and the grid fits four
-// across a wide screen instead of three.
-//
-// These pin the SHAPE, not the exact numbers: a particular pixel is a design
-// call and changing one should not fail a suite. What must not change silently
-// is the direction, the order of the three parts, and the fact that the card
-// stays compact rather than becoming a tall box with a hole in it again.
-describe('the desktop card is a horizontal row: icon, name, arrow', () => {
-  test('it is a row, and its three parts are in that order in the markup', () => {
+// On a desktop a module is a compact tile inside one launcher panel: the icon,
+// then the name, in a row. These pin the SHAPE, not the exact numbers: a
+// particular pixel is a design call and changing one should not fail a suite.
+// What must not change silently is the direction, the order of the parts, and
+// the fact that the tile stays compact rather than becoming a tall box with a
+// hole in it again.
+describe('the desktop card is a horizontal row: icon, then name', () => {
+  test('it is a row, and the icon leads the name in the markup', () => {
     assert.ok(/flex-direction:\s*row/.test(DESKTOP_CARD))
     const icon = CARD.indexOf(styleClass('iconWrap'))
     const title = CARD.indexOf(styleClass('titleWrap'))
-    const arrow = CARD.indexOf(styleClass('arrow'))
-    assert.ok(icon > -1 && title > -1 && arrow > -1, 'all three are rendered')
+    assert.ok(icon > -1 && title > -1, 'both are rendered')
     assert.ok(icon < title, 'the icon leads')
-    assert.ok(title < arrow, 'and the arrow is last')
   })
 
   test('the card is COMPACT — no oversized box for an icon and a name', () => {
@@ -331,15 +336,15 @@ describe('the desktop card is a horizontal row: icon, name, arrow', () => {
       `a card holding an icon and a name must stay compact — found ${floor[1]}px`)
   })
 
-  test('the name takes the slack, so the arrow sits at the far edge', () => {
+  test('the name takes the rest of the row', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*flex:\s*1 1 auto/.test(CSS),
-      'the name grows into the space between the icon and the arrow')
+      'the name grows into the space after the icon')
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS),
       'and min-width: 0 is what lets it wrap rather than widen the row')
   })
 
-  test('neither the icon nor the arrow is squeezed by a long name', () => {
-    for (const rule of ['iconWrap', 'iconBox', 'arrow']) {
+  test('the icon is not squeezed by a long name', () => {
+    for (const rule of ['iconWrap', 'iconBox']) {
       const at = CSS.indexOf(`.${rule} {`)
       assert.notEqual(at, -1, `.${rule} must exist`)
       assert.ok(/flex-shrink:\s*0/.test(CSS.slice(at, CSS.indexOf('}', at))),
@@ -466,102 +471,125 @@ describe('the page has ONE header, and it is the app header', () => {
       'the content header took its divider with it')
   })
 
-  test('the grid is the first thing in the body', () => {
+  test('the launcher is the first thing in the body', () => {
     const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
-    const grid = body.indexOf('className={styles.grid}')
+    const launcher = body.indexOf('<div className={styles.launcher}>')
+    const grid = body.indexOf('styles.grid')
     const quick = body.indexOf('<QuickActionList')
-    assert.ok(grid > -1, 'the grid is still there')
+    assert.ok(launcher > -1 && grid > launcher, 'the grid sits inside its size container')
     // QuickActionList is the small-screen copy and legitimately precedes it;
     // nothing else may.
-    assert.ok(quick > -1 && quick < grid, 'only the quick actions come first')
-    assert.equal(body.slice(quick, grid).includes('<div className={styles.'), false,
-      'no heading wrapper survives between them')
+    assert.ok(quick > -1 && quick < launcher, 'only the quick actions come first')
+    assert.equal(body.slice(quick, launcher).includes('<div className={styles.'), false,
+      'no heading wrapper survives before the launcher')
+    // The size container wraps the grid and nothing else: no heading, label or
+    // divider has crept in between them.
+    assert.match(body.slice(launcher, grid), /^<div className=\{styles\.launcher\}>\s*<div className=\{`\$\{$/,
+      'the grid is the size container’s first and only child')
   })
 })
 
-// ── The navigation cue ───────────────────────────────────────────────────────
+// ── No arrow, no accent, no inline style ─────────────────────────────────────
 //
-// It replaces the "Open →" footer WITHOUT bringing the word back: an arrow says
-// "this leads somewhere" in no characters at all, and the brief is explicit
-// that the textual link does not return.
-describe('the arrow is a cue, not a control and not a label', () => {
-  test('it carries no text — "Open" does not come back in any form', () => {
-    const at = CARD.indexOf(styleClass('arrow'))
-    assert.notEqual(at, -1, 'the arrow must exist')
-    const svg = CARD.slice(at, CARD.indexOf('</svg>', at))
-    assert.equal(/>[A-Za-z]/.test(svg.replace(/<[^>]*>/g, '')), false,
-      'the arrow is paths and nothing else')
-    // Comments stripped first. The prose above the arrow explains that it
-    // replaces the "Open" footer, and that sentence is not a label.
-    assert.equal(/\bOpen\b/.test(stripJs(CARD)), false,
-      'the word never reaches a card')
+// The diagonal arrow that sat in every card's corner is gone: thirteen copies
+// of one faint glyph said what the whole page already says, and the word "Open"
+// it replaced does not come back either. Which card you are about to open is
+// told by its STATE — the fill and the ink icon on hover, focus and press.
+//
+// Every module used to wear its own accent colour, applied inline. The launcher
+// now has one neutral palette, so the card carries no colour of its own and no
+// style attribute at all: every state is a stylesheet rule.
+describe('the card carries no decoration of its own', () => {
+  test('THERE IS NO ARROW, and "Open" does not come back in any form', () => {
+    assert.equal(CARD.includes(styleClass('arrow')), false, 'no arrow is rendered')
+    assert.equal(/\.arrow\b/.test(CSS), false, 'and no .arrow rule survives')
+    assert.equal(/<svg\b/.test(stripJs(CARD)), false,
+      'the only graphic on a card is the module icon it is given')
+    // Comments stripped first. The prose explains what replaced the arrow, and
+    // that sentence is not a label.
+    assert.equal(/\bOpen\b/.test(stripJs(CARD)), false, 'the word never reaches a card')
   })
 
-  test('it is hidden from assistive technology and out of the tab order', () => {
-    const at = CARD.indexOf(styleClass('arrow'))
-    const tag = CARD.slice(at, CARD.indexOf('<path', at))
-    assert.ok(/aria-hidden="true"/.test(tag),
-      'the card is announced as one button named after its module, and nothing else')
-    assert.ok(/focusable="false"/.test(tag), 'and SVG focus is off too')
-    // The whole card is the control; a pointer event landing on the arrow must
-    // still be the card's.
-    assert.ok(/\.arrow\s*\{[^}]*pointer-events:\s*none/.test(CSS))
+  test('NO PER-MODULE ACCENT — not on the definitions, not on the card', () => {
+    assert.equal(/\baccent\b/.test(stripJs(PAGE)), false,
+      'the module definitions carry no accent colour')
+    assert.equal(/style=\{/.test(stripJs(CARD)), false,
+      'the card sets no inline style: every state lives in the stylesheet')
+    assert.equal(/--module-accent/.test(CSS), false, 'and the stylesheet reads none')
+    assert.equal(CSS.includes('!important'), false,
+      'with no inline style to beat, nothing needs !important')
   })
 
-  test('IT IS NOT DRAWN IN EDIT MODE, where the handle takes that corner', () => {
-    assert.ok(CARD.includes('{!editing && ('),
-      'a card that does not navigate shows no navigation cue')
-    // On a phone both live in the top-right. Only one is ever rendered.
+  test('the card keeps no hover flag in React — :hover does that job', () => {
+    assert.equal(/useState\(/.test(CARD), false)
+    assert.equal(/onMouseEnter|onMouseLeave/.test(CARD), false)
+  })
+
+  test('HOVER AND FOCUS ARE ONE LANGUAGE, so a keyboard is not second class', () => {
+    assert.ok(/\.card:hover,\s*\.card:focus-visible\s*\{/.test(CSS),
+      'the tile fill answers both')
+    assert.ok(/\.card:hover \.iconBox,\s*\.card:focus-visible \.iconBox\s*\{/.test(CSS),
+      'and so does the ink icon')
+    assert.ok(/\.card:focus-visible\s*\{[^}]*box-shadow:\s*0 0 0 2px/.test(CSS),
+      'focus adds a ring on top, so it can never be mistaken for a stray pointer')
+    assert.ok(/\.card:active\s*\{/.test(CSS), 'and pressing has its own state')
+  })
+
+  test('the drag handle is still absolutely positioned, so it costs no layout', () => {
     assert.ok(/\.dragHandle\s*\{[^}]*position:\s*absolute/.test(CSS))
-  })
-
-  test('it answers FOCUS as well as hover, so a keyboard is not second class', () => {
-    assert.ok(/\.card:hover \.arrow,\s*\.card:focus-visible \.arrow/.test(CSS),
-      'hover and focus-visible share one rule — hover is never on its own')
-    assert.ok(/\.card:hover::before,\s*\.card:focus-visible::before/.test(CSS),
-      'and so does the accent stripe')
   })
 })
 
 // ── The responsive contract ──────────────────────────────────────────────────
-describe('the grid steps down by column, and never overflows', () => {
-  test('4 / 3 / 2 columns at 1920 / 1440 / 1024, DECLARED rather than inferred', () => {
-    // WHY NOT auto-fill. The sidebar takes 260px and the page body 22px of
-    // gutter each side, so 1920 leaves 1616px of grid — room for six 232px
-    // tracks when the approved design is four. A minimum track width cannot say
-    // "four, however wide the screen gets", so the steps are declared.
-    assert.equal(/auto-fill|auto-fit/.test(stripCss(CSS)), false,
-      'a minimum card width cannot express a fixed column count at 1920')
-    assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, 1fr\)/)
-
-    // Each step, and the viewport it starts at.
-    for (const [query, columns] of [['1200px', 3], ['1600px', 4]] as const) {
-      const at = CSS.indexOf(`@media (min-width: ${query})`)
+describe('the launcher sizes itself from the width it actually has', () => {
+  test('COLUMNS COME FROM A CONTAINER QUERY, not the viewport', () => {
+    // The grid's width is the window minus a 260px sidebar and the gutters. A
+    // container query measures that number directly instead of re-deriving it.
+    assert.ok(/\.launcher\s*\{[^}]*container-type:\s*inline-size/.test(CSS))
+    assert.equal(/@media \(min-width/.test(CSS), false,
+      'no viewport min-width step is left to disagree with the container')
+    assert.match(baseRule('.grid'), /--cols:\s*2;/)
+    for (const [query, columns] of [['600px', 3], ['920px', 4], ['1360px', 5]] as const) {
+      const at = CSS.indexOf(`@container (min-width: ${query})`)
       assert.notEqual(at, -1, `the ${columns}-column step must exist`)
-      assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid {', at))),
-        new RegExp(`grid-template-columns:\\s*repeat\\(${columns}, 1fr\\)`))
+      assert.match(CSS.slice(at, CSS.indexOf('}', at)), new RegExp(`--cols:\\s*${columns};`))
     }
   })
 
-  test('a card never becomes an oversized box at the widest step', () => {
-    // 1920 minus the 260px sidebar and 44px of gutter is 1616px of grid; four
-    // columns and three 14px gaps make each card (1616 - 42) / 4 = 393px. The
-    // test is the arithmetic, so a future column change has to re-do it: a
-    // 6-column 1920 would give 254px cards, and a 2-column one 787px.
-    const CONTENT_AT_1920 = 1920 - 260 - 44
-    const GAP = 14
-    const card = (CONTENT_AT_1920 - GAP * 3) / 4
-    assert.ok(card > 300 && card < 420,
-      `four columns at 1920 give a ${Math.round(card)}px card, which is not the approved proportion`)
+  test('a tile is a sensible width at 1920, 1366 and 1024', () => {
+    // The arithmetic the steps are built on, so a future change has to re-do
+    // it. Content width = window - 260px sidebar - 44px gutters; the panel
+    // spends 2px of border, 2 x 8px of inset (10px at five columns) and 4px
+    // between tiles.
+    const tile = (window: number, cols: number, pad: number) =>
+      (window - 260 - 44 - 2 - 2 * pad - (cols - 1) * 4) / cols
+    for (const [window, cols, pad] of [[1920, 5, 10], [1366, 4, 8], [1024, 3, 8]] as const) {
+      const w = tile(window, cols, pad)
+      assert.ok(w > 220 && w < 340,
+        `${cols} columns at ${window} give a ${Math.round(w)}px tile — too cramped or too empty`)
+    }
+  })
+
+  test('A PANEL IS AS WIDE AS ITS TILES when somebody has only a few modules', () => {
+    // Two modules must not sit at one end of a full-width white bar. The grid
+    // counts its own children, so the page passes nothing in.
+    for (let n = 1; n <= 4; n++) {
+      assert.ok(CSS.includes(`.grid:has(> :last-child:nth-child(${n})) { --n: ${n}; }`),
+        `a launcher with ${n} module${n === 1 ? '' : 's'} is sized to fit`)
+    }
+    assert.match(baseRule('.grid'), /width:\s*min\(100%,/,
+      'and with a full row it is never wider than its container')
   })
 
   test('a phone gets TWO columns, and one only when two cannot be read', () => {
-    const phone = CSS.slice(CSS.indexOf('@media (max-width: 639px)'))
-    assert.ok(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, 1fr\)/.test(phone),
+    const phone = CSS.slice(CSS.indexOf('@media (max-width: 767px)'))
+    assert.ok(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/.test(phone),
       'two-up at ordinary phone widths — 430, 390 and 360 all land here')
+    assert.ok(/\.grid\s*\{[^}]*width:\s*auto/.test(phone),
+      'and the phone grid spans the page, whatever the module count')
     const narrow = CSS.indexOf('@media (max-width: 339px)')
     assert.notEqual(narrow, -1, 'and a single column below 340px')
-    assert.ok(/grid-template-columns:\s*1fr/.test(CSS.slice(narrow)))
+    assert.ok(/grid-template-columns:\s*minmax\(0, 1fr\)/.test(CSS.slice(narrow)))
   })
 
   test('nothing can push a card wider than its column', () => {
@@ -596,8 +624,14 @@ describe('the redesign did not unwire the launcher', () => {
   })
 
   test('reorder mode is visibly different without a second card component', () => {
-    assert.ok(/\.cardEditing\s*\{[^}]*border-style:\s*dashed/.test(CSS),
-      'a dashed border says "you are rearranging" — one class, one card')
+    // A dashed edge says "you are rearranging": on the panel on a desktop, and
+    // on each card on a phone, where the panel has stepped aside.
+    assert.ok(/\.gridEditing\s*\{[^}]*border-style:\s*dashed/.test(CSS),
+      'the desktop panel turns dashed')
+    assert.ok(PAGE.includes('styles.gridEditing'), 'while editing, and only then')
+    const phone = CSS.slice(CSS.lastIndexOf('@media (max-width: 767px)'))
+    assert.ok(/\.cardEditing\s*\{[^}]*border-style:\s*dashed/.test(phone),
+      'and each phone card does')
     assert.equal(CSS.includes('.cardReorder'), false,
       'and no parallel card style was introduced to maintain alongside .card')
   })
@@ -614,18 +648,17 @@ describe('this page has no dark variant, and adds none', () => {
     assert.equal(/data-theme/.test(stripCss(CSS)), false)
   })
 
-  test('the card surface is white and its border is the neutral grey', () => {
-    assert.ok(/\.card\s*\{[^}]*background:\s*#fff/i.test(CSS))
-    assert.ok(PAGE.includes("'#E4E7EC'"),
-      'the resting border is the approved neutral, set inline beside the accent')
+  test('the launcher surface is white and its border is the neutral grey', () => {
+    assert.match(baseRule('.grid'), /background:\s*#fff/i)
+    assert.match(baseRule('.grid'), /border:\s*1px solid #E4E7EC/i)
   })
 
   test('reduced motion drops the movement and keeps the meaning', () => {
     const rm = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion: reduce)'))
     assert.notEqual(rm, '', 'the block must exist')
     assert.ok(/transition:\s*none/.test(rm), 'nothing eases')
-    assert.ok(/transform:\s*none\s*!important/.test(rm),
-      'and the 2px lift — which is motion and nothing else — is dropped outright')
+    assert.ok(/\.card:active \.iconBox\s*\{\s*transform:\s*none/.test(rm),
+      'and the pressed icon does not settle — that is motion and nothing else')
   })
 })
 

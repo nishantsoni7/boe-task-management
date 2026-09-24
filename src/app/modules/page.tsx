@@ -67,7 +67,6 @@ type ModuleDef = {
   title: string
   description: string
   href: string
-  accent: string
   icon: React.ReactNode
   // undefined = not resolved YET → the footer line stays empty, because the
   //             card is now shown before its count has arrived and printing
@@ -399,7 +398,6 @@ export default function BoeOsHomePage() {
       ? 'Import attendance, review the month, run payroll, and manage salary settings.'
       : 'View your own attendance, payslips, and the issues you have raised.',
     href: attendancePayrollHref,
-    accent: '#0F766E',
     icon: <CalIcon />,
     // The two experiences are told apart by the description above and by where
     // the card goes, not by a pill. This is still the one card whose visibility
@@ -410,7 +408,7 @@ export default function BoeOsHomePage() {
   // THE CANONICAL ORDER, and the complete answer to "what may this person open".
   //
   // Renamed from `modules` when the personal order arrived, and that is the only
-  // change to it: every gate, destination, description, accent, icon and count
+  // change to it: every gate, destination, description, icon and count
   // below is exactly what it was. This array is the application's DEFAULT order
   // and the fallback for everybody who has saved nothing, so nothing sorts,
   // splices or otherwise mutates it — `visibleModuleOrder` returns a new array.
@@ -420,7 +418,6 @@ export default function BoeOsHomePage() {
       title: 'Task Management',
       description: 'Create, assign, and track tasks across your team.',
       href: '/dashboard',
-      accent: '#1A2035',
       icon: <TaskIcon />,
       notificationCount: taskCount.count,
     }] : []),
@@ -429,7 +426,6 @@ export default function BoeOsHomePage() {
       title: 'Sample Tracking',
       description: 'Request sample catalogs, track dispatch and returns, follow up on overdue items.',
       href: '/samples',
-      accent: '#B45309',
       icon: <BoxIcon />,
       notificationCount: counts.sample,
     }] : []),
@@ -439,7 +435,6 @@ export default function BoeOsHomePage() {
       title: 'Showroom QR',
       description: 'QR-based showroom inquiries and quotations.',
       href: '/showroom-admin',
-      accent: '#7C3AED',
       icon: <ShowroomIcon />,
       notificationCount: null,
     }] : []),
@@ -448,7 +443,6 @@ export default function BoeOsHomePage() {
       title: 'Assets & Access',
       description: 'View your assigned devices and access records, or manage the company inventory.',
       href: '/assets-access',
-      accent: '#4B5563',
       icon: <AssetIcon />,
       notificationCount: null,
     }] : []),
@@ -459,7 +453,6 @@ export default function BoeOsHomePage() {
       // Straight to where employee administration now lives. /admin/members
       // still works and redirects here; the card skips the hop.
       href: '/admin/control-center/people',
-      accent: '#1E40AF',
       icon: <MembersIcon />,
       notificationCount: null,
     }] : []),
@@ -472,7 +465,6 @@ export default function BoeOsHomePage() {
       title: 'Performance Management',
       description: 'Review personal performance, EOD discipline, team execution, and employees requiring attention.',
       href: performanceHref,
-      accent: '#0369A1',
       icon: <PerformanceIcon />,
       notificationCount: null,
     }] : []),
@@ -481,7 +473,6 @@ export default function BoeOsHomePage() {
       title: 'Finance',
       description: 'Payment confirmations, order advances, and finance approvals.',
       href: '/finance',
-      accent: '#065F46',
       icon: <FinanceIcon />,
       notificationCount: financeCount.count,
     }] : []),
@@ -490,7 +481,6 @@ export default function BoeOsHomePage() {
       title: 'Meetings',
       description: 'Run New Order and Repair Order reviews, record SKU updates, and track follow-ups.',
       href: '/meetings',
-      accent: '#7C2D12',
       icon: <MeetingsIcon />,
       notificationCount: null,
     }] : []),
@@ -499,7 +489,6 @@ export default function BoeOsHomePage() {
       title: 'Review Workflow',
       description: 'Draft reviews for customers to use. The candidate chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
       href: '/customer-reviews',
-      accent: '#0E7490',
       icon: <ReviewOutreachIcon />,
       notificationCount: null,
     }] : []),
@@ -508,7 +497,6 @@ export default function BoeOsHomePage() {
       title: 'Order Management',
       description: 'Track confirmed orders from request through production and dispatch.',
       href: '/orders',
-      accent: '#DC1F2E',
       icon: <OrdersIcon />,
       notificationCount: orderCount.count,
     }] : []),
@@ -520,7 +508,6 @@ export default function BoeOsHomePage() {
       // would drift from what Control Center shows an administrator.
       description: 'Turn factory furniture photographs into catalogue studio images.',
       href: '/image-editor',
-      accent: '#BE185D',
       icon: <ImageIcon size={26} strokeWidth={1.8} />,
       // A generated master is stored for its owner alone, and nothing about a
       // private seven-day history is a company-wide count worth badging.
@@ -531,7 +518,6 @@ export default function BoeOsHomePage() {
       title: 'Admin Control Center',
       description: 'Control modules, departments, and user department access.',
       href: '/admin/control-center',
-      accent: '#6B21A8',
       icon: <ControlCenterIcon />,
       notificationCount: null,
     }] : []),
@@ -734,34 +720,43 @@ export default function BoeOsHomePage() {
               no heading block, no divider and no reserved space left behind —
               the header's own bottom border is the only rule on the screen.
 
-              Responsive app-launcher grid. Unchanged at every breakpoint: edit
-              mode adds a handle in each card's top-right corner, which is
-              absolutely positioned and so costs the card no layout. */}
-          <div className={styles.grid}>
-            {modules.map((mod, index) => (
-              <ModuleCard
-                key={mod.key}
-                mod={mod}
-                // NO NAVIGATION WHILE REARRANGING. Passing null rather than a
-                // handler that checks a flag: in edit mode the card is not a
-                // button, has no tabIndex and has no click handler to fire, so
-                // there is nothing for a stray tap at the end of a drag to
-                // trigger.
-                onClick={editingOrder ? null : () => router.push(mod.href)}
-                dragging={orderEdit.dragging === mod.key}
-                handle={editingOrder ? (
-                  <ModuleDragHandle
-                    moduleKey={mod.key}
-                    title={mod.title}
-                    position={index + 1}
-                    total={modules.length}
-                    disabled={orderEdit.saving}
-                    onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
-                    onPointerDown={beginPointerDrag}
-                  />
-                ) : null}
-              />
-            ))}
+              ONE LAUNCHER PANEL, NOT THIRTEEN CARDS. On a desktop the grid is a
+              single white surface and each module is a compact tile inside it,
+              so the page reads as one finished object rather than a field of
+              identical boxes. `.launcher` is the size container the column
+              count is measured against — the width the grid actually gets
+              after the sidebar, not the window. Below 768px the panel steps
+              aside and each tile is its own centred card again.
+
+              Edit mode adds a handle to every tile, absolutely positioned so it
+              costs the tile no layout, and marks the panel as being arranged. */}
+          <div className={styles.launcher}>
+            <div className={`${styles.grid}${editingOrder ? ` ${styles.gridEditing}` : ''}`}>
+              {modules.map((mod, index) => (
+                <ModuleCard
+                  key={mod.key}
+                  mod={mod}
+                  // NO NAVIGATION WHILE REARRANGING. Passing null rather than a
+                  // handler that checks a flag: in edit mode the card is not a
+                  // button, has no tabIndex and has no click handler to fire, so
+                  // there is nothing for a stray tap at the end of a drag to
+                  // trigger.
+                  onClick={editingOrder ? null : () => router.push(mod.href)}
+                  dragging={orderEdit.dragging === mod.key}
+                  handle={editingOrder ? (
+                    <ModuleDragHandle
+                      moduleKey={mod.key}
+                      title={mod.title}
+                      position={index + 1}
+                      total={modules.length}
+                      disabled={orderEdit.saving}
+                      onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
+                      onPointerDown={beginPointerDrag}
+                    />
+                  ) : null}
+                />
+              ))}
+            </div>
           </div>
 
           {/* The save confirmation. The launcher's existing toast, in the place
@@ -783,6 +778,13 @@ export default function BoeOsHomePage() {
 // link, and the surest way to stop a drag ending in a navigation is for there to
 // be no handler to fire and nothing focusable to press Enter on. The handle
 // becomes the card's only control.
+//
+// NOTHING ON IT IS INLINE ANY MORE. The border, shadow, lift and icon tint used
+// to be style attributes because each depended on the module's own accent
+// colour, which forced `!important` onto the focus state and a hover flag into
+// React state. Every card now shares one neutral palette, so every state —
+// rest, hover, focus, pressed, editing, held — is a stylesheet rule, and
+// :hover, :focus-visible and :active behave identically on every card.
 function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
   mod: ModuleDef
   /** null in edit mode: the card does not navigate. */
@@ -792,8 +794,6 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
   /** The drag handle, in edit mode only. */
   handle?: React.ReactNode
 }) {
-  const [hovered, setHovered] = useState(false)
-
   const hasNotif = (mod.notificationCount ?? 0) > 0
   const count    = mod.notificationCount
   const editing  = onClick === null
@@ -803,44 +803,13 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
   // Enter — so a drag has nothing to end in. See moduleCardPressProps.
   const press = moduleCardPressProps(onClick)
 
-  // Hover is a promise that a click will do something, so a card that no longer
-  // navigates does not make it. The card in hand gets the accent border and the
-  // elevation instead — set here rather than in CSS because `.card`'s border,
-  // shadow and transform are inline (they depend on the accent) and an inline
-  // style always wins over a class rule.
-  //
-  // FOCUS IS NOT HOVER, and this is the one thing the inline styles cannot do:
-  // `:focus-visible` has no inline form, so the accent border, the lift and the
-  // shadow for a keyboard user are set by the stylesheet with `!important` —
-  // the one place in this file that needs it, and only because the resting
-  // values it overrides are themselves inline. The accent stripe and the arrow
-  // are pure CSS and respond to hover and focus identically.
-  const lifted = dragging || (hovered && !editing)
-
   return (
     <div
       // What the pointer drag hit-tests against. The only thing on the card that
       // names the module, and read by nothing else.
       data-module-key={mod.key}
       {...press}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       className={`${styles.card}${editing ? ` ${styles.cardEditing}` : ''}${dragging ? ` ${styles.cardDragging}` : ''}`}
-      style={{
-        border: `1px solid ${lifted ? mod.accent : '#E4E7EC'}`,
-        boxShadow: dragging
-          ? '0 10px 24px rgba(20,25,34,0.12), 0 2px 6px rgba(20,25,34,0.07)'
-          : lifted
-            ? '0 6px 16px rgba(20,25,34,0.08), 0 1px 3px rgba(20,25,34,0.05)'
-            : '0 1px 2px rgba(20,25,34,0.04)',
-        transform: lifted ? 'translateY(-2px)' : 'none',
-        // The accent the left-edge stripe and the arrow read. A custom property
-        // rather than a second inline rule, because neither of them is an
-        // element this component renders a style attribute onto: the stripe is
-        // `.card::before` and the arrow only takes the colour once the card is
-        // hovered or focused. Same bridge the showroom product form uses.
-        '--module-accent': mod.accent,
-      } as React.CSSProperties & Record<'--module-accent', string>}
     >
       {handle}
 
@@ -849,14 +818,7 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
           rides with the icon at every width — including the phone layout, where
           the icon centres itself and takes the badge with it. */}
       <div className={styles.iconWrap}>
-        <div
-          className={styles.iconBox}
-          style={{
-            background: lifted ? `${mod.accent}1F` : `${mod.accent}14`,
-            border: `1px solid ${mod.accent}24`,
-            color: mod.accent,
-          }}
-        >
+        <div className={styles.iconBox}>
           {mod.icon}
         </div>
         {hasNotif && (
@@ -866,40 +828,17 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
         )}
       </div>
 
-      {/* ── Name ── */}
+      {/* ── Name ──
+          The last thing on the card. THERE IS NO ARROW: the diagonal mark that
+          sat in every card's corner was thirteen copies of one faint glyph
+          saying what the whole page already says. What tells somebody a card
+          is the one they are about to open is its state — the fill and the ink
+          icon on hover, focus and press — and that costs the name no width. */}
       <div className={styles.titleWrap}>
         <div className={styles.title}>
           {mod.title}
         </div>
       </div>
-
-      {/* ── The navigation cue ──
-          A DECORATION, NOT A CONTROL. The whole card is the button; this arrow
-          is `aria-hidden` and is not focusable, so it adds nothing to the tab
-          order and a screen reader still hears exactly one button named after
-          the module. It says "this goes somewhere" without spending a word on
-          "Open", which is what every card on a launcher does.
-
-          It is NOT RENDERED IN EDIT MODE: the card does not navigate then, and
-          the drag handle occupies the same corner on a phone. */}
-      {!editing && (
-        <svg
-          className={styles.arrow}
-          aria-hidden="true"
-          focusable="false"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M7 17 17 7" />
-          <path d="M8 7h9v9" />
-        </svg>
-      )}
     </div>
   )
 }
