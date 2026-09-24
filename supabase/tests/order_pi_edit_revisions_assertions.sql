@@ -9,13 +9,14 @@
 --                 Order are byte-for-byte unchanged; an outsider is refused; a
 --                 second open revision is refused
 --   3. drafts     order_pi_edit_drafts is private to its author
---   4. authorize  an Admin stages V2; still nothing current moves
---   5. accept     the Operations reviewer accepts: V2 is current, V1 superseded
---                 and still readable in full, the edited product lines and the
---                 edited TERMS are in force, the payment allocation untouched
---   6. money      a V3 that changes the price meets #205's amendment gate at
---                 acceptance and, rejected by Operations, changes nothing
---   7. reject     a V4 rejected by the Admin changes nothing; history keeps all
+--   4-5. approve an Admin's approval puts V2 in force at once (20270104000000):
+--                 V1 superseded and still readable in full, the edited product
+--                 lines and the edited TERMS in force, the operations handoff
+--                 recorded and awaiting, the payment allocation untouched
+--   6. money      a V3 that changes the price is in force on approval and the
+--                 Order's value is amended to it in the same step; a V4 that
+--                 adds a product likewise
+--   7. reject     a V5 rejected by the Admin changes nothing; history keeps all
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- PREREQUISITES: as order_submission_numbering_at_conversion_assertions.sql
@@ -274,7 +275,7 @@ begin
 end $$;
 
 
--- ═══ 4 + 5. AUTHORIZE, THEN ACCEPT ══════════════════════════════════════════
+-- ═══ 4 + 5. AN ADMIN'S APPROVAL PUTS IT IN FORCE ═══════════════════════════
 
 do $$
 declare
@@ -283,24 +284,16 @@ declare
   v_v2    uuid := current_setting('test.v2')::uuid;
   v_admin uuid := current_setting('test.admin_id')::uuid;
   v_ops   uuid := current_setting('test.ops_id')::uuid;
-  v_fp    text := pg_temp.fingerprint(v_sub);
   v_v1    uuid;
   v_det   jsonb;
   v_res   jsonb;
 begin
   select id into v_v1 from public.order_pi_versions where order_id = v_order and version_number = 1;
 
-  -- 4. The Admin authorizes it with its stored proposal (what the approve route sends).
+  -- The Admin approves it with its stored proposal (what the approve route sends).
   v_res := public.approve_order_pi_revision(v_v2, v_admin,
     (select proposal -> 'payload' from public.order_pi_versions where id = v_v2));
-  assert v_res ->> 'status' = 'admin_approved';
-  assert pg_temp.fingerprint(v_sub) = v_fp, 'authorizing moves nothing current';
-  assert (select status from public.order_pi_versions where id = v_v1) = 'approved', 'V1 is still in force';
-
-  -- 5. The Operations reviewer accepts.
-  perform pg_temp.become(v_ops);
-  v_res := public.decide_order_pi_revision_operations(v_v2, 'accepted', null);
-  perform pg_temp.restore();
+  assert v_res ->> 'status' = 'approved', 'approval puts V2 in force: ' || v_res::text;
 
   assert (select status from public.order_pi_versions where id = v_v2) = 'approved', 'V2 is current';
   assert (select status from public.order_pi_versions where id = v_v1) = 'superseded', 'V1 is kept as history';
@@ -313,6 +306,8 @@ begin
                   join public.order_submission_items i on i.id = m.item_id
                  where i.submission_id = v_sub and i.product_name = 'ASSERT lounge chair, walnut' and m.role = 'representative'),
     'the kept photo stays with its line';
+  assert (select status = 'awaiting' and assigned_to = v_ops from public.order_operations_handoffs where pi_version_id = v_v2),
+    'Operations is sent V2 for review — after it is in force, not before';
 
   -- V1 can still be read in full.
   perform pg_temp.become(v_admin);
@@ -332,77 +327,47 @@ begin
            where payment_request_id = current_setting('test.pay')::uuid and order_id = v_order and status = 'active') = 1,
     'the allocation is on the Order, once';
 
-  raise notice '4-5. authorize, accept, V1 kept in full OK';
+  raise notice '4-5. an admin approval puts V2 in force; V1 kept in full OK';
 end $$;
 
 
--- ═══ 6. A PRICE CHANGE MEETS #205's AMENDMENT GATE ══════════════════════════
+-- ═══ 6. A PRICE CHANGE AMENDS THE ORDER IN THE SAME STEP ════════════════════
 
 do $$
 declare
-  v_sub   uuid := current_setting('test.sub')::uuid;
-  v_order uuid := current_setting('test.order')::uuid;
-  v_admin uuid := current_setting('test.admin_id')::uuid;
-  v_sales uuid := current_setting('test.sales_id')::uuid;
-  v_ops   uuid := current_setting('test.ops_id')::uuid;
-  v_v3    uuid;
-  v_fp    text;
-  v_msg   text;
+  v_sub    uuid := current_setting('test.sub')::uuid;
+  v_order  uuid := current_setting('test.order')::uuid;
+  v_admin  uuid := current_setting('test.admin_id')::uuid;
+  v_sales  uuid := current_setting('test.sales_id')::uuid;
+  v_v3     uuid;
+  v_v4     uuid;
+  v_prop   jsonb := pg_temp.proposal(current_setting('test.sub')::uuid, 'ASSERT lounge chair, walnut', 12000, false, 'boe', null);
+  v_total  numeric;
+  v_before numeric := (select total_value from public.orders where id = current_setting('test.order')::uuid);
 begin
-  v_v3 := (public.propose_order_pi_edit_revision(v_order, v_sales,
-    pg_temp.proposal(v_sub, 'ASSERT lounge chair, walnut', 12000, false, 'boe', null), 'ASSERT price rise') ->> 'version_id')::uuid;
+  v_total := (v_prop #>> '{payload,commercial,grand_total}')::numeric;
+  v_v3 := (public.propose_order_pi_edit_revision(v_order, v_sales, v_prop, 'ASSERT price rise') ->> 'version_id')::uuid;
   perform set_config('request.jwt.claims', '', true);
   perform public.approve_order_pi_revision(v_v3, v_admin, (select proposal -> 'payload' from public.order_pi_versions where id = v_v3));
-  v_fp := pg_temp.fingerprint(v_sub);
+  assert (select status from public.order_pi_versions where id = v_v3) = 'approved', 'V3 is current';
+  assert (select total_value from public.orders where id = v_order) = v_total, 'the Order value is V3''s';
+  assert exists (select 1 from public.order_activity_log where order_id = v_order and event_type = 'order_amended'
+                   and actor_id = v_admin and payload ->> 'source' = 'pi_revision'
+                   and (payload #>> '{changes,total_value,from}')::numeric = v_before
+                   and (payload #>> '{changes,total_value,to}')::numeric = v_total),
+    'recorded as an amendment, old → new, by the approving admin';
 
-  perform pg_temp.become(v_ops);
-  v_msg := pg_temp.fails_with(format('select public.decide_order_pi_revision_operations(%L, %L, null)', v_v3, 'accepted'));
-  perform pg_temp.restore();
-  assert v_msg like 'ORDER_PI_REVISION_AMENDMENT_REQUIRED%', 'a changed Order value must be amended first: ' || v_msg;
-  assert pg_temp.fingerprint(v_sub) = v_fp, 'a refused acceptance moves nothing';
-
-  perform pg_temp.become(v_ops);
-  perform public.decide_order_pi_revision_operations(v_v3, 'rejected', 'ASSERT not agreed with the client');
-  perform pg_temp.restore();
-  assert (select status from public.order_pi_versions where id = v_v3) = 'rejected';
-  assert (select version_number from public.order_pi_versions where order_id = v_order and status = 'approved') = 2,
-    'V2 is still current';
-  assert pg_temp.fingerprint(v_sub) = v_fp;
-  raise notice '6. a price change meets the amendment gate and a rejection changes nothing OK';
-end $$;
-
-
--- ═══ 6b. AN ADDED, PRICED PRODUCT GOES THROUGH ONCE THE ORDER IS AMENDED ════
-
-do $$
-declare
-  v_sub   uuid := current_setting('test.sub')::uuid;
-  v_order uuid := current_setting('test.order')::uuid;
-  v_admin uuid := current_setting('test.admin_id')::uuid;
-  v_sales uuid := current_setting('test.sales_id')::uuid;
-  v_ops   uuid := current_setting('test.ops_id')::uuid;
-  v_v4    uuid;
-  v_prop  jsonb := pg_temp.proposal(v_sub, 'ASSERT lounge chair, walnut', 12000, true, 'boe', '30% advance, 70% before dispatch');
-  v_total numeric := (v_prop #>> '{payload,commercial,grand_total}')::numeric;
-begin
-  v_v4 := (public.propose_order_pi_edit_revision(v_order, v_sales, v_prop, 'ASSERT dearer chair and a side table') ->> 'version_id')::uuid;
+  v_prop := pg_temp.proposal(v_sub, 'ASSERT lounge chair, walnut', 12000, true, 'boe', '30% advance, 70% before dispatch');
+  v_total := (v_prop #>> '{payload,commercial,grand_total}')::numeric;
+  v_v4 := (public.propose_order_pi_edit_revision(v_order, v_sales, v_prop, 'ASSERT and a side table') ->> 'version_id')::uuid;
   perform set_config('request.jwt.claims', '', true);
   perform public.approve_order_pi_revision(v_v4, v_admin, (select proposal -> 'payload' from public.order_pi_versions where id = v_v4));
-
-  -- #205's reconciliation path: the Admin amends the Order to the new value.
-  perform pg_temp.become(v_admin);
-  perform public.amend_order(v_order, 'ASSERT client agreed the revised value', null, v_total, v_total);
-  perform pg_temp.restore();
-
-  perform pg_temp.become(v_ops);
-  perform public.decide_order_pi_revision_operations(v_v4, 'accepted', null);
-  perform pg_temp.restore();
   assert (select status from public.order_pi_versions where id = v_v4) = 'approved', 'V4 is current';
   assert (select array_agg(product_name order by sort_order) from public.order_submission_items where submission_id = v_sub)
        = array['ASSERT lounge chair, walnut', 'ASSERT side table'], 'the added product is in force';
   assert (select grand_total from public.order_submissions where id = v_sub) = v_total, 'at the server-priced total';
   assert (select total_value from public.orders where id = v_order) = v_total, 'and the Order agrees';
-  raise notice '6b. an added product goes through once the Order is amended OK';
+  raise notice '6. price changes amend the Order in the same step OK';
 end $$;
 
 
@@ -414,19 +379,19 @@ declare
   v_order uuid := current_setting('test.order')::uuid;
   v_admin uuid := current_setting('test.admin_id')::uuid;
   v_sales uuid := current_setting('test.sales_id')::uuid;
-  v_v4    uuid;
-  v_fp    text := pg_temp.fingerprint(v_sub);
+  v_v5    uuid;
+  v_fp    text := pg_temp.fingerprint(current_setting('test.sub')::uuid);
 begin
-  v_v4 := (public.propose_order_pi_edit_revision(v_order, v_sales,
+  v_v5 := (public.propose_order_pi_edit_revision(v_order, v_sales,
     pg_temp.proposal(v_sub, 'ASSERT renamed again', 12000, false, 'not_selected', null), 'ASSERT another idea') ->> 'version_id')::uuid;
   perform set_config('request.jwt.claims', '', true);
   perform pg_temp.become(v_admin);
-  perform public.reject_order_pi_revision(v_v4, 'ASSERT keep V2');
+  perform public.reject_order_pi_revision(v_v5, 'ASSERT keep V4');
   perform pg_temp.restore();
-  assert (select status from public.order_pi_versions where id = v_v4) = 'rejected';
+  assert (select status from public.order_pi_versions where id = v_v5) = 'rejected';
   assert pg_temp.fingerprint(v_sub) = v_fp, 'a rejected revision changes nothing';
   assert (select array_agg(status order by version_number) from public.order_pi_versions where order_id = v_order)
-       = array['superseded', 'superseded', 'rejected', 'approved', 'rejected'], 'V1…V5 all remain in history';
+       = array['superseded', 'superseded', 'superseded', 'approved', 'rejected'], 'V1…V5 all remain in history';
   raise notice '7. rejection changes nothing, history keeps all OK';
 end $$;
 

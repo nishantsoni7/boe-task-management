@@ -21,6 +21,7 @@ import {
   normalizeProposal,
   parseAmount,
   priceEdit,
+  retiredSequenceProblems,
   summarizeChanges,
   validateEdit,
   type PiContent,
@@ -227,5 +228,48 @@ describe('the comparison an Admin reads', () => {
     // The summary STORED with a proposal is written in rupees, as screens show them.
     const stored = summarizeChanges(diff)
     assert.ok(stored.some(l => /^Grand total −₹\d{1,3}(,\d{2})*(,\d{3})?$/.test(l)), stored.join(' | '))
+  })
+})
+
+describe('an item number once used on an Order is never handed out again (20270104000000)', () => {
+  // V1 had B001 B002 B003; V2 removed B003. The Order remembers all three.
+  const everUsed = ['B001', 'B002', 'B003']
+
+  test('an added line skips every number the Order ever used, not only the current ones', () => {
+    const s = initialEditState(current())
+    s.items.push({ ...newEditItem('new-1'), product_name: 'Side table', quantity: '1', cost_per_piece: '5000' })
+    const content = current()
+    const p = buildEditProposal({
+      current: content, state: s, priced: priceEdit(content, s), baseVersionId: 'v2',
+      newId: () => 'eeeeeeee-eeee-4eee-8eee-000000000001', fingerprint: json => `fp-${json.length}`,
+      retiredSequences: everUsed,
+    })
+    const items = p.payload.items as { item_sequence: string; product_name: string }[]
+    assert.equal(items[2].item_sequence, 'B004', 'not B003, which a removed product held')
+  })
+
+  test('typing a removed product\'s number on an added line is refused while editing', () => {
+    const s = initialEditState(current())
+    s.items.push({ ...newEditItem('new-1'), item_sequence: 'b003', product_name: 'Lamp', quantity: '1', cost_per_piece: '4000' })
+    const problems = retiredSequenceProblems(s, current(), everUsed)
+    assert.equal(problems.length, 1)
+    assert.match(problems[0].message, /already belonged to another product/)
+  })
+
+  test('a continuing line keeps its own number — renamed or not — but cannot take another\'s', () => {
+    const s = initialEditState(current())
+    s.items[0].product_name = 'Lounge chair, renamed'
+    assert.deepEqual(retiredSequenceProblems(s, current(), everUsed), [], 'B001 stays with its own line')
+    s.items[0].item_sequence = 'B002'
+    assert.equal(retiredSequenceProblems(s, current(), everUsed).length, 1, 'but may not move to B002')
+    s.items[0].item_sequence = 'B009'
+    assert.deepEqual(retiredSequenceProblems(s, current(), everUsed), [], 'a never-used number is fine')
+  })
+
+  test('a removed line is not checked, and a blank number is left to the server to fill', () => {
+    const s = initialEditState(current())
+    s.items[1].removed = true
+    s.items.push({ ...newEditItem('new-1'), product_name: 'Lamp', quantity: '1', cost_per_piece: '4000' })
+    assert.deepEqual(retiredSequenceProblems(s, current(), everUsed), [])
   })
 })

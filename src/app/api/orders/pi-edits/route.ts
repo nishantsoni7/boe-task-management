@@ -7,8 +7,8 @@
 //
 //   mode 'propose'  the PI is approved and in force on an Order. Nothing
 //                   current changes: a PENDING version is recorded
-//                   (propose_order_pi_edit_revision), to be authorized by an
-//                   Admin and accepted by Operations (20270101000000).
+//                   (propose_order_pi_edit_revision); an Admin's approval puts
+//                   it in force and amends the Order (20270104000000).
 //   mode 'apply'    the PI has not become an Order (draft, returned, or — for
 //                   an admin, with a reason — under review). The edit is
 //                   written through the same parse writer a workbook upload
@@ -25,6 +25,7 @@ import {
   normalizePi,
   normalizeProposal,
   priceEdit,
+  retiredSequenceProblems,
   validateEdit,
   type PiEditState,
 } from '@/lib/orders/piEdit'
@@ -93,8 +94,15 @@ export async function POST(req: NextRequest) {
     }
     const { data: current } = await service.from('order_pi_versions')
       .select('id').eq('order_id', orderId).eq('status', 'approved').maybeSingle()
+    // Every item number this Order has ever used (20270104000000): an added
+    // line never takes a removed product's number.
+    const everUsed = await service.rpc('order_item_sequences_ever_used', { p_order_id: orderId })
+    if (everUsed.error) return fail(500, 'LOOKUP_FAILED', 'This PI could not be read. Please try again.')
+    const retiredSequences = (everUsed.data ?? []) as string[]
+    const retired = retiredSequenceProblems(edit, content, retiredSequences)
+    if (retired.length > 0) return fail(400, 'SEQUENCE_RETIRED', retired[0].message)
     const proposal = buildEditProposal({
-      current: content, state: edit, priced,
+      current: content, state: edit, priced, retiredSequences,
       baseVersionId: (current as { id?: string } | null)?.id ?? null,
       newId: () => crypto.randomUUID(),
       fingerprint: json => sha256Hex(new TextEncoder().encode(json)),

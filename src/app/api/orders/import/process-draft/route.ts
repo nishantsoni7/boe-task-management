@@ -345,13 +345,13 @@ export async function resolveSalespersonContact(
  * Everything that happens while this request owns the submission.
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
- * STAGES a REVISED PI on an approved Order (20261119000000, staged since
- * 20270101000000). It runs the very same download, parse and image upload —
- * there is one parser path in this product — and differs where
- * `revisionVersionId` is set: step 17 sends the payload to
- * approve_order_pi_revision(), which stores it for the operations acceptance
- * without applying it, and steps 18b and 19 (terms seeding, obsolete-object
- * cleanup) are skipped because the PI in force has not changed.
+ * APPROVES a REVISED PI on an approved Order (20261119000000; in force at
+ * approval again since 20270104000000). It runs the very same download, parse
+ * and image upload — there is one parser path in this product — and differs
+ * where `revisionVersionId` is set: step 17 sends the payload to
+ * approve_order_pi_revision(), which applies it, amends the Order and seeds
+ * the terms in ONE transaction, so step 18b is skipped; step 19 is skipped
+ * because the replaced version's pictures stay readable in its history.
  */
 export async function processUnderLease(ctx: {
   service: ServiceClient
@@ -478,10 +478,9 @@ export async function processUnderLease(ctx: {
   // make an otherwise identical retry look like a change.
   if (changeReason) plan.payload.change_reason = changeReason
 
-  // A REVISION IS STAGED, NOT APPLIED (20270101000000). approve_order_pi_revision
-  // stores this payload and the operations acceptance applies it later, inside
-  // its own transaction — so the terms step 18b would seed after commit travel
-  // WITH the payload and are seeded at acceptance instead.
+  // A REVISION'S TERMS TRAVEL WITH ITS PAYLOAD (20270101000000): the database
+  // seeds them inside the approval's own transaction (20270104000000), so a
+  // failure after commit can never leave the new version without them.
   if (ctx.revisionVersionId) {
     (plan.payload as Record<string, unknown>).seed_terms = {
       fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
@@ -595,7 +594,7 @@ export async function processUnderLease(ctx: {
     // screen as fixed sentences; nothing else about the error does.
     if (ctx.revisionVersionId) {
       const marker = String((rpcErr as { message?: unknown })?.message ?? '')
-        .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+/)?.[0]
+        .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+|ORDER_CLOSED/)?.[0]
       if (marker) {
         await rollbackCreated()
         return fail(409, marker, 'The revised PI was not applied.')
@@ -633,9 +632,8 @@ export async function processUnderLease(ctx: {
   // a re-import.
   const seededCity = cityFromBillingAddress(parsed.data.header.billingAddress)
 
-  // NOT for a revision: its terms travel in the staged payload (above) and are
-  // seeded when operations accepts it — seeding now would change the PI in
-  // force before anybody accepted the revision.
+  // NOT for a revision: its terms travel in the payload (above) and were
+  // seeded by approve_order_pi_revision() in the same transaction.
   if (!ctx.revisionVersionId
       && (parsed.data.piTerms.fabricResponsibility !== null
       || parsed.data.piTerms.commercialTermsNote !== null
@@ -680,9 +678,8 @@ export async function processUnderLease(ctx: {
       ? [priorWorkbook]
       : []
 
-  // NOT for a revision (20270101000000): nothing was replaced — the staged
-  // payload is applied only when operations accepts it, and V1's pictures stay
-  // the pictures in force until then, and in history after.
+  // NOT for a revision: the replaced version's pictures are what its captured
+  // content (order_pi_version_contents) still reads, so they stay.
   if (!ctx.revisionVersionId) {
     await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
   }

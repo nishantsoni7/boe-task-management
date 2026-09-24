@@ -28,6 +28,20 @@
 
 \set ON_ERROR_STOP on
 
+-- SUPERSEDED BY 20270104000000 (#207). The owner's rule is that an Admin's
+-- approval puts a revision in force and amends the Order; the staging and
+-- operations-promotion this suite proves no longer happen once that migration
+-- is applied. On such a database the suite stops here, in words, and
+-- order_pi_revision_in_force_at_admin_approval_assertions.sql is the proof.
+-- Against #205's own head (20270101000000 only) it runs in full, as before.
+select exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'public' and p.proname = 'approve_order_pi_revision'
+                  and p.prosrc like '%apply_order_amendment(%') as superseded_by_20270104 \gset
+\if :superseded_by_20270104
+\echo 'SKIPPED: 20270104000000 is applied — a revision is in force at admin approval. Run order_pi_revision_in_force_at_admin_approval_assertions.sql instead.'
+\quit
+\endif
+
 begin;
 
 do $$

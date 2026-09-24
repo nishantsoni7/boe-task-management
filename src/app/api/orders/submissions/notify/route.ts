@@ -163,11 +163,10 @@ export async function POST(req: NextRequest) {
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
-    // SINCE 20270101000000 AN ADMIN APPROVAL DOES NOT PUT THE REVISION IN FORCE:
-    // it waits for the operations reviewer, who is told by the database. The
-    // message says exactly that, so nobody plans against a PI still pending.
+    // SINCE 20270104000000 AN ADMIN APPROVAL PUTS THE REVISION IN FORCE (and
+    // amends the Order to it); Operations is told by the database to review it.
     const text = event === 'pi_revision_approved'
-      ? `The revised PI for ${clientName} was approved by an admin and now awaits operations acceptance. The current PI stays in force until then.`
+      ? `The revised PI for ${clientName} was approved by an admin and is now the PI in force. Operations has been sent it for review.`
       : `The revised PI for ${clientName} was rejected.`
     push((latest as { uploaded_by?: string | null } | null)?.uploaded_by, text)
     push(owner, text)

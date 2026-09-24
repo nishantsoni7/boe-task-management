@@ -12,11 +12,12 @@ import { processUnderLease } from '@/app/api/orders/import/process-draft/route'
 // actor, finds the pending version, takes the processing lease on the PI, and
 // hands the version id to the ONE parser pipeline (process-draft's
 // processUnderLease), which downloads, parses, uploads the pictures and calls
-// approve_order_pi_revision(). Since 20270101000000 that RPC only STAGES the
-// parse and moves the version to admin_approved: nothing in force changes until
-// the operations reviewer accepts it (decide_order_pi_revision_operations),
-// which applies the parse, supersedes the previous version and approves this
-// one in one transaction.
+// approve_order_pi_revision(). Since 20270104000000 that RPC puts the revision
+// IN FORCE: in one transaction it applies the parse, amends the Order's value
+// and dates through the audited amendment door (old → new, this admin, now),
+// supersedes the previous version, approves this one and records its
+// operations handoff — Operations reviews it for production; its decision
+// does not hold the version back.
 //
 // ACTIVE ADMIN ONLY, re-derived here before a byte is downloaded and again by
 // the RPC under a row lock. The body carries ONE id.
@@ -102,9 +103,8 @@ export async function POST(req: NextRequest) {
 
   // AN EDIT REVISION (20270103000000) has no new workbook to parse: its
   // complete proposed PI was built and priced by the server when it was
-  // proposed, and is staged exactly as a parsed workbook would be. Everything
-  // after this — Operations acceptance, promotion, V1 kept in force until then
-  // — is the same path.
+  // proposed, and is applied exactly as a parsed workbook would be — the same
+  // RPC, the same transaction, the same amendment and handoff.
   if (version.source_kind === 'edit') {
     const proposal = version.proposal as { payload?: Record<string, unknown> } | null
     if (!proposal?.payload) return fail(409, 'ORDER_PI_REVISION_INVALID', 'This revision carries no proposed PI.')
@@ -116,9 +116,13 @@ export async function POST(req: NextRequest) {
       if (/ORDER_PI_REVISION_NOT_PENDING/.test(m)) return fail(409, 'ORDER_PI_REVISION_NOT_PENDING', 'This revision has already been decided.')
       if (/ORDER_PI_REVISION_STALE/.test(m)) return fail(409, 'ORDER_PI_REVISION_STALE', 'A newer PI version is already in force.')
       if (/ORDER_PI_REVISION_ORDER_CLOSED/.test(m)) return fail(409, 'ORDER_PI_REVISION_ORDER_CLOSED', 'This Order is cancelled.')
+      if (/ORDER_CLOSED/.test(m)) return fail(409, 'ORDER_CLOSED', 'This Order is dispatched; its value and dates can no longer be amended, so this revision cannot be approved.')
+      if (/ORDER_PI_REVISION_NO_GRAND_TOTAL/.test(m)) return fail(409, 'ORDER_PI_REVISION_NO_GRAND_TOTAL', 'This revision has no Grand Total, so the Order value cannot be amended to it. Nothing was changed.')
+      if (/ORDER_PI_EDIT_SEQUENCE_RETIRED/.test(m)) return fail(409, 'ORDER_PI_EDIT_SEQUENCE_RETIRED', 'This revision gives a product an item number that belonged to another product on this Order. Nothing was changed.')
+      if (/ORDER_SUBMISSION_PROCESSING_BUSY|55P03/.test(m)) return fail(409, 'PROCESSING_BUSY', 'This PI is already being processed. Please try again shortly.')
       return fail(500, 'APPROVE_FAILED', 'This revision could not be approved just now. Nothing was changed.')
     }
-    return NextResponse.json({ ok: true, staged: true, ...(data as object) })
+    return NextResponse.json({ ok: true, ...(data as object) })
   }
 
   // ── 4. TAKE THE SUBMISSION, exactly as a save does ──

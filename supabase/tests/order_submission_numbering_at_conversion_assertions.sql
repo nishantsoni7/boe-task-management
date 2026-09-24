@@ -18,6 +18,10 @@
 --                    until an admin decides it; Payment Terms are optional
 --   8. payments      the draft's active allocations follow it into the Order,
 --                    once, and a reversed one stays in the draft's history
+--  10. production    production's shape (a held reservation one below the
+--                    cycle): a re-upload keeps it, new PIs approved first never
+--                    take it, nobody can move the cycle back onto it, a rolled-
+--                    back approval returns its number, no number twice
 --
 -- Two-session concurrency is in run_order_submission_numbering_race.sh.
 --
@@ -490,6 +494,102 @@ begin
   assert v_n = 0, 'a sent file cannot be taken off the list';
 
   raise notice '9. Client PO and Design Files attached before sending OK';
+end $$;
+
+-- ═══ 10. PRODUCTION'S SHAPE: A HELD RESERVATION BELOW THE CYCLE ══════════════
+--
+-- Production on 2026-09-25 (SELECT-only read): Order 0524 exists; draft
+-- 11fd3102… holds 0525 (reservation_required, unused); order_number_cycle
+-- next_number = 526. The same shape is made here — a reserved draft R that took
+-- number N, the cycle at N+1 — and legacy and new approvals are interleaved.
+
+do $$
+declare
+  v_r     uuid := gen_random_uuid();
+  v_a     uuid := gen_random_uuid();
+  v_b     uuid := gen_random_uuid();
+  v_n     bigint;
+  v_rnum  text;
+  v_anum  text;
+  v_bnum  text;
+  v_msg   text;
+begin
+  perform pg_temp.make_pi(v_r, 'ASSERT legacy reserved (as 0525)', 1000000, true);
+  v_rnum := (select reserved_order_number from public.order_submissions where id = v_r);
+  v_n := v_rnum::bigint;
+  assert pg_temp.cycle() = v_n + 1, 'fixture: the cycle sits one above the held reservation, as in production';
+
+  -- The reserved draft's workbook is REPLACED before approval (the 0525 repair):
+  -- nothing re-reserves and nothing releases the number.
+  assert not exists (select 1 from pg_trigger where tgname ilike '%auto%reserv%' and not tgisinternal),
+    'the auto-reservation trigger is gone';
+  update public.order_submissions
+     set source_workbook_sha256 = repeat('e', 64), grand_total = 1000000, total_before_gst = 847457.63
+   where id = v_r;
+  assert (select reserved_order_number from public.order_submissions where id = v_r) = v_rnum
+     and pg_temp.cycle() = v_n + 1, 'a re-upload keeps the reservation and takes nothing from the cycle';
+
+  perform pg_temp.make_pi(v_a, 'ASSERT new A', 500000);
+  perform pg_temp.make_pi(v_b, 'ASSERT new B', 500000);
+  perform pg_temp.pay(v_r, 400000, 'approved_unlinked');
+  perform pg_temp.pay(v_a, 200000, 'approved_unlinked');
+  perform pg_temp.pay(v_b, 200000, 'approved_unlinked');
+  perform pg_temp.submit(v_r);
+  perform pg_temp.submit(v_a);
+  perform pg_temp.submit(v_b);
+
+  -- A new PI approved FIRST takes the cycle's number, never the held one.
+  -- (Each approval runs first; its Order is read after, in a fresh snapshot.)
+  perform pg_temp.confirm(v_a);
+  v_anum := (select display_number from public.orders where source_order_submission_id = v_a);
+  assert v_anum = lpad((v_n + 1)::text, 4, '0'), format('A takes %s, got %s', v_n + 1, v_anum);
+  assert v_anum <> v_rnum;
+
+  -- Nobody can move the cycle back onto the held number: not the admin door,
+  -- not a raw UPDATE by the owner of the table.
+  perform pg_temp.become(current_setting('test.admin_id')::uuid);
+  begin
+    perform public.set_next_confirmed_order_number(v_n);
+    v_msg := 'NO ERROR';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+  end;
+  perform pg_temp.restore();
+  assert v_msg like 'ORDER_NUMBER_%', 'the admin door refuses a number at or below what exists: ' || v_msg;
+  begin
+    update public.order_number_cycle set next_number = v_n where id = true;
+    v_msg := 'NO ERROR';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+  end;
+  assert v_msg like 'ORDER_NUMBER_CYCLE_BEHIND_RESERVATION%', 'the table refuses a cycle at the held number: ' || v_msg;
+
+  -- B's approval fails after allocating; its number comes back.
+  begin
+    perform pg_temp.confirm(v_b);
+    raise exception using errcode = 'P0099', message = 'ASSERT forced rollback';
+  exception when sqlstate 'P0099' then
+    perform pg_temp.restore();
+  end;
+  assert pg_temp.cycle() = v_n + 2, 'the rolled-back approval returned its number';
+
+  -- The legacy draft converts AFTER a newer one: it still takes its own number.
+  perform pg_temp.confirm(v_r);
+  assert (select display_number from public.orders where source_order_submission_id = v_r) = v_rnum,
+    'the reserved draft takes exactly its reservation';
+  assert pg_temp.cycle() = v_n + 2, 'and takes nothing from the cycle';
+
+  perform pg_temp.confirm(v_b);
+  v_bnum := (select display_number from public.orders where source_order_submission_id = v_b);
+  assert v_bnum = lpad((v_n + 2)::text, 4, '0'), format('B takes %s (the number its failed attempt had), got %s', v_n + 2, v_bnum);
+
+  assert (select count(distinct display_number) from public.orders where display_number in (v_rnum, v_anum, v_bnum)) = 3,
+    'three Orders, three numbers';
+  assert not exists (select display_number from public.orders group by 1 having count(*) > 1), 'no number twice';
+  assert exists (select 1 from pg_indexes where tablename = 'orders' and indexdef ilike 'CREATE UNIQUE INDEX%(display_number)%'),
+    'and the unique index would refuse one anyway';
+
+  raise notice '10. production shape: held reservation, interleaved approvals, rollback, no collision OK';
 end $$;
 
 do $$ begin raise notice 'ALL NUMBERING ASSERTIONS PASSED'; end $$;

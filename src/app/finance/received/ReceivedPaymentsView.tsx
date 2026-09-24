@@ -96,6 +96,7 @@ import {
   allocationTargetNames,
   nameSummaryTargets,
   piDraftSafeName,
+  PI_DRAFT_NAME_COLUMNS,
   allocationCountLabel,
   buildAllocatedAgainst,
   completeAllocatedTotal,
@@ -3013,7 +3014,7 @@ function ReceivedPaymentsViewInner(
         : Promise.resolve({ data: [] }),
       submissionIds.size > 0
         ? supabase.from('order_submissions')
-            .select('id, reserved_order_number, source_workbook_name')
+            .select(PI_DRAFT_NAME_COLUMNS)
             .in('id', [...submissionIds])
         : Promise.resolve({ data: [] }),
     ])
@@ -3109,7 +3110,7 @@ function ReceivedPaymentsViewInner(
           : Promise.resolve({ data: [] }),
         submissionIds.size > 0
           ? supabase.from('order_submissions')
-              .select('id, reserved_order_number, source_workbook_name')
+              .select(PI_DRAFT_NAME_COLUMNS)
               .in('id', [...submissionIds])
           : Promise.resolve({ data: [] }),
       ])

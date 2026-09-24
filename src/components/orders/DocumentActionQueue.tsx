@@ -156,7 +156,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
           Uploaded by {nameOf(r.uploadedBy) ?? 'Sales'} · {formatWhen(r.uploadedAt)}
           {' · '}Owner: {r.status === 'pending' ? 'Admin' : `Operations — ${nameOf(r.operationsReviewer) ?? 'no reviewer assigned'}`}
           {' · '}Next: {r.status === 'pending' ? 'Admin to approve or reject' : 'Operations to accept or reject'}
-          {' · '}The current PI stays in force until then
+          {r.status === 'pending' ? ' · The current PI stays in force until then' : ''}
         </span>
       </div>
       <Link href={`/orders/${r.orderId}#documents`} className="boe-btn boe-btn-ghost order-doc-action">

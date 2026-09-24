@@ -278,6 +278,34 @@ export function validateEdit(state: PiEditState): PiEditProblem[] {
   return problems
 }
 
+/**
+ * A typed item number that belonged to another product on this Order
+ * (20270104000000). An added line may not take any number the Order has ever
+ * used; a continuing line may keep its own but not move to another's. The
+ * database refuses the same at approval; this says it while editing.
+ */
+export function retiredSequenceProblems(
+  state: PiEditState,
+  current: PiContent,
+  everUsed: readonly string[],
+): PiEditProblem[] {
+  const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase()
+  const taken = new Set([...everUsed.map(norm), ...current.items.map(i => norm(i.item_sequence))].filter(Boolean))
+  const own = new Map(current.items.map(i => [i.id, norm(i.item_sequence)]))
+  const problems: PiEditProblem[] = []
+  state.items.forEach((item, n) => {
+    if (item.removed) return
+    const seq = norm(item.item_sequence)
+    if (!seq || !taken.has(seq)) return
+    if (item.id && own.get(item.id) === seq) return
+    problems.push({
+      where: `Product ${n + 1}`,
+      message: `Item number ${item.item_sequence.trim()} already belonged to another product on this Order. Leave it blank for the next free number.`,
+    })
+  })
+  return problems
+}
+
 // ── Pricing ───────────────────────────────────────────────────────────────────
 
 export type PricedLine = {
@@ -409,6 +437,12 @@ export function buildEditProposal(input: {
   baseVersionId: string | null
   newId: () => string
   fingerprint: (json: string) => string
+  /**
+   * Every sequence this Order's lines have ever held (order_item_sequences_ever_used,
+   * 20270104000000) — including lines removed in an earlier version. Empty for
+   * a PI that is not yet an Order.
+   */
+  retiredSequences?: readonly string[]
 }): PiEditProposal {
   const { current, state, priced } = input
   const s = current.submission
@@ -416,13 +450,14 @@ export function buildEditProposal(input: {
   let nextRow = Math.max(0, ...current.items.map(i => i.source_row)) + 1
 
   // A line needs a sequence (B001 …) to be submittable. One added here gets the
-  // next free one after every sequence the PI already uses, in order.
-  // Sequences of lines removed here stay taken: a code once printed for one
-  // product is never handed to another.
+  // next free one after every sequence the PI uses now OR any earlier version
+  // of this Order used, in order. Sequences of removed lines stay taken: a
+  // number once printed for one product is never handed to another.
   const used = new Set([
     ...priced.lines.map(l => l.item.item_sequence.trim()),
     ...current.items.map(i => (i.item_sequence ?? '').trim()),
-  ].filter(Boolean))
+    ...(input.retiredSequences ?? []).map(q => q.trim()),
+  ].filter(Boolean).map(q => q.toUpperCase()))
   let nextSeq = Math.max(0, ...[...used].map(s => Number(/^B(\d+)$/i.exec(s)?.[1] ?? 0)))
   const sequenceFor = (typed: string): string => {
     if (typed.trim() !== '') return typed.trim()

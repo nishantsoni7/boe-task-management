@@ -1,0 +1,401 @@
+-- A REVISED PI IS IN FORCE WHEN AN ADMIN APPROVES IT (20270104000000)
+-- ===========================================================================
+-- Through the real doors, on a disposable stack:
+--
+--   1. V1        an Order of three products, B001 B002 B003 → BE001 BE002 BE003
+--   2. V2        rename B001, remove B002, keep B003, add one. Admin approval
+--                makes V2 current AT ONCE: V1 superseded and captured, the
+--                Order's value amended in the same transaction with an
+--                'order_amended' record (old → new, the admin, the time), the
+--                operations handoff recorded and awaiting — not blocking.
+--                Codes: BE001 stays with the RENAMED line, BE003 with the kept
+--                one, the added line gets BE004, BE002 is retired.
+--   3. ops       the reviewer's acknowledgement aligns the Order for production
+--                and changes nothing about which version is current
+--   4. V3        an added line that takes B002 (a removed product's number) is
+--                refused and nothing moves; with a fresh number it goes through
+--                and gets BE005 — never BE002 or BE003
+--   5. refusals  no Grand Total; a value change on a dispatched Order
+--   6. finance   a PI Draft allocation reads as its PID; once converted, as
+--                the Order's number, and the moved allocation is the same row
+--
+-- Runs inside ONE transaction that ends in ROLLBACK.
+-- PREREQUISITES: TEST-001 admin 1111…, sales 5555…, operations 7777…, finance
+-- viewer = the admin; 20270104000000 applied.
+-- On success prints NOTICE 'ALL IN-FORCE-AT-APPROVAL ASSERTIONS PASSED'.
+
+\set ON_ERROR_STOP on
+
+begin;
+
+do $$
+begin
+  perform set_config('test.admin_id', '11111111-1111-1111-1111-111111111111', true);
+  perform set_config('test.sales_id', '55555555-5555-5555-5555-555555555555', true);
+  perform set_config('test.ops_id',   '77777777-7777-7777-7777-777777777777', true);
+end $$;
+
+create function pg_temp.become(p_user uuid) returns void language plpgsql as $$
+begin
+  execute 'set local role authenticated';
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+end $$;
+create function pg_temp.restore() returns void language plpgsql as $$
+begin
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+end $$;
+create function pg_temp.fails_with(p_sql text) returns text language plpgsql as $$
+declare v text;
+begin
+  execute p_sql;
+  return 'NO ERROR';
+exception when others then
+  get stacked diagnostics v = message_text;
+  return v;
+end $$;
+
+-- A proposal as the Edit PI route builds it. p_lines: [{id?, seq, name, qty, rate}]
+-- — a line with an id continues that line; one without is added.
+create function pg_temp.proposal(p_sub uuid, p_lines jsonb, p_grand numeric default null)
+returns jsonb language plpgsql as $$
+declare
+  s public.order_submissions%rowtype;
+  o public.orders%rowtype;
+  v_items jsonb := '[]'::jsonb; v_gross numeric := 0; l jsonb; n int := 0; v_id uuid; v_row int;
+begin
+  select * into s from public.order_submissions where id = p_sub;
+  select * into o from public.orders where source_order_submission_id = p_sub;
+  select coalesce(max(source_row), 31) into v_row from public.order_submission_items where submission_id = p_sub;
+  for l in select value from jsonb_array_elements(p_lines) loop
+    v_id := coalesce(nullif(l ->> 'id', '')::uuid, gen_random_uuid());
+    if l ->> 'id' is null then v_row := v_row + 1; end if;
+    v_items := v_items || jsonb_build_object(
+      'id', v_id,
+      'source_row', coalesce((select source_row from public.order_submission_items where id = v_id), v_row),
+      'item_sequence', l ->> 'seq', 'product_name', l ->> 'name',
+      'quantity', (l ->> 'qty')::numeric, 'cost_per_piece', (l ->> 'rate')::numeric,
+      'total_amount', (l ->> 'qty')::numeric * (l ->> 'rate')::numeric, 'sort_order', n);
+    v_gross := v_gross + (l ->> 'qty')::numeric * (l ->> 'rate')::numeric;
+    n := n + 1;
+  end loop;
+  return jsonb_build_object(
+    'payload', jsonb_build_object(
+      'header', jsonb_build_object('client_name', o.client_name, 'order_confirmation_date', o.confirm_date,
+                                   'due_date', o.due_date, 'creation_date', s.creation_date),
+      'commercial', jsonb_build_object('gross_product_amount', v_gross, 'discount_amount', 0,
+                                       'total_before_gst', v_gross, 'gst_amount', 0,
+                                       'grand_total', case when p_grand = -1 then null else coalesce(p_grand, v_gross) end),
+      'source', jsonb_build_object('workbook_path', s.source_workbook_path, 'workbook_sha256', s.source_workbook_sha256),
+      'parse', jsonb_build_object('warnings', '[]'::jsonb, 'blocking_issues', '[]'::jsonb),
+      'items', v_items,
+      -- A continuing line keeps its pictures, as the Edit PI route does.
+      'item_images', coalesce((select jsonb_agg(to_jsonb(m) - 'id' - 'created_at' - 'submission_id')
+                                 from public.order_submission_item_images m
+                                where m.submission_id = p_sub
+                                  and m.item_id in (select (e ->> 'id')::uuid from jsonb_array_elements(v_items) e)), '[]'::jsonb),
+      'seed_terms', jsonb_build_object('fabric_responsibility', 'client'),
+      'fingerprint', encode(sha256(convert_to(v_items::text, 'UTF8')), 'hex')),
+    'terms', jsonb_build_object('fabric_responsibility', 'client'),
+    'change_summary', jsonb_build_array('ASSERT change'));
+end $$;
+
+create function pg_temp.propose_and_approve(p_order uuid, p_prop jsonb, p_reason text) returns jsonb language plpgsql as $$
+declare v_ver uuid;
+begin
+  v_ver := (public.propose_order_pi_edit_revision(p_order, current_setting('test.sales_id')::uuid, p_prop, p_reason) ->> 'version_id')::uuid;
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('test.last_version', v_ver::text, true);
+  return public.approve_order_pi_revision(v_ver, current_setting('test.admin_id')::uuid,
+    (select proposal -> 'payload' from public.order_pi_versions where id = v_ver));
+end $$;
+
+-- The BOE code each current line holds, by product name.
+create function pg_temp.codes(p_sub uuid) returns jsonb language sql as $$
+  select coalesce(jsonb_object_agg(i.product_name, 'BE' || lpad(c.boe_sequence::text, 3, '0')), '{}'::jsonb)
+    from public.order_submission_items i
+    left join public.order_product_codes c on c.submission_item_id = i.id
+   where i.submission_id = p_sub
+$$;
+
+
+-- ═══ 1. V1: THREE PRODUCTS, THREE CODES, A DRAFT PAYMENT ═══════════════════
+
+do $$
+declare
+  v_sub   uuid := gen_random_uuid();
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_wb    text := 'submissions/' || v_sub || '/original/' || gen_random_uuid() || '.xlsx';
+  v_pay   uuid := gen_random_uuid();
+  v_alloc uuid;
+  v_res   jsonb;
+  v_ref   text;
+  v_row   record;
+begin
+  delete from public.order_operations_reviewers where duty = 'pi_handoff';
+  insert into public.order_operations_reviewers (duty, user_id, assigned_by)
+  values ('pi_handoff', current_setting('test.ops_id')::uuid, v_admin);
+
+  insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
+  values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
+  update public.order_submissions
+     set client_name = 'ASSERT in-force client', gross_product_amount = 60000, discount_amount = 0,
+         grand_total = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64),
+         fabric_responsibility = 'client', commercial_terms_note = 'Ex-factory.', client_city = 'Pune'
+   where id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  insert into public.order_submission_items (submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (v_sub, 32, 'B001', 'ASSERT chair',   2, 10000, 20000, 0),
+         (v_sub, 33, 'B002', 'ASSERT stool',   2, 10000, 20000, 1),
+         (v_sub, 34, 'B003', 'ASSERT table',   2, 10000, 20000, 2);
+  insert into public.order_submission_item_images (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  select v_sub, i.id, 'representative', 0,
+         'submissions/' || v_sub || '/images/' || i.id || '/representative/0-' || repeat('c', 64) || '.png',
+         'image/png', repeat('c', 64), i.source_row
+    from public.order_submission_items i where i.submission_id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata)
+  select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png')
+    from public.order_submission_item_images m where m.submission_id = v_sub;
+
+  -- A payment allocated to the DRAFT: Finance reads it as the PID.
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (v_pay, 'ASSERT', 30000, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_pay, v_sub, 30000, 'order_submission', v_sales) returning id into v_alloc;
+
+  perform pg_temp.become(v_admin);
+  select * into v_row from public.received_payment_allocation_targets(array[v_pay]);
+  perform pg_temp.restore();
+  select draft_reference into v_ref from public.order_submissions where id = v_sub;
+  assert v_ref ~ '^PID-\d{5,}$', 'the draft carries a PID: ' || coalesce(v_ref, 'null');
+  assert v_row.target_type = 'pi_draft' and v_row.target_reference = v_ref,
+    'Allocated Against names the draft by its PID, not its file: ' || coalesce(v_row.target_reference, 'null');
+
+  perform pg_temp.become(v_sales);
+  perform public.submit_pi_for_review(v_sub, null, null, null, null);
+  perform pg_temp.restore();
+
+  -- A Client PO sent with the PI (as submit_pi_for_review_with_documents records it, #202).
+  perform set_config('test.docs', gen_random_uuid()::text, true);
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('order-files', 'pi-documents/' || v_sub || '/' || current_setting('test.docs') || '/client_po/' || gen_random_uuid() || '.pdf',
+          v_sales::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 900));
+  insert into public.order_document_submissions (id, stage, pi_submission_id, includes_client_po, status, snapshot_sha256, file_count, submitted_by)
+  values (current_setting('test.docs')::uuid, 'initial', v_sub, true, 'pending_admin', repeat('d', 64), 1, v_sales);
+  perform pg_temp.become(v_admin);
+  if (select pi_approved_at from public.order_submissions where id = v_sub) is null then
+    perform public.approve_pi_review(v_sub);
+  end if;
+  v_res := public.approve_order_submission(v_sub, v_sales, current_date, current_date + 30, 'reference');
+  perform pg_temp.restore();
+
+  -- 6 (conversion). The SAME allocation row now points at the Order, and
+  -- Finance reads it as the Order's number.
+  perform pg_temp.become(v_admin);
+  select * into v_row from public.received_payment_allocation_targets(array[v_pay]);
+  perform pg_temp.restore();
+  assert v_row.allocation_id = v_alloc and v_row.target_type = 'order'
+     and v_row.target_reference = (select display_number from public.orders where id = (v_res ->> 'order_id')::uuid),
+    'once converted, the same allocation reads as the Order number';
+  assert (select draft_reference from public.order_submissions where id = v_sub) = v_ref, 'the PID never changes';
+
+  perform set_config('test.sub', v_sub::text, true);
+  perform set_config('test.order', v_res ->> 'order_id', true);
+  assert pg_temp.codes(v_sub) = '{"ASSERT chair": "BE001", "ASSERT stool": "BE002", "ASSERT table": "BE003"}'::jsonb,
+    'V1 codes: ' || pg_temp.codes(v_sub)::text;
+  raise notice '1. V1 with BE001-BE003; draft payment read as its PID, then as the Order OK';
+end $$;
+
+
+-- ═══ 2. V2: CURRENT AT ADMIN APPROVAL, ORDER AMENDED, CODES KEPT ═══════════
+
+do $$
+declare
+  v_sub    uuid := current_setting('test.sub')::uuid;
+  v_order  uuid := current_setting('test.order')::uuid;
+  v_admin  uuid := current_setting('test.admin_id')::uuid;
+  v_ops    uuid := current_setting('test.ops_id')::uuid;
+  v_chair  uuid := (select id from public.order_submission_items where submission_id = current_setting('test.sub')::uuid and item_sequence = 'B001');
+  v_table  uuid := (select id from public.order_submission_items where submission_id = current_setting('test.sub')::uuid and item_sequence = 'B003');
+  v_before numeric := (select total_value from public.orders where id = current_setting('test.order')::uuid);
+  v_v1     uuid := (select id from public.order_pi_versions where order_id = current_setting('test.order')::uuid and version_number = 1);
+  v_v2     uuid;
+  v_res    jsonb;
+  v_amend  record;
+  v_det    jsonb;
+  v_h      record;
+begin
+  v_res := pg_temp.propose_and_approve(v_order, pg_temp.proposal(v_sub, jsonb_build_array(
+    jsonb_build_object('id', v_chair, 'seq', 'B001', 'name', 'ASSERT armchair (renamed)', 'qty', 2, 'rate', 12000),
+    jsonb_build_object('id', v_table, 'seq', 'B003', 'name', 'ASSERT table', 'qty', 2, 'rate', 10000),
+    jsonb_build_object('seq', 'B004', 'name', 'ASSERT bench (added)', 'qty', 1, 'rate', 15000))),
+    'ASSERT renamed chair, stool dropped, bench added');
+  v_v2 := current_setting('test.last_version')::uuid;
+
+  assert v_res ->> 'status' = 'approved', 'admin approval makes V2 current: ' || v_res::text;
+  assert (select status from public.order_pi_versions where id = v_v2) = 'approved', 'V2 is the version in force';
+  assert (select status from public.order_pi_versions where id = v_v1) = 'superseded', 'V1 is history';
+  assert (select array_agg(product_name order by sort_order) from public.order_submission_items where submission_id = v_sub)
+       = array['ASSERT armchair (renamed)', 'ASSERT table', 'ASSERT bench (added)'], 'V2''s lines are in force';
+
+  -- The Order's value moved in the same transaction, as an audited amendment.
+  assert (select total_value from public.orders where id = v_order) = 59000, 'the Order value is V2''s Grand Total';
+  select * into v_amend from public.order_activity_log
+   where order_id = v_order and event_type = 'order_amended' order by created_at desc limit 1;
+  assert v_amend.actor_id = v_admin, 'the amendment names the approving admin';
+  assert v_amend.payload ->> 'source' = 'pi_revision', 'and says it came from a PI revision';
+  assert (v_amend.payload #>> '{changes,total_value,from}')::numeric = v_before
+     and (v_amend.payload #>> '{changes,total_value,to}')::numeric = 59000, 'with the old and new value: ' || v_amend.payload::text;
+  assert v_amend.payload ->> 'reason' like 'PI V2 approved:%', 'and the revision''s reason';
+  assert v_amend.created_at is not null;
+  assert (v_res -> 'order_amendment') ? 'total_value', 'the approval reports the amendment';
+
+  -- Operations receives it — and it does not stand in the way.
+  select * into v_h from public.order_operations_handoffs where pi_version_id = v_v2;
+  assert v_h.id is not null and v_h.status = 'awaiting' and v_h.assigned_to = v_ops,
+    'a handoff for V2 awaits the reviewer';
+  assert exists (select 1 from public.notifications where user_id = v_ops and entity_id = v_order
+                   and type = 'order_operations_review_requested'::notification_type),
+    'and the reviewer was told';
+
+  -- Codes: kept by identity (renamed included), fresh for the added line.
+  assert pg_temp.codes(v_sub) = '{"ASSERT armchair (renamed)": "BE001", "ASSERT table": "BE003", "ASSERT bench (added)": "BE004"}'::jsonb,
+    'V2 codes: ' || pg_temp.codes(v_sub)::text;
+  assert (select submission_item_id is null from public.order_product_codes where order_id = v_order and boe_sequence = 2),
+    'the removed stool''s BE002 is retired, not reassigned';
+
+  -- V1 reads back in full, with the stool.
+  perform pg_temp.become(v_admin);
+  v_det := public.order_pi_version_detail(v_v1);
+  perform pg_temp.restore();
+  assert v_det ->> 'source' = 'captured' and jsonb_array_length(v_det #> '{content,items}') = 3, 'V1 was captured in full';
+
+  perform set_config('test.v2', v_v2::text, true);
+  raise notice '2. V2 current at admin approval; Order amended with an audit row; codes kept by identity OK';
+end $$;
+
+
+-- ═══ 3. THE OPERATIONS ACKNOWLEDGEMENT IS ABOUT PRODUCTION, NOT THE VERSION ═
+
+do $$
+declare
+  v_order uuid := current_setting('test.order')::uuid;
+  v_v2    uuid := current_setting('test.v2')::uuid;
+  v_ops   uuid := current_setting('test.ops_id')::uuid;
+  v_h     uuid := (select id from public.order_operations_handoffs where pi_version_id = current_setting('test.v2')::uuid);
+begin
+  assert (select status from public.order_document_submissions where id = current_setting('test.docs')::uuid) = 'awaiting_operations',
+    'the PO sent with the PI still awaits Operations after V2 went into force';
+  perform pg_temp.become(v_ops);
+  perform public.decide_order_operations_handoff(v_h, 'accepted', null);
+  perform pg_temp.restore();
+  assert (select status from public.order_operations_handoffs where id = v_h) = 'accepted';
+  assert (select production_alignment from public.orders where id = v_order) = 'aligned', 'acceptance aligns the Order';
+  assert (select status from public.order_pi_versions where id = v_v2) = 'approved', 'V2 was already current, and still is';
+  assert (select status from public.order_document_submissions where id = current_setting('test.docs')::uuid) = 'accepted',
+    'the documents sent with the PI are accepted with the version Operations accepted (#202)';
+  raise notice '3. the operations acknowledgement aligns production and does not gate V2 OK';
+end $$;
+
+
+-- ═══ 4. V3: A REMOVED PRODUCT'S NUMBER IS NEVER HANDED OUT AGAIN ═══════════
+
+do $$
+declare
+  v_sub   uuid := current_setting('test.sub')::uuid;
+  v_order uuid := current_setting('test.order')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_chair uuid := (select id from public.order_submission_items where submission_id = current_setting('test.sub')::uuid and item_sequence = 'B001');
+  v_bench uuid := (select id from public.order_submission_items where submission_id = current_setting('test.sub')::uuid and item_sequence = 'B004');
+  v_ver   uuid;
+  v_msg   text;
+  v_fp    text := md5(public.order_pi_content_of(current_setting('test.sub')::uuid)::text);
+  v_codes jsonb := pg_temp.codes(current_setting('test.sub')::uuid);
+begin
+  assert public.order_item_sequences_ever_used(v_order) @> array['B001', 'B002', 'B003', 'B004'],
+    'the Order remembers every number: ' || public.order_item_sequences_ever_used(v_order)::text;
+
+  -- Remove the table (B003), and give an added line the stool's old B002.
+  v_ver := (public.propose_order_pi_edit_revision(v_order, current_setting('test.sales_id')::uuid,
+    pg_temp.proposal(v_sub, jsonb_build_array(
+      jsonb_build_object('id', v_chair, 'seq', 'B001', 'name', 'ASSERT armchair (renamed)', 'qty', 2, 'rate', 12000),
+      jsonb_build_object('id', v_bench, 'seq', 'B004', 'name', 'ASSERT bench (added)', 'qty', 1, 'rate', 15000),
+      jsonb_build_object('seq', 'B002', 'name', 'ASSERT lamp', 'qty', 1, 'rate', 4000))),
+    'ASSERT reuse an old number') ->> 'version_id')::uuid;
+  perform set_config('request.jwt.claims', '', true);
+  v_msg := pg_temp.fails_with(format('select public.approve_order_pi_revision(%L, %L, (select proposal -> %L from public.order_pi_versions where id = %L))',
+    v_ver, v_admin, 'payload', v_ver));
+  assert v_msg like 'ORDER_PI_EDIT_SEQUENCE_RETIRED%', 'a removed product''s number is refused: ' || v_msg;
+  assert md5(public.order_pi_content_of(v_sub)::text) = v_fp and pg_temp.codes(v_sub) = v_codes, 'and nothing moved';
+  assert (select status from public.order_pi_versions where id = v_ver) = 'pending', 'the revision is still pending';
+  perform pg_temp.become(v_admin);
+  perform public.reject_order_pi_revision(v_ver, 'ASSERT wrong number');
+  perform pg_temp.restore();
+
+  -- The same change with a fresh number goes through.
+  perform pg_temp.propose_and_approve(v_order, pg_temp.proposal(v_sub, jsonb_build_array(
+      jsonb_build_object('id', v_chair, 'seq', 'B001', 'name', 'ASSERT armchair (renamed)', 'qty', 2, 'rate', 12000),
+      jsonb_build_object('id', v_bench, 'seq', 'B004', 'name', 'ASSERT bench (added)', 'qty', 1, 'rate', 15000),
+      jsonb_build_object('seq', 'B005', 'name', 'ASSERT lamp', 'qty', 1, 'rate', 4000))),
+    'ASSERT table dropped, lamp added');
+  assert pg_temp.codes(v_sub) = '{"ASSERT armchair (renamed)": "BE001", "ASSERT bench (added)": "BE004", "ASSERT lamp": "BE005"}'::jsonb,
+    'V3 codes: ' || pg_temp.codes(v_sub)::text;
+  assert (select array_agg(boe_sequence order by boe_sequence) from public.order_product_codes where order_id = v_order and submission_item_id is null)
+       = array[2, 3], 'BE002 and BE003 stay retired';
+  assert (select count(*) from public.order_product_codes where order_id = v_order) = 5, 'five codes ever, none reused';
+  assert (select total_value from public.orders where id = v_order) = 43000, 'and the Order was amended again';
+  raise notice '4. V3: retired numbers refused, BE005 issued, BE002/BE003 retired OK';
+end $$;
+
+
+-- ═══ 5. REFUSALS THAT LEAVE EVERYTHING AS IT WAS ═══════════════════════════
+
+do $$
+declare
+  v_sub   uuid := current_setting('test.sub')::uuid;
+  v_order uuid := current_setting('test.order')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_chair uuid := (select id from public.order_submission_items where submission_id = current_setting('test.sub')::uuid and item_sequence = 'B001');
+  v_ver   uuid;
+  v_msg   text;
+  v_fp    text := md5(public.order_pi_content_of(current_setting('test.sub')::uuid)::text
+                      || (select total_value::text from public.orders where id = current_setting('test.order')::uuid));
+begin
+  -- No Grand Total.
+  v_ver := (public.propose_order_pi_edit_revision(v_order, current_setting('test.sales_id')::uuid,
+    pg_temp.proposal(v_sub, jsonb_build_array(
+      jsonb_build_object('id', v_chair, 'seq', 'B001', 'name', 'ASSERT armchair (renamed)', 'qty', 3, 'rate', 12000)), -1),
+    'ASSERT unreadable total') ->> 'version_id')::uuid;
+  perform set_config('request.jwt.claims', '', true);
+  v_msg := pg_temp.fails_with(format('select public.approve_order_pi_revision(%L, %L, (select proposal -> %L from public.order_pi_versions where id = %L))',
+    v_ver, v_admin, 'payload', v_ver));
+  assert v_msg like 'ORDER_PI_REVISION_NO_GRAND_TOTAL%', 'a revision without a Grand Total is refused: ' || v_msg;
+  perform pg_temp.become(v_admin);
+  perform public.reject_order_pi_revision(v_ver, 'ASSERT no total');
+  perform pg_temp.restore();
+
+  -- A value change on a dispatched Order.
+  -- Straight to dispatched for the test (the status-path triggers are not what
+  -- is under test here).
+  set local session_replication_role = replica;
+  update public.orders set status = 'dispatched' where id = v_order;
+  set local session_replication_role = origin;
+  v_ver := (public.propose_order_pi_edit_revision(v_order, current_setting('test.sales_id')::uuid,
+    pg_temp.proposal(v_sub, jsonb_build_array(
+      jsonb_build_object('id', v_chair, 'seq', 'B001', 'name', 'ASSERT armchair (renamed)', 'qty', 3, 'rate', 12000))),
+    'ASSERT after dispatch') ->> 'version_id')::uuid;
+  perform set_config('request.jwt.claims', '', true);
+  v_msg := pg_temp.fails_with(format('select public.approve_order_pi_revision(%L, %L, (select proposal -> %L from public.order_pi_versions where id = %L))',
+    v_ver, v_admin, 'payload', v_ver));
+  assert v_msg like 'ORDER_CLOSED%', 'a dispatched Order''s value cannot be amended by a revision: ' || v_msg;
+
+  assert md5(public.order_pi_content_of(v_sub)::text || (select total_value::text from public.orders where id = v_order)) = v_fp,
+    'neither refusal moved anything';
+  raise notice '5. no Grand Total / dispatched Order refused, nothing moved OK';
+end $$;
+
+do $$ begin raise notice 'ALL IN-FORCE-AT-APPROVAL ASSERTIONS PASSED'; end $$;
+
+rollback;

@@ -634,6 +634,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql') continue
       // Edit PI: an approved PI changes only as a new version (20270103000000).
       if (f === 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql') continue
+      // A revised PI is in force at Admin approval (20270104000000).
+      if (f === 'supabase/migrations/20270104000000_order_pi_revision_in_force_at_admin_approval.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1348,6 +1350,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * dialog and the parser ON PURPOSE — they are what this work changes.
    */
   const ALLOWED_PI_NUMBERING_AND_EDITING = new Set([
+    // A revised PI is in force at Admin approval; each version's own PDF; the
+    // PID in Finance's Allocated Against (20270104000000).
+    'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
+    'src/lib/orders/piVersionPdf.ts',
+    'src/lib/orders/piVersionPdf.test.ts',
+    'src/lib/finance/allocatedAgainst.ts',
+    'src/lib/finance/allocatedAgainst.test.ts',
+    'src/app/finance/received/allocatedAgainst.render.test.tsx',
+    'src/app/finance/received/allocationPanel.render.test.tsx',
+    'src/app/finance/received/ReceivedPaymentsView.tsx',
     'src/lib/pi/masterSheetParser.ts',
     'src/lib/pi/masterSheetParser.test.ts',
     'src/lib/pi/types.ts',
@@ -1386,6 +1398,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
   const PI_EDIT_MIGRATION = 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql'
+  const PI_REVISION_IN_FORCE_MIGRATION = 'supabase/migrations/20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
 
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
@@ -1428,6 +1441,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_NUMBERING_AND_EDITING.has(f) &&
     f !== PI_NUMBERING_MIGRATION &&
     f !== PI_EDIT_MIGRATION &&
+    f !== PI_REVISION_IN_FORCE_MIGRATION &&
     f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     f !== ORDER_0524_HANDOFF_MIGRATION
@@ -1530,7 +1544,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const intruder of [
       // Finance and payment surfaces the expense guard exists to protect.
       'src/app/finance/page.tsx',
-      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      // (ReceivedPaymentsView.tsx is allowed ONE change since 20270104000000 and
+      // is held to it line by line below; the payment modules beside it are not.)
+      'src/lib/finance/paymentAllocations.ts',
       'src/lib/finance/paymentEntry.ts',
       'src/lib/finance/allocation.ts',
       // Permission files — the gate this work deliberately did not touch.
@@ -1625,7 +1641,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270102000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -1735,9 +1751,23 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   })
 
   test('the payment entry, allocation and balance modules are not among them', () => {
+    // ReceivedPaymentsView.tsx is held to ONE change (20270104000000): its two
+    // PI Draft name reads select PI_DRAFT_NAME_COLUMNS (adds draft_reference) so
+    // a draft is named by its PID. Every changed line must be exactly that.
+    if (touched.has('src/app/finance/received/ReceivedPaymentsView.tsx')) {
+      const diff = execFileSync('git', ['diff', 'origin/main', '--', 'src/app/finance/received/ReceivedPaymentsView.tsx'],
+        { cwd: process.cwd(), encoding: 'utf8' })
+      const moved = diff.split('\n')
+        .filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l))
+        .map(l => l.slice(1).trim())
+      assert.ok(moved.length > 0 && moved.every(l =>
+        l === "PI_DRAFT_NAME_COLUMNS," ||
+        l === ".select(PI_DRAFT_NAME_COLUMNS)" ||
+        l === ".select('id, reserved_order_number, source_workbook_name')"),
+        'ReceivedPaymentsView.tsx changes only the PI Draft name columns: ' + JSON.stringify(moved))
+    }
     for (const untouchable of [
       'src/app/finance/page.tsx',
-      'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/lib/finance/paymentEntry.ts',
       'src/lib/finance/paymentAllocations.ts',
       'src/lib/finance/orderFinancePosition.ts',

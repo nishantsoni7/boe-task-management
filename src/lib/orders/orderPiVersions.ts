@@ -106,9 +106,9 @@ export const OPEN_VERSION_LABEL = 'Open'
  * a new one must know nothing changes until an administrator approves it.
  */
 export const UPLOAD_REVISION_NOTE =
-  'The current approved PI stays in force. The revised PI is recorded as a pending version and changes nothing on this Order until an administrator approves it and Operations accepts it.'
+  'The current approved PI stays in force. The revised PI is recorded as a pending version and changes nothing on this Order until an administrator approves it.'
 export const APPROVE_REVISION_NOTE =
-  'Approving authorizes the revised PI — it does not put it in force. The current PI, its lines, pictures, figures and documents stay in use until the operations reviewer compares the two and accepts the revision. If its client, dates or values differ from the Order, the Order must be amended first.'
+  'Approving puts the revised PI in force now. If its client, dates or values differ from the Order, the Order is amended to them in the same step, recorded with the old and new values. The operations reviewer is then sent it for review; their decision aligns the Order for production and does not hold the revision back.'
 
 export const REVISION_REASON_MAX_LENGTH = 500
 export const REVISION_DECISION_REASON_MAX_LENGTH = 1000

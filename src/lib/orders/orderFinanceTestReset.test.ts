@@ -556,6 +556,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
+      '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
     ])
   })
 
