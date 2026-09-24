@@ -28,19 +28,16 @@
 
 \set ON_ERROR_STOP on
 
--- SUPERSEDED BY 20270104000000 (#207). The owner's rule is that an Admin's
--- approval puts a revision in force and amends the Order; the staging and
--- operations-promotion this suite proves no longer happen once that migration
--- is applied. On such a database the suite stops here, in words, and
--- order_pi_revision_in_force_at_admin_approval_assertions.sql is the proof.
--- Against #205's own head (20270101000000 only) it runs in full, as before.
+-- TWO LIFECYCLES, ONE SUITE. Against #205's own head (20270101000000) the
+-- sections below prove staging and operations promotion, as they always did.
+-- With 20270104000000 (#207) applied — the owner's rule: an Admin's approval
+-- puts a revision in force and amends the Order — the same fixtures run the
+-- L-sections instead, which assert what still holds of #205 (authority,
+-- reassignment, the handoff and production alignment, #202's documents) and
+-- what changed. Nothing is skipped on either database.
 select exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                 where n.nspname = 'public' and p.proname = 'approve_order_pi_revision'
                   and p.prosrc like '%apply_order_amendment(%') as superseded_by_20270104 \gset
-\if :superseded_by_20270104
-\echo 'SKIPPED: 20270104000000 is applied — a revision is in force at admin approval. Run order_pi_revision_in_force_at_admin_approval_assertions.sql instead.'
-\quit
-\endif
 
 begin;
 
@@ -308,6 +305,182 @@ begin
   insert into public.order_document_versions (order_id, version, status, excel_path, pdf_path, completed_at)
   values (p_order, 1, 'ready', v_base || '.xlsx', v_base || '.pdf', now());
 end $$;
+
+\if :superseded_by_20270104
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ON A DATABASE WITH 20270104000000 (#207): THE LIFECYCLE AS IT NOW IS
+-- ═══════════════════════════════════════════════════════════════════════════
+-- The same fixtures and the same real doors, asserting what still holds of
+-- #205 and what the owner's rule changed:
+--   L1  a matching V2 is IN FORCE at admin approval: V1 superseded, the
+--       Order's documents superseded, V2's handoff AWAITING the reviewer, the
+--       old alignment reset — and the reviewer's acceptance aligns production
+--       without being needed for V2 to be current; #205's operations door has
+--       nothing left to decide; a pre-staging route is still refused
+--   L2  a V2 with a new client and value amends the Order in the same step,
+--       recorded as 'order_amended' (pi_revision), no amend_order needed
+--   L3  "Cannot accept" (clarification_needed) leaves V2 current and the
+--       Order not aligned for production
+--   L4  authority: only an active admin approves; a second approval of the
+--       same version is refused; the door stays service-role only
+--   L5  reassignment readdresses the live handoff; the former reviewer can no
+--       longer decide; with no reviewer the handoff is recorded unassigned and
+--       every admin is told
+--   L6  #202: documents sent with the PI are accepted with the version
+--       Operations accepts
+--   L7  an admin's rejection of a pending revision changes nothing
+
+select pg_temp.assign(current_setting('test.reviewer_id')::uuid);
+select set_config('test.pi_m', gen_random_uuid()::text, true);
+select pg_temp.make_pi(current_setting('test.pi_m')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT MATCH', 500000);
+select set_config('test.order_m', pg_temp.approve(current_setting('test.pi_m')::uuid)::text, true);
+select pg_temp.decide(current_setting('test.reviewer_id')::uuid,
+  (select id from public.order_operations_handoffs where order_id = current_setting('test.order_m')::uuid), 'accepted', null);
+
+do $$
+declare o uuid := current_setting('test.order_m')::uuid; v uuid; r jsonb; h uuid;
+        owner uuid := current_setting('test.owner_id')::uuid; sales uuid := current_setting('test.sales_id')::uuid;
+        reviewer uuid := current_setting('test.reviewer_id')::uuid; before_state text;
+begin
+  perform pg_temp.put_pdf(o);
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/approved' and pg_temp.alignment(o) = 'aligned', 'L1. V1 in force, accepted, aligned');
+  v := pg_temp.propose(o);
+  before_state := pg_temp.current_state(o);
+  perform pg_temp.expect_error(format('select pg_temp.stage(%L, pg_temp.payload(%L, ''ASSERT MATCH'', 500000, 2) - ''seed_terms'')', v, v),
+          'ORDER_PI_REVISION_CLIENT_UPDATE_REQUIRED', 'L1. a pre-staging route''s approval is refused');
+  perform pg_temp.check(pg_temp.current_state(o) = before_state, 'L1. …and nothing changed');
+
+  r := pg_temp.stage(v, pg_temp.payload(v, 'ASSERT MATCH', 500000, 2));
+  perform pg_temp.check(r ->> 'status' = 'approved', 'L1. the admin''s approval puts V2 in force: ' || r::text);
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/approved', 'L1. V1 superseded, V2 current: ' || pg_temp.vstatus(o));
+  perform pg_temp.check(pg_temp.lines(o) = 'ASSERT chair v2 x2', 'L1. V2''s lines are in force');
+  perform pg_temp.check(pg_temp.live_handoff(o) = '2/awaiting', 'L1. V2''s handoff awaits the reviewer: ' || coalesce(pg_temp.live_handoff(o), 'none'));
+  perform pg_temp.check(pg_temp.alignment(o) = 'not_aligned', 'L1. the alignment that covered V1 is reset');
+  perform pg_temp.check(not exists (select 1 from public.order_document_versions where order_id = o and superseded_at is null and status = 'ready'),
+    'L1. V1''s generated documents are superseded');
+  perform pg_temp.check(pg_temp.events(o, 'order_amended') = 0, 'L1. same value: no amendment');
+  perform pg_temp.check(exists (select 1 from public.notifications where user_id = reviewer and entity_id = o and title like '%PI V2 approved%'),
+    'L1. the reviewer is told');
+  perform pg_temp.check(exists (select 1 from public.notifications where user_id = sales and entity_id = o and title like '%it is now the PI in force%'),
+    'L1. Sales is told it is in force');
+
+  perform pg_temp.expect_error(format('select pg_temp.ops(%L, %L, ''accepted'', null)', reviewer, v),
+          'ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS', 'L1. #205''s operations door has nothing to decide');
+  perform pg_temp.expect_error(format('select pg_temp.stage(%L, pg_temp.payload(%L, ''ASSERT MATCH'', 500000, 2))', v, v),
+          'ORDER_PI_REVISION_NOT_PENDING', 'L4. a second approval of the same version is refused');
+
+  h := (pg_temp.live(o)).id;
+  perform pg_temp.decide(reviewer, h, 'accepted', null);
+  perform pg_temp.check(pg_temp.live_handoff(o) = '2/accepted' and pg_temp.alignment(o) = 'aligned',
+    'L1. the reviewer''s acceptance aligns production for V2');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/approved', 'L1. and V2 was current all along');
+  raise notice 'L1. a matching V2 is in force at admin approval; operations governs production only OK';
+end $$;
+
+do $$
+declare o uuid := current_setting('test.order_m')::uuid; v uuid; a record;
+        owner uuid := current_setting('test.owner_id')::uuid; reviewer uuid := current_setting('test.reviewer_id')::uuid;
+begin
+  -- L2. A new client and value: amended with the approval, audited.
+  v := pg_temp.propose(o);
+  perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT NEW CLIENT', 650000, 3));
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/superseded,3/approved', 'L2. V3 current');
+  perform pg_temp.check((select client_name = 'ASSERT NEW CLIENT' and total_value = 650000 from public.orders where id = o),
+    'L2. the Order carries V3''s client and value: ' || pg_temp.figures(o));
+  select * into a from public.order_activity_log where order_id = o and event_type = 'order_amended' order by created_at desc limit 1;
+  perform pg_temp.check(a.actor_id = owner and a.payload ->> 'source' = 'pi_revision'
+                        and (a.payload #>> '{changes,total_value,from}')::numeric = 500000
+                        and (a.payload #>> '{changes,total_value,to}')::numeric = 650000
+                        and a.payload #>> '{changes,client_name,to}' = 'ASSERT NEW CLIENT',
+    'L2. recorded as an amendment: old → new, the approving admin: ' || coalesce(a.payload::text, 'none'));
+
+  -- L3. "Cannot accept": V3 stays current, production is not aligned.
+  perform pg_temp.decide(reviewer, (pg_temp.live(o)).id, 'clarification_needed', 'ASSERT the new client''s delivery address is missing');
+  perform pg_temp.check(pg_temp.live_handoff(o) = '3/clarification_needed' and pg_temp.alignment(o) = 'not_aligned',
+    'L3. flagged: not aligned for production');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/superseded,3/approved', 'L3. and V3 is still the PI in force');
+
+  -- L7. An admin rejection of a pending revision changes nothing.
+  v := pg_temp.propose(o);
+  declare s text := pg_temp.current_state(o);
+  begin
+    perform pg_temp.become(owner);
+    perform public.reject_order_pi_revision(v, 'ASSERT not agreed');
+    perform pg_temp.restore();
+    perform pg_temp.check(pg_temp.current_state(o) = s and pg_temp.vstatus(o) like '%4/rejected', 'L7. a rejection changes nothing');
+  end;
+  raise notice 'L2/L3/L7. value amended with the approval; a flag leaves the version current; a rejection changes nothing OK';
+end $$;
+
+do $$
+declare o uuid := current_setting('test.order_m')::uuid; v uuid;
+        sales uuid := current_setting('test.sales_id')::uuid; reviewer uuid := current_setting('test.reviewer_id')::uuid;
+        reviewer2 uuid := current_setting('test.reviewer2_id')::uuid; outsider uuid := current_setting('test.outsider_id')::uuid;
+begin
+  -- L4. Only an active admin approves; the door is the server's.
+  v := pg_temp.propose(o);
+  perform pg_temp.expect_error(format('select public.approve_order_pi_revision(%L, %L, pg_temp.payload(%L, ''ASSERT NEW CLIENT'', 650000, 3))', v, sales, v),
+          'permission', 'L4. Sales cannot approve');
+  perform pg_temp.expect_error(format('select public.approve_order_pi_revision(%L, %L, pg_temp.payload(%L, ''ASSERT NEW CLIENT'', 650000, 3))', v, reviewer, v),
+          'permission', 'L4. the operations reviewer cannot approve');
+  perform pg_temp.check(not has_function_privilege('authenticated', 'public.approve_order_pi_revision(uuid, uuid, jsonb)', 'EXECUTE'),
+    'L4. the approval door is not the browser''s');
+
+  -- L5. Reassignment readdresses the live handoff of the version in force.
+  perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT NEW CLIENT', 650000, 3));
+  perform pg_temp.check((pg_temp.live(o)).assigned_to = reviewer, 'L5. V5''s handoff is the reviewer''s');
+  perform pg_temp.assign(reviewer2);
+  perform pg_temp.check((pg_temp.live(o)).assigned_to = reviewer2, 'L5. reassigning readdresses it');
+  perform pg_temp.expect_error(format('select pg_temp.decide(%L, %L, ''accepted'', null)', reviewer, (pg_temp.live(o)).id),
+          'Only the assigned operations reviewer', 'L5. the former reviewer can no longer decide');
+  perform pg_temp.expect_error(format('select pg_temp.decide(%L, %L, ''accepted'', null)', outsider, (pg_temp.live(o)).id),
+          'Only the assigned operations reviewer', 'L5. nor can an outsider');
+  perform pg_temp.decide(reviewer2, (pg_temp.live(o)).id, 'accepted', null);
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', 'L5. the new reviewer aligns it');
+
+  -- No reviewer: the next version's handoff is recorded unassigned; admins are told.
+  perform pg_temp.assign(null);
+  v := pg_temp.propose(o);
+  perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT NEW CLIENT', 650000, 3));
+  perform pg_temp.check((pg_temp.live(o)).assigned_to is null and (pg_temp.live(o)).unassigned_reason = 'no_reviewer',
+    'L5. with no reviewer the handoff is recorded unassigned');
+  perform pg_temp.check(exists (select 1 from public.notifications where user_id = current_setting('test.owner_id')::uuid
+                                   and entity_id = o and title like '%no operations reviewer%'),
+    'L5. and the administrators are told');
+  perform pg_temp.check(pg_temp.vstatus(o) like '%6/approved', 'L5. the version is in force regardless');
+  perform pg_temp.assign(reviewer);
+  raise notice 'L4/L5. authority and reassignment OK';
+end $$;
+
+-- L6. #202: documents sent with the PI are accepted with the version Operations accepts.
+select set_config('test.pi_i', gen_random_uuid()::text, true);
+select pg_temp.make_pi(current_setting('test.pi_i')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT INITIAL', 350000);
+
+do $$
+declare pi uuid := current_setting('test.pi_i')::uuid; o uuid; v uuid; d uuid := gen_random_uuid(); path text;
+        reviewer uuid := current_setting('test.reviewer_id')::uuid;
+begin
+  perform set_config('request.jwt.claims', '', true);
+  path := 'pi-documents/' || pi || '/' || d || '/client_po/' || gen_random_uuid() || '.pdf';
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('order-files', path, current_setting('test.sales_id'), jsonb_build_object('mimetype', 'application/pdf', 'size', 900));
+  insert into public.order_document_submissions (id, stage, pi_submission_id, includes_client_po, status, snapshot_sha256, file_count, submitted_by)
+  values (d, 'initial', pi, true, 'pending_admin', repeat('c', 64), 1, current_setting('test.sales_id')::uuid);
+  o := pg_temp.approve(pi);
+  perform pg_temp.check((select status from public.order_document_submissions where id = d) = 'awaiting_operations', 'L6. PI approval sends its documents to operations');
+  -- V2 approved (in force) before Operations looked at V1.
+  v := pg_temp.propose(o);
+  perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT INITIAL', 350000, 1));
+  perform pg_temp.check((select status from public.order_document_submissions where id = d) = 'awaiting_operations', 'L6. still awaiting after V2');
+  perform pg_temp.decide(reviewer, (pg_temp.live(o)).id, 'accepted', null);
+  perform pg_temp.check((select status from public.order_document_submissions where id = d) = 'accepted',
+    'L6. accepted with the version Operations accepted');
+  raise notice 'L6. #202 documents follow the accepted version OK';
+end $$;
+
+do $$ begin raise notice 'ALL PI REVISION LIFECYCLE ASSERTIONS PASSED (20270104000000)'; end $$;
+
+\else
 
 -- ═══ 1. A MATCHING V2: staged, then accepted ═══════════════════════════════
 
@@ -699,5 +872,6 @@ begin
 end $$;
 
 do $$ begin raise notice 'ALL PI REVISION PROMOTION ASSERTIONS PASSED'; end $$;
+\endif
 
 rollback;
