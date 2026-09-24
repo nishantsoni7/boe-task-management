@@ -57,6 +57,35 @@ describe('the Main PI section keeps V1 in force and shows V2 apart', () => {
   })
 })
 
+describe('the approving admin is no longer active (§6b)', () => {
+  const reapprovePanel = (confirming: boolean, error: string | null = null) => renderToStaticMarkup(
+    <OrderDocumentsPanel
+      mainPi={mainPiCard(history)}
+      design={designFilesDocument({ kind: 'ready', counts: { representative: 1, customization: 0 } }, 1)}
+      clientPo={clientPoDocument()}
+      onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+      viewing={false} downloading={false} onOpenProposal={noop}
+      revisionApproverInactive
+      reapprove={{ confirming, busy: false, error, onStart: noop, onConfirm: noop, onCancel: noop }}
+    />,
+  )
+  test('the stage says why it waits, and the admin is offered Re-approve', () => {
+    const t = text(reapprovePanel(false))
+    assert.ok(t.includes('Waiting on: Admin — the approving administrator is no longer active · Next: An active admin to re-approve it, or Operations to reject it'))
+    assert.ok(t.includes('Re-approve PI V2'))
+    assert.equal(t.includes('Confirm re-approval'), false, 'one press only opens the confirmation')
+  })
+  test('confirming says exactly what re-approval does, and a refusal is shown', () => {
+    const t = text(reapprovePanel(true, 'PI V2 was approved by an administrator who is still active'))
+    assert.ok(t.includes('Re-approving records your approval of the same file; nothing in force changes until Operations accepts it.'))
+    assert.ok(t.includes('Confirm re-approval') && t.includes('Cancel'))
+    assert.ok(t.includes('still active'))
+  })
+  test('without the page offering it, no control is drawn', () => {
+    assert.equal(text(panel()).includes('Re-approve'), false)
+  })
+})
+
 const diff = (blocking: RevisionDifferences['blocking']): RevisionDifferences => ({
   staged: true, blocking, applied: false,
   lines: { added: [], removed: [], changed: [{ seq: '1', name: 'Chair', from: { name: 'Chair', qty: 1, rate: 500000, total: 500000 }, to: { name: 'Chair', qty: 2, rate: 250000, total: 500000 } }] },

@@ -133,6 +133,7 @@ import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModa
 import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
 import {
   canDecideRevisionOperations,
+  canReapproveRevision,
   describeRevisionOperationsFailure,
   type RevisionDifferences,
 } from '@/lib/orders/orderPiVersions'
@@ -815,6 +816,10 @@ export default function OrderDetailPage() {
   const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
   const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
   const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
+  const [piInactive,   setPiInactive]   = useState<Set<string>>(new Set())
+  const [reapproveConfirming, setReapproveConfirming] = useState(false)
+  const [reapproveBusy,       setReapproveBusy]       = useState(false)
+  const [reapproveError,      setReapproveError]      = useState<string | null>(null)
   const [revisionDialog, setRevisionDialog] = useState<
     | { kind: 'propose' }
     | { kind: 'approve'; version: PiVersionView }
@@ -1003,8 +1008,8 @@ export default function OrderDetailPage() {
     // its honest "No image" box rather than a broken one.
     const [peopleRes, signedRes] = await Promise.all([
       actorIds.length > 0
-        ? supabase.from('users').select('id, full_name').in('id', actorIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+        ? supabase.from('users').select('id, full_name, is_active').in('id', actorIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string | null; is_active: boolean | null }[] }),
       paths.length > 0
         ? supabase.storage.from(ORDER_FILES_BUCKET)
             .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
@@ -1012,10 +1017,14 @@ export default function OrderDetailPage() {
     ])
 
     const names = new Map<string, string>()
-    for (const person of (peopleRes.data ?? []) as { id: string; full_name: string | null }[]) {
+    const inactive = new Set<string>()
+    for (const person of (peopleRes.data ?? []) as { id: string; full_name: string | null; is_active: boolean | null }[]) {
       if (person?.id && person.full_name) names.set(person.id, person.full_name)
+      // Only an explicit false: an unreadable flag never offers the recovery.
+      if (person?.id && person.is_active === false) inactive.add(person.id)
     }
     setPiNames(names)
+    setPiInactive(inactive)
 
     const signedByPath = new Map<string, string>()
     for (const entry of (signedRes.data ?? []) as { path?: string | null; signedUrl?: string; error?: unknown }[]) {
@@ -2008,6 +2017,29 @@ export default function OrderDetailPage() {
     }
   }
 
+  // THE RECOVERY (20270101000000 §6b): the admin who approved the proposal is
+  // no longer active, so it cannot be accepted until an active admin
+  // re-approves it. reapprove_order_pi_revision() re-derives all of it.
+  const revisionApproverInactive = !!piHistory.pending?.decidedById
+    && piHistory.pending.status === 'admin_approved' && piInactive.has(piHistory.pending.decidedById)
+  const mayReapproveRevision = canReapproveRevision(piHistory.pending, {
+    isAdmin: actingAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
+  })
+  const reapproveRevision = async () => {
+    const v = piHistory.pending
+    if (!v || reapproveBusy) return
+    setReapproveBusy(true)
+    setReapproveError(null)
+    try {
+      const { error } = await supabase.rpc('reapprove_order_pi_revision', { p_version_id: v.id })
+      if (error) { setReapproveError(describeRevisionOperationsFailure(error)); return }
+      setReapproveConfirming(false)
+      await loadOrder()
+    } finally {
+      setReapproveBusy(false)
+    }
+  }
+
   /** Production alignment, and whether this reader may move it. */
   const mayAlignProduction = canAlignProduction(ordersCaps, Boolean(viewAsUserId))
   const production = order ? describeProductionAlignment({
@@ -2717,6 +2749,15 @@ export default function OrderDetailPage() {
             mainPiOperations={mainPiOperations}
             onReviewRevision={mayReviewRevision ? () => { void openRevisionReview() } : undefined}
             onOpenProposal={v => { void openVersionFile(v, 'view') }}
+            revisionApproverInactive={revisionApproverInactive}
+            reapprove={mayReapproveRevision ? {
+              confirming: reapproveConfirming,
+              busy: reapproveBusy,
+              error: reapproveError,
+              onStart: () => { setReapproveError(null); setReapproveConfirming(true) },
+              onConfirm: () => { void reapproveRevision() },
+              onCancel: () => setReapproveConfirming(false),
+            } : undefined}
             designSubmissions={docBody('design_files')}
             designUpload={<DocumentUploadAction category="design_files" api={docSubs} viewer={docViewer} onUpload={c => setDocUpload({ category: c, resubmission: null })} />}
             clientPoSubmissions={docBody('client_po')}

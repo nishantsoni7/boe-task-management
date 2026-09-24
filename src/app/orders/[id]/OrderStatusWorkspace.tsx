@@ -47,6 +47,9 @@ import {
   UPLOAD_REVISION_BUTTON_LABEL,
   type PiVersionTone,
   PROPOSED_REVISION_TITLE,
+  REAPPROVE_REVISION_CONFIRM,
+  REAPPROVE_REVISION_LABEL,
+  REAPPROVE_REVISION_NOTE,
   REVIEW_REVISION_LABEL,
   revisionStage,
   type PiVersionView,
@@ -208,10 +211,21 @@ export function OrderDocumentsPanel({
   onView, onDownload, onHistory, onManageDesign,
   viewing, downloading,
   mainPiUpload, mainPiOperations, designSubmissions, designUpload, clientPoSubmissions, clientPoUpload,
-  onReviewRevision, onOpenProposal,
+  onReviewRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
 }: {
   /** The operations reviewer's control on a revision awaiting them (20270101000000). */
   onReviewRevision?: () => void
+  /** The admin who approved the proposal is no longer active (20270101000000 §6b). */
+  revisionApproverInactive?: boolean
+  /** An active admin's recovery control, with its page-owned confirm step. */
+  reapprove?: {
+    confirming: boolean
+    busy: boolean
+    error: string | null
+    onStart: () => void
+    onConfirm: () => void
+    onCancel: () => void
+  }
   /** Opens the proposed workbook through the page's signer. */
   onOpenProposal?: (version: PiVersionView) => void
   mainPi: MainPiCard
@@ -308,7 +322,7 @@ export function OrderDocumentsPanel({
               // (20270101000000): its own dashed block, its stage in words, and
               // who holds it now. The headline above stays the accepted PI.
               const p = mainPi.proposal
-              const stage = revisionStage(p)
+              const stage = revisionStage(p, revisionApproverInactive)
               return (
                 <div className="order-docsub-pending" role="group" aria-label={`${p.label} proposed`}>
                   <p className="order-doc-lead">
@@ -333,7 +347,26 @@ export function OrderDocumentsPanel({
                         {REVIEW_REVISION_LABEL(p.versionNumber)}
                       </button>
                     )}
+                    {reapprove && !reapprove.confirming && (
+                      <button type="button" className="boe-btn boe-btn-primary order-doc-action" onClick={reapprove.onStart}>
+                        {REAPPROVE_REVISION_LABEL(p.versionNumber)}
+                      </button>
+                    )}
                   </div>
+                  {reapprove?.confirming && (
+                    <div role="group" aria-label={REAPPROVE_REVISION_LABEL(p.versionNumber)}>
+                      <p className="order-doc-note">{REAPPROVE_REVISION_NOTE(p.versionNumber)}</p>
+                      <div className="order-docsub-actions">
+                        <button type="button" className="boe-btn boe-btn-primary order-doc-action" disabled={reapprove.busy} onClick={reapprove.onConfirm}>
+                          {REAPPROVE_REVISION_CONFIRM}
+                        </button>
+                        <button type="button" className="boe-btn boe-btn-ghost order-doc-action" disabled={reapprove.busy} onClick={reapprove.onCancel}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {reapprove?.error && <p className="order-doc-note" role="alert" style={{ color: colors.red }}>{reapprove.error}</p>}
                 </div>
               )
             })()}

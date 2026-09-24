@@ -550,6 +550,136 @@ begin
           'ORDER_PI_REVISION_STAGE_IMMUTABLE', '6. or rewritten');
 end $$;
 
+-- ═══ 7. THE APPROVING ADMIN IS DEACTIVATED BEFORE OPERATIONS ACCEPTS ═══════
+
+select set_config('test.pi_x', gen_random_uuid()::text, true);
+select pg_temp.make_pi(current_setting('test.pi_x')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT INACTIVE', 450000);
+select set_config('test.order_x', pg_temp.approve(current_setting('test.pi_x')::uuid)::text, true);
+
+do $$
+declare o uuid := current_setting('test.order_x')::uuid; v uuid; r jsonb; before_state text; payload_md5 text;
+        owner uuid := current_setting('test.owner_id')::uuid; admin2 uuid := current_setting('test.admin2_id')::uuid;
+        sales uuid := current_setting('test.sales_id')::uuid; reviewer uuid := current_setting('test.reviewer_id')::uuid;
+begin
+  v := pg_temp.propose(o);
+  perform pg_temp.stage(v, pg_temp.payload(v, 'ASSERT INACTIVE', 450000, 3), admin2);
+  payload_md5 := (select md5(payload::text) from public.order_pi_revision_staged_parses where version_id = v);
+
+  -- While the approving admin is active, nobody can take the approval over.
+  perform pg_temp.become(owner);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'ORDER_PI_REVISION_APPROVER_ACTIVE', '7. no re-approval while the approver is active');
+  perform pg_temp.restore();
+
+  -- The approving admin leaves.
+  perform set_config('request.jwt.claims', '', true);
+  update public.users set is_active = false where id = admin2;
+  before_state := pg_temp.current_state(o);
+
+  -- STUCK without recovery: the reviewer cannot accept, and nothing moves.
+  perform pg_temp.expect_error(format('select pg_temp.ops(%L, %L, ''accepted'', null)', reviewer, v),
+          'ORDER_PI_REVISION_APPROVER_INACTIVE', '7. acceptance is refused while the approver is inactive');
+  perform pg_temp.expect_error(format('select pg_temp.ops(%L, %L, ''accepted'', null)', reviewer, v),
+          'An active administrator must re-approve', '7. …and the refusal names the way out');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/admin_approved' and pg_temp.current_state(o) = before_state,
+                        '7. the refused acceptance changed nothing');
+
+  -- Who may re-approve: an active admin only.
+  perform pg_temp.become(sales);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'You do not have permission', '7. Sales cannot re-approve');
+  perform pg_temp.restore();
+  perform pg_temp.become(reviewer);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'You do not have permission', '7. the reviewer cannot re-approve');
+  perform pg_temp.restore();
+  perform pg_temp.become(admin2);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'This account is not active', '7. the deactivated admin cannot re-approve');
+  perform pg_temp.restore();
+
+  -- RECOVERY: another active admin re-approves the same staged parse.
+  perform pg_temp.become(owner);
+  r := public.reapprove_order_pi_revision(v);
+  perform pg_temp.restore();
+  perform pg_temp.check(r ->> 'previously_approved_by' = admin2::text and r ->> 'reapproved_by' = owner::text, '7. re-approved, attributed');
+  perform pg_temp.check((select decided_by from public.order_pi_versions where id = v) = owner
+                        and (select staged_by from public.order_pi_revision_staged_parses where version_id = v) = owner,
+                        '7. the admin decision and the stage are the re-approving admin''s');
+  perform pg_temp.check((select md5(payload::text) from public.order_pi_revision_staged_parses where version_id = v) = payload_md5,
+                        '7. the staged parse itself is unchanged');
+  perform pg_temp.check((select operations_reviewer from public.order_pi_versions where id = v) = reviewer, '7. still addressed to the reviewer');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/admin_approved' and pg_temp.current_state(o) = before_state,
+                        '7. re-approval changes nothing in force');
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o and event_type = 'pi_revision_admin_reapproved') = 1,
+                        '7. on the history once');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = reviewer and entity_id = o and title like '%re-approved%') = 1,
+                        '7. the reviewer is told once');
+  perform pg_temp.become(owner);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'ORDER_PI_REVISION_APPROVER_ACTIVE', '7. a repeated re-approval is refused');
+  perform pg_temp.restore();
+  perform pg_temp.expect_error(format('update public.order_pi_revision_staged_parses set staged_by = %L where version_id = %L', admin2, v),
+          'ORDER_PI_REVISION_STAGE_IMMUTABLE', '7. the stage cannot be re-attributed outside the door');
+  perform pg_temp.expect_error(format('update public.order_pi_versions set decided_by = %L where id = %L', admin2, v),
+          'ORDER_PI_VERSION_IMMUTABLE', '7. nor the decision');
+
+  -- The reviewer can now accept it.
+  perform pg_temp.ops(reviewer, v, 'accepted', null);
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/approved' and pg_temp.lines(o) = 'ASSERT chair v2 x3', '7. accepted after re-approval');
+  perform pg_temp.become(owner);
+  perform pg_temp.expect_error(format('select public.reapprove_order_pi_revision(%L)', v),
+          'ORDER_PI_REVISION_NOT_AWAITING_OPERATIONS', '7. nothing to re-approve once decided');
+  perform pg_temp.restore();
+  update public.users set is_active = true where id = admin2;
+end $$;
+
+-- ═══ 8. AN ERRONEOUS ADMIN APPROVAL: rejected, or superseded, V1 untouched ═
+
+select set_config('test.pi_e', gen_random_uuid()::text, true);
+select pg_temp.make_pi(current_setting('test.pi_e')::uuid, current_setting('test.sales_id')::uuid, 'ASSERT ERRONEOUS', 520000);
+select set_config('test.order_e', pg_temp.approve(current_setting('test.pi_e')::uuid)::text, true);
+
+do $$
+declare o uuid := current_setting('test.order_e')::uuid; v2 uuid; v3 uuid; before_state text;
+        owner uuid := current_setting('test.owner_id')::uuid; sales uuid := current_setting('test.sales_id')::uuid;
+        reviewer uuid := current_setting('test.reviewer_id')::uuid;
+begin
+  perform pg_temp.put_pdf(o);
+  v2 := pg_temp.propose(o);
+  before_state := pg_temp.current_state(o);
+  -- The admin approves the wrong file while no reviewer is assigned.
+  perform pg_temp.assign(null);
+  perform pg_temp.stage(v2, pg_temp.payload(v2, 'ASSERT ERRONEOUS', 520000, 9));
+  perform pg_temp.check(pg_temp.current_state(o) = before_state, '8. the erroneous approval changed nothing in force');
+  -- It cannot be superseded by a new proposal while it awaits operations…
+  perform pg_temp.expect_error(format('select pg_temp.propose(%L)', o), 'order_pi_versions_one_pending_per_order',
+          '8. no V3 while V2 awaits operations');
+  -- …nor accepted or rejected with nobody assigned; the admin assigns a reviewer.
+  perform pg_temp.expect_error(format('select pg_temp.ops(%L, %L, ''rejected'', ''wrong file'')', reviewer, v2),
+          'ORDER_PI_REVISION_NO_REVIEWER', '8. nobody decides while unassigned');
+  perform pg_temp.assign(reviewer);
+  perform pg_temp.ops(reviewer, v2, 'rejected', 'Admin approved the wrong workbook');
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/approved,2/rejected' and pg_temp.current_state(o) = before_state,
+                        '8. rejected: V1, its lines, images, PDF and codes byte-identical');
+  perform pg_temp.check((select count(*) from public.notifications where user_id = owner and entity_id = o and title like '%rejected PI V2%') = 1,
+                        '8. the approving admin is told');
+  -- The corrected file supersedes it as V3; V2 stays rejected in history.
+  v3 := pg_temp.propose(o);
+  perform pg_temp.stage(v3, pg_temp.payload(v3, 'ASSERT ERRONEOUS', 520000, 2));
+  perform pg_temp.check(pg_temp.current_state(o) = before_state, '8. staging V3 changes nothing in force either');
+  perform pg_temp.ops(reviewer, v3, 'accepted', null);
+  perform pg_temp.check(pg_temp.vstatus(o) = '1/superseded,2/rejected,3/approved' and pg_temp.lines(o) = 'ASSERT chair v2 x2',
+                        '8. V3 in force; V2 never was');
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o and event_type = 'pi_revision_applied') = 1,
+                        '8. exactly one application — V3''s');
+end $$;
+
+do $$
+begin
+  perform pg_temp.check(not has_function_privilege('anon', 'public.reapprove_order_pi_revision(uuid)', 'EXECUTE'), '9. anon cannot re-approve');
+end $$;
+
 do $$ begin raise notice 'ALL PI REVISION PROMOTION ASSERTIONS PASSED'; end $$;
 
 rollback;

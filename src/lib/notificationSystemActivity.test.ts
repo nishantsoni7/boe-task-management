@@ -350,8 +350,10 @@ describe('the read side excludes system types too', () => {
         assert.equal(isSystemGeneratedNotificationType(t), false, `${REVISED_PI_PROMOTION} writes ${t}, which must not be a system type`)
         assert.ok(t.startsWith('order_operations_review_'), t)
       }
-      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 1,
-        `${REVISED_PI_PROMOTION}: the one person-invoked decision acts as a signed-in person`)
+      // Two person-invoked doors: the reviewer's decision, and an active
+      // admin's re-approval when the approving admin has left (§6b).
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 2,
+        `${REVISED_PI_PROMOTION}: both person-invoked doors act as a signed-in person`)
       assert.ok(/grant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/.test(sql),
         `${REVISED_PI_PROMOTION}: the admin approval stays service-role, called by the route for a verified admin`)
       assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${REVISED_PI_PROMOTION}: nothing is scheduled`)
