@@ -24,11 +24,13 @@ import {
   MAX_CLIENT_PO_FILES,
   MAX_DESIGN_FILES,
   ORDER_DOCUMENT_SUBMISSION_SELECT,
+  SENT_WITH_PI_TITLE,
   SUPPORTING_DOCUMENTS_NOTE,
   SUPPORTING_DOCUMENTS_TITLE,
   describeDocumentFailure,
   missingSupporting,
   piDocumentObjectPath,
+  sentWithPi,
   validateDocumentFile,
   type DocumentCategory,
   type PersistedDocumentFile,
@@ -161,6 +163,60 @@ function Row({ file }: { file: { name: string; size: number } }) {
 
 const LABEL: React.CSSProperties = {
   fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
+}
+
+/**
+ * What a SUBMITTED PI carries, read-only, and who acts next — shown until the
+ * Order exists, after which the Order page's Documents section takes over.
+ * `refreshKey` is the PI's submitted_at, so a resubmission re-reads it.
+ */
+export function PiSentDocuments({ supabase, piSubmissionId, refreshKey }: {
+  supabase: SupabaseClient
+  piSubmissionId: string
+  refreshKey: string | null
+}) {
+  const [rows, setRows] = useState<PersistedDocumentSubmission[]>([])
+  useEffect(() => {
+    let live = true
+    void (async () => {
+      const { data } = await supabase
+        .from('order_document_submissions')
+        .select(ORDER_DOCUMENT_SUBMISSION_SELECT)
+        .eq('pi_submission_id', piSubmissionId)
+        .eq('stage', 'initial')
+      if (live) setRows((data ?? []) as unknown as PersistedDocumentSubmission[])
+    })()
+    return () => { live = false }
+  }, [supabase, piSubmissionId, refreshKey])
+
+  const shown = sentWithPi(rows)
+  if (!shown) return null
+  const files = shown.submission.files ?? []
+  return (
+    <section aria-label={SENT_WITH_PI_TITLE} style={{
+      border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', gap: '8px',
+    }}>
+      <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>{SENT_WITH_PI_TITLE}</div>
+      {(['design_files', 'client_po'] as const).map(category => {
+        const inCategory = files.filter(f => f.category === category)
+        if (inCategory.length === 0) return null
+        return (
+          <div key={category} role="group" aria-label={CATEGORY_LABEL[category]}
+               style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <span style={LABEL}>{CATEGORY_LABEL[category]}</span>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {inCategory.map(f => <Row key={f.storage_path} file={{ name: f.file_name, size: f.size_bytes }} />)}
+            </ul>
+          </div>
+        )
+      })}
+      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
+        <div><span style={{ color: colors.muted }}>Current owner:</span> {shown.owner}</div>
+        <div><span style={{ color: colors.muted }}>Next:</span> {shown.next}, then Operations accepts them with PI V1</div>
+      </div>
+    </section>
+  )
 }
 
 /** The two optional categories, drawn inside the submit dialog. */
