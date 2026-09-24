@@ -281,6 +281,75 @@ revoke execute on function public.propose_order_pi_edit_revision(uuid, uuid, jso
 grant  execute on function public.propose_order_pi_edit_revision(uuid, uuid, jsonb, text) to service_role;
 
 
+-- ─── 3b. Edit PI on a PI that is not yet an Order: its terms ──────────────
+--
+-- The parse writer owns the header, figures and lines; the terms it does not
+-- own (fabric, commercial terms note, city, payment and billing terms, billing
+-- %) are written here, by the same Edit PI request, under the SAME lease and
+-- after the SAME editor check — the owner in draft or returned, an active
+-- admin with a reason once it is under review. Never on a PI that is an Order:
+-- that changes only as a version.
+
+create or replace function public.apply_order_submission_pi_edit_terms(
+  p_submission_id    uuid,
+  p_actor_id         uuid,
+  p_terms            jsonb,
+  p_processing_token uuid,
+  p_reason           text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_sub     public.order_submissions%rowtype;
+  v_fabric  text := nullif(p_terms ->> 'fabric_responsibility', '');
+  v_billing numeric := nullif(p_terms ->> 'billing_percentage', '')::numeric;
+begin
+  if p_terms is null or jsonb_typeof(p_terms) <> 'object' then
+    raise exception 'ORDER_PI_EDIT_INVALID: the terms are missing' using errcode = 'P0001';
+  end if;
+
+  select * into v_sub from public.order_submissions where id = p_submission_id for update;
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+  if v_sub.processing_token is null or p_processing_token is null or v_sub.processing_token <> p_processing_token then
+    raise exception 'ORDER_SUBMISSION_PROCESSING_NOT_HELD: this edit does not hold the processing lease' using errcode = '55P03';
+  end if;
+  if v_sub.order_id is not null then
+    raise exception 'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION: this PI is approved and in force on an Order. Use Edit PI to propose a new version.'
+      using errcode = 'P0001';
+  end if;
+
+  -- Who may, at this stage — the parse writer's own authority.
+  perform public.assert_order_submission_workbook_editor(
+    p_submission_id, p_actor_id, nullif(btrim(coalesce(p_reason, '')), ''));
+
+  if v_fabric is not null and v_fabric not in ('not_selected', 'boe', 'client') then
+    raise exception 'ORDER_SUBMISSION_BAD_FABRIC_RESPONSIBILITY: choose not_selected, boe or client' using errcode = 'P0001';
+  end if;
+
+  update public.order_submissions s set
+    fabric_responsibility = coalesce(v_fabric, s.fabric_responsibility),
+    commercial_terms_note = nullif(btrim(coalesce(p_terms ->> 'commercial_terms_note', '')), ''),
+    client_city           = nullif(btrim(coalesce(p_terms ->> 'client_city', '')), ''),
+    payment_terms         = nullif(btrim(coalesce(p_terms ->> 'payment_terms', '')), ''),
+    billing_terms         = nullif(btrim(coalesce(p_terms ->> 'billing_terms', '')), ''),
+    billing_percentage    = v_billing
+  where s.id = p_submission_id;
+
+  return jsonb_build_object('id', p_submission_id, 'terms_applied', true);
+end;
+$$;
+
+comment on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) is
+  'SERVICE ROLE ONLY. The terms half of Edit PI on a PI that is not yet an Order, written under the processing lease after the parse writer''s own editor check. Refuses a PI that is an Order. 20270103000000.';
+revoke execute on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) from public, anon, authenticated;
+grant  execute on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) to service_role;
+
+
 -- ─── 4. An accepted EDIT revision's terms are applied with it ─────────────
 
 create or replace function public.order_pi_versions_apply_edit_terms()
@@ -547,8 +616,10 @@ create trigger order_submission_item_images_approved_pi_is_versioned
 
 do $assert$
 begin
-  if exists (select 1 from public.order_pi_versions where source_kind <> 'workbook' or proposal is not null) then
-    raise exception 'ASSERTION FAILED: an existing version was given a kind or a proposal';
+  -- Every workbook version stays exactly that: no proposal was attached to one.
+  -- (Re-applying over a database that already holds edit revisions is fine.)
+  if exists (select 1 from public.order_pi_versions where source_kind = 'workbook' and proposal is not null) then
+    raise exception 'ASSERTION FAILED: a workbook version was given a proposal';
   end if;
   if has_function_privilege('authenticated', 'public.propose_order_pi_edit_revision(uuid, uuid, jsonb, text)', 'EXECUTE') then
     raise exception 'ASSERTION FAILED: the browser can propose an edit revision without the server';

@@ -654,7 +654,7 @@ export const BLOCKING_INSTRUCTION =
  * copy, and it is not an Order yet.
  */
 export const STORED_COPY_NOTE =
-  'Stored PI copy. The Confirmed Order is created at management approval, with the Order number reserved here.'
+  'Stored PI copy. The Confirmed Order is created at management approval, and its Order number is allotted then.'
 
 // ── 9. Final approval ─────────────────────────────────────────────────────────
 //

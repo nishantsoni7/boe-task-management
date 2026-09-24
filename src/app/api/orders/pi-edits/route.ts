@@ -146,17 +146,15 @@ export async function POST(req: NextRequest) {
       const f = describePiEditFailure(error)
       return fail(f.status, f.code, f.message)
     }
-    // The terms the parse writer does not own, written only after it has
-    // accepted this person for this PI in this request.
-    const t = proposal.terms
-    const { error: termsErr } = await service.from('order_submissions').update({
-      fabric_responsibility: t.fabric_responsibility,
-      commercial_terms_note: t.commercial_terms_note,
-      client_city: t.client_city,
-      payment_terms: t.payment_terms,
-      billing_terms: t.billing_terms,
-      billing_percentage: t.billing_percentage,
-    }).eq('id', submissionId).is('order_id', null)
+    // The terms the parse writer does not own: same lease, same editor check,
+    // through the database (the table itself is never written directly).
+    const { error: termsErr } = await service.rpc('apply_order_submission_pi_edit_terms', {
+      p_submission_id: submissionId,
+      p_actor_id: user.id,
+      p_terms: proposal.terms,
+      p_processing_token: token,
+      p_reason: reason || null,
+    })
     if (termsErr) {
       return fail(500, 'TERMS_NOT_SAVED',
         'The products and details were saved, but the terms could not be. Open Edit PI again and save the terms.')

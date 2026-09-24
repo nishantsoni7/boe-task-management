@@ -43,6 +43,8 @@ export type PersistedPiVersion = {
   operations_decided_by?: string | null
   operations_decided_at?: string | null
   operations_reason?: string | null
+  /** 'workbook' | 'edit' (20270103000000). Optional: older reads omit it. */
+  source_kind?: string | null
 }
 
 /** Named, never `*`. The hash and the successor link are not read: the screen
@@ -53,6 +55,9 @@ export const ORDER_PI_VERSION_COLUMNS = [
   'uploaded_by', 'uploaded_at', 'revision_reason',
   'decided_by', 'decided_at', 'decision_reason', 'superseded_at',
   'operations_reviewer', 'operations_decided_by', 'operations_decided_at', 'operations_reason',
+  // How the version was proposed (20270103000000): an edit carries no file of
+  // its own, and must never be offered the original workbook as if it were.
+  'source_kind',
 ].join(', ')
 
 // ── Words ─────────────────────────────────────────────────────────────────────
@@ -131,9 +136,13 @@ export type PiVersionView = {
   status: PiVersionStatus
   statusLabel: string
   tone: PiVersionTone
-  /** The storage key, for the signer. Null when the file is not recorded. */
+  /** The storage key, for the signer. Null when the file is not recorded, and
+   *  for a version EDITED IN THE APP — its workbook_path names the original
+   *  upload, which is not this version and is never shown as if it were. */
   workbookPath: string | null
   workbookName: string | null
+  /** Proposed in the app with Edit PI rather than as a new workbook. */
+  editedInApp: boolean
   uploadedBy: string
   uploadedAt: string
   revisionReason: string | null
@@ -212,8 +221,11 @@ export function describePiVersionHistory(
         status,
         statusLabel: PI_VERSION_STATUS_LABEL[status],
         tone: PI_VERSION_STATUS_TONE[status],
-        workbookPath: row.workbook_path && row.workbook_path.trim() !== '' ? row.workbook_path : null,
-        workbookName: row.workbook_name && row.workbook_name.trim() !== '' ? row.workbook_name : null,
+        workbookPath: row.source_kind === 'edit' ? null
+          : row.workbook_path && row.workbook_path.trim() !== '' ? row.workbook_path : null,
+        workbookName: row.source_kind === 'edit' ? null
+          : row.workbook_name && row.workbook_name.trim() !== '' ? row.workbook_name : null,
+        editedInApp: row.source_kind === 'edit',
         uploadedBy: name(row.uploaded_by),
         uploadedAt: formatWhen(row.uploaded_at),
         revisionReason: row.revision_reason && row.revision_reason.trim() !== '' ? row.revision_reason.trim() : null,

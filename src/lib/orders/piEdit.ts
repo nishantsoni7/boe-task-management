@@ -649,8 +649,12 @@ export function diffPi(before: NormalizedPi, after: NormalizedPi): PiDiff {
   return { fields, added, removed, changed, grandTotalDelta }
 }
 
+/** Rupees the way every BOE screen writes them: ₹1,20,000 (paise only when there are any). */
+export const formatRupees = (n: number): string =>
+  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+
 /** The concise lines the version history shows ("2 products changed · Grand total +₹12,000"). */
-export function summarizeChanges(diff: PiDiff, formatMoney: (n: number) => string = n => n.toFixed(2)): string[] {
+export function summarizeChanges(diff: PiDiff, formatMoney: (n: number) => string = formatRupees): string[] {
   const out: string[] = []
   if (diff.fields.length > 0) {
     const names = diff.fields.map(f => f.label)

@@ -430,8 +430,15 @@ export function PiEditor({
 }
 
 /** The comparison, as a reader takes it in: fields, then products, then money. */
+const MONEY_FIELDS = new Set(['gross_product_amount', 'total_before_gst', 'gst_amount', 'grand_total', 'discount_amount'])
+const MONEY_LINE_LABELS = new Set(['Price', 'Line total'])
+/** A stored figure, shown as money; anything else exactly as written. */
+const asMoney = (v: string) => (v !== '' && Number.isFinite(Number(v)) ? formatInr(Number(v)) : v)
+
 export function PiDiffView({ diff }: { diff: ReturnType<typeof diffPi> }) {
   const money = (n: number | null) => (n === null ? '' : `${n > 0 ? '+' : '−'}${formatInr(Math.abs(n))}`)
+  const fieldValue = (key: string, v: string) => (MONEY_FIELDS.has(key) ? asMoney(v) : v)
+  const lineValue = (label: string, v: string) => (MONEY_LINE_LABELS.has(label) ? asMoney(v) : v)
   if (!editChangesSomething(diff)) return <div style={{ fontSize: '12.5px', color: colors.muted }}>No changes.</div>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
@@ -442,8 +449,8 @@ export function PiDiffView({ diff }: { diff: ReturnType<typeof diffPi> }) {
             {diff.fields.map(f => (
               <tr key={f.key} style={{ borderTop: `1px solid ${colors.border}` }}>
                 <td style={{ padding: '4px 6px 4px 0', fontWeight: 600 }}>{f.label}</td>
-                <td style={{ padding: '4px 6px', color: colors.secondary, textDecoration: 'line-through' }}>{f.before || '—'}</td>
-                <td style={{ padding: '4px 0 4px 6px' }}>{f.after || '—'}</td>
+                <td style={{ padding: '4px 6px', color: colors.secondary, textDecoration: 'line-through' }}>{fieldValue(f.key, f.before) || '—'}</td>
+                <td style={{ padding: '4px 0 4px 6px' }}>{fieldValue(f.key, f.after) || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -460,7 +467,7 @@ export function PiDiffView({ diff }: { diff: ReturnType<typeof diffPi> }) {
           <strong>{c.name}</strong>
           {c.totalDelta !== null && <span style={{ marginLeft: '6px', fontWeight: 700 }}>{money(c.totalDelta)}</span>}
           <ul style={{ margin: '2px 0 0', paddingLeft: '18px' }}>
-            {c.changes.map(x => <li key={x.label}>{x.label}: <s style={{ color: colors.secondary }}>{x.before || '—'}</s> → {x.after || '—'}</li>)}
+            {c.changes.map(x => <li key={x.label}>{x.label}: <s style={{ color: colors.secondary }}>{lineValue(x.label, x.before) || '—'}</s> → {lineValue(x.label, x.after) || '—'}</li>)}
           </ul>
         </div>
       ))}
