@@ -148,6 +148,54 @@ export async function signAttachmentUrls(
   return out
 }
 
+/**
+ * Thumbnail edge, in CSS px × 2 for high-density screens. The gallery draws
+ * squares of about 100px; phone screenshots uploaded as PNG are ~750 KB each,
+ * so eight full-size originals cost ~6 MB just to fill the grid.
+ */
+export const THUMBNAIL_EDGE_PX = 256
+
+/**
+ * Signed URLs for RESIZED copies of many images, keyed by path — Supabase
+ * Storage image transformation (`/render/image/sign/`), cropped to a square.
+ *
+ * Same access rule as every other read here: each URL is signed with the
+ * caller's own session, so the storage policy decides. There is no batch form
+ * of a transformed signature, so this signs one path at a time, a few at once.
+ *
+ * Returns an empty map, rather than throwing, when the project cannot
+ * transform — callers fall back to the original. A signature can also succeed
+ * while the render endpoint later refuses the image; that is handled by the
+ * <img> falling back on error, not here.
+ */
+export async function signAttachmentThumbnailUrls(
+  supabase: SupabaseClient,
+  paths: readonly (string | null | undefined)[],
+  edge: number = THUMBNAIL_EDGE_PX,
+  expiresIn: number = SIGNED_URL_TTL_SECONDS,
+  concurrency = 4,
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(paths.filter((p): p is string => !!p))]
+  const out = new Map<string, string>()
+  let next = 0
+  const worker = async () => {
+    while (next < wanted.length) {
+      const path = wanted[next++]
+      try {
+        const { data, error } = await supabase
+          .storage
+          .from(TASK_ATTACHMENTS_BUCKET)
+          .createSignedUrl(path, expiresIn, {
+            transform: { width: edge, height: edge, resize: 'cover', quality: 70 },
+          })
+        if (!error && data?.signedUrl) out.set(path, data.signedUrl)
+      } catch { /* leave it out: the caller uses the original */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, wanted.length) }, worker))
+  return out
+}
+
 // ── Writing ─────────────────────────────────────────────────────────────────
 
 export type UploadedAttachment = { path: string }
