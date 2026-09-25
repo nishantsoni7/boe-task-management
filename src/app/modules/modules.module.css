@@ -12,7 +12,8 @@
    Essentials, then every other module — the whole launcher on one laptop
    screen. WHITE SURFACES AND NEUTRAL BORDERS; BOE red only in small accents:
 
-     #FFFFFF  the page, the header and every tile
+     #F4F5F7  the page canvas behind the tiles
+     #FFFFFF  the header, the announcement row and every tile
      #172033  ink — module names, the announcement title
      #4A5261  section labels, resting icons
      #F3F4F6  icon boxes
@@ -27,10 +28,12 @@
 /* ── This page's surface and typeface ─────────────────────────────────────
    SCOPED TO THIS PAGE. `:has(.launcher)` matches only the shell that holds
    this launcher, so every other module keeps the app's own surface and its
-   DM Sans. This page is white. Inter is already loaded by the root layout (--font-inter), so this
-   adds no font download and no build-time fetch. The sidebar is untouched. */
+   DM Sans. The canvas is a light neutral grey so the white header, row and
+   tiles stand off it. Inter is already loaded by the root layout
+   (--font-inter), so this adds no font download and no build-time fetch. The
+   sidebar is untouched. */
 :global(.boe-app-shell):has(.launcher) {
-  background: #FFFFFF;
+  background: #F4F5F7;
 }
 
 :global(.boe-main-content):has(.launcher) :global(.boe-page-header) {

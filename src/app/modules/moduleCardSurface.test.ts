@@ -502,10 +502,21 @@ describe('the header, and the latest announcement beneath it', () => {
 })
 
 // ── A white page ─────────────────────────────────────────────────────────────
-describe('the page is white, with red only in small accents', () => {
-  test('the page and its header are white — scoped to this page', () => {
-    assert.match(CSS, /:global\(\.boe-app-shell\):has\(\.launcher\)\s*\{\s*background:\s*#FFFFFF;/)
+describe('a neutral canvas under white surfaces, with red only in small accents', () => {
+  test('the canvas is #F4F5F7 and the header is white — scoped to this page', () => {
+    assert.match(CSS, /:global\(\.boe-app-shell\):has\(\.launcher\)\s*\{\s*background:\s*#F4F5F7;/)
     assert.match(CSS, /:global\(\.boe-main-content\):has\(\.launcher\) :global\(\.boe-page-header\)\s*\{\s*background:\s*#FFFFFF;/)
+  })
+
+  test('the announcement row and every tile stay white, with neutral borders', () => {
+    assert.match(baseRule('.announcement'), /background:\s*#fff/i)
+    assert.match(baseRule('.announcement'), /border:\s*1px solid #E3E6EB/i)
+    assert.match(DESKTOP_CARD, /background:\s*#fff/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
+  })
+
+  test('the sidebar is not restyled here', () => {
+    assert.equal(/boe-sidebar/.test(stripCss(CSS)), false)
   })
 
   test('NO BEIGE, NO PINK: none of the earlier tints survive', () => {
