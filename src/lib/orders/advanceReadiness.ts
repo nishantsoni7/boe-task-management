@@ -163,9 +163,25 @@ export function advanceGateView(r: AdvanceReadiness | null, input: { versionNumb
  * the reviewer knows why "Align production again" is offered. Null otherwise —
  * and never a reason to disable anything.
  */
-export function advanceRealignLabel(r: AdvanceReadiness | null): string | null {
-  if (!r || !r.hold || !r.ready) return null
-  return 'Production on hold — the advance is covered again; align production again'
+export function advanceRealignLabel(
+  r: AdvanceReadiness | null,
+  /**
+   * What THIS reader can do about it (review N2): the current reviewer aligns
+   * production again, an administrator with no reviewer able to act recovers
+   * the alignment, anybody else is told what it is waiting for.
+   */
+  action: 'realign' | 'recover' | null = null,
+): string | null {
+  if (!advanceHoldCovered(r)) return null
+  const next = action === 'realign' ? 'align production again'
+    : action === 'recover' ? 'recover production alignment'
+    : 'awaiting production realignment'
+  return `Production on hold — the advance is covered again; ${next}`
+}
+
+/** A held Order whose advance is covered again, waiting only to be aligned again (review N1). */
+export function advanceHoldCovered(r: AdvanceReadiness | null): boolean {
+  return !!r && !!r.hold && r.ready
 }
 
 /**

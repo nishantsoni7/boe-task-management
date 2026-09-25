@@ -21,7 +21,7 @@ import {
   type PersistedOperationsHandoff,
 } from './operationsHandoff'
 import { orderAttentionItems, orderSummaryView, type OrderRecordFact } from './orderWorkspace'
-import { advanceAttentionLabel, advanceRealignLabel, type AdvanceReadiness } from './advanceReadiness'
+import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, type AdvanceReadiness } from './advanceReadiness'
 import { ORDER_VALUE_AMENDED_NOTE, ORDER_VALUE_LABEL, PI_VALUE_LABEL, orderCommercialLines } from './orderCommercial'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
@@ -87,11 +87,11 @@ describe('W2: a held Order says why it is not aligned', () => {
   const held = view({ productionAligned: false }).alignment
   test('the alignment says it is held, and why', () => {
     assert.equal(held.held, true)
-    assert.equal(held.line, 'PI V1 accepted; production on hold — advance below 40%')
+    assert.equal(held.line, 'PI V1 accepted by Suite Factory · 09:57; production on hold — advance below 40%')
   })
   test('the summary draws that line for a held Order…', () => {
     const s = orderSummaryView({ fields: [], facts: facts(held.line), clientContact: null, productionAligned: false, productionHeld: true })
-    assert.equal(s.sales.production.line, 'PI V1 accepted; production on hold — advance below 40%')
+    assert.equal(s.sales.production.line, 'PI V1 accepted by Suite Factory · 09:57; production on hold — advance below 40%')
   })
   test('…and still draws nothing for any other unaligned Order', () => {
     const s = orderSummaryView({ fields: [], facts: facts('Awaiting operations acceptance of PI V1'), clientContact: null, productionAligned: false })
@@ -105,11 +105,56 @@ const base: AdvanceReadiness = {
 }
 const hold = { id: 'h', cause: 'value_changed', held_at: null, order_value: '420000', previous_order_value: '350000', verified: '140000', percent: '33.33', shortfall: '28000' }
 
+describe('N1: a held Order whose advance is covered is awaiting realignment, not "below 40%"', () => {
+  test('covered: the line says it awaits production realignment, keeping the acceptance', () => {
+    const v = view({ productionAligned: false, holdCovered: true })
+    assert.equal(v.alignment.line, 'PI V1 accepted by Suite Factory · 09:57; production on hold — awaiting production realignment')
+    assert.doesNotMatch(v.alignment.line ?? '', /below 40%/)
+  })
+  test('held again after an earlier re-alignment: that re-alignment stays visible too', () => {
+    const realignment = { kind: 'operations' as const, byName: 'Suite Ops', at: '2026-09-25T10:03:00Z' }
+    assert.equal(view({ productionAligned: false, holdCovered: false, realignment }).alignment.line,
+      'PI V1 accepted by Suite Factory · 09:57 · last aligned again by Suite Ops · 10:03; production on hold — advance below 40%')
+    const recovered = { kind: 'admin' as const, byName: 'Preview Admin', at: '2026-09-25T10:06:00Z' }
+    assert.equal(view({ productionAligned: false, holdCovered: true, realignment: recovered }).alignment.line,
+      'PI V1 accepted by Suite Factory · 09:57 · last recovered by Preview Admin · 10:06; production on hold — awaiting production realignment')
+  })
+  test('advanceHoldCovered is true only for a held Order that is ready again', () => {
+    assert.equal(advanceHoldCovered({ ...base, hold }), true)
+    assert.equal(advanceHoldCovered({ ...base, below: true, ready: false, hold }), false)
+    assert.equal(advanceHoldCovered(base), false)
+    assert.equal(advanceHoldCovered(null), false)
+  })
+})
+
+describe('N2: the strip names THIS reader\'s action, and says it once', () => {
+  const r = { ...base, hold }
+  test('the reviewer is told to align production again; the admin to recover it; anyone else what it awaits', () => {
+    assert.equal(advanceRealignLabel(r, 'realign'), 'Production on hold — the advance is covered again; align production again')
+    assert.equal(advanceRealignLabel(r, 'recover'), 'Production on hold — the advance is covered again; recover production alignment')
+    assert.equal(advanceRealignLabel(r, null), 'Production on hold — the advance is covered again; awaiting production realignment')
+  })
+  const quiet = {
+    status: 'running', productionAligned: false, hasSalesperson: true, hasDueDate: true, hasLeadSource: true,
+    isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0, pendingPiRevision: false,
+    documentsFailed: false, documentsOutdated: false,
+  }
+  test('no duplicate "Production not aligned" beside a hold item — covered or still short', () => {
+    const covered = orderAttentionItems({ ...quiet, advanceRealignLabel: advanceRealignLabel(r, 'recover') })
+    assert.deepEqual(covered.map(i => i.key), ['advance_realign'])
+    const short = orderAttentionItems({ ...quiet, advanceBelowLabel: 'Production on hold: advance below 40% — see Payment' })
+    assert.deepEqual(short.map(i => i.key), ['advance_below'])
+  })
+  test('an unaligned Order with nothing else to say still gets the generic line', () => {
+    assert.deepEqual(orderAttentionItems(quiet).map(i => i.label), ['Production not aligned'])
+  })
+})
+
 describe('W3: a held Order that is ready again says so', () => {
   test('ready and still held: an amber line, and no blocking label', () => {
     const r = { ...base, hold }
     assert.equal(advanceAttentionLabel(r), null, 'nothing blocks it — the button stays enabled')
-    assert.equal(advanceRealignLabel(r), 'Production on hold — the advance is covered again; align production again')
+    assert.equal(advanceRealignLabel(r), 'Production on hold — the advance is covered again; awaiting production realignment')
     const items = orderAttentionItems({
       status: 'running', productionAligned: false, hasSalesperson: true, hasDueDate: true, hasLeadSource: true,
       isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0, pendingPiRevision: false,

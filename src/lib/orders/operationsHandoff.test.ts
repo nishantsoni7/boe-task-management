@@ -127,7 +127,7 @@ describe('the version in force, in words — and what alignment says as a result
     const view = describeOperationsHandoff({ ...base, productionAligned: false, live: accepted() })
     if (view.kind !== 'recorded') throw new Error('recorded')
     assert.equal(view.statusLabel, 'Accepted for production')
-    assert.deepEqual(view.alignment, { aligned: false, held: true, label: 'Not Aligned', line: 'PI V1 accepted; production on hold — advance below 40%' })
+    assert.deepEqual(view.alignment, { aligned: false, held: true, label: 'Not Aligned', line: 'PI V1 accepted by Nitish · @2026-09-20T12:00:00Z; production on hold — advance below 40%' })
   })
 
   test('flagged: the reason; not aligned; only Accept remains', () => {

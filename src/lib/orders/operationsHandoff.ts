@@ -326,26 +326,41 @@ export function describeHandoffAlignment(input: {
    * acceptance stands, the alignment does not.
    */
   productionAligned?: boolean
+  /**
+   * The held Order's advance is covered again (verified money back at 40%, or
+   * an approval covers it) and it only awaits being aligned again (review N1).
+   * The line must then not claim the advance is still below 40%.
+   */
+  holdCovered?: boolean
 }): { label: string; line: string | null; aligned: boolean; held: boolean } {
   const { live } = input
+  const accepted = `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`
+  const r = input.realignment
+  const realigned = !!r && (!live.accepted_at || r.at > live.accepted_at)
+  const realignedBy = realigned && r
+    ? `${r.kind === 'admin' ? 'recovered by' : 'aligned again by'} ${r.byName ?? (r.kind === 'admin' ? 'an administrator' : 'operations')} · ${input.formatWhen(r.at)}`
+    : null
   if (live.status === 'accepted' && input.productionAligned === false) {
+    // HELD. The acceptance it stands on, and the last re-alignment if there was
+    // one, stay visible; then what the hold is waiting for now.
     return {
       aligned: false,
       held: true,
       label: 'Not Aligned',
-      line: `${versionLabel(live.version_number)} accepted; production on hold — advance below 40%`,
+      line: `${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
+        + (realignedBy ? ` · last ${realignedBy}` : '')
+        + (input.holdCovered
+          ? '; production on hold — awaiting production realignment'
+          : '; production on hold — advance below 40%'),
     }
   }
   if (live.status === 'accepted') {
-    const accepted = `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`
-    const r = input.realignment
-    const realigned = r && (!live.accepted_at || r.at > live.accepted_at)
     return {
       aligned: true,
       held: false,
       label: `Aligned · ${versionLabel(live.version_number)}`,
-      line: realigned
-        ? `${r.kind === 'admin' ? 'Recovered by' : 'Aligned again by'} ${r.byName ?? (r.kind === 'admin' ? 'an administrator' : 'operations')} · ${input.formatWhen(r.at)} · ${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
+      line: realignedBy
+        ? `${realignedBy.charAt(0).toUpperCase()}${realignedBy.slice(1)} · ${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
         : accepted,
     }
   }
@@ -375,6 +390,8 @@ export function describeOperationsHandoff(input: {
   revisionReason?: string | null
   /** The latest re-alignment after a hold (latestRealignment), for the alignment line. */
   realignment?: HandoffRealignment | null
+  /** A held Order whose advance is covered again (advanceHoldCovered), for the held line. */
+  holdCovered?: boolean
 }): OperationsHandoffView {
   const { live, namesById, formatWhen } = input
   if (!live) {
@@ -461,7 +478,7 @@ export function describeOperationsHandoff(input: {
     revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
     priorAcceptedNotice,
     alignmentWarning,
-    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen, productionAligned: input.productionAligned, realignment: input.realignment ?? null }),
+    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen, productionAligned: input.productionAligned, realignment: input.realignment ?? null, holdCovered: input.holdCovered ?? false }),
     actions: {
       accept: mayDecide && live.status !== 'accepted',
       cannotAccept: mayDecide && live.status === 'awaiting',
