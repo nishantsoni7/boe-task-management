@@ -557,7 +557,7 @@ describe('the phase boundary holds', () => {
     assert.ok(!route.includes('advance'))
   })
 
-  // A REVISION IS STAGED, NOT APPLIED (20270101000000). Admin approval of V2 may
+  // A REVISION IS STAGED, NOT APPLIED (20270113000000). Admin approval of V2 may
   // change nothing current, so the two post-commit steps that WRITE to the PI in
   // force are skipped for it: seeding the terms (they travel in the payload and
   // are seeded at acceptance) and deleting "obsolete" objects (V1's pictures and

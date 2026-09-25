@@ -324,11 +324,11 @@ describe('a failed submission keeps the words on screen', () => {
 describe('this is the dialog the PI detail page opens, and the RPC it sends to', () => {
   const page = readFileSync(
     join(process.cwd(), 'src', 'app', 'orders', 'drafts', '[submissionId]', 'page.tsx'), 'utf8')
-  // The submit door's call lives in the supporting-documents sender (20261231000000 §11).
+  // The submit door's call lives in the supporting-documents sender (20270112000000 §11).
   const supportingSource = readFileSync(
     join(process.cwd(), 'src', 'components', 'orders', 'PiSupportingDocuments.tsx'), 'utf8')
   const documentsMigration = readFileSync(
-    join(process.cwd(), 'supabase', 'migrations', '20261231000000_order_document_submissions.sql'), 'utf8').replace(/\r\n/g, '\n')
+    join(process.cwd(), 'supabase', 'migrations', '20270112000000_order_document_submissions.sql'), 'utf8').replace(/\r\n/g, '\n')
 
   test('the page imports THIS component, and there is no second submit modal', () => {
     assert.ok(/import \{[\s\S]*?\bPiSubmitConfirmModal\b[\s\S]*?\} from '@\/components\/orders\/piReviewModals'/
@@ -354,7 +354,7 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
     // The dialog's submit goes through the supporting-documents sender, which
     // calls ONE wrapper that runs submit_pi_for_review() unchanged and records
     // the attached Design Files / Client PO in the same transaction
-    // (20261231000000 §11).
+    // (20270112000000 §11).
     assert.ok(page.includes('supporting.send({ note, terms, acknowledgedMissing })'),
       'one door, whichever route the database chooses')
     assert.ok(supportingSource.includes("supabase.rpc('submit_pi_for_review_with_documents'"))

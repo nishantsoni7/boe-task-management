@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# TEST-ONLY RUNNER — 20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql, on a
+# TEST-ONLY RUNNER — 20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql, on a
 # DISPOSABLE local Supabase stack
 # ═════════════════════════════════════════════════════════════════════════════
 #
@@ -51,7 +51,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MIGRATION="$HERE/../migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql"
+MIGRATION="$HERE/../migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql"
 ASSERTIONS="$HERE/order_pi_revision_promotion_assertions.sql"
 
 : "${BOE_DB_CONTAINER:?BOE_DB_CONTAINER must name the database container of the disposable stack}"
@@ -81,4 +81,4 @@ echo "3/3 assertions (one transaction, rolls back)"
 docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$ASSERTIONS" \
   | grep -E "ALL PI REVISION PROMOTION ASSERTIONS PASSED|ERROR" || true
 docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f - < "$ASSERTIONS" > /dev/null
-echo "OK: 20270101000000 applies twice and every PI revision promotion assertion holds"
+echo "OK: 20270113000000 applies twice and every PI revision promotion assertion holds"

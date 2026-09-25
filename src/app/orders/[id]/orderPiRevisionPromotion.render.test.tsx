@@ -1,5 +1,5 @@
 /**
- * Revised PI promotion (20270101000000), rendered: the proposal beside the PI
+ * Revised PI promotion (20270113000000), rendered: the proposal beside the PI
  * in force, and the operations review dialog.
  *
  * Run:

@@ -1,5 +1,5 @@
 /**
- * Order document submissions (20261231000000), rendered: the Documents card and
+ * Order document submissions (20270112000000), rendered: the Documents card and
  * the separation between what is CURRENT (the rows) and what is only PROPOSED
  * (the changes panel, drawn only when something is pending or rejected).
  *

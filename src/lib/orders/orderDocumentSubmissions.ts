@@ -1,6 +1,6 @@
 // ── DESIGN FILES AND CLIENT PO: SUBMITTED, REVIEWED TWICE, THEN CURRENT ──────
 //
-// The rows come from public.order_document_submissions (20261231000000). A
+// The rows come from public.order_document_submissions (20270112000000). A
 // submission is Sales proposing a change to one or both categories; an admin
 // approves or rejects it, then the assigned operations reviewer accepts or
 // rejects it. ONLY AN ACCEPTED SUBMISSION IS CURRENT — this module derives the
@@ -234,7 +234,7 @@ export function isOperationsReviewerFor(s: PersistedDocumentSubmission, viewer: 
   if (!viewer.viewerId || viewer.viewingAs) return false
   // THE ROW IS THE AUTHORITY. The database readdresses operations_reviewer
   // inside the same transaction as a Control Center reassignment
-  // (20261231000000 §12), and the decision RPC refuses anybody else — so the
+  // (20270112000000 §12), and the decision RPC refuses anybody else — so the
   // Order page, the dashboard queue and the database read one answer.
   return s.operations_reviewer === viewer.viewerId
 }

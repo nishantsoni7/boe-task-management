@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# TEST-ONLY RUNNER — 20261231000000_order_document_submissions.sql, on a
+# TEST-ONLY RUNNER — 20270112000000_order_document_submissions.sql, on a
 # DISPOSABLE local Supabase stack
 # ═════════════════════════════════════════════════════════════════════════════
 #
@@ -51,7 +51,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MIGRATION="$HERE/../migrations/20261231000000_order_document_submissions.sql"
+MIGRATION="$HERE/../migrations/20270112000000_order_document_submissions.sql"
 ASSERTIONS="$HERE/order_document_submissions_assertions.sql"
 
 : "${BOE_DB_CONTAINER:?BOE_DB_CONTAINER must name the database container of the disposable stack}"
@@ -81,4 +81,4 @@ echo "3/3 assertions (one transaction, rolls back)"
 docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$ASSERTIONS" \
   | grep -E "ALL DOCUMENT SUBMISSION ASSERTIONS PASSED|ERROR" || true
 docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f - < "$ASSERTIONS" > /dev/null
-echo "OK: 20261231000000 applies twice and every document submission assertion holds"
+echo "OK: 20270112000000 applies twice and every document submission assertion holds"

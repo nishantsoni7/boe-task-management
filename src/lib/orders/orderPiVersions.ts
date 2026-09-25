@@ -20,7 +20,7 @@ import { workbookObjectPath } from './saveDraftFlow'
 
 // ── The persisted row ─────────────────────────────────────────────────────────
 
-// 'admin_approved' (20270101000000): an admin approved the revision and its parse
+// 'admin_approved' (20270113000000): an admin approved the revision and its parse
 // is staged; it is NOT in force until the operations reviewer accepts it.
 export type PiVersionStatus = 'pending' | 'admin_approved' | 'approved' | 'rejected' | 'superseded'
 
@@ -391,7 +391,7 @@ export function describePiRevisionFailure(
   return known ? known.message : REVISION_FALLBACK[action]
 }
 
-// ── The operations decision on a revised PI (20270101000000) ─────────────────
+// ── The operations decision on a revised PI (20270113000000) ─────────────────
 //
 // An admin's approval STAGES a revision ('admin_approved'); the assigned
 // operations reviewer compares it with the PI in force and accepts or rejects
@@ -460,7 +460,7 @@ export function canDecideRevisionOperations(v: PiVersionView | null, viewerId: s
 }
 
 /**
- * The recovery control (20270101000000 §6b): an active admin, not under View
+ * The recovery control (20270113000000 §6b): an active admin, not under View
  * As, on a revision awaiting operations whose approving admin is no longer
  * active. reapprove_order_pi_revision() re-derives every part of it.
  */

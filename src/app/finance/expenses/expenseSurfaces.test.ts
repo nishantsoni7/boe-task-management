@@ -632,11 +632,11 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order 0524's one-time handoff (20261230000000) is the one named
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
-      // Order document submissions (20261231000000): Design Files and Client PO
+      // Order document submissions (20270112000000): Design Files and Client PO
       // reviewed by admin then operations, held by its own suites.
-      if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
-      // Revised-PI promotion (20270101000000), held by its own suites.
-      if (f === 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
+      if (f === 'supabase/migrations/20270112000000_order_document_submissions.sql') continue
+      // Revised-PI promotion (20270113000000), held by its own suites.
+      if (f === 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1249,7 +1249,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * rule. Every file is named; no migration, no permission, no money.
    */
   /**
-   * ORDER DOCUMENT SUBMISSIONS (20261231000000).
+   * ORDER DOCUMENT SUBMISSIONS (20270112000000).
    *
    * Design Files and Client PO on a Confirmed Order: Sales submits, an admin
    * approves or rejects, the assigned operations reviewer accepts or rejects,
@@ -1300,10 +1300,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20261231000000_order_document_submissions.sql'
+  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20270112000000_order_document_submissions.sql'
 
   /**
-   * REVISED-PI PROMOTION (20270101000000).
+   * REVISED-PI PROMOTION (20270113000000).
    *
    * An admin approval stages a revised PI; only the operations reviewer's
    * acceptance applies it. The approval route's staging mode, the version view
@@ -1327,7 +1327,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/submissionImages.test.ts',
     'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
   ])
-  const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
+  const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
   // Calmer Confirmed Order documents (#206): the ⋯ menu moved out of
   // OrderStatusWorkspace.tsx into its own module, unchanged in what it does.
@@ -1413,7 +1413,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/app/orders/[id]/OrderAmendmentModals.tsx',
     ]) {
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
-      // …unless the revised-PI promotion (20270101000000) reaches it on purpose:
+      // …unless the revised-PI promotion (20270113000000) reaches it on purpose:
       // staging a revision IS a change to the PI revision path.
       if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)

@@ -606,8 +606,8 @@ describe('the database half of this verification', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
-      '20261231000000_order_document_submissions.sql',
-      '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270112000000_order_document_submissions.sql',
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
     ], 'every migration after this one is accounted for')
   })
 })

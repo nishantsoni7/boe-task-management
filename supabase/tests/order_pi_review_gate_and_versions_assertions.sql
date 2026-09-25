@@ -648,7 +648,7 @@ begin
     assert v_msg like 'ORDER_PI_VERSION_TRANSITION_INVALID%', v_msg;
   end;
   -- two versions cannot both be current, whatever the caller (since
-  -- 20270101000000 the guard refuses pending → approved before the index can);
+  -- 20270113000000 the guard refuses pending → approved before the index can);
   begin
     update public.order_pi_versions set status = 'approved', decided_by = v_admin, decided_at = now() where id = v_v3;
     raise exception 'two approved versions on one Order must be refused';
@@ -674,7 +674,7 @@ begin
   assert (select status from public.order_pi_versions where id = v_v3) = 'pending';
   assert (select status from public.order_pi_versions where id = v_v1) = 'approved';
 
-  -- The one legal way V3 becomes current (20270101000000): an admin approval
+  -- The one legal way V3 becomes current (20270113000000): an admin approval
   -- stages it, and only inside the operations acceptance is V1 superseded and
   -- V3 approved.
   update public.order_pi_versions

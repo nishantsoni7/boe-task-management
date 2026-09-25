@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
-    // SINCE 20270101000000 AN ADMIN APPROVAL DOES NOT PUT THE REVISION IN FORCE:
+    // SINCE 20270113000000 AN ADMIN APPROVAL DOES NOT PUT THE REVISION IN FORCE:
     // it waits for the operations reviewer, who is told by the database. The
     // message says exactly that, so nobody plans against a PI still pending.
     const text = event === 'pi_revision_approved'

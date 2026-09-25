@@ -257,14 +257,14 @@ export function OrderDocumentsPanel({
   onOpenFile?: (f: PersistedDocumentFile) => void
   /** A file that could not be opened, said once under the rows. */
   fileError?: string | null
-  /** The operations reviewer's control on a staged revision (20270101000000). */
+  /** The operations reviewer's control on a staged revision (20270113000000). */
   onReviewRevision?: () => void
   /** An admin's decision on a revision still pending Admin. */
   onApproveRevision?: (version: PiVersionView) => void
   onRejectRevision?: (version: PiVersionView) => void
   /** Opens the proposed workbook through the page's signer. */
   onOpenProposal?: (version: PiVersionView) => void
-  /** The admin who approved the proposal is no longer active (20270101000000 §6b). */
+  /** The admin who approved the proposal is no longer active (20270113000000 §6b). */
   revisionApproverInactive?: boolean
   /** An active admin's recovery control, with its page-owned confirm step. */
   reapprove?: {
@@ -963,7 +963,7 @@ export function PiHistoryModal({
                   Uploaded by {v.uploadedBy} · {v.uploadedAt}
                   {v.decisionLine ? ` · ${v.decisionLine}` : ''}
                 </div>
-                {/* THE OPERATIONS DECISION (20270101000000): who accepted — or
+                {/* THE OPERATIONS DECISION (20270113000000): who accepted — or
                     rejected — this version for production, when, and why. */}
                 {v.operationsLine && (
                   <div className="order-history-meta">
