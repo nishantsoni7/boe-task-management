@@ -159,6 +159,16 @@ export function advanceGateView(r: AdvanceReadiness | null, input: { versionNumb
 }
 
 /**
+ * A held Order that is ready again (review W3): the strip says so, amber, so
+ * the reviewer knows why "Align production again" is offered. Null otherwise —
+ * and never a reason to disable anything.
+ */
+export function advanceRealignLabel(r: AdvanceReadiness | null): string | null {
+  if (!r || !r.hold || !r.ready) return null
+  return 'Production on hold — the advance is covered again; align production again'
+}
+
+/**
  * The attention-strip line, or null. The CONSEQUENCE, not the figures: payment
  * is stated in one place on the Order page, the Payment section, where the
  * panel gives the percentage and the shortfall.

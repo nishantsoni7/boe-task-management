@@ -111,7 +111,7 @@ import {
   type PersistedItemImage,
   type PersistedProduct,
 } from '@/lib/orders/draftsView'
-import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
+import { buildImageViewerItems, formatInr, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
 import { PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
@@ -159,7 +159,7 @@ import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCu
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
-import { advanceAttentionLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
+import { advanceAttentionLabel, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -185,6 +185,7 @@ import {
   WITHDRAW_ACCEPTANCE_LABEL,
   describeHandoffFailure,
   describeOperationsHandoff,
+  latestRealignment,
   splitOperationsHandoffs,
   type OperationsHandoffStatus,
   type PersistedOperationsHandoff,
@@ -721,6 +722,9 @@ export default function OrderDetailPage() {
   // an Order with no source PI never leaves it, and the screen is then exactly
   // what it has always been. See src/lib/orders/orderPiHandoff.ts.
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
+  // The approved PI's grand total as a NUMBER, to tell an amended Order's own
+  // value apart from it in the Commercial breakdown (walkthrough O-1).
+  const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
   // Lazily, so the two empty Maps are built once rather than on every render.
   const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
@@ -1087,6 +1091,7 @@ export default function OrderDetailPage() {
         ? { kind: 'unavailable' }
         : { kind: 'ready', counts: countDesignImages(images) },
     })
+    setPiGrandTotal(row.grand_total === null || row.grand_total === undefined || String(row.grand_total).trim() === '' ? null : Number(row.grand_total))
     setPiHandoff(buildOrderPiHandoff(row, {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
@@ -2126,6 +2131,9 @@ export default function OrderDetailPage() {
     // WHY the version in force was revised: the approved version's own
     // revision_reason, from the same rows the PI history reads.
     revisionReason: piHistory.current?.revisionReason ?? null,
+    // WHO PUT A HELD ORDER BACK (review W1): the newest re-alignment on the
+    // Order's history, so the alignment line names them, not only the acceptance.
+    realignment: latestRealignment(activity, operationsSplit.live?.pi_version_id ?? null),
   }) : null
 
   /**
@@ -2281,8 +2289,13 @@ export default function OrderDetailPage() {
   // totals where there is not. Every amount is a string somebody else already
   // formatted; orderCommercial only roles and signs them. The net is the one
   // derived figure on the page and is a subtraction of the two stored columns.
+  // AN AMENDED ORDER (amend_order, an approved change request) carries a value
+  // of its own that the PI's total no longer states; the breakdown then names
+  // the two apart rather than captioning both "Order value".
+  const orderValueAmended = piHandoff.kind === 'ready' && order.total_value != null && piGrandTotal != null
+    && Number(order.total_value) !== piGrandTotal
   const commercialLines = piHandoff.kind === 'ready'
-    ? orderCommercialLines(piHandoff.commercialRows)
+    ? orderCommercialLines(piHandoff.commercialRows, orderValueAmended ? { orderValue: formatInr(Number(order.total_value)) } : null)
     : orderStoredCommercialLines({
         productValue: fmtAmount(order.total_product_value),
         orderValue: fmtAmount(order.total_value),
@@ -2495,6 +2508,7 @@ export default function OrderDetailPage() {
     facts: recordFacts,
     clientContact: piHandoff.kind === 'ready' ? clientContactText(piHandoff.client) : null,
     productionAligned,
+    productionHeld: !!handoffAlignment?.held,
   })
 
   const attention = orderAttentionItems({
@@ -2526,6 +2540,7 @@ export default function OrderDetailPage() {
     documentsFailed: false,
     documentsOutdated: false,
     advanceBelowLabel: advanceAttentionLabel(advance),
+    advanceRealignLabel: advanceRealignLabel(advance),
   })
 
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the

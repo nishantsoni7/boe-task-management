@@ -741,6 +741,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/pi/previewView.test.ts',
     'src/lib/orders/finalApprovalScope.test.ts',
     'src/lib/orders/orderStartupShape.test.ts',
+    // The #209 walkthrough (W1–W3, O-1): a held Order's summary line, the
+    // re-alignment named on it, and an amended Order's two values named apart
+    // in the Commercial breakdown.
+    'src/lib/orders/orderCommercial.ts',
+    'src/lib/orders/heldOrderSummary.test.ts',
   ])
 
   /**

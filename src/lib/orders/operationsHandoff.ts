@@ -232,7 +232,7 @@ export type OperationsHandoffView =
       /** Set when the Order was aligned for production before this version. */
       alignmentWarning: string | null
       /** What the Order's alignment says as a result of this handoff. */
-      alignment: { label: string; line: string | null; aligned: boolean }
+      alignment: { label: string; line: string | null; aligned: boolean; held: boolean }
       /** Which control, if any, this reader is offered. */
       actions: { accept: boolean; cannotAccept: boolean; withdraw: boolean }
       /** Why no control is offered, for a reader who cannot decide. */
@@ -285,35 +285,73 @@ export function canDecideOperationsHandoff(input: {
   return true
 }
 
+/**
+ * The latest re-alignment of a held Order (20270104000000), from the Order's
+ * history: by the operations reviewer (operations_handoff_realigned) or by an
+ * administrator's recovery (operations_handoff_realigned_by_admin).
+ */
+export type HandoffRealignment = { kind: 'operations' | 'admin'; byName: string | null; at: string }
+
+/** The newest re-alignment event among the Order's history rows, or null. */
+export function latestRealignment(
+  rows: readonly { event_type: string; actor_name?: string | null; created_at: string; payload?: Record<string, unknown> | null }[],
+  versionId: string | null,
+): HandoffRealignment | null {
+  let best: HandoffRealignment | null = null
+  for (const r of rows) {
+    const kind = r.event_type === 'operations_handoff_realigned' ? 'operations'
+      : r.event_type === 'operations_handoff_realigned_by_admin' ? 'admin' : null
+    if (!kind) continue
+    if (versionId && r.payload && typeof r.payload.version_id === 'string' && r.payload.version_id !== versionId) continue
+    if (!best || r.created_at > best.at) best = { kind, byName: r.actor_name ?? null, at: r.created_at }
+  }
+  return best
+}
+
 /** The alignment the Order carries, as a consequence of this handoff. */
 export function describeHandoffAlignment(input: {
   live: PersistedOperationsHandoff
   reviewerName: string | null
   formatWhen: (iso: string | null) => string
   /**
+   * The latest re-alignment after a production hold (review W1). When the
+   * Order is aligned again, the line says who put it back and when, and keeps
+   * the acceptance it stands on beside it: the acceptance alone would name the
+   * wrong person and the wrong time.
+   */
+  realignment?: HandoffRealignment | null
+  /**
    * The Order's own alignment. An ACCEPTED version whose Order is not aligned
    * was put on hold (its advance fell below 40%, 20270104000000): the
    * acceptance stands, the alignment does not.
    */
   productionAligned?: boolean
-}): { label: string; line: string | null; aligned: boolean } {
+}): { label: string; line: string | null; aligned: boolean; held: boolean } {
   const { live } = input
   if (live.status === 'accepted' && input.productionAligned === false) {
     return {
       aligned: false,
+      held: true,
       label: 'Not Aligned',
       line: `${versionLabel(live.version_number)} accepted; production on hold — advance below 40%`,
     }
   }
   if (live.status === 'accepted') {
+    const accepted = `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`
+    const r = input.realignment
+    const realigned = r && (!live.accepted_at || r.at > live.accepted_at)
     return {
       aligned: true,
+      held: false,
       label: `Aligned · ${versionLabel(live.version_number)}`,
-      line: `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`,
+      line: realigned
+        ? `${r.kind === 'admin' ? 'Recovered by' : 'Aligned again by'} ${r.byName ?? (r.kind === 'admin' ? 'an administrator' : 'operations')} · ${input.formatWhen(r.at)} · ${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
+        : accepted,
     }
   }
   return {
     aligned: false,
+    held: false,
     label: 'Not Aligned',
     line: live.status === 'clarification_needed'
       ? `${versionLabel(live.version_number)} flagged for clarification`
@@ -335,6 +373,8 @@ export function describeOperationsHandoff(input: {
   productionAlignedAt: string | null
   /** The live version's revision reason (order_pi_versions.revision_reason), for V2+. */
   revisionReason?: string | null
+  /** The latest re-alignment after a hold (latestRealignment), for the alignment line. */
+  realignment?: HandoffRealignment | null
 }): OperationsHandoffView {
   const { live, namesById, formatWhen } = input
   if (!live) {
@@ -421,7 +461,7 @@ export function describeOperationsHandoff(input: {
     revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
     priorAcceptedNotice,
     alignmentWarning,
-    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen, productionAligned: input.productionAligned }),
+    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen, productionAligned: input.productionAligned, realignment: input.realignment ?? null }),
     actions: {
       accept: mayDecide && live.status !== 'accepted',
       cannotAccept: mayDecide && live.status === 'awaiting',

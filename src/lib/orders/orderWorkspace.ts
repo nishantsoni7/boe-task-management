@@ -48,6 +48,7 @@ export type OrderAttentionItem = {
     | 'operations_unassigned'
     | 'alignment_predates_version'
     | 'advance_below'
+    | 'advance_realign'
   label: string
   /** Red only for a genuinely overdue Order; every other gap is amber. */
   tone: 'amber' | 'red'
@@ -90,6 +91,12 @@ export type OrderAttentionInput = {
    * aligned. Already in words (advanceAttentionLabel); null when fine.
    */
   advanceBelowLabel?: string | null
+  /**
+   * A held Order whose verified advance is back at 40% (or covered by an
+   * approval) and is waiting to be aligned again (review W3). In words; null
+   * otherwise.
+   */
+  advanceRealignLabel?: string | null
 }
 
 const plural = (count: number, noun: string) =>
@@ -118,6 +125,12 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   // until it is met or excepted — so it is red, and said with its figures.
   if (open && input.advanceBelowLabel) {
     items.push({ key: 'advance_below', label: input.advanceBelowLabel, tone: 'red' })
+  }
+  // READY AGAIN, STILL HELD: nothing blocks it any more, but nobody has put it
+  // back into production yet. Amber, and said, so the button beside the strip
+  // is not the only clue.
+  if (open && !input.advanceBelowLabel && input.advanceRealignLabel) {
+    items.push({ key: 'advance_realign', label: input.advanceRealignLabel, tone: 'amber' })
   }
   // ONE LINE ABOUT PRODUCTION. On an Order with an operations handoff the
   // alignment IS the handoff decision (20261229000000), so the handoff item
@@ -503,6 +516,11 @@ export function orderSummaryView(input: {
   /** The client's own number as the PI card prints it, or null. */
   clientContact: string | null
   productionAligned: boolean
+  /**
+   * An accepted version whose Order is on a production hold (20270104000000,
+   * review W2): its line says why it is not aligned, so it is drawn too.
+   */
+  productionHeld?: boolean
 }): OrderSummaryView {
   const byKey = (key: OrderSummaryFieldKey): OrderSummaryField | null =>
     input.fields.find(f => f.key === key) ?? null
@@ -560,10 +578,10 @@ export function orderSummaryView(input: {
         label: production?.value ?? SUMMARY_NOT_AVAILABLE,
         tone: production?.tone ?? 'neutral',
         aligned: input.productionAligned,
-        // The supporting line is shown ONLY for an aligned Order. On an
-        // unaligned one the helper has already made it null, and this says so
-        // a second time rather than trusting the caller.
-        line: input.productionAligned ? (production?.detail ?? null) : null,
+        // The supporting line is shown for an aligned Order, and for a HELD
+        // one (its line is the reason it is not aligned). On any other
+        // unaligned Order it stays null, whatever the caller handed over.
+        line: input.productionAligned || input.productionHeld ? (production?.detail ?? null) : null,
       },
       rows: [
         factByKey('lead_source'),

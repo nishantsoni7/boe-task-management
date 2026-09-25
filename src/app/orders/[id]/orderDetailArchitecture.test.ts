@@ -265,12 +265,13 @@ describe('the redundant surfaces are gone', () => {
     }
   })
 
-  test('the alignment date and actor are shown ONLY for an aligned Order', () => {
+  test('the alignment date and actor are shown ONLY for an aligned Order — or the reason for a HELD one (walkthrough W2)', () => {
     // describeProductionAlignment already nulls the line for an unaligned
     // Order; the view refuses to draw it a second time rather than trusting a
     // caller that hands over a stale one.
     const ws = read('src/lib/orders/orderWorkspace.ts')
-    assert.ok(ws.includes('line: input.productionAligned ? (production?.detail ?? null) : null'))
+    assert.ok(ws.includes('line: input.productionAligned || input.productionHeld ? (production?.detail ?? null) : null'))
+    assert.ok(page.includes('productionHeld: !!handoffAlignment?.held,'))
   })
 
   test('and each of the three still comes from its original source', () => {
@@ -426,6 +427,8 @@ describe('no Order fact is stated twice', () => {
       // administrator's recovery when none can act (review R1). Yes/no only.
       .replace('const realignBy = viewAsUserId ? null : (advance?.realign ?? null)', '')
       .replace('const operationsRecoverOffered = !!advance?.hold', '')
+      // …and the amber 'ready again' line for a held Order (review W3): words only.
+      .replace('advanceRealignLabel: advanceRealignLabel(advance),', '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
@@ -487,8 +490,13 @@ describe('no Order fact is stated twice', () => {
     // The net-effect line took the module's only arithmetic with it.
     assert.equal((lib.match(/Math\.round\(/g) ?? []).length, 0)
     assert.equal(lib.includes('total - base'), false)
-    // The page hands the section rows and nothing else — no net, no formatter.
-    assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows)'))
+    // The page hands the section rows — and, only for an AMENDED Order, the
+    // Order's own stored value, formatted by the PI rows' own formatter so the
+    // two read alike (walkthrough O-1). No net, no arithmetic on either figure.
+    assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows, orderValueAmended ? { orderValue: formatInr(Number(order.total_value)) } : null)'))
+    for (const combined of ['Number(order.total_value) -', 'Number(order.total_value) +', '- piGrandTotal', '+ piGrandTotal']) {
+      assert.equal(page.includes(combined), false, `the two figures are compared, never combined: ${combined}`)
+    }
     assert.ok(page.includes('<OrderCommercialBreakdown lines={commercialLines} embedded />'))
     assert.equal(page.includes('orderCommercialNet'), false)
   })
