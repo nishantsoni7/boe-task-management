@@ -60,7 +60,10 @@ insert into public.users (id, full_name, email, role, team, is_active, employee_
   (current_setting('test.admin2_id')::uuid,    'ASSERT Admin Two',  'admin2@example.test',    'admin',  'management', true, 'ASSERT-ADM'),
   (current_setting('test.outsider_id')::uuid,  'ASSERT Outsider',   'out@example.test',       'member', 'design',     true, 'ASSERT-OUT'),
   (current_setting('test.sales_id')::uuid,     'ASSERT Sales',      'sales@example.test',     'member', 'sales',      true, 'ASSERT-SAL')
-on conflict (id) do nothing;
+-- EXACTLY these people, whatever a seed or another suite left under the same
+-- ids (#209 review, H5): stated inside this transaction, never assumed.
+on conflict (id) do update set full_name = excluded.full_name, role = excluded.role, team = excluded.team,
+                               is_active = true, is_deleted = false;
 
 insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
 select u, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
