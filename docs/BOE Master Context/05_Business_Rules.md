@@ -617,6 +617,34 @@ re-reads the list and badge from the server, rather than restoring rows that
 are really gone. Pressing the button again is safe and finishes the job. A
 failure that changed nothing still restores the previous screen.
 
+## Announcements (September 2026)
+
+An announcement is a notice an Admin publishes to **named employees** for a
+window of dates. It is not a notification and does not live in the
+notifications table.
+
+* **Only an active Admin** creates, edits, ends or attaches a PDF to one. The
+  database refuses everyone else; the Control Center screen is only the UI half.
+* **The audience is always a list of people the Admin chose.** There is no
+  "everyone" audience; an announcement with no recipients is refused, and so is
+  an inactive recipient. Anybody not on the list cannot see the announcement,
+  its PDF or its read state.
+* **Dates are India dates, inclusive at both ends.** Start 1 October, end 15
+  October means visible from 00:00 IST on the 1st until 23:59:59 IST on the
+  15th. At the end it disappears for employees on its own; there is no job. An
+  Admin may end one early, which is recorded and cannot be undone.
+* **"I have read this" is the only thing that clears it.** Pressing it records
+  one row for that employee, in the database, so a reload, a sign-out or another
+  device never brings the banner back. Only the employee can record their own
+  read. Reading, marking or deleting an ordinary notification never touches it.
+* **It stays reachable.** Until its end date an employee can reopen it from
+  Announcements, read or not. Several unread announcements show as one compact
+  banner with a count, never as a stack of pop-ups.
+* **Editing keeps acknowledgements.** A correction is not a new notice; people
+  added to the list later start unread.
+* **The PDF is private.** It is served by short-lived signed links, and only to
+  an Admin or a recipient while the announcement is active.
+
 ---
 
 # PERFORMANCE MANAGEMENT RULES
