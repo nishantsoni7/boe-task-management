@@ -12,7 +12,7 @@ import { processUnderLease } from '@/app/api/orders/import/process-draft/route'
 // actor, finds the pending version, takes the processing lease on the PI, and
 // hands the version id to the ONE parser pipeline (process-draft's
 // processUnderLease), which downloads, parses, uploads the pictures and calls
-// approve_order_pi_revision(). Since 20270101000000 that RPC only STAGES the
+// approve_order_pi_revision(). Since 20270113000000 that RPC only STAGES the
 // parse and moves the version to admin_approved: nothing in force changes until
 // the operations reviewer accepts it (decide_order_pi_revision_operations),
 // which applies the parse, supersedes the previous version and approves this

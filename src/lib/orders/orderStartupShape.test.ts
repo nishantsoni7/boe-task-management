@@ -334,11 +334,11 @@ describe('no Order screen waits more than it must', () => {
       //   as the PI versions it is about (so the page still waits exactly
       //   three times), and decide_order_operations_handoff — a SAVE, fired
       //   from the decision dialog, never at load.
-      // DETAIL 34 -> 36 (20270101000000): order_pi_revision_differences, read
+      // DETAIL 34 -> 36 (20270113000000): order_pi_revision_differences, read
       //   when the operations reviewer OPENS the revision review, and
       //   decide_order_pi_revision_operations, fired from that dialog. Neither
       //   runs at load, so the page still waits exactly three times.
-      // DETAIL 36 -> 37 (20270101000000 §6b): reapprove_order_pi_revision, a
+      // DETAIL 36 -> 37 (20270113000000 §6b): reapprove_order_pi_revision, a
       //   SAVE fired from an admin's confirmed Re-approve, and only when the
       //   admin who approved the revision is no longer active. Nothing at load.
       [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 37,
@@ -397,7 +397,7 @@ describe('no Order screen waits more than it must', () => {
       // calls it. A SAVE rather than a load, so the startup path is unchanged
       // and the wait test above still requires exactly three — what changed is
       // that this screen now makes one fewer write of any kind.
-      // PI_DETAIL 28 -> 27 (20261231000000). The submit call MOVED, it did not
+      // PI_DETAIL 28 -> 27 (20270112000000). The submit call MOVED, it did not
       // go: submit_pi_for_review is now reached through the supporting-
       // documents sender (src/components/orders/PiSupportingDocuments.tsx),
       // which uploads the attached Design Files / Client PO and calls

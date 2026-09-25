@@ -1,4 +1,4 @@
--- REVISED PI PROMOTION assertions (20270101000000)
+-- REVISED PI PROMOTION assertions (20270113000000)
 -- ===========================================================================
 -- Through the REAL doors — the processing lease, approve_order_pi_revision()
 -- (service role, staging) and decide_order_pi_revision_operations() — on a
@@ -114,7 +114,7 @@ begin
   return (v ->> 'order_id')::uuid;
 end $$;
 
-/** A revised version put in force through the writes the revision path makes since 20270101000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
+/** A revised version put in force through the writes the revision path makes since 20270113000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
 create function pg_temp.approve_revision(p_order uuid, p_actor uuid) returns uuid language plpgsql as $$
 declare v_sub uuid; v_cur record; v_new uuid;
 begin
@@ -320,7 +320,7 @@ begin
   perform set_config('test.v_m', v::text, true);
   n_rev := (select count(*) from public.notifications where user_id = reviewer and entity_id = o);
   before_state := pg_temp.current_state(o);
-  -- A route deployed before 20270101000000 sends no seed_terms; it is refused
+  -- A route deployed before 20270113000000 sends no seed_terms; it is refused
   -- before anything is staged, so it never reaches its own image cleanup.
   perform pg_temp.expect_error(format('select pg_temp.stage(%L, pg_temp.payload(%L, ''ASSERT MATCH'', 500000, 2) - ''seed_terms'')', v, v),
           'ORDER_PI_REVISION_CLIENT_UPDATE_REQUIRED', '1. a pre-staging route''s approval is refused');

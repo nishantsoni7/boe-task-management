@@ -213,9 +213,9 @@ export function OrderDocumentsPanel({
   mainPiUpload, mainPiOperations, designSubmissions, designUpload, clientPoSubmissions, clientPoUpload,
   onReviewRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
 }: {
-  /** The operations reviewer's control on a revision awaiting them (20270101000000). */
+  /** The operations reviewer's control on a revision awaiting them (20270113000000). */
   onReviewRevision?: () => void
-  /** The admin who approved the proposal is no longer active (20270101000000 §6b). */
+  /** The admin who approved the proposal is no longer active (20270113000000 §6b). */
   revisionApproverInactive?: boolean
   /** An active admin's recovery control, with its page-owned confirm step. */
   reapprove?: {
@@ -242,7 +242,7 @@ export function OrderDocumentsPanel({
   mainPiUpload?: React.ReactNode
   /** Where the version in force stands with Operations, in words. */
   mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
-  /** Accepted order-level files, the pending proposal and any rejection (20261231000000). */
+  /** Accepted order-level files, the pending proposal and any rejection (20270112000000). */
   designSubmissions?: React.ReactNode
   designUpload?: React.ReactNode
   clientPoSubmissions?: React.ReactNode
@@ -319,7 +319,7 @@ export function OrderDocumentsPanel({
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {mainPi.proposal && (() => {
               // THE PROPOSAL, BESIDE THE PI IN FORCE AND NEVER IN ITS PLACE
-              // (20270101000000): its own dashed block, its stage in words, and
+              // (20270113000000): its own dashed block, its stage in words, and
               // who holds it now. The headline above stays the accepted PI.
               const p = mainPi.proposal
               const stage = revisionStage(p, revisionApproverInactive)
@@ -859,7 +859,7 @@ export function PiHistoryModal({
                   Uploaded by {v.uploadedBy} · {v.uploadedAt}
                   {v.decisionLine ? ` · ${v.decisionLine}` : ''}
                 </div>
-                {/* THE OPERATIONS DECISION (20270101000000): who accepted — or
+                {/* THE OPERATIONS DECISION (20270113000000): who accepted — or
                     rejected — this version for production, when, and why. */}
                 {v.operationsLine && (
                   <div className="order-history-meta">

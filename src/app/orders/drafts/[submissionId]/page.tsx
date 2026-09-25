@@ -350,7 +350,7 @@ function PiDraftDetailPageInner() {
   const supabase = useMemo(() => createClient(), [])
 
   const submissionId = params.submissionId as string
-  // Design Files and Client PO offered where the PI is sent (20261231000000 §11).
+  // Design Files and Client PO offered where the PI is sent (20270112000000 §11).
   const supporting = usePiSupportingDocuments(supabase, submissionId)
   /**
    * The one thing the query string is trusted for: whether to congratulate.

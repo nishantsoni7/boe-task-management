@@ -347,7 +347,7 @@ describe('the page draws ONE production decision', () => {
   test('a decision re-reads the handoff AND the Order row, because acceptance moves the alignment columns', () => {
     const fn = page.slice(page.indexOf('const decideHandoff'), page.indexOf('const decideHandoff') + 2200)
     // …and the document submissions: accepting the version accepts the files
-    // sent with the PI (20261231000000 §11e).
+    // sent with the PI (20270112000000 §11e).
     assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadOrderRow\(\), docSubs\.reload\(\)\]\)/)
     assert.doesNotMatch(fn, /loadOrder\(\)/)
   })

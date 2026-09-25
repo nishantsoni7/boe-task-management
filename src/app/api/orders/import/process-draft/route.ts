@@ -346,7 +346,7 @@ export async function resolveSalespersonContact(
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
  * STAGES a REVISED PI on an approved Order (20261119000000, staged since
- * 20270101000000). It runs the very same download, parse and image upload —
+ * 20270113000000). It runs the very same download, parse and image upload —
  * there is one parser path in this product — and differs where
  * `revisionVersionId` is set: step 17 sends the payload to
  * approve_order_pi_revision(), which stores it for the operations acceptance
@@ -478,7 +478,7 @@ export async function processUnderLease(ctx: {
   // make an otherwise identical retry look like a change.
   if (changeReason) plan.payload.change_reason = changeReason
 
-  // A REVISION IS STAGED, NOT APPLIED (20270101000000). approve_order_pi_revision
+  // A REVISION IS STAGED, NOT APPLIED (20270113000000). approve_order_pi_revision
   // stores this payload and the operations acceptance applies it later, inside
   // its own transaction — so the terms step 18b would seed after commit travel
   // WITH the payload and are seeded at acceptance instead.
@@ -680,7 +680,7 @@ export async function processUnderLease(ctx: {
       ? [priorWorkbook]
       : []
 
-  // NOT for a revision (20270101000000): nothing was replaced — the staged
+  // NOT for a revision (20270113000000): nothing was replaced — the staged
   // payload is applied only when operations accepts it, and V1's pictures stay
   // the pictures in force until then, and in history after.
   if (!ctx.revisionVersionId) {

@@ -614,7 +614,7 @@ end;
 $$;
 
 comment on function public.approve_order_pi_revision(uuid, uuid, jsonb) is
-  'SERVICE ROLE ONLY. An active admin approves a pending revised PI: the same checks as before (20261229000000), after which the server''s parse is STORED (order_pi_revision_staged_parses) and the version becomes admin_approved, addressed to the operations reviewer. NOTHING CURRENT CHANGES — the version in force, the Order''s figures, lines, pictures, documents, codes and alignment stay as they are until decide_order_pi_revision_operations() accepts it (20270101000000).';
+  'SERVICE ROLE ONLY. An active admin approves a pending revised PI: the same checks as before (20261229000000), after which the server''s parse is STORED (order_pi_revision_staged_parses) and the version becomes admin_approved, addressed to the operations reviewer. NOTHING CURRENT CHANGES — the version in force, the Order''s figures, lines, pictures, documents, codes and alignment stay as they are until decide_order_pi_revision_operations() accepts it (20270113000000).';
 
 revoke execute on function public.approve_order_pi_revision(uuid, uuid, jsonb)
   from public, anon, authenticated;

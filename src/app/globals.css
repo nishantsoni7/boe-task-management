@@ -2485,7 +2485,7 @@ body {
 }
 
 /* ── Documents: Main PI left (about 40%), Design Files and Client PO stacked
-   right (about 60%) — 20261231000000. Inside the narrower columns each
+   right (about 60%) — 20270112000000. Inside the narrower columns each
    subsection stacks its title, body and actions rather than sharing a row. */
 .order-docs-grid {
   display: grid;
@@ -6816,7 +6816,7 @@ h1.boe-page-title { margin-top: 0; }
   .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
 }
 
-/* ── The operations review of a revised PI (20270101000000) ── */
+/* ── The operations review of a revised PI (20270113000000) ── */
 .order-revdiff { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid #F0F2F5; }
 .order-revdiff-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .order-revdiff-table th { text-align: left; font-size: 11px; font-weight: 600; color: #6B7384; padding: 4px 6px; border-bottom: 1px solid #F0F2F5; }

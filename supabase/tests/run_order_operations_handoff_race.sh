@@ -259,7 +259,7 @@ echo "   OK: cleared mid-approval → the committed handoff is unassigned with i
 #
 # To make that window deterministic, not lucky, the runner installs a pause
 # (public.zz_race_pause, dropped by retire) that fires on the approval's own
-# "V1 → superseded" version write (since 20270101000000: the "V2 → admin_approved"
+# "V1 → superseded" version write (since 20270113000000: the "V2 → admin_approved"
 # staging write) — after the function has taken every lock
 # it takes before its trigger, and before the trigger — and sleeps only in a
 # session that sets race.pause. Nothing in the function under test is altered
@@ -357,7 +357,7 @@ live_v2_handoff() {
 }
 
 check_v2_outcome() {
-  # 20270101000000: an admin approval STAGES V2. V1 stays in force with its
+  # 20270113000000: an admin approval STAGES V2. V1 stays in force with its
   # live handoff; V2 is admin_approved, addressed to the CURRENT reviewer (B),
   # who is told exactly once; no V2 handoff exists until B accepts it.
   local LABEL="$1" O="$2"
@@ -458,7 +458,7 @@ check_v2_outcome "direction 4b" "$O5"
 echo "   OK: V1 readdressed to B by the change; V2 then staged for B directly; B notified once for V2"
 
 
-# ── Direction 5 (20270101000000): the OPERATIONS ACCEPTANCE of a staged V2 —
+# ── Direction 5 (20270113000000): the OPERATIONS ACCEPTANCE of a staged V2 —
 # amendment gate, lease, parse, version switch, handoff decision, codes, in
 # ONE transaction — against a Control Center switch. The acceptance takes the
 # reviewer row SHARE first, like every decision; the switch takes it FOR
@@ -535,7 +535,7 @@ grep -q "Only the assigned operations reviewer" "$SCRATCH/5b-accept.out" \
 echo "   OK: B's acceptance waited $((T1 - T0))s for the switch, then was refused; V2 still staged, now for A; nothing applied"
 
 
-# ── Direction 6 (20270101000000): TWO DECISIONS ON THE SAME V2 AT ONCE ──
+# ── Direction 6 (20270113000000): TWO DECISIONS ON THE SAME V2 AT ONCE ──
 # Two admin tabs approving, and one reviewer's two tabs (or a double click)
 # deciding. The first session is parked INSIDE its own version write, holding
 # every lock it takes; the second must wait for it and then be refused on the

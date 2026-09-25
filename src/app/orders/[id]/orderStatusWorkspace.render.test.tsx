@@ -177,7 +177,7 @@ describe('the Main PI card', () => {
             revision_reason: 'Client added 6 chairs', decided_by: null, decided_at: null }),
     ]))
     assert.ok(body.includes('PI V1'), 'the approved version is still the headline')
-    // SINCE 20270101000000 the proposal is NAMED — Sales, Admin and Operations
+    // SINCE 20270113000000 the proposal is NAMED — Sales, Admin and Operations
     // must tell the PI in force from a proposed V2 — but only inside its own
     // block, after the headline, marked as not in force and naming its owner.
     assert.ok(body.indexOf('PI V1') < body.indexOf('Proposed PI V2 — not in force yet'))

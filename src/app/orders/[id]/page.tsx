@@ -827,7 +827,7 @@ export default function OrderDetailPage() {
     | null
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
-  // ── The operations decision on a revised PI (20270101000000) ──
+  // ── The operations decision on a revised PI (20270113000000) ──
   const [revOpsOpen,  setRevOpsOpen]  = useState(false)
   const [revOpsDiff,  setRevOpsDiff]  = useState<RevisionDifferences | null | 'unavailable'>(null)
   const [revOpsBusy,  setRevOpsBusy]  = useState(false)
@@ -862,7 +862,7 @@ export default function OrderDetailPage() {
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
 
-  // ── Design Files and Client PO submissions (20261231000000) ──
+  // ── Design Files and Client PO submissions (20270112000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
   const docSubs = useOrderDocumentSubmissions(supabase, id, order?.source_order_submission_id ?? null)
   const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
@@ -1699,7 +1699,7 @@ export default function OrderDetailPage() {
       // appended the activity entries — so the handoff and the Order row are
       // re-read, and the trail with the row. Nothing else changed.
       // Accepting the version also accepts the documents sent with the PI
-      // (20261231000000 §11e), so those are re-read with it.
+      // (20270112000000 §11e), so those are re-read with it.
       await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
     } finally {
       setHandoffBusy(false)
@@ -2017,7 +2017,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  // THE RECOVERY (20270101000000 §6b): the admin who approved the proposal is
+  // THE RECOVERY (20270113000000 §6b): the admin who approved the proposal is
   // no longer active, so it cannot be accepted until an active admin
   // re-approves it. reapprove_order_pi_revision() re-derives all of it.
   const revisionApproverInactive = !!piHistory.pending?.decidedById
@@ -3167,7 +3167,7 @@ export default function OrderDetailPage() {
         />
       )}
 
-      {/* ── Design Files and Client PO submissions (20261231000000) ── */}
+      {/* ── Design Files and Client PO submissions (20270112000000) ── */}
       {docUpload && (
         <SubmitDocumentsModal
           orderNumber={order.display_number}

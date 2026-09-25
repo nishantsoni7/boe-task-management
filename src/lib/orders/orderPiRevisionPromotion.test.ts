@@ -1,5 +1,5 @@
 /**
- * Revised PI promotion (20270101000000): what the screen draws from the
+ * Revised PI promotion (20270113000000): what the screen draws from the
  * version rows. Pure. No database, no network.
  *
  * Run:

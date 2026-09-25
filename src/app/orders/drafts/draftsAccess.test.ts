@@ -419,7 +419,7 @@ describe('the detail page renders only what it fetched', () => {
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
-      // sender (submit_pi_for_review_with_documents, 20261231000000 §11),
+      // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
       // pinned in the submit-door tests; the page itself calls no submit RPC.
       // update_order_submission_client_details (20260928000000) writes ten
       // named TEXT columns — client, contact, and the two parties — and
@@ -1847,7 +1847,7 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // NO ADVANCE FIGURE IS SENT AT ALL. The database sums FINANCE-VERIFIED
     // payment itself and chooses the standard or the reduced-payment route, so a
     // browser can neither declare an advance nor claim a payment position.
-    // Since 20261231000000 that one call is submit_pi_for_review_with_documents,
+    // Since 20270112000000 that one call is submit_pi_for_review_with_documents,
     // made by the supporting-documents sender: it runs submit_pi_for_review()
     // unchanged and records the attached files in the same transaction.
     assert.ok(source.includes('await supporting.send({ note, terms, acknowledgedMissing })'))
