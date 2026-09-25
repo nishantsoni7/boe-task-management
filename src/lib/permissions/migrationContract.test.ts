@@ -892,6 +892,9 @@ const reviewDoorText = lf(readFileSync(join(MIGRATIONS, REVIEW_DOOR), 'utf8'))
 const RESERVATION_MIGRATION =
   '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
 
+const NUMBERING_AT_CONVERSION =
+  '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
+
 /** The last definition of `fnName` at or before `bound`, across every migration. */
 function definitionAt(fnName: string, bound: string): { text: string; file: string } {
   const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f <= bound).sort()
@@ -947,10 +950,15 @@ describe('a PI reaches review without carrying its reserved Order number', () =>
   })
 
   test('the review door no longer asks it', () => {
-    const now = inForce(SUBMIT_GATE)
-    assert.equal(now.file, REVIEW_DOOR, 'the migration under test must own the current definition')
-    assert.doesNotMatch(now.text, new RegExp(RULE),
+    // 20261121000000 removed the question; 20270102000000 (numbering at
+    // conversion) later emptied the gate altogether. Neither asks it.
+    const then = definitionAt(SUBMIT_GATE, REVIEW_DOOR)
+    assert.equal(then.file, REVIEW_DOOR, 'the migration under test owned the definition it wrote')
+    assert.doesNotMatch(then.text, new RegExp(RULE),
       'submitting a PI for review must not depend on the workbook carrying the number')
+    const now = inForce(SUBMIT_GATE)
+    assert.equal(now.file, NUMBERING_AT_CONVERSION, 'the definition in force is the numbering-at-conversion restatement')
+    assert.doesNotMatch(now.text, new RegExp(RULE))
   })
 
   test('20261121000000 kept the requirement at the Order door — it moved, it was not yet repealed', () => {
@@ -982,17 +990,27 @@ describe('a PI reaches review without carrying its reserved Order number', () =>
     assert.match(rule.text, /v_found <> v_expected/, 'exact equality, never a prefix or a substring')
   })
 
-  test('a reservation is still required to exist at submission', () => {
-    const now = inForce(SUBMIT_GATE)
-    assert.match(now.text, /ORDER_SUBMISSION_RESERVATION_REQUIRED/)
-    assert.match(now.text, /new\.reservation_required and new\.reserved_order_number is null/)
+  test('20261121000000 still required a reservation to exist at submission', () => {
+    const then = definitionAt(SUBMIT_GATE, REVIEW_DOOR)
+    assert.match(then.text, /ORDER_SUBMISSION_RESERVATION_REQUIRED/)
+    assert.match(then.text, /new\.reservation_required and new\.reserved_order_number is null/)
   })
 
-  test('the gate still limits itself to the move into review', () => {
-    const now = inForce(SUBMIT_GATE)
-    assert.match(now.text, /new\.status <> 'submitted' then return new/)
-    assert.match(now.text, /tg_op = 'UPDATE' and old\.status = 'submitted' then return new/,
+  test('and limited itself to the move into review', () => {
+    const then = definitionAt(SUBMIT_GATE, REVIEW_DOOR)
+    assert.match(then.text, /new\.status <> 'submitted' then return new/)
+    assert.match(then.text, /tg_op = 'UPDATE' and old\.status = 'submitted' then return new/,
       'a PI already in review is not re-gated by an unrelated update')
+  })
+
+  test('20270102000000 retired the reservation: the gate now asks nothing at all', () => {
+    // PI Drafts no longer reserve an Order number; the Order takes one when
+    // the PI is approved. The trigger stays attached so its history reads in
+    // one place, and its body only lets the row through.
+    const now = inForce(SUBMIT_GATE)
+    assert.equal(now.file, NUMBERING_AT_CONVERSION)
+    assert.doesNotMatch(now.text, /ORDER_SUBMISSION_RESERVATION_REQUIRED|raise exception/)
+    assert.match(now.text, /return new;/)
   })
 
   test('it restates exactly one function and touches nothing else', () => {

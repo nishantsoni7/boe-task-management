@@ -32,7 +32,10 @@
 --   * psql as a role that bypasses RLS and may SET the `role` GUC.
 --   * The Confirmed Order numbering cycle is configured (20260703000000).
 --   * The `order-files` storage bucket exists.
---   * Replace the FIVE user UUIDs below:
+--   * The FIVE people below are created by this file (upserted with exactly
+--     the role, team and grants listed, inside this transaction), so it no
+--     longer depends on a separate seed having run first (#209 review, H5).
+--     Replace the UUIDs only to run it as existing accounts:
 --       test.admin_id        -> role = 'admin', active
 --       test.sales_id        -> NON-admin, orders.view + orders.create, no Finance
 --       test.finance_id      -> NON-admin, finance.view + finance.approve
@@ -46,6 +49,35 @@
 \set ON_ERROR_STOP on
 
 begin;
+
+-- ── The five people, as the prerequisites describe them ─────────────────────
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('11111111-1111-1111-1111-111111111111', 'ASSERT RG Admin',    'rg-admin@suite.test',    'admin',  'management', true, 'RG-ADM'),
+  ('55555555-5555-5555-5555-555555555555', 'ASSERT RG Sales',    'rg-sales@suite.test',    'member', 'sales',      true, 'RG-SAL'),
+  ('66666666-6666-6666-6666-666666666666', 'ASSERT RG Finance',  'rg-finance@suite.test',  'member', 'management', true, 'RG-FIN'),
+  ('77777777-7777-7777-7777-777777777777', 'ASSERT RG Factory',  'rg-factory@suite.test',  'member', 'operations', true, 'RG-FAC'),
+  ('44444444-4444-4444-4444-444444444444', 'ASSERT RG Outsider', 'rg-outsider@suite.test', 'member', 'design',     true, 'RG-OUT')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+-- Exactly the grants described: nothing an earlier run or another suite left.
+delete from public.employee_permission_overrides
+ where user_id in ('55555555-5555-5555-5555-555555555555', '66666666-6666-6666-6666-666666666666',
+                   '77777777-7777-7777-7777-777777777777', '44444444-4444-4444-4444-444444444444');
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, '11111111-1111-1111-1111-111111111111'::uuid
+  from (values ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'approve_order'),
+               ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'approve_advance_exception'),
+               ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'can_be_order_assignee'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'view'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'create'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'can_be_order_assignee'),
+               ('66666666-6666-6666-6666-666666666666'::uuid, 'finance', 'view'),
+               ('66666666-6666-6666-6666-666666666666'::uuid, 'finance', 'approve'),
+               ('77777777-7777-7777-7777-777777777777'::uuid, 'orders', 'view'),
+               ('77777777-7777-7777-7777-777777777777'::uuid, 'orders', 'align_production')) g(uid, m, a)
+  join public.permission_modules pm on pm.module_key = g.m
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
 
 do $$
 begin

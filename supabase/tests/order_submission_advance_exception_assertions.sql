@@ -18,8 +18,8 @@
 -- PREREQUISITES (controlled environment, migrations already applied):
 --   * Run with psql as a role that may set session GUCs (standard Supabase
 --     `postgres`).
---   * Replace the FOUR real user UUIDs below; all must exist, be active and be
---     distinct:
+--   * The FOUR people below are created by this file with exactly these roles
+--     (replace the UUIDs only to run it as existing accounts):
 --       test.owner       a NON-admin who holds orders.view + orders.create.
 --                        Owns the fixture submission.
 --       test.reviewer    a NON-admin who holds orders.view + orders.approve_order
@@ -51,11 +51,23 @@ begin;
 -- ── Config: the ONLY lines a tester edits ────────────────────────────────────
 do $$
 begin
-  perform set_config('test.owner',    '11111111-1111-1111-1111-111111111111', true); -- REPLACE
-  perform set_config('test.reviewer', '22222222-2222-2222-2222-222222222222', true); -- REPLACE
-  perform set_config('test.approver', '33333333-3333-3333-3333-333333333333', true); -- REPLACE
-  perform set_config('test.admin',    '44444444-4444-4444-4444-444444444444', true); -- REPLACE
+  perform set_config('test.owner',    'ae0e0000-0000-4000-8000-000000000001', true); -- REPLACE
+  perform set_config('test.reviewer', 'ae0e0000-0000-4000-8000-000000000002', true); -- REPLACE
+  perform set_config('test.approver', 'ae0e0000-0000-4000-8000-000000000003', true); -- REPLACE
+  perform set_config('test.admin',    'ae0e0000-0000-4000-8000-000000000004', true); -- REPLACE
 end $$;
+
+-- ── The four people, as the prerequisites describe them (#209 review, H5) ────
+-- This file used to name ids other suites and seeds give different roles
+-- (11111111… is the stack's admin; 44444444… a non-admin), so it failed before
+-- its first real check. It now creates exactly the four it needs, inside this
+-- transaction. The grants each test needs are still given by grant() below.
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('ae0e0000-0000-4000-8000-000000000001', 'ASSERT AE Owner',    'ae-owner@suite.test',    'member', 'sales',      true, 'AE-OWN'),
+  ('ae0e0000-0000-4000-8000-000000000002', 'ASSERT AE Reviewer', 'ae-reviewer@suite.test', 'member', 'management', true, 'AE-REV'),
+  ('ae0e0000-0000-4000-8000-000000000003', 'ASSERT AE Approver', 'ae-approver@suite.test', 'member', 'management', true, 'AE-APR'),
+  ('ae0e0000-0000-4000-8000-000000000004', 'ASSERT AE Admin',    'ae-admin@suite.test',    'admin',  'management', true, 'AE-ADM')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true;
 
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -644,14 +656,27 @@ begin
   perform pg_temp.act_as('reviewer');
   perform public.request_order_submission_changes(v_id, 'and another');
   perform pg_temp.act_as('owner');
-  perform public.submit_order_submission_with_advance(v_id, null, 'exception', 10, 'long-standing account');
-  select * into v_row from public.order_submissions where id = v_id;
-  perform pg_temp.ok(v_row.advance_exception_status = 'pending',
-    'changing an approved percentage requires a fresh decision');
-  perform pg_temp.ok(v_row.advance_exception_decided_at is null,
-    'and clears the earlier decision');
-  perform pg_temp.ok(not pg_temp.ready(v_id),
-    'so the record stops being advance-ready until it is decided again');
+  -- KNOWN DEFECT, OLDER THAN THIS CHAIN (found by the #209 review, H5): this
+  -- legacy door (submit_order_submission_advance_v2_internal, last defined in
+  -- 20260917000000) resets the exception to pending but leaves the decided
+  -- basis that 20260921000000's order_submissions_exception_basis_scope then
+  -- forbids, so the resubmission fails closed with a CHECK violation. It is
+  -- recorded and the rest of the file still runs; the file ends FAILED.
+  begin
+    perform public.submit_order_submission_with_advance(v_id, null, 'exception', 10, 'long-standing account');
+    select * into v_row from public.order_submissions where id = v_id;
+    perform pg_temp.ok(v_row.advance_exception_status = 'pending',
+      'changing an approved percentage requires a fresh decision');
+    perform pg_temp.ok(v_row.advance_exception_decided_at is null,
+      'and clears the earlier decision');
+    perform pg_temp.ok(not pg_temp.ready(v_id),
+      'so the record stops being advance-ready until it is decided again');
+  exception when others then
+    perform set_config('test.known_defects',
+      coalesce(nullif(current_setting('test.known_defects', true), '') || ' | ', '')
+      || 'F (change an approved percentage through submit_order_submission_with_advance): ' || sqlerrm, true);
+    raise notice 'KNOWN DEFECT recorded, continuing: %', sqlerrm;
+  end;
 end $$;
 
 -- Moving from standard to an exception is always a fresh request.
@@ -861,12 +886,15 @@ begin
   perform public.submit_order_submission_with_advance(v_id, null, 'standard', null, null);
   perform pg_temp.act_as('approver');
 
-  -- APPROVAL REMAINS UNREACHABLE, for this caller and for direct SQL.
+  -- APPROVAL HAPPENS ONLY THROUGH ITS DOOR. When this file was written no
+  -- approval existed at all; since then approve_order_submission() is the one
+  -- way (it allocates the number and creates the Order in one transaction).
+  -- A raw write to 'approved' is still refused, for this caller and direct SQL.
   perform pg_temp.ok(
     pg_temp.fails_with(format(
       'update public.order_submissions set status = ''approved'' where id = %L', v_id))
-      like '%TRANSITION_INVALID%',
-    'an advance-ready PI still cannot be approved');
+      like '%ORDER_SUBMISSION_APPROVAL_PATH_REQUIRED%',
+    'an advance-ready PI is approved only through approve_order_submission()');
 
   perform pg_temp.ok(
     pg_temp.fails_with(
@@ -876,17 +904,17 @@ begin
       like '%ADVANCE_INVALID%',
     'a submission cannot be created with a declaration already on it');
 
-  -- No approval RPC exists to call.
+  -- The approval door is a definer function that re-checks its caller.
   select count(*) into v_n
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public'
-    and p.proname in ('approve_order_submission', 'allocate_order_submission_number');
-  perform pg_temp.ok(v_n = 0, 'no approval or numbering function exists');
+  where n.nspname = 'public' and p.proname = 'approve_order_submission' and p.prosecdef
+    and p.prosrc like '%actor_can_approve_order%';
+  perform pg_temp.ok(v_n >= 1, 'approval is one definer door that checks orders.approve_order');
 
-  -- Nothing anywhere is approved or linked to an Order.
+  -- Nothing in THIS file approved a submission or linked one to an Order.
   select count(*) into v_n from public.order_submissions
-  where status = 'approved' or order_id is not null;
-  perform pg_temp.ok(v_n = 0, 'no submission is approved or linked to an Order');
+  where created_by = current_setting('test.owner')::uuid and (status = 'approved' or order_id is not null);
+  perform pg_temp.ok(v_n = 0, 'no submission of this file is approved or linked to an Order');
 
   -- HISTORY IS APPEND-ONLY, still.
   perform pg_temp.ok(
@@ -981,6 +1009,9 @@ end $$;
 
 do $$
 begin
+  if nullif(current_setting('test.known_defects', true), '') is not null then
+    raise exception 'EVERY SECTION RAN; FAILED ON: %', current_setting('test.known_defects');
+  end if;
   raise notice 'ALL ASSERTIONS PASSED';
 end $$;
 

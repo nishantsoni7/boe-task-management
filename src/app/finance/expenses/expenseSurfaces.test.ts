@@ -1410,6 +1410,13 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/orders/PiVersionsPanel.tsx',
     'src/components/orders/piEditor.render.test.tsx',
     'src/app/orders/[id]/page.tsx',
+    // Review fixes to #209: a PI's image keys are checked whole before any
+    // privileged read (H1).
+    'src/lib/orders/piImageKey.ts',
+    'src/lib/orders/piImageKey.test.ts',
+    // …and the migration contract that pinned 20261121000000 as the submit
+    // gate in force, which 20270102000000 retired (found by the wider sweep).
+    'src/lib/permissions/migrationContract.test.ts',
   ])
   const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
   const PI_EDIT_MIGRATION = 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql'
@@ -1656,7 +1663,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270102000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.

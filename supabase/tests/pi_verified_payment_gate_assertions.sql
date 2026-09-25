@@ -29,7 +29,11 @@
 --     the conversion section inserts an Order and lets the existing trigger
 --     assign its number. An unconfigured cycle raises ORDER_NUMBER_CYCLE, which
 --     is an environment problem and not a failure of this phase.
---   * Replace the THREE user UUIDs below:
+--   * Payment fixtures use a CURRENT payment mode ('hdfc'): 'bank_transfer'
+--     and 'upi' were retired by 20261014000000 and are refused on insert.
+--   * The THREE people below are created by this file with exactly these
+--     roles and grants, inside this transaction (#209 review, H5); replace the
+--     UUIDs only to run it as existing accounts:
 --       test.admin_id     -> role = 'admin', active
 --       test.sales_id     -> NON-admin, orders.view + orders.create, no Finance
 --       test.outsider_id  -> NON-admin with no Orders and no Finance relationship
@@ -39,6 +43,25 @@
 \set ON_ERROR_STOP on
 
 begin;
+
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('11111111-1111-1111-1111-111111111111', 'ASSERT PG Admin',    'pg-admin@suite.test',    'admin',  'management', true, 'PG-ADM'),
+  ('55555555-5555-5555-5555-555555555555', 'ASSERT PG Sales',    'pg-sales@suite.test',    'member', 'sales',      true, 'PG-SAL'),
+  ('44444444-4444-4444-4444-444444444444', 'ASSERT PG Outsider', 'pg-outsider@suite.test', 'member', 'design',     true, 'PG-OUT')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+delete from public.employee_permission_overrides
+ where user_id in ('55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444');
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, '11111111-1111-1111-1111-111111111111'::uuid
+  from (values ('11111111-1111-1111-1111-111111111111'::uuid, 'approve_order'),
+               ('11111111-1111-1111-1111-111111111111'::uuid, 'can_be_order_assignee'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'view'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'create'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'can_be_order_assignee')) g(uid, a)
+  join public.permission_modules pm on pm.module_key = 'orders'
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
 
 do $$
 begin
@@ -114,15 +137,19 @@ end $$;
 -- 7. rejected does not count. 8. a reversed allocation does not count.
 -- 9. several verified payments sum correctly.
 
+-- Each PI names its workbook: a PI under review must (order_submissions_reviewable_is_complete).
 insert into public.order_submissions
-  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total,
+   source_workbook_path, source_workbook_sha256)
 values
   (current_setting('test.pi')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-   'ASSERT PI gate', 1000000, 0, 1000000),
+   'ASSERT PI gate', 1000000, 0, 1000000,
+   'submissions/' || current_setting('test.pi') || '/original/pi.xlsx', repeat('b', 64)),
   (current_setting('test.pi_other')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-   'ASSERT PI other', 1000000, 0, 1000000);
+   'ASSERT PI other', 1000000, 0, 1000000,
+   'submissions/' || current_setting('test.pi_other') || '/original/pi.xlsx', repeat('b', 64));
 
 do $$
 declare
@@ -140,7 +167,10 @@ begin
   for v_status, v_amount in
     select * from (values
       ('approved_unlinked', 250000::numeric),
-      ('approved_linked',   150000::numeric),
+      -- The second VERIFIED status. 'approved_linked' now requires a linked
+      -- Order (finance_payment_requests_status_order_invariant); money against a
+      -- PI Draft is 'approved_unlinked', so both verified terms use that.
+      ('approved_unlinked', 150000::numeric),
       ('pending_approval',  300000::numeric),
       ('needs_clarification', 200000::numeric),
       ('rejected',          400000::numeric)
@@ -149,7 +179,7 @@ begin
     v_id := gen_random_uuid();
     insert into public.finance_payment_requests
       (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
-    values (v_id, 'ASSERT PI gate', v_amount, current_date, 'bank_transfer', v_status, v_sales, null);
+    values (v_id, 'ASSERT PI gate', v_amount, current_date, 'hdfc', v_status, v_sales, null);
 
     insert into public.finance_payment_allocations
       (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
@@ -237,6 +267,11 @@ begin
   --     MONEY. Proved on the data: the totals before and after are identical.
   v_before := public.order_submission_verified_payment(v_pi);
 
+  -- A FIXTURE: the state an approved exception leaves, written directly. Since
+  -- 20260913000000 a declaration is set only by submitting, so the guards that
+  -- enforce that are lifted for this one write (#209 review, H5).
+  alter table public.order_submissions disable trigger order_submissions_guard_advance_exception;
+  alter table public.order_submissions disable trigger order_submissions_guard_exception_reason_code;
   update public.order_submissions
      set advance_condition = 'exception',
          advance_exception_percent = 25,
@@ -247,6 +282,8 @@ begin
          advance_exception_decided_by = current_setting('test.admin_id')::uuid,
          advance_exception_decided_at = now()
    where id = v_pi;
+  alter table public.order_submissions enable trigger order_submissions_guard_advance_exception;
+  alter table public.order_submissions enable trigger order_submissions_guard_exception_reason_code;
 
   v_after := public.order_submission_verified_payment(v_pi);
   assert v_before = v_after,
@@ -309,7 +346,8 @@ begin
     json_build_object('sub', current_setting('test.admin_id'))::text, true);
 
   begin
-    perform public.approve_order_submission(v_pi);
+    perform public.approve_order_submission(v_pi, current_setting('test.sales_id')::uuid,
+                                            current_date, current_date + 30, 'reference');
     reset role;
     raise exception '31. a declared advance must not let an Order be created';
   exception when sqlstate 'P0001' then
@@ -321,8 +359,9 @@ begin
       format('and it must say so in business language, got: %s', v_msg);
   end;
 
-  -- 33. THE FINANCE CHECK IS STILL REQUIRED AND STILL SEPARATE. Clearing it
-  --     refuses the same PI for a different, named reason.
+  -- 33. THE PI-LEVEL FINANCE CHECK IS RETIRED (20261226000000): verified
+  --     PAYMENT is the gate. Clearing the old check changes nothing — the same
+  --     PI is refused for the same, payment, reason.
   update public.order_submissions
      set finance_verified_by = null, finance_verified_at = null,
          finance_verified_submission_at = null
@@ -332,14 +371,15 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', current_setting('test.admin_id'))::text, true);
   begin
-    perform public.approve_order_submission(v_pi);
+    perform public.approve_order_submission(v_pi, current_setting('test.sales_id')::uuid,
+                                            current_date, current_date + 30, 'reference');
     reset role;
-    raise exception '33. the PI finance check must still be required';
+    raise exception '33. an unpaid PI must still be refused';
   exception when sqlstate 'P0001' then
     get stacked diagnostics v_msg = message_text;
     reset role;
-    assert v_msg like 'ORDER_SUBMISSION_FINANCE_NOT_VERIFIED%',
-      format('the finance check must refuse in its own words, got: %s', v_msg);
+    assert v_msg like 'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT%',
+      format('the refusal is the payment one, whatever the retired check says, got: %s', v_msg);
   end;
 
   -- 34. AND THE APPROVAL PERMISSION IS STILL ENFORCED.
@@ -347,7 +387,8 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', current_setting('test.outsider_id'))::text, true);
   begin
-    perform public.approve_order_submission(v_pi);
+    perform public.approve_order_submission(v_pi, current_setting('test.sales_id')::uuid,
+                                            current_date, current_date + 30, 'reference');
     reset role;
     raise exception '34. an outsider must not be able to approve a PI';
   exception when sqlstate '42501' then
@@ -377,10 +418,14 @@ declare
   v_before  integer;
   v_target  uuid;
   v_origin  text;
+  v_pi_verified numeric;
 begin
+  -- Fixtures are written with NO impersonated identity: §4 left one behind,
+  -- and the payment trigger would judge the fixture as that person.
+  perform set_config('request.jwt.claims', '', true);
   insert into public.finance_payment_requests
     (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
-  values (v_pay, 'ASSERT PI gate', 500000, current_date, 'upi', 'approved_unlinked', v_sales, null);
+  values (v_pay, 'ASSERT PI gate', 500000, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
 
   insert into public.finance_payment_allocations
     (id, payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
@@ -429,7 +474,8 @@ begin
   exception when sqlstate '42501' then null;
   end;
 
-  -- The real move.
+  -- The real move — every active allocation of the PI, not only this one.
+  v_pi_verified := public.order_submission_verified_payment(v_pi);
   update public.finance_payment_allocations
      set order_submission_id = null, order_id = v_order
    where order_submission_id = v_pi and status = 'active';
@@ -459,7 +505,8 @@ begin
   join public.finance_payment_requests f on f.id = a.payment_request_id
   where a.order_id = v_order and a.status = 'active'
     and public.finance_payment_status_is_verified(f.status);
-  assert v_n = 500000, '29. the Order must retrieve the moved payment';
+  assert v_n = v_pi_verified and v_n >= 500000,
+    format('29. the Order must retrieve exactly the verified money the PI held (%s), got %s', v_pi_verified, v_n);
 
   -- 27. THE PAYMENT ITSELF WAS NOT TOUCHED, so its proof, its verification and
   --     its Finance history are exactly where they were.
@@ -569,7 +616,13 @@ declare
   v_pi  uuid := current_setting('test.pi_other')::uuid;
   v_msg text;
 begin
+  -- A FIXTURE: back to draft so the submit door is asked again. A raw
+  -- submitted → draft move is not a transition the app makes, so the guard is
+  -- lifted for this one write (#209 review, H5).
+  perform set_config('request.jwt.claims', '', true);
+  alter table public.order_submissions disable trigger order_submissions_enforce_status_transition;
   update public.order_submissions set status = 'draft' where id = v_pi;
+  alter table public.order_submissions enable trigger order_submissions_enforce_status_transition;
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -732,6 +785,12 @@ declare
   v_cur   boolean;
 begin
   -- A PI submitted under the reduced-payment route, with a decision taken.
+  -- A FIXTURE written directly: the guards that let only the real doors set a
+  -- declaration or a decision are lifted for this one write (#209 review, H5).
+  perform set_config('request.jwt.claims', '', true);
+  alter table public.order_submissions disable trigger order_submissions_guard_advance_exception;
+  alter table public.order_submissions disable trigger order_submissions_guard_exception_reason_code;
+  alter table public.order_submissions disable trigger order_submissions_enforce_status_transition;
   update public.order_submissions
      set status = 'submitted',
          submitted_at = now(),
@@ -739,6 +798,7 @@ begin
          billing_terms = null,
          source_workbook_sha256 = repeat('a', 64),
          advance_condition = 'exception',
+         advance_declared_amount = null,   -- §4 declared the standard amount
          advance_exception_percent = 0,
          advance_exception_reason = 'ASSERT client pays on delivery',
          advance_exception_status = 'approved',
@@ -751,6 +811,9 @@ begin
          advance_exception_decided_payment_terms   = '50% before dispatch',
          advance_exception_decided_billing_terms   = null
    where id = v_pi;
+  alter table public.order_submissions enable trigger order_submissions_guard_advance_exception;
+  alter table public.order_submissions enable trigger order_submissions_guard_exception_reason_code;
+  alter table public.order_submissions enable trigger order_submissions_enforce_status_transition;
 
   v_cur := public.order_submission_exception_current(
     'approved', 1000000, 1000000, repeat('a', 64), repeat('a', 64),
@@ -826,7 +889,8 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin)::text, true);
   begin
-    perform public.approve_order_submission(v_pi);
+    perform public.approve_order_submission(v_pi, current_setting('test.sales_id')::uuid,
+                                            current_date, current_date + 30, 'reference');
     reset role;
     raise exception 'a stale reduced-payment approval must not create an Order';
   exception when sqlstate 'P0001' then
@@ -869,9 +933,12 @@ begin
   -- lock multi-row sets in a deterministic id order.
   for v_fn in select unnest(array['approve_order_submission', 'submit_pi_for_review_internal'])
   loop
+    -- The widest overload is the real door: approve_order_submission(uuid)
+    -- is only a shim that refuses an out-of-date page (20261201000000).
     select pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = v_fn;
+    where n.nspname = 'public' and p.proname = v_fn
+    order by p.pronargs desc limit 1;
 
     assert position('from public.order_submissions' in v_def)
          < position('from public.finance_payment_requests' in v_def),
@@ -887,8 +954,11 @@ begin
   select pg_get_functiondef(p.oid) into v_def
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'reverse_payment_allocation';
-  assert position('from public.finance_payment_requests' in v_def)
-       < position('from public.finance_payment_allocations' in v_def),
+  -- It READS the allocation first, unlocked, only to learn which payment to
+  -- lock; the LOCKS are what must come in order (compared by FOR UPDATE).
+  assert regexp_instr(v_def, 'from public[.]finance_payment_requests[[:space:]]+where[^;]*for update') > 0
+     and regexp_instr(v_def, 'from public[.]finance_payment_requests[[:space:]]+where[^;]*for update')
+       < regexp_instr(v_def, 'from public[.]finance_payment_allocations[[:space:]]+where[^;]*for update'),
     'reverse_payment_allocation must still lock the payment before the allocation';
 
   raise notice '11. lock order OK';
@@ -958,7 +1028,9 @@ declare
   v_flag  boolean;
 begin
   insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
-  values (v_pi, 'ASSERT classify', 'submitted', 1000000, v_sales, v_sales);
+  -- Created as a draft (a submission is born a draft since 20260913000000);
+  -- this section classifies payments and is indifferent to the PI's status.
+  values (v_pi, 'ASSERT classify', 'draft', 1000000, v_sales, v_sales);
 
   insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
   values (v_order,  'ASSERT classify', 1000000, v_admin, 'running', v_pi),
@@ -971,22 +1043,22 @@ begin
   insert into public.finance_payment_requests
     (id, client_name, amount, payment_date, payment_mode, status, submitted_by, order_id, order_number)
   values
-    (p_legacy_linked, 'ASSERT classify', 100, current_date, 'upi', 'approved_linked', v_sales, v_order, 'ASSERT-ORD');
+    (p_legacy_linked, 'ASSERT classify', 100, current_date, 'hdfc', 'approved_linked', v_sales, v_order, 'ASSERT-ORD');
 
   insert into public.finance_payment_requests
     (id, client_name, amount, payment_date, payment_mode, status, submitted_by)
   values
-    (p_legacy_unlinked, 'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
-    (p_pi,              'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
-    (p_reversed,        'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
-    (p_pi_plus_rev,     'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
-    (p_split,           'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
-    (p_pending,         'ASSERT classify', 100, current_date, 'upi', 'pending_approval',  v_sales);
+    (p_legacy_unlinked, 'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales),
+    (p_pi,              'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales),
+    (p_reversed,        'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales),
+    (p_pi_plus_rev,     'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales),
+    (p_split,           'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales),
+    (p_pending,         'ASSERT classify', 100, current_date, 'hdfc', 'pending_approval',  v_sales);
 
   if v_req is not null then
     insert into public.finance_payment_requests
       (id, client_name, amount, payment_date, payment_mode, status, submitted_by, order_request_id)
-    values (p_request, 'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales, v_req);
+    values (p_request, 'ASSERT classify', 100, current_date, 'hdfc', 'approved_unlinked', v_sales, v_req);
   end if;
 
   -- An ACTIVE allocation onto the PI: real money, no Order yet.
@@ -1299,13 +1371,18 @@ declare
   v_alloc uuid := gen_random_uuid();
   v_n     integer;
 begin
+  -- Fixtures are written with NO impersonated identity (an earlier section's
+  -- claim would make the payment trigger judge them as that person).
+  perform set_config('request.jwt.claims', '', true);
   insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
-  values (v_pi, 'ASSERT sides', 'submitted', 1000000, v_sales, v_sales);
+  -- Created as a draft (a submission is born a draft since 20260913000000);
+  -- this section classifies payments and is indifferent to the PI's status.
+  values (v_pi, 'ASSERT sides', 'draft', 1000000, v_sales, v_sales);
   insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
   values (v_order, 'ASSERT sides', 1000000, v_admin, 'running', v_pi);
   insert into public.finance_payment_requests
     (id, client_name, amount, payment_date, payment_mode, status, submitted_by)
-  values (v_pay, 'ASSERT sides', 500000, current_date, 'upi', 'approved_unlinked', v_sales);
+  values (v_pay, 'ASSERT sides', 500000, current_date, 'hdfc', 'approved_unlinked', v_sales);
   insert into public.finance_payment_allocations
     (id, payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
   values (v_alloc, v_pay, v_pi, 500000, 'order_submission', v_sales);

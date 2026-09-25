@@ -65,7 +65,36 @@ insert into public.users (id, full_name, email, role, team, is_active, employee_
   (current_setting('test.admin2_id')::uuid,    'ASSERT Admin Two',  'admin2@example.test',    'admin',  'management', true, 'ASSERT-ADM'),
   (current_setting('test.outsider_id')::uuid,  'ASSERT Outsider',   'out@example.test',       'member', 'design',     true, 'ASSERT-OUT'),
   (current_setting('test.sales_id')::uuid,     'ASSERT Sales',      'sales@example.test',     'member', 'sales',      true, 'ASSERT-SAL')
-on conflict (id) do nothing;
+-- EXACTLY these people, whatever an earlier seed or suite left under the same
+-- ids (#209 review, H5): the same id is an admin in one suite and a member in
+-- another, so each suite states its own, inside its own transaction.
+on conflict (id) do update set full_name = excluded.full_name, role = excluded.role, team = excluded.team,
+                               is_active = true, is_deleted = false;
+-- The owner is the approving admin whose name the notifications carry.
+update public.users set full_name = 'ASSERT Owner', role = 'admin', is_active = true, is_deleted = false
+ where id = current_setting('test.owner_id')::uuid;
+-- Only the grants this file gives, and nobody assigned to review yet (§1).
+delete from public.employee_permission_overrides
+ where user_id in (current_setting('test.reviewer_id')::uuid, current_setting('test.reviewer2_id')::uuid,
+                   current_setting('test.admin2_id')::uuid, current_setting('test.outsider_id')::uuid,
+                   current_setting('test.viewer_id')::uuid);
+delete from public.order_operations_reviewers where duty = 'pi_handoff';
+-- ISOLATION: this file counts every live, unresolved handoff an assignment
+-- readdresses. Handoffs other data committed on this scratch database are set
+-- aside for the length of this (rolled-back) transaction.
+update public.order_operations_handoffs set superseded_at = now(), superseded_by_version_id = pi_version_id
+ where superseded_at is null;
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, current_setting('test.owner_id')::uuid
+  from (values (current_setting('test.owner_id')::uuid, 'approve_order'),
+               (current_setting('test.owner_id')::uuid, 'can_be_order_assignee'),
+               (current_setting('test.sales_id')::uuid, 'view'),
+               (current_setting('test.sales_id')::uuid, 'create'),
+               (current_setting('test.sales_id')::uuid, 'can_be_order_assignee')) g(uid, a)
+  join public.permission_modules pm on pm.module_key = 'orders'
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
 
 insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
 select u, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
@@ -282,7 +311,7 @@ select pg_temp.expect_error(
 -- Order — so they cannot be the reviewer either.
 insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
   (current_setting('test.viewer_id')::uuid, 'ASSERT Viewer', 'viewer@example.test', 'member', 'design', true, 'ASSERT-VIEW')
-on conflict (id) do nothing;
+on conflict (id) do update set full_name = excluded.full_name, role = excluded.role, team = excluded.team, is_active = true;
 insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
 select current_setting('test.viewer_id')::uuid, pm.id, pa.id, true, current_setting('test.owner_id')::uuid
   from public.permission_modules pm join public.permission_actions pa on pa.action_key = 'view'

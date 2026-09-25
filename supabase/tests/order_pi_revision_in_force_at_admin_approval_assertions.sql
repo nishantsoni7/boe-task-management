@@ -656,16 +656,21 @@ begin
   return v;
 end $$;
 
--- Operations' decision on the live handoff, as the reviewer.
+-- Operations' decision on the live handoff, as the reviewer. EVERY refusal is
+-- printed with its SQLSTATE and where it was raised, whatever the caller then
+-- asserts, so an intermittent §7 failure leaves its cause in the log (the two
+-- earlier ones did not: they were caught here and never shown).
 create function pg_temp.ops_decide(p_order uuid, p_decision text, p_reason text default null) returns text language plpgsql as $$
-declare v text; h uuid;
+declare v text; h uuid; v_state text; v_where text;
 begin
   select id into h from public.order_operations_handoffs where order_id = p_order and superseded_at is null;
   perform pg_temp.become(current_setting('test.ops_id')::uuid);
   begin
     perform public.decide_order_operations_handoff(h, p_decision, p_reason);
     v := 'OK';
-  exception when others then get stacked diagnostics v = message_text;
+  exception when others then
+    get stacked diagnostics v = message_text, v_state = returned_sqlstate, v_where = pg_exception_context;
+    raise notice 'ops_decide(%, %) refused [%]: % | at: %', p_order, p_decision, v_state, v, left(replace(v_where, E'\n', ' <- '), 400);
   end;
   perform pg_temp.restore();
   return v;
