@@ -1,6 +1,6 @@
 'use client'
 
-// ── THE 40% ADVANCE ON THE ORDER PAGE (20270104000000) ───────────────────────
+// ── THE 40% ADVANCE ON THE ORDER PAGE (20270116000000) ───────────────────────
 //
 // Drawn only when the verified advance is below 40% of the Order's (amended)
 // value. It says the percentage, the rupee shortfall, what is awaiting Finance

@@ -65,7 +65,7 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_workbook_replaced:      'PI workbook replaced',
   order_client_details_amended: 'Client details amended',
   order_schedule_terms_amended: 'Schedule or terms amended',
-  // The 40% advance after alignment (20270104000000 §4d).
+  // The 40% advance after alignment (20270116000000 §4d).
   order_advance_hold_opened:        'Production on hold: advance below 40%',
   order_advance_exception_approved: 'Production approved below 40% by an administrator',
   order_advance_exception_voided:   'Below-40% approval void: payment reversed',
@@ -161,7 +161,7 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
 /**
  * THE PARSE WRITER'S OWN "WORKBOOK REPLACED" ROWS, WRITTEN INSIDE A REVISION.
  *
- * Since 20270104000000 an approved revision — a new workbook or an edit made
+ * Since 20270116000000 an approved revision — a new workbook or an edit made
  * in the app — is applied by approve_order_pi_revision() through the unchanged
  * parse writer, which records "PI workbook replaced" on the Order and the PI
  * with the reason it was handed: "PI V<n> approved: …". The revision's own

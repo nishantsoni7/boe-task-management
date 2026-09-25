@@ -1,4 +1,4 @@
-// ── A product photo for Edit PI (20270103000000) ──────────────────────────────
+// ── A product photo for Edit PI (20270115000000) ──────────────────────────────
 //
 // Stores ONE picture under the PI's own content-addressed image key —
 // submissions/{pi}/images/{line}/representative/0-{sha256}.{ext}, the shape the

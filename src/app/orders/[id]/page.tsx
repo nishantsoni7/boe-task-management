@@ -847,7 +847,7 @@ export default function OrderDetailPage() {
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
   const [lineReview, setLineReview] = useState<{ version: PiVersionView; review: PiLineReviewData } | null>(null)
-  // ── The operations decision on a revised PI (20270101000000) ──
+  // ── The operations decision on a revised PI (20270113000000) ──
   const [revOpsOpen,  setRevOpsOpen]  = useState(false)
   const [revOpsDiff,  setRevOpsDiff]  = useState<RevisionDifferences | null | 'unavailable'>(null)
   const [revOpsBusy,  setRevOpsBusy]  = useState(false)
@@ -884,7 +884,7 @@ export default function OrderDetailPage() {
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
 
-  // ── Design Files and Client PO submissions (20261231000000) ──
+  // ── Design Files and Client PO submissions (20270112000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
   const docSubs = useOrderDocumentSubmissions(supabase, id, order?.source_order_submission_id ?? null)
   const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
@@ -1209,7 +1209,7 @@ export default function OrderDetailPage() {
     await Promise.all([reloadActivity(), loadAdvance()])
   }
 
-  // THE 40% ADVANCE ON THE AMENDED VALUE (20270104000000). Read as the reader;
+  // THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000). Read as the reader;
   // the database enforces it whatever this shows.
   const loadAdvance = async () => {
     const { data, error } = await supabase.rpc('order_advance_readiness', { p_order_id: id })
@@ -1641,7 +1641,7 @@ export default function OrderDetailPage() {
     try {
       const { ok, body, review } = await requestPiRevisionApproval(version.id, lineMap)
       // A revised workbook whose lines cannot all be matched by item number:
-      // the admin matches them, then approves again (20270104000000).
+      // the admin matches them, then approves again (20270116000000).
       if (review) { setLineReview({ version, review }); return }
       if (!ok) {
         const b = body as { error?: string; message?: string }
@@ -1687,7 +1687,7 @@ export default function OrderDetailPage() {
         p_aligned: aligned,
         p_note: note,
       })
-      // The 40% advance (20270104000000) refuses in its own words: the
+      // The 40% advance (20270116000000) refuses in its own words: the
       // percentage, the shortfall and what to do.
       if (error) { setAlignError(describeAdvanceRefusal(error.message) ?? describeAlignmentFailure(error)); return }
       setAlignDialog(null)
@@ -1733,14 +1733,14 @@ export default function OrderDetailPage() {
       // appended the activity entries — so the handoff and the Order row are
       // re-read, and the trail with the row. Nothing else changed.
       // Accepting the version also accepts the documents sent with the PI
-      // (20261231000000 §11e), so those are re-read with it.
+      // (20270112000000 §11e), so those are re-read with it.
       await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
     } finally {
       setHandoffBusy(false)
     }
   }
 
-  // ── ADMINISTRATOR RECOVERY OF A HELD ORDER (20270104000000, review R1) ──
+  // ── ADMINISTRATOR RECOVERY OF A HELD ORDER (20270116000000, review R1) ──
   //
   // Offered only when readiness says no operations reviewer can act; the door
   // re-checks that, the hold, the accepted version and the 40% gate under lock,
@@ -1844,7 +1844,7 @@ export default function OrderDetailPage() {
    * bucket's SELECT policy — which asks can_view_order — decides again at that
    * moment. No proof is signed at load, and a key never reaches the markup.
    */
-  // A PI VERSION'S PDF (20270104000000): the third file hand-off. Rendered by
+  // A PI VERSION'S PDF (20270116000000): the third file hand-off. Rendered by
   // the server from that version's own details; the browser gets a document,
   // never another module's page.
   const openVersionPdf = (versionId: string, download: boolean) => {
@@ -2077,7 +2077,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  // THE RECOVERY (20270101000000 §6b): the admin who approved the proposal is
+  // THE RECOVERY (20270113000000 §6b): the admin who approved the proposal is
   // no longer active, so it cannot be accepted until an active admin
   // re-approves it. reapprove_order_pi_revision() re-derives all of it.
   const revisionApproverInactive = !!piHistory.pending?.decidedById
@@ -2515,7 +2515,7 @@ export default function OrderDetailPage() {
   })
 
   // An accepted version whose Order was put on hold (its advance fell below
-  // 40%, 20270104000000) is aligned again from here by whoever is the
+  // 40%, 20270116000000) is aligned again from here by whoever is the
   // operations reviewer NOW — or, when no reviewer can act, recovered by an
   // administrator with a reason (review R1). Never under View As.
   const realignBy = viewAsUserId ? null : (advance?.realign ?? null)
@@ -2904,10 +2904,10 @@ export default function OrderDetailPage() {
           />
         </OrderDocumentsRow>
 
-        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270103000000) ══
+        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270115000000) ══
             V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
             An edit becomes a pending version; an Admin's approval puts it in
-            force and amends the Order (20270104000000). */}
+            force and amends the Order (20270116000000). */}
         {order.source_order_submission_id && handoffReady && (
           <PiVersionsPanel
             supabase={supabase}
@@ -3023,7 +3023,7 @@ export default function OrderDetailPage() {
               loaded={recordsReady}
               onOpenList={setPaymentList}
             />
-            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270104000000): stated here,
+            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
                 with the rest of the payment position, and nowhere above. */}
             <AdvanceGatePanel
               readiness={advance}
@@ -3331,7 +3331,7 @@ export default function OrderDetailPage() {
         />
       )}
 
-      {/* ── Design Files and Client PO submissions (20261231000000) ── */}
+      {/* ── Design Files and Client PO submissions (20270112000000) ── */}
       {docUpload && (
         <SubmitDocumentsModal
           orderNumber={order.display_number}

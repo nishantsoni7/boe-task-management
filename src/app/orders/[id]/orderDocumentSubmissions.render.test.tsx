@@ -1,5 +1,5 @@
 /**
- * Order document submissions (20261231000000), rendered: the Documents card and
+ * Order document submissions (20270112000000), rendered: the Documents card and
  * the separation between what is CURRENT (the rows) and what is only PROPOSED
  * (the changes panel, drawn only when something is pending or rejected).
  *
@@ -96,7 +96,7 @@ describe('the Documents card', () => {
     const t = rowsOf(card([accepted]))
     assert.ok(t.includes('Main PI · V1 Current'))
     assert.ok(t.includes('Uploaded 2026-09-01') && t.includes('Approved 2026-09-02'))
-    // Each action says what it opens (20270104000000): the PI itself is the
+    // Each action says what it opens (20270116000000): the PI itself is the
     // PDF generated from V1's details; the .xlsx is the file Sales uploaded.
     assert.ok(t.includes('View PI V1 (PDF)'))
     assert.ok(t.includes('Uploaded workbook'))

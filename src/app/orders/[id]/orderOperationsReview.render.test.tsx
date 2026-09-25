@@ -127,7 +127,7 @@ describe('the attention strip carries the decision, state by state', () => {
   })
 
   // Accepting aligns, so an accepted version's Order is aligned (an accepted
-  // version on a NOT aligned Order is a production hold, 20270104000000).
+  // version on a NOT aligned Order is a production hold, 20270116000000).
   test('accepted: the review is resolved, so the strip neither names it nor offers a decision', () => {
     assert.equal(strip(view(accepted(), NITISH, { productionAligned: true })), '', 'nothing else needs attention on this Order')
     assert.equal(
@@ -372,7 +372,7 @@ describe('the page draws ONE production decision', () => {
   test('a decision re-reads the handoff AND the Order row, because acceptance moves the alignment columns', () => {
     const fn = page.slice(page.indexOf('const decideHandoff'), page.indexOf('const decideHandoff') + 2200)
     // …and the document submissions: accepting the version accepts the files
-    // sent with the PI (20261231000000 §11e).
+    // sent with the PI (20270112000000 §11e).
     assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadOrderRow\(\), docSubs\.reload\(\)\]\)/)
     assert.doesNotMatch(fn, /loadOrder\(\)/)
   })

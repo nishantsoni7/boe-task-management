@@ -200,7 +200,7 @@ describe('the Main PI card', () => {
     const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
     assert.ok(rows.includes('Main PI · V1'), 'the approved version is still the current row')
     assert.equal(rows.includes('V2'), false)
-    // SINCE 20270101000000 the proposal is NAMED — but only in the changes
+    // SINCE 20270113000000 the proposal is NAMED — but only in the changes
     // panel, above the rows, with its stage and its owner.
     assert.ok(changes.includes('New PI · V2 Waiting for Admin'))
     assert.ok(changes.includes('With: Admin'))

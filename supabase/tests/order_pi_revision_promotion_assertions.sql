@@ -1,4 +1,4 @@
--- REVISED PI PROMOTION assertions (20270101000000)
+-- REVISED PI PROMOTION assertions (20270113000000)
 -- ===========================================================================
 -- Through the REAL doors — the processing lease, approve_order_pi_revision()
 -- (service role, staging) and decide_order_pi_revision_operations() — on a
@@ -28,16 +28,16 @@
 
 \set ON_ERROR_STOP on
 
--- TWO LIFECYCLES, ONE SUITE. Against #205's own head (20270101000000) the
+-- TWO LIFECYCLES, ONE SUITE. Against #205's own head (20270113000000) the
 -- sections below prove staging and operations promotion, as they always did.
--- With 20270104000000 (#207) applied — the owner's rule: an Admin's approval
+-- With 20270116000000 (#207) applied — the owner's rule: an Admin's approval
 -- puts a revision in force and amends the Order — the same fixtures run the
 -- L-sections instead, which assert what still holds of #205 (authority,
 -- reassignment, the handoff and production alignment, #202's documents) and
 -- what changed. Nothing is skipped on either database.
 select exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                 where n.nspname = 'public' and p.proname = 'approve_order_pi_revision'
-                  and p.prosrc like '%apply_order_amendment(%') as superseded_by_20270104 \gset
+                  and p.prosrc like '%apply_order_amendment(%') as superseded_by_20270116 \gset
 
 begin;
 
@@ -128,7 +128,7 @@ begin
   return (v ->> 'order_id')::uuid;
 end $$;
 
-/** A revised version put in force through the writes the revision path makes since 20270101000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
+/** A revised version put in force through the writes the revision path makes since 20270113000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
 create function pg_temp.approve_revision(p_order uuid, p_actor uuid) returns uuid language plpgsql as $$
 declare v_sub uuid; v_cur record; v_new uuid;
 begin
@@ -309,9 +309,9 @@ begin
   values (p_order, 1, 'ready', v_base || '.xlsx', v_base || '.pdf', now());
 end $$;
 
-\if :superseded_by_20270104
+\if :superseded_by_20270116
 -- ═══════════════════════════════════════════════════════════════════════════
--- ON A DATABASE WITH 20270104000000 (#207): THE LIFECYCLE AS IT NOW IS
+-- ON A DATABASE WITH 20270116000000 (#207): THE LIFECYCLE AS IT NOW IS
 -- ═══════════════════════════════════════════════════════════════════════════
 -- The same fixtures and the same real doors, asserting what still holds of
 -- #205 and what the owner's rule changed:
@@ -491,7 +491,7 @@ begin
   raise notice 'L6. #202 documents follow the accepted version OK';
 end $$;
 
-do $$ begin raise notice 'ALL PI REVISION LIFECYCLE ASSERTIONS PASSED (20270104000000)'; end $$;
+do $$ begin raise notice 'ALL PI REVISION LIFECYCLE ASSERTIONS PASSED (20270116000000)'; end $$;
 
 \else
 
@@ -520,7 +520,7 @@ begin
   perform set_config('test.v_m', v::text, true);
   n_rev := (select count(*) from public.notifications where user_id = reviewer and entity_id = o);
   before_state := pg_temp.current_state(o);
-  -- A route deployed before 20270101000000 sends no seed_terms; it is refused
+  -- A route deployed before 20270113000000 sends no seed_terms; it is refused
   -- before anything is staged, so it never reaches its own image cleanup.
   perform pg_temp.expect_error(format('select pg_temp.stage(%L, pg_temp.payload(%L, ''ASSERT MATCH'', 500000, 2) - ''seed_terms'')', v, v),
           'ORDER_PI_REVISION_CLIENT_UPDATE_REQUIRED', '1. a pre-staging route''s approval is refused');
@@ -670,7 +670,7 @@ begin
   perform pg_temp.check((select count(*) from public.notifications where user_id = owner and entity_id = o and title like '%rejected PI V2%') = 1, '3. the approving admin is told');
   perform pg_temp.check(not exists (select 1 from public.order_pi_revision_staged_parses where version_id = v and applied_at is not null), '3. never applied');
   -- The PI is no longer frozen BY THE REVISION, and a corrected V3 can be
-  -- proposed. Since 20270103000000 an approved PI is still never edited in
+  -- proposed. Since 20270115000000 an approved PI is still never edited in
   -- place: the refusal is now the versioning rule's, not the freeze's.
   perform pg_temp.expect_error(
     format('update public.order_submissions set commercial_terms_note = %L where id = %L', 'ASSERT unfrozen', current_setting('test.pi_r')),

@@ -1,6 +1,6 @@
 'use client'
 
-// ── MATCHING A REVISED WORKBOOK'S LINES (20270104000000) ─────────────────────
+// ── MATCHING A REVISED WORKBOOK'S LINES (20270116000000) ─────────────────────
 //
 // A revised workbook's lines are matched to the products in force by item
 // number (column J). When a line has no number, or its number appears more

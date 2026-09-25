@@ -893,7 +893,7 @@ const RESERVATION_MIGRATION =
   '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
 
 const NUMBERING_AT_CONVERSION =
-  '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
+  '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
 
 /** The last definition of `fnName` at or before `bound`, across every migration. */
 function definitionAt(fnName: string, bound: string): { text: string; file: string } {
@@ -950,7 +950,7 @@ describe('a PI reaches review without carrying its reserved Order number', () =>
   })
 
   test('the review door no longer asks it', () => {
-    // 20261121000000 removed the question; 20270102000000 (numbering at
+    // 20261121000000 removed the question; 20270114000000 (numbering at
     // conversion) later emptied the gate altogether. Neither asks it.
     const then = definitionAt(SUBMIT_GATE, REVIEW_DOOR)
     assert.equal(then.file, REVIEW_DOOR, 'the migration under test owned the definition it wrote')
@@ -1003,7 +1003,7 @@ describe('a PI reaches review without carrying its reserved Order number', () =>
       'a PI already in review is not re-gated by an unrelated update')
   })
 
-  test('20270102000000 retired the reservation: the gate now asks nothing at all', () => {
+  test('20270114000000 retired the reservation: the gate now asks nothing at all', () => {
     // PI Drafts no longer reserve an Order number; the Order takes one when
     // the PI is approved. The trigger stays attached so its history reads in
     // one place, and its body only lets the row through.

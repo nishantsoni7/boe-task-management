@@ -413,7 +413,7 @@ function PaymentPositionPanel({
       )}
 
       {/* BELOW THE REQUIREMENT: ONE OF THREE REASONS, and nothing else
-          (20270102000000). "Other" asks for a remark. The stored Payment and
+          (20270114000000). "Other" asks for a remark. The stored Payment and
           Billing terms are carried as they are; they are edited on the PI, not
           here. Choosing a reason asks — an admin decides. */}
       {meetsStandard === false && (
@@ -561,7 +561,7 @@ export function PiSubmitConfirmModal({
     acknowledgedMissing?: string[],
   ) => void
   /**
-   * DESIGN FILES AND CLIENT PO (20261231000000), drawn inside this dialog by the
+   * DESIGN FILES AND CLIENT PO (20270112000000), drawn inside this dialog by the
    * caller. Absent on a screen that does not offer them: the dialog is then
    * exactly what it was.
    */

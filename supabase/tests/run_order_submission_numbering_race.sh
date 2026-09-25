@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
 # TEST-ONLY RUNNER — two sessions approving two new PI Drafts at once
-# (20270102000000), on a DISPOSABLE local Supabase stack.
+# (20270114000000), on a DISPOSABLE local Supabase stack.
 # ═════════════════════════════════════════════════════════════════════════════
 #
 # A new draft holds no Order number; approve_order_submission() allocates one
@@ -37,7 +37,7 @@ psql_in() { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v O
 scalar()  { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -Atc "$1"; }
 
 [ "$(scalar "select to_regclass('public.order_submission_draft_reference_seq') is not null")" = "t" ] \
-  || { echo "refusing: 20270102000000 is not applied" >&2; exit 3; }
+  || { echo "refusing: 20270114000000 is not applied" >&2; exit 3; }
 [ "$(scalar "select count(*) from public.orders where client_name not like 'ASSERT%'")" = "0" ] \
   || { echo "refusing: this database holds Orders that are not test fixtures; it is not disposable" >&2; exit 4; }
 for u in 11111111-1111-1111-1111-111111111111 55555555-5555-5555-5555-555555555555 77777777-7777-7777-7777-777777777777; do

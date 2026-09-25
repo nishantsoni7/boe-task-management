@@ -1,4 +1,4 @@
--- A REVISED PI IS IN FORCE WHEN AN ADMIN APPROVES IT (20270104000000)
+-- A REVISED PI IS IN FORCE WHEN AN ADMIN APPROVES IT (20270116000000)
 -- ===========================================================================
 -- Through the real doors, on a disposable stack:
 --
@@ -30,7 +30,7 @@
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- PREREQUISITES: TEST-001 admin 1111…, sales 5555…, operations 7777…, finance
--- viewer = the admin; 20270104000000 applied.
+-- viewer = the admin; 20270116000000 applied.
 -- On success prints NOTICE 'ALL IN-FORCE-AT-APPROVAL ASSERTIONS PASSED'.
 
 \set ON_ERROR_STOP on

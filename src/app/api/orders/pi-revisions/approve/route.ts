@@ -12,7 +12,7 @@ import { processUnderLease } from '@/app/api/orders/import/process-draft/route'
 // actor, finds the pending version, takes the processing lease on the PI, and
 // hands the version id to the ONE parser pipeline (process-draft's
 // processUnderLease), which downloads, parses, uploads the pictures and calls
-// approve_order_pi_revision(). Since 20270104000000 that RPC puts the revision
+// approve_order_pi_revision(). Since 20270116000000 that RPC puts the revision
 // IN FORCE: in one transaction it applies the parse, amends the Order's value
 // and dates through the audited amendment door (old → new, this admin, now),
 // supersedes the previous version, approves this one and records its
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
   const reason = typeof version.revision_reason === 'string' ? version.revision_reason.trim() : ''
   if (reason === '') return fail(409, 'ORDER_PI_REVISION_REASON_REQUIRED', 'This revision carries no reason.')
 
-  // AN EDIT REVISION (20270103000000) has no new workbook to parse: its
+  // AN EDIT REVISION (20270115000000) has no new workbook to parse: its
   // complete proposed PI was built and priced by the server when it was
   // proposed, and is applied exactly as a parsed workbook would be — the same
   // RPC, the same transaction, the same amendment and handoff.

@@ -314,7 +314,7 @@ describe('the read side excludes system types too', () => {
     // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
     // row to ONE person, once. It installs no trigger, function or job.
     const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
-    // An eighth, 20261231000000, is Order document submissions (Design Files
+    // An eighth, 20270112000000, is Order document submissions (Design Files
     // and Client PO). Four RPCs a PERSON presses (create, the admin decision,
     // the operations decision, sending a PI with its documents) act as that
     // signed-in person; the three that notify tell the next owner inside that
@@ -324,14 +324,14 @@ describe('the read side excludes system types too', () => {
     // submitter their documents were accepted with it, and Control Center
     // REASSIGNING the reviewer (on order_operations_reviewers) tells the new
     // reviewer what now waits on them. Orders types only; nothing scheduled.
-    const DOCUMENT_SUBMISSIONS = '20261231000000_order_document_submissions.sql'
-    // A ninth, 20270101000000, stages a revised PI at admin approval and
+    const DOCUMENT_SUBMISSIONS = '20270112000000_order_document_submissions.sql'
+    // A ninth, 20270113000000, stages a revised PI at admin approval and
     // promotes it on operations acceptance. Every notification it writes is an
     // Orders type, inside a PERSON'S own action: the admin approving (via the
     // service-role door the route calls for them), the reviewer deciding, or
     // Control Center reassigning (an AFTER trigger on the reviewer row).
-    const REVISED_PI_PROMOTION = '20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
-    // A tenth, 20270104000000, puts a revised PI in force at the admin's
+    const REVISED_PI_PROMOTION = '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
+    // A tenth, 20270116000000, puts a revised PI in force at the admin's
     // approval. It writes ONE Orders-type row, to the person who proposed the
     // revision, inside that approval (the service-role door the route calls
     // for a verified admin); the reviewer is told by 20261229000000's trigger.
@@ -342,7 +342,7 @@ describe('the read side excludes system types too', () => {
     // hold. Its re-emitted decide_order_operations_handoff() keeps the
     // reviewer's decision notice. It installs no trigger on notifications and
     // schedules nothing.
-    const REVISION_IN_FORCE = '20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
+    const REVISION_IN_FORCE = '20270116000000_order_pi_revision_in_force_at_admin_approval.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',

@@ -1,7 +1,7 @@
 'use client'
 
 // DESIGN FILES AND CLIENT PO, ATTACHED WHERE THE PI IS SENT FOR APPROVAL
-// (20261231000000 §11).
+// (20270112000000 §11).
 //
 // The hook holds what the submitter chose; the picker draws it inside the
 // existing "Submit for approval" dialog. Sending uploads each new file under
@@ -41,7 +41,7 @@ const BUCKET = 'order-files'
 
 export type SupportingState = ReturnType<typeof usePiSupportingDocuments>
 
-/** A file attached to the PI Draft before it is sent (20270102000000). */
+/** A file attached to the PI Draft before it is sent (20270114000000). */
 export type StagedDocument = {
   id: string
   staging_submission_id: string
@@ -56,7 +56,7 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
   const [design, setDesign] = useState<File[]>([])
   const [po, setPo] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
-  // ATTACHED EARLIER (20270102000000): files uploaded on the draft page before
+  // ATTACHED EARLIER (20270114000000): files uploaded on the draft page before
   // the PI is sent, under the id they will be sent with. Null until one exists.
   const [staged, setStaged] = useState<StagedDocument[]>([])
   const [stagingId, setStagingId] = useState<string | null>(null)
@@ -95,7 +95,7 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
       const unsent = stagedRead.error
         ? []
         : ((stagedRead.data ?? []) as StagedDocument[]).filter(s => !sent.has(s.staging_submission_id))
-      // ROLLOUT SAFETY: before 20270102000000 the table does not exist; the
+      // ROLLOUT SAFETY: before 20270114000000 the table does not exist; the
       // draft page then offers no early attachment rather than a broken one.
       setStagedReadable(!stagedRead.error)
       setStaged(unsent)
@@ -188,7 +188,7 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
     acknowledgedMissing: string[]
   }): Promise<{ data: unknown; error: { message: string } | null }> => {
     // Files attached to the draft earlier were uploaded under the staging id,
-    // so the submission is sent under that same id (20270102000000).
+    // so the submission is sent under that same id (20270114000000).
     const documentSubmissionId = stagingId ?? crypto.randomUUID()
     const files: { path: string; file_name: string }[] = kept.map(f => ({ path: f.storage_path, file_name: f.file_name }))
     const fresh: { file: File; category: DocumentCategory }[] = [
@@ -213,7 +213,7 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
       p_files: files,
       p_acknowledged_missing: input.acknowledgedMissing,
     })
-    // ROLLOUT SAFETY. If this code reaches a database without 20261231000000,
+    // ROLLOUT SAFETY. If this code reaches a database without 20270112000000,
     // the wrapper does not exist (PostgREST PGRST202). A PI with nothing
     // attached is then sent exactly as before, through the one door; one WITH
     // attachments is refused in words rather than sent without them.
@@ -315,7 +315,7 @@ export const DRAFT_ATTACHMENTS_NOTE =
   'Attach them now or later — they are sent with the PI when you submit it for approval, and stay private to the people who can open this PI.'
 
 /**
- * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270102000000).
+ * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270114000000).
  *
  * Attached any time while the PI is a draft or returned, kept between visits,
  * and ticked by default in the "Submit for approval" dialog, which sends them.

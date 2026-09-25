@@ -41,7 +41,7 @@ export const DOC_CLIENT_PO_TITLE = 'Client PO'
 /**
  * The Main PI row's UPLOADED-WORKBOOK actions, named for what they open: the
  * .xlsx Sales uploaded, not the PI document. The PI itself is the PDF
- * (piVersionPdf.ts), generated from the version's details (20270104000000).
+ * (piVersionPdf.ts), generated from the version's details (20270116000000).
  */
 export const DOC_VIEW_PI_LABEL = 'Uploaded workbook'
 export const DOC_DOWNLOAD_PI_LABEL = 'Download uploaded workbook (.xlsx)'

@@ -221,7 +221,7 @@ describe('the submission rule reads ATTACHED payment', () => {
     const r = validateSubmissionTerms({ meetsStandard: false, terms: terms({ paymentTerms: '50% now' }) })
     assert.equal(r.ok, false, 'terms alone are not a reason')
     const chosen = validateSubmissionTerms({ meetsStandard: false, terms: terms({ reasonChoice: 'against_client_po' }) })
-    assert.equal(chosen.ok, true, 'one of the three is (20270102000000)')
+    assert.equal(chosen.ok, true, 'one of the three is (20270114000000)')
   })
 
   test('the three submission positions are the three the server can return', () => {

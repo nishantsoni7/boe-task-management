@@ -20,7 +20,7 @@ import { workbookObjectPath } from './saveDraftFlow'
 
 // ── The persisted row ─────────────────────────────────────────────────────────
 
-// 'admin_approved' (20270101000000): an admin approved the revision and its parse
+// 'admin_approved' (20270113000000): an admin approved the revision and its parse
 // is staged; it is NOT in force until the operations reviewer accepts it.
 export type PiVersionStatus = 'pending' | 'admin_approved' | 'approved' | 'rejected' | 'superseded'
 
@@ -43,7 +43,7 @@ export type PersistedPiVersion = {
   operations_decided_by?: string | null
   operations_decided_at?: string | null
   operations_reason?: string | null
-  /** 'workbook' | 'edit' (20270103000000). Optional: older reads omit it. */
+  /** 'workbook' | 'edit' (20270115000000). Optional: older reads omit it. */
   source_kind?: string | null
 }
 
@@ -55,7 +55,7 @@ export const ORDER_PI_VERSION_COLUMNS = [
   'uploaded_by', 'uploaded_at', 'revision_reason',
   'decided_by', 'decided_at', 'decision_reason', 'superseded_at',
   'operations_reviewer', 'operations_decided_by', 'operations_decided_at', 'operations_reason',
-  // How the version was proposed (20270103000000): an edit carries no file of
+  // How the version was proposed (20270115000000): an edit carries no file of
   // its own, and must never be offered the original workbook as if it were.
   'source_kind',
 ].join(', ')
@@ -364,7 +364,7 @@ const REVISION_FAILURES: readonly { marker: string; message: string }[] = [
     message: 'A newer PI has been approved since this revision was proposed. Refresh to see its current state.' },
   { marker: 'ORDER_PI_REVISION_FILE_MISMATCH',
     message: 'The stored file does not match this revision. Upload it again.' },
-  // Approval in force (20270104000000) and Edit PI (20270103000000).
+  // Approval in force (20270116000000) and Edit PI (20270115000000).
   { marker: 'ORDER_PI_REVISION_NO_GRAND_TOTAL',
     message: 'This revised PI has no readable Grand Total, so the Order’s value cannot be set from it. Correct the PI and try again.' },
   { marker: 'ORDER_CLOSED',
@@ -424,7 +424,7 @@ export function describePiRevisionFailure(
   return known ? known.message : REVISION_FALLBACK[action]
 }
 
-// ── The operations decision on a revised PI (20270101000000) ─────────────────
+// ── The operations decision on a revised PI (20270113000000) ─────────────────
 //
 // An admin's approval STAGES a revision ('admin_approved'); the assigned
 // operations reviewer compares it with the PI in force and accepts or rejects
@@ -493,7 +493,7 @@ export function canDecideRevisionOperations(v: PiVersionView | null, viewerId: s
 }
 
 /**
- * The recovery control (20270101000000 §6b): an active admin, not under View
+ * The recovery control (20270113000000 §6b): an active admin, not under View
  * As, on a revision awaiting operations whose approving admin is no longer
  * active. reapprove_order_pi_revision() re-derives every part of it.
  */

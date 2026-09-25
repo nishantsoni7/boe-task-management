@@ -99,11 +99,11 @@ export function allocationTargetLabel(row: Pick<AllocationTargetRow,
   return name ? `PI Draft · ${name}` : 'PI Draft'
 }
 
-/** A draft's stable reference (20270102000000), e.g. "PID-00012". */
+/** A draft's stable reference (20270114000000), e.g. "PID-00012". */
 const PID = /^PID-\d+$/
 
 /**
- * A PI Draft's name: its STABLE reference (PID-00012, 20270104000000), with the
+ * A PI Draft's name: its STABLE reference (PID-00012, 20270116000000), with the
  * Order number it has reserved beside it when it holds one — that is the
  * number the Order will take. A draft read before it had a reference falls
  * back to the reserved number, then the workbook's file name.

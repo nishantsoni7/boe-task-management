@@ -560,7 +560,7 @@ describe('the phase boundary holds', () => {
     assert.ok(!route.includes('advance'))
   })
 
-  // A REVISION IS STAGED, NOT APPLIED (20270101000000). Admin approval of V2 may
+  // A REVISION IS STAGED, NOT APPLIED (20270113000000). Admin approval of V2 may
   // change nothing current, so the two post-commit steps that WRITE to the PI in
   // force are skipped for it: seeding the terms (they travel in the payload and
   // are seeded at acceptance) and deleting "obsolete" objects (V1's pictures and
@@ -686,7 +686,7 @@ describe('service-role isolation', () => {
       }
     }
     walk('src')
-    // Since 20270103000000 the Edit PI route is the second caller: it builds
+    // Since 20270115000000 the Edit PI route is the second caller: it builds
     // and prices the payload on the server, under the same lease, and the
     // writer re-derives the actor's authority exactly as it does for a workbook.
     const EDIT_ROUTE = 'src/app/api/orders/pi-edits/route.ts'

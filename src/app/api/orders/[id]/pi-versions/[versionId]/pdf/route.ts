@@ -17,7 +17,7 @@ import {
 import { piVersionPdfFilename, piVersionPdfSource, type PiVersionDetail } from '@/lib/orders/piVersionPdf'
 import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 
-// ── ONE PI VERSION AS A PDF (20270104000000) ─────────────────────────────────
+// ── ONE PI VERSION AS A PDF (20270116000000) ─────────────────────────────────
 //
 // GET /api/orders/{orderId}/pi-versions/{versionId}/pdf[?download=1]
 //

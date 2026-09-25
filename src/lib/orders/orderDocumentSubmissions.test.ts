@@ -1,5 +1,5 @@
 /**
- * Order document submissions (20261231000000): the rules the Order page and the
+ * Order document submissions (20270112000000): the rules the Order page and the
  * queue draw from. Pure. No database, no network.
  *
  * Run:
@@ -106,7 +106,7 @@ describe('who acts now', () => {
 
   test('REASSIGNMENT: the row names the reviewer, and only that person is offered the decision', () => {
     // The database readdresses operations_reviewer inside the reassignment
-    // (20261231000000 §12). After it, the row names the NEW reviewer.
+    // (20270112000000 §12). After it, the row names the NEW reviewer.
     const after = sub({ status: 'awaiting_operations', operations_reviewer: OPS, admin_decided_at: 't' })
     assert.equal(submissionActions(after, viewer({ viewerId: OPS })).operationsDecide, true, 'the new reviewer')
     assert.equal(submissionActions(after, viewer({ viewerId: 'old-ops' })).operationsDecide, false, 'the former reviewer loses it')

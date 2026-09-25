@@ -407,7 +407,7 @@ describe('the Order page', () => {
     assert.match(PAGE, /supabase\.rpc\('decide_order_operations_handoff', \{\s*p_handoff_id: live\.id,\s*p_decision: decision,\s*p_reason: reason,\s*\}\)/)
     const fn = PAGE.slice(PAGE.indexOf('const decideHandoff'), PAGE.indexOf('const decideHandoff') + 2200)
     // …plus the document submissions, because accepting a PI version accepts
-    // the files sent with it (20261231000000 §11e).
+    // the files sent with it (20270112000000 §11e).
     assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadOrderRow\(\), docSubs\.reload\(\)\]\)/)
     assert.doesNotMatch(fn, /loadOrder\(\)/)
   })

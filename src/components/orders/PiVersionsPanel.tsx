@@ -1,6 +1,6 @@
 'use client'
 
-// ── PI VERSIONS: V1 → V2 → V3, AND EDIT PI (20270103000000) ──────────────────
+// ── PI VERSIONS: V1 → V2 → V3, AND EDIT PI (20270115000000) ──────────────────
 //
 // One strip of cards, one per version, newest last: swipe on a phone, arrows on
 // a desktop. Each card says what the version is (current, awaiting a decision,
@@ -11,7 +11,7 @@
 // changed fields with old and new values, products added, removed and changed
 // with their quantity, price and total deltas, photo changes — and authorizes
 // or rejects it there. Approving puts it in force and amends the Order to its
-// values (20270104000000); Operations is then sent it for review. Every version
+// values (20270116000000); Operations is then sent it for review. Every version
 // opens its own PDF, rendered from its own content.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -281,7 +281,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
     try {
       const { ok, body, review: needsReview } = await requestPiRevisionApproval(version.id, lineMap)
       // A revised WORKBOOK whose lines cannot all be matched by item number:
-      // the admin matches them here, and approves again (20270104000000).
+      // the admin matches them here, and approves again (20270116000000).
       if (needsReview) { setReview(needsReview); return }
       if (!ok) { setFailure(typeof body.message === 'string' ? body.message : 'This revision could not be approved just now.'); return }
       setReview(null)
@@ -308,7 +308,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
       <div className="boe-modal-sheet" style={{ maxWidth: '860px' }}>
         <div className="boe-modal-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <strong style={{ flex: 1, fontSize: '15px' }}>PI V{version.version_number} · {VERSION_STATUS_LABEL[version.status]}</strong>
-          {/* THIS version's own PDF, rendered from its own content (20270104000000). */}
+          {/* THIS version's own PDF, rendered from its own content (20270116000000). */}
           {content && !unavailable && (
             <>
               <button type="button" className="boe-btn boe-btn-ghost"
