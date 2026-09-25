@@ -1,8 +1,8 @@
 /**
  * What the Modules launcher shows, and what happens when you activate a tile.
  *
- * The page is a greeting beside the latest announcement, an Essentials row and
- * a compact "All modules" grid. A tile is AN ICON, ITS NOTIFICATION BADGE AND
+ * The page is the latest announcement (when there is one), an Essentials row
+ * and a compact "All modules" grid. A tile is AN ICON, ITS NOTIFICATION BADGE AND
  * THE MODULE NAME, plus a decorative arrow on an Essentials tile. Never a
  * description, at any width: that
  * furniture used to cost a phone most of the card to restate what the icon, the
@@ -315,11 +315,6 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
       'and carries a boxed icon')
   })
 
-  test('the attention tint follows a REAL count, on Essentials only', () => {
-    assert.ok(CARD.includes("variant === 'essential' && hasNotif ? styles.cardAttention : ''"),
-      'no count, no tint — nothing about it is decoration')
-  })
-
   test('the icon is not squeezed by a long name', () => {
     for (const rule of ['iconWrap', 'iconBox']) {
       assert.match(baseRule(`.${rule}`), /flex-shrink:\s*0/,
@@ -399,16 +394,17 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
-// ── The header, the greeting and the latest announcement ─────────────────────
+// ── The header and the latest announcement ───────────────────────────────────
 //
 // The app header keeps the page title, the announcements bell and Edit order.
-// Beneath it, one compact row: a greeting on the left and the latest
-// announcement on the right, stacked on a phone with the announcement directly
-// above the modules.
+// Beneath it, only when there is one: the latest announcement, as one compact
+// full-width row. There is no greeting block at any width, and on a phone the
+// announcement row is hidden, so the modules begin under the header and the
+// quick action.
 //
 // These read the LAYOUT as well as the page, because the header is something
 // this page supplies rather than draws.
-describe('the header, the greeting and the latest announcement', () => {
+describe('the header, and the latest announcement beneath it', () => {
   const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
 
   /** The props the launcher hands the shell. */
@@ -416,13 +412,6 @@ describe('the header, the greeting and the latest announcement', () => {
     const at = PAGE.indexOf('<BoeOsLayout')
     assert.notEqual(at, -1, 'the launcher still renders the shell')
     return PAGE.slice(at, PAGE.indexOf('>\n', at))
-  })()
-
-  /** The greeting row's markup. */
-  const WELCOME = (() => {
-    const at = PAGE.indexOf('<div className={`${styles.welcome}')
-    assert.notEqual(at, -1, 'the greeting row exists')
-    return PAGE.slice(at, PAGE.indexOf('{!editingOrder && essentialModules.length', at))
   })()
 
   /** The LatestAnnouncement component. */
@@ -433,34 +422,35 @@ describe('the header, the greeting and the latest announcement', () => {
     return PAGE.slice(at, end === -1 ? undefined : end)
   })()
 
-  test('MODULES IS STILL THE PAGE’S h1, in the shell', () => {
+  test('MODULES IS STILL THE PAGE’S ONLY h1, in the shell', () => {
     assert.match(LAYOUT_CALL, /title="Modules"/)
     assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/)
-    assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0,
-      'the page body adds no second h1 — the greeting is an h2')
-    assert.match(WELCOME, /<h2 className=\{styles\.greetingTitle\}>/)
+    assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0)
+    assert.equal(LAYOUT_CALL.includes('subtitle='), false, 'no supporting line in the header either')
   })
 
-  test('the greeting addresses the signed-in person by first name', () => {
-    assert.ok(PAGE.includes("const firstName = profile?.full_name?.trim().split(/\\s+/)[0] ?? ''"),
-      'the real signed-in profile, not the View As subject')
-    assert.match(WELCOME, /\{greetingFor\(new Date\(\)\)\}\{firstName \? `, \$\{firstName\}` : ''\}/)
-    assert.match(PAGE, /if \(hour < 12\) return 'Good morning'/)
-    assert.match(PAGE, /if \(hour < 17\) return 'Good afternoon'/)
-    assert.match(PAGE, /return 'Good evening'/)
+  test('THERE IS NO GREETING BLOCK, at any width — markup and styles both', () => {
+    const code = stripJs(PAGE)
+    for (const gone of ['Your BOE workspace', 'Good morning', 'Good afternoon', 'Good evening', 'Choose a module', 'greetingFor', 'firstName']) {
+      assert.equal(code.includes(gone), false, `${gone} must not be on the page`)
+    }
+    for (const cls of ['welcome', 'welcomeSolo', 'greeting', 'greetingTitle', 'greetingLead']) {
+      assert.equal(new RegExp(`\\.${cls}\\b`).test(stripCss(CSS)), false, `.${cls} must be deleted`)
+    }
   })
 
-  test('the instruction is said once, beside the greeting — not in the header too', () => {
-    assert.equal((PAGE.match(/Choose a module to continue/g) ?? []).length, 1)
-    assert.equal(LAYOUT_CALL.includes('subtitle='), false)
-    assert.equal(CARD.includes('Choose a module'), false, 'and never on a tile')
+  test('THE ROW EXISTS ONLY WHEN THERE IS AN ANNOUNCEMENT — no empty placeholder', () => {
+    assert.ok(PAGE.includes('{!editingOrder && showAnnouncements && myAnnouncements.length > 0 && ('),
+      'nothing is rendered when the list is empty, while previewing, or while arranging')
+    assert.ok(PAGE.includes('<LatestAnnouncement latest={myAnnouncements[0]} />'))
+    for (const gone of ['No announcements right now', 'announcementEmpty', 'announcementAll']) {
+      assert.equal(PAGE.includes(gone), false, `${gone} is gone`)
+      assert.equal(CSS.includes(gone), false, `and so is its style`)
+    }
   })
 
   test('THE ANNOUNCEMENT REUSES THE ANNOUNCEMENTS MODULE — no second query', () => {
-    // The list the page already holds, from the module's own hook, gated by
-    // the same showAnnouncements rule the bell uses.
     assert.match(PAGE, /useMyAnnouncements\(userId, showAnnouncements\)/)
-    assert.match(WELCOME, /\{showAnnouncements && <LatestAnnouncement announcements=\{myAnnouncements\} \/>\}/)
     for (const forbidden of ['rpc(', '.from(', 'fetch(', 'useQuery', 'createClient', '.sort(', 'starts_on', 'created_at']) {
       assert.equal(stripJs(LATEST).includes(forbidden), false,
         `LatestAnnouncement must not ${forbidden} — my_announcements() already decides access and order`)
@@ -468,77 +458,81 @@ describe('the header, the greeting and the latest announcement', () => {
   })
 
   test('the latest is the first row, and it links to that announcement', () => {
-    assert.match(LATEST, /const latest = announcements\[0\]/)
     assert.match(LATEST, /href=\{`\/announcements\/\$\{latest\.id\}`\}/)
     assert.match(LATEST, /\{latest\.title\}/)
     assert.match(LATEST, /const isNew = !latest\.read_at/)
-    // No announcement text is written into the page.
     assert.equal(/ACETECH/i.test(PAGE), false)
   })
 
-  test('with none, a compact line — never a blank panel', () => {
-    assert.match(LATEST, /if \(!latest\) \{/)
-    assert.match(LATEST, /No announcements right now\./)
-    assert.match(LATEST, /<Link href="\/announcements" className=\{styles\.announcementAll\}>View all<\/Link>/)
-    const empty = baseRule('.announcementEmpty').match(/min-height:\s*(\d+)px/)
-    const full = baseRule('.announcement').match(/min-height:\s*(\d+)px/)
-    assert.ok(empty && full && Number(empty[1]) < Number(full[1]),
-      'the empty line is shorter than the card it stands in for')
-  })
-
-  test('reading the page acknowledges nothing', () => {
+  test('reading the page acknowledges nothing, and the old banner is not back', () => {
     assert.equal(PAGE.includes('useAcknowledgeAnnouncement'), false)
     assert.equal(PAGE.includes('acknowledge_announcement'), false)
-  })
-
-  test('the old banner no longer repeats the same announcement on this page', () => {
     assert.equal(PAGE.includes('<AnnouncementBanner'), false)
   })
 
-  test('the row steps aside while arranging tiles', () => {
-    assert.ok(PAGE.includes('{!editingOrder && (\n              <div className={`${styles.welcome}'))
-  })
-
-  test('A PHONE OPENS ON THE MODULES: the whole row is hidden and takes no space', () => {
+  test('A PHONE OPENS ON THE MODULES: the row is hidden and takes no space', () => {
     const at = CSS.indexOf('@media (max-width: 767px) {\n  .card:hover')
     assert.notEqual(at, -1, 'the phone block exists')
     const phone = CSS.slice(at, CSS.indexOf('\n}\n', at))
-    assert.match(phone, /\.welcome\s*\{\s*display:\s*none;\s*\}/,
-      'greeting, instruction and announcement slot all go — display, not visibility')
-    assert.match(phone, /\.launcher > \.section:first-of-type\s*\{\s*margin-top:\s*0;\s*\}/,
-      'and the first section starts with no gap above it')
+    assert.match(phone, /\.announcementRow\s*\{\s*display:\s*none;\s*\}/)
+    assert.match(phone, /\.announcementRow \+ \.section\s*\{\s*margin-top:\s*0;\s*\}/)
     // Only this page's slot: the bell and the Announcements navigation stay.
     assert.match(PAGE, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
-    assert.match(read('src/components/layout/BoeOsLayout.tsx'), /label="Announcements"/)
+    assert.match(LAYOUT, /label="Announcements"/)
   })
 
-  test('on a desktop the greeting and the announcement share one row', () => {
-    assert.match(baseRule('.welcome'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
-    const at = CSS.indexOf('@container (min-width: 700px) {\n  .welcome {')
-    assert.notEqual(at, -1, 'side by side once the launcher is 700px wide')
-    assert.ok(WELCOME.indexOf('styles.greeting}') < WELCOME.indexOf('<LatestAnnouncement'),
-      'greeting first, announcement second')
+  test('SPACE ONLY BETWEEN BLOCKS, so nothing leaves a gap under the header', () => {
+    assert.match(baseRule('.section'), /margin-top:\s*0/)
+    assert.match(CSS, /\.announcementRow \+ \.section,\s*\.section \+ \.section\s*\{\s*margin-top:\s*26px;/)
   })
 
-  test('BOE Operating System is still the sidebar brand, untouched', () => {
-    assert.equal(LAYOUT_CALL.includes('BOE Operating System'), false)
-    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</)
-    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</)
-  })
-
-  test('Edit order and the bell are still offered in the header’s action slot', () => {
+  test('Edit order, the bell and Quick Add Expense are still offered', () => {
     assert.match(LAYOUT_CALL, /headerActions=\{showBell \|\| canEditOrder \? \(/)
     assert.match(LAYOUT_CALL, /\{canEditOrder && <ModuleOrderBar/)
     assert.match(LAYOUT_CALL, /<AnnouncementBell/)
-    assert.ok(CONTROLS_SRC.includes('Edit order'), 'whose normal-mode label is unchanged')
-    assert.match(LAYOUT_CALL, /quickActions=\{quickActions\}/, 'and Quick Add Expense stays in the sidebar')
+    assert.ok(CONTROLS_SRC.includes('Edit order'))
+    assert.match(LAYOUT_CALL, /quickActions=\{quickActions\}/)
+    assert.ok(PAGE.includes('{!editingOrder && <QuickActionList actions={quickActions} variant="page" />}'))
   })
 
-  test('the order of the body: quick action, then the launcher', () => {
-    const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
-    const quick = body.indexOf('<QuickActionList')
-    const launcher = body.indexOf('<div className={styles.launcher}>')
-    assert.ok(quick > -1 && launcher > quick)
+  test('BOE Operating System is still the sidebar brand, untouched', () => {
+    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</)
+    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</)
+  })
+})
+
+// ── A white page ─────────────────────────────────────────────────────────────
+describe('a neutral canvas under white surfaces, with red only in small accents', () => {
+  test('the canvas is #F4F5F7 and the header is white — scoped to this page', () => {
+    assert.match(CSS, /:global\(\.boe-app-shell\):has\(\.launcher\)\s*\{\s*background:\s*#F4F5F7;/)
+    assert.match(CSS, /:global\(\.boe-main-content\):has\(\.launcher\) :global\(\.boe-page-header\)\s*\{\s*background:\s*#FFFFFF;/)
+  })
+
+  test('the announcement row and every tile stay white, with neutral borders', () => {
+    assert.match(baseRule('.announcement'), /background:\s*#fff/i)
+    assert.match(baseRule('.announcement'), /border:\s*1px solid #E3E6EB/i)
+    assert.match(DESKTOP_CARD, /background:\s*#fff/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
+  })
+
+  test('the sidebar is not restyled here', () => {
+    assert.equal(/boe-sidebar/.test(stripCss(CSS)), false)
+  })
+
+  test('NO BEIGE, NO PINK: none of the earlier tints survive', () => {
+    for (const tint of ['#F9F8F6', '#FBEAEA', '#F7F5F2', '#FBFBFA', '#F0D2D2', '#FCEFEE', '#F8F7F4']) {
+      assert.equal(stripCss(CSS).toUpperCase().includes(tint), false, `${tint} must be gone`)
+    }
+  })
+
+  test('A TILE WITH UNREAD NOTIFICATIONS IS NOT TINTED — the badge says it', () => {
+    assert.equal(PAGE.includes('cardAttention'), false)
+    assert.equal(CSS.includes('cardAttention'), false)
+  })
+
+  test('the announcement marker is its red edge; its icon box is neutral', () => {
+    assert.match(baseRule('.announcement'), /border-left:\s*3px solid #C8373F/)
+    assert.match(baseRule('.announcementIcon'), /background:\s*#F3F4F6/)
   })
 })
 

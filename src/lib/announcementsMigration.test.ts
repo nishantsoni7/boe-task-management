@@ -109,7 +109,8 @@ describe('the wiring', () => {
     const page = read('src/app/modules/page.tsx')
     assert.match(page, /const showAnnouncements = !viewMode && !!userId/)
     assert.match(page, /useMyAnnouncements\(userId, showAnnouncements\)/)
-    assert.match(page, /\{showAnnouncements && <LatestAnnouncement announcements=\{myAnnouncements\} \/>\}/)
+    assert.match(page, /\{!editingOrder && showAnnouncements && myAnnouncements\.length > 0 && \(/)
+    assert.match(page, /<LatestAnnouncement latest=\{myAnnouncements\[0\]\} \/>/)
     assert.match(page, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
   })
 
