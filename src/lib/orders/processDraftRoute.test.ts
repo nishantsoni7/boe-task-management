@@ -227,7 +227,10 @@ describe('a live image object is never overwritten', () => {
 
   test('an existing key is reused only after its BYTES are re-hashed', () => {
     assert.ok(route.includes('isAlreadyExists(error)'))
-    assert.ok(route.includes('await verifyStoredImage(service, image)'))
+    assert.ok(route.includes('await verifyStoredImage(service, image, submissionId)'))
+    // …and the key is checked whole before the service-role read (review R3).
+    assert.ok(route.indexOf('isCanonicalPiImageKey(image.storagePath, {') > 0
+      && route.indexOf('isCanonicalPiImageKey(image.storagePath, {') < route.indexOf(".download(image.storagePath)"))
     // The object is downloaded and verified, not judged by its metadata.
     assert.ok(route.includes("service.storage.from('order-files').download(image.storagePath)"))
     assert.ok(route.includes('verifyStoredImageBytes({'))

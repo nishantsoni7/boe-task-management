@@ -1417,6 +1417,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // …and the migration contract that pinned 20261121000000 as the submit
     // gate in force, which 20270102000000 retired (found by the wider sweep).
     'src/lib/permissions/migrationContract.test.ts',
+    // Final review R3: the Confirmed PDF's service-role image read checks the
+    // whole canonical key too, and the tests that pinned its old prefix test
+    // and the Order page's query count follow.
+    'src/app/api/orders/[id]/documents/route.ts',
+    'src/lib/orders/documentsRoute.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
   ])
   const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
   const PI_EDIT_MIGRATION = 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql'

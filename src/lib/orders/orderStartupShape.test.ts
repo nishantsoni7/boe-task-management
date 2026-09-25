@@ -345,7 +345,11 @@ describe('no Order screen waits more than it must', () => {
       //   alongside the load but NOT awaited by it (the page still waits
       //   exactly three times), and approve_order_advance_exception, a SAVE
       //   fired from an admin's confirmed "Approve production below 40%".
-      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 39,
+      // DETAIL 39 -> 40 (20270104000000, review R1):
+      //   recover_order_production_alignment, a SAVE fired from an admin's
+      //   confirmed "Recover production alignment…", offered only when no
+      //   operations reviewer can align a held Order again. Nothing at load.
+      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 40,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
