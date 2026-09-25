@@ -38,7 +38,7 @@
 --
 -- WHAT THIS DOES NOT TOUCH: submit_pi_for_review / submit_pi_for_review_internal,
 -- the constraint, any table, any row, any trigger, and every #209 / #211
--- migration (20261231000000 .. 20270105000000). It depends only on migrations
+-- migration (20270112000000 .. 20270117000000). It depends only on migrations
 -- already applied to production, so it may be applied before or after them.
 --
 -- NUMBERED AFTER 20270110000000 (announcements), the newest migration already

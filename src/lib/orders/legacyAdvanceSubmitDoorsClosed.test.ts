@@ -57,9 +57,10 @@ function definition(sql: string, name: string): string {
 }
 
 describe('the file, and where it sits', () => {
-  test('it sorts after the newest applied migration (20270110000000), and after #209 and #211', () => {
+  test('it sorts after the newest applied migration (20270110000000)', () => {
+    // #202/#205/#209 (20270112000000 .. 20270116000000) and #211
+    // (20270117000000) now sort after it; none touches what it touches.
     assert.ok(NAME > '20270110000000_announcements.sql')
-    assert.ok(NAME > '20270105000000_order_finance_guards_run_as_owner.sql')
   })
 
   test('it re-emits exactly one function, the implementation', () => {
