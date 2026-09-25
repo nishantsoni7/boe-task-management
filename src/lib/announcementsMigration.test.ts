@@ -84,6 +84,8 @@ describe('the migration', () => {
       // Order document submissions (#202), renumbered after this applied
       // migration. It touches nothing Announcements creates.
       '20270112000000_order_document_submissions.sql',
+      // Revised-PI promotion (#205), renumbered likewise.
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
     ])
   })
 })
