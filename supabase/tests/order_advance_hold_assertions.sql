@@ -1,4 +1,4 @@
--- PRODUCTION READINESS FOLLOWS THE 40% ADVANCE AFTER ALIGNMENT (20270104000000 §4d)
+-- PRODUCTION READINESS FOLLOWS THE 40% ADVANCE AFTER ALIGNMENT (20270116000000 §4d)
 -- ===========================================================================
 -- The gate is not only checked when production is aligned. Through the real
 -- doors, on a disposable stack:
@@ -47,7 +47,7 @@
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- SELF-CONTAINED FIXTURES: this suite creates its own people (ids a0d0…),
 -- assigns its own operations reviewer inside the transaction, and depends on
--- nobody else's seed. Needs only the migration chain through 20270104000000.
+-- nobody else's seed. Needs only the migration chain through 20270116000000.
 -- On success prints NOTICE 'ALL ADVANCE-HOLD ASSERTIONS PASSED'.
 
 \set ON_ERROR_STOP on

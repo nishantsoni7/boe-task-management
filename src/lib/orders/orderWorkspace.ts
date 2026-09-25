@@ -87,7 +87,7 @@ export type OrderAttentionInput = {
   alignmentPredatesVersion?: number | null
   /**
    * The verified advance is below 40% of the Order's (amended) value and no
-   * below-40% approval covers it (20270104000000): production cannot be
+   * below-40% approval covers it (20270116000000): production cannot be
    * aligned. Already in words (advanceAttentionLabel); null when fine.
    */
   advanceBelowLabel?: string | null
@@ -517,7 +517,7 @@ export function orderSummaryView(input: {
   clientContact: string | null
   productionAligned: boolean
   /**
-   * An accepted version whose Order is on a production hold (20270104000000,
+   * An accepted version whose Order is on a production hold (20270116000000,
    * review W2): its line says why it is not aligned, so it is drawn too.
    */
   productionHeld?: boolean

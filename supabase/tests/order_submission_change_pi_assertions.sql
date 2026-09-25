@@ -13,11 +13,11 @@
 --                    has left draft. A defect here is a stale verification, a
 --                    stale document, or an Order whose identity moved.
 --
--- AS THE CHAIN THROUGH 20270104000000 LEAVES IT (repaired in the #209 review):
+-- AS THE CHAIN THROUGH 20270116000000 LEAVES IT (repaired in the #209 review):
 --   * Fixtures are built through the real doors (submit, approve, convert),
 --     by this file's own people, acting through request.jwt.claims.
 --   * A PI APPROVED AND IN FORCE ON AN ORDER no longer takes Change PI in
---     place: 20270103000000 made it change only as a new version (Edit PI or
+--     place: 20270115000000 made it change only as a new version (Edit PI or
 --     a revised workbook, in force at an Admin's approval — proved by
 --     order_pi_revision_in_force_at_admin_approval_assertions.sql). §C7, §F,
 --     §G, §K and §M therefore prove the refusal and that NOTHING moved: not
@@ -477,7 +477,7 @@ begin
 
   -- ═══ F. A REPLACEMENT ONCE THE ORDER EXISTS — REFUSED; A VERSION INSTEAD ══
   --
-  -- 20270103000000: an approved PI in force on an Order changes only as a new
+  -- 20270115000000: an approved PI in force on an Order changes only as a new
   -- version. Change PI in place is refused, for an admin with a reason too,
   -- and NOTHING moves: the Order's identity and values, its documents, its
   -- history, its money.
@@ -802,7 +802,7 @@ begin
   -- the authority alone would have exposed a CHECK violation to the next person
   -- who pressed Save. Both halves are exercised here, in that order.
 
-  -- The approved PI in force: refused (20270103000000), and the Order keeps
+  -- The approved PI in force: refused (20270115000000), and the Order keeps
   -- its percentage.
   set local role authenticated;
   perform pg_temp.act(u_admin);

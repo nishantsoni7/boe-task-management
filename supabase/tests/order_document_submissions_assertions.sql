@@ -1,4 +1,4 @@
--- ORDER DOCUMENT SUBMISSIONS assertions (20261231000000)
+-- ORDER DOCUMENT SUBMISSIONS assertions (20270112000000)
 -- ===========================================================================
 -- Validates, through the REAL doors (submit / admin decision / operations
 -- decision) on a disposable local stack:
@@ -120,7 +120,7 @@ begin
   return (v ->> 'order_id')::uuid;
 end $$;
 
-/** A revised version put in force through the writes the revision path makes since 20270101000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
+/** A revised version put in force through the writes the revision path makes since 20270113000000: admin approval stages it (admin_approved), the operations acceptance promotes it. */
 create function pg_temp.approve_revision(p_order uuid, p_actor uuid) returns uuid language plpgsql as $$
 declare v_sub uuid; v_cur record; v_new uuid;
 begin

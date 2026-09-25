@@ -140,7 +140,7 @@ export const OPERATIONS_HANDOFF_REASON_MAX_LENGTH = 1000
 export const OPERATIONS_HANDOFF_REASON_REQUIRED = 'Say what needs clarifying before this version can be accepted.'
 export const OPERATIONS_HANDOFF_REASON_TOO_LONG = `The reason may be at most ${OPERATIONS_HANDOFF_REASON_MAX_LENGTH} characters.`
 
-// ── Aligning a HELD Order again (20270104000000, review R1) ──
+// ── Aligning a HELD Order again (20270116000000, review R1) ──
 //
 // An accepted version whose Order fell below the 40% advance is aligned again
 // by whoever is the operations reviewer NOW, after checking it; the acceptance
@@ -286,7 +286,7 @@ export function canDecideOperationsHandoff(input: {
 }
 
 /**
- * The latest re-alignment of a held Order (20270104000000), from the Order's
+ * The latest re-alignment of a held Order (20270116000000), from the Order's
  * history: by the operations reviewer (operations_handoff_realigned) or by an
  * administrator's recovery (operations_handoff_realigned_by_admin).
  */
@@ -322,7 +322,7 @@ export function describeHandoffAlignment(input: {
   realignment?: HandoffRealignment | null
   /**
    * The Order's own alignment. An ACCEPTED version whose Order is not aligned
-   * was put on hold (its advance fell below 40%, 20270104000000): the
+   * was put on hold (its advance fell below 40%, 20270116000000): the
    * acceptance stands, the alignment does not.
    */
   productionAligned?: boolean
@@ -522,7 +522,7 @@ export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: 
 /** The database's refusal markers, said in a sentence. */
 export function describeHandoffFailure(error: { message?: string | null } | null | undefined): string {
   const m = error?.message ?? ''
-  // Accepting would align production below the 40% advance (20270104000000):
+  // Accepting would align production below the 40% advance (20270116000000):
   // the database's own sentence carries the percentage and the shortfall.
   const advance = describeAdvanceRefusal(m)
   if (advance) return advance

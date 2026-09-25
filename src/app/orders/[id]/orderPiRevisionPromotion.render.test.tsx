@@ -1,5 +1,5 @@
 /**
- * Revised PI promotion (20270101000000), rendered: the proposal beside the PI
+ * Revised PI promotion (20270113000000), rendered: the proposal beside the PI
  * in force, and the operations review dialog.
  *
  * Run:
@@ -161,7 +161,7 @@ describe('the PI history names the operations decision', () => {
   })
 })
 
-describe('a PENDING revision says it is in force at the Admin approval (20270104000000)', () => {
+describe('a PENDING revision says it is in force at the Admin approval (20270116000000)', () => {
   test('not "until Operations accepts" — that was #205\'s staging', () => {
     const pending = describePiVersionHistory([
       row({ id: 'v2', version_number: 2, status: 'pending', workbook_path: 'k2', revision_reason: 'client changed qty',

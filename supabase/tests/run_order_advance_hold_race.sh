@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# ALIGNMENT vs. PAYMENT REVERSAL, WITH TWO REAL SESSIONS (20270104000000 §4d)
+# ALIGNMENT vs. PAYMENT REVERSAL, WITH TWO REAL SESSIONS (20270116000000 §4d)
 # ═════════════════════════════════════════════════════════════════════════════
 #
 #   BOE_DB_CONTAINER=supabase_db_<project_id> bash supabase/tests/run_order_advance_hold_race.sh
@@ -41,7 +41,7 @@ scalar() { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -Atc 
 fail() { echo "FAIL: $*"; exit 1; }
 
 [ "$(scalar "select to_regprocedure('public.order_advance_hold_recheck(uuid,text,jsonb)') is not null")" = "t" ] \
-  || fail "order_advance_hold_recheck is missing — apply 20270104000000 first"
+  || fail "order_advance_hold_recheck is missing — apply 20270116000000 first"
 
 ADMIN=a0d10000-0000-4000-8000-000000000001
 SALES=a0d10000-0000-4000-8000-000000000003

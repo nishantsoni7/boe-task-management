@@ -1,6 +1,6 @@
 'use client'
 
-// ── EDIT PI (20270103000000) ──────────────────────────────────────────────────
+// ── EDIT PI (20270115000000) ──────────────────────────────────────────────────
 //
 // One editor for the whole PI: client, bill-to and ship-to, dates, commercial
 // terms, fabric, and every product — name, code, description, quantity, price

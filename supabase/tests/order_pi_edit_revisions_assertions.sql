@@ -1,4 +1,4 @@
--- EDIT PI: AN APPROVED PI CHANGES ONLY AS A NEW VERSION (20270103000000)
+-- EDIT PI: AN APPROVED PI CHANGES ONLY AS A NEW VERSION (20270115000000)
 -- ===========================================================================
 -- Through the real doors, on a disposable stack:
 --
@@ -9,7 +9,7 @@
 --                 Order are byte-for-byte unchanged; an outsider is refused; a
 --                 second open revision is refused
 --   3. drafts     order_pi_edit_drafts is private to its author
---   4-5. approve an Admin's approval puts V2 in force at once (20270104000000):
+--   4-5. approve an Admin's approval puts V2 in force at once (20270116000000):
 --                 V1 superseded and still readable in full, the edited product
 --                 lines and the edited TERMS in force, the operations handoff
 --                 recorded and awaiting, the payment allocation untouched
@@ -20,7 +20,7 @@
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- PREREQUISITES: as order_submission_numbering_at_conversion_assertions.sql
--- (TEST-001 admin 1111…, sales 5555…, operations 7777…), with 20270103000000.
+-- (TEST-001 admin 1111…, sales 5555…, operations 7777…), with 20270115000000.
 -- On success prints NOTICE 'ALL EDIT PI ASSERTIONS PASSED'.
 
 \set ON_ERROR_STOP on

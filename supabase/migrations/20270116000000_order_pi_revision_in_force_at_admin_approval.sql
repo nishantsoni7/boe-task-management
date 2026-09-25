@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270104000000 — A revised PI is IN FORCE when an Admin approves it
+-- 20270116000000 — A revised PI is IN FORCE when an Admin approves it
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- THE BUSINESS RULE (owner, 2026-09-25)
@@ -11,7 +11,7 @@
 --   acknowledgement does not stand between the admin's approval and the
 --   version being current.
 --
--- WHAT IT REPLACES (20270101000000, #205)
+-- WHAT IT REPLACES (20270113000000, #205)
 --
 --   #205 STAGED a revision at admin approval ('admin_approved') and promoted
 --   it only when the operations reviewer accepted it, refusing acceptance
@@ -71,7 +71,7 @@
 --     result shape.
 --   * order_pi_versions_guard: pending → approved is legal again, but only
 --     inside this function's apply context.
---   * 20270103000000's edit-terms trigger fires on pending → approved too.
+--   * 20270115000000's edit-terms trigger fires on pending → approved too.
 --   * THE 40% ADVANCE (§4d): production is never aligned below 40% verified
 --     of the Order's current value, and an aligned Order that falls short —
 --     its value raised by any path, or its verified money reduced — loses its
@@ -88,11 +88,11 @@ do $$
 begin
   if to_regclass('public.order_pi_version_contents') is null
      or to_regprocedure('public.order_pi_content_of(uuid)') is null then
-    raise exception 'PRECONDITION FAILED: 20270103000000 (PI edit revisions) is not applied';
+    raise exception 'PRECONDITION FAILED: 20270115000000 (PI edit revisions) is not applied';
   end if;
   -- #205's staged state is not carried forward: nothing may be waiting in it.
   if exists (select 1 from public.order_pi_versions where status = 'admin_approved') then
-    raise exception 'PRECONDITION FAILED: % PI version(s) are admin_approved (staged by #205); resolve them before applying 20270104000000',
+    raise exception 'PRECONDITION FAILED: % PI version(s) are admin_approved (staged by #205); resolve them before applying 20270116000000',
       (select count(*) from public.order_pi_versions where status = 'admin_approved');
   end if;
 end $$;
@@ -100,7 +100,7 @@ end $$;
 
 -- ═══ 1. order_pi_versions_guard: pending → approved inside the apply ═══════
 --
--- As 20270101000000 left it, with ONE transition added back: pending →
+-- As 20270113000000 left it, with ONE transition added back: pending →
 -- approved, only while approve_order_pi_revision() holds the apply context for
 -- this version's PI (boe.pi_revision_apply = submission id).
 
@@ -179,7 +179,7 @@ begin
   if old.status = 'pending' and new.status = 'rejected' then
     return new;
   end if;
-  -- (20270104000000) An admin's approval puts the revision in force, inside
+  -- (20270116000000) An admin's approval puts the revision in force, inside
   -- approve_order_pi_revision()'s apply context and nowhere else.
   if old.status = 'pending' and new.status = 'approved'
      and current_setting('boe.pi_revision_apply', true) = new.submission_id::text
@@ -215,7 +215,7 @@ revoke execute on function public.order_pi_versions_guard()
 
 -- ═══ 2. An edit revision's terms are applied when it becomes current ═══════
 --
--- Same function as 20270103000000; the trigger now also fires on the direct
+-- Same function as 20270115000000; the trigger now also fires on the direct
 -- pending → approved step.
 
 drop trigger if exists order_pi_versions_apply_edit_terms on public.order_pi_versions;
@@ -246,7 +246,7 @@ as $$
      and nullif(btrim(coalesce(c.source_item_sequence, '')), '') is not null
 $$;
 comment on function public.order_item_sequences_ever_used(uuid) is
-  'SERVICE ROLE ONLY. Every item sequence (B001 …) a line of this Order held when it was given its BOE code — current and removed lines alike. An added line may never take one of these. 20270104000000.';
+  'SERVICE ROLE ONLY. Every item sequence (B001 …) a line of this Order held when it was given its BOE code — current and removed lines alike. An added line may never take one of these. 20270116000000.';
 revoke execute on function public.order_item_sequences_ever_used(uuid) from public, anon, authenticated;
 grant  execute on function public.order_item_sequences_ever_used(uuid) to service_role;
 
@@ -363,7 +363,7 @@ begin
       using errcode = 'P0001';
   end if;
 
-  -- A route from before 20270101000000 does not send the terms to seed; it
+  -- A route from before 20270113000000 does not send the terms to seed; it
   -- would seed them itself afterwards and delete pictures. Refused, as #205.
   if jsonb_typeof(p_payload -> 'seed_terms') is distinct from 'object' then
     raise exception
@@ -670,7 +670,7 @@ end;
 $$;
 
 comment on function public.approve_order_pi_revision(uuid, uuid, jsonb) is
-  'SERVICE ROLE ONLY. An active admin approves a pending revised PI (workbook or edit), and it is IN FORCE when this returns (20270104000000): in one transaction the outgoing content is captured, the parse is applied through replace_order_submission_parse, the Order''s client/dates/value/product value are moved through apply_order_amendment (an ''order_amended'' record, source pi_revision, old → new), the previous version is superseded and this one approved — which records its operations handoff for review — continuing lines keep their BOE codes (edit revisions) and added lines get fresh ones. Refuses a non-pending version, a stale one, a cancelled Order, a mismatched file, a missing Grand Total, a value change on a dispatched Order, and a retired item sequence.';
+  'SERVICE ROLE ONLY. An active admin approves a pending revised PI (workbook or edit), and it is IN FORCE when this returns (20270116000000): in one transaction the outgoing content is captured, the parse is applied through replace_order_submission_parse, the Order''s client/dates/value/product value are moved through apply_order_amendment (an ''order_amended'' record, source pi_revision, old → new), the previous version is superseded and this one approved — which records its operations handoff for review — continuing lines keep their BOE codes (edit revisions) and added lines get fresh ones. Refuses a non-pending version, a stale one, a cancelled Order, a mismatched file, a missing Grand Total, a value change on a dispatched Order, and a retired item sequence.';
 
 revoke execute on function public.approve_order_pi_revision(uuid, uuid, jsonb)
   from public, anon, authenticated;
@@ -679,7 +679,7 @@ grant  execute on function public.approve_order_pi_revision(uuid, uuid, jsonb) t
 
 -- ═══ 4b. What a version contained: the reader's own access, captured first ═
 --
--- As 20270103000000, with two corrections:
+-- As 20270115000000, with two corrections:
 --   * ACCESS. can_view_order() is SECURITY INVOKER by design; called from this
 --     SECURITY DEFINER function it ran as the owner and answered yes for every
 --     Order. can_view_order_as_actor() asks for the signed-in person.
@@ -724,7 +724,7 @@ begin
 end;
 $$;
 comment on function public.order_pi_version_detail(uuid) is
-  'What one PI version contained, for the signed-in person if they may open its Order (can_view_order_as_actor): {source: live | captured | proposal | snapshot | staged | none, content}. Read-only. 20270103000000, 20270104000000.';
+  'What one PI version contained, for the signed-in person if they may open its Order (can_view_order_as_actor): {source: live | captured | proposal | snapshot | staged | none, content}. Read-only. 20270115000000, 20270116000000.';
 revoke execute on function public.order_pi_version_detail(uuid) from public, anon;
 grant  execute on function public.order_pi_version_detail(uuid) to authenticated;
 
@@ -742,7 +742,7 @@ grant  execute on function public.order_pi_version_detail(uuid) to authenticated
 -- deletable status; deleting it dropped the floor to 0524, and
 -- set_next_confirmed_order_number(525) — which only asks "above the highest
 -- ORDER" — would then have handed a number already printed on a customer's PI
--- to a different Order. Reservations are retired (20270102000000), so this
+-- to a different Order. Reservations are retired (20270114000000), so this
 -- ledger only ever holds the numbers that were reserved before that.
 
 create table if not exists public.order_reserved_number_ledger (
@@ -751,7 +751,7 @@ create table if not exists public.order_reserved_number_ledger (
   recorded_at   timestamptz not null default now()
 );
 comment on table public.order_reserved_number_ledger is
-  'Every Order number a PI Draft ever reserved, kept after the draft is rejected, converted or deleted. The number cycle can never be set at or below any of them (order_number_cycle_respects_reservations). Written by trigger only; removed only by Test Data Cleanup. 20270104000000.';
+  'Every Order number a PI Draft ever reserved, kept after the draft is rejected, converted or deleted. The number cycle can never be set at or below any of them (order_number_cycle_respects_reservations). Written by trigger only; removed only by Test Data Cleanup. 20270116000000.';
 alter table public.order_reserved_number_ledger enable row level security;
 revoke all on public.order_reserved_number_ledger from public, anon, authenticated;
 
@@ -893,7 +893,7 @@ revoke execute on function public.order_number_cycle_respects_reservations() fro
 -- The Order's value basis.
 alter table public.orders add column if not exists value_epoch integer not null default 0;
 comment on column public.orders.value_epoch is
-  'How many times this Order''s value (total_value) has changed since it was created. Maintained by orders_value_epoch only; a below-40% exception is valid for one epoch. 20270104000000.';
+  'How many times this Order''s value (total_value) has changed since it was created. Maintained by orders_value_epoch only; a below-40% exception is valid for one epoch. 20270116000000.';
 
 create or replace function public.orders_value_epoch()
 returns trigger
@@ -925,7 +925,7 @@ create table if not exists public.order_advance_exceptions (
   approved_at        timestamptz not null default now()
 );
 comment on table public.order_advance_exceptions is
-  'An administrator''s explicit approval to align a Confirmed Order for production below the 40% verified advance, for ONE value basis: the Order''s value epoch and the PI version in force when given, against the verified amount then. Stale once any of those moves. Written only by approve_order_advance_exception(). 20270104000000.';
+  'An administrator''s explicit approval to align a Confirmed Order for production below the 40% verified advance, for ONE value basis: the Order''s value epoch and the PI version in force when given, against the verified amount then. Stale once any of those moves. Written only by approve_order_advance_exception(). 20270116000000.';
 alter table public.order_advance_exceptions enable row level security;
 revoke all on public.order_advance_exceptions from public, anon, authenticated, service_role;
 create index if not exists order_advance_exceptions_order on public.order_advance_exceptions (order_id, value_epoch);
@@ -961,7 +961,7 @@ create table if not exists public.order_advance_exception_voids (
   voided_at    timestamptz not null default now()
 );
 comment on table public.order_advance_exception_voids is
-  'A below-40% approval (an order_advance_exceptions row, or the PI''s own exception when exception_id is NULL) made void for good because verified money fell below the amount it was given against. Written only by order_advance_exceptions_void_on_reduction(). 20270104000000.';
+  'A below-40% approval (an order_advance_exceptions row, or the PI''s own exception when exception_id is NULL) made void for good because verified money fell below the amount it was given against. Written only by order_advance_exceptions_void_on_reduction(). 20270116000000.';
 alter table public.order_advance_exception_voids enable row level security;
 revoke all on public.order_advance_exception_voids from public, anon, authenticated, service_role;
 create unique index if not exists order_advance_exception_voids_one
@@ -1004,7 +1004,7 @@ create table if not exists public.order_advance_holds (
   check ((resolved_at is null) = (resolution is null))
 );
 comment on table public.order_advance_holds is
-  'Production readiness removed from an aligned Confirmed Order because its verified advance fell below 40% of its value (value change, PI revision, or verified money reduced). At most one open hold per Order; it closes when the Order is aligned again. Written only by order_advance_hold_recheck() and orders_advance_hold_resolve(). 20270104000000.';
+  'Production readiness removed from an aligned Confirmed Order because its verified advance fell below 40% of its value (value change, PI revision, or verified money reduced). At most one open hold per Order; it closes when the Order is aligned again. Written only by order_advance_hold_recheck() and orders_advance_hold_resolve(). 20270116000000.';
 alter table public.order_advance_holds enable row level security;
 revoke all on public.order_advance_holds from public, anon, authenticated, service_role;
 create unique index if not exists order_advance_holds_one_open on public.order_advance_holds (order_id) where resolved_at is null;
@@ -1035,7 +1035,7 @@ create trigger order_advance_holds_guard
   for each row execute function public.order_advance_holds_guard();
 
 -- The verified money the PI's own exception stays backed by: what was verified
--- when the administrator decided it (20270102000000 stamps it), or, for a
+-- when the administrator decided it (20270114000000 stamps it), or, for a
 -- decision made before that was recorded, the percentage on the PI.
 create or replace function public.order_pi_exception_floor(p_decided_verified numeric, p_percent numeric, p_total numeric)
 returns numeric
@@ -1184,7 +1184,7 @@ begin
 end;
 $$;
 comment on function public.order_advance_readiness(uuid) is
-  'Where a Confirmed Order stands against the 40% verified advance, measured on its current (amended) value: {order_value, value_known, verified, awaiting, required, shortfall, percent, below, exception, hold, ready}, and while a hold is open, realign: who may align it again (the current operations reviewer, or an administrator''s recovery when none can act). For anybody who may open the Order. 20270104000000.';
+  'Where a Confirmed Order stands against the 40% verified advance, measured on its current (amended) value: {order_value, value_known, verified, awaiting, required, shortfall, percent, below, exception, hold, ready}, and while a hold is open, realign: who may align it again (the current operations reviewer, or an administrator''s recovery when none can act). For anybody who may open the Order. 20270116000000.';
 revoke execute on function public.order_advance_readiness(uuid) from public, anon;
 grant  execute on function public.order_advance_readiness(uuid) to authenticated;
 
@@ -1259,7 +1259,7 @@ begin
 end;
 $$;
 comment on function public.approve_order_advance_exception(uuid, text) is
-  'An active administrator approves aligning a Confirmed Order for production below the 40% verified advance, for its current value basis (value epoch + PI version in force + verified amount), with a reason (10–1000 characters). Refused when not needed or already approved for this basis. Logged on the Order; the operations reviewer is told. 20270104000000.';
+  'An active administrator approves aligning a Confirmed Order for production below the 40% verified advance, for its current value basis (value epoch + PI version in force + verified amount), with a reason (10–1000 characters). Refused when not needed or already approved for this basis. Logged on the Order; the operations reviewer is told. 20270116000000.';
 revoke execute on function public.approve_order_advance_exception(uuid, text) from public, anon;
 grant  execute on function public.approve_order_advance_exception(uuid, text) to authenticated;
 
@@ -1432,7 +1432,7 @@ begin
 end;
 $$;
 comment on function public.order_advance_hold_recheck(uuid, text, jsonb) is
-  'Internal: under the Order''s row lock, if an ALIGNED open Order is no longer ready on the 40% advance, open a hold, remove the alignment (unless a PI revision''s handoff is doing so), log it and tell the administrators and the operations reviewer. Not callable by any client role. 20270104000000.';
+  'Internal: under the Order''s row lock, if an ALIGNED open Order is no longer ready on the 40% advance, open a hold, remove the alignment (unless a PI revision''s handoff is doing so), log it and tell the administrators and the operations reviewer. Not callable by any client role. 20270116000000.';
 revoke execute on function public.order_advance_hold_recheck(uuid, text, jsonb) from public, anon, authenticated, service_role;
 
 -- VERIFIED MONEY REVERSED: a below-40% approval it no longer covers is void
@@ -1507,7 +1507,7 @@ begin
 end;
 $$;
 comment on function public.order_advance_exceptions_void_on_reduction(uuid, jsonb) is
-  'Internal: under the Order''s row lock, voids for good every below-40% approval current for the Order''s value basis (and the PI''s own exception) that verified money has fallen below; logs order_advance_exception_voided. Not callable by any client role. 20270104000000 (review R6).';
+  'Internal: under the Order''s row lock, voids for good every below-40% approval current for the Order''s value basis (and the PI''s own exception) that verified money has fallen below; logs order_advance_exception_voided. Not callable by any client role. 20270116000000 (review R6).';
 revoke execute on function public.order_advance_exceptions_void_on_reduction(uuid, jsonb) from public, anon, authenticated, service_role;
 
 -- The Order's value changed (any path).
@@ -1748,7 +1748,7 @@ begin
     raise exception 'ORDER_OPERATIONS_HANDOFF_STALE: PI V% is no longer the approved version of Order %',
       v_h.version_number, v_order.display_number using errcode = 'P0001';
   end if;
-  -- 20270104000000: an accepted version whose Order lost its alignment to a
+  -- 20270116000000: an accepted version whose Order lost its alignment to a
   -- production hold (order_advance_holds) may be accepted again — the gate
   -- decides whether it can be aligned now.
   if v_h.status = 'accepted' and p_decision = 'accepted' and v_order.production_alignment = 'aligned' then
@@ -1762,7 +1762,7 @@ begin
 
   -- ── The decision ──
   if p_decision = 'accepted' and v_h.status = 'accepted' then
-    -- RE-ALIGNING AFTER A HOLD (20270104000000). The acceptance on the row is
+    -- RE-ALIGNING AFTER A HOLD (20270116000000). The acceptance on the row is
     -- what happened and stays exactly as it was; the Order is aligned against
     -- it again, as a new event naming who aligned it and when, next to the
     -- acceptance it stands on. The gate refuses it while the Order is short.
@@ -1861,7 +1861,7 @@ end;
 $$;
 
 comment on function public.decide_order_operations_handoff(uuid, text, text) is
-  'The assigned operations reviewer accepts a PI version for production — which ALIGNS the Order — or flags it as needing clarification (reason required, at most 1000 characters), which takes the alignment back; on an accepted version, a flag is a withdrawal that keeps the acceptance on record. Re-checks under row locks: caller is the assigned, active reviewer who can open the Order; the handoff is live and about the Order''s current approved version; the Order is not cancelled. Writes the decision, the Order history events, and one notification to the approver. Acceptance means operations has reviewed and can work from this version, not that manufacturing work is done. 20270104000000: an accepted version whose Order lost its alignment to a production hold can be accepted again (operations_handoff_realigned), the acceptance on record unchanged; the 40% gate decides.';
+  'The assigned operations reviewer accepts a PI version for production — which ALIGNS the Order — or flags it as needing clarification (reason required, at most 1000 characters), which takes the alignment back; on an accepted version, a flag is a withdrawal that keeps the acceptance on record. Re-checks under row locks: caller is the assigned, active reviewer who can open the Order; the handoff is live and about the Order''s current approved version; the Order is not cancelled. Writes the decision, the Order history events, and one notification to the approver. Acceptance means operations has reviewed and can work from this version, not that manufacturing work is done. 20270116000000: an accepted version whose Order lost its alignment to a production hold can be accepted again (operations_handoff_realigned), the acceptance on record unchanged; the 40% gate decides.';
 
 revoke execute on function public.decide_order_operations_handoff(uuid, text, text) from public, anon;
 grant  execute on function public.decide_order_operations_handoff(uuid, text, text) to authenticated;
@@ -1963,7 +1963,7 @@ begin
 end;
 $$;
 comment on function public.recover_order_production_alignment(uuid, text) is
-  'Administrator recovery for a held Order (review R1): when no operations reviewer can act (none assigned, inactive or deleted, or unable to open the Order), an active administrator aligns the Order again against its accepted PI version, with a reason (10–1000 characters). The acceptance stays as recorded; logs operations_handoff_realigned_by_admin. The 40% gate applies. Refused while a reviewer who can act exists. 20270104000000.';
+  'Administrator recovery for a held Order (review R1): when no operations reviewer can act (none assigned, inactive or deleted, or unable to open the Order), an active administrator aligns the Order again against its accepted PI version, with a reason (10–1000 characters). The acceptance stays as recorded; logs operations_handoff_realigned_by_admin. The 40% gate applies. Refused while a reviewer who can act exists. 20270116000000.';
 revoke execute on function public.recover_order_production_alignment(uuid, text) from public, anon;
 grant  execute on function public.recover_order_production_alignment(uuid, text) to authenticated;
 
@@ -2029,7 +2029,7 @@ begin
     coalesce(a.order_id, a.order_submission_id),
     case
       when a.order_id is not null then nullif(btrim(o.display_number), '')
-      -- The draft's stable reference (20270102000000). Never source_order_number.
+      -- The draft's stable reference (20270114000000). Never source_order_number.
       else coalesce(nullif(btrim(s.draft_reference), ''),
                     nullif(btrim(regexp_replace(coalesce(s.source_workbook_name, ''), '^.*[\\/]', '')), ''))
     end,
@@ -2049,7 +2049,7 @@ end;
 $$;
 
 comment on function public.received_payment_allocation_targets(uuid[]) is
-  'The ACTIVE allocation targets (type, id, safe reference, reserved Order number, amount) of at most 50 CONFIRMED payments, for the Confirmed Payments list''s Allocated Against cell and Allocation Status badge. A PI Draft is named by its draft reference (PID-00012; 20270104000000), an Order by its number. Returns rows only to an authenticated caller with Finance module entry who holds finance.view as an active user (admin bypass), and only for payments that caller may already read (received_payment_visible_to_actor). Never returns source_order_number, client or other Order/PI fields. 20261216000000, 20270104000000.';
+  'The ACTIVE allocation targets (type, id, safe reference, reserved Order number, amount) of at most 50 CONFIRMED payments, for the Confirmed Payments list''s Allocated Against cell and Allocation Status badge. A PI Draft is named by its draft reference (PID-00012; 20270116000000), an Order by its number. Returns rows only to an authenticated caller with Finance module entry who holds finance.view as an active user (admin bypass), and only for payments that caller may already read (received_payment_visible_to_actor). Never returns source_order_number, client or other Order/PI fields. 20261216000000, 20270116000000.';
 
 revoke execute on function public.received_payment_allocation_targets(uuid[]) from public, anon, service_role;
 grant  execute on function public.received_payment_allocation_targets(uuid[]) to authenticated;

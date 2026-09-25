@@ -1,4 +1,4 @@
-// ── EDIT PI (20270103000000) ──────────────────────────────────────────────────
+// ── EDIT PI (20270115000000) ──────────────────────────────────────────────────
 //
 // One door for the whole-PI editor. The browser sends WHAT was changed; this
 // route re-reads the PI in force, re-applies the change, prices it
@@ -8,7 +8,7 @@
 //   mode 'propose'  the PI is approved and in force on an Order. Nothing
 //                   current changes: a PENDING version is recorded
 //                   (propose_order_pi_edit_revision); an Admin's approval puts
-//                   it in force and amends the Order (20270104000000).
+//                   it in force and amends the Order (20270116000000).
 //   mode 'apply'    the PI has not become an Order (draft, returned, or — for
 //                   an admin, with a reason — under review). The edit is
 //                   written through the same parse writer a workbook upload
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     }
     const { data: current } = await service.from('order_pi_versions')
       .select('id').eq('order_id', orderId).eq('status', 'approved').maybeSingle()
-    // Every item number this Order has ever used (20270104000000): an added
+    // Every item number this Order has ever used (20270116000000): an added
     // line never takes a removed product's number.
     const everUsed = await service.rpc('order_item_sequences_ever_used', { p_order_id: orderId })
     if (everUsed.error) return fail(500, 'LOOKUP_FAILED', 'This PI could not be read. Please try again.')

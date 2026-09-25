@@ -38,11 +38,11 @@
 # is unresolved vs. an assignment for that Order, both orders — the case that
 # DEADLOCKED before approve_order_pi_revision took the reviewer row first
 # (the assignment's foreign-key check on the Order waited for the approval,
-# whose trigger waited for the assignment's reviewer row). Since 20270104000000
+# whose trigger waited for the assignment's reviewer row). Since 20270116000000
 # the approval puts V2 in force at once, so direction 4 now also proves V2's
 # handoff ends with the reviewer current after both commit. Direction 6a: two
 # admin approvals of one V2 apply it once. (Directions 5 and 6b–6d raced a
-# STAGED V2, a state 20270104000000 made unreachable; they are retired.)
+# STAGED V2, a state 20270116000000 made unreachable; they are retired.)
 # Counts of readdressed handoffs are relative to what other fixtures on this
 # scratch database already hold.
 #
@@ -271,7 +271,7 @@ echo "   OK: cleared mid-approval → the committed handoff is unassigned with i
 #
 # To make that window deterministic, not lucky, the runner installs a pause
 # (public.zz_race_pause, dropped by retire) that fires on the approval's own
-# "V1 → superseded" version write (since 20270101000000: the "V2 → admin_approved"
+# "V1 → superseded" version write (since 20270113000000: the "V2 → admin_approved"
 # staging write) — after the function has taken every lock
 # it takes before its trigger, and before the trigger — and sleeps only in a
 # session that sets race.pause. Nothing in the function under test is altered
@@ -369,7 +369,7 @@ live_v2_handoff() {
 }
 
 check_v2_outcome() {
-  # 20270104000000: an Admin's approval puts V2 IN FORCE at once. V1 is
+  # 20270116000000: an Admin's approval puts V2 IN FORCE at once. V1 is
   # superseded; V2's handoff is the live one, addressed to the reviewer current
   # after BOTH sessions commit (B), who is told exactly once for V2; the
   # revision is applied once and nothing is staged.
@@ -467,16 +467,16 @@ check_v2_outcome "direction 4b" "$O5"
 echo "   OK: V1 readdressed to B by the change; V2 then in force with its handoff recorded for B directly; B notified once for V2"
 
 
-# ── Directions 5 and 6b–6d (20270101000000): RETIRED BY 20270104000000 ──
+# ── Directions 5 and 6b–6d (20270113000000): RETIRED BY 20270116000000 ──
 # They raced the OPERATIONS ACCEPTANCE of a STAGED V2 (admin_approved) and two
-# decisions on it. Since 20270104000000 an Admin's approval puts V2 in force at
-# once and no version can be staged: 20270104000000 refuses to apply while any
+# decisions on it. Since 20270116000000 an Admin's approval puts V2 in force at
+# once and no version can be staged: 20270116000000 refuses to apply while any
 # admin_approved row exists, and nothing creates one. The races that remain are
 # the approval against a reviewer change (direction 4, above), two approvals
 # of one V2 (6a, below), and the alignment against a payment reversal
 # (run_order_advance_hold_race.sh).
 [ "$(scalar "select count(*) from public.order_pi_versions where status = 'admin_approved'")" = "0" ] \
-  || fail "a staged (admin_approved) version exists; 20270104000000 makes that state unreachable"
+  || fail "a staged (admin_approved) version exists; 20270116000000 makes that state unreachable"
 echo "== directions 5, 6b-6d: retired — no staged version can exist (checked: 0 admin_approved rows)"
 
 versions_of() { scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$1'"; }

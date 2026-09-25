@@ -44,7 +44,7 @@ export const RESERVATION_INSTRUCTION =
   'It becomes the Order number when this PI is approved; until then no Order number is allotted. It does not need to be added to the PI file.'
 
 /**
- * What a draft with no reservation says (20270102000000): every new draft, and
+ * What a draft with no reservation says (20270114000000): every new draft, and
  * every older one that never took a number. There is nothing to press — the
  * Order number is allotted when the PI is approved, from the one series.
  */
@@ -305,7 +305,7 @@ export function describeReservation(input: {
     }
   }
 
-  // NO RESERVATION, AND NOTHING TO RESERVE (20270102000000). A PI Draft no
+  // NO RESERVATION, AND NOTHING TO RESERVE (20270114000000). A PI Draft no
   // longer takes a number — not automatically, not by a button — so there is
   // no choice to offer and no blocked reason to give. The Order number is
   // allotted when the PI is approved.

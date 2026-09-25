@@ -1,4 +1,4 @@
--- PI NUMBERING AT CONVERSION, DRAFT REFERENCE AND THE THREE REASONS (20270102000000)
+-- PI NUMBERING AT CONVERSION, DRAFT REFERENCE AND THE THREE REASONS (20270114000000)
 -- ===========================================================================
 -- Validates, through the real doors:
 --
@@ -19,7 +19,7 @@
 --   8. payments      the draft's active allocations follow it into the Order,
 --                    once, and a reversed one stays in the draft's history
 --  11. retired       a reserved number stays retired after its draft is
---                    rejected and deleted (ledger, 20270104000000); only Test
+--                    rejected and deleted (ledger, 20270116000000); only Test
 --                    Data Cleanup removes a test draft's entry
 --  10. production    production's shape (a held reservation one below the
 --                    cycle): a re-upload keeps it, new PIs approved first never
@@ -30,7 +30,7 @@
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- PREREQUISITES: a disposable stack with the chain replayed through
--- 20270102000000, the owner TEST-001 (1111…, admin, permanent approve_order
+-- 20270114000000, the owner TEST-001 (1111…, admin, permanent approve_order
 -- grant), and these users:
 --   5555… sales (orders.view + orders.create), 6666… finance (finance.view +
 --   finance.approve), 7777… operations team (orders.view).
@@ -441,7 +441,7 @@ begin
   v_po := 'pi-documents/' || v_pi || '/' || v_stage || '/client_po/' || gen_random_uuid() || '.pdf';
   v_df := 'pi-documents/' || v_pi || '/' || v_stage || '/design_files/' || gen_random_uuid() || '.png';
 
-  -- The owner uploads under the staging id (the storage rule 20261231000000
+  -- The owner uploads under the staging id (the storage rule 20270112000000
   -- already has), then records each file by name.
   insert into storage.objects (bucket_id, name, owner_id, metadata) values
     ('order-files', v_po, v_sales::text, jsonb_build_object('mimetype', 'application/pdf', 'size', 2048)),
@@ -597,7 +597,7 @@ end $$;
 
 -- ═══ 11. A RESERVED NUMBER STAYS RETIRED AFTER ITS DRAFT IS GONE ═════════════
 --
--- The rule (20270104000000 §4c): an Order number a PI Draft ever reserved is
+-- The rule (20270116000000 §4c): an Order number a PI Draft ever reserved is
 -- never issued to anything else — the cycle can never be set at or below it,
 -- whether its draft is live, rejected, converted or permanently deleted. Only
 -- Test Data Cleanup, removing a TEST draft, takes its entry away.

@@ -1,6 +1,6 @@
 'use client'
 
-// "NEEDS YOUR ACTION" — Design Files and Client PO submissions (20261231000000),
+// "NEEDS YOUR ACTION" — Design Files and Client PO submissions (20270112000000),
 // filtered to the signed-in reader's role, on the Orders dashboard.
 //
 //   Admin        submissions awaiting the admin decision
@@ -34,7 +34,7 @@ const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_admin',
 
 type Loaded = {
   rows: { submission: PersistedDocumentSubmission; orderNumber: string }[]
-  // Revised PIs open on an Order (20270101000000): pending the admin, or
+  // Revised PIs open on an Order (20270113000000): pending the admin, or
   // approved and awaiting the operations reviewer.
   revisions: RevisionQueueRow[]
   names: Map<string, string>

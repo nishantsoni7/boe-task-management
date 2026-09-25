@@ -78,7 +78,7 @@ describe('one chronology from two trails', () => {
   })
 })
 
-describe('a revision is told once, and never as a workbook it was not (20270104000000)', () => {
+describe('a revision is told once, and never as a workbook it was not (20270116000000)', () => {
   const names = new Map<string, string>()
   const when = (iso: string | null) => iso ?? ''
   test('the parse writer\'s "workbook replaced" rows inside a revision are left out; a real replacement stays', () => {

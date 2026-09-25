@@ -169,7 +169,7 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   id: string
   status: string
   client_name: string | null
-  /** The draft's own internal reference, PID-00001 … (20270102000000). Optional
+  /** The draft's own internal reference, PID-00001 … (20270114000000). Optional
    *  so a fixture or a database that predates it still describes a submission. */
   draft_reference?: string | null
 
@@ -369,7 +369,7 @@ export const PI_DRAFT_LIST_COLUMNS = [
   // order_submission_deletable_by() both read, so the screen asks the same
   // question the database answers. A courtesy, never the authority.
   'created_by',
-  // THE DRAFT'S IDENTITY AND ITS NUMBER, as 20270102000000 left them: its own
+  // THE DRAFT'S IDENTITY AND ITS NUMBER, as 20270114000000 left them: its own
   // PID- reference, and a reservation only where an older draft holds one. The
   // Order number itself is never read here — a PI Draft has none.
   'draft_reference', 'reserved_order_number',
@@ -377,7 +377,7 @@ export const PI_DRAFT_LIST_COLUMNS = [
 
 export const PI_DRAFT_DETAIL_COLUMNS = [
   'id', 'status', 'client_name',
-  // The draft's own PID- reference (20270102000000).
+  // The draft's own PID- reference (20270114000000).
   'draft_reference',
   'created_by', 'submitted_by', 'assigned_to', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
@@ -534,7 +534,7 @@ export type PiDraftListEntry = {
   grandTotal: string
   /** True when no grand total is stored, so the row can say why. */
   grandTotalMissing: boolean
-  /** The draft's own reference (PID-00001), or "—" before 20270102000000. */
+  /** The draft's own reference (PID-00001), or "—" before 20270114000000. */
   reference: string
   /** "Reserved number 0525" or "Order number not allotted". Never a guess. */
   numberLine: string
@@ -603,7 +603,7 @@ export const GRAND_TOTAL_UNAVAILABLE_NOTE =
   "The PI file's Grand Total could not be read. Open the draft to see why, then correct the workbook and upload it again."
 
 /**
- * THE ONE LINE A PI DRAFT SAYS ABOUT ITS NUMBER (20270102000000).
+ * THE ONE LINE A PI DRAFT SAYS ABOUT ITS NUMBER (20270114000000).
  *
  * A draft created before that migration may hold a GENUINE reservation — a
  * number taken from the Confirmed Order cycle — and says so. Every other draft

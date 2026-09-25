@@ -347,7 +347,7 @@ export async function resolveSalespersonContact(
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
  * APPROVES a REVISED PI on an approved Order (20261119000000; in force at
- * approval again since 20270104000000). It runs the very same download, parse
+ * approval again since 20270116000000). It runs the very same download, parse
  * and image upload — there is one parser path in this product — and differs
  * where `revisionVersionId` is set: step 17 sends the payload to
  * approve_order_pi_revision(), which applies it, amends the Order and seeds
@@ -369,7 +369,7 @@ export async function processUnderLease(ctx: {
   /**
    * The admin's matching of a revised workbook's ambiguous lines to the lines
    * in force ({new item id: old item id | 'new'}), when the database asked for
-   * it (ORDER_PI_REVISION_LINES_NEED_REVIEW, 20270104000000).
+   * it (ORDER_PI_REVISION_LINES_NEED_REVIEW, 20270116000000).
    */
   lineMap?: Record<string, string> | null
 }): Promise<NextResponse> {
@@ -486,8 +486,8 @@ export async function processUnderLease(ctx: {
   if (changeReason) plan.payload.change_reason = changeReason
   if (ctx.revisionVersionId && ctx.lineMap) (plan.payload as Record<string, unknown>).line_map = ctx.lineMap
 
-  // A REVISION'S TERMS TRAVEL WITH ITS PAYLOAD (20270101000000): the database
-  // seeds them inside the approval's own transaction (20270104000000), so a
+  // A REVISION'S TERMS TRAVEL WITH ITS PAYLOAD (20270113000000): the database
+  // seeds them inside the approval's own transaction (20270116000000), so a
   // failure after commit can never leave the new version without them.
   if (ctx.revisionVersionId) {
     (plan.payload as Record<string, unknown>).seed_terms = {

@@ -1,5 +1,5 @@
 /**
- * ONE "EDIT PI" — the pure rules (20270103000000).
+ * ONE "EDIT PI" — the pure rules (20270115000000).
  *
  * Offline: no database, no React. What the database does with a proposal
  * (pending → authorized → accepted, V1 kept in force meanwhile) is proved in
@@ -231,7 +231,7 @@ describe('the comparison an Admin reads', () => {
   })
 })
 
-describe('an item number once used on an Order is never handed out again (20270104000000)', () => {
+describe('an item number once used on an Order is never handed out again (20270116000000)', () => {
   // V1 had B001 B002 B003; V2 removed B003. The Order remembers all three.
   const everUsed = ['B001', 'B002', 'B003']
 

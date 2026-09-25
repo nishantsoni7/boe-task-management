@@ -162,7 +162,7 @@ export function PiContextRow({
   reservation: ReservationView
   /** The Confirmed Order's number, once there is one and this viewer can read it. */
   confirmedNumber: string | null
-  /** The draft's own PID- reference (20270102000000), or null before it. */
+  /** The draft's own PID- reference (20270114000000), or null before it. */
   draftReference: string | null
   onCopy: (value: string) => void
   copied: boolean
@@ -180,7 +180,7 @@ export function PiContextRow({
             {RESERVED_ORDER_LABEL}
           </div>
 
-          {/* 20270102000000: a held reservation reads "Reserved number 0525",
+          {/* 20270114000000: a held reservation reads "Reserved number 0525",
               and until the Order exists the page also says, in words, that no
               Order number is allotted — a reserved number is not yet one. */}
           {number ? (

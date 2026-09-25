@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
-    // SINCE 20270104000000 AN ADMIN APPROVAL PUTS THE REVISION IN FORCE (and
+    // SINCE 20270116000000 AN ADMIN APPROVAL PUTS THE REVISION IN FORCE (and
     // amends the Order to it); Operations is told by the database to review it.
     const text = event === 'pi_revision_approved'
       ? `The revised PI for ${clientName} was approved by an admin and is now the PI in force. Operations has been sent it for review.`

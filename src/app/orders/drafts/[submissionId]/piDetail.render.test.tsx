@@ -430,7 +430,7 @@ describe('the context row puts the reserved number beside where review stands', 
     const html = contextHtml()
     assert.ok(html.includes('class="pi-detail-context-number"'))
     assert.ok(text(html).includes('Reserved number 0521'),
-      'a held reservation reads "Reserved number 0521" (20270102000000)')
+      'a held reservation reads "Reserved number 0521" (20270114000000)')
     assert.ok(text(html).includes(NUMBER_NOT_ALLOTTED),
       'and, until the Order exists, says in words that no Order number is allotted')
     assert.ok(text(html).includes('Draft reference PID-00042'), 'beside the draft’s own reference')
@@ -445,7 +445,7 @@ describe('the context row puts the reserved number beside where review stands', 
       blockedReason: null, canCopy: false,
     }
     const quiet = contextHtml({ reservation: none })
-    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL), 'a PI Draft no longer reserves (20270102000000)')
+    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL), 'a PI Draft no longer reserves (20270114000000)')
     assert.ok(text(quiet).includes(NUMBER_NOT_ALLOTTED))
     assert.equal((text(quiet).match(/Order number not allotted/g) ?? []).length, 1, 'said once')
     assert.ok(text(quiet).includes('Draft reference PID-00042'))
@@ -843,7 +843,7 @@ describe('the billing declaration, as the third figure', () => {
       'the authority is asked of the database')
     assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
       'and so is the admin authority, which the owner rule cannot answer')
-    // Since 20270103000000 the billing percentage is edited inside the one Edit
+    // Since 20270115000000 the billing percentage is edited inside the one Edit
     // PI, which both answers together open; the card's own control is off.
     assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'),
       'and both answers together are what opens Edit PI')
@@ -3415,7 +3415,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
-      // sender (submit_pi_for_review_with_documents, 20261231000000 §11),
+      // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
       // pinned in the submit-door tests; the page itself calls no submit RPC.
       // The client and party details editor (20260928000000). The one write on
       // this page that supplies BUSINESS DATA rather than moving a status, and
@@ -3526,7 +3526,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     for (const [name, region] of regions) {
       assert.ok(!region.includes('canApprovePayments'), `${name} must not read the payment authority`)
     }
-    // The one Edit PI (20270103000000) carries the billing percentage; it is
+    // The one Edit PI (20270115000000) carries the billing percentage; it is
     // opened by the same two authorities and never by the payment authority.
     assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'))
     assert.ok(!slice('const mayEditPi =', '\n').includes('canApprovePayments'))

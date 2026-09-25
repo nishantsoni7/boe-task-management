@@ -1,4 +1,4 @@
-// ── ONE "EDIT PI" (20270103000000) ────────────────────────────────────────────
+// ── ONE "EDIT PI" (20270115000000) ────────────────────────────────────────────
 //
 // The whole PI in one editor — client, bill-to/ship-to, dates, commercial
 // terms, fabric, every product (name, code, description, quantity, price,
@@ -280,7 +280,7 @@ export function validateEdit(state: PiEditState): PiEditProblem[] {
 
 /**
  * A typed item number that belonged to another product on this Order
- * (20270104000000). An added line may not take any number the Order has ever
+ * (20270116000000). An added line may not take any number the Order has ever
  * used; a continuing line may keep its own but not move to another's. The
  * database refuses the same at approval; this says it while editing.
  */
@@ -439,7 +439,7 @@ export function buildEditProposal(input: {
   fingerprint: (json: string) => string
   /**
    * Every sequence this Order's lines have ever held (order_item_sequences_ever_used,
-   * 20270104000000) — including lines removed in an earlier version. Empty for
+   * 20270116000000) — including lines removed in an earlier version. Empty for
    * a PI that is not yet an Order.
    */
   retiredSequences?: readonly string[]

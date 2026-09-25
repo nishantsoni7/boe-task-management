@@ -1,5 +1,5 @@
 /**
- * EDIT PI AND THE VERSION STRIP (20270103000000), rendered.
+ * EDIT PI AND THE VERSION STRIP (20270115000000), rendered.
  *
  * What an Admin reads before authorizing a version, and what each version card
  * says. The data paths (propose → authorize → accept) are proved in

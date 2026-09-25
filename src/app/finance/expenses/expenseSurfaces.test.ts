@@ -632,17 +632,17 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order 0524's one-time handoff (20261230000000) is the one named
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
-      // Order document submissions (20261231000000): Design Files and Client PO
+      // Order document submissions (20270112000000): Design Files and Client PO
       // reviewed by admin then operations, held by its own suites.
-      if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
-      // Revised-PI promotion (20270101000000), held by its own suites.
-      if (f === 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
-      // PI numbering at conversion, draft reference, three reasons (20270102000000).
-      if (f === 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql') continue
-      // Edit PI: an approved PI changes only as a new version (20270103000000).
-      if (f === 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql') continue
-      // A revised PI is in force at Admin approval (20270104000000).
-      if (f === 'supabase/migrations/20270104000000_order_pi_revision_in_force_at_admin_approval.sql') continue
+      if (f === 'supabase/migrations/20270112000000_order_document_submissions.sql') continue
+      // Revised-PI promotion (20270113000000), held by its own suites.
+      if (f === 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql') continue
+      // PI numbering at conversion, draft reference, three reasons (20270114000000).
+      if (f === 'supabase/migrations/20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql') continue
+      // Edit PI: an approved PI changes only as a new version (20270115000000).
+      if (f === 'supabase/migrations/20270115000000_order_submission_pi_edit_revisions.sql') continue
+      // A revised PI is in force at Admin approval (20270116000000).
+      if (f === 'supabase/migrations/20270116000000_order_pi_revision_in_force_at_admin_approval.sql') continue
       // Announcements is a second named exception: additive tables of its own,
       // held by src/lib/announcementsMigration.test.ts and its SQL suite.
       if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
@@ -780,7 +780,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/submissionPayload.ts',
     'src/lib/orders/confirmedPdf.ts',
     'src/lib/orders/orderHistory.test.ts',
-    // The 40% advance on the amended Order value gates production (20270104000000).
+    // The 40% advance on the amended Order value gates production (20270116000000).
     'src/lib/orders/advanceReadiness.ts',
     'src/lib/orders/advanceReadiness.test.ts',
     'src/components/orders/AdvanceGatePanel.tsx',
@@ -912,7 +912,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(untouchable), false,
       `${untouchable} is outside what removing the duplicate approval reaches`)
-      // …unless PI numbering (20270102000000) reaches it on purpose: the three
+      // …unless PI numbering (20270114000000) reaches it on purpose: the three
       // reasons live in paymentGate.ts and the footer fingerprint in the parser.
       if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
@@ -1273,7 +1273,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * rule. Every file is named; no migration, no permission, no money.
    */
   /**
-   * ORDER DOCUMENT SUBMISSIONS (20261231000000).
+   * ORDER DOCUMENT SUBMISSIONS (20270112000000).
    *
    * Design Files and Client PO on a Confirmed Order: Sales submits, an admin
    * approves or rejects, the assigned operations reviewer accepts or rejects,
@@ -1324,10 +1324,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20261231000000_order_document_submissions.sql'
+  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20270112000000_order_document_submissions.sql'
 
   /**
-   * REVISED-PI PROMOTION (20270101000000).
+   * REVISED-PI PROMOTION (20270113000000).
    *
    * An admin approval stages a revised PI; only the operations reviewer's
    * acceptance applies it. The approval route's staging mode, the version view
@@ -1351,7 +1351,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/submissionImages.test.ts',
     'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
   ])
-  const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270101000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
+  const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
   // Calmer Confirmed Order documents (#206): the ⋯ menu moved out of
   // OrderStatusWorkspace.tsx into its own module, unchanged in what it does.
@@ -1360,7 +1360,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   /**
    * PI NUMBERING AT CONVERSION, THE DRAFT REFERENCE, THE THREE REASONS AND THE
-   * FOOTER FINGERPRINT (20270102000000).
+   * FOOTER FINGERPRINT (20270114000000).
    *
    * A new PI Draft reserves no Order number (the Order takes one when the PI is
    * approved), carries a PID- reference, shows "Reserved number …" only where an
@@ -1371,7 +1371,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    */
   const ALLOWED_PI_NUMBERING_AND_EDITING = new Set([
     // A revised PI is in force at Admin approval; each version's own PDF; the
-    // PID in Finance's Allocated Against (20270104000000).
+    // PID in Finance's Allocated Against (20270116000000).
     'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
     'src/lib/orders/piVersionPdf.ts',
     'src/lib/orders/piVersionPdf.test.ts',
@@ -1405,7 +1405,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/orders/piSubmitModal.render.test.tsx',
     'src/components/orders/PiSupportingDocuments.tsx',
     'src/components/orders/piDraftAttachments.render.test.tsx',
-    // Edit PI (20270103000000): one editor, versions, and the Admin's comparison.
+    // Edit PI (20270115000000): one editor, versions, and the Admin's comparison.
     'src/lib/orders/piEdit.ts',
     'src/lib/orders/piEdit.test.ts',
     'src/lib/orders/piEditServer.ts',
@@ -1423,7 +1423,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/piImageKey.ts',
     'src/lib/orders/piImageKey.test.ts',
     // …and the migration contract that pinned 20261121000000 as the submit
-    // gate in force, which 20270102000000 retired (found by the wider sweep).
+    // gate in force, which 20270114000000 retired (found by the wider sweep).
     'src/lib/permissions/migrationContract.test.ts',
     // Final review R3: the Confirmed PDF's service-role image read checks the
     // whole canonical key too, and the tests that pinned its old prefix test
@@ -1432,9 +1432,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/documentsRoute.test.ts',
     'src/lib/orders/orderStartupShape.test.ts',
   ])
-  const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
-  const PI_EDIT_MIGRATION = 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql'
-  const PI_REVISION_IN_FORCE_MIGRATION = 'supabase/migrations/20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
+  const PI_NUMBERING_MIGRATION = 'supabase/migrations/20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql'
+  const PI_EDIT_MIGRATION = 'supabase/migrations/20270115000000_order_submission_pi_edit_revisions.sql'
+  const PI_REVISION_IN_FORCE_MIGRATION = 'supabase/migrations/20270116000000_order_pi_revision_in_force_at_admin_approval.sql'
 
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',
@@ -1553,7 +1553,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/app/orders/[id]/OrderAmendmentModals.tsx',
     ]) {
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
-      // …unless the revised-PI promotion (20270101000000) reaches it on purpose:
+      // …unless the revised-PI promotion (20270113000000) reaches it on purpose:
       // staging a revision IS a change to the PI revision path.
       if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
@@ -1628,7 +1628,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const intruder of [
       // Finance and payment surfaces the expense guard exists to protect.
       'src/app/finance/page.tsx',
-      // (ReceivedPaymentsView.tsx is allowed ONE change since 20270104000000 and
+      // (ReceivedPaymentsView.tsx is allowed ONE change since 20270116000000 and
       // is held to it line by line below; the payment modules beside it are not.)
       'src/lib/finance/paymentAllocations.ts',
       'src/lib/finance/paymentEntry.ts',
@@ -1723,7 +1723,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const f of added) {
       // order_pi_review_gate_and_versions is edited, not added: the revised-PI
       // promotion moves its helpers onto the staged approval path.
-      // PI numbering (20270102000000) adds its own suite and race runner, and
+      // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
       assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|announcements/.test(f),
         `${f} does not belong to this feature`)
@@ -1848,7 +1848,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   })
 
   test('the payment entry, allocation and balance modules are not among them', () => {
-    // ReceivedPaymentsView.tsx is held to ONE change (20270104000000): its two
+    // ReceivedPaymentsView.tsx is held to ONE change (20270116000000): its two
     // PI Draft name reads select PI_DRAFT_NAME_COLUMNS (adds draft_reference) so
     // a draft is named by its PID. Every changed line must be exactly that.
     if (touched.has('src/app/finance/received/ReceivedPaymentsView.tsx')) {

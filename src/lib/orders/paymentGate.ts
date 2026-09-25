@@ -206,7 +206,7 @@ export const BILLING_TERMS_LABEL = 'Billing terms (optional)'
 export const BILLING_TERMS_PLACEHOLDER = 'e.g. 100% invoice before dispatch'
 export const PAYMENT_REASON_LABEL = `Why should this PI go ahead below ${PAYMENT_STANDARD_PERCENT}%? *`
 
-// ── The three reasons (20270102000000) ────────────────────────────────────────
+// ── The three reasons (20270114000000) ────────────────────────────────────────
 //
 // EXACTLY THREE, and the words are the ones stored. The database accepts only
 // 'Against client PO', 'Sample order' or 'Other: <remark>' and files each under
@@ -262,7 +262,7 @@ export function readExceptionReason(stored: string | null | undefined): { choice
  * An APPROVED exception this PI still holds (same reason, same figures) whose
  * reason was written before the three existed. A PI returned for an unrelated
  * correction resubmits with it word for word — the database keeps the
- * approval (20270102000000) — rather than making the employee re-categorise it
+ * approval (20270114000000) — rather than making the employee re-categorise it
  * and sending an approved exception back to pending. Null when there is none.
  */
 export function keptExceptionReason(p: {
@@ -345,7 +345,7 @@ export function validateSubmissionTerms(input: {
   if (billingTerms.length > PAYMENT_TERMS_MAX_LENGTH) return { ok: false, message: PAYMENT_TERMS_TOO_LONG }
 
   // Below the requirement: one of the three, and a real remark for Other.
-  // Payment Terms are no longer demanded (20270102000000).
+  // Payment Terms are no longer demanded (20270114000000).
   const kept = input.keptReason?.trim() || null
   const reason = reasonChoice === '' ? kept : composeExceptionReason(reasonChoice, remark)
   if (!input.meetsStandard) {

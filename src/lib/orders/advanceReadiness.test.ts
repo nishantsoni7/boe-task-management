@@ -1,5 +1,5 @@
 /**
- * THE 40% ADVANCE ON THE AMENDED ORDER VALUE (20270104000000) — the words.
+ * THE 40% ADVANCE ON THE AMENDED ORDER VALUE (20270116000000) — the words.
  *
  * The rule itself is the database's (orders_alignment_requires_advance, proved
  * in supabase/tests/order_pi_revision_in_force_at_admin_approval_assertions.sql

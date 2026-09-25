@@ -512,7 +512,7 @@ export default function PiDraftsPage() {
               <tr key={entry.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <td style={{ padding: '10px 14px', fontWeight: 600, color: colors.primary, minWidth: '160px' }}>
                   {entry.client}
-                  {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270102000000): a
+                  {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270114000000): a
                       reserved number only where an older draft genuinely holds one,
                       otherwise the plain statement that none is allotted yet. */}
                   <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', fontWeight: 400, whiteSpace: 'nowrap' }}>

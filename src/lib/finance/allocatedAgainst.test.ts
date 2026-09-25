@@ -536,7 +536,7 @@ describe('one safe name for a destination, wherever it is printed', () => {
     assert.equal(PI_DRAFT_NAME_COLUMNS, 'id, draft_reference, reserved_order_number, source_workbook_name')
   })
 
-  test('A PI DRAFT IS NAMED BY ITS PID (20270104000000), with a reserved number beside it', () => {
+  test('A PI DRAFT IS NAMED BY ITS PID (20270116000000), with a reserved number beside it', () => {
     // The Allocated Against read now returns the draft reference as the draft's
     // target_reference; the file name is only a fallback for a row without one.
     assert.equal(allocationTargetLabel({ target_type: 'pi_draft', target_reference: 'PID-00012', reserved_order_number: null }),
@@ -551,7 +551,7 @@ describe('one safe name for a destination, wherever it is printed', () => {
     assert.equal(piDraftSafeName({ draft_reference: 'PID-00007', reserved_order_number: '0525', source_workbook_name: 'a.xlsx' }),
       'PID-00007 · Reserved 0525')
     // The migration that makes the read return it.
-    const sql = readFileSync(join('supabase', 'migrations', '20270104000000_order_pi_revision_in_force_at_admin_approval.sql'), 'utf8')
+    const sql = readFileSync(join('supabase', 'migrations', '20270116000000_order_pi_revision_in_force_at_admin_approval.sql'), 'utf8')
     assert.ok(sql.includes("else coalesce(nullif(btrim(s.draft_reference), ''),"), 'the draft reference comes first')
     const body = sql.slice(sql.indexOf('create or replace function public.received_payment_allocation_targets'),
       sql.indexOf('comment on function public.received_payment_allocation_targets'))

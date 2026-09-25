@@ -350,7 +350,7 @@ function PiDraftDetailPageInner() {
   const supabase = useMemo(() => createClient(), [])
 
   const submissionId = params.submissionId as string
-  // Design Files and Client PO offered where the PI is sent (20261231000000 §11).
+  // Design Files and Client PO offered where the PI is sent (20270112000000 §11).
   const supporting = usePiSupportingDocuments(supabase, submissionId)
   /**
    * The one thing the query string is trusted for: whether to congratulate.
@@ -415,7 +415,7 @@ function PiDraftDetailPageInner() {
   // ── The Order number ──
   //
   // The number (a held reservation, if an older draft has one) arrives WITH the
-  // record. There is no action: since 20270102000000 a PI Draft reserves no
+  // record. There is no action: since 20270114000000 a PI Draft reserves no
   // number, and the Order's is allotted when the PI is approved.
   const [copiedNumber, setCopiedNumber] = useState(false)
   const [piEditorOpen, setPiEditorOpen] = useState(false)
@@ -1846,7 +1846,7 @@ function PiDraftDetailPageInner() {
    * is asked in four places in the markup below, and four copies of the same
    * expression is four chances for one of them to drift.
    */
-  // ONE "EDIT PI" (20270103000000). The per-field doors (client, terms,
+  // ONE "EDIT PI" (20270115000000). The per-field doors (client, terms,
   // schedule, billing %, product text, reorder) are no longer drawn: the whole
   // PI is edited in one place. On a PI that is not yet an Order it is written
   // directly; once it is an Order it can only change as a new version, from the
@@ -2092,7 +2092,7 @@ function PiDraftDetailPageInner() {
           tone={tone}
         />
 
-        {/* ── 1b. EDIT PI (20270103000000) ── one action for the whole PI. */}
+        {/* ── 1b. EDIT PI (20270115000000) ── one action for the whole PI. */}
         {(mayEditPi || (piIsOrder && submission.status === 'approved')) && (
           <div className="pi-edit-bar" style={{
             display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',

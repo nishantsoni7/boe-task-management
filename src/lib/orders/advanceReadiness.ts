@@ -1,4 +1,4 @@
-// ── THE 40% ADVANCE, MEASURED ON THE ORDER'S AMENDED VALUE (20270104000000) ───
+// ── THE 40% ADVANCE, MEASURED ON THE ORDER'S AMENDED VALUE (20270116000000) ───
 //
 // A revised PI is in force at the admin's approval and the Order's value moves
 // with it. The verified advance is then measured against the NEW value; while

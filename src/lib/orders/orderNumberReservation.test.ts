@@ -44,7 +44,7 @@ const draft = {
 describe('when a number may be reserved', () => {
   test('a draft with a workbook, by somebody who may replace it', () => {
     assert.equal(reservationBlockedReason(draft), null)
-    // 20270102000000: nothing is offered even so — a PI Draft no longer
+    // 20270114000000: nothing is offered even so — a PI Draft no longer
     // reserves, and the panel never draws the action.
     assert.equal(describeReservation(draft).state, 'blocked')
   })
@@ -161,7 +161,7 @@ describe('what the panel says', () => {
     assert.match(view.standing, /reserved 0042, but the Confirmed Order was created as 0099/)
   })
 
-  test('no number: nothing to reserve, and the approval allots it (20270102000000)', () => {
+  test('no number: nothing to reserve, and the approval allots it (20270114000000)', () => {
     for (const input of [draft, { ...draft, status: 'submitted' }, { ...draft, hasWorkbook: false }]) {
       const view = describeReservation(input)
       assert.equal(view.state, 'blocked')
@@ -308,7 +308,7 @@ describe('the number read out of a workbook, normalized the way SQL normalizes i
 describe('the panel does not offer a decision that is not being made', () => {
   const newDraft = { ...draft, reservationRequired: true }
 
-  // 20270102000000: no draft reserves, whichever rule it was created under —
+  // 20270114000000: no draft reserves, whichever rule it was created under —
   // a draft of the 20261009000000 era that never took a number, and every
   // draft since, are told the same true thing and offered nothing.
   test('an old-rule draft with no number is told the approval allots it, and offered nothing', () => {

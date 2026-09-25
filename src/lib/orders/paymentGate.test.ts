@@ -142,7 +142,7 @@ describe('what the submit dialog may send', () => {
       { reason: null, paymentTerms: null, billingTerms: null })
   })
 
-  test('below the requirement, one of the three reasons is required — and only that (20270102000000)', () => {
+  test('below the requirement, one of the three reasons is required — and only that (20270114000000)', () => {
     const none = validateSubmissionTerms({ meetsStandard: false, terms: terms() })
     assert.equal(none.ok, false)
     assert.equal(none.ok === false && none.message, PAYMENT_REASON_REQUIRED)

@@ -603,7 +603,7 @@ end $$;
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- 10/11. Below 40%, including at zero, one of the three reasons is required
--- (20270102000000; Payment Terms became optional).
+-- (20270114000000; Payment Terms became optional).
 -- 12/13. The owner may ask; an unrelated salesperson may not.
 --
 -- NOTE: submit_pi_for_review() also re-checks the workbook and every product
@@ -640,7 +640,7 @@ begin
       format('expected the reason refusal, got: %s', v_msg);
   end;
 
-  -- A reason outside the three (20270102000000): refused, and for the right
+  -- A reason outside the three (20270114000000): refused, and for the right
   -- reason. Payment Terms are no longer what is missing here — they are optional.
   set local role authenticated;
   perform set_config('request.jwt.claims',

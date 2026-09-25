@@ -433,7 +433,7 @@ export default function OrdersDashboardPage() {
         />
       </div>
 
-      {/* ── Needs your action: Design Files and Client PO submissions (20261231000000),
+      {/* ── Needs your action: Design Files and Client PO submissions (20270112000000),
           filtered to this reader's role. Draws nothing when nothing waits. ── */}
       <DocumentActionQueue
         supabase={supabase}

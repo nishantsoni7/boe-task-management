@@ -1220,7 +1220,7 @@ export function buildPaymentMetrics(view: PaymentStatusView): PaymentMetric[] {
 // ── The context row: the reserved number, and where review stands ─────────────
 
 /** The context row's first cell: the Order number, or the plain statement that
- *  none is allotted yet (20270102000000). */
+ *  none is allotted yet (20270114000000). */
 export const RESERVED_ORDER_LABEL = 'Order number'
 /** The draft's own internal reference, beneath the number. */
 export const DRAFT_REFERENCE_LABEL = 'Draft reference'

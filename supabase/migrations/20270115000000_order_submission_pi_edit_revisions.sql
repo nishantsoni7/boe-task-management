@@ -1,8 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270103000000 — One "Edit PI": an approved PI changes only as a new version
+-- 20270115000000 — One "Edit PI": an approved PI changes only as a new version
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- Builds on 20270101000000 (#205): a revised PI is authorized by an Admin and
+-- Builds on 20270113000000 (#205): a revised PI is authorized by an Admin and
 -- put in force only when the assigned Operations reviewer accepts it. Until now
 -- a revision could only be a re-uploaded workbook. This adds the second kind:
 -- a revision EDITED IN THE APP (client, dates, terms, products, quantities,
@@ -46,7 +46,7 @@ do $$
 begin
   if to_regclass('public.order_pi_revision_staged_parses') is null
      or to_regprocedure('public.decide_order_pi_revision_operations(uuid, text, text)') is null then
-    raise exception 'PRECONDITION FAILED: 20270101000000 (revised PI promotes on operations acceptance) is not applied';
+    raise exception 'PRECONDITION FAILED: 20270113000000 (revised PI promotes on operations acceptance) is not applied';
   end if;
 end $$;
 
@@ -68,9 +68,9 @@ alter table public.order_pi_versions add constraint order_pi_versions_proposal_m
                                    and jsonb_typeof(proposal -> 'payload') = 'object')));
 
 comment on column public.order_pi_versions.source_kind is
-  'How this version was proposed: ''workbook'' (a re-uploaded PI file, parsed at Admin approval) or ''edit'' (edited in the app; its complete proposed PI is in `proposal`). 20270103000000.';
+  'How this version was proposed: ''workbook'' (a re-uploaded PI file, parsed at Admin approval) or ''edit'' (edited in the app; its complete proposed PI is in `proposal`). 20270115000000.';
 comment on column public.order_pi_versions.proposal is
-  'An EDIT revision''s complete proposed PI, built and priced server-side: {payload (the parse payload #205 stages), terms, change_summary, base_version_id}. NULL for a workbook revision. Written once. 20270103000000.';
+  'An EDIT revision''s complete proposed PI, built and priced server-side: {payload (the parse payload #205 stages), terms, change_summary, base_version_id}. NULL for a workbook revision. Written once. 20270115000000.';
 
 create or replace function public.order_pi_versions_kind_is_permanent()
 returns trigger
@@ -112,7 +112,7 @@ create table if not exists public.order_pi_edit_drafts (
 );
 
 comment on table public.order_pi_edit_drafts is
-  'An employee''s unsent Edit PI work on an approved PI (20270103000000). Private to its author; one per Order and author. Saving here changes nothing on the PI or the Order; only submitting it (propose_order_pi_edit_revision) creates a pending version.';
+  'An employee''s unsent Edit PI work on an approved PI (20270115000000). Private to its author; one per Order and author. Saving here changes nothing on the PI or the Order; only submitting it (propose_order_pi_edit_revision) creates a pending version.';
 
 alter table public.order_pi_edit_drafts enable row level security;
 revoke all on public.order_pi_edit_drafts from public, anon, authenticated;
@@ -186,7 +186,7 @@ as $$
     false)
 $$;
 comment on function public.order_pi_image_key_is_canonical(uuid, text, text, text, text, text) is
-  'True only for the whole canonical product-image key of this PI (submissions/{pi}/images/{item}/{role}/{position}-{sha256}.{ext}), optionally for exactly this line, role, slot and hash. Used before an edit proposal is stored. 20270103000000.';
+  'True only for the whole canonical product-image key of this PI (submissions/{pi}/images/{item}/{role}/{position}-{sha256}.{ext}), optionally for exactly this line, role, slot and hash. Used before an edit proposal is stored. 20270115000000.';
 
 create or replace function public.propose_order_pi_edit_revision(
   p_order_id  uuid,
@@ -333,7 +333,7 @@ end;
 $$;
 
 comment on function public.propose_order_pi_edit_revision(uuid, uuid, jsonb, text) is
-  'SERVICE ROLE ONLY (the Edit PI route builds and prices the proposal). Records an in-app edit of an approved PI as a PENDING version: same authority, reason and one-open-revision rules as propose_order_pi_revision(). Changes nothing current: the approved PI stays in force until an Admin authorizes and the Operations reviewer accepts the revision (20270101000000). 20270103000000.';
+  'SERVICE ROLE ONLY (the Edit PI route builds and prices the proposal). Records an in-app edit of an approved PI as a PENDING version: same authority, reason and one-open-revision rules as propose_order_pi_revision(). Changes nothing current: the approved PI stays in force until an Admin authorizes and the Operations reviewer accepts the revision (20270113000000). 20270115000000.';
 
 revoke execute on function public.propose_order_pi_edit_revision(uuid, uuid, jsonb, text) from public, anon, authenticated;
 grant  execute on function public.propose_order_pi_edit_revision(uuid, uuid, jsonb, text) to service_role;
@@ -403,7 +403,7 @@ end;
 $$;
 
 comment on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) is
-  'SERVICE ROLE ONLY. The terms half of Edit PI on a PI that is not yet an Order, written under the processing lease after the parse writer''s own editor check. Refuses a PI that is an Order. 20270103000000.';
+  'SERVICE ROLE ONLY. The terms half of Edit PI on a PI that is not yet an Order, written under the processing lease after the parse writer''s own editor check. Refuses a PI that is an Order. 20270115000000.';
 revoke execute on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) from public, anon, authenticated;
 grant  execute on function public.apply_order_submission_pi_edit_terms(uuid, uuid, jsonb, uuid, text) to service_role;
 
@@ -471,7 +471,7 @@ create table if not exists public.order_pi_version_contents (
   captured_at timestamptz not null default now()
 );
 comment on table public.order_pi_version_contents is
-  'The complete content (header, commercial figures, terms, product lines and pictures) of a PI version at the moment a later version replaced it — captured when #205 snapshots it, before the replacement is written. Read through order_pi_version_detail(). Never edited. 20270103000000.';
+  'The complete content (header, commercial figures, terms, product lines and pictures) of a PI version at the moment a later version replaced it — captured when #205 snapshots it, before the replacement is written. Read through order_pi_version_detail(). Never edited. 20270115000000.';
 alter table public.order_pi_version_contents enable row level security;
 revoke all on public.order_pi_version_contents from public, anon, authenticated;
 
@@ -584,7 +584,7 @@ begin
 end;
 $$;
 comment on function public.order_pi_version_detail(uuid) is
-  'What one PI version contained, for anybody who may open its Order: {source: proposal | live | captured | snapshot | staged | none, content}. Read-only. 20270103000000.';
+  'What one PI version contained, for anybody who may open its Order: {source: proposal | live | captured | snapshot | staged | none, content}. Read-only. 20270115000000.';
 revoke execute on function public.order_pi_version_detail(uuid) from public, anon;
 grant  execute on function public.order_pi_version_detail(uuid) to authenticated;
 

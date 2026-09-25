@@ -316,7 +316,7 @@ export function OperationsHandoffDecisionModal({
    */
   realigning?: boolean
   /**
-   * The Design Files / Client PO sent with this PI (20261231000000 §11e):
+   * The Design Files / Client PO sent with this PI (20270112000000 §11e):
    * accepting the version accepts them too. Said in the dialog so nobody
    * accepts files they were not shown.
    */

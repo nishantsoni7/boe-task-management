@@ -414,13 +414,13 @@ describe('no Order fact is stated twice', () => {
     assert.ok(body.indexOf('className="order-products"') < body.indexOf('PAYMENT_SECTION_TITLE'))
     // ONE line is allowed to name the advance above the products: the attention
     // strip's figure-free "Production blocked: advance below 40% — see Payment"
-    // (20270104000000). Its figures are in the Payment section.
+    // (20270116000000). Its figures are in the Payment section.
     const above = body.slice(0, body.indexOf('className="order-products"'))
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
       // …and the same words as the reason Accept for production is disabled.
       .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
       // …and two figure-free yes/no answers: is the Order on hold, so the
-      // reviewer's "Align production again" is offered (20270104000000 §4d).
+      // reviewer's "Align production again" is offered (20270116000000 §4d).
       .replace('heldForAdvance={!!advance?.hold}', '')
       .replace('const operationsRealignOffered = !!advance?.hold', '')
       // …and who may align a held Order again: the current reviewer, or an
@@ -668,7 +668,7 @@ describe('every supporting record opens over the Order, not in another module', 
     assert.equal(/router\.push|href=/.test(fn), false)
   })
 
-  test('A PI VERSION\'S PDF IS A FILE HAND-OFF TOO (20270104000000)', () => {
+  test('A PI VERSION\'S PDF IS A FILE HAND-OFF TOO (20270116000000)', () => {
     // Rendered by the server from that version's own details. The browser is
     // handed a PDF document in a new tab — never an app page.
     const fn = page.slice(page.indexOf('const openVersionPdf'), page.indexOf('const viewEvidence'))

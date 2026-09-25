@@ -260,14 +260,14 @@ export function OrderDocumentsPanel({
   onOpenFile?: (f: PersistedDocumentFile) => void
   /** A file that could not be opened, said once under the rows. */
   fileError?: string | null
-  /** The operations reviewer's control on a staged revision (20270101000000). */
+  /** The operations reviewer's control on a staged revision (20270113000000). */
   onReviewRevision?: () => void
   /** An admin's decision on a revision still pending Admin. */
   onApproveRevision?: (version: PiVersionView) => void
   onRejectRevision?: (version: PiVersionView) => void
   /** Opens the proposed workbook through the page's signer. */
   onOpenProposal?: (version: PiVersionView) => void
-  /** The admin who approved the proposal is no longer active (20270101000000 §6b). */
+  /** The admin who approved the proposal is no longer active (20270113000000 §6b). */
   revisionApproverInactive?: boolean
   /** An active admin's recovery control, with its page-owned confirm step. */
   reapprove?: {
@@ -280,7 +280,7 @@ export function OrderDocumentsPanel({
   }
   /**
    * Opens a PI version's PDF, rendered from that version's own details
-   * (20270104000000) — a file hand-off, like the workbook's. Absent: the row
+   * (20270116000000) — a file hand-off, like the workbook's. Absent: the row
    * offers only the uploaded workbook.
    */
   onOpenPdf?: (versionId: string, download: boolean) => void
@@ -343,7 +343,7 @@ export function OrderDocumentsPanel({
                       <p className="order-doc-change-line"><strong>With:</strong> {piChange.stage.owner} · <strong>Next:</strong> {piChange.stage.next}</p>
                     )}
                     <p className="order-doc-change-line order-doc-change-muted">
-                      {/* In force at the Admin's approval (20270104000000); only a
+                      {/* In force at the Admin's approval (20270116000000); only a
                           revision #205 staged before that waits for Operations. */}
                       {mainPi.kind === 'ready' ? `V${mainPi.version.versionNumber}` : 'The current PI'}{' '}
                       {p.status === 'pending'
@@ -477,7 +477,7 @@ export function OrderDocumentsPanel({
                   </button>
                 )}
                 {mainPi.version.editedInApp ? (
-                  /* EDITED IN THE APP (20270103000000): this version has no
+                  /* EDITED IN THE APP (20270115000000): this version has no
                      workbook of its own, and the original upload is V1's file,
                      never this one's. Its details are the PI; show them there. */
                   <button
@@ -729,7 +729,7 @@ export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
  *
  * NOTHING ONCE THE VERSION IS ACCEPTED. The strip stops naming the review, so
  * these go with it; withdrawing an acceptance is a rare move and sits in the
- * header's overflow. THE ONE EXCEPTION (20270104000000): an accepted version
+ * header's overflow. THE ONE EXCEPTION (20270116000000): an accepted version
  * whose Order was put on hold because its advance fell below 40% offers
  * "Align production again" — the same decision, against the same acceptance —
  * disabled with its reason until the Order is ready. It is offered to whoever
@@ -749,7 +749,7 @@ export function OperationsReviewActions({
   onCannotAccept: () => void
   /**
    * Why accepting cannot align production now (the 40% advance on the amended
-   * value, 20270104000000). The button says so instead of failing on press;
+   * value, 20270116000000). The button says so instead of failing on press;
    * the database refuses it either way. "Cannot accept" is never blocked.
    */
   acceptBlockedReason?: string | null
@@ -1057,7 +1057,7 @@ export function PiHistoryModal({
                   Uploaded by {v.uploadedBy} · {v.uploadedAt}
                   {v.decisionLine ? ` · ${v.decisionLine}` : ''}
                 </div>
-                {/* THE OPERATIONS DECISION (20270101000000): who accepted — or
+                {/* THE OPERATIONS DECISION (20270113000000): who accepted — or
                     rejected — this version for production, when, and why. */}
                 {v.operationsLine && (
                   <div className="order-history-meta">

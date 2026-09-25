@@ -229,22 +229,22 @@ describe('the migration itself', () => {
         lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
           .split('\n').map(line => line.replace(/--.*$/, '')).join('\n'))
 
-      // ONE NAMED EXCEPTION, and only its one statement: 20261231000000 hangs an
+      // ONE NAMED EXCEPTION, and only its one statement: 20270112000000 hangs an
       // AFTER trigger on order_submissions so the PI's own decisions (approve →
       // Order created; request changes; reject) carry the Design Files /
       // Client PO sent with it. The trigger writes ONLY order_document_* rows;
       // with it removed, the file must still neither reshape nor write any
       // submission table, which is what the loop below then checks.
-      const checked = file === '20261231000000_order_document_submissions.sql'
+      const checked = file === '20270112000000_order_document_submissions.sql'
         ? text
             .replace(/drop\s+trigger\s+if\s+exists\s+order_submissions_carry_initial_documents\s+on\s+public\.order_submissions\s*;/i, '')
             .replace(/create\s+trigger\s+order_submissions_carry_initial_documents\s+after\s+update\s+of\s+status\s*,\s*order_id\s+on\s+public\.order_submissions/i, '')
-        // A SECOND NAMED EXCEPTION (20270104000000 §4c): an AFTER trigger on
+        // A SECOND NAMED EXCEPTION (20270116000000 §4c): an AFTER trigger on
         // order_submissions that copies a reserved Order number into
         // order_reserved_number_ledger, so the number outlives its draft. It
         // writes ONLY the ledger; with its two statements removed the file must
         // still neither reshape nor write any submission table.
-        : file === '20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
+        : file === '20270116000000_order_pi_revision_in_force_at_admin_approval.sql'
           ? text
               .replace(/drop\s+trigger\s+if\s+exists\s+order_submissions_record_reserved_number\s+on\s+public\.order_submissions\s*;/i, '')
               .replace(/create\s+trigger\s+order_submissions_record_reserved_number\s+after\s+insert\s+or\s+update\s+of\s+reserved_order_number\s+or\s+delete\s+on\s+public\.order_submissions/i, '')

@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ADMIN AMENDMENT — behavioural assertions for 20260927000000, as the chain
--- through 20270104000000 leaves it
+-- through 20270116000000 leaves it
 --
 -- One transaction, ending in ROLLBACK. Needs fixture rows, so run it against a
 -- scratch database, never production. (The read-only posture checks are the
@@ -12,7 +12,7 @@
 --     without granted_by (NOT NULL since 20260660) — so it failed before its
 --     first assertion everywhere. It now creates its own people (ids 0ad0…),
 --     acts as them through request.jwt.claims, and grants with granted_by.
---   * THE RULE. 20270103000000 made a PI that is APPROVED AND IN FORCE ON AN
+--   * THE RULE. 20270115000000 made a PI that is APPROVED AND IN FORCE ON AN
 --     ORDER change only as a new version (Edit PI → an Admin approves it).
 --     The billing door therefore refuses an approved PI for everybody, admin
 --     included (ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION), and changes
@@ -129,7 +129,7 @@ begin
   end if;
 
   -- ═══ A. AN APPROVED PI IN FORCE ON AN ORDER CHANGES ONLY AS A VERSION ═════
-  -- Admin included, reason or not (20270103000000).
+  -- Admin included, reason or not (20270115000000).
   set local role authenticated;
   perform pg_temp.act(u_admin);
   begin
@@ -271,7 +271,7 @@ begin
   -- ═══ I. A REFUSED EDIT SUPERSEDES NO DOCUMENT ═══════════════════════════
   -- A ready generated document of the Order stays current: nothing about the
   -- approved PI changed. (A new version supersedes documents when an Admin
-  -- approves it — 20270104000000, proved by its own suite.)
+  -- approves it — 20270116000000, proved by its own suite.)
   insert into public.order_document_versions
     (order_id, version, status, excel_path, pdf_path, excel_sha256, pdf_sha256, completed_at)
   values (k_order, 1, 'ready',

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270102000000 — A PI Draft is numbered when it becomes an Order, carries its
+-- 20270114000000 — A PI Draft is numbered when it becomes an Order, carries its
 --                  own internal reference until then, and asks for one of three
 --                  reasons below the standard payment.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -90,7 +90,7 @@ alter table public.order_submissions
   check (draft_reference ~ '^PID-[0-9]{5,}$');
 
 comment on column public.order_submissions.draft_reference is
-  'The PI Draft''s own internal reference (PID-00001 …), assigned at creation from order_submission_draft_reference_seq and never changed. NOT an Order number and never becomes one: the Confirmed Order number is allocated only when the PI is approved (20270102000000). URLs and payment allocations keep using the row id.';
+  'The PI Draft''s own internal reference (PID-00001 …), assigned at creation from order_submission_draft_reference_seq and never changed. NOT an Order number and never becomes one: the Confirmed Order number is allocated only when the PI is approved (20270114000000). URLs and payment allocations keep using the row id.';
 
 create or replace function public.order_submissions_draft_reference_immutable()
 returns trigger
@@ -122,7 +122,7 @@ alter table public.order_submissions
   alter column reservation_required set default false;
 
 comment on column public.order_submissions.reservation_required is
-  'HISTORICAL. TRUE for drafts created between 20261009000000 and 20270102000000, which reserved a Confirmed Order number when their workbook was first parsed; FALSE otherwise. Since 20270102000000 it decides nothing: a new draft reserves no number, and an Order takes a held reservation when there is one and the next number from the cycle when there is not. Never written by hand.';
+  'HISTORICAL. TRUE for drafts created between 20261009000000 and 20270114000000, which reserved a Confirmed Order number when their workbook was first parsed; FALSE otherwise. Since 20270114000000 it decides nothing: a new draft reserves no number, and an Order takes a held reservation when there is one and the next number from the cycle when there is not. Never written by hand.';
 
 -- The automatic reservation. Dropped, not neutered: a trigger that exists and
 -- does nothing is one a later re-emission could silently re-arm.
@@ -145,7 +145,7 @@ end;
 $$;
 
 comment on function public.reserve_order_number_for_submission(uuid) is
-  'RETIRED by 20270102000000. Always refuses: an Order number is allocated only when a PI is approved. Existing reservations are untouched and still used by their Orders.';
+  'RETIRED by 20270114000000. Always refuses: an Order number is allocated only when a PI is approved. Existing reservations are untouched and still used by their Orders.';
 
 -- The submit gate: nothing left to ask about numbers. Kept as a function (the
 -- trigger stays attached) so its history reads in one place.
@@ -155,14 +155,14 @@ language plpgsql
 set search_path = public, pg_temp
 as $$
 begin
-  -- 20270102000000: a PI no longer needs a reserved Order number to be sent for
+  -- 20270114000000: a PI no longer needs a reserved Order number to be sent for
   -- review. The number is allocated when the PI is approved.
   return new;
 end;
 $$;
 
 comment on function public.order_submissions_require_revised_pi_on_submit() is
-  'Since 20270102000000 asks nothing: sending a PI for review needs no Order number. Kept attached so the trigger''s history reads in one place.';
+  'Since 20270114000000 asks nothing: sending a PI for review needs no Order number. Kept attached so the trigger''s history reads in one place.';
 
 -- assign_order_display_number(): 20261124000000 §1 verbatim, minus the one
 -- refusal that treated "reservation required but none held" as an error. That
@@ -218,7 +218,7 @@ end;
 $$;
 
 comment on function public.assign_order_display_number() is
-  'BEFORE INSERT trigger on public.orders. An Order created from a PI holding a reservation takes that reserved number (refusing a reservation already consumed or a number already in use, and requiring the approval context); every other Order — including every PI Draft created since 20270102000000 — takes the next number from the shared cycle under its FOR UPDATE lock, inside the creating transaction.';
+  'BEFORE INSERT trigger on public.orders. An Order created from a PI holding a reservation takes that reserved number (refusing a reservation already consumed or a number already in use, and requiring the approval context); every other Order — including every PI Draft created since 20270114000000 — takes the next number from the shared cycle under its FOR UPDATE lock, inside the creating transaction.';
 
 
 -- ─── 3. The three reasons ──────────────────────────────────────────────────
@@ -234,7 +234,7 @@ alter table public.order_submissions
          or advance_exception_reason_code in ('against_client_po', 'sample_order', 'other'));
 
 comment on column public.order_submissions.advance_exception_reason_code is
-  'Which of the three reasons the submitter chose for asking to proceed below the standard payment: against_client_po, sample_order or other (whose remark is in advance_exception_reason). Written only by submitting. NULL on the standard route and on requests made before 20270102000000. A category is not a decision: the exception stays pending until an admin decides it.';
+  'Which of the three reasons the submitter chose for asking to proceed below the standard payment: against_client_po, sample_order or other (whose remark is in advance_exception_reason). Written only by submitting. NULL on the standard route and on requests made before 20270114000000. A category is not a decision: the exception stays pending until an admin decides it.';
 
 -- The one definition of the three, shared by the door and the tests.
 create or replace function public.order_submission_exception_reason_code(p_reason text)
@@ -254,7 +254,7 @@ as $$
 $$;
 
 comment on function public.order_submission_exception_reason_code(text) is
-  'The category of a below-standard-payment reason: ''Against client PO'' → against_client_po, ''Sample order'' → sample_order, ''Other: <remark of 10+ characters>'' → other; anything else → NULL (refused by the submission door). 20270102000000.';
+  'The category of a below-standard-payment reason: ''Against client PO'' → against_client_po, ''Sample order'' → sample_order, ''Other: <remark of 10+ characters>'' → other; anything else → NULL (refused by the submission door). 20270114000000.';
 
 -- Written only in the same statement that submits the PI.
 create or replace function public.order_submissions_guard_exception_reason_code()
@@ -290,14 +290,14 @@ create trigger order_submissions_guard_exception_reason_code
 -- places. The administrator decides later, against whatever is verified then.
 -- approve_pi_advance_exception() now re-reads the verified money allocated to
 -- the PI at that moment, under the PI's row lock, and records it exactly; the
--- Order's 40% gate (20270104000000) holds the PI's own exception to it.
+-- Order's 40% gate (20270116000000) holds the PI's own exception to it.
 -- Re-emitted from 20260921000000 §4b with only that stamp and its log added.
 
 alter table public.order_submissions
   add column if not exists advance_exception_decided_verified numeric
     check (advance_exception_decided_verified is null or advance_exception_decided_verified >= 0);
 comment on column public.order_submissions.advance_exception_decided_verified is
-  'The verified payment allocated to this PI, in rupees, at the moment an administrator approved its below-40% exception (approve_pi_advance_exception). Exact, not rounded. NULL before a decision and on decisions made before 20270102000000. 20270102000000 (review R7).';
+  'The verified payment allocated to this PI, in rupees, at the moment an administrator approved its below-40% exception (approve_pi_advance_exception). Exact, not rounded. NULL before a decision and on decisions made before 20270114000000. 20270114000000 (review R7).';
 
 create or replace function public.approve_pi_advance_exception(p_submission_id uuid)
 returns jsonb
@@ -391,14 +391,14 @@ comment on function public.approve_pi_advance_exception(uuid) is
 
 -- ─── 3b. Design Files and Client PO attached BEFORE the PI is sent ─────────
 --
--- 20261231000000 lets the owner attach both inside the "Submit for approval"
+-- 20270112000000 lets the owner attach both inside the "Submit for approval"
 -- dialog, uploading under pi-documents/{pi}/{document submission}/… and
 -- recording them when the PI is sent. This lets the same files be attached
 -- EARLIER — right after the upload, or any time while the PI is a draft or
 -- returned — so they are not lost between visits.
 --
 -- NO NEW STORAGE RULE. The objects go to exactly the key the dialog uses, under
--- the id they will later be sent with; 20261231000000's insert policy already
+-- the id they will later be sent with; 20270112000000's insert policy already
 -- allows that (owner, draft or returned, not yet sent) and seals it on send.
 -- This table only remembers what each staged object is called and which
 -- category it is, because the object key is a UUID. It decides nothing: the
@@ -425,7 +425,7 @@ create index if not exists order_pi_staged_documents_pi_idx
   on public.order_pi_staged_documents (pi_submission_id, staging_submission_id);
 
 comment on table public.order_pi_staged_documents is
-  'Design Files and Client PO attached to a PI Draft before it is sent (20270102000000): the name and category of each object already uploaded under pi-documents/{pi}/{staging id}/…. Sending the PI through submit_pi_for_review_with_documents with that staging id records them; this table never makes a file current and never approves anything.';
+  'Design Files and Client PO attached to a PI Draft before it is sent (20270114000000): the name and category of each object already uploaded under pi-documents/{pi}/{staging id}/…. Sending the PI through submit_pi_for_review_with_documents with that staging id records them; this table never makes a file current and never approves anything.';
 
 alter table public.order_pi_staged_documents enable row level security;
 revoke all on public.order_pi_staged_documents from public, anon, authenticated;
@@ -611,7 +611,7 @@ begin
         using errcode = 'P0001';
     end if;
 
-    -- ── 20270102000000: ONE OF THREE REASONS, and nothing else ──
+    -- ── 20270114000000: ONE OF THREE REASONS, and nothing else ──
     --
     -- The reason is one of the three the screen offers, stated in words the
     -- admin reads as they are: 'Against client PO', 'Sample order', or
@@ -971,7 +971,7 @@ revoke execute on function public.submit_pi_for_review_internal(uuid, text, text
   from public, anon, authenticated, service_role;
 
 comment on function public.submit_pi_for_review_internal(uuid, text, text, text, text) is
-  'The implementation of submitting a PI for review. The route is chosen on ATTACHED payment (verified + awaiting verification): at or above 40% no reason is owed; below it — zero included — one of three reasons is mandatory (Against client PO, Sample order, Other: remark; 20270102000000) and the existing reduced-payment exception is raised as PENDING. Payment Terms are optional on both routes since 20270102000000. A submitter who holds orders.approve_order also has the PI DECISION stamped (20261224000000); that settles no advance exception. Gates no Order. Executable by no role: reached only by its door, as the definer.';
+  'The implementation of submitting a PI for review. The route is chosen on ATTACHED payment (verified + awaiting verification): at or above 40% no reason is owed; below it — zero included — one of three reasons is mandatory (Against client PO, Sample order, Other: remark; 20270114000000) and the existing reduced-payment exception is raised as PENDING. Payment Terms are optional on both routes since 20270114000000. A submitter who holds orders.approve_order also has the PI DECISION stamped (20261224000000); that settles no advance exception. Gates no Order. Executable by no role: reached only by its door, as the definer.';
 
 
 -- ─── 5. Assertions ─────────────────────────────────────────────────────────
