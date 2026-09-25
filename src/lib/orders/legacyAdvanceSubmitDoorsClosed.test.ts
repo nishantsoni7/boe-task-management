@@ -30,7 +30,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270106000000_legacy_advance_submit_doors_closed.sql'
+const NAME = '20270106000000_order_submission_legacy_advance_doors_closed.sql'
 const MIGRATION = read(`supabase/migrations/${NAME}`)
 const SQL = stripSql(MIGRATION)
 const PREVIOUS = read('supabase/migrations/20260917000000_order_submission_advance_amount.sql')

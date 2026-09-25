@@ -517,7 +517,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
       // clearing the decision basis). No table, policy or row is touched.
-      '20270106000000_legacy_advance_submit_doors_closed.sql',
+      '20270106000000_order_submission_legacy_advance_doors_closed.sql',
     ])
 
     const previous = lf(readFileSync(

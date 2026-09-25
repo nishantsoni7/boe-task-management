@@ -634,7 +634,7 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
       // And the legacy advance submit doors closing (20270106000000): one
       // REVOKE and one restated internal, held by its own suite.
-      if (f === 'supabase/migrations/20270106000000_legacy_advance_submit_doors_closed.sql') continue
+      if (f === 'supabase/migrations/20270106000000_order_submission_legacy_advance_doors_closed.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1292,7 +1292,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270106000000_legacy_advance_submit_doors_closed.sql'
+  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270106000000_order_submission_legacy_advance_doors_closed.sql'
 
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
