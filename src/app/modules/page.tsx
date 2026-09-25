@@ -40,6 +40,9 @@ import {
   ModuleDragHandle,
   useModuleReorderPointer,
 } from './ModuleOrderControls'
+import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
+import { AnnouncementBanner } from '@/components/announcements/AnnouncementBanner'
+import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -546,6 +549,18 @@ export default function BoeOsHomePage() {
   const canEditOrder = !viewMode && !!userId && canonicalModules.length > 1
   const editingOrder = orderEdit.working !== null
 
+  // ── Announcements ───────────────────────────────────────────────────────────
+  //
+  // The SIGNED-IN person's own, as the database decides them (named recipient,
+  // live today in India). Not while previewing somebody else: acknowledging
+  // there would record the admin's own read, so the preview shows neither the
+  // banner nor the bell. Never blocks the launcher — the banner appears when
+  // the list lands.
+  const showAnnouncements = !viewMode && !!userId
+  const { data: myAnnouncements = [] } = useMyAnnouncements(userId, showAnnouncements)
+  const unreadAnnouncements = showAnnouncements ? myAnnouncements.filter(a => !a.read_at).length : 0
+  const showBell = showAnnouncements && !editingOrder
+
   // Whether Save has anything to write: the working arrangement against what is
   // stored, resolved through the same function the grid renders with, so "no
   // change" means the same thing to the button as it does to the screen.
@@ -695,11 +710,14 @@ export default function BoeOsHomePage() {
           // and the cards line up on the same two edges instead of the cards
           // stretching across a 1920px screen. Three ~383px cards fill it.
           contentMaxWidth={1180}
+          announcementUnread={unreadAnnouncements}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
-          // only its position on the screen is different.
-          headerActions={canEditOrder ? (
-            <ModuleOrderBar
+          // only its position on the screen is different. The announcements
+          // bell sits first in the same slot, so it is at the top of the page
+          // at every width; it is hidden while arranging cards.
+          headerActions={showBell || canEditOrder ? (<>{showBell && <AnnouncementBell announcements={myAnnouncements} />}
+            {canEditOrder && <ModuleOrderBar
               editing={editingOrder}
               saving={orderEdit.saving}
               error={orderEdit.error}
@@ -708,9 +726,15 @@ export default function BoeOsHomePage() {
               onSave={handleSaveOrder}
               onCancel={() => dispatchOrderEdit({ type: 'cancel' })}
               onReset={() => dispatchOrderEdit({ type: 'reset', canonical: canonicalKeys })}
-            />
-          ) : null}
+            />}
+          </>) : null}
         >
+          {/* ── Announcements, first on the page ──
+              Unacknowledged ones only; one compact block however many there
+              are. Gone once each is acknowledged, on every device. Not while
+              arranging cards. */}
+          {showAnnouncements && !editingOrder && <AnnouncementBanner announcements={myAnnouncements} />}
+
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
               that it must be reachable in one tap from the first screen after
