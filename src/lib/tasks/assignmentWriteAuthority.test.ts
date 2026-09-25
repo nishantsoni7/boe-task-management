@@ -840,7 +840,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // The permission resolvers are not for anon: EXECUTE on six resolver
       // functions revoked from PUBLIC and anon, restated for authenticated
       // and service_role. No body, policy, table, search_path or row changes.
-      '20270107000000_permission_resolvers_are_not_for_anon.sql',
+      '20270119000000_permission_resolvers_are_not_for_anon.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

@@ -517,7 +517,7 @@ describe('34/35. no regression into suppressed territory', () => {
       // The permission resolvers are not for anon: EXECUTE on six resolver
       // functions revoked from PUBLIC and anon, restated for authenticated
       // and service_role. No body, policy, table, search_path or row changes.
-      '20270107000000_permission_resolvers_are_not_for_anon.sql',
+      '20270119000000_permission_resolvers_are_not_for_anon.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

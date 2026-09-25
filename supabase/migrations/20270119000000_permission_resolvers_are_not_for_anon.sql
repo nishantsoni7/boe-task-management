@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270107000000 — the permission resolvers are not for anon
+-- 20270119000000 — the permission resolvers are not for anon
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- SIX REVOKES AND SIX RESTATED GRANTS. A signed-out caller can no longer ask
@@ -22,7 +22,7 @@
 -- probe it through resolve_permission() and has_permission(). That is who can
 -- approve payments, who administers Orders and so on. It is not a write, but
 -- it is exactly the reconnaissance a targeted attack starts with, and nothing
--- that runs signed out needs it. (Found by the 20270106000000 audit, #212.)
+-- that runs signed out needs it. (Found by the 20270118000000 audit, #212.)
 --
 -- ── WHY REVOKING IT BREAKS NOTHING ─────────────────────────────────────────
 --
@@ -47,11 +47,11 @@
 --
 -- ── WHAT THIS DOES NOT TOUCH ───────────────────────────────────────────────
 --
--- No body, no search_path (20270106000000 does that), no policy, no table and
+-- No body, no search_path (20270118000000 does that), no policy, no table and
 -- no DML. Only these six ACLs change.
 --
--- ORDERING. Numbered after 20270106000000 (#212); independent of it and of #211.
--- 20270106000000's apply-time assertion requires `authenticated` to keep
+-- ORDERING. Numbered after 20270118000000 (#212); independent of it and of #211.
+-- 20270118000000's apply-time assertion requires `authenticated` to keep
 -- EXECUTE on all six, and this file keeps it.
 --
 -- DEPENDENCIES: 20260634 (has_permission), 20260660 / 20260661 / 20260662
@@ -151,7 +151,7 @@ begin
   end if;
 
   -- AND NO INVOKER FUNCTION anon MAY CALL WOULD NOW HIT THE REVOKE ON ITS WAY
-  -- THROUGH. The same shape as the defect 20270105000000 fixed.
+  -- THROUGH. The same shape as the defect 20270117000000 fixed.
   select string_agg(p.oid::regprocedure::text, ', ')
     into v_bad
     from pg_proc p
