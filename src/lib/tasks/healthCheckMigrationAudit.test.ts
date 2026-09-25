@@ -725,6 +725,10 @@ describe('the migration is placed correctly', () => {
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
       '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

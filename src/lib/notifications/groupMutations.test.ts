@@ -519,6 +519,10 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
       '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

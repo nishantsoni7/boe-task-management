@@ -643,6 +643,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20270103000000_order_submission_pi_edit_revisions.sql') continue
       // A revised PI is in force at Admin approval (20270104000000).
       if (f === 'supabase/migrations/20270104000000_order_pi_revision_in_force_at_admin_approval.sql') continue
+      // Announcements is a second named exception: additive tables of its own,
+      // held by src/lib/announcementsMigration.test.ts and its SQL suite.
+      if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1452,6 +1455,40 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/safeReturnPath.test.ts',
   ])
 
+  /**
+   * Announcements (20270110000000): an admin-published notice for chosen
+   * employees, a banner and bell on the Modules page, /announcements, and a
+   * Control Center section. New files, the two shells that gain one nav entry
+   * each, the two migration inventories not already named in ALLOWED_TESTS, and
+   * two launcher suites whose "Edit order sits in headerActions" pin now reads
+   * the gate from the control itself. No Finance or Orders file, no
+   * permission. modules/page.tsx and globals.css are already in
+   * ALLOWED_EXISTING.
+   */
+  const ALLOWED_ANNOUNCEMENTS = new Set([
+    'supabase/migrations/20270110000000_announcements.sql',
+    'src/lib/announcements.ts',
+    'src/lib/announcements.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/hooks/queries/useAnnouncements.ts',
+    'src/components/announcements/AnnouncementBanner.tsx',
+    'src/components/announcements/AnnouncementBell.tsx',
+    'src/components/announcements/announcements.render.test.tsx',
+    'src/app/announcements/AnnouncementsShell.tsx',
+    'src/app/announcements/page.tsx',
+    'src/app/announcements/[id]/page.tsx',
+    'src/app/admin/control-center/announcements/page.tsx',
+    'src/app/admin/control-center/announcements/AnnouncementForm.tsx',
+    // The shared member picker gains an optional label and selection line;
+    // Module Visibility keeps its own wording as the default.
+    'src/app/admin/control-center/ModuleMemberPicker.tsx',
+    'src/components/layout/BoeOsLayout.tsx',
+    'src/components/layout/ControlCenterLayout.tsx',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/app/modules/moduleCardSurface.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1485,6 +1522,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== REVISED_PI_PROMOTION_MIGRATION &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
+    !ALLOWED_ANNOUNCEMENTS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1682,7 +1720,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270102000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -1713,6 +1751,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.ok(runner.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
       assert.ok(runner.includes('is not disposable'), 'and refuses a database holding real Orders')
       const assertions = read('supabase/tests/order_document_submissions_assertions.sql')
+      assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
+    }
+    // The announcements runner is held to the same rule: a named, marked
+    // disposable stack, nothing linked, assertions that roll back.
+    if (added.some(f => /announcements/.test(f))) {
+      const ann = read('supabase/tests/run_announcements_local.sh')
+      assert.equal(/--linked|project-ref|supabase db push|\.env/.test(ann), false,
+        'the announcements runner must not be able to reach a linked project')
+      assert.ok(ann.includes('BOE_DB_CONTAINER'), 'it targets a named local container')
+      assert.ok(ann.includes('boe-disposable-announcements'), 'and refuses a database nobody marked disposable')
+      const assertions = read('supabase/tests/announcements_assertions.sql')
       assert.ok(assertions.trimEnd().endsWith('rollback;'), 'its assertions discard every fixture')
     }
     // Order 0524's runner is held to the same rule as the handoff's.
@@ -1780,7 +1829,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
         || ALLOWED_REVISED_PI_PROMOTION.has(file)
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
-        || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file),
+        || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
+        || ALLOWED_ANNOUNCEMENTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

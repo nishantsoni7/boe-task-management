@@ -340,7 +340,10 @@ describe('normal mode', () => {
     // The control moved into the app header's action slot, so the permission
     // gate it has always sat behind is now expressed as the ternary that
     // supplies that slot. Same flag, same component, same absence in View As.
-    assert.match(LAUNCHER, /headerActions=\{canEditOrder \? \(/)
+    // The slot now also holds the Announcements bell (20270110000000), so the
+    // gate is the `canEditOrder &&` directly on the control itself.
+    assert.match(LAUNCHER, /headerActions=\{showBell \|\| canEditOrder \? \(/)
+    assert.match(LAUNCHER, /\{canEditOrder && <ModuleOrderBar/)
   })
 
   test('the whole card is still the button', () => {
@@ -611,6 +614,10 @@ describe('the database half of this verification', () => {
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
       '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
     ], 'every migration after this one is accounted for')
   })
 })

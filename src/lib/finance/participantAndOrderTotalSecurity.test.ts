@@ -1029,6 +1029,10 @@ describe('the applied migrations are frozen', () => {
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
       '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
     ])
   })
 
@@ -1309,6 +1313,10 @@ describe('the applied migrations are frozen', () => {
       '20270102000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270103000000_order_submission_pi_edit_revisions.sql',
       '20270104000000_order_pi_revision_in_force_at_admin_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
