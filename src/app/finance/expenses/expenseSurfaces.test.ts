@@ -1318,6 +1318,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/tasks/TaskImageViewer.tsx',
     'src/lib/tasks/taskGallery.ts',
     'src/lib/tasks/taskGallery.test.ts',
+    // Resized, session-signed thumbnails for the grid.
+    'src/lib/tasks/attachmentStorage.ts',
   ])
 
   const isUnexpectedFile = (f: string) =>

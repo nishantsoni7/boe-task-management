@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { Download, ImageOff, Paperclip } from 'lucide-react'
 import { colors, font } from '@/lib/tokens'
 import { mapWithConcurrency } from '@/lib/attachment-utils'
-import { signAttachmentUrls, SIGNED_URL_TTL_SECONDS } from '@/lib/tasks/attachmentStorage'
+import { signAttachmentThumbnailUrls, signAttachmentUrls, SIGNED_URL_TTL_SECONDS } from '@/lib/tasks/attachmentStorage'
 import {
   buildZip, galleryCountLabel, signatureIsStale, uniqueZipNames, zipFileNameForTask,
   type GalleryEntry,
@@ -45,6 +45,11 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
   const [urls, setUrls]           = useState<ReadonlyMap<string, string>>(() => new Map())
   const [signed, setSigned]       = useState(false)
   const [broken, setBroken]       = useState<ReadonlySet<string>>(() => new Set())
+  // Resized copies for the grid only. The viewer, the single download and the
+  // ZIP always use the originals in `urls`. A path whose thumbnail fails to
+  // load is remembered and shown from the original instead.
+  const [thumbs, setThumbs]       = useState<ReadonlyMap<string, string>>(() => new Map())
+  const [thumbFailed, setThumbFailed] = useState<ReadonlySet<string>>(() => new Set())
   const [viewerAt, setViewerAt]   = useState<number | null>(null)
   const [zip, setZip]             = useState<ZipState>({ status: 'idle' })
   const signedAt = useRef(0)
@@ -57,12 +62,17 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
     return map
   }, [supabase, images])
 
-  // One batched signing round trip for every thumbnail.
+  // Originals in one batched round trip; resized thumbnails alongside. The
+  // grid waits for both (a few hundred ms of signing) so it never starts
+  // pulling a 750 KB original that a 20 KB thumbnail was about to replace.
   useEffect(() => {
     if (images.length === 0) return
     let active = true
-    sign()
-      .then(map => { if (active) { setUrls(map); setSigned(true) } })
+    Promise.all([
+      sign(),
+      signAttachmentThumbnailUrls(supabase, images.map(i => i.path)).catch(() => new Map<string, string>()),
+    ])
+      .then(([map, thumbMap]) => { if (active) { setUrls(map); setThumbs(thumbMap); setSigned(true) } })
       .catch(() => { if (active) setSigned(true) })
     return () => { active = false }
     // imagePathsKey, not `images`: a re-render with the same paths must not re-sign.
@@ -164,6 +174,7 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
         <ul className="boe-task-gallery-grid">
           {images.map((img, i) => {
             const url = urls.get(img.path)
+            const thumb = thumbFailed.has(img.path) ? undefined : thumbs.get(img.path)
             const unavailable = (signed && !url) || broken.has(img.path)
             return (
               <li key={img.key}>
@@ -175,16 +186,20 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
                   aria-label={`Open image ${i + 1} of ${images.length}: ${img.fileName}`}
                 >
                   <span className="boe-task-gallery-frame">
-                    {url && !unavailable ? (
+                    {signed && url && !unavailable ? (
                       // Arbitrary user uploads at unknown sizes from a signed
                       // storage URL — see the note in AttachmentPreviewModal.
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={url}
+                        key={thumb ? 'thumb' : 'original'}
+                        src={thumb ?? url}
                         alt=""
                         loading="lazy"
                         decoding="async"
-                        onError={() => setBroken(prev => new Set(prev).add(img.path))}
+                        data-thumbnail={thumb ? 'resized' : 'original'}
+                        onError={() => thumb
+                          ? setThumbFailed(prev => new Set(prev).add(img.path))
+                          : setBroken(prev => new Set(prev).add(img.path))}
                       />
                     ) : unavailable ? (
                       <ImageOff size={18} color={colors.muted} aria-hidden />
