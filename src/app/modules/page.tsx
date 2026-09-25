@@ -570,10 +570,6 @@ export default function BoeOsHomePage() {
   const essentialModules = modules.filter(mod => isEssential(mod.key))
   const moreModules = modules.filter(mod => !isEssential(mod.key))
 
-  // The greeting addresses the SIGNED-IN person — the same profile the account
-  // menu names — even while previewing somebody else's launcher.
-  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? ''
-
   // EDIT ORDER ARRANGES THE WHOLE LIST, exactly as it did before the sections.
   // While arranging, every card is drawn in one grid in its stored position, so
   // any card can move to any place and every move is visible. Outside edit mode
@@ -816,22 +812,16 @@ export default function BoeOsHomePage() {
               Edit mode shows every module in one grid, as before the
               sections: each tile turns dashed and gains a handle. */}
           <div className={styles.launcher}>
-            {/* ── Greeting and the latest announcement ──
-                One compact row on a desktop, stacked on a phone with the
-                announcement directly above the modules. Steps aside while
-                arranging, as the quick action does. */}
-            {!editingOrder && (
-              <div className={`${styles.welcome}${showAnnouncements ? '' : ` ${styles.welcomeSolo}`}`}>
-                <div className={styles.greeting}>
-                  <p className={styles.eyebrow}>Your BOE workspace</p>
-                  <h2 className={styles.greetingTitle}>
-                    {greetingFor(new Date())}{firstName ? `, ${firstName}` : ''}
-                  </h2>
-                  <p className={styles.greetingLead}>Choose a module to continue.</p>
-                </div>
-                {/* Not while previewing somebody else: their announcements
-                    are theirs, and reading this one would be the admin's. */}
-                {showAnnouncements && <LatestAnnouncement announcements={myAnnouncements} />}
+            {/* ── The latest announcement ──
+                One compact full-width row under the header, above the
+                modules, and only when there is one to show: with none, the
+                row is not rendered at all. Not while previewing somebody else
+                — their announcements are theirs, and reading one would be the
+                admin's — and not while arranging, as the quick action. Hidden
+                on a phone, which opens straight on the modules. */}
+            {!editingOrder && showAnnouncements && myAnnouncements.length > 0 && (
+              <div className={styles.announcementRow}>
+                <LatestAnnouncement latest={myAnnouncements[0]} />
               </div>
             )}
 
@@ -921,9 +911,7 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
   const className = [
     styles.card,
     variant === 'essential' ? styles.cardEssential : styles.cardCompact,
-    // An Essentials tile with unread notifications takes the warm tint and the
-    // red edge. A real count, never decoration: at zero it looks like the rest.
-    variant === 'essential' && hasNotif ? styles.cardAttention : '',
+    // No tinted fill for unread notifications: the badge on the icon says it.
     editing ? styles.cardEditing : '',
     dragging ? styles.cardDragging : '',
   ].filter(Boolean).join(' ')
@@ -970,39 +958,17 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
   )
 }
 
-// ── Greeting and the latest announcement ──────────────────────────────────────
+// ── The latest announcement ───────────────────────────────────────────────────
 
-/** "Good morning" before noon, "Good afternoon" until 5 pm, then "Good evening". */
-function greetingFor(at: Date): string {
-  const hour = at.getHours()
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
-}
-
-// THE LATEST ANNOUNCEMENT THIS PERSON MAY SEE, from the list the page already
-// holds. `useMyAnnouncements` is the Announcements module's own query — the
-// one the bell reads — and public.my_announcements() decides who sees what and
-// returns the newest first (starts_on, then created_at, descending). So this
-// is the first row: no second query, no ordering or permission logic here.
+// THE LATEST ANNOUNCEMENT THIS PERSON MAY SEE: the first row of the list the
+// page already holds. `useMyAnnouncements` is the Announcements module's own
+// query — the one the bell reads — and public.my_announcements() decides who
+// sees what and returns the newest first (starts_on, then created_at,
+// descending). No second query, no ordering or permission logic here.
 //
 // Read or unread, the latest is shown; an unread one is labelled as new. With
-// nothing to show, the slot is one quiet line rather than an empty panel.
-function LatestAnnouncement({ announcements }: { announcements: MyAnnouncement[] }) {
-  const latest = announcements[0]
-
-  if (!latest) {
-    return (
-      <div className={`${styles.announcement} ${styles.announcementEmpty}`}>
-        <span className={styles.announcementIcon} aria-hidden="true">
-          <Megaphone size={16} strokeWidth={1.9} />
-        </span>
-        <span className={styles.announcementEmptyText}>No announcements right now.</span>
-        <Link href="/announcements" className={styles.announcementAll}>View all</Link>
-      </div>
-    )
-  }
-
+// nothing to show the page renders no row at all, so there is no empty state.
+function LatestAnnouncement({ latest }: { latest: MyAnnouncement }) {
   const isNew = !latest.read_at
   return (
     <Link
