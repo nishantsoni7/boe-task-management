@@ -23,7 +23,8 @@ const SUB = '11111111-1111-4111-8111-111111111111'
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const pic = (id: string) => `submissions/${SUB}/images/${id}/representative/0-x.png`
+// A canonical key (src/lib/orders/piImageKey.ts): the whole shape, hash included.
+const pic = (id: string) => `submissions/${SUB}/images/${id}/representative/0-${'a'.repeat(64)}.png`
 
 describe('a REPLACED version prints what was in force, with its own codes', () => {
   const detail = {
@@ -37,6 +38,8 @@ describe('a REPLACED version prints what was in force, with its own codes', () =
       images: [
         { item_id: A, role: 'representative', storage_path: pic(A) },
         { item_id: B, role: 'representative', storage_path: 'submissions/someone-else/images/x.png' },
+        // A key that STARTS with this PI's folder and climbs out of it (review H1).
+        { item_id: C, role: 'representative', storage_path: `submissions/${SUB}/images/../../../finance-proofs/other-client.png` },
       ],
       codes: { [A]: 1, [B]: 2 },
     },
@@ -58,6 +61,7 @@ describe('a REPLACED version prints what was in force, with its own codes', () =
     if (!src.ok) return
     assert.equal(src.pictureByItem.get(A), pic(A))
     assert.equal(src.pictureByItem.has(B), false)
+    assert.equal(src.pictureByItem.has(C), false, 'a traversal key is never read')
   })
 })
 

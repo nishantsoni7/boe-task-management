@@ -19,6 +19,7 @@
 import type { OrderPiRow } from './orderPiHandoff'
 import type { PersistedItem } from './draftsView'
 import { formatOrderProductCode } from './orderProductCodes'
+import { isCanonicalPiImageKey } from './piImageKey'
 
 export type PiVersionDetail = { source: string; content: unknown }
 
@@ -69,8 +70,10 @@ function pictures(rows: Row[], submissionId: string): Map<string, string> {
     if (m.role !== 'representative') continue
     const item = str(m.item_id)
     const path = str(m.storage_path)
-    // Only a key inside THIS PI's own folder is ever read.
-    if (!item || !path || out.has(item) || !path.startsWith(`submissions/${submissionId}/`)) continue
+    // Only THIS PI's canonical key for THIS line is ever read — the whole key,
+    // never a prefix: a "../" inside one would reach any object in any bucket.
+    if (!item || !path || out.has(item)
+        || !isCanonicalPiImageKey(path, { submissionId, itemId: item, role: 'representative' })) continue
     out.set(item, path)
   }
   return out

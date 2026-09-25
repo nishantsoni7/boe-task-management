@@ -15,6 +15,7 @@ import {
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
 import { piVersionPdfFilename, piVersionPdfSource, type PiVersionDetail } from '@/lib/orders/piVersionPdf'
+import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 
 // ── ONE PI VERSION AS A PDF (20270104000000) ─────────────────────────────────
 //
@@ -59,9 +60,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const submissionId = order.source_order_submission_id
 
   const { data: versionRow } = await authClient
-    .from('order_pi_versions').select('id, order_id, version_number, status').eq('id', versionId).maybeSingle()
-  const version = versionRow as { order_id: string; version_number: number; status: string } | null
-  if (!version || version.order_id !== orderId) return fail(404, 'NOT_FOUND', 'This PI version could not be found.')
+    .from('order_pi_versions').select('id, order_id, submission_id, version_number, status').eq('id', versionId).maybeSingle()
+  const version = versionRow as { order_id: string; submission_id: string; version_number: number; status: string } | null
+  // THIS Order's version of THIS Order's PI — pictures are then read only
+  // from that PI's own image folder.
+  if (!version || version.order_id !== orderId || version.submission_id !== submissionId) {
+    return fail(404, 'NOT_FOUND', 'This PI version could not be found.')
+  }
 
   const detail = await authClient.rpc('order_pi_version_detail', { p_version_id: versionId })
   if (detail.error || !detail.data) return fail(404, 'NOT_FOUND', 'This PI version could not be found.')
@@ -97,7 +102,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     pictureByItem = new Map()
     for (const m of (imageRows ?? []) as { item_id: string; role: string; storage_path: string }[]) {
       if (m.role === 'representative' && !pictureByItem.has(m.item_id)
-          && m.storage_path.startsWith(`submissions/${submissionId}/`)) pictureByItem.set(m.item_id, m.storage_path)
+          && isCanonicalPiImageKey(m.storage_path, { submissionId, itemId: m.item_id, role: 'representative' })) {
+        pictureByItem.set(m.item_id, m.storage_path)
+      }
     }
     productCodes = liveCodes
   } else {
@@ -127,7 +134,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
       loadImage: async (row) => {
         const path = pathByRow.get(row)
-        if (!path) return null
+        // The last check before a privileged read: the whole canonical key of
+        // this PI, whatever path produced it.
+        if (!path || !isCanonicalPiImageKey(path, { submissionId })) return null
         const { data, error } = await service.storage.from(ORDER_FILES_BUCKET).download(path)
         if (error || !data) return null
         return new Uint8Array(await data.arrayBuffer())

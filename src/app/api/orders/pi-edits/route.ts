@@ -30,8 +30,11 @@ import {
   type PiEditState,
 } from '@/lib/orders/piEdit'
 import { describePiEditFailure, loadPiContent } from '@/lib/orders/piEditServer'
+import { isCanonicalPiImageKey, proposalImagesAreCanonical } from '@/lib/orders/piImageKey'
 
 export const runtime = 'nodejs'
+
+const PHOTO_NOT_THIS_PI = 'A product photo does not belong to this PI.'
 
 const fail = (status: number, code: string, message: string, extra: Record<string, unknown> = {}) =>
   NextResponse.json({ error: code, message, ...extra }, { status })
@@ -72,11 +75,15 @@ export async function POST(req: NextRequest) {
   if (!loaded.ok) return fail(loaded.status, loaded.code, loaded.message)
   const { content, row } = loaded
 
-  // Photos may only point at this PI's own image keys.
+  // Photos may only name this PI's own canonical image keys — the whole key,
+  // not a prefix (src/lib/orders/piImageKey.ts), for the picture's own bytes.
   for (const item of edit.items) {
-    if (item.photo?.kind === 'new'
-        && !item.photo.storage_path.startsWith(`submissions/${submissionId}/images/`)) {
-      return fail(400, 'EDIT_INVALID', 'A product photo does not belong to this PI.')
+    const photo = item.photo
+    if (photo?.kind === 'new' && !isCanonicalPiImageKey(photo.storage_path, {
+      submissionId, role: 'representative', position: 0,
+      sha256: typeof photo.sha256 === 'string' ? photo.sha256 : '',
+    })) {
+      return fail(400, 'EDIT_INVALID', PHOTO_NOT_THIS_PI)
     }
   }
 
@@ -109,6 +116,10 @@ export async function POST(req: NextRequest) {
     })
     const diff = diffPi(normalizePi(content), normalizeProposal(proposal))
     if (!editChangesSomething(diff)) return fail(400, 'NO_CHANGES', 'Nothing has been changed yet.')
+    // Every picture the version will name: this PI's key, for that very line.
+    if (!proposalImagesAreCanonical(proposal.payload, submissionId)) {
+      return fail(400, 'EDIT_INVALID', PHOTO_NOT_THIS_PI)
+    }
 
     const { data, error } = await service.rpc('propose_order_pi_edit_revision', {
       p_order_id: orderId, p_actor_id: user.id, p_proposal: proposal, p_reason: reason,

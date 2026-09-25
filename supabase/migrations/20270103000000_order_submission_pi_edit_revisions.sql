@@ -154,6 +154,40 @@ create policy order_pi_edit_drafts_own on public.order_pi_edit_drafts
 
 -- ─── 3. Proposing an edit revision ────────────────────────────────────────
 
+-- A product-image key a proposal may name: the WHOLE canonical key of this PI
+-- (order_submission_item_images_path_shape), for the line, role, slot and
+-- bytes it claims — never a prefix. A key such as
+-- 'submissions/<pi>/images/../../../<anything>' starts with the right folder,
+-- and the storage client's URL would resolve its dot segments into any object
+-- of any bucket when the version's PDF reads its pictures with the service
+-- role. TS twin: src/lib/orders/piImageKey.ts.
+create or replace function public.order_pi_image_key_is_canonical(
+  p_submission_id uuid,
+  p_path          text,
+  p_item_id       text default null,
+  p_role          text default null,
+  p_position      text default null,
+  p_sha256        text default null
+)
+returns boolean
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select coalesce(
+    p_submission_id is not null and p_path is not null
+    and p_path ~ ('^submissions/' || p_submission_id::text
+                  || '/images/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+                  || '/(representative|customization)/(0|[1-9][0-9]{0,3})-[0-9a-f]{64}[.](png|jpg|jpeg|webp)$')
+    and (p_item_id  is null or split_part(p_path, '/', 4) = lower(p_item_id))
+    and (p_role     is null or split_part(p_path, '/', 5) = p_role)
+    and (p_position is null or split_part(split_part(p_path, '/', 6), '-', 1) = p_position)
+    and (p_sha256   is null or split_part(split_part(split_part(p_path, '/', 6), '-', 2), '.', 1) = lower(p_sha256)),
+    false)
+$$;
+comment on function public.order_pi_image_key_is_canonical(uuid, text, text, text, text, text) is
+  'True only for the whole canonical product-image key of this PI (submissions/{pi}/images/{item}/{role}/{position}-{sha256}.{ext}), optionally for exactly this line, role, slot and hash. Used before an edit proposal is stored. 20270103000000.';
+
 create or replace function public.propose_order_pi_edit_revision(
   p_order_id  uuid,
   p_actor_id  uuid,
@@ -227,6 +261,25 @@ begin
   end if;
   if v_sub.deletion_claim_token is not null then
     raise exception 'ORDER_SUBMISSION_DELETION_CLAIMED: this PI is reserved for deletion' using errcode = '55P03';
+  end if;
+
+  -- Every picture the version will name is this PI's canonical key for its
+  -- own line, and a stored object: nothing else can ever be read back into
+  -- this version's PDF (order_pi_image_key_is_canonical).
+  if jsonb_typeof(coalesce(v_payload -> 'item_images', '[]'::jsonb)) <> 'array'
+     or exists (
+       select 1 from jsonb_array_elements(coalesce(v_payload -> 'item_images', '[]'::jsonb)) m
+        where jsonb_typeof(m) <> 'object'
+           or not public.order_pi_image_key_is_canonical(v_sub.id, m ->> 'storage_path',
+                    m ->> 'item_id', m ->> 'role', m ->> 'position', m ->> 'sha256')
+           or not exists (select 1 from storage.objects so
+                           where so.bucket_id = 'order-files' and so.name = m ->> 'storage_path'))
+     or exists (
+       select 1 from jsonb_array_elements(v_payload -> 'items') i
+        where jsonb_typeof(i) <> 'object'
+           or (i ->> 'image_storage_path' is not null
+               and not public.order_pi_image_key_is_canonical(v_sub.id, i ->> 'image_storage_path', i ->> 'id'))) then
+    raise exception 'ORDER_PI_EDIT_INVALID: a product photo does not belong to this PI' using errcode = 'P0001';
   end if;
 
   -- The proposal keeps the ORIGINAL uploaded workbook as its source: an edit
