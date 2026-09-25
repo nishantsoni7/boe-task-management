@@ -258,9 +258,16 @@ describe('related-record links follow the reader\'s own access', () => {
       'starts closed, and a failed read offers no link')
   })
 
-  test('the Order records its Finance payment and its approved PI as real links, still gated', () => {
+  test('the Order keeps its payments\' Finance record behind Finance entry, and links its approved PI', () => {
+    // #197 replaced the `Finance record` link with an in-dialog View details;
+    // the gate it carried is the same capability, now passed to the dialog.
+    // orderDetailArchitecture / orderFinanceSwitchAndDetailGate pin that the
+    // link itself stays gone.
     const order = code(ORDER_DETAIL)
-    assert.ok(/financeCaps\.canAccessFinanceModule && \(\s*<Link\s+href=\{financePaymentHref\(p\.id\)\}/.test(order))
+    assert.ok(order.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
+    assert.ok(order.includes('canViewDetails={mayViewPaymentDetails}'))
+    const workspace = code('src/app/orders/[id]/OrderWorkspace.tsx')
+    assert.ok(workspace.includes('{canViewDetails && ('), 'no View details control without Finance entry')
     const sections = code('src/app/orders/drafts/[submissionId]/piDetailSections.tsx')
     assert.ok(sections.includes('{href && !acting ? ('), 'the approved Order is a link when the reader can see it')
     assert.ok(!sections.includes('ExternalLink'), 'and no longer promises a new tab it never opened')

@@ -6,7 +6,7 @@ import {
   Eye, X,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
@@ -306,6 +306,10 @@ function UserMenu({
   onSignOut: () => void
 }) {
   const router = useRouter()
+  // On Account Settings itself, the menu that leads there is the active
+  // destination: the trigger takes the sidebar's active-item surface and the
+  // item is marked as the current page. Everywhere else nothing changes.
+  const onAccountPage = usePathname() === '/account'
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const itemRefs   = useRef<(HTMLButtonElement | null)[]>([])
@@ -332,11 +336,12 @@ function UserMenu({
     if (open) itemRefs.current[0]?.focus()
   }, [open])
 
-  const items: { label: string; icon: React.ReactNode; onSelect: () => void }[] = [
+  const items: { label: string; icon: React.ReactNode; onSelect: () => void; current?: boolean }[] = [
     ...(accountSettingsHref ? [{
       label: 'Account Settings',
       icon: <Settings size={14} strokeWidth={1.8} />,
       onSelect: () => { setOpen(false); router.push(accountSettingsHref) },
+      current: onAccountPage,
     }] : []),
     {
       label: 'Sign Out',
@@ -354,6 +359,7 @@ function UserMenu({
   }
 
   const subtitle = employeeSubtitle(profile)
+  const triggerRestBg = open ? 'rgba(0,0,0,0.05)' : onAccountPage ? '#FFFFFF' : 'transparent'
 
   return (
     <div style={{ position: 'relative' }}>
@@ -367,12 +373,13 @@ function UserMenu({
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
           padding: '8px 10px', borderRadius: '8px',
-          background: open ? 'rgba(0,0,0,0.05)' : 'transparent',
+          background: triggerRestBg,
+          boxShadow: onAccountPage && !open ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
           border: 'none', cursor: 'pointer', textAlign: 'left',
           font: 'inherit', transition: 'background 0.12s',
         }}
         onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = open ? 'rgba(0,0,0,0.05)' : 'transparent' }}
+        onMouseLeave={e => { e.currentTarget.style.background = triggerRestBg }}
       >
         <span style={{
           width: 30, height: 30, borderRadius: '8px',
@@ -437,6 +444,7 @@ function UserMenu({
                 ref={el => { itemRefs.current[index] = el }}
                 type="button"
                 role="menuitem"
+                aria-current={item.current ? 'page' : undefined}
                 onClick={item.onSelect}
                 onKeyDown={e => onItemKeyDown(e, index)}
                 style={{
@@ -444,12 +452,14 @@ function UserMenu({
                   padding: '8px 10px', borderRadius: '7px',
                   background: 'none', border: 'none', cursor: 'pointer',
                   textAlign: 'left', font: 'inherit',
-                  fontSize: '12.5px', color: '#3D4455',
+                  fontSize: '12.5px',
+                  color: item.current ? '#111318' : '#3D4455',
+                  fontWeight: item.current ? 600 : 400,
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
               >
-                <span style={{ color: '#8C94A6', display: 'flex' }}>{item.icon}</span>
+                <span style={{ color: item.current ? '#DC1F2E' : '#8C94A6', display: 'flex' }}>{item.icon}</span>
                 {item.label}
               </button>
             ))}
