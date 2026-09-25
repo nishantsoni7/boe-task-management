@@ -466,8 +466,12 @@ describe('the page has ONE header, and it is the app header', () => {
   })
 
   test('Edit order is still offered, now in the header’s action slot', () => {
-    assert.match(LAYOUT_CALL, /headerActions=\{canEditOrder \? \(/,
-      'the control is passed to the header, still behind the same permission')
+    // The slot also holds the Announcements bell (20270110000000), so the
+    // permission is the `canEditOrder &&` on the control itself.
+    assert.match(LAYOUT_CALL, /headerActions=\{showBell \|\| canEditOrder \? \(/,
+      'the control is passed to the header')
+    assert.match(LAYOUT_CALL, /\{canEditOrder && <ModuleOrderBar/,
+      'still behind the same permission')
     assert.match(LAYOUT_CALL, /<ModuleOrderBar/, 'and it is the same component')
     assert.ok(CONTROLS_SRC.includes('Edit order'), 'whose normal-mode label is unchanged')
     // The shell renders it in the slot every other layout in the app uses.
