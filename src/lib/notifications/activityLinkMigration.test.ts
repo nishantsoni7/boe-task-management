@@ -384,7 +384,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // private PDF bucket and its storage policies. Purely additive; it reads
       // public.users and touches nothing this suite is about.
       '20270110000000_announcements.sql',
-      '20261231000000_order_document_submissions.sql',
+      '20270112000000_order_document_submissions.sql',
     ])
   })
 

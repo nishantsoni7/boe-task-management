@@ -1,7 +1,7 @@
 'use client'
 
 // DESIGN FILES AND CLIENT PO ON A CONFIRMED ORDER: what is accepted, what is
-// proposed, and the one decision the reader owns (20261231000000).
+// proposed, and the one decision the reader owns (20270112000000).
 //
 // PAGE-OWNED, like OrderStatusWorkspace.tsx beside it. The hook reads and
 // writes through the reader's own session; every write is an RPC that

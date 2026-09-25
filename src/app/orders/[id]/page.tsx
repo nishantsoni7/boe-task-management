@@ -846,7 +846,7 @@ export default function OrderDetailPage() {
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
 
-  // ── Design Files and Client PO submissions (20261231000000) ──
+  // ── Design Files and Client PO submissions (20270112000000) ──
   // Read beside the Order; the dialogs hold which category or submission is open.
   const docSubs = useOrderDocumentSubmissions(supabase, id, order?.source_order_submission_id ?? null)
   const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
@@ -1679,7 +1679,7 @@ export default function OrderDetailPage() {
       // appended the activity entries — so the handoff and the Order row are
       // re-read, and the trail with the row. Nothing else changed.
       // Accepting the version also accepts the documents sent with the PI
-      // (20261231000000 §11e), so those are re-read with it.
+      // (20270112000000 §11e), so those are re-read with it.
       await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
     } finally {
       setHandoffBusy(false)
@@ -3067,7 +3067,7 @@ export default function OrderDetailPage() {
         />
       )}
 
-      {/* ── Design Files and Client PO submissions (20261231000000) ── */}
+      {/* ── Design Files and Client PO submissions (20270112000000) ── */}
       {docUpload && (
         <SubmitDocumentsModal
           orderNumber={order.display_number}

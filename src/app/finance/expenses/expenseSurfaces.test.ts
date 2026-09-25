@@ -632,9 +632,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order 0524's one-time handoff (20261230000000) is the one named
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
-      // Order document submissions (20261231000000): Design Files and Client PO
+      // Order document submissions (20270112000000): Design Files and Client PO
       // reviewed by admin then operations, held by its own suites.
-      if (f === 'supabase/migrations/20261231000000_order_document_submissions.sql') continue
+      if (f === 'supabase/migrations/20270112000000_order_document_submissions.sql') continue
       // Announcements is a second named exception: additive tables of its own,
       // held by src/lib/announcementsMigration.test.ts and its SQL suite.
       if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
@@ -1250,7 +1250,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * rule. Every file is named; no migration, no permission, no money.
    */
   /**
-   * ORDER DOCUMENT SUBMISSIONS (20261231000000).
+   * ORDER DOCUMENT SUBMISSIONS (20270112000000).
    *
    * Design Files and Client PO on a Confirmed Order: Sales submits, an admin
    * approves or rejects, the assigned operations reviewer accepts or rejects,
@@ -1301,7 +1301,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20261231000000_order_document_submissions.sql'
+  const DOCUMENT_SUBMISSIONS_MIGRATION = 'supabase/migrations/20270112000000_order_document_submissions.sql'
 
   const ALLOWED_OPERATIONS_REVIEW_ON_STRIP = new Set([
     'src/app/orders/[id]/page.tsx',

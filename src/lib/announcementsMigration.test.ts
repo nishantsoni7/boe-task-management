@@ -77,9 +77,14 @@ describe('the migration', () => {
     assert.doesNotMatch(SQL, /notification_type/)
   })
 
-  test('it is the newest migration file', () => {
+  test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270110000000_announcements.sql')
+    assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
+    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // Order document submissions (#202), renumbered after this applied
+      // migration. It touches nothing Announcements creates.
+      '20270112000000_order_document_submissions.sql',
+    ])
   })
 })
 

@@ -1,7 +1,7 @@
 'use client'
 
 // DESIGN FILES AND CLIENT PO, ATTACHED WHERE THE PI IS SENT FOR APPROVAL
-// (20261231000000 §11).
+// (20270112000000 §11).
 //
 // The hook holds what the submitter chose; the picker draws it inside the
 // existing "Submit for approval" dialog. Sending uploads each new file under
@@ -123,7 +123,7 @@ export function usePiSupportingDocuments(supabase: SupabaseClient, piSubmissionI
       p_files: files,
       p_acknowledged_missing: input.acknowledgedMissing,
     })
-    // ROLLOUT SAFETY. If this code reaches a database without 20261231000000,
+    // ROLLOUT SAFETY. If this code reaches a database without 20270112000000,
     // the wrapper does not exist (PostgREST PGRST202). A PI with nothing
     // attached is then sent exactly as before, through the one door; one WITH
     // attachments is refused in words rather than sent without them.

@@ -220,7 +220,7 @@ export function OrderDocumentsPanel({
   mainPiUpload?: React.ReactNode
   /** Where the version in force stands with Operations, in words. */
   mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
-  /** Accepted order-level files, the pending proposal and any rejection (20261231000000). */
+  /** Accepted order-level files, the pending proposal and any rejection (20270112000000). */
   designSubmissions?: React.ReactNode
   designUpload?: React.ReactNode
   clientPoSubmissions?: React.ReactNode

@@ -314,7 +314,7 @@ describe('the read side excludes system types too', () => {
     // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
     // row to ONE person, once. It installs no trigger, function or job.
     const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
-    // An eighth, 20261231000000, is Order document submissions (Design Files
+    // An eighth, 20270112000000, is Order document submissions (Design Files
     // and Client PO). Four RPCs a PERSON presses (create, the admin decision,
     // the operations decision, sending a PI with its documents) act as that
     // signed-in person; the three that notify tell the next owner inside that
@@ -324,7 +324,7 @@ describe('the read side excludes system types too', () => {
     // submitter their documents were accepted with it, and Control Center
     // REASSIGNING the reviewer (on order_operations_reviewers) tells the new
     // reviewer what now waits on them. Orders types only; nothing scheduled.
-    const DOCUMENT_SUBMISSIONS = '20261231000000_order_document_submissions.sql'
+    const DOCUMENT_SUBMISSIONS = '20270112000000_order_document_submissions.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',

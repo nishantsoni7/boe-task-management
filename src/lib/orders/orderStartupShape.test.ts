@@ -390,7 +390,7 @@ describe('no Order screen waits more than it must', () => {
       // calls it. A SAVE rather than a load, so the startup path is unchanged
       // and the wait test above still requires exactly three — what changed is
       // that this screen now makes one fewer write of any kind.
-      // PI_DETAIL 28 -> 27 (20261231000000). The submit call MOVED, it did not
+      // PI_DETAIL 28 -> 27 (20270112000000). The submit call MOVED, it did not
       // go: submit_pi_for_review is now reached through the supporting-
       // documents sender (src/components/orders/PiSupportingDocuments.tsx),
       // which uploads the attached Design Files / Client PO and calls

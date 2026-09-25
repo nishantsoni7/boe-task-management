@@ -2485,7 +2485,7 @@ body {
 }
 
 /* ── Documents: Main PI left (about 40%), Design Files and Client PO stacked
-   right (about 60%) — 20261231000000. Inside the narrower columns each
+   right (about 60%) — 20270112000000. Inside the narrower columns each
    subsection stacks its title, body and actions rather than sharing a row. */
 .order-docs-grid {
   display: grid;

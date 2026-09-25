@@ -1,4 +1,4 @@
--- ORDER DOCUMENT SUBMISSIONS assertions (20261231000000)
+-- ORDER DOCUMENT SUBMISSIONS assertions (20270112000000)
 -- ===========================================================================
 -- Validates, through the REAL doors (submit / admin decision / operations
 -- decision) on a disposable local stack:
