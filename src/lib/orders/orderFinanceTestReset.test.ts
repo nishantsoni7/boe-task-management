@@ -556,7 +556,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // ... SET search_path on ninety-five existing functions, and
       // get_or_create_quotation_no is revoked from client roles. Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270106000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270118000000_security_definer_search_path_pins_pg_temp.sql',
     ])
   })
 

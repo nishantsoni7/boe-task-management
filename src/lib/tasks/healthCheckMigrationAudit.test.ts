@@ -724,7 +724,7 @@ describe('the migration is placed correctly', () => {
       // ... SET search_path on ninety-five existing functions, and
       // get_or_create_quotation_no is revoked from client roles. Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270106000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270118000000_security_definer_search_path_pins_pg_temp.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

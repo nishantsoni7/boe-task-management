@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270106000000 — every SECURITY DEFINER in public pins pg_temp last
+-- 20270118000000 — every SECURITY DEFINER in public pins pg_temp last
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- AN AUDIT, AND ITS MECHANICAL RESULT. A SELECT-only read of production on
@@ -18,7 +18,7 @@
 -- DEFINER runs as postgres; a caller who can create a temporary table named,
 -- say, `users` would have it resolve ahead of public.users inside that
 -- definer. Naming pg_temp LAST closes that. It is the pairing the schema's
--- newer definers already use (20261010000000, 20261231000000 onwards).
+-- newer definers already use (20261010000000, 20270112000000 onwards).
 --
 -- The seven with NO search_path are worse: they resolve names through the
 -- CALLER's search_path, whatever it is. Six of them are permission resolvers
@@ -43,7 +43,7 @@
 --     qualified. `public, pg_temp` is what their callers already resolve.
 --   * No grant changes, except the one finding below.
 --
--- assert_order_amender() is on the list too. 20270105000000 (#211) makes the
+-- assert_order_amender() is on the list too. 20270117000000 (#211) makes the
 -- same change to it. The ALTER is idempotent, so the two files apply in either
 -- order.
 --
@@ -71,7 +71,7 @@
 -- Four TRIGGER functions also carry an anon grant. That is harmless, because a
 -- trigger function cannot be called directly.
 --
--- ORDERING. Numbered after 20270105000000 (#211) and after the five unapplied
+-- ORDERING. Numbered after 20270117000000 (#211) and after the five unapplied
 -- Orders migrations of #202 / #205 / #206 / #209. None of those drops or
 -- redefines any function listed here (read 2026-09-25), and every definer they
 -- add already pins pg_temp, so the final schema-wide assertion holds whichever
