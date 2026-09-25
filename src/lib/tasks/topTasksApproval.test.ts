@@ -283,6 +283,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // history row and one notification for ONE pinned Order. No DDL, and it
     // re-emits nothing, so it reaches nothing here.
     '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+    // Announcements (20270110000000): three new tables, their functions, a
+    // private PDF bucket and its storage policies. Purely additive; it reads
+    // public.users and touches nothing this suite is about.
+    '20270110000000_announcements.sql',
+  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
     // Every SECURITY DEFINER in public pins pg_temp last. THIS ONE DOES
     // REACH the completion trigger, deliberately and only this far: it ALTERs
     // cleanup_top_tasks_on_completion()'s search_path from `pg_catalog,

@@ -340,7 +340,10 @@ describe('normal mode', () => {
     // The control moved into the app header's action slot, so the permission
     // gate it has always sat behind is now expressed as the ternary that
     // supplies that slot. Same flag, same component, same absence in View As.
-    assert.match(LAUNCHER, /headerActions=\{canEditOrder \? \(/)
+    // The slot now also holds the Announcements bell (20270110000000), so the
+    // gate is the `canEditOrder &&` directly on the control itself.
+    assert.match(LAUNCHER, /headerActions=\{showBell \|\| canEditOrder \? \(/)
+    assert.match(LAUNCHER, /\{canEditOrder && <ModuleOrderBar/)
   })
 
   test('the whole card is still the button', () => {
@@ -606,6 +609,10 @@ describe('the database half of this verification', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
       // Every SECURITY DEFINER in public pins pg_temp last: ALTER FUNCTION
       // ... SET search_path on ninety-five existing functions, and
       // get_or_create_quotation_no is revoked from client roles. Bodies are not

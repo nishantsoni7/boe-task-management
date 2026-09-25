@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, X } from 'lucide-react'
+import { Home, Megaphone, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
@@ -46,12 +46,17 @@ type BoeOsLayoutProps = {
    * caller that passes nothing gets the full-width shell exactly as before.
    */
   contentMaxWidth?: number
+  /**
+   * Unacknowledged announcements, shown as a count beside the Announcements
+   * entry. Optional: a caller that has not loaded them shows the entry alone.
+   */
+  announcementUnread?: number
   children: React.ReactNode
 }
 
 export function BoeOsLayout({
   profile, title, subtitle, onSignOut, quickActions = [], headerActions = null,
-  contentMaxWidth, children,
+  contentMaxWidth, announcementUnread = 0, children,
 }: BoeOsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
@@ -90,6 +95,17 @@ export function BoeOsLayout({
             icon={<Home size={15} strokeWidth={1.8} />}
             active={pathname === '/modules'}
             onClick={() => navTo('/modules')}
+          />
+          {/* Announcements sits beside Home, not inside a module: a notice
+              from the company is not Task Management's or anybody else's.
+              Every active announcement for this person stays reachable here
+              for its whole window, read or not. */}
+          <OsNavItem
+            label="Announcements"
+            icon={<Megaphone size={15} strokeWidth={1.8} />}
+            active={pathname?.startsWith('/announcements') ?? false}
+            onClick={() => navTo('/announcements')}
+            count={announcementUnread}
           />
           {/* Account Settings is NOT a second nav item here. The launcher
               carried it in this list and again at the foot of the sidebar; now
@@ -176,23 +192,40 @@ export function BoeOsLayout({
 // ── Sidebar nav item ──────────────────────────────────────────────────────────
 
 function OsNavItem({
-  label, icon, active, onClick,
+  label, icon, active, onClick, count = 0,
 }: {
   label: string
   icon: React.ReactNode
   active: boolean
   onClick: () => void
+  /** A red count pill, the one NotificationsNavItem uses. Hidden at zero. */
+  count?: number
 }) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
+      aria-label={count > 0 ? `${label}, ${count} unread` : undefined}
+      aria-current={active ? 'page' : undefined}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
       <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}
+      {count > 0 && (
+        <span
+          aria-hidden="true"
+          style={{
+            marginLeft: 'auto',
+            fontSize: '10px', fontWeight: 700, color: '#fff',
+            background: '#DC1F2E', borderRadius: '999px',
+            padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+          }}
+        >
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
     </button>
   )
 }
