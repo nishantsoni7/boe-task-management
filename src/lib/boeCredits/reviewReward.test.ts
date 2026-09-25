@@ -267,6 +267,10 @@ describe('the file, and where it sits', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // The permission resolvers are not for anon: EXECUTE on six resolver
+      // functions revoked from PUBLIC and anon, restated for authenticated
+      // and service_role. No body, policy, table, search_path or row changes.
+      '20270107000000_permission_resolvers_are_not_for_anon.sql',
     ])
   })
 

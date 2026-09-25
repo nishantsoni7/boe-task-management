@@ -632,6 +632,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Order 0524's one-time handoff (20261230000000) is the one named
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
+      // And the permission resolvers leaving anon (20270107000000): grants
+      // only, held by its own suite.
+      if (f === 'supabase/migrations/20270107000000_permission_resolvers_are_not_for_anon.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1236,6 +1239,30 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
 
   /**
+   * THE PERMISSION RESOLVERS ARE NOT FOR anon (20270107000000).
+   *
+   * One migration of grants and revokes on six functions — no screen, no
+   * rule, no money, no permission-model change — its own suite, and the
+   * one-line inventory pins it moved.
+   */
+  const ALLOWED_RESOLVERS_NOT_FOR_ANON = new Set([
+    'src/lib/permissions/resolversNotForAnon.test.ts',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const RESOLVERS_NOT_FOR_ANON_MIGRATION = 'supabase/migrations/20270107000000_permission_resolvers_are_not_for_anon.sql'
+
+  /**
    * THE OPERATIONS REVIEW DECISION MOVES ONTO THE ATTENTION STRIP.
    *
    * A UI relocation on the Confirmed Order: the Operations review card is
@@ -1291,7 +1318,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
-    f !== ORDER_0524_HANDOFF_MIGRATION
+    !ALLOWED_RESOLVERS_NOT_FOR_ANON.has(f) &&
+    f !== ORDER_0524_HANDOFF_MIGRATION &&
+    f !== RESOLVERS_NOT_FOR_ANON_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -1542,7 +1571,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
-        || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file),
+        || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
+        || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
