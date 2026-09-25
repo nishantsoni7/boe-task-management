@@ -64,6 +64,9 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_workbook_replaced:      'PI workbook replaced',
   order_client_details_amended: 'Client details amended',
   order_schedule_terms_amended: 'Schedule or terms amended',
+  // The 40% advance after alignment (20270104000000 §4d).
+  order_advance_hold_opened:        'Production on hold: advance below 40%',
+  order_advance_exception_approved: 'Production approved below 40% by an administrator',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -75,6 +78,8 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   payment_verified:             'green',
   payment_rejected:             'red',
   order_workbook_replaced:      'amber',
+  order_advance_hold_opened:        'red',
+  order_advance_exception_approved: 'amber',
 }
 
 const text = (value: unknown): string | null =>
@@ -116,6 +121,20 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
         .filter(Boolean).join(' · ') || null
     }
     case 'order_workbook_replaced':
+      return text(p.reason)
+    case 'order_advance_hold_opened': {
+      const why = p.cause === 'payment_changed' ? 'verified payment was reduced'
+        : p.cause === 'pi_revision' ? 'a revised PI raised the value'
+        : "the Order's value was raised"
+      const figures = p.value_known === false
+        ? 'no Order value on record'
+        : typeof p.percent === 'number' || typeof p.percent === 'string'
+          ? `${Number(p.percent).toLocaleString('en-IN', { maximumFractionDigits: 2 })}% verified` : null
+      const short = typeof p.shortfall === 'number' || typeof p.shortfall === 'string'
+        ? `₹${Number(p.shortfall).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} short` : null
+      return [why, figures, short].filter(Boolean).join(' · ')
+    }
+    case 'order_advance_exception_approved':
       return text(p.reason)
     default:
       return describeOperationsHandoffEvent(row.event_type, p)

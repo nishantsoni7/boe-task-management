@@ -542,6 +542,7 @@ export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_handoff_accepted:              'Accepted for production by operations',
   operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
   operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
+  operations_handoff_realigned:             'Operations aligned production again',
 }
 
 export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone> = {
@@ -551,6 +552,7 @@ export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone
   operations_handoff_accepted:              'green',
   operations_handoff_clarification_needed:  'red',
   operations_handoff_acceptance_withdrawn:  'red',
+  operations_handoff_realigned:             'green',
 }
 
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
@@ -580,6 +582,8 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
     case 'operations_handoff_clarification_needed':
     case 'operations_handoff_acceptance_withdrawn':
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null
+    case 'operations_handoff_realigned':
+      return [v, 'after a production hold', text(p.note)].filter(Boolean).join(' · ')
     default:
       return null
   }
@@ -604,6 +608,10 @@ export function describeAlignmentEventReason(payload: Record<string, unknown> | 
       return v ? `${v} flagged for clarification` : 'flagged for clarification'
     case 'operations_handoff_acceptance_withdrawn':
       return v ? `acceptance of ${v} withdrawn` : 'acceptance withdrawn'
+    case 'advance_hold':
+      return 'removed: the verified advance fell below 40%'
+    case 'operations_handoff_realigned':
+      return v ? `${v} aligned again after a production hold` : 'aligned again after a production hold'
     default:
       return p.legacy_order === true ? 'set the old way (no handoff on this Order)' : null
   }

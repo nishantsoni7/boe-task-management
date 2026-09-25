@@ -4,7 +4,8 @@
 //
 // Drawn only when the verified advance is below 40% of the Order's (amended)
 // value. It says the percentage, the rupee shortfall, what is awaiting Finance
-// and what must happen before production can be aligned — and gives an active
+// and what must happen before production can be aligned — and, when an aligned
+// Order fell short and was put on hold, when and why — and gives an active
 // administrator the one explicit exception. The database enforces all of it
 // (orders_alignment_requires_advance); this panel only says so first.
 
@@ -51,6 +52,7 @@ export function AdvanceGatePanel({ readiness, versionNumber, isAdmin, approverNa
     <section aria-label="Advance" role="status" id="order-advance-blocked"
       style={{ border: '1px solid rgba(217,79,79,0.45)', borderRadius: '10px', padding: '12px 14px', background: colors.redTint, display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <strong style={{ fontSize: '13.5px', color: '#991B1B' }}>{view.headline}</strong>
+      {view.hold && <p data-advance-hold style={{ margin: 0, fontSize: '13px', color: colors.primary }}>{view.hold}</p>}
       <p style={{ margin: 0, fontSize: '13px', color: colors.primary }}>
         {view.figures} <strong>{view.shortfall}</strong>
       </p>
@@ -64,7 +66,7 @@ export function AdvanceGatePanel({ readiness, versionNumber, isAdmin, approverNa
       {isAdmin && open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <label style={{ fontSize: '12.5px' }}>
-            Why may production go ahead below 40% for this Order value?
+            Why may production go ahead below 40% for this Order value and PI version?
             <textarea className="boe-input" rows={2} maxLength={1000} value={reason} disabled={busy}
               onChange={e => setReason(e.target.value)} style={{ width: '100%', marginTop: '4px' }} />
           </label>

@@ -418,6 +418,10 @@ describe('no Order fact is stated twice', () => {
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
       // …and the same words as the reason Accept for production is disabled.
       .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
+      // …and two figure-free yes/no answers: is the Order on hold, so the
+      // reviewer's "Align production again" is offered (20270104000000 §4d).
+      .replace('heldForAdvance={!!advance?.hold}', '')
+      .replace('const operationsRealignOffered = !!advance?.hold', '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {

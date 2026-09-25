@@ -335,7 +335,13 @@ describe('the read side excludes system types too', () => {
     // approval. It writes ONE Orders-type row, to the person who proposed the
     // revision, inside that approval (the service-role door the route calls
     // for a verified admin); the reviewer is told by 20261229000000's trigger.
-    // It installs no trigger on notifications and schedules nothing.
+    // The 40% advance after alignment (§4d) adds one more Orders type,
+    // order_update_production: when a PERSON's own write — an admin amending
+    // the value, Finance reversing a payment — leaves an aligned Order short,
+    // that same transaction tells the administrators and the reviewer it is on
+    // hold. Its re-emitted decide_order_operations_handoff() keeps the
+    // reviewer's decision notice. It installs no trigger on notifications and
+    // schedules nothing.
     const REVISION_IN_FORCE = '20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
@@ -352,10 +358,14 @@ describe('the read side excludes system types too', () => {
     {
       const sql = read(join(dir, REVISION_IN_FORCE))
       const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
-      // Sales told the version is in force (the approval), and the reviewer told
-      // an admin approved production below 40% (approve_order_advance_exception,
-      // a person's press). Orders types only.
-      assert.deepEqual(types, ['order_operations_review_decided', 'order_operations_review_requested'], `${REVISION_IN_FORCE}: two Orders-type writes`)
+      // Sales told the version is in force (the approval), the reviewer told an
+      // admin approved production below 40% (approve_order_advance_exception, a
+      // person's press), management told an aligned Order was put on hold (in
+      // the transaction of the person's write that caused it), and the
+      // approver told of the reviewer's decision (decide_order_operations_handoff,
+      // re-emitted). Orders types only.
+      assert.deepEqual(types, ['order_operations_review_decided', 'order_operations_review_requested',
+        'order_update_production', 'order_operations_review_decided'], `${REVISION_IN_FORCE}: four Orders-type writes`)
       for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false)
       assert.ok(/grant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/.test(sql),
         `${REVISION_IN_FORCE}: the admin approval stays service-role, called by the route for a verified admin`)

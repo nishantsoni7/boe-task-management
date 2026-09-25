@@ -342,7 +342,12 @@ export function OrderDocumentsPanel({
                       <p className="order-doc-change-line"><strong>With:</strong> {piChange.stage.owner} · <strong>Next:</strong> {piChange.stage.next}</p>
                     )}
                     <p className="order-doc-change-line order-doc-change-muted">
-                      {mainPi.kind === 'ready' ? `V${mainPi.version.versionNumber}` : 'The current PI'} stays current until Operations accepts {version}.
+                      {/* In force at the Admin's approval (20270104000000); only a
+                          revision #205 staged before that waits for Operations. */}
+                      {mainPi.kind === 'ready' ? `V${mainPi.version.versionNumber}` : 'The current PI'}{' '}
+                      {p.status === 'pending'
+                        ? `stays current until an Admin approves ${version}. Once approved, ${version} is in force at once; Operations then reviews it for production.`
+                        : `stays current until Operations accepts ${version}.`}
                     </p>
                     {p.editedInApp && (
                       <p className="order-doc-change-line order-doc-change-muted">
@@ -723,9 +728,14 @@ export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
  *
  * NOTHING ONCE THE VERSION IS ACCEPTED. The strip stops naming the review, so
  * these go with it; withdrawing an acceptance is a rare move and sits in the
- * header's overflow.
+ * header's overflow. THE ONE EXCEPTION (20270104000000): an accepted version
+ * whose Order was put on hold because its advance fell below 40% offers
+ * "Align production again" — the same decision, against the same acceptance —
+ * disabled with its reason until the Order is ready.
  */
-export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, acceptBlockedReason = null }: {
+export const ALIGN_AGAIN_LABEL = 'Align production again'
+
+export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, acceptBlockedReason = null, heldForAdvance = false }: {
   view: OperationsHandoffView | null
   busy: boolean
   onAccept: () => void
@@ -736,7 +746,18 @@ export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, 
    * the database refuses it either way. "Cannot accept" is never blocked.
    */
   acceptBlockedReason?: string | null
+  /** The Order carries an open production hold (readiness.hold). */
+  heldForAdvance?: boolean
 }) {
+  if (view && view.kind === 'recorded' && view.status === 'accepted' && heldForAdvance && view.actions.withdraw) {
+    return (
+      <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept}
+        disabled={busy || !!acceptBlockedReason} title={acceptBlockedReason ?? undefined}
+        aria-describedby={acceptBlockedReason ? 'order-advance-blocked' : undefined}>
+        {ALIGN_AGAIN_LABEL}
+      </button>
+    )
+  }
   if (!view || view.kind !== 'recorded' || view.status === 'accepted') return null
   if (!view.actions.accept && !view.actions.cannotAccept) return null
   return (

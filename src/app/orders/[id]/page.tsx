@@ -159,7 +159,7 @@ import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCu
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
-import { advanceAttentionLabel, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
+import { advanceAttentionLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -1637,7 +1637,8 @@ export default function OrderDetailPage() {
       if (review) { setLineReview({ version, review }); return }
       if (!ok) {
         const b = body as { error?: string; message?: string }
-        setRevisionError(describePiRevisionFailure(b.error ?? b.message ?? '', 'approve'))
+        // Both the code and the sentence: a marker may sit in either.
+        setRevisionError(describePiRevisionFailure(`${b.error ?? ''} ${b.message ?? ''}`, 'approve'))
         return
       }
       setLineReview(null)
@@ -1678,7 +1679,9 @@ export default function OrderDetailPage() {
         p_aligned: aligned,
         p_note: note,
       })
-      if (error) { setAlignError(describeAlignmentFailure(error)); return }
+      // The 40% advance (20270104000000) refuses in its own words: the
+      // percentage, the shortfall and what to do.
+      if (error) { setAlignError(describeAdvanceRefusal(error.message) ?? describeAlignmentFailure(error)); return }
       setAlignDialog(null)
       // Production moved. The people on this Order plan against it, so they
       // hear about it — from the production_alignment_changed row the RPC just
@@ -2506,8 +2509,12 @@ export default function OrderDetailPage() {
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
   // strip names the review, and only to whom view.actions offers it.
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
-  const operationsDecisionOffered = operationsReviewOpen && operationsView?.kind === 'recorded'
-    && (operationsView.actions.accept || operationsView.actions.cannotAccept)
+  // An accepted version whose Order was put on hold (its advance fell below
+  // 40%, 20270104000000) is aligned again by the same reviewer, from here.
+  const operationsRealignOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && operationsView.actions.withdraw
+  const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
+    && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
   // only decides where each one sits. The cleanup gate is the existing one,
@@ -2740,6 +2747,7 @@ export default function OrderDetailPage() {
               onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
               onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
               acceptBlockedReason={advanceAttentionLabel(advance)}
+              heldForAdvance={!!advance?.hold}
             />
           ) : undefined}
         />
@@ -3332,6 +3340,7 @@ export default function OrderDetailPage() {
           <div className="boe-modal-sheet" style={{ maxWidth: '640px' }}>
             <div className="boe-modal-body">
               <PiLineReview versionNumber={lineReview.version.versionNumber} review={lineReview.review} busy={revisionBusy}
+                failure={revisionError}
                 onConfirm={lineMap => { void approveRevision(lineReview.version, lineMap) }}
                 onCancel={() => setLineReview(null)} />
             </div>
