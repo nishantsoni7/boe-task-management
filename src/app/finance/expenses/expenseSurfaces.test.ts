@@ -1494,6 +1494,24 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/piFinanceVerificationRemoval.test.ts',
   ])
 
+  /**
+   * Task Detail image gallery: task attachments move out of the summary card
+   * into their own card (under Activity on desktop), with a large image viewer
+   * and a "Download all images" ZIP. Task Management only — no Finance or
+   * Orders file, no migration, no permission. globals.css is already in
+   * ALLOWED_EXISTING.
+   */
+  const ALLOWED_TASK_IMAGE_GALLERY = new Set([
+    'src/app/tasks/[id]/page.tsx',
+    'src/components/tasks/TaskAttachmentGallery.tsx',
+    'src/components/tasks/TaskAttachmentGallery.test.tsx',
+    'src/components/tasks/TaskImageViewer.tsx',
+    'src/lib/tasks/taskGallery.ts',
+    'src/lib/tasks/taskGallery.test.ts',
+    // Resized, session-signed thumbnails for the grid.
+    'src/lib/tasks/attachmentStorage.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1528,6 +1546,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
     !ALLOWED_ANNOUNCEMENTS.has(f) &&
+    !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1835,7 +1854,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_REVISED_PI_PROMOTION.has(file)
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
-        || ALLOWED_ANNOUNCEMENTS.has(file),
+        || ALLOWED_ANNOUNCEMENTS.has(file)
+        || ALLOWED_TASK_IMAGE_GALLERY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

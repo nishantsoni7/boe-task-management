@@ -360,6 +360,308 @@ body {
 .boe-activity-scroll::-webkit-scrollbar-thumb:hover { background: #B0B8C4; }
 
 .boe-activity-action:hover { color: #4A5261 !important; text-decoration: underline; }
+
+/* ── Task attachment gallery (Task Detail) ──
+   Its own card: under Activity in the sticky right column on desktop, under
+   the summary card when the columns stack. The grid scrolls inside the card so
+   a task with forty photos cannot push Activity off the sticky column. */
+.boe-task-gallery {
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #E1E5EA;
+  border-radius: 10px;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.boe-task-right-col > .boe-task-gallery { flex: 0 0 auto; }
+.boe-task-gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px 11px;
+  border-bottom: 1px solid #E9ECF1;
+}
+.boe-task-gallery-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: #7C8595;
+  background: #F4F6F8;
+  border: 1px solid #E3E7EC;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.boe-task-gallery-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #5585E8;
+  background: rgba(85,133,232,0.07);
+  border: 1px solid rgba(85,133,232,0.25);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.boe-task-gallery-download:hover:not(:disabled) { background: rgba(85,133,232,0.13); }
+.boe-task-gallery-download:disabled { cursor: progress; opacity: 0.75; }
+.boe-task-gallery-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 16px 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #B43C3C;
+  background: rgba(217,79,79,0.07);
+  border: 1px solid rgba(217,79,79,0.22);
+  border-radius: 6px;
+}
+.boe-task-gallery-error button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.boe-task-gallery-grid {
+  list-style: none;
+  margin: 0;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #C7CDD6 #F4F5F7;
+}
+.boe-task-gallery-grid > li { min-width: 0; }
+.boe-task-gallery-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  font: inherit;
+  text-align: left;
+}
+.boe-task-gallery-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #E1E5EA;
+  background: #F4F6F8;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.boe-task-gallery-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.boe-task-gallery-thumb:hover .boe-task-gallery-frame { border-color: #5585E8; }
+.boe-task-gallery-thumb:focus-visible { outline: none; }
+.boe-task-gallery-thumb:focus-visible .boe-task-gallery-frame {
+  border-color: #5585E8;
+  box-shadow: 0 0 0 3px rgba(85,133,232,0.25);
+}
+.boe-task-gallery-name {
+  display: block;
+  font-size: 11px;
+  color: #4A5261;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boe-task-gallery-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+.boe-task-gallery-grid + .boe-task-gallery-files { border-top: 1px solid #E9ECF1; }
+@media (max-width: 560px) {
+  .boe-task-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+    max-height: none;
+  }
+  .boe-task-gallery-head { padding: 11px 12px 10px; }
+  .boe-task-gallery-files { padding: 10px 12px; }
+}
+
+/* ── Task image viewer (lightbox) ──
+   Portalled to <body> and solid black: it covers the sidebar, the top header
+   and the page, none of which stays visible behind it. The z-index clears
+   every layer in this file (the highest is 9999). */
+.boe-image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  background: #000000;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior: contain;
+}
+.boe-image-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: #F2F3F5;
+  flex-shrink: 0;
+}
+.boe-image-viewer-counter {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.12);
+}
+.boe-image-viewer-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boe-image-viewer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #F2F3F5;
+  text-decoration: none;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.boe-image-viewer-action:hover:not(:disabled) { background: rgba(255,255,255,0.18); }
+.boe-image-viewer-action:disabled { opacity: 0.5; cursor: default; }
+.boe-image-viewer-action:focus-visible,
+.boe-image-viewer-nav:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
+.boe-image-viewer-close { padding: 5px 7px; }
+/* The one primary action in the viewer: downloads the image on screen. */
+.boe-image-viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111318;
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.boe-image-viewer-download:hover:not(:disabled) { background: #E8EBF0; }
+.boe-image-viewer-download:disabled { opacity: 0.55; cursor: default; }
+.boe-image-viewer-download:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
+.boe-image-viewer-error {
+  margin: 0 14px 6px;
+  font-size: 12px;
+  color: #FFB4B4;
+  text-align: right;
+}
+.boe-image-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 72px 16px;
+}
+.boe-image-viewer-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+  user-select: none;
+}
+.boe-image-viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.12);
+  color: #ffffff;
+  cursor: pointer;
+}
+.boe-image-viewer-nav:hover { background: rgba(255,255,255,0.22); }
+.boe-image-viewer-nav-prev { left: 14px; }
+.boe-image-viewer-nav-next { right: 14px; }
+.boe-image-viewer-hint {
+  margin: 0;
+  padding: 0 0 12px;
+  text-align: center;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+.boe-image-viewer-hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .boe-image-viewer-hint-keys { display: none; }
+  .boe-image-viewer-hint-touch { display: inline; }
+}
+@media (max-width: 560px) {
+  .boe-image-viewer-bar { gap: 8px; padding: 8px 10px; flex-wrap: wrap; }
+  .boe-image-viewer-action-text { display: none; }
+  /* The filename takes its own row so the counter and the actions keep room. */
+  .boe-image-viewer-name { order: 3; flex: 1 1 100%; font-size: 12px; }
+  .boe-image-viewer-bar > div { margin-left: auto; }
+  .boe-image-viewer-stage { padding: 4px 8px 72px; }
+  /* Controls stay visible below the image, where a thumb reaches them,
+     rather than covering the middle of the photo. */
+  .boe-image-viewer-nav {
+    top: auto;
+    bottom: 14px;
+    transform: none;
+    width: 44px;
+    height: 44px;
+  }
+  .boe-image-viewer-nav-prev { left: calc(50% - 56px); }
+  .boe-image-viewer-nav-next { right: calc(50% - 56px); }
+}
 .boe-activity-action-danger:hover { color: #D94F4F !important; }
 
 /* ─────────────────────────────────────────────────────
