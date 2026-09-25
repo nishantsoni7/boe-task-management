@@ -185,6 +185,10 @@ export function AnnouncementForm({
           selectedIds={recipientIds}
           onToggle={toggle}
           onRemove={id => setRecipientIds(ids => ids.filter(x => x !== id))}
+          label="Show to"
+          describeSelection={n => (n === 0
+            ? 'Nobody selected yet. Only the people you choose will see this announcement.'
+            : `Only ${n === 1 ? 'this person' : `these ${n} people`} will see it. Nobody else can open it or its PDF.`)}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <button type="button" className="boe-btn boe-btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}

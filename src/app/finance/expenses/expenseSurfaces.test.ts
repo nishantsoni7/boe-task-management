@@ -1294,6 +1294,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/announcements/[id]/page.tsx',
     'src/app/admin/control-center/announcements/page.tsx',
     'src/app/admin/control-center/announcements/AnnouncementForm.tsx',
+    // The shared member picker gains an optional label and selection line;
+    // Module Visibility keeps its own wording as the default.
+    'src/app/admin/control-center/ModuleMemberPicker.tsx',
     'src/components/layout/BoeOsLayout.tsx',
     'src/components/layout/ControlCenterLayout.tsx',
     'src/lib/modules/moduleOrderStorage.test.ts',
