@@ -128,3 +128,12 @@ describe('the route asks as the reader, and renders from rows', () => {
     assert.equal(/loadApprovedWorkbook|buildConfirmedWorkbook|source_workbook_path/.test(route), false)
   })
 })
+
+describe('a product code is never clipped (found in the walkthrough)', () => {
+  test('a row without a photo is tall enough for a two-line code', async () => {
+    const { measureRowHeight } = await import('./confirmedPdf')
+    const row = { code: '5-BE004', hasImage: false, name: 'Bar stool', dimensions: '', material: '', customization: '' }
+    const oneLine = measureRowHeight({ ...row, code: 'B001' } as never, 9)
+    assert.ok(measureRowHeight(row as never, 9) > oneLine, '"5-BE004" wraps to two lines, and the row makes room')
+  })
+})

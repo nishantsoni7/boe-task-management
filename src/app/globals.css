@@ -2489,9 +2489,12 @@ body {
 /* ONE ROW PER DOCUMENT, THE SAME THREE COLUMNS FOR ALL THREE: what is on file,
    when, and the one action. The date and action columns are fixed, so the
    rows line up and the card is scanned rather than read. */
+/* The actions column fits its buttons (the Main PI row carries the PI PDF,
+   the uploaded workbook and a menu since 20270104000000) and is never
+   narrower than the 170px the other rows were drawn for. */
 .order-doc-section {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 330px) 170px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 330px) minmax(170px, auto);
   align-items: center;
   gap: 6px 20px;
   padding: 11px 14px;
@@ -2515,6 +2518,7 @@ body {
 .order-doc-count { font-size: 12px; font-weight: 500; color: #6B7384; }
 .order-doc-row-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;

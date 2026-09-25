@@ -130,6 +130,23 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
  * which drops any action it cannot name. Ties on the timestamp are broken by
  * the key so two events written in one transaction cannot swap between renders.
  */
+/**
+ * THE PARSE WRITER'S OWN "WORKBOOK REPLACED" ROWS, WRITTEN INSIDE A REVISION.
+ *
+ * Since 20270104000000 an approved revision — a new workbook or an edit made
+ * in the app — is applied by approve_order_pi_revision() through the unchanged
+ * parse writer, which records "PI workbook replaced" on the Order and the PI
+ * with the reason it was handed: "PI V<n> approved: …". The revision's own
+ * entries already say it ("Revised PI approved", and "Order amended" with the
+ * old and new values), and for an edit no workbook was replaced at all. So
+ * those two rows are left out; a workbook genuinely replaced on a draft or
+ * under review keeps its row.
+ */
+export const REVISION_REASON = /^PI V\d+ approved: /
+function isRevisionReplay(reason: unknown): boolean {
+  return typeof reason === 'string' && REVISION_REASON.test(reason)
+}
+
 export function mergeOrderHistory(input: {
   orderRows: readonly OrderActivityRow[]
   /** The page's own label for an Order event, or null to use ORDER_EVENT_LABEL. */
@@ -139,7 +156,9 @@ export function mergeOrderHistory(input: {
   namesById: ReadonlyMap<string, string>
   formatWhen: (iso: string | null) => string
 }): OrderHistoryEntry[] {
-  const order: OrderHistoryEntry[] = input.orderRows.map(row => ({
+  const order: OrderHistoryEntry[] = input.orderRows
+    .filter(row => !(row.event_type === 'order_workbook_replaced' && isRevisionReplay(row.payload?.reason)))
+    .map(row => ({
     key: `order:${row.id}`,
     source: 'order',
     label: input.orderLabel(row.event_type) ?? ORDER_EVENT_LABEL[row.event_type] ?? row.event_type,
@@ -152,7 +171,8 @@ export function mergeOrderHistory(input: {
   // describeActivityEntries formats the time; the ISO instant is needed for the
   // merge, so it is looked back up by id.
   const isoById = new Map(input.piRows.map(r => [r.id, r.created_at]))
-  const pi: OrderHistoryEntry[] = describeActivityEntries(input.piRows, input.namesById, input.formatWhen)
+  const piRows = input.piRows.filter(r => !(r.action === 'workbook_replaced_by_admin' && isRevisionReplay(r.note)))
+  const pi: OrderHistoryEntry[] = describeActivityEntries(piRows, input.namesById, input.formatWhen)
     .map((entry: PiActivityEntry) => ({
       key: `pi:${entry.key}`,
       source: 'pi',

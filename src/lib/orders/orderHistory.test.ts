@@ -77,3 +77,27 @@ describe('one chronology from two trails', () => {
     assert.deepEqual(first.map(e => e.key), second.map(e => e.key))
   })
 })
+
+describe('a revision is told once, and never as a workbook it was not (20270104000000)', () => {
+  const names = new Map<string, string>()
+  const when = (iso: string | null) => iso ?? ''
+  test('the parse writer\'s "workbook replaced" rows inside a revision are left out; a real replacement stays', () => {
+    const merged = mergeOrderHistory({
+      orderRows: [
+        { id: 'o1', event_type: 'order_workbook_replaced', payload: { reason: 'PI V3 approved: Side tables out' }, created_at: '2026-09-25T02:06:00Z' },
+        { id: 'o2', event_type: 'order_amended', payload: { reason: 'PI V3 approved: Side tables out', changes: {} }, created_at: '2026-09-25T02:06:00Z' },
+        { id: 'o3', event_type: 'order_workbook_replaced', payload: { reason: 'Admin fixed the GST cell' }, created_at: '2026-09-20T02:06:00Z' },
+      ],
+      orderLabel: () => null, orderDetail: () => null,
+      piRows: [
+        { id: 'p1', action: 'workbook_replaced_by_admin', actor_id: null, note: 'PI V3 approved: Side tables out', created_at: '2026-09-25T02:06:00Z' },
+        { id: 'p2', action: 'pi_revision_approved', actor_id: null, note: null, created_at: '2026-09-25T02:06:00Z' },
+      ] as PersistedActivity[],
+      namesById: names, formatWhen: when,
+    })
+    const keys = merged.map(e => e.key)
+    assert.ok(!keys.includes('order:o1') && !keys.includes('pi:p1'), 'the replay rows are gone')
+    assert.ok(keys.includes('order:o2') && keys.includes('order:o3') && keys.includes('pi:p2'),
+      'the amendment, a genuine replacement and the revision itself stay')
+  })
+})
