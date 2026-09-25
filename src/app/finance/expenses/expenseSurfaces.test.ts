@@ -1312,6 +1312,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/operationsHandoff.test.ts',
   ])
 
+  /**
+   * Account Settings moves into the shared BoeOsLayout shell. The page itself,
+   * the identity menu that now marks it as the current destination, and the
+   * Back-button pin that becomes "returnTo is no longer followed". No Finance
+   * or Orders file, no migration, no permission.
+   */
+  const ALLOWED_ACCOUNT_SETTINGS_LAYOUT = new Set([
+    'src/app/account/page.tsx',
+    'src/components/layout/AdminViewModeControls.tsx',
+    'src/lib/safeReturnPath.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1337,6 +1349,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
     f !== DOCUMENT_SUBMISSIONS_MIGRATION &&
+    !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1598,7 +1611,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
-        || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file),
+        || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
+        || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
