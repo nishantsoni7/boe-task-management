@@ -28,11 +28,17 @@ export function ModuleMemberPicker({
   selectedIds,
   onToggle,
   onRemove,
+  label = 'Members',
+  describeSelection = moduleVisibilityLine,
 }: {
   members: PickableMember[]
   selectedIds: string[]
   onToggle: (id: string) => void
   onRemove: (id: string) => void
+  /** The caption above the chips. Module Visibility keeps "Members". */
+  label?: string
+  /** The line under the list, for the current selection count. */
+  describeSelection?: (count: number) => string
 }) {
   const [query, setQuery] = useState('')
 
@@ -69,7 +75,7 @@ export function ModuleMemberPicker({
   return (
     <>
       <label style={LABEL}>
-        Members
+        {label}
         <span style={{ fontWeight: 400, color: '#8C94A6', marginLeft: 6 }}>
           {selected.length > 0 ? `${selected.length} selected` : 'none selected'}
         </span>
@@ -163,12 +169,17 @@ export function ModuleMemberPicker({
       </div>
 
       <div style={{ fontSize: 11.5, color: '#8C94A6', marginBottom: 16 }}>
-        {selected.length === 0
-          ? 'No members selected — the module will be hidden from everyone except admins.'
-          : `Only these ${selected.length === 1 ? 'member' : `${selected.length} members`} and admins can see and open the module.`}
+        {describeSelection(selected.length)}
       </div>
     </>
   )
+}
+
+/** Module Visibility → Custom: what the selection means for the module. */
+function moduleVisibilityLine(count: number): string {
+  return count === 0
+    ? 'No members selected — the module will be hidden from everyone except admins.'
+    : `Only these ${count === 1 ? 'member' : `${count} members`} and admins can see and open the module.`
 }
 
 // Matched to the modal's existing controls rather than imported, so this file

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, Layers, X, Hash, Eraser, DatabaseZap,
-  ClipboardList, BellRing,
+  ClipboardList, BellRing, Megaphone,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -87,6 +87,10 @@ const PATH_HEADINGS: Record<string, Heading> = {
   [`${MAIN_PATH}/test-data-cleanup`]: {
     group: 'System', title: 'Test Data Cleanup',
     subtitle: 'Remove a complete verified test transaction while the system is in testing.',
+  },
+  [`${MAIN_PATH}/announcements`]: {
+    group: 'System', title: 'Announcements',
+    subtitle: 'Publish a notice to chosen employees for a set of dates, and see who has read it.',
   },
   [`${MAIN_PATH}/data-management`]: {
     group: 'System', title: 'Data Management',
@@ -349,6 +353,15 @@ function ControlCenterNav({
           href={tabHref('operations-handoff')}
           replace={onMain}
           active={onMain && tab === 'operations-handoff'}
+          onNavigate={onNavigate}
+        />
+        {/* Company notices for chosen employees. Its own route, like
+            Test Data Cleanup: a list with its own create/edit dialogs. */}
+        <NavItem
+          label="Announcements"
+          icon={icon(Megaphone)}
+          href={`${MAIN_PATH}/announcements`}
+          active={pathname === `${MAIN_PATH}/announcements`}
           onNavigate={onNavigate}
         />
         {/* Test Data Cleanup removes ONE transaction, found by searching for
