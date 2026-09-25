@@ -77,9 +77,16 @@ describe('the migration', () => {
     assert.doesNotMatch(SQL, /notification_type/)
   })
 
-  test('it is the newest migration file', () => {
+  test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270110000000_announcements.sql')
+    assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
+    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // The legacy advance submit doors are closed: REVOKE of the two
+      // legacy advance doors from authenticated, and CREATE OR REPLACE of
+      // submit_order_submission_advance_v2_internal. It touches nothing
+      // Announcements creates.
+      '20270111000000_order_submission_legacy_advance_doors_closed.sql',
+    ])
   })
 })
 

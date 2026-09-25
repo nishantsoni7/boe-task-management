@@ -522,7 +522,7 @@ describe('34/35. no regression into suppressed territory', () => {
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
       // clearing the decision basis). No table, policy or row is touched.
-      '20270106000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270111000000_order_submission_legacy_advance_doors_closed.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

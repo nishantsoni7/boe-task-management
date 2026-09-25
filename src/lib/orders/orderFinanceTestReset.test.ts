@@ -560,7 +560,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
       // clearing the decision basis). No table, policy or row is touched.
-      '20270106000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270111000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 
