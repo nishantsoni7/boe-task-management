@@ -59,11 +59,27 @@ export function isCanonicalPiImageKey(
  * PI's key for that line. What propose_order_pi_edit_revision() re-checks.
  */
 export function proposalImagesAreCanonical(payload: Record<string, unknown>, submissionId: string): boolean {
-  const images = Array.isArray(payload.item_images) ? payload.item_images as Record<string, unknown>[] : []
-  const items = Array.isArray(payload.items) ? payload.items as Record<string, unknown>[] : []
-  return images.every(m => isCanonicalPiImageKey(m?.storage_path, {
-    submissionId, itemId: String(m?.item_id ?? ''), role: String(m?.role ?? ''),
-    position: Number(m?.position), sha256: String(m?.sha256 ?? ''),
-  })) && items.every(i => i?.image_storage_path == null
-    || isCanonicalPiImageKey(i.image_storage_path, { submissionId, itemId: String(i.id ?? '') }))
+  // The same refusals as the SQL twin (review R4): a present item_images or
+  // items that is not an array, an entry that is not an object, and an image
+  // row missing any of its four parts, are all refused — nothing is skipped.
+  if (payload.item_images !== undefined && !Array.isArray(payload.item_images)) return false
+  if (payload.items != null && !Array.isArray(payload.items)) return false
+  const images = (payload.item_images ?? []) as unknown[]
+  const items = (payload.items ?? []) as unknown[]
+  return images.every(m => {
+    if (!isObject(m)) return false
+    const position = slotOf(m.position)
+    return typeof m.item_id === 'string' && typeof m.role === 'string' && typeof m.sha256 === 'string' && position !== null
+      && isCanonicalPiImageKey(m.storage_path, { submissionId, itemId: m.item_id, role: m.role, position, sha256: m.sha256 })
+  }) && items.every(i => isObject(i) && (i.image_storage_path == null
+    || (typeof i.id === 'string' && isCanonicalPiImageKey(i.image_storage_path, { submissionId, itemId: i.id }))))
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** A slot as the SQL twin reads it (m ->> 'position'): a whole number, written without leading zeros. */
+function slotOf(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 0 ? v : null
+  if (typeof v === 'string' && /^(0|[1-9][0-9]*)$/.test(v)) return Number(v)
+  return null
 }

@@ -32,6 +32,17 @@
 --  10. returned PI    an approved exception with a reason written before the
 --                     three existed resubmits unchanged; a new free text is
 --                     refused.
+--  11. review fixes   R1 the CURRENT reviewer re-aligns a held Order (the
+--                     acceptance record untouched, the new actor and time
+--                     recorded); reassignment aligns nothing; the former
+--                     reviewer and an admin are refused while a reviewer can
+--                     act; with none, an admin's recovery with a reason, the
+--                     40% gate enforced. R2 a lower value is "lowered". R5 a
+--                     revision's hold names the approving admin. R6 a reversal
+--                     voids an exception for good. R7 the PI's exception is
+--                     held to the money verified at the decision. R8 an
+--                     inactive reviewer is not notified. R4 partial photo rows
+--                     are refused.
 --
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- SELF-CONTAINED FIXTURES: this suite creates its own people (ids a0d0…),
@@ -701,6 +712,356 @@ begin
   assert s.advance_exception_status = 'approved' and s.advance_exception_reason = 'client pays on delivery (old wording)'
      and s.status <> 'needs_changes', '10. and stays approved, word for word: ' || s.status || ' / ' || s.advance_exception_status;
   raise notice '10. a returned PI keeps its approved exception in the words it was approved in OK';
+end $$;
+
+-- ═══ 11. REVIEW FIXES R1–R8 ═════════════════════════════════════════════════
+
+-- A second operations reviewer, and a readiness read as someone.
+do $$
+begin
+  perform set_config('test.ops2_id', 'a0d00000-0000-4000-8000-000000000006', true);
+  insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+    ('a0d00000-0000-4000-8000-000000000006', 'ASSERT Hold Ops 2', 'hold-ops2@suite.test', 'member', 'operations', true, 'HOLD-OP2')
+  on conflict (id) do update set is_active = true;
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  select 'a0d00000-0000-4000-8000-000000000006'::uuid, mpa.module_id, mpa.action_id, true, 'a0d00000-0000-4000-8000-000000000001'::uuid
+    from public.module_permission_actions mpa
+    join public.permission_modules pm on pm.id = mpa.module_id and pm.module_key = 'orders'
+    join public.permission_actions pa on pa.id = mpa.action_id and pa.action_key in ('view', 'align_production')
+  on conflict do nothing;
+end $$;
+create function pg_temp.set_reviewer(p_user uuid) returns text language plpgsql as $$
+begin
+  return pg_temp.try_as(current_setting('test.admin_id')::uuid, format('select public.set_order_operations_reviewer(%L)', p_user));
+end $$;
+create function pg_temp.decide_as(p_user uuid, p_order uuid, p_decision text, p_reason text default null) returns text language plpgsql as $$
+declare h uuid;
+begin
+  select id into h from public.order_operations_handoffs where order_id = p_order and superseded_at is null;
+  return pg_temp.try_as(p_user, format('select public.decide_order_operations_handoff(%L, %L, %L)', h, p_decision, p_reason));
+end $$;
+create function pg_temp.recover_as(p_user uuid, p_order uuid, p_reason text) returns text language plpgsql as $$
+begin
+  return pg_temp.try_as(p_user, format('select public.recover_order_production_alignment(%L, %L)', p_order, p_reason));
+end $$;
+create function pg_temp.realign_seen_by(p_user uuid, p_order uuid) returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.become(p_user);
+  v := public.order_advance_readiness(p_order) -> 'realign';
+  perform pg_temp.restore();
+  return v;
+end $$;
+
+-- 11a. R1: the CURRENT reviewer re-aligns; the acceptance record is untouched;
+-- reassigning alone aligns nothing; the former reviewer and an admin cannot.
+do $$
+declare
+  o      uuid;
+  v_ops  uuid := current_setting('test.ops_id')::uuid;
+  v_ops2 uuid := current_setting('test.ops2_id')::uuid;
+  v_hand public.order_operations_handoffs;
+  v_hold uuid;
+  v_msg  text;
+  v_ev   public.order_activity_log;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11a', 1000000, 400000);
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '11a. accepted by the first reviewer';
+  select * into v_hand from public.order_operations_handoffs where order_id = o and superseded_at is null;
+  assert pg_temp.set_reviewer(v_ops2) = 'OK', '11a. the reviewer is reassigned';
+  assert pg_temp.alignment(o) = 'aligned'
+     and (select assigned_to from public.order_operations_handoffs where id = v_hand.id) = v_ops,
+    '11a. reassignment changes nothing on an aligned, accepted Order';
+
+  assert pg_temp.amend(o, 1250000) = 'OK', '11a. raised below 40%';
+  v_hold := (pg_temp.open_hold(o)).id;
+  assert v_hold is not null, '11a. held';
+  assert exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production' and user_id = v_ops2),
+    '11a. the CURRENT reviewer is told';
+  assert not exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production' and user_id = v_ops),
+    '11a. the former one is not';
+  perform pg_temp.pay_order(o, 100000, 'approved_unlinked');
+
+  -- Reassigning (back and forth) aligns nothing by itself.
+  assert pg_temp.set_reviewer(v_ops) = 'OK' and pg_temp.set_reviewer(v_ops2) = 'OK', '11a. reassigned twice';
+  assert pg_temp.alignment(o) = 'not_aligned' and (pg_temp.open_hold(o)).id = v_hold,
+    '11a. reassignment alone does not align a held Order, even when it is ready';
+
+  assert (pg_temp.realign_seen_by(v_ops2, o) ->> 'by_viewer')::boolean
+     and not (pg_temp.realign_seen_by(v_ops, o) ->> 'by_viewer')::boolean
+     and not (pg_temp.realign_seen_by(current_setting('test.admin_id')::uuid, o) ->> 'recover_by_viewer')::boolean,
+    '11a. readiness offers the realignment to the current reviewer only, and no recovery while they can act';
+
+  v_msg := pg_temp.decide_as(v_ops, o, 'accepted');
+  assert v_msg like 'ORDER_REALIGN_NOT_CURRENT_REVIEWER%', '11a. the former reviewer cannot re-align: ' || v_msg;
+  v_msg := pg_temp.recover_as(current_setting('test.admin_id')::uuid, o, 'ASSERT operations is away today');
+  assert v_msg like 'ORDER_REALIGN_REVIEWER_AVAILABLE%', '11a. no admin recovery while a reviewer can act: ' || v_msg;
+  v_msg := pg_temp.decide_as(v_ops2, o, 'accepted', 'ASSERT checked the new value and payment');
+  assert v_msg = 'OK' and pg_temp.alignment(o) = 'aligned', '11a. the current reviewer re-aligns: ' || v_msg;
+
+  assert (select accepted_by from public.order_operations_handoffs where id = v_hand.id) = v_ops
+     and (select accepted_at from public.order_operations_handoffs where id = v_hand.id) = v_hand.accepted_at
+     and (select assigned_to from public.order_operations_handoffs where id = v_hand.id) = v_ops
+     and (select status from public.order_operations_handoffs where id = v_hand.id) = 'accepted',
+    '11a. the original acceptance record is preserved';
+  select * into v_ev from public.order_activity_log where order_id = o and event_type = 'operations_handoff_realigned';
+  assert v_ev.actor_id = v_ops2 and v_ev.payload ->> 'realigned_by' = v_ops2::text
+     and v_ev.payload ->> 'accepted_by' = v_ops::text and (v_ev.payload ->> 'hold_id')::uuid = v_hold
+     and v_ev.payload ->> 'realigned_at' is not null,
+    '11a. the realignment records the new actor and time beside the acceptance: ' || coalesce(v_ev.payload::text, 'none');
+  assert (select production_aligned_by from public.orders where id = o) = v_ops2
+     and (select resolved_by from public.order_advance_holds where id = v_hold) = v_ops2,
+    '11a. the Order and the hold name who re-aligned it';
+  raise notice '11a. R1: the current reviewer re-aligns; acceptance kept; reassignment aligns nothing; former reviewer and admin refused OK';
+end $$;
+
+-- 11b. R1: no reviewer who can act → a recorded admin recovery, gate enforced.
+do $$
+declare
+  o      uuid;
+  v_ops2 uuid := current_setting('test.ops2_id')::uuid;
+  v_adm  uuid := current_setting('test.admin_id')::uuid;
+  v_hand public.order_operations_handoffs;
+  v_msg  text;
+  v_ev   public.order_activity_log;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11b', 1000000, 400000);
+  assert pg_temp.set_reviewer(v_ops2) = 'OK', '11b. reviewer';
+  assert pg_temp.decide_as(v_ops2, o, 'accepted') = 'OK', '11b. accepted and aligned';
+  select * into v_hand from public.order_operations_handoffs where order_id = o and superseded_at is null;
+  assert pg_temp.amend(o, 1250000) = 'OK' and (pg_temp.open_hold(o)).id is not null, '11b. held';
+
+  -- The reviewer leaves.
+  update public.users set is_active = false where id = v_ops2;
+  assert (pg_temp.realign_seen_by(v_adm, o) ->> 'recover_by_viewer')::boolean
+     and not (pg_temp.realign_seen_by(v_adm, o) ->> 'reviewer_available')::boolean,
+    '11b. readiness offers the admin the recovery once no reviewer can act';
+  assert not (pg_temp.realign_seen_by(current_setting('test.sales_id')::uuid, o) ->> 'recover_by_viewer')::boolean,
+    '11b. and nobody else';
+
+  v_msg := pg_temp.recover_as(current_setting('test.sales_id')::uuid, o, 'ASSERT not my call to make');
+  assert v_msg like 'Only an administrator%', '11b. only an administrator: ' || v_msg;
+  v_msg := pg_temp.recover_as(v_adm, o, 'short');
+  assert v_msg like 'ORDER_REALIGN_RECOVERY_REASON_REQUIRED%', '11b. a reason is required: ' || v_msg;
+  v_msg := pg_temp.recover_as(v_adm, o, 'ASSERT reviewer left; client confirmed');
+  assert v_msg like 'ORDER_ADVANCE_BELOW_THRESHOLD%' and pg_temp.alignment(o) = 'not_aligned',
+    '11b. the 40% gate still decides: ' || v_msg;
+
+  perform pg_temp.pay_order(o, 100000, 'approved_unlinked');
+  v_msg := pg_temp.recover_as(v_adm, o, 'ASSERT reviewer left; client confirmed');
+  assert v_msg = 'OK' and pg_temp.alignment(o) = 'aligned', '11b. recovered once ready: ' || v_msg;
+  select * into v_ev from public.order_activity_log where order_id = o and event_type = 'operations_handoff_realigned_by_admin';
+  assert v_ev.actor_id = v_adm and v_ev.payload ->> 'reviewer_unavailable' = 'reviewer_inactive'
+     and v_ev.payload ->> 'reason' = 'ASSERT reviewer left; client confirmed'
+     and v_ev.payload ->> 'accepted_by' = v_ops2::text,
+    '11b. the recovery is its own event, with the admin, the reason and why no reviewer could: ' || coalesce(v_ev.payload::text, 'none');
+  assert (select accepted_by from public.order_operations_handoffs where id = v_hand.id) = v_ops2
+     and (select accepted_at from public.order_operations_handoffs where id = v_hand.id) = v_hand.accepted_at,
+    '11b. the acceptance is untouched';
+  assert (select resolved_by from public.order_advance_holds where order_id = o) = v_adm, '11b. the hold names the admin';
+  assert pg_temp.recover_as(v_adm, o, 'ASSERT again please') like 'ORDER_REALIGN_NOT_HELD%', '11b. not on hold any more';
+
+  -- No reviewer at all: Operations is told why; the admin may recover.
+  update public.users set is_active = true where id = v_ops2;
+  o := pg_temp.fresh_order('ASSERT hold 11b2', 1000000, 400000);
+  assert pg_temp.decide_as(v_ops2, o, 'accepted') = 'OK', '11b. second Order aligned';
+  assert pg_temp.amend(o, 1250000) = 'OK', '11b. held';
+  perform pg_temp.pay_order(o, 100000, 'approved_unlinked');
+  delete from public.order_operations_reviewers where duty = 'pi_handoff';
+  assert pg_temp.alignment(o) = 'not_aligned', '11b. clearing the reviewer aligns nothing';
+  assert pg_temp.decide_as(v_ops2, o, 'accepted') like 'ORDER_REALIGN_NO_REVIEWER%', '11b. no reviewer: refused with its reason';
+  assert pg_temp.recover_as(v_adm, o, 'ASSERT no reviewer assigned yet') = 'OK', '11b. recovered';
+  assert (select payload ->> 'reviewer_unavailable' from public.order_activity_log
+           where order_id = o and event_type = 'operations_handoff_realigned_by_admin') = 'no_reviewer', '11b. and says there was none';
+  insert into public.order_operations_reviewers (duty, user_id, assigned_by)
+  values ('pi_handoff', current_setting('test.ops_id')::uuid, v_adm);
+  raise notice '11b. R1: admin recovery only when no reviewer can act, with a reason, 40%% gate enforced, recorded OK';
+end $$;
+
+-- 11c. R2 + R8: a LOWER value that leaves the Order short is said as lowered;
+-- an inactive reviewer is not notified.
+do $$
+declare o uuid;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11c', 1000000, 400000);
+  assert pg_temp.amend(o, 2000000) = 'OK' and pg_temp.approve_exception(o) = 'OK', '11c. approved at 20,00,000';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '11c. aligned under the exception';
+  update public.users set is_active = false where id = current_setting('test.ops_id')::uuid;
+  assert pg_temp.amend(o, 1500000) = 'OK', '11c. lowered to 15,00,000 (26.67%)';
+  update public.users set is_active = true where id = current_setting('test.ops_id')::uuid;
+  assert pg_temp.alignment(o) = 'not_aligned' and (pg_temp.open_hold(o)).cause = 'value_changed', '11c. still short: held';
+  assert exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production'
+                   and user_id = current_setting('test.admin_id')::uuid and body like 'After its value was lowered,%'),
+    '11c. R2: the notice says the value was lowered';
+  assert not exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production'
+                       and user_id = current_setting('test.ops_id')::uuid),
+    '11c. R8: the inactive reviewer is not notified';
+  raise notice '11c. R2 lowered wording; R8 inactive reviewer not told OK';
+end $$;
+
+-- 11d. R5: a hold opened inside a PI revision names the approving admin, who
+-- is not notified of their own action.
+do $$
+declare o uuid;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11d', 1000000, 400000);
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '11d. aligned';
+  perform pg_temp.revalue(o, 1250000, 'ASSERT a third room');
+  assert (pg_temp.open_hold(o)).held_by = current_setting('test.admin_id')::uuid,
+    '11d. the hold names the approving admin: ' || coalesce(to_jsonb(pg_temp.open_hold(o))::text, 'none');
+  assert (select actor_id from public.order_activity_log where order_id = o and event_type = 'order_advance_hold_opened')
+         = current_setting('test.admin_id')::uuid, '11d. and so does its history event';
+  assert not exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production'
+                       and user_id = current_setting('test.admin_id')::uuid), '11d. the approving admin is not told of their own action';
+  assert exists (select 1 from public.notifications where entity_id = o and type = 'order_update_production'
+                   and user_id = current_setting('test.admin2_id')::uuid
+                   and body like 'After a revised PI raised its value,%'), '11d. the other admin is, in the right words';
+  assert current_setting('boe.pi_revision_actor', true) is null or current_setting('boe.pi_revision_actor', true) = '',
+    '11d. the revision actor does not outlive the apply';
+  raise notice '11d. R5: the revision''s hold is authored by the approving admin OK';
+end $$;
+
+-- 11e. R6: a reversal voids an exception FOR GOOD; re-verifying the same money
+-- does not revive it.
+do $$
+declare o uuid; a uuid; v_msg text;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11e', 1000000, 400000);
+  a := pg_temp.pay_order(o, 100000, 'approved_unlinked');
+  assert pg_temp.amend(o, 2500000) = 'OK' and pg_temp.approve_exception(o) = 'OK', '11e. approved at 5,00,000 verified';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '11e. aligned';
+  assert pg_temp.try_as(current_setting('test.fin_id')::uuid,
+    format('select public.reverse_payment_allocation(%L, %L)', a, 'ASSERT bounced')) = 'OK', '11e. reversed';
+  assert (select count(*) from public.order_advance_exception_voids v
+           join public.order_advance_exceptions e on e.id = v.exception_id where e.order_id = o) = 1,
+    '11e. the approval is voided';
+  assert exists (select 1 from public.order_activity_log where order_id = o and event_type = 'order_advance_exception_voided'),
+    '11e. and the void is on the history';
+  perform pg_temp.pay_order(o, 100000, 'approved_unlinked');
+  assert (public.order_advance_position(o) ->> 'verified')::numeric = 500000, '11e. the same money is verified again';
+  assert not (public.order_advance_position(o) ->> 'ready')::boolean,
+    '11e. the voided approval does not come back: ' || public.order_advance_position(o)::text;
+  v_msg := pg_temp.ops_decide(o, 'accepted');
+  assert v_msg like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '11e. re-aligning needs a new decision: ' || v_msg;
+  assert pg_temp.approve_exception(o) = 'OK', '11e. a new approval is possible';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '11e. and then it re-aligns';
+  begin
+    delete from public.order_advance_exception_voids where order_id = o;
+    v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text;
+  end;
+  assert v_msg like 'ORDER_ADVANCE_EXCEPTION_VOID_PERMANENT%', '11e. a void cannot be undone: ' || v_msg;
+  assert pg_temp.try_as(current_setting('test.admin_id')::uuid, 'select count(*) from public.order_advance_exception_voids')
+         like 'permission denied%', '11e. clients read no voids';
+  raise notice '11e. R6: a reversal voids an exception for good; re-verifying the money does not revive it OK';
+end $$;
+
+-- 11f. R7: the PI's own exception is held to the money verified when the
+-- admin DECIDED it, not when it was requested; a reversal below that voids it.
+do $$
+declare
+  v_sub   uuid := gen_random_uuid();
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_wb    text := 'submissions/' || v_sub || '/original/' || gen_random_uuid() || '.xlsx';
+  v_p1    uuid := gen_random_uuid();
+  v_p2    uuid := gen_random_uuid();
+  v_res   jsonb;
+  o       uuid;
+  a2      uuid;
+  s       public.order_submissions%rowtype;
+begin
+  insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
+  values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
+  update public.order_submissions
+     set client_name = 'ASSERT hold 11f', gross_product_amount = 1000000, discount_amount = 0,
+         grand_total = 1000000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+   where id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  insert into public.order_submission_items (submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (v_sub, 32, 'B001', 'ASSERT hold 11f chair', 10, 100000, 1000000, 0);
+  insert into public.order_submission_item_images (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  select v_sub, i.id, 'representative', 0,
+         'submissions/' || v_sub || '/images/' || i.id || '/representative/0-' || repeat('c', 64) || '.png', 'image/png', repeat('c', 64), i.source_row
+    from public.order_submission_items i where i.submission_id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata)
+  select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images m where m.submission_id = v_sub;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (v_p1, 'ASSERT hold', 100000, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_p1, v_sub, 100000, 'order_submission', v_sales);
+  assert pg_temp.try_as(v_sales, format('select public.submit_pi_for_review(%L, null, %L, null, null)', v_sub, 'Sample order')) = 'OK',
+    '11f. requested at 10% verified';
+  -- More money is verified before the admin decides.
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (v_p2, 'ASSERT hold', 150000, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_p2, v_sub, 150000, 'order_submission', v_sales) returning id into a2;
+  assert pg_temp.try_as(v_admin, format('select public.approve_pi_advance_exception(%L)', v_sub)) = 'OK', '11f. decided';
+  select * into s from public.order_submissions where id = v_sub;
+  assert s.advance_exception_decided_verified = 250000 and s.advance_exception_percent = 10,
+    '11f. the decision records the money verified NOW (2,50,000), the request its own snapshot (10%): '
+    || coalesce(s.advance_exception_decided_verified::text, 'null') || ' / ' || coalesce(s.advance_exception_percent::text, 'null');
+  assert exists (select 1 from public.order_submission_activity where submission_id = v_sub and action = 'advance_exception_approved'
+                   and (metadata ->> 'decided_verified')::numeric = 250000 and (metadata ->> 'decided_percent')::numeric = 25),
+    '11f. and logs it with its percentage';
+  perform pg_temp.become(v_admin);
+  if (select pi_approved_at from public.order_submissions where id = v_sub) is null then
+    perform public.approve_pi_review(v_sub);
+  end if;
+  v_res := public.approve_order_submission(v_sub, v_sales, current_date, current_date + 30, 'reference');
+  perform pg_temp.restore();
+  o := (v_res ->> 'order_id')::uuid;
+  assert (public.order_advance_position(o) ->> 'ready')::boolean and public.order_advance_position(o) #>> '{exception,source}' = 'pi',
+    '11f. ready under the PI''s exception';
+  -- Reverse the money added before the decision: 1,00,000 is still above the
+  -- 10% requested, but below the 2,50,000 the admin decided on.
+  select id into a2 from public.finance_payment_allocations where payment_request_id = v_p2 and status = 'active';
+  assert pg_temp.try_as(current_setting('test.fin_id')::uuid,
+    format('select public.reverse_payment_allocation(%L, %L)', a2, 'ASSERT bounced')) = 'OK', '11f. reversed';
+  assert not (public.order_advance_position(o) ->> 'ready')::boolean,
+    '11f. below the money it was decided on: not ready: ' || public.order_advance_position(o)::text;
+  assert exists (select 1 from public.order_advance_exception_voids where order_id = o and exception_id is null),
+    '11f. the PI''s own exception is voided for good';
+  raise notice '11f. R7: the PI''s exception is held to the money verified at the decision OK';
+end $$;
+
+-- 11g. R4: an image row missing a part, or a line picture with no line id,
+-- is refused even when the key is this PI's own existing picture.
+do $$
+declare o uuid; v_sub uuid; v_item uuid; v_key text; v_sha text; v_prop jsonb; v_msg text; v_case jsonb;
+begin
+  o := pg_temp.fresh_order('ASSERT hold 11g', 1000000, 400000);
+  select source_order_submission_id into v_sub from public.orders where id = o;
+  select item_id, storage_path, sha256 into v_item, v_key, v_sha from public.order_submission_item_images where submission_id = v_sub;
+  foreach v_case in array array[
+    jsonb_build_object('images', jsonb_build_array(jsonb_build_object('storage_path', v_key)), 'items_image', null),
+    jsonb_build_object('images', jsonb_build_array(jsonb_build_object('storage_path', v_key, 'item_id', v_item, 'role', 'representative', 'position', 0)), 'items_image', null),
+    jsonb_build_object('images', '[]'::jsonb, 'items_image', v_key, 'no_item_id', true)]
+  loop
+    v_prop := jsonb_build_object(
+      'payload', jsonb_build_object(
+        'header', '{}'::jsonb, 'commercial', jsonb_build_object('grand_total', 1000000),
+        'source', jsonb_build_object('workbook_path', (select source_workbook_path from public.order_submissions where id = v_sub)),
+        'items', jsonb_build_array((jsonb_build_object('item_sequence', 'B001', 'product_name', 'ASSERT hold chair',
+                                                      'quantity', 10, 'cost_per_piece', 100000, 'total_amount', 1000000,
+                                                      'image_storage_path', v_case ->> 'items_image')
+                                   || case when v_case ? 'no_item_id' then '{}'::jsonb else jsonb_build_object('id', v_item) end)),
+        'item_images', v_case -> 'images',
+        'seed_terms', '{}'::jsonb),
+      'change_summary', '[]'::jsonb);
+    begin
+      perform public.propose_order_pi_edit_revision(o, current_setting('test.sales_id')::uuid, v_prop, 'ASSERT partial photo row');
+      v_msg := 'NO ERROR';
+    exception when others then get stacked diagnostics v_msg = message_text;
+    end;
+    perform set_config('request.jwt.claims', '', true);
+    assert v_msg like 'ORDER_PI_EDIT_INVALID: a product photo does not belong to this PI%',
+      '11g. refused: ' || v_case::text || ' → ' || v_msg;
+  end loop;
+  raise notice '11g. R4: image rows with missing parts, and line pictures with no line, are refused OK';
 end $$;
 
 do $$ begin raise notice 'ALL ADVANCE-HOLD ASSERTIONS PASSED'; end $$;

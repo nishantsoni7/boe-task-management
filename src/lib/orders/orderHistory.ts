@@ -24,6 +24,7 @@ import {
   describeAlignmentEventReason,
   describeOperationsHandoffEvent,
 } from './operationsHandoff'
+import { holdCauseText } from './advanceReadiness'
 
 /** One row of order_activity_log, as the Order page reads it. */
 export type OrderActivityRow = {
@@ -67,6 +68,7 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   // The 40% advance after alignment (20270104000000 §4d).
   order_advance_hold_opened:        'Production on hold: advance below 40%',
   order_advance_exception_approved: 'Production approved below 40% by an administrator',
+  order_advance_exception_voided:   'Below-40% approval void: payment reversed',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -80,6 +82,7 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   order_workbook_replaced:      'amber',
   order_advance_hold_opened:        'red',
   order_advance_exception_approved: 'amber',
+  order_advance_exception_voided:   'red',
 }
 
 const text = (value: unknown): string | null =>
@@ -123,9 +126,7 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     case 'order_workbook_replaced':
       return text(p.reason)
     case 'order_advance_hold_opened': {
-      const why = p.cause === 'payment_changed' ? 'verified payment was reduced'
-        : p.cause === 'pi_revision' ? 'a revised PI raised the value'
-        : "the Order's value was raised"
+      const why = holdCauseText(p.cause, p.previous_order_value, p.order_value)
       const figures = p.value_known === false
         ? 'no Order value on record'
         : typeof p.percent === 'number' || typeof p.percent === 'string'
@@ -136,6 +137,14 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     }
     case 'order_advance_exception_approved':
       return text(p.reason)
+    case 'order_advance_exception_voided': {
+      const money = (v: unknown) => typeof v === 'number' || typeof v === 'string'
+        ? `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null
+      const now = money(p.verified), then = money(p.verified_at_grant)
+      return [p.source === 'pi' ? "the PI's own below-40% approval" : null,
+        now && then ? `verified payment fell to ${now}, below the ${then} it was approved against` : null,
+        'a new approval is needed'].filter(Boolean).join(' · ')
+    }
     default:
       return describeOperationsHandoffEvent(row.event_type, p)
   }

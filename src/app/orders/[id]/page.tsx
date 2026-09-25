@@ -174,6 +174,7 @@ import {
 import {
   ApproveRevisionModal,
   OperationsHandoffDecisionModal,
+  ProductionRecoveryModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
   RejectRevisionModal,
@@ -863,6 +864,8 @@ export default function OrderDetailPage() {
   // versions themselves. The dialog holds which answer is being given.
   const [handoffs,      setHandoffs]      = useState<PersistedOperationsHandoff[]>([])
   const [handoffDialog, setHandoffDialog] = useState<OperationsHandoffStatus | null>(null)
+  // An administrator's recovery of a held Order no reviewer can realign (review R1).
+  const [recoverOpen, setRecoverOpen] = useState(false)
   const [handoffBusy,   setHandoffBusy]   = useState(false)
   const [handoffError,  setHandoffError]  = useState<string | null>(null)
 
@@ -1732,6 +1735,25 @@ export default function OrderDetailPage() {
     }
   }
 
+  // ── ADMINISTRATOR RECOVERY OF A HELD ORDER (20270104000000, review R1) ──
+  //
+  // Offered only when readiness says no operations reviewer can act; the door
+  // re-checks that, the hold, the accepted version and the 40% gate under lock,
+  // and records the recovery with its reason. The acceptance is not touched.
+  const recoverAlignment = async (reason: string) => {
+    if (!order || handoffBusy) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('recover_order_production_alignment', { p_order_id: order.id, p_reason: reason })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setRecoverOpen(false)
+      await Promise.all([reloadHandoffs(), reloadOrderRow()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
   /**
    * OPEN OR SAVE ONE PI VERSION'S WORKBOOK.
    *
@@ -2510,11 +2532,16 @@ export default function OrderDetailPage() {
   // strip names the review, and only to whom view.actions offers it.
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
   // An accepted version whose Order was put on hold (its advance fell below
-  // 40%, 20270104000000) is aligned again by the same reviewer, from here.
+  // 40%, 20270104000000) is aligned again from here by whoever is the
+  // operations reviewer NOW — or, when no reviewer can act, recovered by an
+  // administrator with a reason (review R1). Never under View As.
+  const realignBy = viewAsUserId ? null : (advance?.realign ?? null)
   const operationsRealignOffered = !!advance?.hold && operationsView?.kind === 'recorded'
-    && operationsView.status === 'accepted' && operationsView.actions.withdraw
+    && operationsView.status === 'accepted' && !!realignBy?.by_viewer
+  const operationsRecoverOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && !!realignBy?.recover_by_viewer
   const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
-    && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered
+    && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered || operationsRecoverOffered
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
   // only decides where each one sits. The cleanup gate is the existing one,
@@ -2748,6 +2775,9 @@ export default function OrderDetailPage() {
               onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
               acceptBlockedReason={advanceAttentionLabel(advance)}
               heldForAdvance={!!advance?.hold}
+              realignOffered={operationsRealignOffered}
+              recoverOffered={operationsRecoverOffered}
+              onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
             />
           ) : undefined}
         />
@@ -3373,11 +3403,22 @@ export default function OrderDetailPage() {
           versionLabel={operationsView.versionLabel}
           decision={handoffDialog}
           withdrawing={handoffDialog === 'clarification_needed' && operationsView.status === 'accepted'}
+          realigning={handoffDialog === 'accepted' && operationsView.status === 'accepted'}
           saving={handoffBusy}
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}
           onConfirm={reason => decideHandoff(handoffDialog, reason)}
           alsoAccepts={initialDocumentsAwaiting}
+        />
+      )}
+      {recoverOpen && operationsView?.kind === 'recorded' && (
+        <ProductionRecoveryModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setRecoverOpen(false) }}
+          onConfirm={reason => recoverAlignment(reason)}
         />
       )}
 

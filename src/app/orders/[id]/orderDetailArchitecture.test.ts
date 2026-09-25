@@ -422,6 +422,10 @@ describe('no Order fact is stated twice', () => {
       // reviewer's "Align production again" is offered (20270104000000 §4d).
       .replace('heldForAdvance={!!advance?.hold}', '')
       .replace('const operationsRealignOffered = !!advance?.hold', '')
+      // …and who may align a held Order again: the current reviewer, or an
+      // administrator's recovery when none can act (review R1). Yes/no only.
+      .replace('const realignBy = viewAsUserId ? null : (advance?.realign ?? null)', '')
+      .replace('const operationsRecoverOffered = !!advance?.hold', '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {

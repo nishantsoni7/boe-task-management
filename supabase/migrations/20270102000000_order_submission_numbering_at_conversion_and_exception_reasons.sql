@@ -283,6 +283,112 @@ create trigger order_submissions_guard_exception_reason_code
   for each row execute function public.order_submissions_guard_exception_reason_code();
 
 
+-- ─── 3a. The verified money an exception is DECIDED at (review R7) ────────
+--
+-- advance_exception_percent is the verified share when the exception was
+-- REQUESTED (and is re-stamped when a returned PI resubmits), rounded to two
+-- places. The administrator decides later, against whatever is verified then.
+-- approve_pi_advance_exception() now re-reads the verified money allocated to
+-- the PI at that moment, under the PI's row lock, and records it exactly; the
+-- Order's 40% gate (20270104000000) holds the PI's own exception to it.
+-- Re-emitted from 20260921000000 §4b with only that stamp and its log added.
+
+alter table public.order_submissions
+  add column if not exists advance_exception_decided_verified numeric
+    check (advance_exception_decided_verified is null or advance_exception_decided_verified >= 0);
+comment on column public.order_submissions.advance_exception_decided_verified is
+  'The verified payment allocated to this PI, in rupees, at the moment an administrator approved its below-40% exception (approve_pi_advance_exception). Exact, not rounded. NULL before a decision and on decisions made before 20270102000000. 20270102000000 (review R7).';
+
+create or replace function public.approve_pi_advance_exception(p_submission_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor    uuid := public.assert_order_submission_actor();
+  v_sub      public.order_submissions%rowtype;
+  v_verified numeric;
+begin
+  -- NOT orders.approve_order. Holding that alone is deliberately not enough.
+  if not public.actor_has_module_permission('orders', 'approve_advance_exception') then
+    raise exception 'You do not have permission to decide advance exceptions'
+      using errcode = '42501';
+  end if;
+
+  select * into v_sub
+  from public.order_submissions
+  where id = p_submission_id
+  for update;
+
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+
+  if v_sub.status <> 'submitted' then
+    raise exception
+      'ORDER_SUBMISSION_NOT_UNDER_REVIEW: only a submitted PI can have its advance exception decided (this one is %)',
+      v_sub.status
+      using errcode = 'P0001';
+  end if;
+
+  if v_sub.advance_condition is distinct from 'exception'
+     or v_sub.advance_exception_status is distinct from 'pending' then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_NOT_PENDING: this PI has no advance exception waiting for a decision'
+      using errcode = 'P0001';
+  end if;
+
+  -- THE VERIFIED MONEY NOW, not when it was requested (review R7).
+  v_verified := coalesce(public.order_submission_verified_payment(p_submission_id), 0);
+
+  update public.order_submissions
+     set advance_exception_status = 'approved',
+         advance_exception_decided_by = v_actor,
+         advance_exception_decided_at = now(),
+         advance_exception_rejection_reason = null,
+         advance_exception_decided_grand_total     = v_sub.grand_total,
+         advance_exception_decided_workbook_sha256 = v_sub.source_workbook_sha256,
+         advance_exception_decided_payment_terms   = v_sub.payment_terms,
+         advance_exception_decided_billing_terms   = v_sub.billing_terms,
+         advance_exception_decided_verified        = v_verified
+   where id = p_submission_id;
+
+  perform public.log_order_submission_activity(
+    p_submission_id, v_actor, 'advance_exception_approved', 'submitted', 'submitted', null,
+    jsonb_build_object(
+      'advance_condition', 'exception',
+      'advance_percent',   v_sub.advance_exception_percent,
+      'decided_verified',  v_verified,
+      'decided_percent',   case when coalesce(v_sub.grand_total, 0) > 0
+                                then round(100 * v_verified / v_sub.grand_total, 2) end,
+      'standard_percent',  public.order_submission_standard_advance_percent(),
+      'grand_total',       v_sub.grand_total,
+      'advance_amount',    public.order_submission_advance_amount(
+                             v_sub.grand_total, v_sub.advance_exception_percent),
+      'exception_status',  'approved',
+      'payment_terms',     v_sub.payment_terms,
+      'billing_terms',     v_sub.billing_terms,
+      'workbook_sha256',   v_sub.source_workbook_sha256
+    )
+  );
+
+  return jsonb_build_object(
+    'id', p_submission_id,
+    'status', 'submitted',
+    'advance_exception_status', 'approved',
+    'decided_verified', v_verified
+  );
+end;
+$$;
+
+revoke execute on function public.approve_pi_advance_exception(uuid) from public, anon;
+grant  execute on function public.approve_pi_advance_exception(uuid) to authenticated;
+
+comment on function public.approve_pi_advance_exception(uuid) is
+  'Accepts a pending reduced-payment exception on a submitted PI, for a caller holding orders.approve_advance_exception, and records the grand total, workbook, Payment Terms, Billing Terms and — re-read at this moment — the verified payment it was decided against (advance_exception_decided_verified, review R7). The PI stays submitted: this approves the commercial condition only, never the PI, and creates and verifies no payment. The approval stops being current the moment any of that basis changes.';
+
+
 -- ─── 3b. Design Files and Client PO attached BEFORE the PI is sent ─────────
 --
 -- 20261231000000 lets the owner attach both inside the "Submit for approval"
@@ -701,7 +807,8 @@ begin
            advance_exception_decided_grand_total     = null,
            advance_exception_decided_workbook_sha256 = null,
            advance_exception_decided_payment_terms   = null,
-           advance_exception_decided_billing_terms   = null
+           advance_exception_decided_billing_terms   = null,
+           advance_exception_decided_verified        = null
      where id = p_submission_id;
 
   elsif v_keep then
@@ -734,7 +841,8 @@ begin
            advance_exception_decided_grand_total     = null,
            advance_exception_decided_workbook_sha256 = null,
            advance_exception_decided_payment_terms   = null,
-           advance_exception_decided_billing_terms   = null
+           advance_exception_decided_billing_terms   = null,
+           advance_exception_decided_verified        = null
      where id = p_submission_id;
     v_requested := true;
   end if;

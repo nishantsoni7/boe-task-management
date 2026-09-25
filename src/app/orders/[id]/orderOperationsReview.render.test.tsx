@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OperationsReviewActions } from './OrderStatusWorkspace'
 import { OrderAttentionBar } from './OrderWorkspace'
-import { OperationsHandoffDecisionModal } from './OrderRevisionModals'
+import { OperationsHandoffDecisionModal, ProductionRecoveryModal } from './OrderRevisionModals'
 import {
   describeOperationsHandoff,
   type PersistedOperationsHandoff,
@@ -264,6 +264,29 @@ describe('the decision dialog', () => {
     assert.match(html, /takes back the acceptance .* and the production alignment that came with it/)
     assert.match(html, /The acceptance stays on record/)
     assert.match(html, /<button[^>]*>Withdraw acceptance/)
+  })
+
+  test('aligning a HELD Order again asks the reviewer to confirm they checked it (review R1)', () => {
+    const html = renderToStaticMarkup(
+      <OperationsHandoffDecisionModal orderNumber="0524" versionLabel="PI V2" decision="accepted" realigning saving={false} failure={null} onClose={noop} onConfirm={noop} />,
+    )
+    assert.match(html, /aria-labelledby="([^"]+)"[\s\S]*id="\1"[^>]*>Align production again</, 'the dialog is titled for what it does')
+    assert.match(html, /That acceptance stays on record as it was; this re-alignment is recorded under your name, now/)
+    assert.match(html, /<input type="checkbox"[^>]*\/?>\s*<span>I have checked this Order and it can go back into production<\/span>/)
+    assert.match(html, /<button[^>]*>Align production again<\/button>/)
+    assert.doesNotMatch(html, /Accept for production/, 'it is not a second acceptance')
+  })
+
+  test('the administrator recovery dialog asks for a reason and says the acceptance stays (review R1)', () => {
+    const html = renderToStaticMarkup(
+      <ProductionRecoveryModal orderNumber="0524" versionLabel="PI V2" saving={false} failure={null} onClose={noop} onConfirm={noop} />,
+    )
+    assert.match(html, /Recover the production alignment/)
+    assert.match(html, /No operations reviewer can align this Order again/)
+    assert.match(html, /The acceptance stays on record; this recovery is recorded under your name, with the reason\. The 40% advance still applies\./)
+    assert.match(html, /Why production is aligned again without an operations reviewer/)
+    assert.match(html, /<textarea/)
+    assert.match(html, /<button[^>]*>Align production \(administrator recovery\)<\/button>/)
   })
 })
 

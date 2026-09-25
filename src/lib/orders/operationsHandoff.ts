@@ -140,6 +140,35 @@ export const OPERATIONS_HANDOFF_REASON_MAX_LENGTH = 1000
 export const OPERATIONS_HANDOFF_REASON_REQUIRED = 'Say what needs clarifying before this version can be accepted.'
 export const OPERATIONS_HANDOFF_REASON_TOO_LONG = `The reason may be at most ${OPERATIONS_HANDOFF_REASON_MAX_LENGTH} characters.`
 
+// ── Aligning a HELD Order again (20270104000000, review R1) ──
+//
+// An accepted version whose Order fell below the 40% advance is aligned again
+// by whoever is the operations reviewer NOW, after checking it; the acceptance
+// on record is untouched and the re-alignment is its own event. When no
+// reviewer can act, an administrator may recover the alignment with a reason.
+export const REALIGN_DIALOG_TITLE = 'Align production again'
+export const REALIGN_CONFIRM =
+  "This puts the Order back in production against the PI version operations already accepted. That acceptance stays on record as it was; this re-alignment is recorded under your name, now. Check the Order's value, the PI in force and the verified payment first."
+export const REALIGN_CHECK_LABEL = 'I have checked this Order and it can go back into production'
+export const REALIGN_CHECK_REQUIRED = 'Confirm that you have checked the Order.'
+export const RECOVER_ALIGNMENT_LABEL = 'Recover production alignment…'
+export const RECOVER_DIALOG_TITLE = 'Recover the production alignment'
+export const RECOVER_CONFIRM =
+  'No operations reviewer can align this Order again. As an administrator you can put it back in production against the PI version operations accepted, with a reason. The acceptance stays on record; this recovery is recorded under your name, with the reason. The 40% advance still applies.'
+export const RECOVER_REASON_LABEL = 'Why production is aligned again without an operations reviewer'
+export const RECOVER_SAVE_LABEL = 'Align production (administrator recovery)'
+export const RECOVER_REASON_MIN_LENGTH = 10
+
+/** The recovery reason: 10–1000 characters, trimmed. The database checks the same. */
+export function validateRecoveryReason(raw: string): { ok: true; reason: string } | { ok: false; message: string } {
+  const reason = raw.trim()
+  if (reason.length < RECOVER_REASON_MIN_LENGTH) {
+    return { ok: false, message: `Say why, in at least ${RECOVER_REASON_MIN_LENGTH} characters.` }
+  }
+  if (reason.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) return { ok: false, message: OPERATIONS_HANDOFF_REASON_TOO_LONG }
+  return { ok: true, reason }
+}
+
 /** The card's read-only line for a reader who cannot decide. */
 export const OPERATIONS_REVIEW_READ_ONLY_NOTE =
   'Only the assigned operations reviewer can accept a version or flag it for clarification. Being an administrator does not count.'
@@ -457,6 +486,30 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   // the database's own sentence carries the percentage and the shortfall.
   const advance = describeAdvanceRefusal(m)
   if (advance) return advance
+  if (m.includes('ORDER_REALIGN_NOT_CURRENT_REVIEWER')) {
+    return 'Only the current operations reviewer can align production again.'
+  }
+  if (m.includes('ORDER_REALIGN_NO_REVIEWER')) {
+    return 'No operations reviewer is assigned. An administrator can assign one in Control Center, or recover the alignment with a reason.'
+  }
+  if (m.includes('ORDER_REALIGN_NOT_HELD')) {
+    return 'This Order is not on a production hold any more. Refresh the page.'
+  }
+  if (m.includes('ORDER_REALIGN_REVIEWER_AVAILABLE')) {
+    return "An operations reviewer can align this Order again, so an administrator's recovery is not available. Ask them."
+  }
+  if (m.includes('ORDER_REALIGN_NOT_ACCEPTED')) {
+    return 'The PI version in force has not been accepted by operations; it needs their review, not a recovery.'
+  }
+  if (m.includes('ORDER_REALIGN_RECOVERY_REASON_REQUIRED')) {
+    return `Say why, in at least ${RECOVER_REASON_MIN_LENGTH} characters.`
+  }
+  if (m.includes('ORDER_REALIGN_RECOVERY_REASON_TOO_LONG')) {
+    return OPERATIONS_HANDOFF_REASON_TOO_LONG
+  }
+  if (m.includes('Only an administrator can recover')) {
+    return 'Only an active administrator can recover a production alignment.'
+  }
   if (m.includes('ORDER_OPERATIONS_HANDOFF_STALE') || m.includes('ORDER_OPERATIONS_HANDOFF_SUPERSEDED')) {
     return 'A newer PI version has been approved since this page loaded. Refresh to review the current one.'
   }
@@ -547,6 +600,13 @@ export const AWAITING_OPERATIONS_REVIEW_SUB_ADMIN = 'PI versions awaiting operat
 export const OPERATIONS_REVIEW_QUEUE_HREF = '/orders/all?ops=awaiting'
 export const OPERATIONS_REVIEW_QUEUE_BANNER = 'Showing Orders whose current PI version is awaiting operations review or flagged for clarification'
 
+/** Why no operations reviewer could align a held Order again (recover_order_production_alignment). */
+const REVIEWER_UNAVAILABLE_TEXT: Record<string, string> = {
+  no_reviewer: 'no operations reviewer was assigned',
+  reviewer_inactive: 'the operations reviewer is inactive',
+  reviewer_cannot_open_order: 'the operations reviewer cannot open this Order',
+}
+
 /** The Order-history words for the events the migration writes. */
 export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_handoff_recorded:              'Sent to operations for review',
@@ -556,6 +616,7 @@ export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
   operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
   operations_handoff_realigned:             'Operations aligned production again',
+  operations_handoff_realigned_by_admin:    'Administrator recovered the production alignment',
 }
 
 export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone> = {
@@ -566,6 +627,7 @@ export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone
   operations_handoff_clarification_needed:  'red',
   operations_handoff_acceptance_withdrawn:  'red',
   operations_handoff_realigned:             'green',
+  operations_handoff_realigned_by_admin:    'amber',
 }
 
 const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
@@ -597,6 +659,9 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null
     case 'operations_handoff_realigned':
       return [v, 'after a production hold', text(p.note)].filter(Boolean).join(' · ')
+    case 'operations_handoff_realigned_by_admin':
+      return [v, 'after a production hold', REVIEWER_UNAVAILABLE_TEXT[String(p.reviewer_unavailable)] ?? null, text(p.reason)]
+        .filter(Boolean).join(' · ')
     default:
       return null
   }
@@ -625,6 +690,8 @@ export function describeAlignmentEventReason(payload: Record<string, unknown> | 
       return 'removed: the verified advance fell below 40%'
     case 'operations_handoff_realigned':
       return v ? `${v} aligned again after a production hold` : 'aligned again after a production hold'
+    case 'operations_handoff_realigned_by_admin':
+      return v ? `${v} aligned again by an administrator (no operations reviewer could)` : 'aligned again by an administrator (no operations reviewer could)'
     default:
       return p.legacy_order === true ? 'set the old way (no handoff on this Order)' : null
   }

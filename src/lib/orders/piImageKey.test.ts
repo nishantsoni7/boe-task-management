@@ -76,6 +76,32 @@ describe('a built proposal', () => {
     assert.equal(proposalImagesAreCanonical(payload(GOOD.replace(SUB, OTHER)), SUB), false)
     assert.equal(proposalImagesAreCanonical(payload(GOOD, OTHER), SUB), false)
   })
+
+  test('the SAME refusals as the SQL twin: nothing is skipped (review R4)', () => {
+    const base = payload(GOOD) as { items: Record<string, unknown>[]; item_images: Record<string, unknown>[] }
+    const img = base.item_images[0]
+    // An image row missing any part — even with this PI's own canonical key.
+    for (const drop of ['item_id', 'role', 'position', 'sha256']) {
+      const partial = { ...img }
+      delete partial[drop]
+      assert.equal(proposalImagesAreCanonical({ ...base, item_images: [partial] }, SUB), false, `missing ${drop}`)
+    }
+    assert.equal(proposalImagesAreCanonical({ ...base, item_images: [{ storage_path: GOOD }] }, SUB), false, 'a bare key')
+    // A slot the SQL would not read as the same number.
+    for (const position of ['00', '0.0', '', null, false, -1, 0.5]) {
+      assert.equal(proposalImagesAreCanonical({ ...base, item_images: [{ ...img, position }] }, SUB), false, `position ${String(position)}`)
+    }
+    assert.equal(proposalImagesAreCanonical({ ...base, item_images: [{ ...img, position: '0' }] }, SUB), true, 'a digit string is what ->> reads')
+    // Shapes the SQL refuses.
+    assert.equal(proposalImagesAreCanonical({ ...base, item_images: {} }, SUB), false, 'item_images not an array')
+    assert.equal(proposalImagesAreCanonical({ ...base, item_images: null }, SUB), false, 'item_images null')
+    assert.equal(proposalImagesAreCanonical({ ...base, items: 'x' }, SUB), false, 'items not an array')
+    assert.equal(proposalImagesAreCanonical({ ...base, item_images: ['x'] }, SUB), false, 'an image entry that is not an object')
+    // A line picture with no line id.
+    const noId = { ...base.items[0] }
+    delete noId.id
+    assert.equal(proposalImagesAreCanonical({ ...base, items: [noId] }, SUB), false, 'a line picture with no line')
+  })
 })
 
 describe('every privileged reader uses it', () => {
@@ -96,5 +122,25 @@ describe('every privileged reader uses it', () => {
   })
   test('a version’s content is filtered the same way', () => {
     assert.ok(read('src/lib/orders/piVersionPdf.ts').includes("isCanonicalPiImageKey(path, { submissionId, itemId: item, role: 'representative' })"))
+  })
+  test('the Confirmed PDF checks each row and again right before its service-role read (review R3)', () => {
+    const route = read('src/app/api/orders/[id]/documents/route.ts')
+    assert.ok(route.includes('isCanonicalPiImageKey(image.storage_path, {'), 'each stored row is checked whole')
+    assert.ok(!route.includes('.startsWith(`submissions/${submissionId}/`)'), 'no prefix test is left')
+    const guard = route.indexOf('!isCanonicalPiImageKey(path, { submissionId })')
+    const read_ = route.indexOf('return read(path)')
+    assert.ok(guard > 0 && read_ > guard, 'the last check sits before the read')
+  })
+  test('a reused upload is checked whole before its bytes are fetched (review R3)', () => {
+    const route = read('src/app/api/orders/import/process-draft/route.ts')
+    const guard = route.indexOf('isCanonicalPiImageKey(image.storagePath, {')
+    const download = route.indexOf(".download(image.storagePath)")
+    assert.ok(guard > 0 && download > guard)
+  })
+  test('no service-role product-image read is left without it', () => {
+    for (const file of ['src/app/api/orders/[id]/documents/route.ts', 'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
+                        'src/app/api/orders/import/process-draft/route.ts']) {
+      assert.ok(read(file).includes('isCanonicalPiImageKey('), file)
+    }
   })
 })

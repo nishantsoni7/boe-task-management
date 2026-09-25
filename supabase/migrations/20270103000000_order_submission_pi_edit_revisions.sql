@@ -270,6 +270,10 @@ begin
      or exists (
        select 1 from jsonb_array_elements(coalesce(v_payload -> 'item_images', '[]'::jsonb)) m
         where jsonb_typeof(m) <> 'object'
+           -- Every part named, so no comparison is skipped (review R4): an
+           -- absent field is refused, exactly as proposalImagesAreCanonical().
+           or m ->> 'item_id' is null or m ->> 'role' is null
+           or m ->> 'position' is null or m ->> 'sha256' is null
            or not public.order_pi_image_key_is_canonical(v_sub.id, m ->> 'storage_path',
                     m ->> 'item_id', m ->> 'role', m ->> 'position', m ->> 'sha256')
            or not exists (select 1 from storage.objects so
@@ -278,7 +282,8 @@ begin
        select 1 from jsonb_array_elements(v_payload -> 'items') i
         where jsonb_typeof(i) <> 'object'
            or (i ->> 'image_storage_path' is not null
-               and not public.order_pi_image_key_is_canonical(v_sub.id, i ->> 'image_storage_path', i ->> 'id'))) then
+               and (i ->> 'id' is null
+                    or not public.order_pi_image_key_is_canonical(v_sub.id, i ->> 'image_storage_path', i ->> 'id')))) then
     raise exception 'ORDER_PI_EDIT_INVALID: a product photo does not belong to this PI' using errcode = 'P0001';
   end if;
 

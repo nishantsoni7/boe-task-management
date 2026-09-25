@@ -45,6 +45,17 @@ export type AdvanceReadiness = {
   } | null
   /** Readiness removed from an aligned Order that fell short; open until it is aligned again. */
   hold?: AdvanceHold | null
+  /**
+   * While a hold is open: who may align the Order again (review R1). The
+   * current operations reviewer when one can act; otherwise an administrator's
+   * recorded recovery. For drawing only — the doors decide again under lock.
+   */
+  realign?: {
+    reviewer_id: string | null
+    reviewer_available: boolean
+    by_viewer: boolean
+    recover_by_viewer: boolean
+  } | null
 }
 
 const num = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : 0)
@@ -76,17 +87,33 @@ export type AdvanceGateView =
  * advance meets 40% of the Order's value; a blocking panel while it is short;
  * a quiet note once an administrator has approved production below 40%.
  */
-const HOLD_CAUSE: Record<string, string> = {
-  value_changed: "the Order's value was raised",
-  pi_revision: "a revised PI raised the Order's value",
-  payment_changed: 'verified payment against it was reduced',
+/**
+ * Which way a value moved: 'raised', 'lowered', or 'changed' when either figure
+ * is unknown or they are equal. A LOWER value can put an Order on hold too — an
+ * approval given for the old value no longer covers it (review R2). SQL twin:
+ * order_value_change_word().
+ */
+export function valueChangeWord(before: unknown, after: unknown): 'raised' | 'lowered' | 'changed' {
+  const known = (v: unknown) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v))
+  if (!known(before) || !known(after)) return 'changed'
+  const a = Number(before), b = Number(after)
+  return b > a ? 'raised' : b < a ? 'lowered' : 'changed'
+}
+
+/** Why a hold opened, in words that match what happened to the value. */
+export function holdCauseText(cause: unknown, previous: unknown, current: unknown): string {
+  const dir = valueChangeWord(previous, current)
+  if (cause === 'value_changed') return dir === 'changed' ? "the Order's value changed" : `the Order's value was ${dir}`
+  if (cause === 'pi_revision') return `a revised PI ${dir} the Order's value`
+  if (cause === 'payment_changed') return 'verified payment against it was reduced'
+  return 'the Order changed'
 }
 
 /** The hold, in one sentence: when, why, and where it left the advance. */
 export function advanceHoldSentence(h: AdvanceHold | null | undefined, formatWhen?: (iso: string | null) => string): string | null {
   if (!h) return null
   const when = formatWhen && h.held_at ? ` on ${formatWhen(h.held_at)}` : ''
-  const why = HOLD_CAUSE[h.cause] ?? 'the Order changed'
+  const why = holdCauseText(h.cause, h.previous_order_value, h.order_value)
   const where = h.percent == null
     ? 'no Order value is on record to measure the advance against'
     : `the verified advance fell to ${percentText(h.percent)} of ${rupees(h.order_value)}`

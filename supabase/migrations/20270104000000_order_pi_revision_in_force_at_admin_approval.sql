@@ -523,6 +523,9 @@ begin
   -- ── APPLY, through the unchanged parse writer ──
   v_reason := left('PI V' || v_ver.version_number::text || ' approved: ' || v_ver.revision_reason, 500);
   perform set_config('boe.pi_revision_apply', v_sub.id::text, true);
+  -- Who is applying it: a production hold opened inside this apply is theirs
+  -- (order_advance_hold_recheck), although this door runs as the service role.
+  perform set_config('boe.pi_revision_actor', p_actor_id::text, true);
   perform set_config('boe.amendment_context', 'order_amendment', true);
   v_result := public.replace_order_submission_parse(v_sub.id, p_actor_id,
     p_payload || jsonb_build_object('processing_token', v_token, 'change_reason', v_reason));
@@ -587,6 +590,7 @@ begin
          workbook_sha256 = coalesce(nullif(lower(p_payload -> 'source' ->> 'workbook_sha256'), ''), workbook_sha256)
    where id = v_ver.id;
   perform set_config('boe.pi_revision_apply', '', true);
+  perform set_config('boe.pi_revision_actor', '', true);
 
   -- ── PRODUCT CODES ──
   -- Each continuing line gets back the code the line it continues held (the
@@ -942,6 +946,44 @@ create trigger order_advance_exceptions_immutable
   before update or delete on public.order_advance_exceptions
   for each row execute function public.order_advance_exceptions_immutable();
 
+-- A below-40% approval VOIDED FOR GOOD because the verified money it was given
+-- against was reversed (review R6). Re-verifying the same amount later does
+-- not bring it back: it needs a new administrator's decision. exception_id
+-- NULL is the PI's own pre-conversion exception. One void per approval.
+create table if not exists public.order_advance_exception_voids (
+  id           uuid primary key default gen_random_uuid(),
+  order_id     uuid not null references public.orders(id) on delete cascade,
+  exception_id uuid references public.order_advance_exceptions(id) on delete cascade,
+  cause        text not null check (cause in ('payment_reduced')),
+  verified     numeric not null,
+  floor        numeric not null,
+  detail       jsonb not null default '{}'::jsonb,
+  voided_at    timestamptz not null default now()
+);
+comment on table public.order_advance_exception_voids is
+  'A below-40% approval (an order_advance_exceptions row, or the PI''s own exception when exception_id is NULL) made void for good because verified money fell below the amount it was given against. Written only by order_advance_exceptions_void_on_reduction(). 20270104000000.';
+alter table public.order_advance_exception_voids enable row level security;
+revoke all on public.order_advance_exception_voids from public, anon, authenticated, service_role;
+create unique index if not exists order_advance_exception_voids_one
+  on public.order_advance_exception_voids (order_id, coalesce(exception_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+create or replace function public.order_advance_exception_voids_immutable()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' and public.in_test_data_cleanup() then return old; end if;
+  raise exception 'ORDER_ADVANCE_EXCEPTION_VOID_PERMANENT: a voided approval stays void' using errcode = '42501';
+end;
+$$;
+revoke execute on function public.order_advance_exception_voids_immutable() from public, anon, authenticated, service_role;
+drop trigger if exists order_advance_exception_voids_immutable on public.order_advance_exception_voids;
+create trigger order_advance_exception_voids_immutable
+  before update or delete on public.order_advance_exception_voids
+  for each row execute function public.order_advance_exception_voids_immutable();
+
 -- A hold: readiness removed from an aligned Order because it fell short.
 create table if not exists public.order_advance_holds (
   id                   uuid primary key default gen_random_uuid(),
@@ -991,6 +1033,19 @@ drop trigger if exists order_advance_holds_guard on public.order_advance_holds;
 create trigger order_advance_holds_guard
   before update or delete on public.order_advance_holds
   for each row execute function public.order_advance_holds_guard();
+
+-- The verified money the PI's own exception stays backed by: what was verified
+-- when the administrator decided it (20270102000000 stamps it), or, for a
+-- decision made before that was recorded, the percentage on the PI.
+create or replace function public.order_pi_exception_floor(p_decided_verified numeric, p_percent numeric, p_total numeric)
+returns numeric
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select coalesce(p_decided_verified, coalesce(p_percent, 0) * p_total / 100);
+$$;
+revoke execute on function public.order_pi_exception_floor(numeric, numeric, numeric) from public, anon, authenticated, service_role;
 
 -- Where the Order stands. Internal: every figure a person or the gate reads.
 create or replace function public.order_advance_position(p_order_id uuid)
@@ -1042,16 +1097,20 @@ begin
      and e.order_value is not distinct from o.total_value
      and e.pi_version_id is not distinct from v_version
      and v_verified >= e.verified_at_grant
+     and not exists (select 1 from public.order_advance_exception_voids x where x.exception_id = e.id)
    order by e.approved_at desc limit 1;
 
   -- The PI's own pre-conversion exception: only while the Order has never
-  -- been re-valued, the PI still carries the figures it was decided on, and
-  -- the verified money has not fallen below the share it was decided at.
+  -- been re-valued, the PI still carries the figures it was decided on, the
+  -- verified money has not fallen below what it was when the administrator
+  -- DECIDED it (advance_exception_decided_verified; older decisions fall back
+  -- to the recorded percentage), and no reversal has voided it.
   if o.source_order_submission_id is not null and o.value_epoch = 0 then
     select * into s from public.order_submissions where id = o.source_order_submission_id;
     v_pi_exc := coalesce(s.id is not null
       and s.grand_total is not distinct from o.total_value
-      and v_verified >= coalesce(s.advance_exception_percent, 0) * o.total_value / 100
+      and v_verified >= public.order_pi_exception_floor(s.advance_exception_decided_verified, s.advance_exception_percent, o.total_value)
+      and not exists (select 1 from public.order_advance_exception_voids x where x.order_id = o.id and x.exception_id is null)
       and public.order_submission_exception_current(
             s.advance_exception_status,
             s.advance_exception_decided_grand_total,     s.grand_total,
@@ -1098,15 +1157,34 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
+declare
+  v_pos   jsonb;
+  v_rev   uuid;
+  v_avail boolean;
 begin
   if not coalesce(public.can_view_order_as_actor(p_order_id), false) then
     raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002';
   end if;
-  return public.order_advance_position(p_order_id);
+  v_pos := public.order_advance_position(p_order_id);
+  -- WHO MAY ALIGN A HELD ORDER AGAIN (review R1), for the screen to draw; the
+  -- doors decide again under lock. The current operations reviewer when one
+  -- can act; otherwise an administrator's recovery.
+  if jsonb_typeof(v_pos -> 'hold') = 'object' then
+    select r.user_id into v_rev from public.order_operations_reviewers r where r.duty = 'pi_handoff';
+    v_avail := v_rev is not null and public.operations_reviewer_can_open_order(v_rev, p_order_id);
+    v_pos := v_pos || jsonb_build_object('realign', jsonb_build_object(
+      'reviewer_id', v_rev,
+      'reviewer_available', v_avail,
+      'by_viewer', v_avail and v_rev = auth.uid(),
+      'recover_by_viewer', not v_avail and exists (
+        select 1 from public.users u where u.id = auth.uid() and u.role = 'admin'
+           and u.is_active and coalesce(u.is_deleted, false) = false)));
+  end if;
+  return v_pos;
 end;
 $$;
 comment on function public.order_advance_readiness(uuid) is
-  'Where a Confirmed Order stands against the 40% verified advance, measured on its current (amended) value: {order_value, value_known, verified, awaiting, required, shortfall, percent, below, exception, hold, ready}. For anybody who may open the Order. 20270104000000.';
+  'Where a Confirmed Order stands against the 40% verified advance, measured on its current (amended) value: {order_value, value_known, verified, awaiting, required, shortfall, percent, below, exception, hold, ready}, and while a hold is open, realign: who may align it again (the current operations reviewer, or an administrator''s recovery when none can act). For anybody who may open the Order. 20270104000000.';
 revoke execute on function public.order_advance_readiness(uuid) from public, anon;
 grant  execute on function public.order_advance_readiness(uuid) to authenticated;
 
@@ -1169,7 +1247,8 @@ begin
                              'shortfall', v_pos -> 'shortfall', 'reason', v_reason));
 
   select nullif(btrim(u.full_name), '') into v_name from public.users u where u.id = v_actor;
-  if v_rev is not null and v_rev <> v_actor then
+  if v_rev is not null and v_rev <> v_actor
+     and exists (select 1 from public.users u where u.id = v_rev and u.is_active and coalesce(u.is_deleted, false) = false) then
     insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
     values (v_rev, null, o.id, 'order_operations_review_requested'::notification_type,
             format('Order %s: %s approved production below the 40%% advance.', o.display_number, coalesce(v_name, 'An administrator')),
@@ -1233,6 +1312,21 @@ create trigger orders_alignment_requires_advance
   before update of production_alignment on public.orders
   for each row execute function public.orders_alignment_requires_advance();
 
+-- 'raised', 'lowered' or 'changed' (either figure unknown, or equal).
+create or replace function public.order_value_change_word(p_before numeric, p_after numeric)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select case
+    when p_before is null or p_after is null or p_before = 'NaN'::numeric or p_after = 'NaN'::numeric then 'changed'
+    when p_after > p_before then 'raised'
+    when p_after < p_before then 'lowered'
+    else 'changed' end;
+$$;
+revoke execute on function public.order_value_change_word(numeric, numeric) from public, anon, authenticated, service_role;
+
 -- THE RE-CHECK. Internal; called by the triggers below in the transaction of
 -- the write that may have made the Order fall short.
 create or replace function public.order_advance_hold_recheck(p_order_id uuid, p_cause text, p_detail jsonb)
@@ -1244,9 +1338,12 @@ as $$
 declare
   o         public.orders%rowtype;
   v_pos     jsonb;
-  v_actor   uuid := auth.uid();
+  -- Who caused it. A PI revision is applied by the service role on an
+  -- administrator's behalf: that administrator is the author (review R5).
+  v_actor   uuid := coalesce(auth.uid(), nullif(current_setting('boe.pi_revision_actor', true), '')::uuid);
   v_hold    uuid;
   v_in_rev  boolean := nullif(current_setting('boe.pi_revision_apply', true), '') is not null;
+  v_dir     text;
   v_what    text;
   v_title   text;
   v_body    text;
@@ -1285,9 +1382,13 @@ begin
           nullif(v_pos ->> 'shortfall', '')::numeric, coalesce(p_detail, '{}'::jsonb), v_actor)
   returning id into v_hold;
 
+  -- The direction is said only when both figures are known (review R2): a
+  -- LOWER value can leave an Order short too, when an approval it relied on
+  -- was for the old value.
+  v_dir := public.order_value_change_word(nullif(p_detail ->> 'previous_order_value', '')::numeric, o.total_value);
   v_what := case p_cause
-    when 'value_changed'   then 'its value changed'
-    when 'pi_revision'     then 'a revised PI changed its value'
+    when 'value_changed' then case when v_dir = 'changed' then 'its value changed' else 'its value was ' || v_dir end
+    when 'pi_revision'   then 'a revised PI ' || v_dir || ' its value'
     else 'verified payment against it was reduced' end;
 
   -- A revision's own handoff removes the alignment in this transaction.
@@ -1320,8 +1421,11 @@ begin
     from (select u.id as user_id from public.users u
            where u.role = 'admin' and u.is_active and coalesce(u.is_deleted, false) = false
           union
+          -- The operations reviewer only while they can act on it (review R8):
+          -- an inactive or deleted reviewer is not told; the administrators are.
           select r.user_id from public.order_operations_reviewers r
-           where r.duty = 'pi_handoff' and r.user_id is not null) r
+            join public.users u on u.id = r.user_id
+           where r.duty = 'pi_handoff' and u.is_active and coalesce(u.is_deleted, false) = false) r
    where r.user_id is distinct from v_actor;
 
   return true;
@@ -1330,6 +1434,81 @@ $$;
 comment on function public.order_advance_hold_recheck(uuid, text, jsonb) is
   'Internal: under the Order''s row lock, if an ALIGNED open Order is no longer ready on the 40% advance, open a hold, remove the alignment (unless a PI revision''s handoff is doing so), log it and tell the administrators and the operations reviewer. Not callable by any client role. 20270104000000.';
 revoke execute on function public.order_advance_hold_recheck(uuid, text, jsonb) from public, anon, authenticated, service_role;
+
+-- VERIFIED MONEY REVERSED: a below-40% approval it no longer covers is void
+-- for good (review R6). Internal; called by the two payment triggers below,
+-- BEFORE the hold re-check, under the same Order row lock. Only the approval
+-- that is current for the Order's value basis can be voided — one given for an
+-- earlier epoch or PI version is already stale for good.
+create or replace function public.order_advance_exceptions_void_on_reduction(p_order_id uuid, p_detail jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  o         public.orders%rowtype;
+  s         public.order_submissions%rowtype;
+  v_pos     jsonb;
+  v_version uuid;
+  v_verified numeric;
+  v_floor   numeric;
+  v_actor   uuid := auth.uid();
+  v_count   integer := 0;
+  e         record;
+begin
+  if p_order_id is null or public.in_test_data_cleanup() then
+    return 0;
+  end if;
+  select * into o from public.orders where id = p_order_id for update;
+  if not found then return 0; end if;
+  if v_actor is not null and not exists (select 1 from public.users u where u.id = v_actor) then
+    v_actor := null;
+  end if;
+
+  v_pos := public.order_advance_position(o.id);
+  v_verified := (v_pos ->> 'verified')::numeric;
+  v_version := nullif(v_pos ->> 'pi_version_id', '')::uuid;
+
+  for e in
+    select x.* from public.order_advance_exceptions x
+     where x.order_id = o.id
+       and x.value_epoch = o.value_epoch
+       and x.order_value is not distinct from o.total_value
+       and x.pi_version_id is not distinct from v_version
+       and v_verified < x.verified_at_grant
+       and not exists (select 1 from public.order_advance_exception_voids v where v.exception_id = x.id)
+  loop
+    insert into public.order_advance_exception_voids (order_id, exception_id, cause, verified, floor, detail)
+    values (o.id, e.id, 'payment_reduced', v_verified, e.verified_at_grant, coalesce(p_detail, '{}'::jsonb));
+    insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+    values (o.id, v_actor, 'order_advance_exception_voided',
+            jsonb_build_object('source', 'order', 'exception_id', e.id, 'verified', v_verified,
+                               'verified_at_grant', e.verified_at_grant) || coalesce(p_detail, '{}'::jsonb));
+    v_count := v_count + 1;
+  end loop;
+
+  -- The PI's own exception, while it is still the one covering this Order.
+  if o.source_order_submission_id is not null and o.value_epoch = 0
+     and not exists (select 1 from public.order_advance_exception_voids v where v.order_id = o.id and v.exception_id is null) then
+    select * into s from public.order_submissions where id = o.source_order_submission_id;
+    v_floor := public.order_pi_exception_floor(s.advance_exception_decided_verified, s.advance_exception_percent, o.total_value);
+    if s.id is not null and s.advance_exception_status = 'approved' and v_verified < v_floor then
+      insert into public.order_advance_exception_voids (order_id, exception_id, cause, verified, floor, detail)
+      values (o.id, null, 'payment_reduced', v_verified, v_floor, coalesce(p_detail, '{}'::jsonb));
+      insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+      values (o.id, v_actor, 'order_advance_exception_voided',
+              jsonb_build_object('source', 'pi', 'verified', v_verified, 'verified_at_grant', v_floor)
+              || coalesce(p_detail, '{}'::jsonb));
+      v_count := v_count + 1;
+    end if;
+  end if;
+  return v_count;
+end;
+$$;
+comment on function public.order_advance_exceptions_void_on_reduction(uuid, jsonb) is
+  'Internal: under the Order''s row lock, voids for good every below-40% approval current for the Order''s value basis (and the PI''s own exception) that verified money has fallen below; logs order_advance_exception_voided. Not callable by any client role. 20270104000000 (review R6).';
+revoke execute on function public.order_advance_exceptions_void_on_reduction(uuid, jsonb) from public, anon, authenticated, service_role;
 
 -- The Order's value changed (any path).
 create or replace function public.orders_advance_recheck_on_value_change()
@@ -1403,6 +1582,7 @@ begin
                                                 when new.status <> 'active' then new.status
                                                 when new.order_id is distinct from old.order_id then 'moved'
                                                 else 'reduced' end);
+  perform public.order_advance_exceptions_void_on_reduction(old.order_id, v_detail);
   perform public.order_advance_hold_recheck(old.order_id, 'payment_changed', v_detail);
   return null;
 end;
@@ -1433,6 +1613,9 @@ begin
      where a.payment_request_id = new.id and a.status = 'active' and a.order_id is not null
      order by a.order_id
   loop
+    perform public.order_advance_exceptions_void_on_reduction(v_order,
+      jsonb_build_object('payment_request_id', new.id, 'change', 'payment_status',
+                         'from_status', old.status, 'to_status', new.status));
     perform public.order_advance_hold_recheck(v_order, 'payment_changed',
       jsonb_build_object('payment_request_id', new.id, 'change', 'payment_status',
                          'from_status', old.status, 'to_status', new.status));
@@ -1472,6 +1655,8 @@ declare
   v_name     text;
   v_event    text;
   v_withdraw boolean := false;
+  v_realign  boolean := false;
+  v_current  uuid;
 begin
   if p_decision is null or p_decision not in ('accepted', 'clarification_needed') then
     raise exception 'ORDER_OPERATIONS_HANDOFF_DECISION_UNKNOWN: the decision must be accepted or clarification_needed'
@@ -1504,18 +1689,45 @@ begin
     raise exception 'ORDER_OPERATIONS_HANDOFF_NOT_FOUND: that handoff no longer exists' using errcode = 'P0002';
   end if;
 
-  -- ── Authority: the assigned reviewer, active, able to open this Order, and
-  --    nobody in their place ──
-  if v_h.assigned_to is null then
-    raise exception 'ORDER_OPERATIONS_HANDOFF_UNASSIGNED: no operations reviewer is assigned; an administrator must assign one in Control Center'
-      using errcode = 'P0001';
-  end if;
-  if v_h.assigned_to <> v_actor then
-    raise exception 'Only the assigned operations reviewer can decide this handoff'
-      using errcode = '42501';
-  end if;
-  if not public.can_view_order_as_actor(v_h.order_id) then
-    raise exception 'You do not have access to this Order' using errcode = '42501';
+  -- RE-ALIGNING a held Order (review R1): an ACCEPTED version whose Order lost
+  -- its alignment to a production hold. The acceptance names whoever accepted
+  -- it and stays that way; the person who may align it again is whoever is the
+  -- operations reviewer NOW — a reassignment after the acceptance moves this
+  -- duty, never the alignment itself.
+  v_realign := v_h.status = 'accepted' and p_decision = 'accepted'
+               and v_order.production_alignment is distinct from 'aligned';
+
+  -- ── Authority: the assigned reviewer (for a re-alignment, the CURRENT
+  --    reviewer), active, able to open this Order, and nobody in their place ──
+  if v_realign then
+    select r.user_id into v_current from public.order_operations_reviewers r where r.duty = 'pi_handoff';
+    if v_current is null then
+      raise exception 'ORDER_REALIGN_NO_REVIEWER: no operations reviewer is assigned. An administrator can assign one in Control Center, or recover the alignment with a reason.'
+        using errcode = 'P0001';
+    end if;
+    if v_current <> v_actor then
+      raise exception 'ORDER_REALIGN_NOT_CURRENT_REVIEWER: only the current operations reviewer can align production again'
+        using errcode = '42501';
+    end if;
+    if not public.operations_reviewer_can_open_order(v_actor, v_h.order_id) then
+      raise exception 'You do not have access to this Order' using errcode = '42501';
+    end if;
+    if not exists (select 1 from public.order_advance_holds h where h.order_id = v_h.order_id and h.resolved_at is null) then
+      raise exception 'ORDER_REALIGN_NOT_HELD: Order % is not on a production hold', v_order.display_number
+        using errcode = 'P0001';
+    end if;
+  else
+    if v_h.assigned_to is null then
+      raise exception 'ORDER_OPERATIONS_HANDOFF_UNASSIGNED: no operations reviewer is assigned; an administrator must assign one in Control Center'
+        using errcode = 'P0001';
+    end if;
+    if v_h.assigned_to <> v_actor then
+      raise exception 'Only the assigned operations reviewer can decide this handoff'
+        using errcode = '42501';
+    end if;
+    if not public.can_view_order_as_actor(v_h.order_id) then
+      raise exception 'You do not have access to this Order' using errcode = '42501';
+    end if;
   end if;
 
   -- ── State: live, about the version in force, on an open Order ──
@@ -1550,12 +1762,15 @@ begin
   if p_decision = 'accepted' and v_h.status = 'accepted' then
     -- RE-ALIGNING AFTER A HOLD (20270104000000). The acceptance on the row is
     -- what happened and stays exactly as it was; the Order is aligned against
-    -- it again, as a new event. The gate refuses it while the Order is short.
+    -- it again, as a new event naming who aligned it and when, next to the
+    -- acceptance it stands on. The gate refuses it while the Order is short.
     v_event := 'operations_handoff_realigned';
     insert into public.order_activity_log (order_id, actor_id, event_type, payload)
     values (v_h.order_id, v_actor, v_event,
             jsonb_build_object('handoff_id', v_h.id, 'version_id', v_h.pi_version_id,
                                'version_number', v_h.version_number, 'note', v_reason,
+                               'realigned_by', v_actor, 'realigned_at', v_now,
+                               'accepted_by', v_h.accepted_by, 'accepted_at', v_h.accepted_at,
                                'hold_id', (select h.id from public.order_advance_holds h
                                             where h.order_id = v_h.order_id and h.resolved_at is null)));
     perform public.order_operations_handoff_set_alignment(
@@ -1648,6 +1863,107 @@ comment on function public.decide_order_operations_handoff(uuid, text, text) is
 
 revoke execute on function public.decide_order_operations_handoff(uuid, text, text) from public, anon;
 grant  execute on function public.decide_order_operations_handoff(uuid, text, text) to authenticated;
+
+-- ADMINISTRATOR RECOVERY (review R1). A held Order whose accepted version can
+-- be aligned again only by the operations reviewer would be stuck if there is
+-- no reviewer who can act: none assigned, or the one assigned is inactive,
+-- deleted or cannot open the Order. Then — and only then — an active
+-- administrator may align it again, with a reason, against the same accepted
+-- version. The acceptance stays as recorded; the recovery is its own event
+-- naming the administrator, the time, the reason and why no reviewer could.
+-- The 40% gate decides exactly as for Operations. Refused whenever a reviewer
+-- who can act exists: being an admin is not being operations.
+create or replace function public.recover_order_production_alignment(p_order_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor   uuid := public.assert_order_submission_actor();
+  v_reason  text := nullif(btrim(coalesce(p_reason, '')), '');
+  v_now     timestamptz := now();
+  v_order   public.orders%rowtype;
+  v_h       public.order_operations_handoffs%rowtype;
+  v_rev     uuid;
+  v_why     text;
+  v_hold    uuid;
+  v_name    text;
+begin
+  if not exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin'
+                  and u.is_active and coalesce(u.is_deleted, false) = false) then
+    raise exception 'Only an administrator can recover a production alignment' using errcode = '42501';
+  end if;
+  if v_reason is null or char_length(v_reason) < 10 then
+    raise exception 'ORDER_REALIGN_RECOVERY_REASON_REQUIRED: say why production is being aligned again without an operations reviewer (at least 10 characters)'
+      using errcode = 'P0001';
+  end if;
+  if char_length(v_reason) > 1000 then
+    raise exception 'ORDER_REALIGN_RECOVERY_REASON_TOO_LONG: the reason may be at most 1000 characters' using errcode = 'P0001';
+  end if;
+
+  -- Lock order as decide_order_operations_handoff: reviewer row, Order, handoff.
+  select r.user_id into v_rev from public.order_operations_reviewers r where r.duty = 'pi_handoff' for share;
+  select * into v_order from public.orders where id = p_order_id for update;
+  if not found then
+    raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002';
+  end if;
+  select * into v_h from public.order_operations_handoffs h
+   where h.order_id = p_order_id and h.superseded_at is null
+   for update;
+  if not found then
+    raise exception 'ORDER_REALIGN_NOT_HELD: Order % has no operations handoff to align against', v_order.display_number
+      using errcode = 'P0001';
+  end if;
+  if v_order.status = 'cancelled' then
+    raise exception 'ORDER_OPERATIONS_HANDOFF_CLOSED: Order % is cancelled', v_order.display_number using errcode = 'P0001';
+  end if;
+  if v_h.status <> 'accepted'
+     or not exists (select 1 from public.order_pi_versions v where v.id = v_h.pi_version_id and v.status = 'approved')
+     or exists (select 1 from public.order_pi_versions v
+                 where v.order_id = v_h.order_id and v.status = 'approved' and v.id <> v_h.pi_version_id) then
+    raise exception 'ORDER_REALIGN_NOT_ACCEPTED: the PI version in force on Order % is not accepted by operations; it needs their review, not a recovery',
+      v_order.display_number using errcode = 'P0001';
+  end if;
+  select h.id into v_hold from public.order_advance_holds h where h.order_id = v_order.id and h.resolved_at is null;
+  if v_order.production_alignment = 'aligned' or v_hold is null then
+    raise exception 'ORDER_REALIGN_NOT_HELD: Order % is not on a production hold', v_order.display_number
+      using errcode = 'P0001';
+  end if;
+
+  -- Only when no reviewer can act.
+  if v_rev is not null and public.operations_reviewer_can_open_order(v_rev, v_order.id) then
+    select nullif(btrim(u.full_name), '') into v_name from public.users u where u.id = v_rev;
+    raise exception 'ORDER_REALIGN_REVIEWER_AVAILABLE: % is the operations reviewer and can align production again; an administrator recovers only when no reviewer can',
+      coalesce(v_name, 'An active reviewer') using errcode = 'P0001';
+  end if;
+  v_why := case when v_rev is null then 'no_reviewer'
+                when not exists (select 1 from public.users u where u.id = v_rev and u.is_active and coalesce(u.is_deleted, false) = false)
+                  then 'reviewer_inactive'
+                else 'reviewer_cannot_open_order' end;
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (v_order.id, v_actor, 'operations_handoff_realigned_by_admin',
+          jsonb_build_object('handoff_id', v_h.id, 'version_id', v_h.pi_version_id,
+                             'version_number', v_h.version_number, 'reason', v_reason,
+                             'realigned_by', v_actor, 'realigned_at', v_now,
+                             'accepted_by', v_h.accepted_by, 'accepted_at', v_h.accepted_at,
+                             'reviewer_id', v_rev, 'reviewer_unavailable', v_why, 'hold_id', v_hold));
+  -- The gate (orders_alignment_requires_advance) refuses this while the Order is short.
+  perform public.order_operations_handoff_set_alignment(
+    v_order.id, v_actor, true, v_reason,
+    jsonb_build_object('reason', 'operations_handoff_realigned_by_admin', 'handoff_id', v_h.id,
+                       'version_id', v_h.pi_version_id, 'version_number', v_h.version_number,
+                       'reviewer_unavailable', v_why));
+
+  return jsonb_build_object('order_id', v_order.id, 'handoff_id', v_h.id, 'version_number', v_h.version_number,
+                            'production_alignment', 'aligned', 'recovered_by', v_actor, 'reviewer_unavailable', v_why);
+end;
+$$;
+comment on function public.recover_order_production_alignment(uuid, text) is
+  'Administrator recovery for a held Order (review R1): when no operations reviewer can act (none assigned, inactive or deleted, or unable to open the Order), an active administrator aligns the Order again against its accepted PI version, with a reason (10–1000 characters). The acceptance stays as recorded; logs operations_handoff_realigned_by_admin. The 40% gate applies. Refused while a reviewer who can act exists. 20270104000000.';
+revoke execute on function public.recover_order_production_alignment(uuid, text) from public, anon;
+grant  execute on function public.recover_order_production_alignment(uuid, text) to authenticated;
 
 
 -- ═══ 5. Finance: a PI Draft is named by its stable reference ═══════════════
@@ -1791,5 +2107,22 @@ begin
      or has_table_privilege('service_role', 'public.order_advance_holds', 'INSERT')
      or has_table_privilege('service_role', 'public.order_advance_exceptions', 'INSERT') then
     raise exception 'ASSERT: holds and exceptions are written only by their definer functions';
+  end if;
+  -- Review fixes R1 and R6.
+  if has_table_privilege('authenticated', 'public.order_advance_exception_voids', 'SELECT')
+     or has_table_privilege('service_role', 'public.order_advance_exception_voids', 'INSERT')
+     or has_function_privilege('authenticated', 'public.order_advance_exceptions_void_on_reduction(uuid, jsonb)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.order_advance_exceptions_void_on_reduction(uuid, jsonb)', 'EXECUTE') then
+    raise exception 'ASSERT: exception voids are written only by their definer function';
+  end if;
+  if position('order_advance_exceptions_void_on_reduction(' in
+       (select prosrc from pg_proc where oid = 'public.finance_payment_allocations_advance_recheck()'::regprocedure)) = 0
+     or position('order_advance_exceptions_void_on_reduction(' in
+       (select prosrc from pg_proc where oid = 'public.finance_payment_requests_advance_recheck()'::regprocedure)) = 0 then
+    raise exception 'ASSERT: every reduction of verified money voids the approvals it no longer covers';
+  end if;
+  if not has_function_privilege('authenticated', 'public.recover_order_production_alignment(uuid, text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.recover_order_production_alignment(uuid, text)', 'EXECUTE') then
+    raise exception 'ASSERT: the administrator recovery door is for signed-in users only';
   end if;
 end $$;

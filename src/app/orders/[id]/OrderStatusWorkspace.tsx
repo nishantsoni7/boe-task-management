@@ -49,6 +49,7 @@ import { PI_EDITED_VERSION_WORKBOOK_NOTE, PI_VERSION_PDF_VIEW_LABEL } from '@/li
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
   CANNOT_ACCEPT_LABEL,
+  RECOVER_ALIGNMENT_LABEL,
   type OperationsHandoffView,
 } from '@/lib/orders/operationsHandoff'
 import {
@@ -731,11 +732,17 @@ export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
  * header's overflow. THE ONE EXCEPTION (20270104000000): an accepted version
  * whose Order was put on hold because its advance fell below 40% offers
  * "Align production again" — the same decision, against the same acceptance —
- * disabled with its reason until the Order is ready.
+ * disabled with its reason until the Order is ready. It is offered to whoever
+ * is the operations reviewer NOW (review R1), which readiness.realign says;
+ * when no reviewer can act, an administrator is offered the recorded recovery
+ * instead. Both doors decide again under lock.
  */
 export const ALIGN_AGAIN_LABEL = 'Align production again'
 
-export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, acceptBlockedReason = null, heldForAdvance = false }: {
+export function OperationsReviewActions({
+  view, busy, onAccept, onCannotAccept, acceptBlockedReason = null, heldForAdvance = false,
+  realignOffered = false, recoverOffered = false, onRecover,
+}: {
   view: OperationsHandoffView | null
   busy: boolean
   onAccept: () => void
@@ -748,15 +755,32 @@ export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, 
   acceptBlockedReason?: string | null
   /** The Order carries an open production hold (readiness.hold). */
   heldForAdvance?: boolean
+  /** This reader is the current operations reviewer and may align it again (readiness.realign.by_viewer). */
+  realignOffered?: boolean
+  /** No reviewer can act and this reader is an active administrator (readiness.realign.recover_by_viewer). */
+  recoverOffered?: boolean
+  onRecover?: () => void
 }) {
-  if (view && view.kind === 'recorded' && view.status === 'accepted' && heldForAdvance && view.actions.withdraw) {
-    return (
-      <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept}
-        disabled={busy || !!acceptBlockedReason} title={acceptBlockedReason ?? undefined}
-        aria-describedby={acceptBlockedReason ? 'order-advance-blocked' : undefined}>
-        {ALIGN_AGAIN_LABEL}
-      </button>
-    )
+  if (view && view.kind === 'recorded' && view.status === 'accepted' && heldForAdvance) {
+    if (realignOffered) {
+      return (
+        <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept}
+          disabled={busy || !!acceptBlockedReason} title={acceptBlockedReason ?? undefined}
+          aria-describedby={acceptBlockedReason ? 'order-advance-blocked' : undefined}>
+          {ALIGN_AGAIN_LABEL}
+        </button>
+      )
+    }
+    if (recoverOffered && onRecover) {
+      return (
+        <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onRecover}
+          disabled={busy || !!acceptBlockedReason} title={acceptBlockedReason ?? undefined}
+          aria-describedby={acceptBlockedReason ? 'order-advance-blocked' : undefined}>
+          {RECOVER_ALIGNMENT_LABEL}
+        </button>
+      )
+    }
+    return null
   }
   if (!view || view.kind !== 'recorded' || view.status === 'accepted') return null
   if (!view.actions.accept && !view.actions.cannotAccept) return null

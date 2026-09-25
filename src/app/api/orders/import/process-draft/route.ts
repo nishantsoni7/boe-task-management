@@ -4,6 +4,7 @@ import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
+import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 import {
   buildSubmissionPlan,
   cityFromBillingAddress,
@@ -563,7 +564,7 @@ export async function processUnderLease(ctx: {
     // rather than assumed, because "the path looks right" is not evidence about
     // the object behind it.
     if (isAlreadyExists(error)) {
-      const reusable = await verifyStoredImage(service, image)
+      const reusable = await verifyStoredImage(service, image, submissionId)
       if (reusable) continue
       // The key is taken by something that is NOT this picture. Never
       // overwritten, never reused, and reported as its own stable code — the
@@ -794,8 +795,14 @@ function isAlreadyExists(error: unknown): boolean {
 async function verifyStoredImage(
   service: { storage: { from: (b: string) => { download: (p: string) => Promise<{ data: Blob | null; error: unknown }> } } },
   image: PlannedImage,
+  submissionId: string,
 ): Promise<boolean> {
   try {
+    // Built on the server by buildImagePath, and still checked whole before a
+    // service-role read (review R3): the same rule as every other image read.
+    if (!isCanonicalPiImageKey(image.storagePath, {
+      submissionId, itemId: image.itemId, role: image.role, position: image.position, sha256: image.sha256,
+    })) return false
     const { data, error } = await service.storage.from('order-files').download(image.storagePath)
     if (error || !data) return false
     if (data.size > MAX_IMAGE_OBJECT_BYTES) return false

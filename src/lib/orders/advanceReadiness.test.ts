@@ -11,8 +11,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { advanceAttentionLabel, advanceGateView, describeAdvanceRefusal, type AdvanceReadiness } from './advanceReadiness'
-import { describeHandoffFailure } from './operationsHandoff'
+import { advanceAttentionLabel, advanceGateView, describeAdvanceRefusal, holdCauseText, valueChangeWord, type AdvanceReadiness } from './advanceReadiness'
+import { describeHandoffFailure, validateRecoveryReason } from './operationsHandoff'
 import { orderAttentionItems } from './orderWorkspace'
 
 const short: AdvanceReadiness = {
@@ -108,11 +108,23 @@ describe('an aligned Order that fell short is ON HOLD, and says when and why', (
     assert.equal(v.hold, 'Production readiness was removed on 25 Sep 2026 because verified payment against it was reduced: the verified advance fell to 30% of ₹10,00,000.00.')
     assert.match(v.action, /^Operations can align production again against PI V2 once Finance verifies the payment/)
   })
-  test('each cause in words', () => {
-    for (const [cause, words] of [['value_changed', "the Order's value was raised"], ['pi_revision', "a revised PI raised the Order's value"]] as const) {
-      const r = advanceGateView({ ...held, hold: { ...held.hold!, cause } }, { versionNumber: 2 })
-      assert.ok(r.kind === 'blocked' && r.hold?.includes(words), cause)
+  test('each cause in words, saying which way the value moved (review R2)', () => {
+    for (const [cause, previous, words] of [
+      ['value_changed', '800000', "the Order's value was raised"],
+      ['value_changed', '1200000', "the Order's value was lowered"],
+      ['value_changed', null, "the Order's value changed"],
+      ['pi_revision', '800000', "a revised PI raised the Order's value"],
+      ['pi_revision', '1200000', "a revised PI lowered the Order's value"],
+      ['pi_revision', null, "a revised PI changed the Order's value"],
+    ] as const) {
+      const r = advanceGateView({ ...held, hold: { ...held.hold!, cause, previous_order_value: previous } }, { versionNumber: 2 })
+      assert.ok(r.kind === 'blocked' && r.hold?.includes(words), `${cause} from ${previous}: ${r.kind === 'blocked' ? r.hold : ''}`)
     }
+  })
+  test('a lower value is never called raised', () => {
+    assert.equal(holdCauseText('value_changed', '1500000', '1200000'), "the Order's value was lowered")
+    assert.equal(valueChangeWord('NaN', '1'), 'changed')
+    assert.equal(valueChangeWord('5', '5'), 'changed')
   })
   test('the attention strip says "on hold"', () => {
     assert.equal(advanceAttentionLabel(held), 'Production on hold: advance below 40% — see Payment')
@@ -144,27 +156,54 @@ describe('Operations re-aligns a held Order from the same place', () => {
     const { OperationsReviewActions } = await import('../../app/orders/[id]/OrderStatusWorkspace')
     const view = { kind: 'recorded', status: 'accepted', actions: { accept: false, cannotAccept: false, withdraw: true } } as never
     const blocked = renderToStaticMarkup(createElement(OperationsReviewActions, {
-      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true,
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true, realignOffered: true,
       acceptBlockedReason: 'Production on hold: advance below 40% — see Payment',
     }))
     assert.match(blocked, /<button[^>]*disabled=""[^>]*title="Production on hold: advance below 40% — see Payment"[^>]*>Align production again<\/button>/)
     const ready = renderToStaticMarkup(createElement(OperationsReviewActions, {
-      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true, acceptBlockedReason: null,
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true, realignOffered: true, acceptBlockedReason: null,
     }))
     assert.match(ready, />Align production again<\/button>/)
     assert.doesNotMatch(ready, /disabled/)
     const notHeld = renderToStaticMarkup(createElement(OperationsReviewActions, {
-      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: false,
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: false, realignOffered: true,
     }))
     assert.equal(notHeld, '', 'an accepted version that is not on hold offers nothing here')
   })
-  test('nobody but the reviewer sees it', async () => {
+  test('nobody but the CURRENT reviewer sees it — not even the one who accepted (review R1)', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { OperationsReviewActions } = await import('../../app/orders/[id]/OrderStatusWorkspace')
+    // The accepting reviewer still holds view.actions.withdraw; readiness says
+    // they are not the reviewer now, so no realignment is drawn for them.
+    const view = { kind: 'recorded', status: 'accepted', actions: { accept: false, cannotAccept: false, withdraw: true } } as never
+    assert.equal(renderToStaticMarkup(createElement(OperationsReviewActions, {
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true, realignOffered: false,
+    })), '')
+  })
+  test('with no reviewer who can act, an administrator is offered the recorded recovery', async () => {
     const { renderToStaticMarkup } = await import('react-dom/server')
     const { createElement } = await import('react')
     const { OperationsReviewActions } = await import('../../app/orders/[id]/OrderStatusWorkspace')
     const view = { kind: 'recorded', status: 'accepted', actions: { accept: false, cannotAccept: false, withdraw: false } } as never
-    assert.equal(renderToStaticMarkup(createElement(OperationsReviewActions, {
+    const html = renderToStaticMarkup(createElement(OperationsReviewActions, {
       view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true,
-    })), '')
+      recoverOffered: true, onRecover: () => {}, acceptBlockedReason: null,
+    }))
+    assert.match(html, />Recover production alignment…<\/button>/)
+    assert.doesNotMatch(html, /Align production again/)
+    const blocked = renderToStaticMarkup(createElement(OperationsReviewActions, {
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {}, heldForAdvance: true,
+      recoverOffered: true, onRecover: () => {}, acceptBlockedReason: 'Production on hold: advance below 40% — see Payment',
+    }))
+    assert.match(blocked, /disabled=""/, 'the 40% gate disables it too')
+  })
+  test('the realign and recovery refusals are said in words', () => {
+    assert.match(describeHandoffFailure({ message: 'ORDER_REALIGN_NOT_CURRENT_REVIEWER: x' }), /current operations reviewer/)
+    assert.match(describeHandoffFailure({ message: 'ORDER_REALIGN_REVIEWER_AVAILABLE: Asha is the operations reviewer' }), /recovery is not available/)
+    assert.match(describeHandoffFailure({ message: 'ORDER_REALIGN_NO_REVIEWER: x' }), /No operations reviewer is assigned/)
+    assert.match(describeHandoffFailure({ message: 'ORDER_REALIGN_RECOVERY_REASON_REQUIRED: x' }), /at least 10 characters/)
+    assert.equal(validateRecoveryReason('short').ok, false)
+    assert.equal(validateRecoveryReason('  reviewer left the company  ').ok, true)
   })
 })
