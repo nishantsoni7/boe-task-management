@@ -499,12 +499,25 @@ describe('the header, the greeting and the latest announcement', () => {
     assert.ok(PAGE.includes('{!editingOrder && (\n              <div className={`${styles.welcome}'))
   })
 
-  test('on a phone the announcement stacks above the modules', () => {
+  test('A PHONE OPENS ON THE MODULES: the whole row is hidden and takes no space', () => {
+    const at = CSS.indexOf('@media (max-width: 767px) {\n  .card:hover')
+    assert.notEqual(at, -1, 'the phone block exists')
+    const phone = CSS.slice(at, CSS.indexOf('\n}\n', at))
+    assert.match(phone, /\.welcome\s*\{\s*display:\s*none;\s*\}/,
+      'greeting, instruction and announcement slot all go — display, not visibility')
+    assert.match(phone, /\.launcher > \.section:first-of-type\s*\{\s*margin-top:\s*0;\s*\}/,
+      'and the first section starts with no gap above it')
+    // Only this page's slot: the bell and the Announcements navigation stay.
+    assert.match(PAGE, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
+    assert.match(read('src/components/layout/BoeOsLayout.tsx'), /label="Announcements"/)
+  })
+
+  test('on a desktop the greeting and the announcement share one row', () => {
     assert.match(baseRule('.welcome'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
     const at = CSS.indexOf('@container (min-width: 700px) {\n  .welcome {')
-    assert.notEqual(at, -1, 'side by side only once the launcher is 700px wide')
+    assert.notEqual(at, -1, 'side by side once the launcher is 700px wide')
     assert.ok(WELCOME.indexOf('styles.greeting}') < WELCOME.indexOf('<LatestAnnouncement'),
-      'greeting first, announcement second — so stacked, it sits above the tiles')
+      'greeting first, announcement second')
   })
 
   test('BOE Operating System is still the sidebar brand, untouched', () => {

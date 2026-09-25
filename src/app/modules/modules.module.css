@@ -574,6 +574,18 @@
   .section {
     margin-top: 22px;
   }
+
+  /* A PHONE OPENS ON THE MODULES. The greeting and the announcement slot are
+     not shown here, and take no space: the first section starts directly
+     under the header (and the quick action). The bell in the header, the
+     Announcements navigation and the announcement pages are unchanged. */
+  .welcome {
+    display: none;
+  }
+
+  .launcher > .section:first-of-type {
+    margin-top: 0;
+  }
 }
 
 /* ── Very narrow: one compact column, < 340px ────────────────────────────────
