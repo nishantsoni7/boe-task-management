@@ -77,9 +77,15 @@ describe('the migration', () => {
     assert.doesNotMatch(SQL, /notification_type/)
   })
 
-  test('it is the newest migration file', () => {
+  test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270110000000_announcements.sql')
+    assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
+    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // The Order/Finance write guards run as their owner (#211): ALTER
+      // FUNCTION on existing trigger functions. It touches nothing
+      // Announcements creates.
+      '20270117000000_order_finance_guards_run_as_owner.sql',
+    ])
   })
 })
 
