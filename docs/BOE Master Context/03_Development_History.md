@@ -1440,3 +1440,37 @@ before, and every non-Admin that could raise a request still can. No second role
 system was introduced, no Supabase policy, RPC or migration changed, and the
 creation route keeps the gate it always had — this removes the Admin-facing
 offer from the interface and nothing else.
+
+# Announcements (2026-09-25)
+
+Branch: `feat/announcements`. Migration `20270110000000_announcements.sql`.
+
+An Admin publishes a notice (title, short summary, full text, optional PDF,
+start and end date) to employees they pick by name, from Control Center ›
+Announcements. While it is active each recipient sees it as a compact banner at
+the top of the Modules page, under a bell at the top right of the Modules
+header, and under Announcements in the BOE OS sidebar. The banner goes only
+when they press "I have read this" on the full announcement; after that it
+stays in Announcements until the end date.
+
+**Why a separate table and not notifications.** Read state had to survive a
+reload, a sign-out and a second device, and it could not be cleared by reading
+or deleting an ordinary notification. So `announcement_reads` is its own table,
+written only by `acknowledge_announcement()` for the caller, and the bell is
+derived from the same list as the banner. Nothing is written when a page loads,
+and no notification rows are fanned out.
+
+**Why "active" is computed and not scheduled.** `my_announcements()` compares
+the window with today's India date on every read, so expiry needs no job and
+cannot be missed.
+
+**What the database enforces.** Three tables with forced RLS and SELECT-only
+client grants; admin-only `create_`/`update_`/`end_announcement`; visibility =
+named, active recipient and a live window; a private PDF-only 10 MiB bucket
+whose storage policies let only admins upload and only admins or current
+recipients read. `supabase/tests/run_announcements_local.sh` executes all of it
+on a disposable local stack.
+
+There was no top-of-page notification area on the Modules page before this;
+the bell is new there, and reuses the Bell icon and red count pill the module
+sidebars already use.

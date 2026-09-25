@@ -720,6 +720,10 @@ describe('the migration is placed correctly', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
       '20261231000000_order_document_submissions.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
