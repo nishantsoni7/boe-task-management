@@ -267,6 +267,10 @@ describe('the file, and where it sits', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // Announcements (20270110000000): three new tables, their functions, a
+      // private PDF bucket and its storage policies. Purely additive; it reads
+      // public.users and touches nothing this suite is about.
+      '20270110000000_announcements.sql',
       // The legacy advance submit doors are closed: REVOKE of the two
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
