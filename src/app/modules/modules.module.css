@@ -196,6 +196,15 @@
   color: #9A3A40;
 }
 
+/* Edit mode only: how the sections read the order being arranged. */
+.arrangeNote {
+  margin: -4px 0 14px;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5B6475;
+}
+
 /* The hairline that runs out from each label. */
 .sectionTitle::after {
   content: '';

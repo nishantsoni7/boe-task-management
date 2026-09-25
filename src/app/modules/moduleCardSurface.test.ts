@@ -21,7 +21,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { moduleCardPressProps } from '@/lib/modules/moduleOrder'
+import { applyPersonalModuleOrder, moduleCardPressProps } from '@/lib/modules/moduleOrder'
 
 const ROOT = process.cwd()
 // \r is stripped on read. A rebase or a fresh clone under core.autocrlf can
@@ -507,8 +507,8 @@ describe('two sections, drawn from one gated list', () => {
   })
 
   test('a section with no cards is not drawn at all', () => {
-    assert.ok(PAGE.includes('{essentialModules.length > 0 && ('))
-    assert.ok(PAGE.includes('{moreModules.length > 0 && ('))
+    assert.ok(PAGE.includes('{!editingOrder && essentialModules.length > 0 && ('))
+    assert.ok(PAGE.includes('{!editingOrder && moreModules.length > 0 && ('))
   })
 
   test('the default order reads Task, Order, Finance', () => {
@@ -516,16 +516,40 @@ describe('two sections, drawn from one gated list', () => {
     assert.ok(at('task_management') < at('orders') && at('orders') < at('finance'))
   })
 
-  test('A MOVE STAYS IN ITS SECTION, through the unchanged reducer', () => {
-    assert.ok(PAGE.includes('onMove={moveWithinSection}'), 'arrow keys move within the section')
-    assert.ok(PAGE.includes("dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey: section[to].key })"))
-    assert.ok(PAGE.includes('if (isEssential(key) !== isEssential(targetKey)) return'),
-      'a drag never pushes a card into the other section')
+  test('A SAVED ORDER BEATS THE NEW DEFAULT — the default only fills gaps', () => {
+    // Order Management moved ahead of Finance in the default sequence. Somebody
+    // who saved Task, Finance, Order on main keeps exactly that; the default
+    // only places modules their saved list does not name.
+    const canonical = ['tasks', 'orders', 'finance', 'samples'].map(key => ({ key }))
+    const saved = ['finance', 'samples', 'tasks', 'orders']
+    assert.deepEqual(applyPersonalModuleOrder(canonical, saved).map(m => m.key), saved)
+    assert.deepEqual(
+      applyPersonalModuleOrder(canonical, ['samples', 'finance']).map(m => m.key),
+      ['samples', 'finance', 'tasks', 'orders'],
+      'unnamed modules follow, in the default order')
   })
 
-  test('a handle announces its place in the section a person can see', () => {
-    assert.ok(PAGE.includes('position={position + 1}'))
-    assert.ok(PAGE.includes('total={total}'))
+  test('EDIT ORDER STILL ARRANGES THE WHOLE LIST, as it did on main', () => {
+    // Arrow keys and drags use the original actions over the full list: no
+    // section guard, so any card can move to any position.
+    assert.ok(PAGE.includes("onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}"))
+    assert.ok(PAGE.includes("onMoveToSlotOf: (key, targetKey) => dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey }),"))
+    assert.equal(/isEssential\(key\) !== isEssential\(targetKey\)/.test(PAGE), false,
+      'no rule stops a card crossing between sections')
+    assert.equal(PAGE.includes('moveWithinSection'), false)
+  })
+
+  test('while arranging, every card is drawn in one grid, in stored order', () => {
+    assert.ok(PAGE.includes("{modules.map((mod, index) => renderCard(mod, 'compact', index + 1))}"))
+    assert.ok(PAGE.includes('{!editingOrder && essentialModules.length > 0 && ('))
+    assert.ok(PAGE.includes('{!editingOrder && moreModules.length > 0 && ('))
+    assert.ok(PAGE.includes('className={styles.arrangeNote}'),
+      'and a note says how the sections read the result')
+  })
+
+  test('a handle announces its place in the whole list', () => {
+    assert.ok(PAGE.includes('position={number}'))
+    assert.ok(PAGE.includes('total={modules.length}'))
   })
 })
 

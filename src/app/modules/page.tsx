@@ -572,19 +572,11 @@ export default function BoeOsHomePage() {
   const moreModules = modules.filter(mod => !isEssential(mod.key))
   const availableCount = canonicalModules.length
 
-  // A MOVE STAYS IN ITS OWN SECTION. The stored order is still one list, but a
-  // card only ever trades places with a neighbour in the section it is drawn in,
-  // so an arrow key always moves something visibly and a drag never pushes a
-  // card into a row it cannot appear in. Both go through the existing
-  // `moveToSlotOf` action; the reducer is unchanged.
-  const sectionOf = (key: string) => (isEssential(key) ? essentialModules : moreModules)
-  const moveWithinSection = (key: string, delta: number) => {
-    const section = sectionOf(key)
-    const from = section.findIndex(mod => mod.key === key)
-    const to = Math.min(section.length - 1, Math.max(0, from + delta))
-    if (from < 0 || to === from) return
-    dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey: section[to].key })
-  }
+  // EDIT ORDER ARRANGES THE WHOLE LIST, exactly as it did before the sections.
+  // While arranging, every card is drawn in one grid in its stored position, so
+  // any card can move to any place and every move is visible. Outside edit mode
+  // the sections are filters of that same list, so the relative order set here
+  // is the order each section shows.
 
   // ── Announcements ───────────────────────────────────────────────────────────
   //
@@ -610,10 +602,7 @@ export default function BoeOsHomePage() {
 
   const beginPointerDrag = useModuleReorderPointer({
     enabled: editingOrder && !orderEdit.saving,
-    onMoveToSlotOf: (key, targetKey) => {
-      if (isEssential(key) !== isEssential(targetKey)) return
-      dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey })
-    },
+    onMoveToSlotOf: (key, targetKey) => dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey }),
     onDragStart: key => dispatchOrderEdit({ type: 'dragStart', key }),
     onDragEnd: () => dispatchOrderEdit({ type: 'dragEnd' }),
   })
@@ -714,23 +703,11 @@ export default function BoeOsHomePage() {
     for (const href of moduleHrefs.split('|').filter(Boolean)) router.prefetch(href)
   }, [permsReady, moduleHrefs, router])
 
-  // The gate, and only the gate. app_modules is included because the
-  // Attendance & Payroll card's visibility comes from it, so rendering before
-  // it lands could omit a card the employee is entitled to.
-  //
-  // And the saved order, for the same class of reason: it does not decide WHICH
-  // cards exist, but rendering before it lands would draw the launcher in
-  // canonical order and then visibly reshuffle it under the cursor. It is one
-  // primary-key lookup on a two-column table, issued in parallel with the two
-  // above, and `isLoading` — not `isPending` — so a signed-out visitor, whose
-  // query never runs, is not held here forever.
-  // One tile, in either section. `position` and `total` are within the section,
-  // so a handle announces the place a person can see; `number` is the tile's
-  // place on the whole page, drawn as a quiet label.
+  // One tile. `number` is its place in the whole list (1-based), drawn as a
+  // quiet label; in edit mode the handle announces the same place out of
+  // `modules.length`, as it did before the sections.
   const renderCard = (
     mod: ModuleDef,
-    position: number,
-    total: number,
     variant: 'essential' | 'compact',
     number: number,
   ) => (
@@ -749,16 +726,26 @@ export default function BoeOsHomePage() {
         <ModuleDragHandle
           moduleKey={mod.key}
           title={mod.title}
-          position={position + 1}
-          total={total}
+          position={number}
+          total={modules.length}
           disabled={orderEdit.saving}
-          onMove={moveWithinSection}
+          onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
           onPointerDown={beginPointerDrag}
         />
       ) : null}
     />
   )
 
+  // The gate, and only the gate. app_modules is included because the
+  // Attendance & Payroll card's visibility comes from it, so rendering before
+  // it lands could omit a card the employee is entitled to.
+  //
+  // And the saved order, for the same class of reason: it does not decide WHICH
+  // cards exist, but rendering before it lands would draw the launcher in
+  // canonical order and then visibly reshuffle it under the cursor. It is one
+  // primary-key lookup on a two-column table, issued in parallel with the two
+  // above, and `isLoading` — not `isPending` — so a signed-out visitor, whose
+  // query never runs, is not held here forever.
   const loading = !permsReady || modVisPending || orderLoading
 
   return (
@@ -832,8 +819,8 @@ export default function BoeOsHomePage() {
               grid for everything else. The panel steps aside while arranging
               cards, as the quick action does, so edit mode opens on the tiles.
 
-              Edit mode is the same tiles, loosened: each turns dashed and
-              gains a handle in its top-right corner. */}
+              Edit mode shows every module in one grid, as before the
+              sections: each tile turns dashed and gains a handle. */}
           <div className={styles.launcher}>
             {!editingOrder && (
               <section className={styles.hero} aria-labelledby="modules-hero-heading">
@@ -862,24 +849,42 @@ export default function BoeOsHomePage() {
               </section>
             )}
 
-            {essentialModules.length > 0 && (
+            {!editingOrder && essentialModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-essentials-heading">
                 <h2 id="modules-essentials-heading" className={styles.sectionTitle}>The essentials</h2>
                 <div className={styles.essentialsGrid}>
-                  {essentialModules.map((mod, index) =>
-                    renderCard(mod, index, essentialModules.length, 'essential', index + 1))}
+                  {essentialModules.map((mod, index) => renderCard(mod, 'essential', index + 1))}
                 </div>
               </section>
             )}
 
-            {moreModules.length > 0 && (
+            {!editingOrder && moreModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-more-heading">
                 <h2 id="modules-more-heading" className={styles.sectionTitle}>
                   {essentialModules.length > 0 ? 'More to explore' : 'Your modules'}
                 </h2>
                 <div className={styles.grid}>
                   {moreModules.map((mod, index) =>
-                    renderCard(mod, index, moreModules.length, 'compact', essentialModules.length + index + 1))}
+                    renderCard(mod, 'compact', essentialModules.length + index + 1))}
+                </div>
+              </section>
+            )}
+
+            {/* ── Arranging: the whole list, as before the sections ──
+                One grid, every card in its stored place, so any card can move
+                to any position — the control is exactly what it was. The note
+                says how the sections read the result, so nothing is silent. */}
+            {editingOrder && (
+              <section className={styles.section} aria-labelledby="modules-arrange-heading">
+                <h2 id="modules-arrange-heading" className={styles.sectionTitle}>Arrange your modules</h2>
+                {essentialModules.length > 0 && (
+                  <p className={styles.arrangeNote}>
+                    Task Management, Order Management and Finance stay in The essentials. Their order
+                    there, and the order of every other module, follows this list.
+                  </p>
+                )}
+                <div className={styles.grid}>
+                  {modules.map((mod, index) => renderCard(mod, 'compact', index + 1))}
                 </div>
               </section>
             )}
