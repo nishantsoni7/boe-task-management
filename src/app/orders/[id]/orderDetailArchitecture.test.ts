@@ -416,6 +416,8 @@ describe('no Order fact is stated twice', () => {
     // (20270104000000). Its figures are in the Payment section.
     const above = body.slice(0, body.indexOf('className="order-products"'))
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
+      // …and the same words as the reason Accept for production is disabled.
+      .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {

@@ -2739,6 +2739,7 @@ export default function OrderDetailPage() {
               busy={handoffBusy}
               onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
               onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+              acceptBlockedReason={advanceAttentionLabel(advance)}
             />
           ) : undefined}
         />

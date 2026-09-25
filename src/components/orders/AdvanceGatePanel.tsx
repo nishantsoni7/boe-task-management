@@ -48,7 +48,7 @@ export function AdvanceGatePanel({ readiness, versionNumber, isAdmin, approverNa
   }
 
   return (
-    <section aria-label="Advance" role="status"
+    <section aria-label="Advance" role="status" id="order-advance-blocked"
       style={{ border: '1px solid rgba(217,79,79,0.45)', borderRadius: '10px', padding: '12px 14px', background: colors.redTint, display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <strong style={{ fontSize: '13.5px', color: '#991B1B' }}>{view.headline}</strong>
       <p style={{ margin: 0, fontSize: '13px', color: colors.primary }}>

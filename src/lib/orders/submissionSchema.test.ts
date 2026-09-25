@@ -239,7 +239,16 @@ describe('the migration itself', () => {
         ? text
             .replace(/drop\s+trigger\s+if\s+exists\s+order_submissions_carry_initial_documents\s+on\s+public\.order_submissions\s*;/i, '')
             .replace(/create\s+trigger\s+order_submissions_carry_initial_documents\s+after\s+update\s+of\s+status\s*,\s*order_id\s+on\s+public\.order_submissions/i, '')
-        : text
+        // A SECOND NAMED EXCEPTION (20270104000000 §4c): an AFTER trigger on
+        // order_submissions that copies a reserved Order number into
+        // order_reserved_number_ledger, so the number outlives its draft. It
+        // writes ONLY the ledger; with its two statements removed the file must
+        // still neither reshape nor write any submission table.
+        : file === '20270104000000_order_pi_revision_in_force_at_admin_approval.sql'
+          ? text
+              .replace(/drop\s+trigger\s+if\s+exists\s+order_submissions_record_reserved_number\s+on\s+public\.order_submissions\s*;/i, '')
+              .replace(/create\s+trigger\s+order_submissions_record_reserved_number\s+after\s+insert\s+or\s+update\s+of\s+reserved_order_number\s+or\s+delete\s+on\s+public\.order_submissions/i, '')
+          : text
 
       for (const table of ALL_TABLES) {
         assert.ok(

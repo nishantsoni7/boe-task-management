@@ -725,11 +725,17 @@ export function OrderDocumentsRow({ children }: { children: React.ReactNode }) {
  * these go with it; withdrawing an acceptance is a rare move and sits in the
  * header's overflow.
  */
-export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept }: {
+export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept, acceptBlockedReason = null }: {
   view: OperationsHandoffView | null
   busy: boolean
   onAccept: () => void
   onCannotAccept: () => void
+  /**
+   * Why accepting cannot align production now (the 40% advance on the amended
+   * value, 20270104000000). The button says so instead of failing on press;
+   * the database refuses it either way. "Cannot accept" is never blocked.
+   */
+  acceptBlockedReason?: string | null
 }) {
   if (!view || view.kind !== 'recorded' || view.status === 'accepted') return null
   if (!view.actions.accept && !view.actions.cannotAccept) return null
@@ -741,7 +747,9 @@ export function OperationsReviewActions({ view, busy, onAccept, onCannotAccept }
         </button>
       )}
       {view.actions.accept && (
-        <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept} disabled={busy}>
+        <button type="button" className="boe-btn boe-btn-primary order-status-action" onClick={onAccept}
+          disabled={busy || !!acceptBlockedReason} title={acceptBlockedReason ?? undefined}
+          aria-describedby={acceptBlockedReason ? 'order-advance-blocked' : undefined}>
           {ACCEPT_FOR_PRODUCTION_LABEL}
         </button>
       )}

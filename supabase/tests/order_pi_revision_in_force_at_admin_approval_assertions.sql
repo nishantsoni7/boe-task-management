@@ -691,8 +691,9 @@ begin
   -- V1 at exactly 40% (400,000 of 1,000,000): Operations accepts, aligned.
   o := pg_temp.fresh_order('ASSERT adv', 1000000, 400000);
   perform set_config('test.adv_order', o::text, true);
-  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
-    '7. V1 at 40% is accepted and aligned';
+  v_msg := pg_temp.ops_decide(o, 'accepted');
+  assert v_msg = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
+    '7. V1 at 40% is accepted and aligned: ' || v_msg || ' ' || coalesce(public.order_advance_position(o)::text, '');
 
   -- 7a. V2 raises the value to 1,250,000: V2 is in force, the advance is 32%.
   perform pg_temp.revalue(o, 1250000, 'ASSERT client added a second room');
@@ -723,8 +724,9 @@ begin
   -- 7c. Finance verifies it: the same acceptance now goes through.
   update public.finance_payment_requests set status = 'approved_unlinked' where id = v_pend;
   assert (public.order_advance_position(o) ->> 'ready')::boolean, '7c. 40% of the amended value is verified';
-  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
-    '7c. once verified, Operations aligns production';
+  v_msg := pg_temp.ops_decide(o, 'accepted');
+  assert v_msg = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
+    '7c. once verified, Operations aligns production: ' || v_msg;
 
   -- 7d. V3 LOWERS the value: the advance only improves; accepted at once.
   perform pg_temp.revalue(o, 1100000, 'ASSERT client dropped a table');

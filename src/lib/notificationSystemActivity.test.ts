@@ -352,8 +352,11 @@ describe('the read side excludes system types too', () => {
     {
       const sql = read(join(dir, REVISION_IN_FORCE))
       const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
-      assert.deepEqual(types, ['order_operations_review_decided'], `${REVISION_IN_FORCE}: one Orders-type write`)
-      assert.equal(isSystemGeneratedNotificationType(types[0]), false)
+      // Sales told the version is in force (the approval), and the reviewer told
+      // an admin approved production below 40% (approve_order_advance_exception,
+      // a person's press). Orders types only.
+      assert.deepEqual(types, ['order_operations_review_decided', 'order_operations_review_requested'], `${REVISION_IN_FORCE}: two Orders-type writes`)
+      for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false)
       assert.ok(/grant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/.test(sql),
         `${REVISION_IN_FORCE}: the admin approval stays service-role, called by the route for a verified admin`)
       assert.equal(/create\s+trigger\s+\w+[\s\S]{0,80}on\s+public\.notifications/i.test(sql), false)

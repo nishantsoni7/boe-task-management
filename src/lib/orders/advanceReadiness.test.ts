@@ -74,3 +74,18 @@ describe('the database\'s refusal, read', () => {
     assert.match(describeAdvanceRefusal('ORDER_ADVANCE_EXCEPTION_REASON_REQUIRED: …') ?? '', /at least 10 characters/)
   })
 })
+
+describe('Operations sees why Accept is unavailable', () => {
+  test('the button is disabled with the reason; Cannot accept is not', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { OperationsReviewActions } = await import('../../app/orders/[id]/OrderStatusWorkspace')
+    const view = { kind: 'recorded', status: 'awaiting', actions: { accept: true, cannotAccept: true } } as never
+    const html = renderToStaticMarkup(createElement(OperationsReviewActions, {
+      view, busy: false, onAccept: () => {}, onCannotAccept: () => {},
+      acceptBlockedReason: 'Production blocked: advance below 40% — see Payment',
+    }))
+    assert.match(html, /<button[^>]*disabled=""[^>]*title="Production blocked: advance below 40% — see Payment"[^>]*>Accept for production<\/button>/)
+    assert.match(html, /<button type="button" class="boe-btn boe-btn-ghost order-status-action">Cannot accept<\/button>/)
+  })
+})

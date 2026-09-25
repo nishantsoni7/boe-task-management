@@ -435,8 +435,18 @@ begin
           'Only the assigned operations reviewer', 'L5. the former reviewer can no longer decide');
   perform pg_temp.expect_error(format('select pg_temp.decide(%L, %L, ''accepted'', null)', outsider, (pg_temp.live(o)).id),
           'Only the assigned operations reviewer', 'L5. nor can an outsider');
+  -- The value is ₹6,50,000 since L2 and ₹2,00,000 is verified (30.77%): even the
+  -- right reviewer cannot align it (§4d) until 40% of the amended value is.
+  perform pg_temp.expect_error(format('select pg_temp.decide(%L, %L, ''accepted'', null)', reviewer2, (pg_temp.live(o)).id),
+          'ORDER_ADVANCE_BELOW_THRESHOLD', 'L5. below 40% of the amended value, production is not aligned');
+  perform set_config('request.jwt.claims', '', true);
+  with p as (
+    insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+    values (gen_random_uuid(), 'ASSERT', 60000, current_date, 'hdfc', 'approved_unlinked', sales, null) returning id)
+  insert into public.finance_payment_allocations (payment_request_id, order_id, allocated_amount, origin_target_type, created_by)
+  select p.id, o, 60000, 'confirmed_order', sales from p;
   perform pg_temp.decide(reviewer2, (pg_temp.live(o)).id, 'accepted', null);
-  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', 'L5. the new reviewer aligns it');
+  perform pg_temp.check(pg_temp.alignment(o) = 'aligned', 'L5. with 40% verified, the new reviewer aligns it');
 
   -- No reviewer: the next version's handoff is recorded unassigned; admins are told.
   perform pg_temp.assign(null);
