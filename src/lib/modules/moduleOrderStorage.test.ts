@@ -358,30 +358,30 @@ describe('normal mode', () => {
   test('every card dimension, breakpoint, icon and badge rule is untouched', () => {
     // The responsive design AS IT STANDS ON main, asserted value by value, so
     // that a change to the ORDERING work cannot quietly resize a card. These
-    // numbers have moved twice and the reason is worth keeping: #193 removed
-    // the description and the footer, #194 (this file's own feature) left the
-    // card exactly as it found it, and the compact redesign then rebuilt the
-    // card around what #193 had left — a 92px horizontal row in place of a
-    // 132px column that was mostly empty.
+    // numbers have moved several times and the reason is worth keeping: #193
+    // removed the description and the footer, #194 (this file's own feature)
+    // left the card exactly as it found it, the compact redesign rebuilt the
+    // card as a 92px horizontal row, and the launcher redesign then made each
+    // module a 104px card — a 56px icon beside a 17px name — three across at
+    // every desktop size, with a 124px centred card on a phone.
     //
     // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
     // promise that it owns no card dimension. The card's own shape is pinned by
     // src/app/modules/moduleCardSurface.test.ts, which is where a deliberate
     // design change is argued; this list only has to follow it.
     for (const rule of [
-      'grid-template-columns: repeat(3, 1fr)',
-      'grid-template-columns: repeat(4, 1fr)',
-      'gap: 14px',
-      'min-height: 92px',
-      'padding: 16px',
-      'width: 46px',
+      'grid-template-columns: repeat(3, minmax(0, 1fr))',
+      'min-height: 104px',
+      'padding: 22px 24px',
+      'width: 56px',
+      'width: 48px',
       '@media (max-width: 767px)',
-      '@media (max-width: 639px)',
-      'grid-template-columns: repeat(2, 1fr)',
-      'min-height: 122px',
-      'width: 44px',
+      '@media (max-width: 339px)',
+      'grid-template-columns: repeat(2, minmax(0, 1fr))',
+      'min-height: 124px',
       'overflow-wrap: anywhere',
-      'font-size: 13px',
+      'font-size: 17px',
+      'font-size: 14px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
     }
@@ -512,14 +512,17 @@ describe('edit mode', () => {
 
   test('the feedback is restrained, and reduced motion is respected', () => {
     assert.match(CSS, /@media \(prefers-reduced-motion: reduce\)/)
-    assert.match(CSS, /\.cardDragging \{[\s\S]*?opacity: 0\.92;/)
-    // The lift is inline because .card's transform is inline; the transition it
-    // would ease with is what reduced motion switches off.
-    assert.match(CSS, /prefers-reduced-motion: reduce\)[\s\S]*?\.cardEditing \{[\s\S]*?transition: none;/)
+    // The card in hand is outlined and raised — no colour, no motion of its own.
+    assert.match(CSS, /\.cardDragging(,\s*\.cardDragging:hover)? \{[\s\S]*?box-shadow:/)
+    // And the handle's easing is what reduced motion switches off.
+    assert.match(CSS, /prefers-reduced-motion: reduce\)[\s\S]*?\.dragHandle \{[\s\S]*?transition: none;/)
   })
 
   test('the controls and the handle are visible at phone width', () => {
-    assert.match(CSS, /@media \(max-width: 639px\)[\s\S]*?\.dragHandle \{/)
+    // The handle moves to the phone card's corner at the sidebar breakpoint,
+    // the same width at which the card itself turns into a centred column.
+    const small = CSS.slice(CSS.lastIndexOf('@media (max-width: 767px)'))
+    assert.match(small.slice(0, small.indexOf('@media (max-width: 639px)')), /\.dragHandle \{/)
     assert.match(CSS, /@media \(max-width: 639px\)[\s\S]*?\.orderButton,\s*\n\s*\.orderButtonPrimary \{/)
     assert.match(CSS, /@media \(max-width: 767px\)[\s\S]*?\.orderEditing \{/)
   })

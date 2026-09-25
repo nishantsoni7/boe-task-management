@@ -37,11 +37,21 @@ type BoeOsLayoutProps = {
    * gets the header exactly as it was.
    */
   headerActions?: React.ReactNode
+  /**
+   * Caps the header row and the page body to one centred content column of
+   * this many pixels, so a page whose content is a compact block (the Modules
+   * launcher) shares its left and right edges with its own title and header
+   * control instead of stretching across a wide screen. Applies only while the
+   * sidebar is permanent; below 768px the usual gutters stand. Optional: a
+   * caller that passes nothing gets the full-width shell exactly as before.
+   */
+  contentMaxWidth?: number
   children: React.ReactNode
 }
 
 export function BoeOsLayout({
-  profile, title, subtitle, onSignOut, quickActions = [], headerActions = null, children,
+  profile, title, subtitle, onSignOut, quickActions = [], headerActions = null,
+  contentMaxWidth, children,
 }: BoeOsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
@@ -106,7 +116,12 @@ export function BoeOsLayout({
       </aside>
 
       {/* Main content */}
-      <div className="boe-main-content">
+      <div
+        className={`boe-main-content${contentMaxWidth ? ' boe-main-content-capped' : ''}`}
+        style={contentMaxWidth
+          ? { '--boe-content-max': `${contentMaxWidth}px` } as React.CSSProperties
+          : undefined}
+      >
 
         {/* Sticky page header */}
         <div className="boe-page-header">

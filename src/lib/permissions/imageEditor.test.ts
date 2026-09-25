@@ -354,9 +354,11 @@ describe('the /modules launcher card', () => {
       'finance', 'image_editor', 'meetings', 'members', 'orders', 'performance',
       'samples', 'showroom', 'tasks',
     ])
-    // Exactly one Image Editor card, and an accent nobody else uses.
+    // Exactly one Image Editor card. It no longer carries an accent colour of
+    // its own: the launcher draws every module in one neutral palette (see
+    // src/app/modules/modules.module.css), so there is none to keep unique.
     assert.equal((LAUNCHER.match(/key: 'image_editor'/g) ?? []).length, 1)
-    assert.equal((LAUNCHER.match(/#BE185D/g) ?? []).length, 1)
+    assert.equal(/#BE185D/i.test(LAUNCHER), false)
   })
 
   test('every other card keeps its own gate', () => {

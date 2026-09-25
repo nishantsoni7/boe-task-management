@@ -1,135 +1,119 @@
-/* ── Modules launcher: the grid and the card ────────────────────────────────
+/* ── Modules launcher: the grid, the cards and the edit handle ──────────────
    LIGHT ONLY, and nothing in this file has a dark variant — neither does the
-   app, which carries no prefers-color-scheme block anywhere in globals.css. The
-   palette below is the approved one: white cards on the shell's soft grey,
-   #141922 for a name, #697386 for supporting text and #E4E7EC for a border.
+   app, which carries no prefers-color-scheme block anywhere in globals.css.
 
    THE PAGE HEADER IS NOT IN THIS FILE. The title, the supporting line and the
    Edit order control live in the app header (BoeOsLayout), styled by the
-   shared .boe-page-* and .boe-header-actions rules every other shell already
-   uses. What this file styles is the grid and the card, and below the
-   controls, the drag handle they share.
+   shared .boe-page-* and .boe-header-actions rules. This page asks the shell
+   for an 1180px content column (`contentMaxWidth`), so the header and the grid
+   share one left edge and one right edge — Edit order sits exactly above the
+   last column — and the launcher reads as one deliberate block.
 
-   Colours, hover states and anything that depends on a MODULE'S OWN accent stay
-   inline in page.tsx, because an inline style always wins over a class rule and
-   would otherwise block the phone override. The one exception is the accent
-   itself, which page.tsx publishes as the custom property --module-accent so
-   that the left-edge stripe and the arrow — neither of which is an element the
-   component puts a style attribute on — can read it.
+   THE CARD. Each module is a white card holding its icon and its name side by
+   side, as one unit: a 56px icon, then the name at 17px, both on the card's
+   centre line. Three of them across a laptop screen and three across a large
+   monitor, so the modules sit in the same place on both and thirteen of them
+   make five calm rows rather than a field of small boxes.
 
-   A LAUNCHER CARD IS AN ICON, ITS BADGE AND A NAME. At every width. The
-   description and the "Open →" footer are gone from the MARKUP, not hidden
-   here, so there is no rule left to unwind at a breakpoint and nothing
-   reserving a box with no content in it. What replaced them is not more content
-   but less card: a 92px horizontal row on a desktop instead of a 132px column
-   that was mostly air. */
+   ONE RESTRAINED PALETTE. Every icon is the same ink on the same soft grey,
+   recognised by its shape and its name. The one colour is BOE red, and it
+   appears only on the card under the pointer or the keyboard — the icon takes
+   a red tint, the way the sidebar marks the page you are on — plus the red
+   notification badge, which means something.
 
-/* ── The grid ──────────────────────────────────────────────────────────────── */
+     #141922  ink — names, the focus ring
+     #1F2633  icon at rest, on #F3F4F6 with a #ECEEF2 hairline
+     #DC1F2E  BOE red — the icon of the card being pointed at
+     #E3E6EB  card border at rest, #CBD1DA under the pointer
+     #D94F4F  notification badge
 
-/* COLUMN COUNTS, NOT A MINIMUM CARD WIDTH, and the arithmetic is why.
-   `auto-fill, minmax(232px, 1fr)` reads better and gives the wrong answer: the
-   sidebar is 260px and the page body adds 22px of gutter each side, so a 1920px
-   screen leaves 1616px of grid — enough for SIX 232px tracks. The approved
-   design is four. A minimum width cannot express "four, however wide the screen
-   gets" without being set so high it breaks the narrow end.
+   A LAUNCHER CARD IS AN ICON, ITS BADGE AND A NAME. At every width. No
+   description, no "Open", no counter line — nothing is hidden here, it is
+   simply not in the markup. */
 
-   So the steps are declared, against the VIEWPORT (which is what a media query
-   sees), and the content width each one has to work in is written beside it:
+/* ── The size container ──────────────────────────────────────────────────────
+   COLUMNS FOLLOW THE WIDTH THE GRID ACTUALLY HAS, not the window. A viewport
+   query has to subtract the sidebar, the gutters and the content column in its
+   head; a container query measures the one number that decides how many
+   cards fit. */
+.launcher {
+  container-type: inline-size;
+}
 
-     >= 1600px   4 columns   1616px of grid at 1920  ->  393px a card
-     >= 1200px   3 columns   1136px of grid at 1440  ->  369px a card
-     768-1199    2 columns    720px of grid at 1024  ->  353px a card
-     <= 767px    2 columns   the phone block below
-     <= 339px    1 column    the last block in this file
+/* ── The grid ───────────────────────────────────────────────────────────────
+   THE STEPS, measured on the grid's own width:
 
-   A card therefore stays between about 350 and 395px wide at every desktop
-   size, rather than swinging from 232px to 400px as tracks pop in and out. */
+     container   columns   typical screen                  card width
+     >= 900px    3         1920 (1180px column), 1366      ~383px, ~343px
+     below       2         1024, a narrow window, a phone
+
+   THREE, AT BOTH DESKTOP SIZES, and chosen by comparing full-size screenshots
+   with thirteen modules — the production count. Four or five across leave the
+   thirteenth card alone under three or four empty slots; three across leaves
+   it beside two, the smallest gap any of them can manage, and twelve fill four
+   rows exactly. A module also stays in the same place on a laptop and on a
+   large monitor. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-@media (min-width: 1200px) {
+@container (min-width: 900px) {
   .grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1600px) {
-  .grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
+/* ── The card ────────────────────────────────────────────────────────────────
+   A ROW: the icon, then the name beside it, both on the card's centre line —
+   one unit, read in one glance, not an icon at the top and a label at the
+   bottom. The whole card is the button.
 
-/* A ROW, NOT A COLUMN. The old card stacked a 56px icon above a name inside a
-   132px box and spent the difference on nothing; laid on its side the same two
-   things need 92px, and the grid fits four across a wide screen instead of
-   stranding three in a band of white.
-
-   min-height is A FLOOR AND NEVER A CEILING: a name that wraps to two lines
-   grows the card rather than being cut by it, and the grid's default
-   `align-items: stretch` keeps every card in that row the same height.
-
-   The border, the shadow and the lift are set INLINE by page.tsx because they
-   depend on the module's accent. Everything that does not is here. */
+   min-height is A FLOOR AND NEVER A CEILING: a name that wraps grows the card
+   rather than being cut by it, and the grid's default `align-items: stretch`
+   keeps every card in that row the same height. */
 .card {
   position: relative;
-  background: #fff;
-  border-radius: 13px;
-  padding: 16px;
-  cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 13px;
-  min-height: 92px;
-  /* Clips the left-edge stripe to the card's radius. `clip` rather than
-     `hidden` so this never becomes a scroll container. */
-  overflow: clip;
-}
-
-/* ── The hover / focus accent stripe ──
-   A 3px bar in the module's own colour, scaled to nothing at rest so there is
-   no layout to reserve and no border to swap. It is the card's only new
-   decoration, and it appears for hover and for keyboard focus identically. */
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--module-accent, transparent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.16s ease;
-  pointer-events: none;
-}
-
-.card:hover::before,
-.card:focus-visible::before {
-  transform: scaleX(1);
-}
-
-/* THE KEYBOARD STATE, AND WHY IT SHOUTS `!important`.
-   `:focus-visible` has no inline form, and the resting border, shadow and
-   transform it has to override ARE inline (they carry the module's accent). A
-   class cannot beat a style attribute, so these three declarations are the only
-   ones in this file that force the issue — and they force it over values this
-   page's own component sets, never over anything global.
-
-   A ring as well as the lift: the stripe and the elevation are the hover
-   language, and somebody arriving by keyboard gets a state that unmistakably
-   reads as focus rather than as "the mouse is somewhere near". */
-.card:focus-visible {
+  justify-content: flex-start;
+  gap: 18px;
+  min-height: 104px;
+  padding: 22px 24px;
+  background: #fff;
+  border: 1px solid #E3E6EB;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+  cursor: pointer;
   outline: none;
-  border-color: var(--module-accent, #141922) !important;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+/* HOVER, FOCUS AND PRESS ARE ONE LANGUAGE. The card lifts a little, its edge
+   firms up and the icon takes BOE red — for a mouse and a keyboard alike.
+   Focus adds an ink ring outside the card so it can never be mistaken for a
+   stray pointer, and pressing sets the card back down. */
+.card:hover,
+.card:focus-visible {
+  border-color: #CBD1DA;
   box-shadow:
-    0 0 0 3px rgba(20, 25, 34, 0.14),
-    0 6px 16px rgba(20, 25, 34, 0.10) !important;
-  transform: translateY(-2px) !important;
+    0 1px 2px rgba(20, 25, 34, 0.04),
+    0 12px 28px -14px rgba(20, 25, 34, 0.22);
+  transform: translateY(-2px);
+}
+
+.card:focus-visible {
+  outline: 2px solid #141922;
+  outline-offset: 2px;
+}
+
+.card:active {
+  transform: none;
+  background: #FAFAFB;
+  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
 }
 
 .iconWrap {
@@ -138,110 +122,94 @@
 }
 
 .iconBox {
-  width: 46px;
-  height: 46px;
-  border-radius: 11px;
+  width: 56px;
+  height: 56px;
+  border-radius: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.16s ease;
+  background: #F3F4F6;
+  border: 1px solid #ECEEF2;
+  color: #1F2633;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
-/* The module icons are authored at 26px for the old 56px box. One rule scales
-   every one of them into the new container instead of editing thirteen SVGs —
-   the icons themselves, and their colours, are untouched. */
+.card:hover .iconBox,
+.card:focus-visible .iconBox {
+  background: rgba(220, 31, 46, 0.08);
+  border-color: rgba(220, 31, 46, 0.18);
+  color: #DC1F2E;
+}
+
+/* The module icons are authored at 26px, which is the size they are drawn at
+   here — one rule rather than thirteen SVG edits. */
 .iconBox svg {
-  width: 23px;
-  height: 23px;
+  width: 26px;
+  height: 26px;
 }
 
 .badge {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: -6px;
+  right: -7px;
   background: #D94F4F;
   color: #fff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   border-radius: 999px;
-  min-width: 18px;
-  height: 18px;
+  min-width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 5px;
   border: 2px solid #fff;
-  box-shadow: 0 1px 3px rgba(20, 25, 34, 0.18);
   letter-spacing: 0.01em;
   z-index: 1;
 }
 
-/* Takes the slack between the icon and the arrow, and `min-width: 0` is what
-   lets a long name wrap instead of forcing the row wider than its column. */
+/* The rest of the row, and `min-width: 0` is what lets a long name wrap rather
+   than widen the column. */
 .titleWrap {
   flex: 1 1 auto;
   min-width: 0;
 }
 
 /* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. The name is the only
-   text on the card, so a clipped one is the single thing that could still leave
-   a card unreadable. "Performance Management" and "Attendance & Payroll" wrap
-   to two lines and arrive whole; the card grows to fit them. */
+   text on the card, so a clipped one is the single thing that could still
+   leave it unreadable. A long name wraps and arrives whole. */
 .title {
-  font-size: 14.5px;
+  font-size: 17px;
   font-weight: 600;
   color: #141922;
   letter-spacing: -0.015em;
-  line-height: 1.25;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-/* ── The navigation cue ──
-   Quiet at rest and only slightly less quiet on hover: it says the card leads
-   somewhere, which is all the word "Open" ever said. aria-hidden in the markup,
-   so it is invisible to a screen reader and the card is still announced as one
-   button named after its module. */
-.arrow {
-  flex-shrink: 0;
-  align-self: flex-start;
-  color: #C0C6D0;
-  opacity: 0.85;
-  transition: color 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
-  pointer-events: none;
-}
-
-.card:hover .arrow,
-.card:focus-visible .arrow {
-  color: var(--module-accent, #697386);
-  opacity: 1;
-  transform: translate(2px, -2px);
-}
-
-/* ── Small screens: centred cards, <= 767px ──────────────────────────────────
-   767px is the SIDEBAR'S OWN BREAKPOINT (globals.css) — the width at which the
-   permanent sidebar becomes a drawer and quick actions move into the page — so
-   "small screen" means one thing across the whole launcher and there is no
-   second breakpoint to keep in step. The 639px block below is the PHONE
-   COMPACTION (two-up grid, smaller boxes): a size change, not a layout one.
-
-   THE CARD TURNS BACK INTO A COLUMN HERE. A half-width card is read down the
-   middle, not scanned along a left edge, so the icon sits above a centred name
-   and the arrow leaves the row entirely for the top-right corner — where it
-   costs the content no width at the width with none to spare. */
-@media (max-width: 767px) {
+/* ── A narrow grid on a desktop: icon above name, < 600px ────────────────────
+   Two columns in a narrow window leave a row card too little room for its
+   name beside the icon, so there the same card stacks — the icon directly
+   above the name, close together, never pushed to opposite ends. */
+@container (max-width: 599px) {
   .card {
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    text-align: center;
+    gap: 14px;
+    padding: 20px;
   }
 
-  /* Centres the icon AND its badge in one move: .badge is positioned against
-     .iconWrap, so it travels with the wrapper and stays pinned to the corner of
-     the box rather than drifting to the card edge. */
-  .iconWrap {
-    align-self: center;
+  .iconBox {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .iconBox svg {
+    width: 24px;
+    height: 24px;
   }
 
   .titleWrap {
@@ -249,111 +217,99 @@
     width: 100%;
   }
 
-  /* Out of the flow, so a two-line name uses the card's full width and the row
-     heights stay even whether a name wraps or not. Inset far enough that it
-     cannot collide with the badge on a centred icon, and there is no hover on a
-     touch screen to reveal it, so it rests slightly clearer than on a desktop. */
-  .arrow {
-    position: absolute;
-    top: 9px;
-    right: 9px;
-    align-self: auto;
-    opacity: 0.9;
+  .title {
+    font-size: 15.5px;
   }
 }
 
-/* ── Phone: compact two-up app-launcher grid, < 640px ──────────────────────
-   TWO COLUMNS, NOT ONE, down to 360px: the page body's 12px gutters and a 10px
-   gap leave about 157px a card at 360px, which is more width than the longest
-   module name needs across two lines. A single column would turn thirteen cards
-   into a scroll instead of a screen. Below 340px — a fold, or a desktop zoomed
-   past 200% — the block at the end of this file gives up and goes to one,
-   because at that point two readable columns genuinely do not fit. */
-@media (max-width: 639px) {
+/* ── Small screens: centred cards, <= 767px ─────────────────────────────────
+   767px is the SIDEBAR'S OWN BREAKPOINT (globals.css) — where the permanent
+   sidebar becomes a drawer — so "small screen" means one thing across the
+   whole launcher.
+
+   Two columns of centred cards: icon above name, the whole card the button,
+   no description. There is no hover on a touch screen, so the lift goes and a
+   press dims the card instead. */
+@media (max-width: 767px) {
   .grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .card {
-    padding: 14px 11px;
-    border-radius: 13px;
-    min-height: 122px;
-    gap: 9px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 12px;
+    min-height: 124px;
+    padding: 18px 12px 16px;
   }
 
-  .iconBox {
-    width: 44px;
-    height: 44px;
-    border-radius: 11px;
+  .card:hover {
+    transform: none;
+    border-color: #E3E6EB;
+    box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
   }
 
-  .iconBox svg {
-    width: 22px;
-    height: 22px;
+  .card:hover .iconBox {
+    background: #F3F4F6;
+    border-color: #ECEEF2;
+    color: #1F2633;
   }
 
-  .badge {
-    top: -4px;
-    right: -4px;
-    min-width: 16px;
-    height: 16px;
-    font-size: 8px;
+  .card:active {
+    background: #F7F8FA;
+    border-color: #CBD1DA;
   }
 
-  /* Type size only — the no-clamp rule in the base block is deliberately not
-     re-capped here. A half-width column is the width at which a cut-off name is
-     most likely and least acceptable. */
+  /* Centres the icon AND its badge in one move: .badge is positioned against
+     .iconWrap, so it travels with the wrapper. */
+  .iconWrap {
+    align-self: center;
+  }
+
   .title {
-    font-size: 13px;
-    line-height: 1.3;
-  }
-
-  .arrow {
-    top: 7px;
-    right: 7px;
-    width: 13px;
-    height: 13px;
+    font-size: 14px;
   }
 }
 
 /* ── Very narrow: one column, < 340px ────────────────────────────────────────
-   The only width at which a single column is the right answer. */
+   The only width at which a single column is the right answer — a fold, or a
+   desktop zoomed past 200%. */
 @media (max-width: 339px) {
   .grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    min-height: 104px;
   }
 }
 
 /* ── Personal card order: the controls and the handle ───────────────────────
-   The "Edit order" work, unchanged in behaviour.
-
-   THE ROW THAT USED TO HOLD THEM IS GONE. These controls now sit in the app
+   The "Edit order" work, unchanged in behaviour. The controls sit in the app
    header's own `.boe-header-actions` slot, which supplies the position, the
-   spacing and the wrapping — so the heading row this file used to declare, and
-   the divider it carried, both went with the duplicate heading block that is
-   no longer drawn. The app header's own bottom border is the only rule under
-   the title now, and the grid begins directly beneath it with nothing but the
-   page body's padding in between.
+   spacing and the wrapping.
 
    Normal mode renders none of these classes apart from `.orderEditButton`. */
 
-/* ── Normal mode: one quiet action ──
-   Text-weight, in the muted grey of the supporting line, so it reads as a
-   utility beside the heading rather than a call to action competing with
-   thirteen cards. */
+/* ── Normal mode: one quiet but findable action ──
+   A small outlined button at the right-hand end of the header, above the last
+   column. Outlined so it is recognisably a control; grey, 12.5px and 32px tall
+   so it is plainly secondary to the modules below it. */
 .orderEditButton {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 5px 9px;
-  font-size: 11.5px;
+  gap: 6px;
+  height: 32px;
+  background: #fff;
+  border: 1px solid #E4E7EC;
+  border-radius: 9px;
+  padding: 0 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #697386;
+  color: #4A5261;
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   flex-shrink: 0;
@@ -361,8 +317,8 @@
 
 .orderEditButton:hover {
   color: #141922;
-  background: #F2F4F7;
-  border-color: #E4E7EC;
+  background: #F7F8FA;
+  border-color: #C9CFDA;
 }
 
 .orderEditButton:focus-visible,
@@ -378,7 +334,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -394,10 +350,12 @@
 .orderButtonPrimary {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  border-radius: 8px;
-  padding: 6px 11px;
-  font-size: 12px;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 9px;
+  padding: 0 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -407,7 +365,7 @@
 .orderButton {
   background: #fff;
   border: 1px solid #E4E7EC;
-  color: #697386;
+  color: #4A5261;
 }
 
 .orderButton:hover:not(:disabled) {
@@ -434,49 +392,46 @@
 }
 
 .orderHint {
-  font-size: 11px;
-  color: #697386;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #5B6475;
   text-align: right;
-  max-width: 320px;
+  max-width: 440px;
 }
 
 /* A failed save, beside the arrangement it belongs to. */
 .orderError {
   display: block;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #B42318;
   background: #FEF3F2;
   border: 1px solid #FECDCA;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 7px 11px;
   text-align: right;
   max-width: 360px;
 }
 
 /* ── The drag handle ──
-   Absolutely positioned in the card's top-right corner, so it costs the card no
-   layout at all. 24px with a real touch target, which is the Apple/Android
-   minimum without drawing a 44px control.
-
-   IT TAKES THE ARROW'S PLACE. In edit mode the card does not navigate, so
-   page.tsx renders no arrow and this occupies the corner it left — one thing in
-   one place, in either mode, at either layout. */
+   Absolutely positioned in the card's top-right corner, which the tile leaves
+   empty, so it costs the card no layout and never covers the icon or the
+   name. 32px, the whole of it the touch target. */
 .dragHandle {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 12px;
+  right: 12px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 1px solid #E4E7EC;
-  border-radius: 7px;
+  border-radius: 9px;
   background: #F8F9FB;
-  color: #697386;
+  color: #5B6475;
   cursor: grab;
   /* THE ONE DECLARATION THAT MAKES TOUCH WORK. Without it the browser claims a
      vertical drag that starts here as a page scroll and the card never moves.
@@ -496,39 +451,48 @@
 }
 
 /* ── The card in edit mode ──
-   `position: relative` already lives on `.card` for the accent stripe, so the
-   handle has something to position against in both modes.
-
-   The dashed border says "this grid is being rearranged" without adding a
-   banner: it is the one visual difference between a launcher you click and a
-   launcher you drag. `border-style` only — the colour and the width stay
-   inline, so nothing here competes with the accent. */
+   THE SAME CARD, VISIBLY LOOSENED. The edge turns dashed and the surface a
+   shade off white — "these can move" — and the handle appears in the corner.
+   Hover makes no promise: a card in edit mode does not navigate, so it
+   neither lifts nor turns its icon red. */
 .cardEditing {
   cursor: default;
-  border-style: dashed !important;
+  /* Room for the handle at the right-hand end of a row card, so a long name
+     wraps beside it rather than running underneath. */
+  padding-right: 60px;
+  border-style: dashed;
+  border-color: #C3CAD5;
+  background: #FCFCFD;
+  box-shadow: none;
   /* The card is not a link any more, and text selection during a drag looks
      like a bug. */
   user-select: none;
 }
 
-/* No hover promise on a card that does not navigate, and no stripe: in edit
-   mode the accent belongs to the card being dragged, which page.tsx marks
-   inline. */
-.cardEditing::before {
-  display: none;
+.cardEditing:hover,
+.cardEditing:active {
+  transform: none;
+  border-color: #C3CAD5;
+  background: #FCFCFD;
+  box-shadow: none;
 }
 
-/* Restrained feedback, and restrained on purpose: the grid reflowing IS the
-   signal, and the gap the card leaves is the placeholder. This only says which
-   card is in hand.
-   THE LIFT AND THE SHADOW ARE NOT HERE. `.card`'s border, box-shadow and
-   transform are set INLINE by page.tsx (they depend on the module's accent), and
-   an inline style always wins over a class rule — which is the reason this whole
-   file exists. So the elevation is computed inline alongside the hover state it
-   replaces, and only the two properties page.tsx does not set live here. */
-.cardDragging {
+.cardEditing:hover .iconBox {
+  background: #F3F4F6;
+  border-color: #ECEEF2;
+  color: #1F2633;
+}
+
+/* The card in hand: solid ink edge, lifted. The grid reflowing IS the signal
+   and the gap the card leaves is the placeholder; this only says which one is
+   held. */
+.cardDragging,
+.cardDragging:hover {
   z-index: 3;
-  opacity: 0.92;
+  border-style: solid;
+  border-color: #141922;
+  background: #fff;
+  box-shadow: 0 16px 32px -12px rgba(20, 25, 34, 0.28);
 }
 
 .cardDragging .dragHandle {
@@ -540,92 +504,85 @@
 
 /* ── Small screens ── */
 @media (max-width: 767px) {
-  /* The controls take the full width and centre, like everything else on a
-     narrow launcher, instead of crowding the right edge. */
+  /* The controls take the full width under the heading, like everything else
+     on a narrow launcher, instead of crowding the right edge. */
   .orderEditing {
     align-items: stretch;
     width: 100%;
+    gap: 8px;
   }
 
   .orderActions {
-    justify-content: center;
+    justify-content: stretch;
   }
 
   .orderHint,
   .orderError {
-    text-align: center;
+    text-align: left;
     max-width: 100%;
+  }
+
+  .orderHint {
+    font-size: 13px;
+  }
+
+  .cardEditing {
+    padding-right: 12px;
+  }
+
+  /* The corner of a centred phone card, clear of the icon below it. */
+  .dragHandle {
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
   }
 }
 
 @media (max-width: 639px) {
-  /* A compact two-up card is 11px from its own edge, so the handle comes in with
-     it and keeps clear of the centred icon below. */
-  .dragHandle {
-    top: 6px;
-    right: 6px;
-    width: 26px;
-    height: 26px;
+  /* Cancel and Save side by side, each half the width and a real 40px tap
+     target with a 13px label; Reset to default — the least common of the
+     three — drops to its own quieter row beneath them rather than squeezing
+     all three into thirds of a 390px screen. */
+  .orderActions {
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .orderButton,
   .orderButtonPrimary {
-    padding: 7px 10px;
-    font-size: 11.5px;
-    /* Three controls, one row, no overflow at 320px. */
-    flex: 1 1 auto;
-    justify-content: center;
+    height: 40px;
+    padding: 0 10px;
+    font-size: 13px;
+    flex: 1 1 0;
   }
 
-  .orderActions {
-    gap: 6px;
-    width: 100%;
+  .orderActions > :first-child {
+    order: 3;
+    flex-basis: 100%;
+    height: 36px;
+    background: transparent;
+    border-color: transparent;
+    color: #5B6475;
   }
 }
 
 /* ── Reduced motion ──
-   Somebody who has asked for less motion still gets every piece of feedback
-   this page relies on — the accent stripe, the border, the shadow, the arrow's
-   colour and the grid closing up behind a moved card — without anything easing
-   or sliding into place. The two TRANSFORMS are what go: the card's 2px lift
-   and the arrow's 2px travel are motion and nothing else, so they are dropped
-   rather than merely un-animated, while the colour and elevation changes that
-   carry the actual meaning all remain.
-
-   `.card:hover` and `.card:focus-visible` are two selectors of the same
-   specificity as the rules above and come later in the file; the inline lift is
-   the one thing a class cannot outrank, hence `!important` on that single
-   declaration. */
+   Every piece of feedback stays — the firmer edge, the shadow, the red icon,
+   the focus ring — and only movement goes: nothing eases and nothing lifts. */
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .card::before,
-  .arrow,
   .iconBox,
   .orderEditButton,
   .orderButton,
   .orderButtonPrimary,
-  .dragHandle,
-  .cardEditing {
+  .dragHandle {
     transition: none;
-  }
-
-  .card::before {
-    transform: scaleX(1);
-    opacity: 0;
-  }
-
-  .card:hover::before,
-  .card:focus-visible::before {
-    opacity: 1;
   }
 
   .card:hover,
   .card:focus-visible {
-    transform: none !important;
-  }
-
-  .card:hover .arrow,
-  .card:focus-visible .arrow {
     transform: none;
   }
 }
