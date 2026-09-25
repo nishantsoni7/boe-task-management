@@ -126,16 +126,18 @@ describe('the attention strip carries the decision, state by state', () => {
     assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
   })
 
+  // Accepting aligns, so an accepted version's Order is aligned (an accepted
+  // version on a NOT aligned Order is a production hold, 20270104000000).
   test('accepted: the review is resolved, so the strip neither names it nor offers a decision', () => {
-    assert.equal(strip(view(accepted(), NITISH)), '', 'nothing else needs attention on this Order')
+    assert.equal(strip(view(accepted(), NITISH, { productionAligned: true })), '', 'nothing else needs attention on this Order')
     assert.equal(
-      renderToStaticMarkup(<OperationsReviewActions view={view(accepted(), NITISH)} busy={false} onAccept={noop} onCannotAccept={noop} />),
+      renderToStaticMarkup(<OperationsReviewActions view={view(accepted(), NITISH, { productionAligned: true })} busy={false} onAccept={noop} onCannotAccept={noop} />),
       '',
     )
   })
 
   test('accepted beside other gaps: those items and their count are untouched, and no decision or anchor is drawn', () => {
-    const html = strip(view(accepted(), NITISH), { hasDueDate: false, pendingChangeRequests: 2 })
+    const html = strip(view(accepted(), NITISH, { productionAligned: true }), { hasDueDate: false, pendingChangeRequests: 2 })
     assert.match(html, /2 items need attention/)
     assert.match(html, /Due date not set/)
     assert.match(html, /2 change requests awaiting review/)

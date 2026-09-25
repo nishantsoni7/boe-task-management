@@ -261,8 +261,21 @@ export function describeHandoffAlignment(input: {
   live: PersistedOperationsHandoff
   reviewerName: string | null
   formatWhen: (iso: string | null) => string
+  /**
+   * The Order's own alignment. An ACCEPTED version whose Order is not aligned
+   * was put on hold (its advance fell below 40%, 20270104000000): the
+   * acceptance stands, the alignment does not.
+   */
+  productionAligned?: boolean
 }): { label: string; line: string | null; aligned: boolean } {
   const { live } = input
+  if (live.status === 'accepted' && input.productionAligned === false) {
+    return {
+      aligned: false,
+      label: 'Not Aligned',
+      line: `${versionLabel(live.version_number)} accepted; production on hold — advance below 40%`,
+    }
+  }
   if (live.status === 'accepted') {
     return {
       aligned: true,
@@ -379,7 +392,7 @@ export function describeOperationsHandoff(input: {
     revisionReason: live.version_number > 1 ? (input.revisionReason?.trim() || null) : null,
     priorAcceptedNotice,
     alignmentWarning,
-    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen }),
+    alignment: describeHandoffAlignment({ live, reviewerName: name(live.accepted_by), formatWhen, productionAligned: input.productionAligned }),
     actions: {
       accept: mayDecide && live.status !== 'accepted',
       cannotAccept: mayDecide && live.status === 'awaiting',
