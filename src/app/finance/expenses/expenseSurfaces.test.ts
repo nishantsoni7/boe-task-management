@@ -1506,7 +1506,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff/.test(f),
+      // order_submission_advance_exception is edited, not added: closing the
+      // legacy advance doors (20270106000000) moves its privilege pin.
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_submission_advance_exception/.test(f),
         `${f} does not belong to this feature`)
     }
     // Order 0524's runner is held to the same rule as the handoff's.
