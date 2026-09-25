@@ -21,7 +21,9 @@ import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerRevi
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
-import { ArrowUpRight, Image as ImageIcon } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, ArrowUpRight, Image as ImageIcon, Megaphone } from 'lucide-react'
+import type { MyAnnouncement } from '@/lib/announcements'
 import {
   IDLE_MODULE_ORDER_EDIT,
   moduleOrderEditReducer,
@@ -41,7 +43,6 @@ import {
   useModuleReorderPointer,
 } from './ModuleOrderControls'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
-import { AnnouncementBanner } from '@/components/announcements/AnnouncementBanner'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import styles from './modules.module.css'
 
@@ -564,13 +565,14 @@ export default function BoeOsHomePage() {
   // ── Two sections, one list ──────────────────────────────────────────────────
   //
   // Both are FILTERS OF `modules`, so each keeps the rendered order and together
-  // they hold every authorized card exactly once. The count in the welcome panel
-  // is the canonical list's length — the same role-filtered answer, never a
-  // number written into the page.
+  // they hold every authorized card exactly once.
   const isEssential = (key: string) => ESSENTIAL_MODULE_KEYS.includes(key)
   const essentialModules = modules.filter(mod => isEssential(mod.key))
   const moreModules = modules.filter(mod => !isEssential(mod.key))
-  const availableCount = canonicalModules.length
+
+  // The greeting addresses the SIGNED-IN person — the same profile the account
+  // menu names — even while previewing somebody else's launcher.
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? ''
 
   // EDIT ORDER ARRANGES THE WHOLE LIST, exactly as it did before the sections.
   // While arranging, every card is drawn in one grid in its stored position, so
@@ -703,19 +705,18 @@ export default function BoeOsHomePage() {
     for (const href of moduleHrefs.split('|').filter(Boolean)) router.prefetch(href)
   }, [permsReady, moduleHrefs, router])
 
-  // One tile. `number` is its place in the whole list (1-based), drawn as a
-  // quiet label; in edit mode the handle announces the same place out of
-  // `modules.length`, as it did before the sections.
+  // One tile. `position` is its 1-based place in the whole list; in edit mode
+  // the handle announces it out of `modules.length`, as it did before the
+  // sections.
   const renderCard = (
     mod: ModuleDef,
     variant: 'essential' | 'compact',
-    number: number,
+    position: number,
   ) => (
     <ModuleCard
       key={mod.key}
       mod={mod}
       variant={variant}
-      number={number}
       // NO NAVIGATION WHILE REARRANGING. Passing null rather than a handler
       // that checks a flag: in edit mode the card is not a button, has no
       // tabIndex and has no click handler to fire, so there is nothing for a
@@ -726,7 +727,7 @@ export default function BoeOsHomePage() {
         <ModuleDragHandle
           moduleKey={mod.key}
           title={mod.title}
-          position={number}
+          position={position}
           total={modules.length}
           disabled={orderEdit.saving}
           onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
@@ -792,12 +793,6 @@ export default function BoeOsHomePage() {
             />}
           </>) : null}
         >
-          {/* ── Announcements, first on the page ──
-              Unacknowledged ones only; one compact block however many there
-              are. Gone once each is acknowledged, on every device. Not while
-              arranging cards. */}
-          {showAnnouncements && !editingOrder && <AnnouncementBanner announcements={myAnnouncements} />}
-
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
               that it must be reachable in one tap from the first screen after
@@ -815,43 +810,34 @@ export default function BoeOsHomePage() {
               measured against — the width the launcher actually gets, not the
               window — and it scopes this page's typeface.
 
-              Three parts: a welcome panel, the Essentials row and a compact
-              grid for everything else. The panel steps aside while arranging
-              cards, as the quick action does, so edit mode opens on the tiles.
+              Three parts: a greeting beside the latest announcement, the
+              Essentials row and a compact grid for everything else.
 
               Edit mode shows every module in one grid, as before the
               sections: each tile turns dashed and gains a handle. */}
           <div className={styles.launcher}>
+            {/* ── Greeting and the latest announcement ──
+                One compact row on a desktop, stacked on a phone with the
+                announcement directly above the modules. Steps aside while
+                arranging, as the quick action does. */}
             {!editingOrder && (
-              <section className={styles.hero} aria-labelledby="modules-hero-heading">
-                {/* Decoration only: no content, no pointer, no focus. */}
-                <svg className={styles.heroMotif} viewBox="0 0 200 200" aria-hidden="true" focusable="false">
-                  <circle cx="100" cy="100" r="99" />
-                  <circle cx="100" cy="100" r="72" />
-                  <circle cx="100" cy="100" r="44" />
-                </svg>
-                <div className={styles.heroMain}>
-                  <p className={styles.heroEyebrow}>Your BOE workspace</p>
-                  <h2 id="modules-hero-heading" className={styles.heroHeadline}>
-                    A better way to get work moving.
+              <div className={`${styles.welcome}${showAnnouncements ? '' : ` ${styles.welcomeSolo}`}`}>
+                <div className={styles.greeting}>
+                  <p className={styles.eyebrow}>Your BOE workspace</p>
+                  <h2 className={styles.greetingTitle}>
+                    {greetingFor(new Date())}{firstName ? `, ${firstName}` : ''}
                   </h2>
-                  <p className={styles.heroLead}>Select a module to continue.</p>
+                  <p className={styles.greetingLead}>Choose a module to continue.</p>
                 </div>
-                <div className={styles.heroStat}>
-                  <div className={styles.heroStatRow}>
-                    <span className={styles.heroCount}>{availableCount}</span>
-                    <span className={styles.heroCountLabel}>
-                      {availableCount === 1 ? 'Module available' : 'Modules available'}
-                    </span>
-                  </div>
-                  <p className={styles.heroStatNote}>One clear place to start.</p>
-                </div>
-              </section>
+                {/* Not while previewing somebody else: their announcements
+                    are theirs, and reading this one would be the admin's. */}
+                {showAnnouncements && <LatestAnnouncement announcements={myAnnouncements} />}
+              </div>
             )}
 
             {!editingOrder && essentialModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-essentials-heading">
-                <h2 id="modules-essentials-heading" className={styles.sectionTitle}>The essentials</h2>
+                <h2 id="modules-essentials-heading" className={styles.sectionTitle}>Your essentials</h2>
                 <div className={styles.essentialsGrid}>
                   {essentialModules.map((mod, index) => renderCard(mod, 'essential', index + 1))}
                 </div>
@@ -861,7 +847,7 @@ export default function BoeOsHomePage() {
             {!editingOrder && moreModules.length > 0 && (
               <section className={styles.section} aria-labelledby="modules-more-heading">
                 <h2 id="modules-more-heading" className={styles.sectionTitle}>
-                  {essentialModules.length > 0 ? 'More to explore' : 'Your modules'}
+                  {essentialModules.length > 0 ? 'All modules' : 'Your modules'}
                 </h2>
                 <div className={styles.grid}>
                   {moreModules.map((mod, index) =>
@@ -913,11 +899,9 @@ export default function BoeOsHomePage() {
 // TWO SIZES, ONE COMPONENT. `essential` is the larger row tile of the three
 // featured modules; `compact` is the smaller tile of the grid beneath. Every
 // state — rest, hover, focus, pressed, editing, held — is a stylesheet rule.
-function ModuleCard({ mod, variant, number, onClick, dragging = false, handle = null }: {
+function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: {
   mod: ModuleDef
   variant: 'essential' | 'compact'
-  /** The tile's place on the page, drawn as a quiet two-digit label. */
-  number: number
   /** null in edit mode: the card does not navigate. */
   onClick: (() => void) | null
   /** This card is the one currently held by a pointer. */
@@ -954,14 +938,6 @@ function ModuleCard({ mod, variant, number, onClick, dragging = false, handle = 
     >
       {handle}
 
-      {/* Decoration only: the name is what a screen reader hears. */}
-      <span className={styles.cardNumber} aria-hidden="true">
-        {String(number).padStart(2, '0')}
-      </span>
-      {!editing && (
-        <ArrowUpRight className={styles.cardArrow} aria-hidden="true" focusable="false" />
-      )}
-
       <div className={styles.cardBody}>
         {/* ── Icon block with notification badge ──
             The badge is positioned against THIS wrapper, not the tile, so it
@@ -983,8 +959,69 @@ function ModuleCard({ mod, variant, number, onClick, dragging = false, handle = 
             {mod.title}
           </div>
         </div>
+
+        {/* Essentials only, and decoration only: aria-hidden, no pointer
+            events, and not drawn while the tile does not navigate. */}
+        {variant === 'essential' && !editing && (
+          <ArrowUpRight className={styles.cardArrow} aria-hidden="true" focusable="false" />
+        )}
       </div>
     </div>
+  )
+}
+
+// ── Greeting and the latest announcement ──────────────────────────────────────
+
+/** "Good morning" before noon, "Good afternoon" until 5 pm, then "Good evening". */
+function greetingFor(at: Date): string {
+  const hour = at.getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+// THE LATEST ANNOUNCEMENT THIS PERSON MAY SEE, from the list the page already
+// holds. `useMyAnnouncements` is the Announcements module's own query — the
+// one the bell reads — and public.my_announcements() decides who sees what and
+// returns the newest first (starts_on, then created_at, descending). So this
+// is the first row: no second query, no ordering or permission logic here.
+//
+// Read or unread, the latest is shown; an unread one is labelled as new. With
+// nothing to show, the slot is one quiet line rather than an empty panel.
+function LatestAnnouncement({ announcements }: { announcements: MyAnnouncement[] }) {
+  const latest = announcements[0]
+
+  if (!latest) {
+    return (
+      <div className={`${styles.announcement} ${styles.announcementEmpty}`}>
+        <span className={styles.announcementIcon} aria-hidden="true">
+          <Megaphone size={16} strokeWidth={1.9} />
+        </span>
+        <span className={styles.announcementEmptyText}>No announcements right now.</span>
+        <Link href="/announcements" className={styles.announcementAll}>View all</Link>
+      </div>
+    )
+  }
+
+  const isNew = !latest.read_at
+  return (
+    <Link
+      href={`/announcements/${latest.id}`}
+      className={`${styles.announcement}${isNew ? ` ${styles.announcementNew}` : ''}`}
+      aria-label={`${isNew ? 'New announcement' : 'Announcement'}: ${latest.title}. Read update.`}
+    >
+      <span className={styles.announcementIcon} aria-hidden="true">
+        <Megaphone size={16} strokeWidth={1.9} />
+      </span>
+      <span className={styles.announcementText}>
+        <span className={styles.eyebrow}>{isNew ? 'New announcement' : 'Announcement'}</span>
+        <span className={styles.announcementTitle}>{latest.title}</span>
+      </span>
+      <span className={styles.announcementCta} aria-hidden="true">
+        <span className={styles.announcementCtaLabel}>Read update</span>
+        <ArrowRight size={14} strokeWidth={2} />
+      </span>
+    </Link>
   )
 }
 

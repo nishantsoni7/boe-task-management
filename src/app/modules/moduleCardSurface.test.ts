@@ -1,9 +1,10 @@
 /**
  * What the Modules launcher shows, and what happens when you activate a tile.
  *
- * The page is a welcome panel, an Essentials row and a compact "More to
- * explore" grid. A tile is a NUMBER, AN ICON, ITS NOTIFICATION BADGE, THE MODULE
- * NAME AND A DECORATIVE ARROW. Never a description, at any width: that
+ * The page is a greeting beside the latest announcement, an Essentials row and
+ * a compact "All modules" grid. A tile is AN ICON, ITS NOTIFICATION BADGE AND
+ * THE MODULE NAME, plus a decorative arrow on an Essentials tile. Never a
+ * description, at any width: that
  * furniture used to cost a phone most of the card to restate what the icon, the
  * name and the badge had already said.
  *
@@ -263,7 +264,7 @@ describe('a long module name arrives whole', () => {
 // Both are ModuleCard, so every behaviour pinned above applies to both. These
 // pin the SHAPE, not exact pixels: a particular number is a design call and
 // changing one should not fail a suite.
-describe('the tile: number, icon, name and a decorative arrow', () => {
+describe('the tile: icon, name, and an arrow on Essentials', () => {
   test('both sizes are one component, chosen by a variant', () => {
     assert.match(CARD, /variant: 'essential' \| 'compact'/)
     assert.ok(CARD.includes(styleClass('cardEssential')))
@@ -282,14 +283,14 @@ describe('the tile: number, icon, name and a decorative arrow', () => {
     assert.ok(icon > -1 && title > icon, 'the icon leads')
   })
 
-  test('the number is decoration: hidden from assistive technology', () => {
-    assert.match(CARD, /<span className=\{styles\.cardNumber\} aria-hidden="true">/)
-    assert.ok(CARD.includes("String(number).padStart(2, '0')"), 'a two-digit label')
+  test('no number label is drawn on a tile', () => {
+    assert.equal(CARD.includes('cardNumber'), false)
+    assert.equal(/\.cardNumber\b/.test(CSS), false)
   })
 
   test('THE ARROW IS DECORATION, and is not drawn in edit mode', () => {
-    assert.match(CARD, /\{!editing && \(\s*<ArrowUpRight className=\{styles\.cardArrow\} aria-hidden="true"/,
-      'aria-hidden, and only while the tile opens something')
+    assert.match(CARD, /\{variant === 'essential' && !editing && \(\s*<ArrowUpRight className=\{styles\.cardArrow\} aria-hidden="true"/,
+      'Essentials only, aria-hidden, and only while the tile opens something')
     assert.match(baseRule('.cardArrow'), /pointer-events:\s*none/,
       'it never intercepts the click meant for the tile')
     // It is the lucide component, not hand-drawn artwork.
@@ -398,15 +399,16 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
-// ── The header and the welcome panel ─────────────────────────────────────────
+// ── The header, the greeting and the latest announcement ─────────────────────
 //
 // The app header keeps the page title, the announcements bell and Edit order.
-// The supporting line moved into the welcome panel, beside the headline it
-// supports, so it is still said exactly once.
+// Beneath it, one compact row: a greeting on the left and the latest
+// announcement on the right, stacked on a phone with the announcement directly
+// above the modules.
 //
 // These read the LAYOUT as well as the page, because the header is something
 // this page supplies rather than draws.
-describe('the header, and the welcome panel beneath it', () => {
+describe('the header, the greeting and the latest announcement', () => {
   const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
 
   /** The props the launcher hands the shell. */
@@ -416,60 +418,93 @@ describe('the header, and the welcome panel beneath it', () => {
     return PAGE.slice(at, PAGE.indexOf('>\n', at))
   })()
 
-  /** The welcome panel's markup. */
-  const HERO = (() => {
-    const at = PAGE.indexOf('<section className={styles.hero}')
-    assert.notEqual(at, -1, 'the welcome panel exists')
-    return PAGE.slice(at, PAGE.indexOf('</section>', at))
+  /** The greeting row's markup. */
+  const WELCOME = (() => {
+    const at = PAGE.indexOf('<div className={`${styles.welcome}')
+    assert.notEqual(at, -1, 'the greeting row exists')
+    return PAGE.slice(at, PAGE.indexOf('{!editingOrder && essentialModules.length', at))
+  })()
+
+  /** The LatestAnnouncement component. */
+  const LATEST = (() => {
+    const at = PAGE.indexOf('function LatestAnnouncement(')
+    assert.notEqual(at, -1, 'LatestAnnouncement exists')
+    const end = PAGE.indexOf('\n// ── Icons', at)
+    return PAGE.slice(at, end === -1 ? undefined : end)
   })()
 
   test('MODULES IS STILL THE PAGE’S h1, in the shell', () => {
     assert.match(LAYOUT_CALL, /title="Modules"/)
     assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/)
     assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0,
-      'the page body adds no second h1 — the headline is an h2')
-    assert.match(HERO, /<h2 id="modules-hero-heading" className=\{styles\.heroHeadline\}>/)
+      'the page body adds no second h1 — the greeting is an h2')
+    assert.match(WELCOME, /<h2 className=\{styles\.greetingTitle\}>/)
   })
 
-  test('the approved headline and instruction, each said once', () => {
-    assert.match(HERO, /A better way to get work moving\./)
-    assert.equal((PAGE.match(/Select a module to continue/g) ?? []).length, 1,
-      'said once, in the panel — not in the header too')
-    assert.equal(LAYOUT_CALL.includes('subtitle='), false,
-      'the header no longer repeats the instruction')
-    assert.equal(CARD.includes('Select a module'), false, 'and never on a tile')
+  test('the greeting addresses the signed-in person by first name', () => {
+    assert.ok(PAGE.includes("const firstName = profile?.full_name?.trim().split(/\\s+/)[0] ?? ''"),
+      'the real signed-in profile, not the View As subject')
+    assert.match(WELCOME, /\{greetingFor\(new Date\(\)\)\}\{firstName \? `, \$\{firstName\}` : ''\}/)
+    assert.match(PAGE, /if \(hour < 12\) return 'Good morning'/)
+    assert.match(PAGE, /if \(hour < 17\) return 'Good afternoon'/)
+    assert.match(PAGE, /return 'Good evening'/)
   })
 
-  test('THE COUNT IS THE ROLE-FILTERED LIST, never a literal', () => {
-    assert.ok(PAGE.includes('const availableCount = canonicalModules.length'),
-      'derived from the same gated list the tiles come from')
-    assert.match(HERO, /\{availableCount\}/)
-    assert.equal(/>\s*\d+\s*</.test(stripJs(HERO)), false,
-      'no number is written into the panel')
-    // Above the icon drawings, whose path coordinates legitimately contain 13.
-    const logic = stripJs(PAGE.slice(0, PAGE.indexOf('// ── Icons')))
-    assert.equal(/\b13\b/.test(logic), false, 'and 13 is written nowhere in the page logic')
+  test('the instruction is said once, beside the greeting — not in the header too', () => {
+    assert.equal((PAGE.match(/Choose a module to continue/g) ?? []).length, 1)
+    assert.equal(LAYOUT_CALL.includes('subtitle='), false)
+    assert.equal(CARD.includes('Choose a module'), false, 'and never on a tile')
   })
 
-  test('the circular motif is decoration: hidden, unclickable, behind the text', () => {
-    assert.match(HERO, /<svg className=\{styles\.heroMotif\}[^>]*aria-hidden="true"/)
-    assert.match(baseRule('.heroMotif'), /pointer-events:\s*none/)
-    assert.match(baseRule('.heroMotif'), /z-index:\s*-1/)
+  test('THE ANNOUNCEMENT REUSES THE ANNOUNCEMENTS MODULE — no second query', () => {
+    // The list the page already holds, from the module's own hook, gated by
+    // the same showAnnouncements rule the bell uses.
+    assert.match(PAGE, /useMyAnnouncements\(userId, showAnnouncements\)/)
+    assert.match(WELCOME, /\{showAnnouncements && <LatestAnnouncement announcements=\{myAnnouncements\} \/>\}/)
+    for (const forbidden of ['rpc(', '.from(', 'fetch(', 'useQuery', 'createClient', '.sort(', 'starts_on', 'created_at']) {
+      assert.equal(stripJs(LATEST).includes(forbidden), false,
+        `LatestAnnouncement must not ${forbidden} — my_announcements() already decides access and order`)
+    }
   })
 
-  test('the panel clips only its motif, without creating a scroll box', () => {
-    assert.match(baseRule('.hero'), /overflow:\s*clip/)
-    assert.equal(/\boverflow:\s*(hidden|auto|scroll)/.test(stripCss(CSS)), false)
+  test('the latest is the first row, and it links to that announcement', () => {
+    assert.match(LATEST, /const latest = announcements\[0\]/)
+    assert.match(LATEST, /href=\{`\/announcements\/\$\{latest\.id\}`\}/)
+    assert.match(LATEST, /\{latest\.title\}/)
+    assert.match(LATEST, /const isNew = !latest\.read_at/)
+    // No announcement text is written into the page.
+    assert.equal(/ACETECH/i.test(PAGE), false)
   })
 
-  test('the panel steps aside while arranging tiles', () => {
-    assert.ok(PAGE.includes('{!editingOrder && (\n              <section className={styles.hero}'))
+  test('with none, a compact line — never a blank panel', () => {
+    assert.match(LATEST, /if \(!latest\) \{/)
+    assert.match(LATEST, /No announcements right now\./)
+    assert.match(LATEST, /<Link href="\/announcements" className=\{styles\.announcementAll\}>View all<\/Link>/)
+    const empty = baseRule('.announcementEmpty').match(/min-height:\s*(\d+)px/)
+    const full = baseRule('.announcement').match(/min-height:\s*(\d+)px/)
+    assert.ok(empty && full && Number(empty[1]) < Number(full[1]),
+      'the empty line is shorter than the card it stands in for')
   })
 
-  test('THE DATE IS NOT BACK, and no activity data was invented', () => {
-    assert.equal(/toLocaleDateString|new Date\(\)/.test(PAGE), false)
-    assert.equal(/fetch\(|\.from\(/.test(stripJs(HERO)), false,
-      'the panel reads nothing of its own')
+  test('reading the page acknowledges nothing', () => {
+    assert.equal(PAGE.includes('useAcknowledgeAnnouncement'), false)
+    assert.equal(PAGE.includes('acknowledge_announcement'), false)
+  })
+
+  test('the old banner no longer repeats the same announcement on this page', () => {
+    assert.equal(PAGE.includes('<AnnouncementBanner'), false)
+  })
+
+  test('the row steps aside while arranging tiles', () => {
+    assert.ok(PAGE.includes('{!editingOrder && (\n              <div className={`${styles.welcome}'))
+  })
+
+  test('on a phone the announcement stacks above the modules', () => {
+    assert.match(baseRule('.welcome'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
+    const at = CSS.indexOf('@container (min-width: 700px) {\n  .welcome {')
+    assert.notEqual(at, -1, 'side by side only once the launcher is 700px wide')
+    assert.ok(WELCOME.indexOf('styles.greeting}') < WELCOME.indexOf('<LatestAnnouncement'),
+      'greeting first, announcement second — so stacked, it sits above the tiles')
   })
 
   test('BOE Operating System is still the sidebar brand, untouched', () => {
@@ -486,12 +521,11 @@ describe('the header, and the welcome panel beneath it', () => {
     assert.match(LAYOUT_CALL, /quickActions=\{quickActions\}/, 'and Quick Add Expense stays in the sidebar')
   })
 
-  test('the order of the body: announcements, quick action, launcher', () => {
+  test('the order of the body: quick action, then the launcher', () => {
     const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
-    const banner = body.indexOf('<AnnouncementBanner')
     const quick = body.indexOf('<QuickActionList')
     const launcher = body.indexOf('<div className={styles.launcher}>')
-    assert.ok(banner > -1 && quick > banner && launcher > quick)
+    assert.ok(quick > -1 && launcher > quick)
   })
 })
 
@@ -548,7 +582,7 @@ describe('two sections, drawn from one gated list', () => {
   })
 
   test('a handle announces its place in the whole list', () => {
-    assert.ok(PAGE.includes('position={number}'))
+    assert.ok(PAGE.includes('position={position}'))
     assert.ok(PAGE.includes('total={modules.length}'))
   })
 })
@@ -694,9 +728,9 @@ describe('this page has no dark variant, and adds none', () => {
     assert.equal(/data-theme/.test(stripCss(CSS)), false)
   })
 
-  test('a compact tile is white with the warm hairline', () => {
+  test('a compact tile is white with the neutral hairline', () => {
     assert.match(DESKTOP_CARD, /background:\s*#fff/i)
-    assert.match(DESKTOP_CARD, /border:\s*1px solid #E7E3DE/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
   })
 
   test('reduced motion drops the movement and keeps the meaning', () => {
