@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
-import { CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -14,6 +15,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designationLevels'
+import { safeReturnPath } from '@/lib/safeReturnPath'
 
 // Account Settings sits inside the same BoeOsLayout shell as the Modules
 // launcher, so the sidebar — Home, the viewer's quick actions, View As and the
@@ -21,8 +23,22 @@ import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designation
 // page used to be a standalone header with a Back button; the sidebar replaces
 // both, and Sign Out is not repeated in the body because the menu carries it.
 export default function AccountPage() {
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  // useSearchParams needs a Suspense boundary.
+  return (
+    <Suspense>
+      <AccountPageInner />
+    </Suspense>
+  )
+}
+
+function AccountPageInner() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  // Every shell links here with ?returnTo=<where you came from>. Only an
+  // internal BOE path is followed; anything else — or no parameter — means no
+  // Back link at all, and the sidebar is the way out.
+  const returnTo     = safeReturnPath(searchParams.get('returnTo'))
+  const supabase     = useMemo(() => createClient(), [])
 
   // The sidebar's identity menu names the signed-in person, exactly as it does
   // on Modules. The page's own profile read below is kept for the details the
@@ -110,6 +126,11 @@ export default function AccountPage() {
       onSignOut={handleSignOut}
       quickActions={quickActions}
       contentMaxWidth={760}
+      headerActions={returnTo ? (
+        <Link href={returnTo} className="boe-btn boe-btn-ghost">
+          <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back
+        </Link>
+      ) : null}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 

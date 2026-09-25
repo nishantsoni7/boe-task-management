@@ -7,8 +7,9 @@
  * `router.push` sent the user to another site.
  *
  * NOW. Account uses the validator Task Detail already relied on (PR #150), moved
- * to src/lib/safeReturnPath.ts so both share one copy; anything it refuses falls
- * back to /modules.
+ * to src/lib/safeReturnPath.ts so both share one copy. Account now sits in the
+ * shared sidebar shell, so anything the validator refuses simply shows no Back
+ * link; a valid path shows one.
  *
  * Run:
  *   npx tsx --test src/lib/safeReturnPath.test.ts src/lib/tasks/taskReturnPath.test.ts
@@ -23,8 +24,11 @@ import * as taskReturnPath from './tasks/taskReturnPath'
 
 const BOE = 'https://boe-task-management.vercel.app'
 
-/** Exactly what the Account page computes for its Back button. */
-const accountBackTarget = (raw: string | null) => safeReturnPath(raw) ?? '/modules'
+/**
+ * Exactly what the Account page computes for its Back link: the validated
+ * path, or null — and null renders NO Back link (the sidebar is the way out).
+ */
+const accountBackTarget = (raw: string | null) => safeReturnPath(raw)
 
 /** One character by code, so no invisible character has to sit in this file. */
 const ch = (code: number) => String.fromCharCode(code)
@@ -42,7 +46,7 @@ describe('the old check let off-site values through', () => {
     test(JSON.stringify(value), () => {
       assert.equal(oldCheck(value), true, 'the old predicate accepted it')
       assert.equal(new URL(value, BOE).origin, 'https://evil.com', 'a browser resolves it off-site')
-      assert.equal(accountBackTarget(value), '/modules')
+      assert.equal(accountBackTarget(value), null)
     })
   }
 })
@@ -74,9 +78,9 @@ describe('internal BOE paths are followed unchanged (1–2)', () => {
   })
 })
 
-// ── 3–10. What falls back to /modules ───────────────────────────────────────
+// ── 3–10. What gets no Back link ────────────────────────────────────────────
 
-describe('anything that could leave BOE falls back to /modules (3–10)', () => {
+describe('anything that could leave BOE gets no Back link (3–10)', () => {
   const refused: [string, string | null][] = [
     ['https://', 'https://evil.com'],
     ['http://', 'http://evil.com'],
@@ -114,14 +118,14 @@ describe('anything that could leave BOE falls back to /modules (3–10)', () => 
   for (const [label, value] of refused) {
     test(label, () => {
       assert.equal(safeReturnPath(value), null)
-      assert.equal(accountBackTarget(value), '/modules')
+      assert.equal(accountBackTarget(value), null)
     })
   }
 
   test('excessively long values (the limit itself is still followed)', () => {
     const atLimit = '/' + 'a'.repeat(MAX_RETURN_PATH_LENGTH - 1)
     assert.equal(accountBackTarget(atLimit), atLimit)
-    assert.equal(accountBackTarget(atLimit + 'a'), '/modules')
+    assert.equal(accountBackTarget(atLimit + 'a'), null)
   })
 
   test('the backslash cases really contain backslashes', () => {
@@ -161,14 +165,28 @@ describe('Task Detail and Account share one validator (11)', () => {
 describe('Account Settings Back button', () => {
   const page = codeOf(read('src/app/account/page.tsx'))
 
-  // The page now sits in the shared BoeOsLayout shell and its sidebar is the way
-  // back, so the Back button — and with it the only place `returnTo` was
-  // followed — is gone. Callers may still append ?returnTo=; it is ignored, so
-  // there is no longer any navigation target an attacker can supply.
-  test('no longer follows returnTo at all', () => {
-    assert.equal(page.includes('returnTo'), false)
-    assert.equal(page.includes('useSearchParams'), false)
+  // The page sits in the shared BoeOsLayout shell. The Back link rides in the
+  // shell's title-row slot and exists only when safeReturnPath accepted the
+  // ?returnTo= value — there is no fallback destination, and no second header.
+  test('reads returnTo only through safeReturnPath, with no fallback', () => {
+    assert.ok(page.includes("import { safeReturnPath } from '@/lib/safeReturnPath'"))
+    assert.ok(page.includes("const returnTo     = safeReturnPath(searchParams.get('returnTo'))\n"))
+    // Exactly one read of the parameter, so nothing bypasses the validator.
+    assert.equal(page.split("searchParams.get('returnTo')").length - 1, 1)
+  })
+
+  test('renders the Back link only when there is a valid destination', () => {
+    assert.ok(page.includes('headerActions={returnTo ? ('))
+    assert.ok(page.includes('<Link href={returnTo} className="boe-btn boe-btn-ghost">'))
+    assert.ok(page.includes(') : null}'))
+    // Navigation is the Link itself — no imperative push of the parameter.
+    assert.equal(page.includes('router.push(returnTo)'), false)
+  })
+
+  test('keeps the shared shell and does not restore the old header', () => {
     assert.ok(page.includes('<BoeOsLayout'))
+    assert.equal(page.includes('BoeBrandIcon'), false)
+    assert.equal(page.includes("position: 'sticky'"), false)
   })
 
   test('the old prefix check is gone', () => {
