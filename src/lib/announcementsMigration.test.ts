@@ -77,9 +77,14 @@ describe('the migration', () => {
     assert.doesNotMatch(SQL, /notification_type/)
   })
 
-  test('it is the newest migration file', () => {
+  test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270110000000_announcements.sql')
+    assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
+    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // The permission resolvers are not for anon (#213): REVOKE on existing
+      // resolver functions. It touches nothing Announcements creates.
+      '20270119000000_permission_resolvers_are_not_for_anon.sql',
+    ])
   })
 })
 
