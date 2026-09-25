@@ -1694,7 +1694,9 @@ begin
   -- it and stays that way; the person who may align it again is whoever is the
   -- operations reviewer NOW — a reassignment after the acceptance moves this
   -- duty, never the alignment itself.
-  v_realign := v_h.status = 'accepted' and p_decision = 'accepted'
+  -- A superseded handoff is never re-aligned: it takes the ordinary path and
+  -- is refused there as SUPERSEDED.
+  v_realign := v_h.status = 'accepted' and p_decision = 'accepted' and v_h.superseded_at is null
                and v_order.production_alignment is distinct from 'aligned';
 
   -- ── Authority: the assigned reviewer (for a re-alignment, the CURRENT
