@@ -161,10 +161,14 @@ describe('Task Detail and Account share one validator (11)', () => {
 describe('Account Settings Back button', () => {
   const page = codeOf(read('src/app/account/page.tsx'))
 
-  test('follows the validated return path or /modules', () => {
-    assert.ok(page.includes("import { safeReturnPath } from '@/lib/safeReturnPath'"))
-    assert.ok(page.includes("const returnTo     = safeReturnPath(searchParams.get('returnTo')) ?? '/modules'"))
-    assert.ok(page.includes('onClick={() => router.push(returnTo)}'))
+  // The page now sits in the shared BoeOsLayout shell and its sidebar is the way
+  // back, so the Back button — and with it the only place `returnTo` was
+  // followed — is gone. Callers may still append ?returnTo=; it is ignored, so
+  // there is no longer any navigation target an attacker can supply.
+  test('no longer follows returnTo at all', () => {
+    assert.equal(page.includes('returnTo'), false)
+    assert.equal(page.includes('useSearchParams'), false)
+    assert.ok(page.includes('<BoeOsLayout'))
   })
 
   test('the old prefix check is gone', () => {
