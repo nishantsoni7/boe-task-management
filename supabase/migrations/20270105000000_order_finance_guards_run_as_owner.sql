@@ -79,9 +79,9 @@
 -- ── THE FIX, AND WHY THIS ONE ──────────────────────────────────────────────
 --
 -- Run each guard as its owner: SECURITY DEFINER with search_path pinned to
--- `public, pg_temp` — the pairing every other definer in this schema uses, and
--- exactly what the two guards' sibling helpers (open_order_finance_reset_scope,
--- test_data_cleanup_claim_open) already declare.
+-- `public, pg_temp` — exactly what the guards' sibling helpers
+-- (open_order_finance_reset_scope, test_data_cleanup_claim_open) and the
+-- 20261010000000 reset RPCs already declare.
 --
 -- NOT granting the helpers to `authenticated`. They stay internal; a client
 -- has no business asking whether a cleanup or a reset is in flight. A trigger
@@ -97,6 +97,33 @@
 -- probes now see every row rather than the RLS-visible ones — which is what a
 -- deletion-claim check must do: a claim on a PI the writer cannot see is still
 -- a claim.
+--
+-- ── AND ONE SEARCH_PATH THAT LOST pg_temp (§3) ─────────────────────────────
+--
+-- public.assert_order_amender() is the SECURITY DEFINER choke point that
+-- amend_order, cancel_order, approve_order_change_request and
+-- reject_order_change_request call to authorize an amendment.
+-- 20260818000000 pinned it to `search_path = public, pg_temp`. Then
+-- 20260901000000 restated it with CREATE OR REPLACE … `set search_path =
+-- public`, which replaced the setting and dropped pg_temp. Production reads
+-- search_path=public today (2026-09-25, SELECT-only), and it is the only
+-- amendment function in that state (#209 review, H5).
+--
+-- Why it matters: with pg_temp absent from an explicit search_path, Postgres
+-- searches pg_temp FIRST. A caller who creates a temporary table named
+-- `users` would have it resolve ahead of public.users inside the admin check
+-- of a definer that runs as postgres. PostgREST sessions cannot run DDL, so
+-- the app is not exposed today, but the pairing exists to rule this out by
+-- construction, and the ten other amendment functions all have it.
+--
+-- NOT A SCHEMA-WIDE SWEEP. Production has 94 other SECURITY DEFINER functions
+-- in public whose search_path lacks pg_temp. They are outside this file:
+-- each needs its own read, and this file changes only functions it names.
+--
+-- The fix is the same ALTER FUNCTION … SET search_path shape: the body is not
+-- touched, it stays a definer, and it KEEPS its EXECUTE grant to
+-- `authenticated`, because the RPCs above need it and a client calling it
+-- directly learns only whether they may amend.
 --
 -- ── WHAT THIS DOES NOT TOUCH ───────────────────────────────────────────────
 --
@@ -114,8 +141,9 @@
 -- undoes it; any such migration must restate `security definer set
 -- search_path = public, pg_temp`. (None of the five does, read 2026-09-25.)
 --
--- DEPENDENCIES (hard): 20260705000000, 20260706000000, 20260914000000,
--- 20260915000000, 20260916000000, 20261010000000.
+-- DEPENDENCIES (hard): 20260705000000, 20260706000000, 20260816000000,
+-- 20260901000000, 20260914000000, 20260915000000, 20260916000000,
+-- 20261010000000.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 do $$
@@ -137,7 +165,8 @@ begin
     'public.order_submissions_guard_delete()',
     'public.order_submission_activity_guard_delete()',
     'public.order_submission_child_guard_deletion_claim()',
-    'public.order_submissions_guard_deletion_claim()'
+    'public.order_submissions_guard_deletion_claim()',
+    'public.assert_order_amender()'
   ] loop
     if to_regprocedure(v_fn) is null then
       raise exception 'DEPENDENCY MISSING: % does not exist', v_fn;
@@ -227,6 +256,15 @@ revoke execute on function public.order_submission_child_guard_deletion_claim()
   from public, anon, authenticated, service_role;
 revoke execute on function public.order_submissions_guard_deletion_claim()
   from public, anon, authenticated, service_role;
+
+
+-- ═══ 3. assert_order_amender gets pg_temp back ══════════════════════════════
+--
+-- Its grants are deliberately NOT restated. It keeps exactly the EXECUTE it
+-- has, and the assertion below says so.
+
+alter function public.assert_order_amender()
+  set search_path = public, pg_temp;
 
 
 -- ─── Assertions ─────────────────────────────────────────────────────────────
@@ -324,5 +362,39 @@ begin
      );
   if v_bad is not null then
     raise exception 'guard definer: trigger functions still run as the caller and call an internal helper: %', v_bad;
+  end if;
+end $$;
+
+do $$
+declare
+  v_oid oid := 'public.assert_order_amender()'::regprocedure::oid;
+begin
+  if (select p.proconfig from pg_proc p where p.oid = v_oid)
+     is distinct from array['search_path=public, pg_temp'] then
+    raise exception 'assert_order_amender: must set exactly search_path = public, pg_temp, has %',
+      (select p.proconfig from pg_proc p where p.oid = v_oid);
+  end if;
+  if not (select p.prosecdef from pg_proc p where p.oid = v_oid) then
+    raise exception 'assert_order_amender: is no longer SECURITY DEFINER';
+  end if;
+
+  -- IT KEEPS ITS DOOR. amend_order, cancel_order and the change-request
+  -- decisions call it as the signed-in user's own authorization check.
+  if not has_function_privilege('authenticated', v_oid, 'EXECUTE') then
+    raise exception 'assert_order_amender: authenticated LOST execute; amending an Order would be refused to everyone';
+  end if;
+  if has_function_privilege('anon', v_oid, 'EXECUTE') then
+    raise exception 'assert_order_amender: anon can execute it';
+  end if;
+
+  -- AND THE BODY IS THE ONE 20260901000000 WROTE: the admin-or-orders.manage
+  -- rule, unchanged.
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = v_oid
+       and p.prosrc like '%ORDER_AMENDMENT_FORBIDDEN%'
+       and p.prosrc like '%public.actor_has_permission(''orders'', ''manage'')%'
+  ) then
+    raise exception 'assert_order_amender: no longer has the body this migration was written against';
   end if;
 end $$;

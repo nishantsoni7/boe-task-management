@@ -145,6 +145,36 @@ describe('it proves itself at apply time', () => {
   })
 })
 
+describe('assert_order_amender gets pg_temp back (§3)', () => {
+  test('it is altered to search_path = public, pg_temp, and nothing else about it changes', () => {
+    assert.match(SQL, /alter function public\.assert_order_amender\(\)\s+set search_path = public, pg_temp;/)
+    assert.doesNotMatch(SQL, /alter function public\.assert_order_amender\(\)\s+security/i,
+      'it is already a definer; its security mode is not this file\'s business')
+    assert.doesNotMatch(SQL, /(grant|revoke)[^;]*assert_order_amender/i,
+      'its EXECUTE grant to authenticated is kept, not restated')
+  })
+
+  test('the regression it repairs is the one on disk: 20260818 pinned pg_temp, 20260901 dropped it', () => {
+    assert.match(read('supabase/migrations/20260818000000_order_amendment_hardening.sql'),
+      /alter function public\.assert_order_amender\(\)\s+set search_path = public, pg_temp;/)
+    const permission = read('supabase/migrations/20260901000000_finance_orders_permission_enforcement.sql')
+    const def = permission.slice(permission.indexOf('create or replace function public.assert_order_amender()'))
+    assert.match(def.slice(0, 200), /security definer\nset search_path = public\n/)
+  })
+
+  test('it proves at apply time that the door stays open and the body is unchanged', () => {
+    for (const message of [
+      "'assert_order_amender: must set exactly search_path = public, pg_temp, has %'",
+      "'assert_order_amender: is no longer SECURITY DEFINER'",
+      "'assert_order_amender: authenticated LOST execute; amending an Order would be refused to everyone'",
+      "'assert_order_amender: anon can execute it'",
+      "'assert_order_amender: no longer has the body this migration was written against'",
+    ]) {
+      assert.ok(SQL.includes(message), message)
+    }
+  })
+})
+
 describe('the writes it exists for are real', () => {
   test('the Order page files a change request with a direct insert', () => {
     const modals = read('src/app/orders/[id]/OrderAmendmentModals.tsx')
