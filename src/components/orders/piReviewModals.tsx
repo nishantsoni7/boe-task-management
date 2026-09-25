@@ -136,6 +136,8 @@ import {
   asSubmissionPosition,
   submissionReasonPrompt,
   asPaymentPosition,
+  exceptionReasonKept,
+  keptExceptionReason,
   paymentPositionLines,
   submissionTermsUntouched,
   validateSubmissionTerms,
@@ -280,9 +282,12 @@ function PaymentPositionPanel({
   disabled,
   invalid,
   onTerms,
+  keptReason = null,
 }: {
   summary: PiPaymentSummary | null
   terms: PiSubmissionTerms
+  /** An approved exception resubmitted as it is (keptExceptionReason). */
+  keptReason?: string | null
   /** Null when the position could not be read at all — the dialog fails closed. */
   meetsStandard: boolean | null
   disabled: boolean
@@ -423,6 +428,11 @@ function PaymentPositionPanel({
           {reasonPrompt && (
             <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
               {reasonPrompt}
+            </div>
+          )}
+          {keptReason && terms.reasonChoice === '' && (
+            <div data-kept-exception style={{ fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+              {exceptionReasonKept(keptReason)}
             </div>
           )}
           <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -590,7 +600,8 @@ export function PiSubmitConfirmModal({
     : payment.meets_standard == null ? null
     : payment.meets_standard === true
 
-  const checked = validateSubmissionTerms({ meetsStandard, terms })
+  const keptReason = keptExceptionReason(payment)
+  const checked = validateSubmissionTerms({ meetsStandard, terms, keptReason })
   /**
    * The message is withheld while the revealed fields are still untouched.
    *
@@ -659,6 +670,7 @@ export function PiSubmitConfirmModal({
           <PaymentPositionPanel
             summary={payment}
             terms={terms}
+            keptReason={keptReason}
             meetsStandard={meetsStandard}
             disabled={submitting}
             invalid={termsMessage}

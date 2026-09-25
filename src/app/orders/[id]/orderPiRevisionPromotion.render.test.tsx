@@ -160,3 +160,26 @@ describe('the PI history names the operations decision', () => {
     assert.equal(staged.includes('Approve revision'), false, 'the admin decision is over once staged')
   })
 })
+
+describe('a PENDING revision says it is in force at the Admin approval (20270104000000)', () => {
+  test('not "until Operations accepts" — that was #205\'s staging', () => {
+    const pending = describePiVersionHistory([
+      row({ id: 'v2', version_number: 2, status: 'pending', workbook_path: 'k2', revision_reason: 'client changed qty',
+            decided_by: null, decided_at: null }),
+      row({}),
+    ], NAMES, when)
+    const html = renderToStaticMarkup(
+      <OrderDocumentsPanel
+        mainPi={mainPiCard(pending)}
+        design={designFilesDocument({ kind: 'ready', counts: { representative: 1, customization: 0 } }, 1)}
+        clientPo={clientPoDocument()}
+        onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+        viewing={false} downloading={false}
+        onReviewRevision={undefined} onOpenProposal={noop}
+      />,
+    )
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
+    assert.ok(changes.includes('V1 stays current until an Admin approves V2. Once approved, V2 is in force at once; Operations then reviews it for production.'), changes)
+    assert.equal(changes.includes('until Operations accepts'), false)
+  })
+})

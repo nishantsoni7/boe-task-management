@@ -44,6 +44,8 @@ import {
   EXCEPTION_REASON_OPTIONS,
   composeExceptionReason,
   readExceptionReason,
+  keptExceptionReason,
+  exceptionReasonKept,
   PAYMENT_REASON_TOO_LONG,
   PAYMENT_STANDARD_PERCENT,
   PAYMENT_TERMS_MAX_LENGTH,
@@ -349,5 +351,39 @@ describe('a declaration is not a payment, and this module never reads one', () =
     assert.ok(PAYMENT_POSITIONS.includes('exception_approved' as PaymentPosition))
     assert.ok(PAYMENT_POSITIONS.includes('exception_pending' as PaymentPosition))
     assert.ok(PAYMENT_POSITIONS.includes('exception_rejected' as PaymentPosition))
+  })
+})
+
+// ── A returned PI keeps an approved exception in its old words (review) ───────
+
+describe('a returned PI with an approved exception written before the three reasons', () => {
+  const summary = { exception_status: 'approved', exception_current: true, exception_reason: 'client pays on delivery' }
+  test('is carried forward as it is', () => {
+    assert.equal(keptExceptionReason(summary), 'client pays on delivery')
+    const v = validateSubmissionTerms({
+      meetsStandard: false, keptReason: keptExceptionReason(summary),
+      terms: { reasonChoice: '', otherRemark: '', paymentTerms: '', billingTerms: '' },
+    })
+    assert.ok(v.ok && v.value.reason === 'client pays on delivery', JSON.stringify(v))
+  })
+  test('choosing a new reason replaces it (and an admin decides again)', () => {
+    const v = validateSubmissionTerms({
+      meetsStandard: false, keptReason: 'client pays on delivery',
+      terms: { reasonChoice: 'sample_order', otherRemark: '', paymentTerms: '', billingTerms: '' },
+    })
+    assert.ok(v.ok && v.value.reason === 'Sample order')
+  })
+  test('nothing is kept for a pending, stale, or already-categorised exception', () => {
+    assert.equal(keptExceptionReason({ ...summary, exception_status: 'pending' }), null)
+    assert.equal(keptExceptionReason({ ...summary, exception_current: false }), null)
+    assert.equal(keptExceptionReason({ ...summary, exception_reason: 'Sample order' }), null, 'the dialog pre-selects it instead')
+    assert.equal(keptExceptionReason(null), null)
+  })
+  test('without one, a reason must still be chosen', () => {
+    const v = validateSubmissionTerms({ meetsStandard: false, terms: { reasonChoice: '', otherRemark: '', paymentTerms: '', billingTerms: '' } })
+    assert.ok(!v.ok && v.message === PAYMENT_REASON_REQUIRED)
+  })
+  test('the dialog says so', () => {
+    assert.match(exceptionReasonKept('client pays on delivery'), /^The approved exception stands: “client pays on delivery”\. Resubmitting keeps it\./)
   })
 })

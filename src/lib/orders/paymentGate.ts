@@ -258,6 +258,26 @@ export function readExceptionReason(stored: string | null | undefined): { choice
   return { choice: '', remark: '' }
 }
 
+/**
+ * An APPROVED exception this PI still holds (same reason, same figures) whose
+ * reason was written before the three existed. A PI returned for an unrelated
+ * correction resubmits with it word for word — the database keeps the
+ * approval (20270102000000) — rather than making the employee re-categorise it
+ * and sending an approved exception back to pending. Null when there is none.
+ */
+export function keptExceptionReason(p: {
+  exception_status?: string | null
+  exception_current?: boolean | null
+  exception_reason?: string | null
+} | null | undefined): string | null {
+  const text = (p?.exception_reason ?? '').trim()
+  if (text === '' || p?.exception_status !== 'approved' || p?.exception_current !== true) return null
+  return readExceptionReason(text).choice === '' ? text : null
+}
+
+export const exceptionReasonKept = (reason: string): string =>
+  `The approved exception stands: “${reason}”. Resubmitting keeps it. Choose a reason only to replace it — an admin would then decide again.`
+
 export const PAYMENT_TERMS_MAX_LENGTH = 500
 export const PAYMENT_REASON_MAX_LENGTH = 1000
 
@@ -310,6 +330,8 @@ export type SubmissionTermsValidation =
 export function validateSubmissionTerms(input: {
   meetsStandard: boolean | null
   terms: PiSubmissionTerms
+  /** keptExceptionReason(): sent unchanged while no new reason is chosen. */
+  keptReason?: string | null
 }): SubmissionTermsValidation {
   const { reasonChoice } = input.terms
   const remark = input.terms.otherRemark.trim()
@@ -324,9 +346,10 @@ export function validateSubmissionTerms(input: {
 
   // Below the requirement: one of the three, and a real remark for Other.
   // Payment Terms are no longer demanded (20270102000000).
-  const reason = composeExceptionReason(reasonChoice, remark)
+  const kept = input.keptReason?.trim() || null
+  const reason = reasonChoice === '' ? kept : composeExceptionReason(reasonChoice, remark)
   if (!input.meetsStandard) {
-    if (reasonChoice === '') return { ok: false, message: PAYMENT_REASON_REQUIRED }
+    if (reason === null && reasonChoice === '') return { ok: false, message: PAYMENT_REASON_REQUIRED }
     if (reason === null) return { ok: false, message: OTHER_REMARK_REQUIRED }
   }
 

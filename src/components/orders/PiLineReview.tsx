@@ -41,10 +41,12 @@ export async function requestPiRevisionApproval(versionId: string, lineMap?: Rec
 const label = (c: PiLineReviewCandidate) =>
   [c.code, c.seq, c.name].filter(Boolean).join(' · ') || 'Unnamed product'
 
-export function PiLineReview({ versionNumber, review, busy, onConfirm, onCancel }: {
+export function PiLineReview({ versionNumber, review, busy, failure = null, onConfirm, onCancel }: {
   versionNumber: number
   review: PiLineReviewData
   busy: boolean
+  /** Why the last approval with these matches was refused; shown here, not behind the dialog. */
+  failure?: string | null
   onConfirm: (lineMap: Record<string, string>) => void
   onCancel: () => void
 }) {
@@ -76,6 +78,7 @@ export function PiLineReview({ versionNumber, review, busy, onConfirm, onCancel 
           </select>
         </label>
       ))}
+      {failure && <p role="alert" data-line-review-failure style={{ margin: 0, fontSize: '12px', color: colors.red }}>{failure}</p>}
       {duplicate && <p role="alert" style={{ margin: 0, fontSize: '12px', color: colors.red }}>A product can be continued by one line only.</p>}
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
         <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>

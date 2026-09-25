@@ -518,12 +518,9 @@ begin
     -- still compares them — and are still stored when given. Choosing a reason
     -- decides nothing: the request is 'pending' until an admin holding
     -- orders.approve_advance_exception approves it, exactly as before.
+    -- (Refused below, once v_keep is known: an exception this PI already
+    -- holds is kept word for word, whatever words it was given in.)
     v_reason_code := public.order_submission_exception_reason_code(v_reason);
-    if v_reason_code is null then
-      raise exception
-        'ORDER_SUBMISSION_EXCEPTION_REASON_INVALID: choose Against client PO, Sample order, or Other with a remark of at least 10 characters'
-        using errcode = 'P0001';
-    end if;
 
     if not (v_sub.created_by = v_actor or v_sub.submitted_by = v_actor) then
       raise exception
@@ -557,6 +554,16 @@ begin
             v_sub.advance_exception_decided_billing_terms,   v_bill_terms),
       false
     );
+
+    -- A PI returned for changes whose exception still stands — the same
+    -- reason, the figures it was decided on unchanged — resubmits with it
+    -- untouched, even when that reason was written before the three existed.
+    -- Only a NEW request must be one of the three.
+    if v_reason_code is null and not v_keep then
+      raise exception
+        'ORDER_SUBMISSION_EXCEPTION_REASON_INVALID: choose Against client PO, Sample order, or Other with a remark of at least 10 characters'
+        using errcode = 'P0001';
+    end if;
   end if;
 
   -- ── The completeness checks, identical to every other submission path ──
