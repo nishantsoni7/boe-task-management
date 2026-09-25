@@ -1024,6 +1024,11 @@ describe('the applied migrations are frozen', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // The Order/Finance write guards run as their owner: ALTER FUNCTION
+      // ... SECURITY DEFINER SET search_path on eleven existing trigger
+      // functions (three more from 20270104 if present). Bodies are not
+      // redefined; no table, policy, grant on a table or row is touched.
+      '20270105000000_order_finance_guards_run_as_owner.sql',
     ])
   })
 
@@ -1299,6 +1304,11 @@ describe('the applied migrations are frozen', () => {
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // The Order/Finance write guards run as their owner: ALTER FUNCTION
+      // ... SECURITY DEFINER SET search_path on eleven existing trigger
+      // functions (three more from 20270104 if present). Bodies are not
+      // redefined; no table, policy, grant on a table or row is touched.
+      '20270105000000_order_finance_guards_run_as_owner.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

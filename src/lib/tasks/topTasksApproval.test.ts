@@ -283,6 +283,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // history row and one notification for ONE pinned Order. No DDL, and it
     // re-emits nothing, so it reaches nothing here.
     '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+    // The Order/Finance write guards run as their owner: ALTER FUNCTION
+    // ... SECURITY DEFINER SET search_path on eleven existing trigger
+    // functions (three more from 20270104 if present). Bodies are not
+    // redefined; no table, policy, grant on a table or row is touched.
+    '20270105000000_order_finance_guards_run_as_owner.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
