@@ -765,6 +765,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/submissionPayload.ts',
     'src/lib/orders/confirmedPdf.ts',
     'src/lib/orders/orderHistory.test.ts',
+    // The 40% advance on the amended Order value gates production (20270104000000).
+    'src/lib/orders/advanceReadiness.ts',
+    'src/lib/orders/advanceReadiness.test.ts',
+    'src/components/orders/AdvanceGatePanel.tsx',
     'src/lib/orders/confirmedPdfRender.ts',
     'src/app/api/orders/import/process-draft/route.ts',
     'src/app/orders/drafts/[submissionId]/page.tsx',

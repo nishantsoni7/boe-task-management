@@ -645,7 +645,9 @@ begin
     'handoff_id',       v_handoff,
     'codes_kept',       jsonb_array_length(v_relinked),
     'codes_issued',     jsonb_array_length(v_codes),
-    'parse',            v_result
+    'parse',            v_result,
+    -- Where the verified advance now stands against the amended value (§4d).
+    'advance',          public.order_advance_position(v_order.id)
   );
 end;
 $$;
@@ -820,6 +822,261 @@ begin
 end;
 $$;
 revoke execute on function public.order_number_cycle_respects_reservations() from public, anon, authenticated;
+
+
+-- ═══ 4d. Production is never aligned below the 40% advance ═════════════════
+--
+-- THE RULE. A revised PI is in force at the admin's approval, and the Order's
+-- value moves with it. The verified advance is then measured against the
+-- AMENDED value — 40% of orders.total_value, the conversion gate's own
+-- threshold (order_submission_required_payment). While it is short, the Order
+-- cannot be aligned for production — by Operations accepting a version, by
+-- the alignment door, or by any write — until either
+--   * enough further payment is VERIFIED by Finance (money awaiting
+--     verification does not count), or
+--   * an administrator approves an explicit below-40% exception FOR THAT
+--     ORDER VALUE (approve_order_advance_exception). An exception is tied to
+--     the value it was given at: a later amendment makes it stale. The PI's
+--     own pre-conversion exception counts only while the PI still carries the
+--     figures it was decided on.
+-- Enforced by a trigger on orders.production_alignment, so a disabled button
+-- is never the only thing in the way. Moving AWAY from aligned is always
+-- allowed; the version stays in force either way.
+
+create table if not exists public.order_advance_exceptions (
+  id                uuid primary key default gen_random_uuid(),
+  order_id          uuid not null references public.orders(id) on delete cascade,
+  order_value       numeric not null check (order_value >= 0),
+  verified_at_grant numeric not null,
+  shortfall_at_grant numeric not null,
+  reason            text not null check (char_length(btrim(reason)) between 10 and 1000),
+  approved_by       uuid not null references public.users(id),
+  approved_at       timestamptz not null default now()
+);
+comment on table public.order_advance_exceptions is
+  'An administrator''s explicit approval to align a Confirmed Order for production below the 40% verified advance, for the Order value it names. Stale once the Order''s value changes. Written only by approve_order_advance_exception(). 20270104000000.';
+alter table public.order_advance_exceptions enable row level security;
+revoke all on public.order_advance_exceptions from public, anon, authenticated;
+
+create or replace function public.order_advance_exceptions_immutable()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'DELETE' and public.in_test_data_cleanup() then return old; end if;
+  raise exception 'ORDER_ADVANCE_EXCEPTION_IMMUTABLE: an advance exception is a record and cannot be changed' using errcode = '42501';
+end;
+$$;
+revoke execute on function public.order_advance_exceptions_immutable() from public, anon, authenticated, service_role;
+drop trigger if exists order_advance_exceptions_immutable on public.order_advance_exceptions;
+create trigger order_advance_exceptions_immutable
+  before update or delete on public.order_advance_exceptions
+  for each row execute function public.order_advance_exceptions_immutable();
+
+-- Where the Order stands. Internal: every figure a person or the gate reads.
+create or replace function public.order_advance_position(p_order_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  o          public.orders%rowtype;
+  s          public.order_submissions%rowtype;
+  v_verified numeric;
+  v_awaiting numeric;
+  v_required numeric;
+  v_short    numeric;
+  v_exc      public.order_advance_exceptions%rowtype;
+  v_pi_exc   boolean := false;
+begin
+  select * into o from public.orders where id = p_order_id;
+  if not found then return null; end if;
+
+  select coalesce(sum(a.allocated_amount), 0) into v_verified
+    from public.finance_payment_allocations a join public.finance_payment_requests f on f.id = a.payment_request_id
+   where a.order_id = o.id and a.status = 'active' and public.finance_payment_status_is_verified(f.status);
+  select coalesce(sum(a.allocated_amount), 0) into v_awaiting
+    from public.finance_payment_allocations a join public.finance_payment_requests f on f.id = a.payment_request_id
+   where a.order_id = o.id and a.status = 'active' and f.status in ('pending_approval', 'needs_clarification');
+
+  v_required := public.order_submission_required_payment(o.total_value);
+  v_short    := coalesce(public.order_submission_payment_shortfall(o.total_value, v_verified), 0);
+
+  -- An administrator's exception for THIS value.
+  select * into v_exc from public.order_advance_exceptions e
+   where e.order_id = o.id and e.order_value = o.total_value
+   order by e.approved_at desc limit 1;
+
+  -- The PI's own pre-conversion exception, while the PI and the Order still
+  -- carry the figures it was decided on.
+  if o.source_order_submission_id is not null then
+    select * into s from public.order_submissions where id = o.source_order_submission_id;
+    v_pi_exc := s.id is not null
+      and s.grand_total is not distinct from o.total_value
+      and public.order_submission_exception_current(
+            s.advance_exception_status,
+            s.advance_exception_decided_grand_total,     s.grand_total,
+            s.advance_exception_decided_workbook_sha256, s.source_workbook_sha256,
+            s.advance_exception_decided_payment_terms,   s.payment_terms,
+            s.advance_exception_decided_billing_terms,   s.billing_terms);
+  end if;
+
+  return jsonb_build_object(
+    'order_value',  o.total_value,
+    'verified',     v_verified,
+    'awaiting',     v_awaiting,
+    'required',     v_required,
+    'shortfall',    v_short,
+    'percent',      case when coalesce(o.total_value, 0) > 0 then round(100 * v_verified / o.total_value, 2) end,
+    'threshold_percent', public.order_submission_standard_advance_percent(),
+    'below',        v_short > 0,
+    'exception',    case when v_exc.id is not null then jsonb_build_object(
+                      'source', 'order', 'approved_by', v_exc.approved_by, 'approved_at', v_exc.approved_at,
+                      'reason', v_exc.reason, 'order_value', v_exc.order_value)
+                    when v_pi_exc then jsonb_build_object('source', 'pi', 'approved_by', s.advance_exception_decided_by,
+                      'approved_at', s.advance_exception_decided_at)
+                    end,
+    'ready',        v_short = 0 or v_exc.id is not null or v_pi_exc);
+end;
+$$;
+revoke execute on function public.order_advance_position(uuid) from public, anon, authenticated, service_role;
+
+-- The same, for anybody who may open the Order.
+create or replace function public.order_advance_readiness(p_order_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not coalesce(public.can_view_order_as_actor(p_order_id), false) then
+    raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002';
+  end if;
+  return public.order_advance_position(p_order_id);
+end;
+$$;
+comment on function public.order_advance_readiness(uuid) is
+  'Where a Confirmed Order stands against the 40% verified advance, measured on its current (amended) value: {order_value, verified, awaiting, required, shortfall, percent, below, exception, ready}. For anybody who may open the Order. 20270104000000.';
+revoke execute on function public.order_advance_readiness(uuid) from public, anon;
+grant  execute on function public.order_advance_readiness(uuid) to authenticated;
+
+-- An administrator's explicit below-40% exception, for the Order's value now.
+create or replace function public.approve_order_advance_exception(p_order_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor  uuid := public.assert_order_submission_actor();
+  v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+  o        public.orders%rowtype;
+  v_pos    jsonb;
+  v_id     uuid;
+  v_name   text;
+  v_rev    uuid;
+begin
+  if not exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin'
+                  and u.is_active and coalesce(u.is_deleted, false) = false) then
+    raise exception 'Only an administrator can approve production below the 40%% advance' using errcode = '42501';
+  end if;
+  if v_reason is null or char_length(v_reason) < 10 then
+    raise exception 'ORDER_ADVANCE_EXCEPTION_REASON_REQUIRED: say why production may go ahead below the 40%% advance (at least 10 characters)'
+      using errcode = 'P0001';
+  end if;
+  if char_length(v_reason) > 1000 then
+    raise exception 'ORDER_ADVANCE_EXCEPTION_REASON_TOO_LONG: the reason may be at most 1000 characters' using errcode = 'P0001';
+  end if;
+
+  select user_id into v_rev from public.order_operations_reviewers where duty = 'pi_handoff' for share;
+  select * into o from public.orders where id = p_order_id for update;
+  if not found then raise exception 'ORDER_NOT_FOUND: That Order no longer exists' using errcode = 'P0002'; end if;
+  if o.status in ('cancelled', 'dispatched') then
+    raise exception 'ORDER_CLOSED: Order % is %', o.display_number, o.status using errcode = 'P0001';
+  end if;
+
+  v_pos := public.order_advance_position(o.id);
+  if not (v_pos ->> 'below')::boolean then
+    raise exception 'ORDER_ADVANCE_EXCEPTION_NOT_NEEDED: Order % already has the 40%% advance verified', o.display_number
+      using errcode = 'P0001';
+  end if;
+  if (v_pos ->> 'ready')::boolean then
+    raise exception 'ORDER_ADVANCE_EXCEPTION_ALREADY_APPROVED: Order % already has a below-40%% approval for its value of %',
+      o.display_number, o.total_value using errcode = 'P0001';
+  end if;
+
+  insert into public.order_advance_exceptions (order_id, order_value, verified_at_grant, shortfall_at_grant, reason, approved_by)
+  values (o.id, o.total_value, (v_pos ->> 'verified')::numeric, (v_pos ->> 'shortfall')::numeric, v_reason, v_actor)
+  returning id into v_id;
+
+  insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+  values (o.id, v_actor, 'order_advance_exception_approved',
+          jsonb_build_object('exception_id', v_id, 'order_value', o.total_value,
+                             'verified', v_pos -> 'verified', 'percent', v_pos -> 'percent',
+                             'shortfall', v_pos -> 'shortfall', 'reason', v_reason));
+
+  select nullif(btrim(u.full_name), '') into v_name from public.users u where u.id = v_actor;
+  if v_rev is not null and v_rev <> v_actor then
+    insert into public.notifications (user_id, task_id, entity_id, type, title, body, is_push_sent)
+    values (v_rev, null, o.id, 'order_operations_review_requested'::notification_type,
+            format('Order %s: %s approved production below the 40%% advance.', o.display_number, coalesce(v_name, 'An administrator')),
+            v_reason, true);
+  end if;
+
+  return jsonb_build_object('exception_id', v_id, 'order_id', o.id) || public.order_advance_position(o.id);
+end;
+$$;
+comment on function public.approve_order_advance_exception(uuid, text) is
+  'An active administrator approves aligning a Confirmed Order for production below the 40% verified advance, for its current value, with a reason (10–1000 characters). Refused when not needed or already approved for this value. Logged on the Order; the operations reviewer is told. 20270104000000.';
+revoke execute on function public.approve_order_advance_exception(uuid, text) from public, anon;
+grant  execute on function public.approve_order_advance_exception(uuid, text) to authenticated;
+
+-- THE GATE.
+create or replace function public.orders_alignment_requires_advance()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_pos jsonb;
+begin
+  if new.production_alignment is distinct from 'aligned'
+     or old.production_alignment is not distinct from 'aligned' then
+    return new;
+  end if;
+  if public.in_test_data_cleanup() then return new; end if;
+
+  -- Measured on the value the Order will have after THIS write.
+  v_pos := public.order_advance_position(new.id);
+  if new.total_value is distinct from old.total_value then
+    v_pos := v_pos || jsonb_build_object('ready', false);   -- never align in the same write that changes the value
+  end if;
+  if not (v_pos ->> 'ready')::boolean then
+    raise exception
+      'ORDER_ADVANCE_BELOW_THRESHOLD: Order % has ₹% verified — % of its ₹% value. ₹% more verified payment, or an administrator''s below-40%% approval, is needed before production can be aligned.%',
+      new.display_number,
+      to_char((v_pos ->> 'verified')::numeric, 'FM99999999999990.00'),
+      coalesce(v_pos ->> 'percent', '0') || '%',
+      to_char((v_pos ->> 'order_value')::numeric, 'FM99999999999990.00'),
+      to_char((v_pos ->> 'shortfall')::numeric, 'FM99999999999990.00'),
+      case when (v_pos ->> 'awaiting')::numeric > 0
+           then format(' ₹%s is awaiting Finance verification.', to_char((v_pos ->> 'awaiting')::numeric, 'FM99999999999990.00'))
+           else '' end
+      using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.orders_alignment_requires_advance() from public, anon, authenticated, service_role;
+drop trigger if exists orders_alignment_requires_advance on public.orders;
+create trigger orders_alignment_requires_advance
+  before update of production_alignment on public.orders
+  for each row execute function public.orders_alignment_requires_advance();
 
 
 -- ═══ 5. Finance: a PI Draft is named by its stable reference ═══════════════

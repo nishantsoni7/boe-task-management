@@ -411,7 +411,12 @@ describe('no Order fact is stated twice', () => {
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
     assert.ok(body.indexOf('className="order-products"') < body.indexOf('PAYMENT_SECTION_TITLE'))
+    // ONE line is allowed to name the advance above the products: the attention
+    // strip's figure-free "Production blocked: advance below 40% — see Payment"
+    // (20270104000000). Its figures are in the Payment section.
     const above = body.slice(0, body.indexOf('className="order-products"'))
+      .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
+    assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
       assert.equal(above.includes(figure), false, figure + ' appears above the product list')

@@ -47,6 +47,7 @@ export type OrderAttentionItem = {
     | 'operations_review'
     | 'operations_unassigned'
     | 'alignment_predates_version'
+    | 'advance_below'
   label: string
   /** Red only for a genuinely overdue Order; every other gap is amber. */
   tone: 'amber' | 'red'
@@ -83,6 +84,12 @@ export type OrderAttentionInput = {
   } | null
   /** Production was aligned before this PI version was approved. */
   alignmentPredatesVersion?: number | null
+  /**
+   * The verified advance is below 40% of the Order's (amended) value and no
+   * below-40% approval covers it (20270104000000): production cannot be
+   * aligned. Already in words (advanceAttentionLabel); null when fine.
+   */
+  advanceBelowLabel?: string | null
 }
 
 const plural = (count: number, noun: string) =>
@@ -106,6 +113,11 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
 
   if (open && input.isOverdue) {
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
+  }
+  // A SHORT ADVANCE BLOCKS PRODUCTION, and the database refuses the alignment
+  // until it is met or excepted — so it is red, and said with its figures.
+  if (open && input.advanceBelowLabel) {
+    items.push({ key: 'advance_below', label: input.advanceBelowLabel, tone: 'red' })
   }
   // ONE LINE ABOUT PRODUCTION. On an Order with an operations handoff the
   // alignment IS the handoff decision (20261229000000), so the handoff item

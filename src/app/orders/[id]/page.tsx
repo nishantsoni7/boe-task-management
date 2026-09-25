@@ -158,6 +158,8 @@ import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
+import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
+import { advanceAttentionLabel, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -827,6 +829,7 @@ export default function OrderDetailPage() {
   const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
   const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
   const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
+  const [advance,      setAdvance]      = useState<AdvanceReadiness | null>(null)
   const [piInactive,   setPiInactive]   = useState<Set<string>>(new Set())
   const [reapproveConfirming, setReapproveConfirming] = useState(false)
   const [reapproveBusy,       setReapproveBusy]       = useState(false)
@@ -1195,7 +1198,14 @@ export default function OrderDetailPage() {
   const reloadOrderRow = async () => {
     const { data: o } = await orderRowQuery()
     if (o) setOrder(mapOrderRow(o))
-    await reloadActivity()
+    await Promise.all([reloadActivity(), loadAdvance()])
+  }
+
+  // THE 40% ADVANCE ON THE AMENDED VALUE (20270104000000). Read as the reader;
+  // the database enforces it whatever this shows.
+  const loadAdvance = async () => {
+    const { data, error } = await supabase.rpc('order_advance_readiness', { p_order_id: id })
+    setAdvance(error ? null : (data as AdvanceReadiness | null))
   }
 
   /**
@@ -1260,6 +1270,7 @@ export default function OrderDetailPage() {
 
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
+    void loadAdvance()
     // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
     // OLD one describes a list this page is about to stop showing. It is
     // superseded here rather than allowed to land afterwards; the reader's
@@ -2489,6 +2500,7 @@ export default function OrderDetailPage() {
     // and its RLS are untouched — only this page stops asking.
     documentsFailed: false,
     documentsOutdated: false,
+    advanceBelowLabel: advanceAttentionLabel(advance),
   })
 
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
@@ -2952,6 +2964,20 @@ export default function OrderDetailPage() {
               finance={finance}
               loaded={recordsReady}
               onOpenList={setPaymentList}
+            />
+            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270104000000): stated here,
+                with the rest of the payment position, and nowhere above. */}
+            <AdvanceGatePanel
+              readiness={advance}
+              versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
+              isAdmin={actingAsAdmin}
+              approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
+              formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
+              onApprove={async reason => {
+                const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
+                if (!error) await reloadOrderRow()
+                return { error }
+              }}
             />
           </div>
         </PiCard>

@@ -35,6 +35,8 @@
 //   Not assigned     no active operations reviewer is configured. The handoff
 //                    is real and awaiting, and an administrator must act.
 
+import { describeAdvanceRefusal } from './advanceReadiness'
+
 export type OperationsHandoffStatus = 'awaiting' | 'accepted' | 'clarification_needed'
 
 /**
@@ -438,6 +440,10 @@ export function validateHandoffDecision(decision: OperationsHandoffStatus, raw: 
 /** The database's refusal markers, said in a sentence. */
 export function describeHandoffFailure(error: { message?: string | null } | null | undefined): string {
   const m = error?.message ?? ''
+  // Accepting would align production below the 40% advance (20270104000000):
+  // the database's own sentence carries the percentage and the shortfall.
+  const advance = describeAdvanceRefusal(m)
+  if (advance) return advance
   if (m.includes('ORDER_OPERATIONS_HANDOFF_STALE') || m.includes('ORDER_OPERATIONS_HANDOFF_SUPERSEDED')) {
     return 'A newer PI version has been approved since this page loaded. Refresh to review the current one.'
   }

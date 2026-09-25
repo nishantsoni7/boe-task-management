@@ -18,6 +18,9 @@
 --   5. refusals  no Grand Total; a value change on a dispatched Order
 --   6. finance   a PI Draft allocation reads as its PID; once converted, as
 --                the Order's number, and the moved allocation is the same row
+--   7. advance   (section 7) production is never aligned below 40% of the
+--                AMENDED value: increase, pending, verified, retry, decrease,
+--                an admin's exception (and its staleness), a raw write
 --   6. workbook  (section 6) a revised WORKBOOK's lines keep their codes by
 --                item number even when the row-derived ids land on another
 --                product; an unnumbered line is not guessed (the approval
@@ -582,6 +585,200 @@ begin
   assert v_msg like 'ORDER_PI_REVISION_SEQUENCE_RETIRED%', 'a removed product''s number is never reused: ' || v_msg;
   assert (select count(*) from public.order_product_codes where order_id = v_order) = 5, 'five codes ever, none reused';
   raise notice '6. workbook revisions: matched by item number, ambiguous lines asked, retired numbers refused OK';
+end $$;
+
+-- ═══ 7. PRODUCTION IS NEVER ALIGNED BELOW THE 40% ADVANCE (§4d) ═════════════
+--
+-- The version is in force at the admin's approval, always. What the verified
+-- advance decides is whether Operations can ALIGN production:
+--   7a increase  → below 40% on the amended value: accepting is refused in the
+--                  database, and a retry is refused the same way, changing
+--                  nothing; "Cannot accept" is still possible
+--   7b pending   → a payment awaiting Finance does not count, and is named
+--   7c verified  → once Finance verifies enough, the same accept goes through
+--   7d decrease  → a smaller value can only help: accepted at once
+--   7e exception → an admin's explicit below-40% approval lets it through;
+--                  Sales/Operations cannot give one; it is refused when not
+--                  needed; a later value change makes it stale
+--   7f any write → a raw UPDATE to aligned is refused too
+
+create function pg_temp.fresh_order(p_client text, p_total numeric, p_paid numeric) returns uuid language plpgsql as $$
+declare
+  v_sub   uuid := gen_random_uuid();
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_wb    text := 'submissions/' || v_sub || '/original/' || gen_random_uuid() || '.xlsx';
+  v_pay   uuid := gen_random_uuid();
+  v_res   jsonb;
+begin
+  insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
+  values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
+  update public.order_submissions
+     set client_name = p_client, gross_product_amount = p_total, discount_amount = 0,
+         grand_total = p_total, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+   where id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  insert into public.order_submission_items (submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (v_sub, 32, 'B001', p_client || ' chair', 10, p_total / 10, p_total, 0);
+  insert into public.order_submission_item_images (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  select v_sub, i.id, 'representative', 0,
+         'submissions/' || v_sub || '/images/' || i.id || '/representative/0-' || repeat('c', 64) || '.png', 'image/png', repeat('c', 64), i.source_row
+    from public.order_submission_items i where i.submission_id = v_sub;
+  insert into storage.objects (bucket_id, name, metadata)
+  select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images m where m.submission_id = v_sub;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (v_pay, 'ASSERT adv', p_paid, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_pay, v_sub, p_paid, 'order_submission', v_sales);
+  perform pg_temp.become(v_sales);
+  perform public.submit_pi_for_review(v_sub, null, null, null, null);
+  perform pg_temp.restore();
+  perform pg_temp.become(v_admin);
+  if (select pi_approved_at from public.order_submissions where id = v_sub) is null then
+    perform public.approve_pi_review(v_sub);
+  end if;
+  v_res := public.approve_order_submission(v_sub, v_sales, current_date, current_date + 30, 'reference');
+  perform pg_temp.restore();
+  return (v_res ->> 'order_id')::uuid;
+end $$;
+
+-- A payment on the Order itself, in the given Finance state.
+create function pg_temp.pay_order(p_order uuid, p_amount numeric, p_status text) returns uuid language plpgsql as $$
+declare v uuid := gen_random_uuid();
+begin
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (v, 'ASSERT adv', p_amount, current_date, 'hdfc', p_status, current_setting('test.sales_id')::uuid, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_id, allocated_amount, origin_target_type, created_by)
+  values (v, p_order, p_amount, 'confirmed_order', current_setting('test.sales_id')::uuid);
+  return v;
+end $$;
+
+-- Operations' decision on the live handoff, as the reviewer.
+create function pg_temp.ops_decide(p_order uuid, p_decision text, p_reason text default null) returns text language plpgsql as $$
+declare v text; h uuid;
+begin
+  select id into h from public.order_operations_handoffs where order_id = p_order and superseded_at is null;
+  perform pg_temp.become(current_setting('test.ops_id')::uuid);
+  begin
+    perform public.decide_order_operations_handoff(h, p_decision, p_reason);
+    v := 'OK';
+  exception when others then get stacked diagnostics v = message_text;
+  end;
+  perform pg_temp.restore();
+  return v;
+end $$;
+
+-- A value change through the real revision door: one line at a new rate.
+create function pg_temp.revalue(p_order uuid, p_total numeric, p_reason text) returns void language plpgsql as $$
+declare v_sub uuid; v_item uuid;
+begin
+  select source_order_submission_id into v_sub from public.orders where id = p_order;
+  select id into v_item from public.order_submission_items where submission_id = v_sub;
+  perform pg_temp.propose_and_approve(p_order, pg_temp.proposal(v_sub, jsonb_build_array(
+    jsonb_build_object('id', v_item, 'seq', 'B001', 'name', 'ASSERT adv chair', 'qty', 10, 'rate', p_total / 10))), p_reason);
+end $$;
+
+do $$
+declare
+  o     uuid;
+  v_msg text;
+  v_pos jsonb;
+  v_pend uuid;
+begin
+  -- V1 at exactly 40% (400,000 of 1,000,000): Operations accepts, aligned.
+  o := pg_temp.fresh_order('ASSERT adv', 1000000, 400000);
+  perform set_config('test.adv_order', o::text, true);
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
+    '7. V1 at 40% is accepted and aligned';
+
+  -- 7a. V2 raises the value to 1,250,000: V2 is in force, the advance is 32%.
+  perform pg_temp.revalue(o, 1250000, 'ASSERT client added a second room');
+  assert (select version_number from public.order_pi_versions where order_id = o and status = 'approved') = 2, '7a. V2 is in force at approval';
+  assert (select total_value from public.orders where id = o) = 1250000, '7a. the Order was amended';
+  v_pos := public.order_advance_position(o);
+  assert (v_pos ->> 'below')::boolean and not (v_pos ->> 'ready')::boolean
+     and (v_pos ->> 'percent')::numeric = 32 and (v_pos ->> 'shortfall')::numeric = 100000,
+    '7a. measured on the amended value: 32%, ₹1,00,000 short: ' || v_pos::text;
+  assert (select production_alignment from public.orders where id = o) = 'not_aligned', '7a. the V1 alignment was reset';
+  v_msg := pg_temp.ops_decide(o, 'accepted');
+  assert v_msg like 'ORDER_ADVANCE_BELOW_THRESHOLD: Order % has ₹400000.00 verified — 32.00% of its ₹1250000.00 value. ₹100000.00 more verified payment%',
+    '7a. Operations cannot align it: ' || v_msg;
+  assert (select status from public.order_operations_handoffs where order_id = o and superseded_at is null) = 'awaiting'
+     and (select production_alignment from public.orders where id = o) = 'not_aligned', '7a. and the refused decision changed nothing';
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '7a. a retry is refused the same way';
+
+  -- 7b. ₹1,00,000 recorded but awaiting Finance: still refused, and named.
+  v_pend := pg_temp.pay_order(o, 100000, 'pending_approval');
+  v_msg := pg_temp.ops_decide(o, 'accepted');
+  assert v_msg like 'ORDER_ADVANCE_BELOW_THRESHOLD%₹100000.00 is awaiting Finance verification.', '7b. pending money does not count: ' || v_msg;
+  assert (public.order_advance_position(o) ->> 'awaiting')::numeric = 100000, '7b. and it is reported';
+
+  -- "Cannot accept" is never blocked by the advance.
+  assert pg_temp.ops_decide(o, 'clarification_needed', 'ASSERT waiting for the client''s second payment') = 'OK',
+    '7a. Operations can still flag the version';
+
+  -- 7c. Finance verifies it: the same acceptance now goes through.
+  update public.finance_payment_requests set status = 'approved_unlinked' where id = v_pend;
+  assert (public.order_advance_position(o) ->> 'ready')::boolean, '7c. 40% of the amended value is verified';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and (select production_alignment from public.orders where id = o) = 'aligned',
+    '7c. once verified, Operations aligns production';
+
+  -- 7d. V3 LOWERS the value: the advance only improves; accepted at once.
+  perform pg_temp.revalue(o, 1100000, 'ASSERT client dropped a table');
+  assert (public.order_advance_position(o) ->> 'ready')::boolean, '7d. a decrease keeps the advance met';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '7d. and V3 is accepted';
+
+  -- 7e. V4 raises it again to 2,000,000 (25%): an explicit exception.
+  perform pg_temp.revalue(o, 2000000, 'ASSERT client doubled the order');
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '7e. below 40% again';
+  perform pg_temp.become(current_setting('test.sales_id')::uuid);
+  begin perform public.approve_order_advance_exception(o, 'ASSERT sales would like to go ahead'); v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text; end;
+  perform pg_temp.restore();
+  assert v_msg like 'Only an administrator%', '7e. Sales cannot approve it: ' || v_msg;
+  perform pg_temp.become(current_setting('test.ops_id')::uuid);
+  begin perform public.approve_order_advance_exception(o, 'ASSERT operations would like to go ahead'); v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text; end;
+  perform pg_temp.restore();
+  assert v_msg like 'Only an administrator%', '7e. nor can Operations: ' || v_msg;
+  perform pg_temp.become(current_setting('test.admin_id')::uuid);
+  begin perform public.approve_order_advance_exception(o, 'short'); v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text; end;
+  assert v_msg like 'ORDER_ADVANCE_EXCEPTION_REASON_REQUIRED%', '7e. a reason is required: ' || v_msg;
+  v_pos := public.approve_order_advance_exception(o, 'ASSERT long-standing client, balance on delivery');
+  perform pg_temp.restore();
+  assert (v_pos ->> 'ready')::boolean and v_pos #>> '{exception,source}' = 'order', '7e. the exception makes it ready: ' || v_pos::text;
+  assert exists (select 1 from public.order_activity_log where order_id = o and event_type = 'order_advance_exception_approved'
+                   and actor_id = current_setting('test.admin_id')::uuid and (payload ->> 'order_value')::numeric = 2000000),
+    '7e. and it is recorded, with the value it covers';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '7e. Operations aligns under the exception';
+
+  -- A later value change makes that exception stale.
+  perform pg_temp.revalue(o, 2100000, 'ASSERT one more chair');
+  assert not (public.order_advance_position(o) ->> 'ready')::boolean, '7e. the exception covered 20,00,000, not 21,00,000';
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '7e. so accepting is refused again';
+
+  -- Not needed once 40% is verified.
+  perform pg_temp.pay_order(o, 400000, 'approved_unlinked');
+  perform pg_temp.become(current_setting('test.admin_id')::uuid);
+  begin perform public.approve_order_advance_exception(o, 'ASSERT just in case, no need'); v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text; end;
+  perform pg_temp.restore();
+  assert v_msg like 'ORDER_ADVANCE_EXCEPTION_NOT_NEEDED%', '7e. no exception is given where none is needed: ' || v_msg;
+
+  -- 7f. Any write, not only the doors.
+  perform pg_temp.revalue(o, 3000000, 'ASSERT a much larger order');
+  begin
+    update public.orders set production_alignment = 'aligned' where id = o;
+    v_msg := 'NO ERROR';
+  exception when others then get stacked diagnostics v_msg = message_text;
+  end;
+  assert v_msg like 'ORDER_ADVANCE_BELOW_THRESHOLD%' or v_msg like 'ORDER_PRODUCTION_ALIGNMENT%' or v_msg like '%alignment%',
+    '7f. a raw write to aligned is refused: ' || v_msg;
+  raise notice '7. production is never aligned below 40%% of the amended value: increase, pending, verified, retry, decrease, exception, stale, raw write OK';
 end $$;
 
 do $$ begin raise notice 'ALL IN-FORCE-AT-APPROVAL ASSERTIONS PASSED'; end $$;

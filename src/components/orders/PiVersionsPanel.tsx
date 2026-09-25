@@ -30,6 +30,7 @@ import {
 } from '@/lib/orders/piEdit'
 import { EDIT_PI_LABEL, PiDiffView, PiEditor, loadPiContentAsViewer } from './PiEditor'
 import { PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from './PiLineReview'
+import { percentText, rupees, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import {
   PI_EDITED_VERSION_WORKBOOK_NOTE,
   PI_VERSION_PDF_DOWNLOAD_LABEL,
@@ -285,7 +286,11 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
       if (!ok) { setFailure(typeof body.message === 'string' ? body.message : 'This revision could not be approved just now.'); return }
       setReview(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId })
-      onDecided(`PI V${version.version_number} approved — it is now the PI in force${body.order_amendment ? ', and the Order was amended to its values' : ''}. Operations has been sent it for review.`)
+      const adv = body.advance as AdvanceReadiness | undefined
+      const short = adv && adv.below && !adv.ready
+        ? ` The verified advance is now ${percentText(adv.percent)} of the new value: ${rupees(adv.shortfall)} more must be verified, or production approved below 40%, before Operations can align production.`
+        : ''
+      onDecided(`PI V${version.version_number} approved — it is now the PI in force${body.order_amendment ? ', and the Order was amended to its values' : ''}. Operations has been sent it for review.${short}`)
     } finally { setBusy(false) }
   }
   const reject = async () => {
