@@ -7032,7 +7032,7 @@ h1.boe-page-title { margin-top: 0; }
 .boe-announce-readers .unread { color: #8C94A6; }
 .boe-announce-form-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: #141922; }
 .boe-announce-form-file .boe-btn { padding: 4px 10px; font-size: 12px; }
-.boe-announce-form-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.boe-announce-form-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 
 /* ── Phones ── (560px is where this file divides tablet from phone) */
 @media (max-width: 560px) {
@@ -7047,5 +7047,5 @@ h1.boe-page-title { margin-top: 0; }
   .boe-announce-ack .boe-announce-btn-primary { width: 100%; }
   .boe-announce-admin-row { flex-direction: column; }
   .boe-announce-admin-actions { justify-content: flex-start; }
-  .boe-announce-form-dates { grid-template-columns: 1fr; }
+  .boe-announce-form-dates { grid-template-columns: minmax(0, 1fr); }
 }
