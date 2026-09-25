@@ -1,11 +1,11 @@
 /**
- * What a module launcher card shows, and what happens when you activate it.
+ * What the Modules launcher shows, and what happens when you activate a tile.
  *
- * A card is an ICON, ITS NOTIFICATION BADGE AND THE MODULE NAME. Nothing else,
- * at any width. It used to carry a two-line description and a footer holding a
- * spelled-out notification count and "Open →"; on a phone that furniture cost
- * most of the card to restate what the icon, the name and the badge had already
- * said, and the count appeared twice — once on the icon and once underneath.
+ * The page is a welcome panel, an Essentials row and a compact "More to
+ * explore" grid. A tile is a NUMBER, AN ICON, ITS NOTIFICATION BADGE, THE MODULE
+ * NAME AND A DECORATIVE ARROW. Never a description, at any width: that
+ * furniture used to cost a phone most of the card to restate what the icon, the
+ * name and the badge had already said.
  *
  * These read the SOURCE rather than render it. The repository has no DOM test
  * harness for a client page of this size, and the facts worth pinning here are
@@ -257,95 +257,73 @@ describe('a long module name arrives whole', () => {
   })
 })
 
-describe('the mobile card centres its icon and its name', () => {
-  /** The first <= 767px block, which is where the card's phone shape lives. */
-  const SMALL = (() => {
-    const at = CSS.indexOf('@media (max-width: 767px)')
-    assert.notEqual(at, -1, 'the small-screen block must still exist')
-    return CSS.slice(at, CSS.indexOf('@media (max-width: 339px)'))
-  })()
-
-  test('the card centres its children and its text', () => {
-    assert.ok(/\.card\s*\{[^}]*align-items:\s*center/.test(SMALL))
-    assert.ok(/\.card\s*\{[^}]*text-align:\s*center/.test(SMALL))
-  })
-
-  test('the icon is centred, which carries the badge with it', () => {
-    assert.ok(/\.iconWrap\s*\{[^}]*align-self:\s*center/.test(SMALL))
-  })
-
-  test('the name spans the card, so centring it has something to centre in', () => {
-    // Declared on the base rule and not undone here: a full-width name box is
-    // what both the left-aligned desktop tile and the centred phone card need.
-    assert.ok(/\.titleWrap\s*\{[^}]*width:\s*100%/.test(CSS))
-    assert.equal(/\.titleWrap\s*\{[^}]*width:\s*auto/.test(SMALL), false)
-  })
-
-  test('each phone card is its own white card', () => {
-    // The desktop tile is already a bordered white card, so the phone inherits
-    // the surface and only changes the alignment — nothing has to be re-drawn.
-    assert.match(DESKTOP_CARD, /background:\s*#fff/i)
-    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
-    assert.equal(/\.card\s*\{[^}]*background:\s*transparent/.test(SMALL), false,
-      'the phone never strips the card surface')
-  })
-
-  test('a phone card is a real tap target', () => {
-    const floor = SMALL.match(/\.card\s*\{[^}]*min-height:\s*(\d+)px/)
-    assert.ok(floor, 'the phone card has a floor')
-    assert.ok(Number(floor[1]) >= 88,
-      `a phone card must stay comfortably tappable — found ${floor[1]}px`)
-  })
-
-  test('DESKTOP IS NOT CENTRED — the centring is scoped here', () => {
-    // On a desktop the card is a row read from the left: icon, then name. Only
-    // the phone card stacks and centres them.
-    assert.equal(/text-align:\s*center/.test(DESKTOP_CARD), false,
-      'the desktop card keeps its left edge')
-    assert.match(DESKTOP_CARD, /justify-content:\s*flex-start/,
-      'the desktop row starts at the left')
-    assert.ok(/\.card\s*\{[^}]*align-items:\s*center/.test(SMALL),
-      'and only the phone card centres its parts')
-    assert.ok(/\.card\s*\{[^}]*flex-direction:\s*column/.test(SMALL),
-      'as a column')
-  })
-})
-
-// ── The desktop card is a ROW: icon beside name ──────────────────────────────
+// ── Two tile sizes, one component ────────────────────────────────────────────
 //
-// The icon and the name are one unit — side by side on the card's centre
-// line — not an icon at the top and a label at the bottom of a tall box. These
+// The Essentials tile is the larger one; every other module is a compact tile.
+// Both are ModuleCard, so every behaviour pinned above applies to both. These
 // pin the SHAPE, not exact pixels: a particular number is a design call and
 // changing one should not fail a suite.
-describe('the desktop card is a row: icon beside name', () => {
-  test('it is a row, the icon leads, and both sit on the centre line', () => {
-    assert.match(DESKTOP_CARD, /flex-direction:\s*row/)
-    assert.match(DESKTOP_CARD, /align-items:\s*center/,
-      'the icon and the name share one centre line')
+describe('the tile: number, icon, name and a decorative arrow', () => {
+  test('both sizes are one component, chosen by a variant', () => {
+    assert.match(CARD, /variant: 'essential' \| 'compact'/)
+    assert.ok(CARD.includes(styleClass('cardEssential')))
+    assert.ok(CARD.includes(styleClass('cardCompact')))
+    assert.equal((PAGE.match(/function ModuleCard\(/g) ?? []).length, 1,
+      'there is no second card component to keep in step')
+  })
+
+  test('the icon leads the name, on one row, a short gap apart', () => {
+    assert.match(baseRule('.cardBody'), /flex-direction:\s*row/)
+    assert.match(baseRule('.cardBody'), /align-items:\s*center/)
+    const gap = baseRule('.cardBody').match(/\bgap:\s*(\d+)px/)
+    assert.ok(gap && Number(gap[1]) <= 24, 'icon and name sit a short, fixed gap apart')
     const icon = CARD.indexOf(styleClass('iconWrap'))
     const title = CARD.indexOf(styleClass('titleWrap'))
-    assert.ok(icon > -1 && title > -1, 'both are rendered')
-    assert.ok(icon < title, 'the icon leads')
+    assert.ok(icon > -1 && title > icon, 'the icon leads')
   })
 
-  test('the icon and the name are NOT pushed to opposite ends', () => {
-    assert.equal(/space-between/.test(DESKTOP_CARD), false,
-      'nothing spreads the icon and the name apart')
-    const gap = DESKTOP_CARD.match(/\bgap:\s*(\d+)px/)
-    assert.ok(gap && Number(gap[1]) <= 24, 'they sit a short, fixed gap apart')
+  test('the number is decoration: hidden from assistive technology', () => {
+    assert.match(CARD, /<span className=\{styles\.cardNumber\} aria-hidden="true">/)
+    assert.ok(CARD.includes("String(number).padStart(2, '0')"), 'a two-digit label')
   })
 
-  test('the card is SIZED — substantial, not a table row and not a box of air', () => {
-    const floor = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
-    assert.ok(floor, 'the desktop card has a floor')
-    const h = Number(floor[1])
-    assert.ok(h >= 90 && h <= 120, `a row card of real presence — found ${h}px`)
+  test('THE ARROW IS DECORATION, and is not drawn in edit mode', () => {
+    assert.match(CARD, /\{!editing && \(\s*<ArrowUpRight className=\{styles\.cardArrow\} aria-hidden="true"/,
+      'aria-hidden, and only while the tile opens something')
+    assert.match(baseRule('.cardArrow'), /pointer-events:\s*none/,
+      'it never intercepts the click meant for the tile')
+    // It is the lucide component, not hand-drawn artwork.
+    assert.equal(/<svg\b/.test(stripJs(CARD)), false,
+      'the tile draws no artwork of its own besides the module icon it is given')
   })
 
-  test('the icon and the name are sized to be read at a glance', () => {
-    assert.match(baseRule('.iconBox'), /width:\s*5[2-9]px/, 'a 52–59px icon block')
-    const size = baseRule('.title').match(/font-size:\s*([\d.]+)px/)
-    assert.ok(size && Number(size[1]) >= 16, `a module name of at least 16px — found ${size?.[1]}px`)
+  test('"Open" and "View" never come back as words', () => {
+    assert.equal(/\bOpen\b/.test(stripJs(CARD)), false)
+    assert.equal(/\bView\b/.test(stripJs(CARD)), false)
+  })
+
+  test('the Essentials tile is the larger one', () => {
+    const at = CSS.indexOf('@container (min-width: 720px) {\n  .cardEssential {')
+    assert.notEqual(at, -1, 'the wide Essentials rule exists')
+    const wide = CSS.slice(at, CSS.indexOf('}', at))
+    const floor = wide.match(/min-height:\s*(\d+)px/)
+    const compact = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
+    assert.ok(floor && compact && Number(floor[1]) > Number(compact[1]),
+      'a featured tile stands taller than a compact one')
+    assert.match(baseRule('.cardEssential .iconBox'), /width:\s*4\d+px/,
+      'and carries a boxed icon')
+  })
+
+  test('the attention tint follows a REAL count, on Essentials only', () => {
+    assert.ok(CARD.includes("variant === 'essential' && hasNotif ? styles.cardAttention : ''"),
+      'no count, no tint — nothing about it is decoration')
+  })
+
+  test('the icon is not squeezed by a long name', () => {
+    for (const rule of ['iconWrap', 'iconBox']) {
+      assert.match(baseRule(`.${rule}`), /flex-shrink:\s*0/,
+        `.${rule} must not shrink when "Performance Management" wraps`)
+    }
   })
 
   test('the name takes the rest of the row and may wrap', () => {
@@ -353,22 +331,53 @@ describe('the desktop card is a row: icon beside name', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
   })
 
-  test('a narrow desktop grid stacks the icon DIRECTLY above the name', () => {
-    const at = CSS.indexOf('@container (max-width: 599px)')
+  test('a narrow grid stacks a compact icon DIRECTLY above its name', () => {
+    const at = CSS.indexOf('@container (max-width: 559px)')
     assert.notEqual(at, -1, 'the narrow-grid block exists')
     const narrow = CSS.slice(at, CSS.indexOf('@media (max-width: 767px)'))
-    assert.match(narrow, /flex-direction:\s*column/)
-    assert.match(narrow, /justify-content:\s*center/,
-      'the pair is centred as a group, never spread to top and bottom')
+    assert.match(narrow, /\.cardCompact \.cardBody\s*\{[^}]*flex-direction:\s*column/)
   })
 
-  test('the icon is not squeezed by a long name', () => {
-    for (const rule of ['iconWrap', 'iconBox']) {
-      const at = CSS.indexOf(`.${rule} {`)
-      assert.notEqual(at, -1, `.${rule} must exist`)
-      assert.ok(/flex-shrink:\s*0/.test(CSS.slice(at, CSS.indexOf('}', at))),
-        `.${rule} must not shrink when "Performance Management" wraps`)
-    }
+  test('the badge stays on the icon in BOTH tile sizes', () => {
+    // .badge is positioned against .iconWrap, which both sizes render, and no
+    // rule anywhere repositions it against the tile.
+    assert.equal((stripCss(CSS).match(/\.badge\s*\{/g) ?? []).length, 1,
+      'one badge rule, not a per-size override that could move it to a corner')
+    assert.ok(CARD.indexOf(styleClass('badge')) > CARD.indexOf(styleClass('iconWrap')))
+    assert.ok(CARD.indexOf(styleClass('badge')) < CARD.indexOf(styleClass('titleWrap')),
+      'the badge is inside the icon wrapper, before the name')
+  })
+})
+
+// ── The phone ────────────────────────────────────────────────────────────────
+describe('a phone gets full-width Essentials and two compact tiles across', () => {
+  test('Essentials are one column until the launcher is 720px wide', () => {
+    assert.match(baseRule('.essentialsGrid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
+    const at = CSS.indexOf('@container (min-width: 720px)')
+    assert.match(CSS.slice(at, CSS.indexOf('}', at)),
+      /\.essentialsGrid\s*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/)
+  })
+
+  test('every tile is a comfortable tap target', () => {
+    const essential = baseRule('.cardEssential').match(/min-height:\s*(\d+)px/)
+    assert.ok(essential && Number(essential[1]) >= 64,
+      `a phone Essentials row must stay tappable — found ${essential?.[1]}px`)
+    const compact = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
+    assert.ok(compact && Number(compact[1]) >= 88,
+      `a compact tile must stay tappable — found ${compact?.[1]}px`)
+  })
+
+  test('two compact tiles across, and one only below 340px', () => {
+    assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
+    const narrow = CSS.indexOf('@media (max-width: 339px)')
+    assert.notEqual(narrow, -1)
+    assert.ok(/grid-template-columns:\s*minmax\(0, 1fr\)/.test(CSS.slice(narrow)))
+  })
+
+  test('there is no hover lift on a touch screen', () => {
+    const at = CSS.indexOf('@media (max-width: 767px)')
+    assert.notEqual(at, -1)
+    assert.match(CSS.slice(at), /\.card:hover\s*\{[^}]*transform:\s*none/)
   })
 })
 
@@ -389,21 +398,15 @@ describe('nothing else about the launcher moved', () => {
   })
 })
 
-// ── ONE HEADER, AT THE TOP OF THE PAGE ───────────────────────────────────────
+// ── The header and the welcome panel ─────────────────────────────────────────
 //
-// The launcher used to name itself twice. The app header said "BOE Operating
-// System" over today's date; the body then opened with a second heading block
-// carrying a WORKSPACE eyebrow, the page's real title, its supporting line and
-// its own divider. Two headers, one screen, and the top one repeated the
-// sidebar brand while the bottom one held the title that mattered.
+// The app header keeps the page title, the announcements bell and Edit order.
+// The supporting line moved into the welcome panel, beside the headline it
+// supports, so it is still said exactly once.
 //
-// There is now one. The title and the supporting line are passed to
-// BoeOsLayout, the Edit order control sits at the right-hand end of that same
-// row, and the body starts with the grid.
-//
-// These read the LAYOUT as well as the page, because the header is no longer
-// something this page draws — it is something it supplies.
-describe('the page has ONE header, and it is the app header', () => {
+// These read the LAYOUT as well as the page, because the header is something
+// this page supplies rather than draws.
+describe('the header, and the welcome panel beneath it', () => {
   const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
 
   /** The props the launcher hands the shell. */
@@ -413,146 +416,136 @@ describe('the page has ONE header, and it is the app header', () => {
     return PAGE.slice(at, PAGE.indexOf('>\n', at))
   })()
 
-  test('the title is Modules and the supporting line sits under it', () => {
+  /** The welcome panel's markup. */
+  const HERO = (() => {
+    const at = PAGE.indexOf('<section className={styles.hero}')
+    assert.notEqual(at, -1, 'the welcome panel exists')
+    return PAGE.slice(at, PAGE.indexOf('</section>', at))
+  })()
+
+  test('MODULES IS STILL THE PAGE’S h1, in the shell', () => {
     assert.match(LAYOUT_CALL, /title="Modules"/)
-    assert.match(LAYOUT_CALL, /subtitle="Select a module to continue"/)
-    // In the shell, the subtitle is rendered immediately after the title inside
-    // the same title group — so "under it" is structural, not a CSS accident.
-    const group = LAYOUT.slice(LAYOUT.indexOf('boe-page-title-group'))
-    assert.ok(group.indexOf('{title}') < group.indexOf('{subtitle'),
-      'the supporting line follows the title')
-  })
-
-  test('MODULES IS THE PAGE’S MAIN HEADING, as an actual h1', () => {
-    assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/,
-      'the page title is an h1, not a styled div')
-    // And the page declares no second one.
+    assert.match(LAYOUT, /<h1 className="boe-page-title"[^>]*>\{title\}<\/h1>/)
     assert.equal((PAGE.match(/<h1\b/g) ?? []).length, 0,
-      'the page body must not add a heading of its own')
+      'the page body adds no second h1 — the headline is an h2')
+    assert.match(HERO, /<h2 id="modules-hero-heading" className=\{styles\.heroHeadline\}>/)
   })
 
-  test('the supporting line appears EXACTLY ONCE in the whole page', () => {
+  test('the approved headline and instruction, each said once', () => {
+    assert.match(HERO, /A better way to get work moving\./)
     assert.equal((PAGE.match(/Select a module to continue/g) ?? []).length, 1,
-      'said once, in the header — never repeated in the body or on a card')
-    assert.equal(CARD.includes('Select a module'), false,
-      'and never on a card')
+      'said once, in the panel — not in the header too')
+    assert.equal(LAYOUT_CALL.includes('subtitle='), false,
+      'the header no longer repeats the instruction')
+    assert.equal(CARD.includes('Select a module'), false, 'and never on a tile')
   })
 
-  test('WORKSPACE IS GONE — eyebrow markup and its style both', () => {
-    assert.equal(/Workspace/i.test(stripJs(PAGE).replace(/\/\*[\s\S]*?\*\//g, '')), false,
-      'no WORKSPACE eyebrow is rendered')
-    assert.equal(CSS.includes('.eyebrow'), false,
-      'and the rule that styled it is deleted, not merely unreferenced')
-    // BOE red now appears in this stylesheet for exactly one reason — the icon
-    // of the card being pointed at — and never as a text colour on a label.
-    assert.equal((stripCss(CSS).match(/#DC1F2E/gi) ?? []).length, 1,
-      'the eyebrow red left with the eyebrow; the one red is the hover icon')
+  test('THE COUNT IS THE ROLE-FILTERED LIST, never a literal', () => {
+    assert.ok(PAGE.includes('const availableCount = canonicalModules.length'),
+      'derived from the same gated list the tiles come from')
+    assert.match(HERO, /\{availableCount\}/)
+    assert.equal(/>\s*\d+\s*</.test(stripJs(HERO)), false,
+      'no number is written into the panel')
+    // Above the icon drawings, whose path coordinates legitimately contain 13.
+    const logic = stripJs(PAGE.slice(0, PAGE.indexOf('// ── Icons')))
+    assert.equal(/\b13\b/.test(logic), false, 'and 13 is written nowhere in the page logic')
   })
 
-  test('THE DATE IS GONE from the Modules header', () => {
-    assert.equal(/toLocaleDateString/.test(PAGE), false,
-      'nothing on a launcher depends on knowing what day it is')
-    assert.equal(/new Date\(\)/.test(PAGE), false)
+  test('the circular motif is decoration: hidden, unclickable, behind the text', () => {
+    assert.match(HERO, /<svg className=\{styles\.heroMotif\}[^>]*aria-hidden="true"/)
+    assert.match(baseRule('.heroMotif'), /pointer-events:\s*none/)
+    assert.match(baseRule('.heroMotif'), /z-index:\s*-1/)
   })
 
-  test('BOE Operating System is NOT the page header — but IS still the sidebar brand', () => {
-    assert.equal(LAYOUT_CALL.includes('BOE Operating System'), false,
-      'the product name is not this page’s title any more')
-    // The shell still carries it as the brand, which is the one place it belongs.
-    assert.ok(LAYOUT.includes('boe-sidebar-brand'), 'the brand block survives')
-    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</, 'and still says BOE')
-    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</,
-      'with "Operating System" beneath it, untouched')
+  test('the panel clips only its motif, without creating a scroll box', () => {
+    assert.match(baseRule('.hero'), /overflow:\s*clip/)
+    assert.equal(/\boverflow:\s*(hidden|auto|scroll)/.test(stripCss(CSS)), false)
   })
 
-  test('Edit order is still offered, now in the header’s action slot', () => {
-    // The slot also holds the Announcements bell (20270110000000), so the
-    // permission is the `canEditOrder &&` on the control itself.
-    assert.match(LAYOUT_CALL, /headerActions=\{showBell \|\| canEditOrder \? \(/,
-      'the control is passed to the header')
-    assert.match(LAYOUT_CALL, /\{canEditOrder && <ModuleOrderBar/,
-      'still behind the same permission')
-    assert.match(LAYOUT_CALL, /<ModuleOrderBar/, 'and it is the same component')
+  test('the panel steps aside while arranging tiles', () => {
+    assert.ok(PAGE.includes('{!editingOrder && (\n              <section className={styles.hero}'))
+  })
+
+  test('THE DATE IS NOT BACK, and no activity data was invented', () => {
+    assert.equal(/toLocaleDateString|new Date\(\)/.test(PAGE), false)
+    assert.equal(/fetch\(|\.from\(/.test(stripJs(HERO)), false,
+      'the panel reads nothing of its own')
+  })
+
+  test('BOE Operating System is still the sidebar brand, untouched', () => {
+    assert.equal(LAYOUT_CALL.includes('BOE Operating System'), false)
+    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</)
+    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</)
+  })
+
+  test('Edit order and the bell are still offered in the header’s action slot', () => {
+    assert.match(LAYOUT_CALL, /headerActions=\{showBell \|\| canEditOrder \? \(/)
+    assert.match(LAYOUT_CALL, /\{canEditOrder && <ModuleOrderBar/)
+    assert.match(LAYOUT_CALL, /<AnnouncementBell/)
     assert.ok(CONTROLS_SRC.includes('Edit order'), 'whose normal-mode label is unchanged')
-    // The shell renders it in the slot every other layout in the app uses.
-    assert.match(LAYOUT, /className="boe-header-actions"/)
-    assert.ok(LAYOUT.includes('headerActions &&'),
-      'and a caller that passes nothing gets no slot at all')
+    assert.match(LAYOUT_CALL, /quickActions=\{quickActions\}/, 'and Quick Add Expense stays in the sidebar')
   })
 
-  test('THE DUPLICATE CONTENT HEADER IS GONE, markup and CSS together', () => {
-    // Not "renders nothing" — removed. A leftover wrapper would still reserve
-    // margin and leave the gap this change exists to close.
-    for (const cls of ['sectionHeader', 'sectionHeading', 'sectionLabel', 'sectionSupport', 'eyebrow']) {
-      assert.equal(PAGE.includes(`styles.${cls}`), false,
-        `styles.${cls} must not be referenced any more`)
-      assert.equal(new RegExp(`^\\.${cls}\\b`, 'm').test(CSS), false,
-        `.${cls} must be deleted from the stylesheet, not left unused`)
-    }
-    // And no divider is left floating between the header and the grid: the
-    // header's own bottom border is the only rule there now.
-    assert.equal(/border-bottom:\s*1px solid #E4E7EC/i.test(CSS), false,
-      'the content header took its divider with it')
-  })
-
-  test('the launcher is the first thing in the body', () => {
+  test('the order of the body: announcements, quick action, launcher', () => {
     const body = PAGE.slice(PAGE.indexOf('<BoeOsLayout'))
-    const launcher = body.indexOf('<div className={styles.launcher}>')
-    const grid = body.indexOf('styles.grid')
+    const banner = body.indexOf('<AnnouncementBanner')
     const quick = body.indexOf('<QuickActionList')
-    assert.ok(launcher > -1 && grid > launcher, 'the grid sits inside its size container')
-    // QuickActionList is the small-screen copy and legitimately precedes it;
-    // nothing else may.
-    assert.ok(quick > -1 && quick < launcher, 'only the quick actions come first')
-    assert.equal(body.slice(quick, launcher).includes('<div className={styles.'), false,
-      'no heading wrapper survives before the launcher')
-    // The size container wraps the grid and nothing else: no heading, label or
-    // divider has crept in between them.
-    assert.match(body.slice(launcher, grid), /^<div className=\{styles\.launcher\}>\s*<div className=\{$/,
-      'the grid is the size container’s first and only child')
+    const launcher = body.indexOf('<div className={styles.launcher}>')
+    assert.ok(banner > -1 && quick > banner && launcher > quick)
   })
 })
 
-// ── No arrow, no per-module accent, no inline style ──────────────────────────
-//
-// The diagonal arrow that sat in every card's corner is gone: thirteen copies
-// of one faint glyph said what the whole page already says, and the word "Open"
-// it replaced does not come back either. Which card you are about to open is
-// told by its STATE — the lift, the firmer edge and the BOE-red icon on hover
-// and focus.
-//
-// Every module used to wear its own accent colour, applied inline. The launcher
-// now has one restrained palette, so the card carries no colour of its own and
-// no style attribute at all: every state is a stylesheet rule.
-describe('the card carries no decoration of its own', () => {
-  test('THERE IS NO ARROW, and "Open" does not come back in any form', () => {
-    assert.equal(CARD.includes(styleClass('arrow')), false, 'no arrow is rendered')
-    assert.equal(/\.arrow\b/.test(CSS), false, 'and no .arrow rule survives')
-    assert.equal(/<svg\b/.test(stripJs(CARD)), false,
-      'the only graphic on a card is the module icon it is given')
-    // Comments stripped first. The prose explains what replaced the arrow, and
-    // that sentence is not a label.
-    assert.equal(/\bOpen\b/.test(stripJs(CARD)), false, 'the word never reaches a card')
+// ── Essentials and More to explore ───────────────────────────────────────────
+describe('two sections, drawn from one gated list', () => {
+  test('the Essentials are Task, Order and Finance, by key', () => {
+    assert.ok(PAGE.includes("const ESSENTIAL_MODULE_KEYS: readonly string[] = ['tasks', 'orders', 'finance']"))
   })
 
-  test('NO PER-MODULE ACCENT — not on the definitions, not on the card', () => {
-    assert.equal(/\baccent\b/.test(stripJs(PAGE)), false,
-      'the module definitions carry no accent colour')
-    assert.equal(/style=\{/.test(stripJs(CARD)), false,
-      'the card sets no inline style: every state lives in the stylesheet')
-    assert.equal(/--module-accent/.test(CSS), false, 'and the stylesheet reads none')
-    assert.equal(CSS.includes('!important'), false,
-      'with no inline style to beat, nothing needs !important')
+  test('BOTH SECTIONS ARE FILTERS OF THE RENDERED LIST — neither can admit a card', () => {
+    assert.ok(PAGE.includes('const essentialModules = modules.filter(mod => isEssential(mod.key))'))
+    assert.ok(PAGE.includes('const moreModules = modules.filter(mod => !isEssential(mod.key))'))
   })
 
-  test('BOE RED IS THE ONE COLOUR, and only on the card being pointed at', () => {
-    // The brand cue is deliberate and narrow: the icon of the hovered or
-    // focused card takes BOE red. At rest every icon is the same ink.
-    const hot = CSS.match(/\.card:hover \.iconBox,\s*\.card:focus-visible \.iconBox\s*\{([^}]*)\}/)
-    assert.ok(hot, 'hover and focus share one icon rule')
-    assert.match(hot[1], /color:\s*#DC1F2E/i, 'and it is BOE red')
-    assert.equal(/color:\s*#DC1F2E/i.test(baseRule('.iconBox')), false,
-      'a resting icon is ink, not red')
+  test('a section with no cards is not drawn at all', () => {
+    assert.ok(PAGE.includes('{essentialModules.length > 0 && ('))
+    assert.ok(PAGE.includes('{moreModules.length > 0 && ('))
+  })
+
+  test('the default order reads Task, Order, Finance', () => {
+    const at = (key: string) => PAGE.indexOf(`canOpenModule('${key}') ? [{`)
+    assert.ok(at('task_management') < at('orders') && at('orders') < at('finance'))
+  })
+
+  test('A MOVE STAYS IN ITS SECTION, through the unchanged reducer', () => {
+    assert.ok(PAGE.includes('onMove={moveWithinSection}'), 'arrow keys move within the section')
+    assert.ok(PAGE.includes("dispatchOrderEdit({ type: 'moveToSlotOf', key, targetKey: section[to].key })"))
+    assert.ok(PAGE.includes('if (isEssential(key) !== isEssential(targetKey)) return'),
+      'a drag never pushes a card into the other section')
+  })
+
+  test('a handle announces its place in the section a person can see', () => {
+    assert.ok(PAGE.includes('position={position + 1}'))
+    assert.ok(PAGE.includes('total={total}'))
+  })
+})
+
+// ── Colour, state and the page's own surface ─────────────────────────────────
+describe('one restrained palette, and every state in the stylesheet', () => {
+  test('NO PER-MODULE ACCENT and no inline style', () => {
+    assert.equal(/\baccent\b/.test(stripJs(PAGE)), false)
+    assert.equal(/style=\{/.test(stripJs(CARD)), false)
+    assert.equal(CSS.includes('!important'), false)
+  })
+
+  test('BOE red marks the tile being pointed at — icon and arrow — and nothing at rest', () => {
+    const icon = CSS.match(/\.card:hover \.iconBox,\s*\.card:focus-visible \.iconBox\s*\{([^}]*)\}/)
+    assert.ok(icon)
+    assert.match(icon[1], /color:\s*#DC1F2E/i)
+    const arrow = CSS.match(/\.card:hover \.cardArrow,\s*\.card:focus-visible \.cardArrow\s*\{([^}]*)\}/)
+    assert.ok(arrow)
+    assert.match(arrow[1], /color:\s*#DC1F2E/i)
+    assert.equal(/#DC1F2E/i.test(baseRule('.iconBox')), false, 'a resting icon is ink')
+    assert.equal(/#DC1F2E/i.test(baseRule('.cardArrow')), false, 'a resting arrow is grey')
   })
 
   test('the card keeps no hover flag in React — :hover does that job', () => {
@@ -560,79 +553,70 @@ describe('the card carries no decoration of its own', () => {
     assert.equal(/onMouseEnter|onMouseLeave/.test(CARD), false)
   })
 
-  test('HOVER AND FOCUS ARE ONE LANGUAGE, so a keyboard is not second class', () => {
-    assert.ok(/\.card:hover,\s*\.card:focus-visible\s*\{/.test(CSS),
-      'the lift and the firmer edge answer both')
-    assert.ok(/\.card:hover \.iconBox,\s*\.card:focus-visible \.iconBox\s*\{/.test(CSS),
-      'and so does the red icon')
-    assert.ok(/\.card:focus-visible\s*\{[^}]*outline:\s*2px solid #141922/.test(CSS),
-      'focus adds an ink ring on top, so it can never be mistaken for a stray pointer')
-    assert.ok(/\.card:active\s*\{/.test(CSS), 'and pressing has its own state')
+  test('HOVER AND FOCUS ARE ONE LANGUAGE', () => {
+    assert.ok(/\.card:hover,\s*\.card:focus-visible\s*\{/.test(CSS))
+    assert.ok(/\.card:focus-visible\s*\{[^}]*outline:\s*2px solid #141922/.test(CSS))
+    assert.ok(/\.card:active\s*\{/.test(CSS))
   })
 
   test('the drag handle is still absolutely positioned, so it costs no layout', () => {
     assert.ok(/\.dragHandle\s*\{[^}]*position:\s*absolute/.test(CSS))
   })
+
+  test('THE TYPEFACE AND SURFACE ARE SCOPED TO THIS PAGE', () => {
+    assert.match(baseRule('.launcher'), /font-family:\s*var\(--font-inter\)/,
+      'Inter, which the root layout already loads')
+    // Every rule that reaches outside the module is anchored on this page's
+    // own launcher, so no other screen can match it.
+    for (const line of stripCss(CSS).split('\n').filter(l => l.startsWith(':global('))) {
+      assert.match(line, /:has\(\.launcher\)/, `unscoped global rule: ${line}`)
+    }
+    const ROOT_LAYOUT = read('src/app/layout.tsx')
+    assert.match(ROOT_LAYOUT, /variable: '--font-inter'/, 'Inter is loaded once, at the root')
+  })
 })
 
 // ── The responsive contract ──────────────────────────────────────────────────
 describe('the launcher sizes itself from the width it actually has', () => {
-  test('COLUMNS COME FROM A CONTAINER QUERY, not the viewport', () => {
+  test('COLUMNS COME FROM CONTAINER QUERIES, not the viewport', () => {
     assert.ok(/\.launcher\s*\{[^}]*container-type:\s*inline-size/.test(CSS))
-    assert.equal(/@media \(min-width/.test(CSS), false,
-      'no viewport min-width step is left to disagree with the container')
-    assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
-    const at = CSS.indexOf('@container (min-width: 900px)')
-    assert.notEqual(at, -1, 'the 3-column step must exist')
-    assert.match(CSS.slice(at, CSS.indexOf('}', at)),
-      /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)
+    assert.equal(/@media \(min-width/.test(CSS), false)
   })
 
-  test('THREE AT EVERY DESKTOP SIZE — no 4- or 5-column step', () => {
-    // Chosen with 13 modules, the production count: four or five across leave
-    // the thirteenth card under three or four empty slots, three across leaves
-    // it beside two, and a module sits in the same place on a laptop and a
-    // large monitor.
-    assert.equal(/repeat\([45], /.test(stripCss(CSS)), false)
+  test('the compact grid steps 2 → 3 → 4 → 5, and never past five', () => {
+    for (const [width, cols] of [[560, 3], [860, 4], [1120, 5]] as const) {
+      const at = CSS.indexOf(`@container (min-width: ${width}px)`)
+      assert.notEqual(at, -1, `the ${width}px step exists`)
+      assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid', at))),
+        new RegExp(`grid-template-columns:\\s*repeat\\(${cols}, minmax\\(0, 1fr\\)\\)`))
+    }
+    assert.equal(/repeat\([6-9], /.test(stripCss(CSS)), false)
   })
 
-  test('THE PAGE ASKS FOR ONE CONTENT COLUMN, so the launcher has a deliberate width', () => {
+  test('THE PAGE ASKS FOR ONE 1440px CONTENT COLUMN', () => {
     const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
-    assert.match(PAGE, /contentMaxWidth=\{1180\}/, 'the launcher asks for an 1180px column')
-    assert.ok(LAYOUT.includes('contentMaxWidth?: number'), 'the shell takes it as an optional prop')
-    assert.ok(LAYOUT.includes('boe-main-content-capped'), 'and applies it with one class')
-    const GLOBALS = read('src/app/globals.css')
-    assert.match(GLOBALS, /\.boe-main-content-capped > \.boe-page-header,\s*\.boe-main-content-capped > \.boe-page-body \{/,
-      'the header and the body share the column, so Edit order lines up with the last card')
+    assert.match(PAGE, /contentMaxWidth=\{1440\}/)
+    assert.ok(LAYOUT.includes('boe-main-content-capped'))
   })
 
-  test('a card is a sensible width at 1920, 1366 and 1024', () => {
-    // The arithmetic the steps are built on, so a future change has to re-do
-    // it. Grid width = min(window - 260px sidebar - 44px gutters, 1180px
-    // column); 16px between cards.
-    const card = (window: number, cols: number) => {
-      const grid = Math.min(window - 260 - 44, 1180)
-      return (grid - (cols - 1) * 16) / cols
+  test('a compact tile is a sensible width at 1920, 1366 and 1024', () => {
+    // Launcher width = min(window - 260px sidebar - 44px gutters, 1440px
+    // column); 14px between tiles.
+    const tile = (window: number, cols: number) => {
+      const grid = Math.min(window - 260 - 44, 1440)
+      return (grid - (cols - 1) * 14) / cols
     }
-    for (const [window, cols] of [[1920, 3], [1366, 3], [1024, 2]] as const) {
-      const w = card(window, cols)
-      assert.ok(w > 300 && w < 400,
-        `${cols} columns at ${window} give a ${Math.round(w)}px card — too cramped or too empty`)
+    for (const [window, cols] of [[1920, 5], [1366, 4], [1024, 3]] as const) {
+      const w = tile(window, cols)
+      assert.ok(w > 200 && w < 300,
+        `${cols} columns at ${window} give a ${Math.round(w)}px tile — too cramped or too empty`)
     }
   })
 
-  test('a phone gets TWO columns, and one only when two cannot be read', () => {
-    const phone = CSS.slice(CSS.indexOf('@media (max-width: 767px)'))
-    assert.ok(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/.test(phone),
-      'two-up at ordinary phone widths — 430, 390 and 360 all land here')
-    const narrow = CSS.indexOf('@media (max-width: 339px)')
-    assert.notEqual(narrow, -1, 'and a single column below 340px')
-    assert.ok(/grid-template-columns:\s*minmax\(0, 1fr\)/.test(CSS.slice(narrow)))
-  })
-
-  test('nothing can push a card wider than its column', () => {
+  test('nothing can push a tile wider than its column', () => {
     assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS))
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
+    assert.match(baseRule('.cardBody'), /min-width:\s*0/)
   })
 })
 
@@ -686,9 +670,9 @@ describe('this page has no dark variant, and adds none', () => {
     assert.equal(/data-theme/.test(stripCss(CSS)), false)
   })
 
-  test('the card surface is white and its border is the neutral grey', () => {
+  test('a compact tile is white with the warm hairline', () => {
     assert.match(DESKTOP_CARD, /background:\s*#fff/i)
-    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E7E3DE/i)
   })
 
   test('reduced motion drops the movement and keeps the meaning', () => {

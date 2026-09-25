@@ -1,107 +1,296 @@
-/* ── Modules launcher: the grid, the cards and the edit handle ──────────────
+/* ── Modules launcher: welcome panel, Essentials, More to explore ──────────
    LIGHT ONLY, and nothing in this file has a dark variant — neither does the
    app, which carries no prefers-color-scheme block anywhere in globals.css.
 
-   THE PAGE HEADER IS NOT IN THIS FILE. The title, the supporting line and the
-   Edit order control live in the app header (BoeOsLayout), styled by the
-   shared .boe-page-* and .boe-header-actions rules. This page asks the shell
-   for an 1180px content column (`contentMaxWidth`), so the header and the grid
-   share one left edge and one right edge — Edit order sits exactly above the
-   last column — and the launcher reads as one deliberate block.
+   THE PAGE HEADER IS NOT IN THIS FILE. The title and the Edit order control
+   live in the app header (BoeOsLayout), styled by the shared .boe-page-* and
+   .boe-header-actions rules. This page asks the shell for a 1440px content
+   column (`contentMaxWidth`), so the header and the launcher share one left
+   edge and one right edge.
 
-   THE CARD. Each module is a white card holding its icon and its name side by
-   side, as one unit: a 56px icon, then the name at 17px, both on the card's
-   centre line. Three of them across a laptop screen and three across a large
-   monitor, so the modules sit in the same place on both and thirteen of them
-   make five calm rows rather than a field of small boxes.
+   THREE PARTS, ONE RESTRAINED PALETTE:
+     the welcome panel   warm white, a headline, the count of modules this
+                         person can open, and a faint circular motif
+     The essentials      Task, Order and Finance as three larger tiles
+     More to explore     every other module as a compact tile
 
-   ONE RESTRAINED PALETTE. Every icon is the same ink on the same soft grey,
-   recognised by its shape and its name. The one colour is BOE red, and it
-   appears only on the card under the pointer or the keyboard — the icon takes
-   a red tint, the way the sidebar marks the page you are on — plus the red
-   notification badge, which means something.
-
-     #141922  ink — names, the focus ring
-     #1F2633  icon at rest, on #F3F4F6 with a #ECEEF2 hairline
-     #DC1F2E  BOE red — the icon of the card being pointed at
-     #E3E6EB  card border at rest, #CBD1DA under the pointer
+     #172033  ink — headline, count, module names
+     #2A3140  icon at rest
+     #B42A33  restrained BOE red — eyebrows and section labels
+     #DC1F2E  BOE red — the icon and arrow of the tile being pointed at
+     #E7E3DE  warm hairline — tile and panel borders
      #D94F4F  notification badge
 
-   A LAUNCHER CARD IS AN ICON, ITS BADGE AND A NAME. At every width. No
-   description, no "Open", no counter line — nothing is hidden here, it is
-   simply not in the markup. */
+   A TILE IS A NUMBER, AN ICON, ITS BADGE, A NAME AND AN ARROW. No
+   description at any width — nothing is hidden, it is not in the markup. */
 
-/* ── The size container ──────────────────────────────────────────────────────
-   COLUMNS FOLLOW THE WIDTH THE GRID ACTUALLY HAS, not the window. A viewport
-   query has to subtract the sidebar, the gutters and the content column in its
-   head; a container query measures the one number that decides how many
-   cards fit. */
-.launcher {
-  container-type: inline-size;
+/* ── This page's surface and typeface ─────────────────────────────────────
+   SCOPED TO THIS PAGE. `:has(.launcher)` matches only the shell that holds
+   this launcher, so every other module keeps the app's grey surface and its
+   DM Sans. Inter is already loaded by the root layout (--font-inter), so this
+   adds no font download and no build-time fetch. The sidebar is untouched. */
+:global(.boe-app-shell):has(.launcher) {
+  background: #F8F7F4;
 }
 
-/* ── The grid ───────────────────────────────────────────────────────────────
-   THE STEPS, measured on the grid's own width:
+:global(.boe-main-content):has(.launcher) :global(.boe-page-header) {
+  background: #F8F7F4;
+}
 
-     container   columns   typical screen                  card width
-     >= 900px    3         1920 (1180px column), 1366      ~383px, ~343px
-     below       2         1024, a narrow window, a phone
+:global(.boe-main-content):has(.launcher) :global(.boe-page-title) {
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
 
-   THREE, AT BOTH DESKTOP SIZES, and chosen by comparing full-size screenshots
-   with thirteen modules — the production count. Four or five across leave the
-   thirteenth card alone under three or four empty slots; three across leaves
-   it beside two, the smallest gap any of them can manage, and twelve fill four
-   rows exactly. A module also stays in the same place on a laptop and on a
-   large monitor. */
-.grid {
+/* ── The size container ──────────────────────────────────────────────────────
+   COLUMNS FOLLOW THE WIDTH THE LAUNCHER ACTUALLY HAS, not the window. */
+.launcher {
+  container-type: inline-size;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  color: #172033;
+}
+
+/* ── The welcome panel ──────────────────────────────────────────────────────
+   One column on a phone; the headline and the count side by side, with a
+   hairline between them, once the launcher is 900px wide. */
+.hero {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 26px 22px 24px;
+  border: 1px solid #EDE6DF;
+  border-radius: 20px;
+  background: linear-gradient(115deg, #FFFFFF 0%, #FCFAF7 52%, #F7F0EA 100%);
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.03);
+  /* Clips the motif to the panel's rounded edge. `clip`, not `hidden`: it
+     creates no scroll container, and the text sits well inside the padding,
+     so nothing readable can be cut. */
+  overflow: clip;
+  isolation: isolate;
+}
+
+/* Three concentric rings, top right. Decoration only: aria-hidden in the
+   markup, no pointer events, drawn under the text. */
+.heroMotif {
+  position: absolute;
+  top: -46px;
+  right: -46px;
+  width: 170px;
+  height: 170px;
+  fill: none;
+  stroke: rgba(180, 42, 51, 0.12);
+  stroke-width: 1;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.heroMain,
+.heroStat {
+  min-width: 0;
+}
+
+.heroEyebrow {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #B42A33;
+}
+
+.heroHeadline {
+  margin: 0;
+  max-width: 13ch;
+  font-size: clamp(28px, 4.4cqi, 56px);
+  font-weight: 750;
+  line-height: 1.06;
+  letter-spacing: -0.035em;
+  color: #172033;
+  text-wrap: balance;
+}
+
+.heroLead {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #5B6475;
+}
+
+.heroStat {
+  padding-top: 18px;
+  border-top: 1px solid #ECE4DC;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.heroStatRow {
+  display: flex;
+  align-items: center;
   gap: 16px;
 }
 
+.heroCount {
+  font-size: clamp(44px, 5.6cqi, 72px);
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: #172033;
+}
+
+.heroCountLabel {
+  max-width: 12ch;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #B42A33;
+}
+
+.heroStatNote {
+  margin: 12px 0 0;
+  font-size: 15px;
+  color: #4A5261;
+}
+
 @container (min-width: 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 40px;
+    padding: 34px 40px;
+  }
+
+  .heroMotif {
+    top: -12px;
+    right: 18px;
+    width: 210px;
+    height: 210px;
+  }
+
+  .heroStat {
+    padding-top: 0;
+    padding-left: 40px;
+    border-top: 0;
+    border-left: 1px solid #ECE4DC;
+  }
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────────── */
+.section {
+  margin-top: 30px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9A3A40;
+}
+
+/* The hairline that runs out from each label. */
+.sectionTitle::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: #E7E3DE;
+}
+
+/* ── The grids ──────────────────────────────────────────────────────────────
+   THE STEPS, measured on the launcher's own width:
+
+     container   Essentials   More to explore   typical screen
+     >= 1120px   3            5                 1920 (1440px column)
+     >= 860px    3            4                 1366
+     >= 720px    3            3                 1024
+     >= 560px    1            3                 a tablet in portrait
+     below       1            2                 a phone
+
+   One column of Essentials on a phone keeps each a full-width tap target;
+   two compact tiles across keep the grid short without shrinking names. */
+.essentialsGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@container (min-width: 560px) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-/* ── The card ────────────────────────────────────────────────────────────────
-   A ROW: the icon, then the name beside it, both on the card's centre line —
-   one unit, read in one glance, not an icon at the top and a label at the
-   bottom. The whole card is the button.
+@container (min-width: 720px) {
+  .essentialsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
 
-   min-height is A FLOOR AND NEVER A CEILING: a name that wraps grows the card
-   rather than being cut by it, and the grid's default `align-items: stretch`
-   keeps every card in that row the same height. */
+  .grid {
+    gap: 14px;
+  }
+}
+
+@container (min-width: 860px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 1120px) {
+  .grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* ── The tile ────────────────────────────────────────────────────────────────
+   The whole tile is the button. The number sits top left, the arrow top
+   right, and the icon and name share one row beneath them.
+
+   min-height is A FLOOR AND NEVER A CEILING: a name that wraps grows the tile
+   rather than being cut by it, and the grid's `align-items: stretch` keeps a
+   row of tiles the same height. */
 .card {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 18px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
   min-height: 104px;
-  padding: 22px 24px;
+  padding: 16px 18px 18px;
   background: #fff;
-  border: 1px solid #E3E6EB;
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+  border: 1px solid #E7E3DE;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.03);
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease, background-color 0.16s ease;
 }
 
-/* HOVER, FOCUS AND PRESS ARE ONE LANGUAGE. The card lifts a little, its edge
-   firms up and the icon takes BOE red — for a mouse and a keyboard alike.
-   Focus adds an ink ring outside the card so it can never be mistaken for a
-   stray pointer, and pressing sets the card back down. */
+/* HOVER, FOCUS AND PRESS ARE ONE LANGUAGE. The tile lifts a little, its edge
+   firms up, and the icon and the arrow take BOE red — for a mouse and a
+   keyboard alike. Focus adds an ink ring; pressing sets the tile back down. */
 .card:hover,
 .card:focus-visible {
-  border-color: #CBD1DA;
+  border-color: #D6CFC7;
   box-shadow:
-    0 1px 2px rgba(20, 25, 34, 0.04),
-    0 12px 28px -14px rgba(20, 25, 34, 0.22);
+    0 1px 2px rgba(23, 32, 51, 0.04),
+    0 14px 30px -16px rgba(23, 32, 51, 0.24);
   transform: translateY(-2px);
 }
 
@@ -112,8 +301,42 @@
 
 .card:active {
   transform: none;
-  background: #FAFAFB;
-  box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+  background: #FBFAF8;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+}
+
+.cardNumber {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: #8B909A;
+}
+
+.cardArrow {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 16px;
+  height: 16px;
+  color: #A2A7B0;
+  pointer-events: none;
+  transition: color 0.16s ease, transform 0.16s ease;
+}
+
+.card:hover .cardArrow,
+.card:focus-visible .cardArrow {
+  color: #DC1F2E;
+  transform: translate(1px, -1px);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .iconWrap {
@@ -122,37 +345,30 @@
 }
 
 .iconBox {
-  width: 56px;
-  height: 56px;
-  border-radius: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #F3F4F6;
-  border: 1px solid #ECEEF2;
-  color: #1F2633;
+  width: 28px;
+  height: 28px;
+  color: #2A3140;
   transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.iconBox svg {
+  width: 22px;
+  height: 22px;
 }
 
 .card:hover .iconBox,
 .card:focus-visible .iconBox {
-  background: rgba(220, 31, 46, 0.08);
-  border-color: rgba(220, 31, 46, 0.18);
   color: #DC1F2E;
-}
-
-/* The module icons are authored at 26px, which is the size they are drawn at
-   here — one rule rather than thirteen SVG edits. */
-.iconBox svg {
-  width: 26px;
-  height: 26px;
 }
 
 .badge {
   position: absolute;
-  top: -6px;
-  right: -7px;
+  top: -7px;
+  right: -9px;
   background: #D94F4F;
   color: #fff;
   font-size: 10px;
@@ -169,121 +385,175 @@
   z-index: 1;
 }
 
-/* The rest of the row, and `min-width: 0` is what lets a long name wrap rather
-   than widen the column. */
+/* `min-width: 0` is what lets a long name wrap rather than widen the column. */
 .titleWrap {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-/* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. The name is the only
-   text on the card, so a clipped one is the single thing that could still
-   leave it unreadable. A long name wraps and arrives whole. */
+/* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. A long name wraps
+   and arrives whole. */
 .title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #141922;
-  letter-spacing: -0.015em;
+  font-size: 15px;
+  font-weight: 650;
   line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #172033;
   overflow-wrap: anywhere;
 }
 
-/* ── A narrow grid on a desktop: icon above name, < 600px ────────────────────
-   Two columns in a narrow window leave a row card too little room for its
-   name beside the icon, so there the same card stacks — the icon directly
-   above the name, close together, never pushed to opposite ends. */
-@container (max-width: 599px) {
-  .card {
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 14px;
-    padding: 20px;
+/* ── The Essentials tile ────────────────────────────────────────────────────
+   Larger, on a soft neutral surface with a quiet accent down its leading
+   edge. On a narrow launcher it is one full-width row: icon, name, arrow. */
+.cardEssential {
+  min-height: 76px;
+  padding: 14px 44px 14px 18px;
+  justify-content: center;
+  background: #F4F6F8;
+  border-color: #E3E7EC;
+  border-left: 3px solid #CDD5DF;
+}
+
+.cardEssential .cardNumber {
+  display: none;
+}
+
+.cardEssential .cardArrow {
+  top: 50%;
+  margin-top: -9px;
+  right: 16px;
+  width: 18px;
+  height: 18px;
+}
+
+.cardEssential .cardBody {
+  gap: 14px;
+}
+
+.cardEssential .iconBox {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #E3E7EC;
+}
+
+.cardEssential .title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cardEssential:hover .iconBox,
+.cardEssential:focus-visible .iconBox {
+  border-color: rgba(220, 31, 46, 0.22);
+}
+
+/* An Essentials tile with unread notifications: the warm tint and the red
+   edge. Driven by the real count, so at zero it looks like the other two. */
+.cardAttention {
+  background: #FCEFEE;
+  border-color: #F1D3D1;
+  border-left-color: #C8373F;
+}
+
+.cardAttention .iconBox {
+  border-color: #F1D3D1;
+  color: #B42A33;
+}
+
+@container (min-width: 720px) {
+  .cardEssential {
+    min-height: 148px;
+    padding: 20px 22px 24px;
+    justify-content: space-between;
   }
 
-  .iconBox {
+  .cardEssential .cardNumber {
+    display: block;
+  }
+
+  .cardEssential .cardArrow {
+    top: 20px;
+    margin-top: 0;
+    right: 20px;
+  }
+
+  .cardEssential .iconBox {
     width: 48px;
     height: 48px;
-    border-radius: 13px;
   }
 
-  .iconBox svg {
+  .cardEssential .iconBox svg {
     width: 24px;
     height: 24px;
   }
+}
 
-  .titleWrap {
-    flex: 0 0 auto;
-    width: 100%;
+/* Three Essentials across a 720–999px launcher leave a row too little room
+   for a two-word name beside the icon, so there it sits above the name. */
+@container (min-width: 720px) and (max-width: 999px) {
+  .cardEssential .cardBody {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 
-  .title {
-    font-size: 15.5px;
+  .cardEssential .titleWrap {
+    width: 100%;
   }
 }
 
-/* ── Small screens: centred cards, <= 767px ─────────────────────────────────
-   767px is the SIDEBAR'S OWN BREAKPOINT (globals.css) — where the permanent
-   sidebar becomes a drawer — so "small screen" means one thing across the
-   whole launcher.
-
-   Two columns of centred cards: icon above name, the whole card the button,
-   no description. There is no hover on a touch screen, so the lift goes and a
-   press dims the card instead. */
-@media (max-width: 767px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+@container (min-width: 1000px) {
+  .cardEssential .title {
+    font-size: 20px;
   }
+}
 
-  .card {
+/* ── A narrow compact grid: icon above name ──────────────────────────────────
+   Two tiles across a phone leave a row too little room for a long name beside
+   the icon, so there the icon sits directly above the name. */
+@container (max-width: 559px) {
+  .cardCompact .cardBody {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    gap: 12px;
-    min-height: 124px;
-    padding: 18px 12px 16px;
+    align-items: flex-start;
+    gap: 10px;
   }
 
-  .card:hover {
-    transform: none;
-    border-color: #E3E6EB;
-    box-shadow: 0 1px 2px rgba(20, 25, 34, 0.04);
+  .cardCompact .titleWrap {
+    width: 100%;
   }
 
-  .card:hover .iconBox {
-    background: #F3F4F6;
-    border-color: #ECEEF2;
-    color: #1F2633;
-  }
-
-  .card:active {
-    background: #F7F8FA;
-    border-color: #CBD1DA;
-  }
-
-  /* Centres the icon AND its badge in one move: .badge is positioned against
-     .iconWrap, so it travels with the wrapper. */
-  .iconWrap {
-    align-self: center;
-  }
-
-  .title {
+  .cardCompact .title {
     font-size: 14px;
   }
 }
 
-/* ── Very narrow: one column, < 340px ────────────────────────────────────────
-   The only width at which a single column is the right answer — a fold, or a
-   desktop zoomed past 200%. */
+/* ── Touch screens: no lift ──────────────────────────────────────────────────
+   767px is the SIDEBAR'S OWN BREAKPOINT (globals.css), where the permanent
+   sidebar becomes a drawer. There is no hover on a touch screen, so the lift
+   goes and a press tints the tile instead. */
+@media (max-width: 767px) {
+  .card:hover {
+    transform: none;
+    box-shadow: 0 1px 2px rgba(23, 32, 51, 0.03);
+  }
+
+  .card:active {
+    background: #F7F5F2;
+    border-color: #D6CFC7;
+  }
+
+  .section {
+    margin-top: 24px;
+  }
+}
+
+/* ── Very narrow: one compact column, < 340px ────────────────────────────────
+   A fold, or a desktop zoomed past 200%. */
 @media (max-width: 339px) {
   .grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .card {
-    min-height: 104px;
   }
 }
 
@@ -457,9 +727,8 @@
    neither lifts nor turns its icon red. */
 .cardEditing {
   cursor: default;
-  /* Room for the handle at the right-hand end of a row card, so a long name
-     wraps beside it rather than running underneath. */
-  padding-right: 60px;
+  /* No extra padding for the handle: it takes the arrow's corner on the
+     number row, above the icon and the name. */
   border-style: dashed;
   border-color: #C3CAD5;
   background: #FCFCFD;
@@ -478,9 +747,8 @@
 }
 
 .cardEditing:hover .iconBox {
-  background: #F3F4F6;
-  border-color: #ECEEF2;
-  color: #1F2633;
+  border-color: #E3E7EC;
+  color: #2A3140;
 }
 
 /* The card in hand: solid ink edge, lifted. The grid reflowing IS the signal
@@ -526,10 +794,6 @@
     font-size: 13px;
   }
 
-  .cardEditing {
-    padding-right: 12px;
-  }
-
   /* The corner of a centred phone card, clear of the icon below it. */
   .dragHandle {
     top: 8px;
@@ -573,6 +837,7 @@
    the focus ring — and only movement goes: nothing eases and nothing lifts. */
 @media (prefers-reduced-motion: reduce) {
   .card,
+  .cardArrow,
   .iconBox,
   .orderEditButton,
   .orderButton,
@@ -583,6 +848,11 @@
 
   .card:hover,
   .card:focus-visible {
+    transform: none;
+  }
+
+  .card:hover .cardArrow,
+  .card:focus-visible .cardArrow {
     transform: none;
   }
 }
