@@ -513,6 +513,11 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // The legacy advance submit doors are closed: REVOKE of the two
+      // legacy advance doors from authenticated, and CREATE OR REPLACE of
+      // submit_order_submission_advance_v2_internal (20260917's body plus
+      // clearing the decision basis). No table, policy or row is touched.
+      '20270106000000_legacy_advance_submit_doors_closed.sql',
     ])
 
     const previous = lf(readFileSync(
