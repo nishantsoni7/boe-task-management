@@ -690,11 +690,11 @@ export default function BoeOsHomePage() {
           subtitle="Select a module to continue"
           onSignOut={handleSignOut}
           quickActions={quickActions}
-          // ONE CONTENT COLUMN. The header and the grid share a 1200px column,
+          // ONE CONTENT COLUMN. The header and the grid share a 1180px column,
           // centred in whatever the sidebar leaves, so the title, Edit order
           // and the cards line up on the same two edges instead of the cards
-          // stretching across a 1920px screen. Four ~288px cards fill it.
-          contentMaxWidth={1400}
+          // stretching across a 1920px screen. Three ~383px cards fill it.
+          contentMaxWidth={1180}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
           // only its position on the screen is different.

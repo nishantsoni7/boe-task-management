@@ -298,49 +298,68 @@ describe('the mobile card centres its icon and its name', () => {
   })
 
   test('DESKTOP IS NOT CENTRED — the centring is scoped here', () => {
-    // Both are COLUMNS. On a desktop the column is left-aligned (icon at the
-    // top-left, name beneath it); on a phone the same column centres both.
+    // On a desktop the card is a row read from the left: icon, then name. Only
+    // the phone card stacks and centres them.
     assert.equal(/text-align:\s*center/.test(DESKTOP_CARD), false,
       'the desktop card keeps its left edge')
-    assert.match(DESKTOP_CARD, /align-items:\s*flex-start/,
-      'the desktop column lines its parts up on the left')
+    assert.match(DESKTOP_CARD, /justify-content:\s*flex-start/,
+      'the desktop row starts at the left')
     assert.ok(/\.card\s*\{[^}]*align-items:\s*center/.test(SMALL),
-      'and only the phone card centres them')
+      'and only the phone card centres its parts')
+    assert.ok(/\.card\s*\{[^}]*flex-direction:\s*column/.test(SMALL),
+      'as a column')
   })
 })
 
-// ── The desktop card is a TILE ───────────────────────────────────────────────
+// ── The desktop card is a ROW: icon beside name ──────────────────────────────
 //
-// On a desktop a module is a white card with the icon at the top and the name
-// beneath it, left-aligned. Substantial enough to be the front door, not so
-// big that it is mostly air. These pin the SHAPE, not exact pixels: a
-// particular number is a design call and changing one should not fail a suite.
-describe('the desktop card is a tile: icon above name', () => {
-  test('it is a column, and the icon leads the name in the markup', () => {
-    assert.match(DESKTOP_CARD, /flex-direction:\s*column/)
+// The icon and the name are one unit — side by side on the card's centre
+// line — not an icon at the top and a label at the bottom of a tall box. These
+// pin the SHAPE, not exact pixels: a particular number is a design call and
+// changing one should not fail a suite.
+describe('the desktop card is a row: icon beside name', () => {
+  test('it is a row, the icon leads, and both sit on the centre line', () => {
+    assert.match(DESKTOP_CARD, /flex-direction:\s*row/)
+    assert.match(DESKTOP_CARD, /align-items:\s*center/,
+      'the icon and the name share one centre line')
     const icon = CARD.indexOf(styleClass('iconWrap'))
     const title = CARD.indexOf(styleClass('titleWrap'))
     assert.ok(icon > -1 && title > -1, 'both are rendered')
     assert.ok(icon < title, 'the icon leads')
   })
 
-  test('the name sits at the foot, so every name in a row shares one baseline', () => {
-    assert.match(DESKTOP_CARD, /justify-content:\s*space-between/,
-      'icon to the top, name to the bottom — a one-line and a two-line name in the same row still end level')
+  test('the icon and the name are NOT pushed to opposite ends', () => {
+    assert.equal(/space-between/.test(DESKTOP_CARD), false,
+      'nothing spreads the icon and the name apart')
+    const gap = DESKTOP_CARD.match(/\bgap:\s*(\d+)px/)
+    assert.ok(gap && Number(gap[1]) <= 24, 'they sit a short, fixed gap apart')
   })
 
-  test('the card is SIZED — neither a table row nor a box of air', () => {
+  test('the card is SIZED — substantial, not a table row and not a box of air', () => {
     const floor = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
     assert.ok(floor, 'the desktop card has a floor')
     const h = Number(floor[1])
-    assert.ok(h >= 112 && h <= 150,
-      `an icon above a name wants a real tile, not a 72px row or a 200px box — found ${h}px`)
+    assert.ok(h >= 90 && h <= 120, `a row card of real presence — found ${h}px`)
   })
 
   test('the icon and the name are sized to be read at a glance', () => {
-    assert.match(baseRule('.iconBox'), /width:\s*4[4-9]px/, 'a 44–49px icon block')
+    assert.match(baseRule('.iconBox'), /width:\s*5[2-9]px/, 'a 52–59px icon block')
     const size = baseRule('.title').match(/font-size:\s*([\d.]+)px/)
-    assert.ok(size && Number(size[1]) >= 15, `a module name of at least 15px — found ${size?.[1]}px`)
+    assert.ok(size && Number(size[1]) >= 16, `a module name of at least 16px — found ${size?.[1]}px`)
+  })
+
+  test('the name takes the rest of the row and may wrap', () => {
+    assert.ok(/\.titleWrap\s*\{[^}]*flex:\s*1 1 auto/.test(CSS))
+    assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
+  })
+
+  test('a narrow desktop grid stacks the icon DIRECTLY above the name', () => {
+    const at = CSS.indexOf('@container (max-width: 599px)')
+    assert.notEqual(at, -1, 'the narrow-grid block exists')
+    const narrow = CSS.slice(at, CSS.indexOf('@media (max-width: 767px)'))
+    assert.match(narrow, /flex-direction:\s*column/)
+    assert.match(narrow, /justify-content:\s*center/,
+      'the pair is centred as a group, never spread to top and bottom')
   })
 
   test('the icon is not squeezed by a long name', () => {
@@ -559,17 +578,23 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.equal(/@media \(min-width/.test(CSS), false,
       'no viewport min-width step is left to disagree with the container')
     assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
-    for (const [query, columns] of [['620px', 3], ['900px', 4], ['1240px', 5]] as const) {
-      const at = CSS.indexOf(`@container (min-width: ${query})`)
-      assert.notEqual(at, -1, `the ${columns}-column step must exist`)
-      assert.match(CSS.slice(at, CSS.indexOf('}', at)),
-        new RegExp(`grid-template-columns:\\s*repeat\\(${columns}, minmax\\(0, 1fr\\)\\)`))
-    }
+    const at = CSS.indexOf('@container (min-width: 900px)')
+    assert.notEqual(at, -1, 'the 3-column step must exist')
+    assert.match(CSS.slice(at, CSS.indexOf('}', at)),
+      /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)
+  })
+
+  test('THREE AT EVERY DESKTOP SIZE — no 4- or 5-column step', () => {
+    // Chosen with 13 modules, the production count: four or five across leave
+    // the thirteenth card under three or four empty slots, three across leaves
+    // it beside two, and a module sits in the same place on a laptop and a
+    // large monitor.
+    assert.equal(/repeat\([45], /.test(stripCss(CSS)), false)
   })
 
   test('THE PAGE ASKS FOR ONE CONTENT COLUMN, so the launcher has a deliberate width', () => {
     const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
-    assert.match(PAGE, /contentMaxWidth=\{1400\}/, 'the launcher asks for a 1400px column')
+    assert.match(PAGE, /contentMaxWidth=\{1180\}/, 'the launcher asks for an 1180px column')
     assert.ok(LAYOUT.includes('contentMaxWidth?: number'), 'the shell takes it as an optional prop')
     assert.ok(LAYOUT.includes('boe-main-content-capped'), 'and applies it with one class')
     const GLOBALS = read('src/app/globals.css')
@@ -579,15 +604,15 @@ describe('the launcher sizes itself from the width it actually has', () => {
 
   test('a card is a sensible width at 1920, 1366 and 1024', () => {
     // The arithmetic the steps are built on, so a future change has to re-do
-    // it. Grid width = min(window - 260px sidebar - 44px gutters, 1400px
+    // it. Grid width = min(window - 260px sidebar - 44px gutters, 1180px
     // column); 16px between cards.
     const card = (window: number, cols: number) => {
-      const grid = Math.min(window - 260 - 44, 1400)
+      const grid = Math.min(window - 260 - 44, 1180)
       return (grid - (cols - 1) * 16) / cols
     }
-    for (const [window, cols] of [[1920, 5], [1366, 4], [1024, 3]] as const) {
+    for (const [window, cols] of [[1920, 3], [1366, 3], [1024, 2]] as const) {
       const w = card(window, cols)
-      assert.ok(w > 220 && w < 300,
+      assert.ok(w > 300 && w < 400,
         `${cols} columns at ${window} give a ${Math.round(w)}px card — too cramped or too empty`)
     }
   })
@@ -602,8 +627,6 @@ describe('the launcher sizes itself from the width it actually has', () => {
   })
 
   test('nothing can push a card wider than its column', () => {
-    // The three ways a card overflows its track: a name that will not break, a
-    // fixed-width child that will not shrink, or a title box with no min-width.
     assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS))
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
   })

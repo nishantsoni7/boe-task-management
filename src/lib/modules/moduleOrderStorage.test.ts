@@ -362,8 +362,8 @@ describe('normal mode', () => {
     // removed the description and the footer, #194 (this file's own feature)
     // left the card exactly as it found it, the compact redesign rebuilt the
     // card as a 92px horizontal row, and the launcher redesign then made each
-    // module a 128px tile — icon above name — in columns that follow a
-    // container query, with a 124px centred card on a phone.
+    // module a 104px card — a 56px icon beside a 17px name — three across at
+    // every desktop size, with a 124px centred card on a phone.
     //
     // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
     // promise that it owns no card dimension. The card's own shape is pinned by
@@ -371,17 +371,16 @@ describe('normal mode', () => {
     // design change is argued; this list only has to follow it.
     for (const rule of [
       'grid-template-columns: repeat(3, minmax(0, 1fr))',
-      'grid-template-columns: repeat(4, minmax(0, 1fr))',
-      'grid-template-columns: repeat(5, minmax(0, 1fr))',
-      'min-height: 128px',
-      'padding: 20px 20px 18px',
+      'min-height: 104px',
+      'padding: 22px 24px',
+      'width: 56px',
       'width: 48px',
       '@media (max-width: 767px)',
       '@media (max-width: 339px)',
       'grid-template-columns: repeat(2, minmax(0, 1fr))',
       'min-height: 124px',
       'overflow-wrap: anywhere',
-      'font-size: 15.5px',
+      'font-size: 17px',
       'font-size: 14px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
