@@ -428,7 +428,9 @@ describe('no Order fact is stated twice', () => {
       .replace('const realignBy = viewAsUserId ? null : (advance?.realign ?? null)', '')
       .replace('const operationsRecoverOffered = !!advance?.hold', '')
       // …and the amber 'ready again' line for a held Order (review W3): words only.
-      .replace('advanceRealignLabel: advanceRealignLabel(advance),', '')
+      .replace("advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),", '')
+      // …and whether a held Order is covered again, for its line (review N1).
+      .replace('holdCovered: advanceHoldCovered(advance),', '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {

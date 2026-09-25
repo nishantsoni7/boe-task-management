@@ -159,7 +159,7 @@ import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCu
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
-import { advanceAttentionLabel, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
+import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -2134,6 +2134,9 @@ export default function OrderDetailPage() {
     // WHO PUT A HELD ORDER BACK (review W1): the newest re-alignment on the
     // Order's history, so the alignment line names them, not only the acceptance.
     realignment: latestRealignment(activity, operationsSplit.live?.pi_version_id ?? null),
+    // A held Order whose advance is covered again is only waiting to be aligned
+    // again; its line must not still say "below 40%" (review N1).
+    holdCovered: advanceHoldCovered(advance),
   }) : null
 
   /**
@@ -2511,6 +2514,16 @@ export default function OrderDetailPage() {
     productionHeld: !!handoffAlignment?.held,
   })
 
+  // An accepted version whose Order was put on hold (its advance fell below
+  // 40%, 20270116000000) is aligned again from here by whoever is the
+  // operations reviewer NOW — or, when no reviewer can act, recovered by an
+  // administrator with a reason (review R1). Never under View As.
+  const realignBy = viewAsUserId ? null : (advance?.realign ?? null)
+  const operationsRealignOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && !!realignBy?.by_viewer
+  const operationsRecoverOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && !!realignBy?.recover_by_viewer
+
   const attention = orderAttentionItems({
     status: order.status,
     productionAligned,
@@ -2540,21 +2553,12 @@ export default function OrderDetailPage() {
     documentsFailed: false,
     documentsOutdated: false,
     advanceBelowLabel: advanceAttentionLabel(advance),
-    advanceRealignLabel: advanceRealignLabel(advance),
+    advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),
   })
 
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
   // strip names the review, and only to whom view.actions offers it.
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
-  // An accepted version whose Order was put on hold (its advance fell below
-  // 40%, 20270116000000) is aligned again from here by whoever is the
-  // operations reviewer NOW — or, when no reviewer can act, recovered by an
-  // administrator with a reason (review R1). Never under View As.
-  const realignBy = viewAsUserId ? null : (advance?.realign ?? null)
-  const operationsRealignOffered = !!advance?.hold && operationsView?.kind === 'recorded'
-    && operationsView.status === 'accepted' && !!realignBy?.by_viewer
-  const operationsRecoverOffered = !!advance?.hold && operationsView?.kind === 'recorded'
-    && operationsView.status === 'accepted' && !!realignBy?.recover_by_viewer
   const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
     && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered || operationsRecoverOffered
 

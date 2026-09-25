@@ -136,7 +136,10 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   // alignment IS the handoff decision (20261229000000), so the handoff item
   // below says it in the words that name the version; "Production not
   // aligned" is kept for the legacy Order that has no handoff.
-  if (open && !input.productionAligned && !input.operationsReview) {
+  // …and not a second time when the advance item already speaks for the
+  // production state of this Order (held, or blocked below 40%; review N2).
+  if (open && !input.productionAligned && !input.operationsReview
+      && !input.advanceBelowLabel && !input.advanceRealignLabel) {
     items.push({ key: 'production', label: 'Production not aligned', tone: 'amber' })
   }
   if (open && !input.hasSalesperson) {
