@@ -47,6 +47,11 @@ ADMIN=a0d10000-0000-4000-8000-000000000001
 SALES=a0d10000-0000-4000-8000-000000000003
 OPS=a0d10000-0000-4000-8000-000000000004
 FIN=a0d10000-0000-4000-8000-000000000005
+# How long the first session holds the Order lock. Long enough that the second
+# session is started and seen waiting even when each docker exec takes a second
+# or more (Windows, a busy Docker Desktop): at 3 s the race could finish before
+# the harness looked, and fail without anything being wrong.
+HOLD=${BOE_RACE_HOLD_SECONDS:-10}
 SCRATCH=$(mktemp -d)
 PREV_REVIEWER=$(scalar "select coalesce(user_id::text, '') from public.order_operations_reviewers where duty = 'pi_handoff'")
 
@@ -158,7 +163,7 @@ reverse_sql() { echo "set application_name = '$2'; select public.reverse_payment
 echo "== 1. reversal first: the alignment waits, then is refused"
 read -r O1 A1 <<< "$(make_order 'ASSERT HOLD RACE 1')"
 [ -n "$O1" ] && [ -n "$A1" ] || fail "fixture 1 not created"
-( reverse_sql "$A1" hold_race_rev1 "select pg_sleep(3);" | as_user "$FIN" > "$SCRATCH/r1-rev.out" ) &
+( reverse_sql "$A1" hold_race_rev1 "select pg_sleep($HOLD);" | as_user "$FIN" > "$SCRATCH/r1-rev.out" ) &
 P1=$!
 for _ in $(seq 1 100); do
   [ "$(scalar "select count(*) from pg_stat_activity where application_name = 'hold_race_rev1' and query like '%pg_sleep%'")" = "1" ] && break; sleep 0.1
@@ -176,7 +181,7 @@ echo "   final: not aligned, refused with ORDER_ADVANCE_BELOW_THRESHOLD, no hold
 echo "== 2. alignment first: the reversal waits, then holds the aligned Order"
 read -r O2 A2 <<< "$(make_order 'ASSERT HOLD RACE 2')"
 [ -n "$O2" ] && [ -n "$A2" ] || fail "fixture 2 not created"
-( accept_sql "$O2" hold_race_acc2 "select pg_sleep(3);" | as_user "$OPS" > "$SCRATCH/r2-acc.out" ) &
+( accept_sql "$O2" hold_race_acc2 "select pg_sleep($HOLD);" | as_user "$OPS" > "$SCRATCH/r2-acc.out" ) &
 P1=$!
 for _ in $(seq 1 100); do
   [ "$(scalar "select count(*) from pg_stat_activity where application_name = 'hold_race_acc2' and query like '%pg_sleep%'")" = "1" ] && break; sleep 0.1
