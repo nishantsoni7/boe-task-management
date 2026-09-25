@@ -298,7 +298,7 @@ export default function TaskDetailPage() {
     () => buildGalleryEntries(task, taskLevelAttachments),
     [task, taskLevelAttachments],
   )
-  // Desktop puts the gallery under Activity in the right column; below that
+  // Desktop puts the gallery above Activity in the right column; below that
   // width the columns stack, so it sits under the summary card instead of after
   // the whole activity feed. Rendered in ONE slot only, so thumbnails are
   // signed and fetched once.
@@ -2412,6 +2412,17 @@ export default function TaskDetailPage() {
         {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
         <div className="boe-task-right-col" style={{ minWidth: 0 }}>
 
+          {/* Attachments, desktop layout — ABOVE Activity. Activity grows without
+              limit, so the images come first where they are always in view. */}
+          {isWideLayout && (
+            <TaskAttachmentGallery
+              entries={galleryEntries}
+              taskTitle={task.title}
+              supabase={supabase}
+              onOpenFile={openPreview}
+            />
+          )}
+
 
           {/* Activity */}
           <div className="boe-card boe-activity-card" style={{
@@ -2776,16 +2787,6 @@ export default function TaskDetailPage() {
               </div>
             )}
           </div>
-
-          {/* Attachments, desktop layout — under Activity */}
-          {isWideLayout && (
-            <TaskAttachmentGallery
-              entries={galleryEntries}
-              taskTitle={task.title}
-              supabase={supabase}
-              onOpenFile={openPreview}
-            />
-          )}
 
         </div>{/* end right column */}
 

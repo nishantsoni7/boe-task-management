@@ -512,15 +512,19 @@ body {
   .boe-task-gallery-files { padding: 10px 12px; }
 }
 
-/* ── Task image viewer (lightbox) ── */
+/* ── Task image viewer (lightbox) ──
+   Portalled to <body> and solid black: it covers the sidebar, the top header
+   and the page, none of which stays visible behind it. The z-index clears
+   every layer in this file (the highest is 9999). */
 .boe-image-viewer {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 2147483000;
   display: flex;
   flex-direction: column;
-  background: rgba(12,14,18,0.92);
+  background: #000000;
   touch-action: pan-y pinch-zoom;
+  overscroll-behavior: contain;
 }
 .boe-image-viewer-bar {
   display: flex;
@@ -567,6 +571,25 @@ body {
 .boe-image-viewer-action:focus-visible,
 .boe-image-viewer-nav:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
 .boe-image-viewer-close { padding: 5px 7px; }
+/* The one primary action in the viewer: downloads the image on screen. */
+.boe-image-viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111318;
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.boe-image-viewer-download:hover:not(:disabled) { background: #E8EBF0; }
+.boe-image-viewer-download:disabled { opacity: 0.55; cursor: default; }
+.boe-image-viewer-download:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
 .boe-image-viewer-error {
   margin: 0 14px 6px;
   font-size: 12px;
@@ -621,8 +644,11 @@ body {
   .boe-image-viewer-hint-touch { display: inline; }
 }
 @media (max-width: 560px) {
-  .boe-image-viewer-bar { gap: 8px; padding: 8px 10px; }
+  .boe-image-viewer-bar { gap: 8px; padding: 8px 10px; flex-wrap: wrap; }
   .boe-image-viewer-action-text { display: none; }
+  /* The filename takes its own row so the counter and the actions keep room. */
+  .boe-image-viewer-name { order: 3; flex: 1 1 100%; font-size: 12px; }
+  .boe-image-viewer-bar > div { margin-left: auto; }
   .boe-image-viewer-stage { padding: 4px 8px 72px; }
   /* Controls stay visible below the image, where a thumb reaches them,
      rather than covering the middle of the photo. */

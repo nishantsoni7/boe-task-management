@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, X } from 'lucide-react'
 import { colors, font } from '@/lib/tokens'
 import { stepIndex, type GalleryEntry } from '@/lib/tasks/taskGallery'
@@ -11,6 +12,12 @@ import { stepIndex, type GalleryEntry } from '@/lib/tasks/taskGallery'
 //
 // URLs arrive already signed (the gallery signs with the caller's own session,
 // see attachmentStorage.ts); this component never builds one.
+//
+// It is portalled to <body>. Rendered in place it would sit inside the Task
+// Detail right column, which is position:sticky and therefore its own stacking
+// context — so the sidebar and top header could paint over it however high its
+// z-index. From <body> it covers the whole app, and everything else is made
+// inert while it is open, so nothing behind it can be clicked or focused.
 
 /** Horizontal travel, in CSS px, that counts as a swipe rather than a tap. */
 const SWIPE_MIN_PX = 50
@@ -29,6 +36,7 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const closeRef   = useRef<HTMLButtonElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   const count   = images.length
@@ -53,15 +61,28 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [go, onClose])
 
-  // Focus moves into the dialog on open and back to the thumbnail on close;
-  // the page behind does not scroll while the viewer is up.
+  // While open: the rest of the app is inert (no clicks, no Tab focus, hidden
+  // from assistive tech), the page does not scroll, and focus sits in the
+  // viewer. On close all of that is undone — inert first, because focus cannot
+  // return to an element that is still inert — and focus goes back to the
+  // thumbnail that opened it.
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    closeRef.current?.focus()
-    const overflow = document.body.style.overflow
+    const madeInert: HTMLElement[] = []
+    for (const el of Array.from(document.body.children)) {
+      if (el === overlayRef.current || !(el instanceof HTMLElement) || el.inert) continue
+      el.inert = true
+      madeInert.push(el)
+    }
+    const bodyOverflow = document.body.style.overflow
+    const htmlOverflow = document.documentElement.style.overflow
     document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    closeRef.current?.focus()
     return () => {
-      document.body.style.overflow = overflow
+      for (const el of madeInert) el.inert = false
+      document.body.style.overflow = bodyOverflow
+      document.documentElement.style.overflow = htmlOverflow
       previous?.focus?.()
     }
   }, [])
@@ -128,8 +149,9 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
     </button>
   )
 
-  return (
+  const viewer = (
     <div
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Image ${index + 1} of ${count}: ${current.fileName}`}
@@ -149,11 +171,11 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
             type="button"
             onClick={download}
             disabled={unavailable || downloading}
-            className="boe-image-viewer-action"
-            aria-label={`Download ${current.fileName}`}
+            className="boe-image-viewer-download"
+            title={`Download ${current.fileName}`}
           >
-            <Download size={14} aria-hidden />
-            <span className="boe-image-viewer-action-text">{downloading ? 'Downloading…' : 'Download'}</span>
+            <Download size={15} aria-hidden />
+            {downloading ? 'Downloading…' : 'Download image'}
           </button>
           {url && (
             <a
@@ -219,4 +241,8 @@ export function TaskImageViewer({ images, urls, startIndex, onClose }: Props) {
       )}
     </div>
   )
+
+  // No document during a server render (and in the render tests); the viewer
+  // only ever opens from a click, so in the browser it is always portalled.
+  return typeof document === 'undefined' ? viewer : createPortal(viewer, document.body)
 }

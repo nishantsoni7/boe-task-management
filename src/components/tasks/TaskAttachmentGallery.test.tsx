@@ -92,6 +92,9 @@ describe('TaskImageViewer', () => {
     assert.match(html, /aria-label="Next image"/)
     assert.match(html, /role="dialog"/)
     assert.match(html, /src="https:\/\/signed\.example\/t\/2\.jpg"/)
+    // A visible, labelled single-image download — distinct from the gallery's ZIP.
+    assert.match(html, /class="boe-image-viewer-download"[^>]*>.*Download image<\/button>/)
+    assert.doesNotMatch(html, /Download all images/)
   })
 
   test('a single image has no Previous/Next', () => {
@@ -114,13 +117,14 @@ describe('Task Detail page wiring', () => {
     assert.doesNotMatch(page, /Task attachments — legacy single \+ new multi-file/)
   })
 
-  test('the gallery is rendered once per layout: under Activity, or under the summary', () => {
+  test('the gallery is rendered once per layout: above Activity, or under the summary', () => {
     assert.equal(count(page, '<TaskAttachmentGallery'), 2)
     assert.match(page, /\{!isWideLayout && \(\n\s+<TaskAttachmentGallery/)
     assert.match(page, /\{isWideLayout && \(\n\s+<TaskAttachmentGallery/)
-    const activity = page.indexOf('{isQuotation ? \'Quotation History\' : \'Activity\'}')
+    const rightColStart = page.indexOf('<div className="boe-task-right-col"')
     const desktopSlot = page.indexOf('{isWideLayout && (\n            <TaskAttachmentGallery')
-    const rightColEnd = page.indexOf('</div>{/* end right column */}')
-    assert.ok(activity > 0 && desktopSlot > activity && desktopSlot < rightColEnd)
+    const activity = page.indexOf('<div className="boe-card boe-activity-card"')
+    assert.ok(rightColStart > 0 && desktopSlot > rightColStart && desktopSlot < activity,
+      'the desktop gallery sits in the right column, before the Activity card')
   })
 })
