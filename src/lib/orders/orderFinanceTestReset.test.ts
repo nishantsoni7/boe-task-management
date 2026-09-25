@@ -552,7 +552,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
-      // 20270105000000 — THIS ONE REACHES HERE, deliberately. It ALTERs
+      // 20270117000000 — THIS ONE REACHES HERE, deliberately. It ALTERs
       // order_finance_reset_write_guard and the two PI-deletion guards this
       // file created (with eight siblings elsewhere) to SECURITY DEFINER SET
       // search_path = public, pg_temp, because none was a definer and each
@@ -560,7 +560,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // signed-in direct write to a locked table failed. Bodies are not
       // redefined, the trigger list is unchanged, and the internals stay
       // revoked from every client role and service_role.
-      '20270105000000_order_finance_guards_run_as_owner.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
   })
 

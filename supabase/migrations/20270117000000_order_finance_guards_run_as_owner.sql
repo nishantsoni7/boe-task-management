@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270105000000 — the Order and Finance write guards run as their owner
+-- 20270117000000 — the Order and Finance write guards run as their owner
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- ALTER FUNCTION STATEMENTS ONLY, and they give a signed-in person back the
@@ -68,7 +68,7 @@
 --     order_submissions_guard_deletion_claim    order_submissions UPDATE, only
 --                                               once a PI is claimed for deletion
 --
---   Three more exist only once 20270104000000 (#209) is applied —
+--   Three more exist only once 20270116000000 (#209) is applied —
 --   order_advance_exceptions_immutable, order_advance_holds_guard and
 --   order_reserved_number_ledger_guard. They reach in_test_data_cleanup() only
 --   on DELETE, which they refuse anyway, so today they cost a client nothing
@@ -134,7 +134,7 @@
 -- NO DML. The helpers' own privileges are asserted unchanged below.
 --
 -- ORDERING. Numbered after the five migrations of #202 / #205 / #206 / #209
--- (20261231000000 … 20270104000000) that are not yet applied, so it lands
+-- (20270112000000 … 20270116000000) that are not yet applied, so it lands
 -- after them whichever merges first. It depends on none of them; it needs only
 -- 20261010000000. It is an ALTER, so a LATER migration that redefines one of
 -- these functions with CREATE OR REPLACE and no SECURITY DEFINER silently
@@ -205,7 +205,7 @@ alter function public.order_submission_child_guard_deletion_claim()
 alter function public.order_submissions_guard_deletion_claim()
   security definer set search_path = public, pg_temp;
 
--- ── 1b. The three from 20270104000000, if it is applied ────────────────────
+-- ── 1b. The three from 20270116000000, if it is applied ────────────────────
 --
 -- Named, not discovered: each body was read before it was listed here, and a
 -- sweep that altered whatever matched would change functions nobody reviewed.

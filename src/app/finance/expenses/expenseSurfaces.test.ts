@@ -633,8 +633,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // exception: a data fix for one Order, held by its own suites.
       if (f === 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql') continue
       // And the Order/Finance write guards running as their owner
-      // (20270105000000): ALTER FUNCTION only, held by its own suite.
-      if (f === 'supabase/migrations/20270105000000_order_finance_guards_run_as_owner.sql') continue
+      // (20270117000000): ALTER FUNCTION only, held by its own suite.
+      if (f === 'supabase/migrations/20270117000000_order_finance_guards_run_as_owner.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1239,7 +1239,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
 
   /**
-   * THE ORDER AND FINANCE WRITE GUARDS RUN AS THEIR OWNER (20270105000000).
+   * THE ORDER AND FINANCE WRITE GUARDS RUN AS THEIR OWNER (20270117000000).
    *
    * One migration of ALTER FUNCTION statements — no screen, no rule, no
    * money — its own suite, and the one-line inventory pins it moved.
@@ -1259,7 +1259,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const GUARDS_RUN_AS_OWNER_MIGRATION = 'supabase/migrations/20270105000000_order_finance_guards_run_as_owner.sql'
+  const GUARDS_RUN_AS_OWNER_MIGRATION = 'supabase/migrations/20270117000000_order_finance_guards_run_as_owner.sql'
 
   /**
    * THE OPERATIONS REVIEW DECISION MOVES ONTO THE ATTENTION STRIP.

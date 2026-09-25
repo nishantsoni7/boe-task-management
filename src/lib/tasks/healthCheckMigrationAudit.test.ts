@@ -724,7 +724,7 @@ describe('the migration is placed correctly', () => {
       // ... SECURITY DEFINER SET search_path on eleven existing trigger
       // functions (three more from 20270104 if present). Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270105000000_order_finance_guards_run_as_owner.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

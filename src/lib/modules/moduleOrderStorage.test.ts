@@ -610,7 +610,7 @@ describe('the database half of this verification', () => {
       // ... SECURITY DEFINER SET search_path on eleven existing trigger
       // functions (three more from 20270104 if present). Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270105000000_order_finance_guards_run_as_owner.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ], 'every migration after this one is accounted for')
   })
 })

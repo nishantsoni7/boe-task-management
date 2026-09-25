@@ -1,5 +1,5 @@
 /**
- * THE ORDER AND FINANCE WRITE GUARDS RUN AS THEIR OWNER (20270105000000), read
+ * THE ORDER AND FINANCE WRITE GUARDS RUN AS THEIR OWNER (20270117000000), read
  * as text.
  *
  * Executing it was done against a disposable local stack (the #209 chain plus
@@ -30,7 +30,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270105000000_order_finance_guards_run_as_owner.sql'
+const NAME = '20270117000000_order_finance_guards_run_as_owner.sql'
 const FILE = `supabase/migrations/${NAME}`
 const MIGRATION = read(FILE)
 const SQL = stripSql(MIGRATION)
@@ -50,7 +50,7 @@ const GUARDS = [
   'order_submissions_guard_deletion_claim',
 ]
 
-/** Created by 20270104000000 (#209); altered only if present. */
+/** Created by 20270116000000 (#209); altered only if present. */
 const LATER_GUARDS = [
   'order_advance_exceptions_immutable',
   'order_advance_holds_guard',
@@ -66,7 +66,7 @@ const HELPERS = [
 
 describe('the file, and where it sits', () => {
   test('it sorts after the five unapplied Orders migrations of #202 / #205 / #206 / #209', () => {
-    assert.ok(NAME > '20270104000000_order_pi_revision_in_force_at_admin_approval.sql')
+    assert.ok(NAME > '20270116000000_order_pi_revision_in_force_at_admin_approval.sql')
   })
 
   test('it names its hard dependencies and checks each one exists', () => {

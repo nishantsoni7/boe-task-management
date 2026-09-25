@@ -1028,7 +1028,7 @@ describe('the applied migrations are frozen', () => {
       // ... SECURITY DEFINER SET search_path on eleven existing trigger
       // functions (three more from 20270104 if present). Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270105000000_order_finance_guards_run_as_owner.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
   })
 
@@ -1308,7 +1308,7 @@ describe('the applied migrations are frozen', () => {
       // ... SECURITY DEFINER SET search_path on eleven existing trigger
       // functions (three more from 20270104 if present). Bodies are not
       // redefined; no table, policy, grant on a table or row is touched.
-      '20270105000000_order_finance_guards_run_as_owner.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
