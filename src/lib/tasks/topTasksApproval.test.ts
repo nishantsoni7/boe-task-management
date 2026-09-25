@@ -283,7 +283,14 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // history row and one notification for ONE pinned Order. No DDL, and it
     // re-emits nothing, so it reaches nothing here.
     '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
-  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
+    // Every SECURITY DEFINER in public pins pg_temp last. THIS ONE DOES
+    // REACH the completion trigger, deliberately and only this far: it ALTERs
+    // cleanup_top_tasks_on_completion()'s search_path from `pg_catalog,
+    // public` to `pg_catalog, public, pg_temp`. The body, the trigger, the
+    // revoke and user_top_tasks are unchanged, so what the trigger does is
+    // unchanged.
+    '20270106000000_security_definer_search_path_pins_pg_temp.sql',
+  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which changes what user_top_tasks or the completion trigger do')
 })
 
 test('a one-time cleanup reaches the rows the trigger never could', () => {

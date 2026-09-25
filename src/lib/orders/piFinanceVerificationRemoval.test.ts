@@ -513,6 +513,11 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       // history row and one notification for ONE pinned Order. No DDL, and it
       // re-emits nothing, so it reaches nothing here.
       '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      // Every SECURITY DEFINER in public pins pg_temp last: ALTER FUNCTION
+      // ... SET search_path on ninety-five existing functions, and
+      // get_or_create_quotation_no is revoked from client roles. Bodies are not
+      // redefined; no table, policy, grant on a table or row is touched.
+      '20270106000000_security_definer_search_path_pins_pg_temp.sql',
     ])
 
     const previous = lf(readFileSync(
