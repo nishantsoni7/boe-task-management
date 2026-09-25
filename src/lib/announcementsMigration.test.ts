@@ -115,11 +115,13 @@ describe('the wiring', () => {
     assert.doesNotMatch(hook, /\.(insert|update|upsert|delete)\(/)
   })
 
-  test('the Modules page shows the banner and the bell, but not while previewing somebody else', () => {
+  test('the Modules page shows the latest announcement and the bell, but not while previewing somebody else', () => {
+    // The launcher's redesign (#218) shows the latest announcement beside the
+    // greeting instead of the unread banner; it reads the same query.
     const page = read('src/app/modules/page.tsx')
     assert.match(page, /const showAnnouncements = !viewMode && !!userId/)
     assert.match(page, /useMyAnnouncements\(userId, showAnnouncements\)/)
-    assert.match(page, /\{showAnnouncements && !editingOrder && <AnnouncementBanner announcements=\{myAnnouncements\} \/>\}/)
+    assert.match(page, /\{showAnnouncements && <LatestAnnouncement announcements=\{myAnnouncements\} \/>\}/)
     assert.match(page, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
   })
 

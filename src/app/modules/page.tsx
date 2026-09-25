@@ -21,7 +21,9 @@ import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerRevi
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
-import { Image as ImageIcon } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, ArrowUpRight, Image as ImageIcon, Megaphone } from 'lucide-react'
+import type { MyAnnouncement } from '@/lib/announcements'
 import {
   IDLE_MODULE_ORDER_EDIT,
   moduleOrderEditReducer,
@@ -41,7 +43,6 @@ import {
   useModuleReorderPointer,
 } from './ModuleOrderControls'
 import { useMyAnnouncements } from '@/hooks/queries/useAnnouncements'
-import { AnnouncementBanner } from '@/components/announcements/AnnouncementBanner'
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell'
 import styles from './modules.module.css'
 
@@ -78,6 +79,15 @@ type ModuleDef = {
   //             → "No notifications", as before. 0 = confirmed zero, >0 = badge.
   notificationCount?: number | null
 }
+
+// ── The essentials ───────────────────────────────────────────────────────────
+//
+// The three modules most people open most days, featured as a larger row above
+// the rest. A PRESENTATION GROUPING AND NOTHING ELSE: a key here only decides
+// which section an authorized card is drawn in. A person who cannot open one of
+// these simply has no card for it, in either section. The row's sequence follows
+// the rendered order, so Edit order still arranges it.
+const ESSENTIAL_MODULE_KEYS: readonly string[] = ['tasks', 'orders', 'finance']
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -424,6 +434,17 @@ export default function BoeOsHomePage() {
       icon: <TaskIcon />,
       notificationCount: taskCount.count,
     }] : []),
+    // Order Management sits beside Task Management so the default Essentials
+    // row reads Task, Order, Finance. Its gate, route and count are unchanged;
+    // only its place in the default sequence moved.
+    ...(canOpenModule('orders') ? [{
+      key: 'orders',
+      title: 'Order Management',
+      description: 'Track confirmed orders from request through production and dispatch.',
+      href: '/orders',
+      icon: <OrdersIcon />,
+      notificationCount: orderCount.count,
+    }] : []),
     ...(canOpenModule('sample_tracking') ? [{
       key: 'samples',
       title: 'Sample Tracking',
@@ -495,14 +516,6 @@ export default function BoeOsHomePage() {
       icon: <ReviewOutreachIcon />,
       notificationCount: null,
     }] : []),
-    ...(canOpenModule('orders') ? [{
-      key: 'orders',
-      title: 'Order Management',
-      description: 'Track confirmed orders from request through production and dispatch.',
-      href: '/orders',
-      icon: <OrdersIcon />,
-      notificationCount: orderCount.count,
-    }] : []),
     ...(canOpenModule('image_editor') ? [{
       key: 'image_editor',
       title: 'Image Editor',
@@ -548,6 +561,24 @@ export default function BoeOsHomePage() {
   // there is more than one card to arrange.
   const canEditOrder = !viewMode && !!userId && canonicalModules.length > 1
   const editingOrder = orderEdit.working !== null
+
+  // ── Two sections, one list ──────────────────────────────────────────────────
+  //
+  // Both are FILTERS OF `modules`, so each keeps the rendered order and together
+  // they hold every authorized card exactly once.
+  const isEssential = (key: string) => ESSENTIAL_MODULE_KEYS.includes(key)
+  const essentialModules = modules.filter(mod => isEssential(mod.key))
+  const moreModules = modules.filter(mod => !isEssential(mod.key))
+
+  // The greeting addresses the SIGNED-IN person — the same profile the account
+  // menu names — even while previewing somebody else's launcher.
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? ''
+
+  // EDIT ORDER ARRANGES THE WHOLE LIST, exactly as it did before the sections.
+  // While arranging, every card is drawn in one grid in its stored position, so
+  // any card can move to any place and every move is visible. Outside edit mode
+  // the sections are filters of that same list, so the relative order set here
+  // is the order each section shows.
 
   // ── Announcements ───────────────────────────────────────────────────────────
   //
@@ -674,6 +705,38 @@ export default function BoeOsHomePage() {
     for (const href of moduleHrefs.split('|').filter(Boolean)) router.prefetch(href)
   }, [permsReady, moduleHrefs, router])
 
+  // One tile. `position` is its 1-based place in the whole list; in edit mode
+  // the handle announces it out of `modules.length`, as it did before the
+  // sections.
+  const renderCard = (
+    mod: ModuleDef,
+    variant: 'essential' | 'compact',
+    position: number,
+  ) => (
+    <ModuleCard
+      key={mod.key}
+      mod={mod}
+      variant={variant}
+      // NO NAVIGATION WHILE REARRANGING. Passing null rather than a handler
+      // that checks a flag: in edit mode the card is not a button, has no
+      // tabIndex and has no click handler to fire, so there is nothing for a
+      // stray tap at the end of a drag to trigger.
+      onClick={editingOrder ? null : () => router.push(mod.href)}
+      dragging={orderEdit.dragging === mod.key}
+      handle={editingOrder ? (
+        <ModuleDragHandle
+          moduleKey={mod.key}
+          title={mod.title}
+          position={position}
+          total={modules.length}
+          disabled={orderEdit.saving}
+          onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
+          onPointerDown={beginPointerDrag}
+        />
+      ) : null}
+    />
+  )
+
   // The gate, and only the gate. app_modules is included because the
   // Attendance & Payroll card's visibility comes from it, so rendering before
   // it lands could omit a card the employee is entitled to.
@@ -701,15 +764,16 @@ export default function BoeOsHomePage() {
           // where it still is. The date went with it: nothing on a launcher
           // depends on knowing what day it is, and it was competing with the
           // one thing this header is for.
+          // The supporting line moved into the welcome panel below, where it
+          // is said once, beside the headline it supports.
           title="Modules"
-          subtitle="Select a module to continue"
           onSignOut={handleSignOut}
           quickActions={quickActions}
-          // ONE CONTENT COLUMN. The header and the grid share a 1180px column,
-          // centred in whatever the sidebar leaves, so the title, Edit order
-          // and the cards line up on the same two edges instead of the cards
-          // stretching across a 1920px screen. Three ~383px cards fill it.
-          contentMaxWidth={1180}
+          // ONE CONTENT COLUMN. The header and the launcher share a 1440px
+          // column, centred in whatever the sidebar leaves, so the title,
+          // Edit order and the tiles line up on the same two edges. Wide
+          // enough for three Essentials and five compact tiles across.
+          contentMaxWidth={1440}
           announcementUnread={unreadAnnouncements}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
@@ -729,12 +793,6 @@ export default function BoeOsHomePage() {
             />}
           </>) : null}
         >
-          {/* ── Announcements, first on the page ──
-              Unacknowledged ones only; one compact block however many there
-              are. Gone once each is acknowledged, on every device. Not while
-              arranging cards. */}
-          {showAnnouncements && !editingOrder && <AnnouncementBanner announcements={myAnnouncements} />}
-
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
               that it must be reachable in one tap from the first screen after
@@ -747,46 +805,75 @@ export default function BoeOsHomePage() {
               moment edit mode closes. */}
           {!editingOrder && <QuickActionList actions={quickActions} variant="page" />}
 
-          {/* NO SECOND HEADING HERE. The page's title, its supporting line and
-              the Edit order control are all in the one header above, passed to
-              BoeOsLayout. The grid is the first thing in the body, so there is
-              no heading block, no divider and no reserved space left behind —
-              the header's own bottom border is the only rule on the screen.
+          {/* ── The launcher ──
+              `.launcher` is the size container every column count below is
+              measured against — the width the launcher actually gets, not the
+              window — and it scopes this page's typeface.
 
-              `.launcher` is the size container the column count is measured
-              against — the width the grid actually gets, not the window. Each
-              module is its own card: icon above name, left-aligned on a
-              desktop, centred on a phone.
+              Three parts: a greeting beside the latest announcement, the
+              Essentials row and a compact grid for everything else.
 
-              Edit mode is the same grid of the same cards, loosened: each card
-              turns dashed and gains a handle in its empty top-right corner. */}
+              Edit mode shows every module in one grid, as before the
+              sections: each tile turns dashed and gains a handle. */}
           <div className={styles.launcher}>
-            <div className={styles.grid}>
-              {modules.map((mod, index) => (
-                <ModuleCard
-                  key={mod.key}
-                  mod={mod}
-                  // NO NAVIGATION WHILE REARRANGING. Passing null rather than a
-                  // handler that checks a flag: in edit mode the card is not a
-                  // button, has no tabIndex and has no click handler to fire, so
-                  // there is nothing for a stray tap at the end of a drag to
-                  // trigger.
-                  onClick={editingOrder ? null : () => router.push(mod.href)}
-                  dragging={orderEdit.dragging === mod.key}
-                  handle={editingOrder ? (
-                    <ModuleDragHandle
-                      moduleKey={mod.key}
-                      title={mod.title}
-                      position={index + 1}
-                      total={modules.length}
-                      disabled={orderEdit.saving}
-                      onMove={(key, delta) => dispatchOrderEdit({ type: 'move', key, delta })}
-                      onPointerDown={beginPointerDrag}
-                    />
-                  ) : null}
-                />
-              ))}
-            </div>
+            {/* ── Greeting and the latest announcement ──
+                One compact row on a desktop, stacked on a phone with the
+                announcement directly above the modules. Steps aside while
+                arranging, as the quick action does. */}
+            {!editingOrder && (
+              <div className={`${styles.welcome}${showAnnouncements ? '' : ` ${styles.welcomeSolo}`}`}>
+                <div className={styles.greeting}>
+                  <p className={styles.eyebrow}>Your BOE workspace</p>
+                  <h2 className={styles.greetingTitle}>
+                    {greetingFor(new Date())}{firstName ? `, ${firstName}` : ''}
+                  </h2>
+                  <p className={styles.greetingLead}>Choose a module to continue.</p>
+                </div>
+                {/* Not while previewing somebody else: their announcements
+                    are theirs, and reading this one would be the admin's. */}
+                {showAnnouncements && <LatestAnnouncement announcements={myAnnouncements} />}
+              </div>
+            )}
+
+            {!editingOrder && essentialModules.length > 0 && (
+              <section className={styles.section} aria-labelledby="modules-essentials-heading">
+                <h2 id="modules-essentials-heading" className={styles.sectionTitle}>Your essentials</h2>
+                <div className={styles.essentialsGrid}>
+                  {essentialModules.map((mod, index) => renderCard(mod, 'essential', index + 1))}
+                </div>
+              </section>
+            )}
+
+            {!editingOrder && moreModules.length > 0 && (
+              <section className={styles.section} aria-labelledby="modules-more-heading">
+                <h2 id="modules-more-heading" className={styles.sectionTitle}>
+                  {essentialModules.length > 0 ? 'All modules' : 'Your modules'}
+                </h2>
+                <div className={styles.grid}>
+                  {moreModules.map((mod, index) =>
+                    renderCard(mod, 'compact', essentialModules.length + index + 1))}
+                </div>
+              </section>
+            )}
+
+            {/* ── Arranging: the whole list, as before the sections ──
+                One grid, every card in its stored place, so any card can move
+                to any position — the control is exactly what it was. The note
+                says how the sections read the result, so nothing is silent. */}
+            {editingOrder && (
+              <section className={styles.section} aria-labelledby="modules-arrange-heading">
+                <h2 id="modules-arrange-heading" className={styles.sectionTitle}>Arrange your modules</h2>
+                {essentialModules.length > 0 && (
+                  <p className={styles.arrangeNote}>
+                    Task Management, Order Management and Finance stay in The essentials. Their order
+                    there, and the order of every other module, follows this list.
+                  </p>
+                )}
+                <div className={styles.grid}>
+                  {modules.map((mod, index) => renderCard(mod, 'compact', index + 1))}
+                </div>
+              </section>
+            )}
           </div>
 
           {/* The save confirmation. The launcher's existing toast, in the place
@@ -800,23 +887,21 @@ export default function BoeOsHomePage() {
 
 // ── ModuleCard ────────────────────────────────────────────────────────────────
 
-// THE WHOLE CARD IS THE BUTTON, and in normal mode that is exactly what it still
-// is: one onClick, role="button", tabIndex 0 and Enter — unchanged.
+// THE WHOLE TILE IS THE BUTTON: one onClick, role="button", tabIndex 0, Enter
+// and Space — from moduleCardPressProps, as before. Nothing inside it is a
+// control of its own, so the number, the icon, the name, the arrow and the
+// empty space around them all open the module.
 //
 // IN EDIT MODE IT IS NOT A BUTTON AT ALL. `onClick` arrives as null, and with it
-// go the role, the tabIndex and the Enter handler: a card being dragged is not a
-// link, and the surest way to stop a drag ending in a navigation is for there to
-// be no handler to fire and nothing focusable to press Enter on. The handle
-// becomes the card's only control.
+// go the role, the tabIndex and the key handler; the handle becomes the tile's
+// only control, and the arrow — a promise to open something — is not drawn.
 //
-// NOTHING ON IT IS INLINE ANY MORE. The border, shadow, lift and icon tint used
-// to be style attributes because each depended on the module's own accent
-// colour, which forced `!important` onto the focus state and a hover flag into
-// React state. Every card now shares one neutral palette, so every state —
-// rest, hover, focus, pressed, editing, held — is a stylesheet rule, and
-// :hover, :focus-visible and :active behave identically on every card.
-function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
+// TWO SIZES, ONE COMPONENT. `essential` is the larger row tile of the three
+// featured modules; `compact` is the smaller tile of the grid beneath. Every
+// state — rest, hover, focus, pressed, editing, held — is a stylesheet rule.
+function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: {
   mod: ModuleDef
+  variant: 'essential' | 'compact'
   /** null in edit mode: the card does not navigate. */
   onClick: (() => void) | null
   /** This card is the one currently held by a pointer. */
@@ -833,43 +918,110 @@ function ModuleCard({ mod, onClick, dragging = false, handle = null }: {
   // Enter — so a drag has nothing to end in. See moduleCardPressProps.
   const press = moduleCardPressProps(onClick)
 
+  const className = [
+    styles.card,
+    variant === 'essential' ? styles.cardEssential : styles.cardCompact,
+    // An Essentials tile with unread notifications takes the warm tint and the
+    // red edge. A real count, never decoration: at zero it looks like the rest.
+    variant === 'essential' && hasNotif ? styles.cardAttention : '',
+    editing ? styles.cardEditing : '',
+    dragging ? styles.cardDragging : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <div
       // What the pointer drag hit-tests against. The only thing on the card that
       // names the module, and read by nothing else.
       data-module-key={mod.key}
       {...press}
-      className={`${styles.card}${editing ? ` ${styles.cardEditing}` : ''}${dragging ? ` ${styles.cardDragging}` : ''}`}
+      className={className}
     >
       {handle}
 
-      {/* ── Icon block with notification badge ──
-          The badge stays positioned against THIS wrapper, not the card, so it
-          rides with the icon at every width — including the phone layout, where
-          the icon centres itself and takes the badge with it. */}
-      <div className={styles.iconWrap}>
-        <div className={styles.iconBox}>
-          {mod.icon}
-        </div>
-        {hasNotif && (
-          <div className={styles.badge}>
-            {count! > 99 ? '99+' : count}
+      <div className={styles.cardBody}>
+        {/* ── Icon block with notification badge ──
+            The badge is positioned against THIS wrapper, not the tile, so it
+            stays on the icon at every width and in both tile sizes. */}
+        <div className={styles.iconWrap}>
+          <div className={styles.iconBox}>
+            {mod.icon}
           </div>
+          {hasNotif && (
+            <div className={styles.badge}>
+              {count! > 99 ? '99+' : count}
+            </div>
+          )}
+        </div>
+
+        {/* ── Name ── the only text on a tile, never clamped. */}
+        <div className={styles.titleWrap}>
+          <div className={styles.title}>
+            {mod.title}
+          </div>
+        </div>
+
+        {/* Essentials only, and decoration only: aria-hidden, no pointer
+            events, and not drawn while the tile does not navigate. */}
+        {variant === 'essential' && !editing && (
+          <ArrowUpRight className={styles.cardArrow} aria-hidden="true" focusable="false" />
         )}
       </div>
-
-      {/* ── Name ──
-          The last thing on the card. THERE IS NO ARROW: the diagonal mark that
-          sat in every card's corner was thirteen copies of one faint glyph
-          saying what the whole page already says. What tells somebody a card
-          is the one they are about to open is its state — the fill and the ink
-          icon on hover, focus and press — and that costs the name no width. */}
-      <div className={styles.titleWrap}>
-        <div className={styles.title}>
-          {mod.title}
-        </div>
-      </div>
     </div>
+  )
+}
+
+// ── Greeting and the latest announcement ──────────────────────────────────────
+
+/** "Good morning" before noon, "Good afternoon" until 5 pm, then "Good evening". */
+function greetingFor(at: Date): string {
+  const hour = at.getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+// THE LATEST ANNOUNCEMENT THIS PERSON MAY SEE, from the list the page already
+// holds. `useMyAnnouncements` is the Announcements module's own query — the
+// one the bell reads — and public.my_announcements() decides who sees what and
+// returns the newest first (starts_on, then created_at, descending). So this
+// is the first row: no second query, no ordering or permission logic here.
+//
+// Read or unread, the latest is shown; an unread one is labelled as new. With
+// nothing to show, the slot is one quiet line rather than an empty panel.
+function LatestAnnouncement({ announcements }: { announcements: MyAnnouncement[] }) {
+  const latest = announcements[0]
+
+  if (!latest) {
+    return (
+      <div className={`${styles.announcement} ${styles.announcementEmpty}`}>
+        <span className={styles.announcementIcon} aria-hidden="true">
+          <Megaphone size={16} strokeWidth={1.9} />
+        </span>
+        <span className={styles.announcementEmptyText}>No announcements right now.</span>
+        <Link href="/announcements" className={styles.announcementAll}>View all</Link>
+      </div>
+    )
+  }
+
+  const isNew = !latest.read_at
+  return (
+    <Link
+      href={`/announcements/${latest.id}`}
+      className={`${styles.announcement}${isNew ? ` ${styles.announcementNew}` : ''}`}
+      aria-label={`${isNew ? 'New announcement' : 'Announcement'}: ${latest.title}. Read update.`}
+    >
+      <span className={styles.announcementIcon} aria-hidden="true">
+        <Megaphone size={16} strokeWidth={1.9} />
+      </span>
+      <span className={styles.announcementText}>
+        <span className={styles.eyebrow}>{isNew ? 'New announcement' : 'Announcement'}</span>
+        <span className={styles.announcementTitle}>{latest.title}</span>
+      </span>
+      <span className={styles.announcementCta} aria-hidden="true">
+        <span className={styles.announcementCtaLabel}>Read update</span>
+        <ArrowRight size={14} strokeWidth={2} />
+      </span>
+    </Link>
   )
 }
 
