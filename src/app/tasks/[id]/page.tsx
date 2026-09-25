@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
@@ -17,6 +17,7 @@ import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
+import { TaskAttachmentGallery } from '@/components/tasks/TaskAttachmentGallery'
 import { AddToMeetingButton, AddToMeetingModal } from '@/components/tasks/AddToMeetingModal'
 import { canOfferAddToMeeting } from '@/lib/tasks/addToMeetingAccess'
 import { hasPermission } from '@/lib/permissions/resolver'
@@ -44,6 +45,7 @@ import { hasInAppHistory } from '@/lib/navigation/appHistory'
 import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
+import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -288,6 +290,19 @@ export default function TaskDetailPage() {
       .catch(() => { if (active) setPreviewUrl(null) })
     return () => { active = false }
   }, [previewAttachment, supabase])
+
+  // The task's own attachments (not comment attachments), in the order the
+  // summary card used to list them. Built from the same two sources: the
+  // legacy tasks.attachment_url and task_attachments rows with no activity row.
+  const galleryEntries = useMemo(
+    () => buildGalleryEntries(task, taskLevelAttachments),
+    [task, taskLevelAttachments],
+  )
+  // Desktop puts the gallery under Activity in the right column; below that
+  // width the columns stack, so it sits under the summary card instead of after
+  // the whole activity feed. Rendered in ONE slot only, so thumbnails are
+  // signed and fetched once.
+  const isWideLayout = useWideLayout()
 
   const queryClient = useQueryClient()
   const taskId      = params.id as string
@@ -1715,69 +1730,6 @@ export default function TaskDetailPage() {
                 </div>
               )}
 
-              {/* Task attachments — legacy single + new multi-file */}
-              {(task.attachment_url || taskLevelAttachments.length > 0) && (
-                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {isQuotation && (
-                    <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: '0 0 2px' }}>
-                      Attachments
-                    </p>
-                  )}
-                  {/* Legacy single attachment_url */}
-                  {legacyTaskPath && !taskLevelAttachments.some(a => resolveAttachmentPath(a) === legacyTaskPath) && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => openPreview(legacyTaskPath!)}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          fontSize: '11.5px', fontWeight: 500,
-                          color: colors.blue, cursor: 'pointer',
-                          padding: '4px 10px', borderRadius: '6px',
-                          border: `1px solid ${colors.blue}28`,
-                          background: colors.blueTint,
-                        }}
-                      >
-                        📎 View Attachment
-                      </button>
-                      <span style={{
-                        fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
-                        textTransform: 'uppercase', color: colors.muted,
-                        background: colors.float, border: `1px solid ${colors.border}`,
-                        padding: '1px 7px', borderRadius: '20px',
-                      }}>
-                        {getFileTypeLabel(legacyTaskPath)}
-                      </span>
-                    </div>
-                  )}
-                  {/* New multi-file task_attachments */}
-                  {taskLevelAttachments.map(att => (
-                    <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                          fontSize: '11.5px', fontWeight: 500,
-                          color: colors.blue, cursor: 'pointer',
-                          padding: '4px 10px', borderRadius: '6px',
-                          border: `1px solid ${colors.blue}28`,
-                          background: colors.blueTint,
-                        }}
-                      >
-                        📎 {att.file_name ?? 'Attachment'}
-                      </button>
-                      <span style={{
-                        fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
-                        textTransform: 'uppercase', color: colors.muted,
-                        background: colors.float, border: `1px solid ${colors.border}`,
-                        padding: '1px 7px', borderRadius: '20px',
-                      }}>
-                        {att.file_type ?? getFileTypeLabel(att.url)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* ── Task actions inside summary card ─────────────────────── */}
               {/* Unacknowledged: only show acknowledge button (never for quotations) */}
               {!isQuotation && !task.acknowledged_at && isAssignee && task.created_by !== currentUserId && task.status !== 'cancelled' && (
@@ -2081,6 +2033,16 @@ export default function TaskDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* ─ Attachments, stacked layout ─ */}
+            {!isWideLayout && (
+              <TaskAttachmentGallery
+                entries={galleryEntries}
+                taskTitle={task.title}
+                supabase={supabase}
+                onOpenFile={openPreview}
+              />
+            )}
 
             {/* ─ B. Current Status Card ─
                 Hidden for the two parties to a pending approval: the review card
@@ -2815,6 +2777,16 @@ export default function TaskDetailPage() {
             )}
           </div>
 
+          {/* Attachments, desktop layout — under Activity */}
+          {isWideLayout && (
+            <TaskAttachmentGallery
+              entries={galleryEntries}
+              taskTitle={task.title}
+              supabase={supabase}
+              onOpenFile={openPreview}
+            />
+          )}
+
         </div>{/* end right column */}
 
       </div>
@@ -3338,5 +3310,21 @@ export default function TaskDetailPage() {
 
       <Toast toast={toast} onDismiss={dismissToast} />
     </DashboardLayout>
+  )
+}
+
+// The breakpoint .boe-task-2col collapses at (globals.css). Read on the client
+// only: the page renders nothing task-specific until the task has loaded
+// client-side, so the server snapshot is never what the user sees.
+const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
+function useWideLayout(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(WIDE_LAYOUT_QUERY)
+      mq.addEventListener('change', onChange)
+      return () => mq.removeEventListener('change', onChange)
+    },
+    () => window.matchMedia(WIDE_LAYOUT_QUERY).matches,
+    () => true,
   )
 }
