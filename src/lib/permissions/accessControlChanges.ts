@@ -180,6 +180,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   approve_advance_exception: 'Approve advance exceptions',
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
+  verify_own_payment:        'Record and verify own payments in one step',
 }
 
 /** `view_all` means something different in Orders, Finance and Performance. */
