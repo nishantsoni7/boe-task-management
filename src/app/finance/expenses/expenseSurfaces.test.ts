@@ -659,6 +659,12 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // A payment's proof opens for its recorder and its reviewers (20270118120000),
       // held by src/lib/finance/paymentProofViewMigration.test.ts.
       if (f === 'supabase/migrations/20270118120000_finance_payment_proof_opens_for_its_reviewers.sql') continue
+      // A PI's internal details — the app dates Sales confirms and the middleman
+      // answer (20270122000000), and the submission check that requires them
+      // (20270123000000) — held by src/lib/orders/piInternalDetails.test.ts and
+      // supabase/tests/order_submission_internal_details_assertions.sql.
+      if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
+      if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
       // And the legacy advance submit doors closing (20270124000000): one
       // REVOKE and one restated internal, held by its own suite.
       if (f === 'supabase/migrations/20270124000000_order_submission_legacy_advance_doors_closed.sql') continue
@@ -752,6 +758,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/pi/previewView.ts',
     // The suites that guard them.
     'src/app/orders/import/importAccess.test.ts',
+    'src/lib/orders/scheduleTermsEditSchema.test.ts',
+    // A dates-only Edit PI on a confirmed Order amends the dates in place.
+    'src/app/api/orders/pi-edits/route.ts',
+    'src/components/orders/PiEditor.tsx',
+    'src/lib/orders/piEdit.ts',
+    'src/lib/orders/piEditDatesOnly.test.ts',
     'src/app/orders/piSectionOrder.test.ts',
     'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
     'src/lib/pi/previewView.test.ts',
@@ -792,7 +804,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/piTerms.ts',
     'src/lib/orders/piReadiness.ts',
     'src/lib/orders/draftsView.ts',
-    'src/lib/orders/orderPiHandoff.ts',
     'src/lib/orders/submissionPayload.ts',
     'src/lib/orders/confirmedPdf.ts',
     'src/lib/orders/orderHistory.test.ts',
@@ -844,7 +855,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -932,7 +943,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // reasons live in paymentGate.ts and the footer fingerprint in the parser;
       // or the proof-failure change (20270117000000) does, which names only
       // the Record Payment screens it rewords.
-      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) {
+      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1206,7 +1217,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // …unless the proof-failure change (20270117000000) reaches it on
       // purpose: the split-payment modal's proof-failure notice now says the
       // payment is recorded and awaiting verification.
-      if (!ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) {
+      if (!ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1702,6 +1713,60 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
+   * A PI's INTERNAL details (20270122000000): the app confirmation and due
+   * dates Sales confirms, the middleman commission answer, and the deduction
+   * row's workbook wording. The PI detail page, its record read and payload,
+   * the new card and editor, and the inventories the new migration and RPC
+   * extend. Named files only; no Finance file. The three permission files
+   * register ONE protected Orders action, view_pi_commission, which reads the
+   * commission's own table and nothing else.
+   */
+  const ALLOWED_PI_INTERNAL_DETAILS = new Set([
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/lib/orders/draftsView.ts',
+    'src/lib/orders/submissionPayload.ts',
+    'src/lib/orders/submissionActivity.ts',
+    'src/lib/orders/piInternalDetails.ts',
+    'src/lib/orders/piInternalDetails.test.ts',
+    'src/lib/orders/discountWording.ts',
+    'src/lib/orders/discountWording.test.ts',
+    'src/components/orders/PiInternalDetails.tsx',
+    'src/components/orders/PiInternalDetails.render.test.tsx',
+    // Client documents: the generated PDFs print no confirmation or due date and a
+    // non-zero deduction as Discount; proved on the rendered bytes.
+    'src/lib/orders/confirmedPdf.ts',
+    'src/lib/orders/confirmedPdf.test.ts',
+    'src/lib/orders/clientDocumentPrivacy.test.ts',
+    'src/app/orders/import/importAccess.test.ts',
+    // The one protected action that reads the commission table.
+    'src/lib/permissions/modules.ts',
+    'src/lib/permissions/levels.ts',
+    'src/lib/permissions/levels.test.ts',
+    'src/lib/permissions/accessControlChanges.ts',
+    // Inventories: the new RPC, the new activity action, the new column read,
+    // the recorded wording, and the migration-sequence pins.
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/orders/orderActivityActions.test.ts',
+    'src/lib/orders/submissionPayload.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'supabase/migrations/20270122000000_order_submission_internal_details.sql',
+    'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
+  ])
+
+  /**
    * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270124000000).
    *
    * One migration — a REVOKE from authenticated and the restated submit
@@ -1767,6 +1832,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     !ALLOWED_PI_LAYOUT.has(f) &&
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
+    !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     f !== LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION
@@ -1796,7 +1862,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
       // …unless the revised-PI promotion (20270113000000) reaches it on purpose:
       // staging a revision IS a change to the PI revision path.
-      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) {
+      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1951,7 +2017,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)
           && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)
           && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)
-          && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) {
+          && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1974,7 +2040,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|announcements/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2092,6 +2158,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_TASK_IMAGE_GALLERY.has(file)
         || ALLOWED_PI_LAYOUT.has(file)
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
+        || ALLOWED_PI_INTERNAL_DETAILS.has(file)
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
