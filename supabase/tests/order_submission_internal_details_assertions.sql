@@ -159,7 +159,10 @@ begin
   -- A half-answered draft saves.
   v := pg_temp.save(s, a, '{"order_confirmation_date":"2026-09-20","due_date":"2026-11-20","middleman_commission":"yes"}', false);
   select * into r from public.order_submissions where id = a;
-  perform pg_temp.check(r.middleman_commission = 'yes' and r.middleman_recipient is null, 'a partial Yes saves as a draft');
+  -- The commission lives in its own reader-only table (20270122000000 §1b).
+  perform pg_temp.check((select middleman_commission = 'yes' and middleman_recipient is null
+                           from public.order_submission_middleman_commissions where submission_id = a),
+    'a partial Yes saves as a draft');
   perform pg_temp.check(r.internal_details_confirmed_at is null, 'a draft save does not confirm');
 
   -- Confirming it is refused, and names what is missing.
@@ -445,7 +448,8 @@ begin
 
   select * into r from public.order_submissions where id = a;
   perform pg_temp.check(r.status = 'submitted' and r.source_workbook_path = wb_before, 'the same PI, with the same workbook, is back under review');
-  perform pg_temp.check(r.middleman_commission_amount = 50000, 'the edited answer went with it');
+  perform pg_temp.check((select middleman_commission_amount from public.order_submission_middleman_commissions
+                          where submission_id = a) = 50000, 'the edited answer went with it');
   select * into d from public.order_document_submissions where id = doc2;
   perform pg_temp.check(d.status = 'pending_admin' and d.resubmission_of = doc1, 'the Client PO is resubmitted and linked to the returned one');
   perform pg_temp.check(exists (select 1 from public.order_document_submission_files where submission_id = doc2 and storage_path = po),
