@@ -2007,6 +2007,13 @@ export default function OrderDetailPage() {
   // user and suppressed under View As for exactly the reason above: viewing
   // as someone else must not lend them your authority.
   const mayManageOrders = ordersCaps.canManageOrders && !viewAsUserId
+  // THE FLOW'S ADMIN DECISIONS FOLLOW CONTROL CENTER, NOT users.role
+  // (20270120000000). Approving, rejecting or re-approving a revised PI and the
+  // admin decision on documents ask orders.approve_order; production below the
+  // 40% advance asks orders.approve_advance_exception — the same actions the
+  // RPCs now require. Never under View As.
+  const mayDecidePiAsAdmin = ordersCaps.canApproveOrderSubmission && !viewAsUserId
+  const mayApproveBelowAdvance = ordersCaps.canApproveAdvanceException && !viewAsUserId
   const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
   const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
 
@@ -2043,7 +2050,7 @@ export default function OrderDetailPage() {
       hasPendingRevision: piHistory.pending !== null,
     },
   )
-  const mayDecideRevision = canDecidePiRevision({ isAdmin: actingAsAdmin })
+  const mayDecideRevision = canDecidePiRevision({ isAdmin: mayDecidePiAsAdmin })
   // THE REVIEWER'S CONTROL, for the one person a staged revision is addressed
   // to (never under View As). decide_order_pi_revision_operations() re-derives
   // it under row locks — and refuses an acceptance the Order is not amended for.
@@ -2083,7 +2090,7 @@ export default function OrderDetailPage() {
   const revisionApproverInactive = !!piHistory.pending?.decidedById
     && piHistory.pending.status === 'admin_approved' && piInactive.has(piHistory.pending.decidedById)
   const mayReapproveRevision = canReapproveRevision(piHistory.pending, {
-    isAdmin: actingAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
+    isAdmin: mayDecidePiAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
   })
   const reapproveRevision = async () => {
     const v = piHistory.pending
@@ -2389,7 +2396,7 @@ export default function OrderDetailPage() {
   const docMe = viewAsUserId ? null : (profile?.id ?? null)
   const docViewer: DocumentViewer = {
     viewerId: docMe,
-    isAdmin: actingAsAdmin,
+    isAdmin: mayDecidePiAsAdmin,
     canSubmit: !!docMe && order.status !== 'cancelled'
       && (actingAsAdmin || (ordersCaps.canCreateOrder && (order.requested_by === docMe || order.assigned_to === docMe))),
     viewingAs: !!viewAsUserId,
@@ -2915,7 +2922,7 @@ export default function OrderDetailPage() {
             submissionId={order.source_order_submission_id}
             mayEdit={!viewAsUserId && order.status !== 'cancelled'
               && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
-            isAdmin={actingAsAdmin && !viewAsUserId}
+            isAdmin={mayDecidePiAsAdmin}
             onChanged={() => { void loadOrder() }}
             refreshKey={piVersions.map(v => `${v.id}:${v.status}`).join(',')}
           />
@@ -3028,7 +3035,7 @@ export default function OrderDetailPage() {
             <AdvanceGatePanel
               readiness={advance}
               versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
-              isAdmin={actingAsAdmin}
+              isAdmin={mayApproveBelowAdvance}
               approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
               formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
               onApprove={async reason => {

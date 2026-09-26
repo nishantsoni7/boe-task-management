@@ -82,8 +82,15 @@ export async function POST(req: NextRequest) {
   if (!me || me.is_active !== true || me.is_deleted === true) {
     return fail(403, 'ACCOUNT_INACTIVE', 'This account cannot approve a revised PI.')
   }
-  if (me.role !== 'admin') {
-    return fail(403, 'FORBIDDEN', 'Only an administrator can approve a revised PI.')
+  // The approval authority is orders.approve_order, granted in Control Center
+  // (20270120000000) — the same test approve_order_pi_revision() makes again
+  // under its locks with this actor's id. users.role is no longer asked.
+  const { data: mayApprove, error: permErr } = await service.rpc('user_holds_permission', {
+    p_user_id: me.id, p_module_key: 'orders', p_action_key: 'approve_order',
+  })
+  if (permErr) return fail(500, 'AUTH_CHECK_FAILED', 'Could not verify your account.')
+  if (mayApprove !== true) {
+    return fail(403, 'FORBIDDEN', 'Only someone who may approve PIs can approve a revised PI.')
   }
 
   // ── 3. The version is pending, and names a PI this pipeline can work on ──

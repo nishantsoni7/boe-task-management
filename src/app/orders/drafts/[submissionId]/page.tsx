@@ -166,6 +166,7 @@ import {
   type PiPaymentFormState,
   type PiPaymentSummary,
 } from '@/lib/finance/piPaymentView'
+import { completePaymentEntry, PAYMENT_RECORDED_AND_VERIFIED_BODY } from '@/lib/finance/paymentEntryCompletion'
 import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
 import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
@@ -1012,7 +1013,6 @@ function PiDraftDetailPageInner() {
       }
 
       const paymentId = result.paymentRequestId
-      const notice = PI_PAYMENT_RECORDED_BODY
 
       if (proof && paymentId) {
         // The payment is already recorded and committed. A proof failure is
@@ -1030,8 +1030,12 @@ function PiDraftDetailPageInner() {
         }
       }
 
+      // THE LAST CALL (20270120000000): after the proof, never before it. A
+      // holder of finance.verify_own_payment has their own payment verified now;
+      // for everybody else nothing changes and it waits for verification.
+      const completion = await completePaymentEntry(supabase, paymentId)
       attempt.settle()
-      setPaymentNotice(notice)
+      setPaymentNotice(completion.verified ? PAYMENT_RECORDED_AND_VERIFIED_BODY : PI_PAYMENT_RECORDED_BODY)
       // ONLY the payment section is refreshed. The submission, its items, its
       // images and its signed workbook URL are untouched.
       await loadPayments()

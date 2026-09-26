@@ -528,6 +528,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
       '20270117000000_order_finance_guards_run_as_owner.sql',
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
+      '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
