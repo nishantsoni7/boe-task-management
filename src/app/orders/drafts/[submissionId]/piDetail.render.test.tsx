@@ -459,6 +459,21 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.ok(!t.includes(NUMBER_NOT_ALLOTTED), 'and "not allotted" is gone once it is')
   })
 
+  test('numbered at conversion (no reservation): once approved, the Order number stands alone — never "not allotted" beside it', () => {
+    // Acceptance review of #209, 2026-09-26: the approved PID-00001 read "Order
+    // number not allotted … BOE allots the Order number when this PI is
+    // approved" and "Confirmed Order number 0526" at once.
+    const none: ReservationView = {
+      state: 'blocked', number: null, standing: 'BOE allots the Order number when this PI is approved.',
+      blockedReason: null, canCopy: false,
+    }
+    const t = text(contextHtml({ status: 'approved', reservation: none, confirmedNumber: '0526', draftReference: 'PID-00001' }))
+    assert.ok(t.includes('Confirmed Order number 0526'))
+    assert.ok(t.includes('Draft reference PID-00001'))
+    assert.ok(!t.includes(NUMBER_NOT_ALLOTTED), '"not allotted" contradicts the number')
+    assert.ok(!t.includes('BOE allots the Order number when this PI is approved'), 'the pre-approval explanation is gone')
+  })
+
   test('THE SALESPERSON LEADS, and the badge sits beside them', () => {
     const html = contextHtml()
     const t = text(html)

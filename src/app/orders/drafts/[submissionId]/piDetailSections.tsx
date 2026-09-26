@@ -202,7 +202,10 @@ export function PiContextRow({
                 </button>
               )}
             </div>
-          ) : (
+          ) : confirmedNumber ? null : (
+            // Numbering at conversion (20270114000000): a draft has no reserved
+            // number, so once the Order exists its number (below) is the answer
+            // — "not allotted" would contradict it.
             <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
           )}
           {number && reservation.state !== 'used' && !confirmedNumber && (
@@ -216,9 +219,13 @@ export function PiContextRow({
 
           {/* ONE LINE saying where the number stands. The blocked reason takes
               its place only where there is no number to stand. */}
-          <div className="pi-detail-context-note">
-            {!number && reservation.blockedReason ? reservation.blockedReason : reservation.standing}
-          </div>
+          {/* Once the Order exists without a reservation, the explanation of
+              when a number is allotted is history; the number says it. */}
+          {!(confirmedNumber && !number) && (
+            <div className="pi-detail-context-note">
+              {!number && reservation.blockedReason ? reservation.blockedReason : reservation.standing}
+            </div>
+          )}
 
           {/* The Confirmed Order's number under its own label, never beside the
               reserved one without it. Read back from the Order — composed nowhere. */}
