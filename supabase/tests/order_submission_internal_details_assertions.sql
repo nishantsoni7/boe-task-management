@@ -258,6 +258,45 @@ begin
 end $$;
 
 
+-- ═══ 2b. THE GENERATED PI'S WORD FOR THE DEDUCTION ═══════════════════════════
+
+do $$
+declare
+  c   uuid := current_setting('test.pi_c')::uuid;
+  s   uuid := current_setting('test.sales_id')::uuid;
+  o   uuid := current_setting('test.other_id')::uuid;
+  before public.order_submissions%rowtype;
+  after  public.order_submissions%rowtype;
+begin
+  select * into before from public.order_submissions where id = c;
+  perform pg_temp.become(s);
+  perform public.set_order_submission_deduction_label(c, 'design_fee', null);
+  perform pg_temp.restore();
+  select * into after from public.order_submissions where id = c;
+  perform pg_temp.check(after.client_deduction_label = 'design_fee', 'Sales can choose Design Fee');
+  perform pg_temp.check(after.discount_amount is not distinct from before.discount_amount
+                    and after.subtotal_after_discount is not distinct from before.subtotal_after_discount
+                    and after.grand_total is not distinct from before.grand_total,
+    'choosing the word moves no figure');
+  perform pg_temp.check(exists (select 1 from public.order_submission_activity
+     where submission_id = c and action = 'deduction_label_set' and metadata ->> 'to' = 'design_fee'),
+    'the choice is in the trail');
+
+  perform pg_temp.become(s);
+  perform pg_temp.expect_error(format('select public.set_order_submission_deduction_label(%L, %L, null)', c, 'charge'),
+    'ORDER_SUBMISSION_DEDUCTION_LABEL_INVALID', 'a word that is neither');
+  perform pg_temp.restore();
+  perform pg_temp.become(o);
+  perform pg_temp.expect_error(format('select public.set_order_submission_deduction_label(%L, %L, null)', c, 'discount'),
+    'ORDER_SUBMISSION_NOT_EDITABLE', 'another salesperson');
+  perform pg_temp.restore();
+  perform pg_temp.expect_error(
+    format('update public.order_submissions set client_deduction_label = %L where id = %L', 'rebate', c),
+    'order_submissions_client_deduction_label', 'the column admits only the two words');
+  raise notice 'section 2b (deduction wording) passed';
+end $$;
+
+
 -- ═══ 3. A NEW WORKBOOK ══════════════════════════════════════════════════════
 
 do $$

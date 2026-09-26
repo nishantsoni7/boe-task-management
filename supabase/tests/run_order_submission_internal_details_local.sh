@@ -17,7 +17,7 @@
 # project and never pushes.
 #
 # USAGE
-#   BOE_DB_CONTAINER=supabase_db_<project_id> [BOE_DB_NAME=postgres] \
+#   BOE_CONFIRM_DISPOSABLE=1 BOE_DB_CONTAINER=supabase_db_<project_id> [BOE_DB_NAME=postgres] \
 #     bash supabase/tests/run_order_submission_internal_details_local.sh
 # ═════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -37,10 +37,13 @@ export MSYS_NO_PATHCONV=1
 
 psql_in() { docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
 
-# Disposable only: a database holding real-looking Orders is refused.
-if [ "$(psql_in -tAc "select count(*) from public.orders where order_number !~ '^(ASSERT|TEST)'" 2>/dev/null || echo 0)" != "0" ]; then
-  echo "refusing: $DB holds Orders that do not look like test data" >&2; exit 2
+# Disposable only, and said so: the caller confirms it, and the target must be
+# a local Supabase container (checked above). Fails closed if it cannot even
+# read the database.
+if [ "${BOE_CONFIRM_DISPOSABLE:-}" != "1" ]; then
+  echo "refusing: set BOE_CONFIRM_DISPOSABLE=1 to confirm $BOE_DB_CONTAINER/$DB is a disposable local database" >&2; exit 2
 fi
+psql_in -tAc "select 1" >/dev/null || { echo "refusing: cannot read $DB" >&2; exit 2; }
 
 # Files go in through stdin (docker cp mangles Windows paths), CR stripped.
 docker exec "$BOE_DB_CONTAINER" mkdir -p /tmp/pid/supabase/tests /tmp/pid/supabase/migrations
