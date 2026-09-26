@@ -300,7 +300,14 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     '20270122000000_order_submission_internal_details.sql',
     '20270123000000_order_submission_internal_details_required_on_submit.sql',
-  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
+    // Every SECURITY DEFINER in public pins pg_temp last. THIS ONE DOES
+    // REACH the completion trigger, deliberately and only this far: it ALTERs
+    // cleanup_top_tasks_on_completion()'s search_path from `pg_catalog,
+    // public` to `pg_catalog, public, pg_temp`. The body, the trigger, the
+    // revoke and user_top_tasks are unchanged, so what the trigger does is
+    // unchanged.
+    '20270125000000_security_definer_search_path_pins_pg_temp.sql',
+  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which changes what user_top_tasks or the completion trigger do')
 })
 
 test('a one-time cleanup reaches the rows the trigger never could', () => {

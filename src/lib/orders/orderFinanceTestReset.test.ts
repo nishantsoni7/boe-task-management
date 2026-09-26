@@ -569,6 +569,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      // Every SECURITY DEFINER in public pins pg_temp last: ALTER FUNCTION
+      // ... SET search_path on ninety-five existing functions, and
+      // get_or_create_quotation_no is revoked from client roles. Bodies are not
+      // redefined; no table, policy, grant on a table or row is touched.
+      '20270125000000_security_definer_search_path_pins_pg_temp.sql',
     ])
   })
 
