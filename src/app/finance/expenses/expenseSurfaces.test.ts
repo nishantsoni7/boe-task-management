@@ -635,9 +635,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Announcements is a second named exception: additive tables of its own,
       // held by src/lib/announcementsMigration.test.ts and its SQL suite.
       if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
-      // And the legacy advance submit doors closing (20270111000000): one
+      // And the legacy advance submit doors closing (20270121000000): one
       // REVOKE and one restated internal, held by its own suite.
-      if (f === 'supabase/migrations/20270111000000_order_submission_legacy_advance_doors_closed.sql') continue
+      if (f === 'supabase/migrations/20270121000000_order_submission_legacy_advance_doors_closed.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1308,7 +1308,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
-   * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270111000000).
+   * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270121000000).
    *
    * One migration — a REVOKE from authenticated and the restated submit
    * implementation — no screen, no rule, no money; its own suite, and the
@@ -1330,7 +1330,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/topTasksApproval.test.ts',
     'src/lib/announcementsMigration.test.ts',
   ])
-  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270111000000_order_submission_legacy_advance_doors_closed.sql'
+  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270121000000_order_submission_legacy_advance_doors_closed.sql'
 
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
@@ -1546,7 +1546,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
     for (const f of added) {
       // order_submission_advance_exception is edited, not added: closing the
-      // legacy advance doors (20270111000000) moves its privilege pin.
+      // legacy advance doors (20270121000000) moves its privilege pin.
       assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|announcements|order_submission_advance_exception/.test(f),
         `${f} does not belong to this feature`)
     }

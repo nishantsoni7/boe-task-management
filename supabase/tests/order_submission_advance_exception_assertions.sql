@@ -928,7 +928,7 @@ begin
   perform pg_temp.ok(v_n = 0, 'no advance RPC is executable by anon or PUBLIC');
 
   -- The two decisions are authenticated's. The LEGACY submit door is not:
-  -- 20270111000000 revoked it (and its amount twin), because the application
+  -- 20270121000000 revoked it (and its amount twin), because the application
   -- submits only through submit_pi_for_review(). This file still drives it as
   -- the owner, which is how sections B-H reach the implementation.
   select count(distinct routine_name) into v_n
