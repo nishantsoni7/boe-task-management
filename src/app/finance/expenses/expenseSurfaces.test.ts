@@ -834,7 +834,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -919,8 +919,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(untouchable), false,
       `${untouchable} is outside what removing the duplicate approval reaches`)
       // …unless PI numbering (20270114000000) reaches it on purpose: the three
-      // reasons live in paymentGate.ts and the footer fingerprint in the parser.
-      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+      // reasons live in paymentGate.ts and the footer fingerprint in the parser;
+      // or the proof-failure change (20270117000000) do: who may decide
+      // their own payment is now a Control Center grant in finance.ts.
+      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1191,7 +1193,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable), false,
         `${untouchable} must not ride in on a presentation allowance`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      // …unless the proof-failure change (20270117000000) reach it on
+      // purpose: finance.ts derives the new grant, and the split-payment modal
+      // completes the entry after its proof.
+      if (!ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -1519,6 +1526,13 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270117000000_order_finance_guards_run_as_owner.sql',
     'src/lib/orders/orderFinanceGuardsRunAsOwner.test.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
+    // A failed proof leaves the payment recorded and pending, and each Record
+    // Payment screen says so; the Payment Requests screen no longer deletes it.
+    'src/app/finance/page.tsx',
+    'src/lib/finance/piPaymentView.ts',
+    'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    'src/lib/finance/paymentDeletionSurfaces.test.ts',
+    'src/lib/finance/paymentIdempotency.test.ts',
     // migration inventories: one line each
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
@@ -1640,7 +1654,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
       // …unless the revised-PI promotion (20270113000000) reaches it on purpose:
       // staging a revision IS a change to the PI revision path.
-      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable)) {
+      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1712,7 +1726,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // call) over files this branch has no business touching.
     for (const intruder of [
       // Finance and payment surfaces the expense guard exists to protect.
-      'src/app/finance/page.tsx',
+      // (src/app/finance/page.tsx is NAMED in ALLOWED_GUARDS_RUN_AS_OWNER since 20270120000000 —
+      // its Record Payment completes the entry — so the Finance layout probes
+      // the category instead.)
+      'src/app/finance/layout.tsx',
       // (ReceivedPaymentsView.tsx is allowed ONE change since 20270116000000 and
       // is held to it line by line below; the payment modules beside it are not.)
       'src/lib/finance/paymentAllocations.ts',
@@ -1756,8 +1773,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // End to end: an intruder in the touched set makes the guard FAIL, not
     // merely register. This is the assertion 'NO EXISTING FINANCE OR ORDERS
     // SCREEN WAS EDITED' runs, with one extra file in the input.
-    const withIntruder = [...touched, 'src/app/finance/page.tsx'].filter(isUnexpectedFile)
-    assert.deepEqual(withIntruder, ['src/app/finance/page.tsx'])
+    // (The Finance layout, not finance/page.tsx, which ALLOWED_GUARDS_RUN_AS_OWNER names.)
+    const withIntruder = [...touched, 'src/app/finance/layout.tsx'].filter(isUnexpectedFile)
+    assert.deepEqual(withIntruder, ['src/app/finance/layout.tsx'])
   })
 
   test('the PI refinement allowance names files, never a directory', () => {
@@ -1787,7 +1805,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // authorized branch changing the file says nothing about this one.
       if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)
           && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)
+          && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1945,10 +1964,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       const moved = diff.split('\n')
         .filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l))
         .map(l => l.slice(1).trim())
+      // Since 20270120000000 it may also word its Record Payment notice for a
+      // payment verified in the same action — the notice lines only.
+      const isRecordNotice = (l: string) => /summary\.(requestNumber|verified)/.test(l)
       assert.ok(moved.length > 0 && moved.every(l =>
         l === "PI_DRAFT_NAME_COLUMNS," ||
         l === ".select(PI_DRAFT_NAME_COLUMNS)" ||
-        l === ".select('id, reserved_order_number, source_workbook_name')"),
+        l === ".select('id, reserved_order_number, source_workbook_name')" ||
+        isRecordNotice(l)),
         'ReceivedPaymentsView.tsx changes only the PI Draft name columns: ' + JSON.stringify(moved))
     }
     for (const untouchable of [
@@ -1962,6 +1985,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/components/layout/ModuleGuard.tsx',
       'src/app/finance/layout.tsx',
     ]) {
+      // finance/page.tsx and permissions/finance.ts are reached on purpose by
+      // the proof-failure change (20270117000000); the money modules
+      // (entry, allocations, position, exact money, currency) are not.
+      if (ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) continue
       assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
     }
   })
