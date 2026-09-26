@@ -155,8 +155,9 @@ describe('the closed action set', () => {
     // order_number_used and re-emits the whole set in full, which is exactly
     // what 20261001000000 asks of it.
     assert.ok(file.length > 0, 'no migration defines the action constraint')
+    // 20270122000000 re-emits the set in full with internal_details_updated.
     assert.equal(file,
-  '20261119000000_order_submission_pi_review_gate_versions_and_production.sql')
+  '20270122000000_order_submission_internal_details.sql')
   })
 
   test('still admits every action the earlier phases wrote', () => {

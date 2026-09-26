@@ -22,6 +22,7 @@ import {
   buildEditProposal,
   diffPi,
   editChangesSomething,
+  isDatesOnlyEdit,
   normalizePi,
   normalizeProposal,
   priceEdit,
@@ -116,6 +117,39 @@ export async function POST(req: NextRequest) {
     })
     const diff = diffPi(normalizePi(content), normalizeProposal(proposal))
     if (!editChangesSomething(diff)) return fail(400, 'NO_CHANGES', 'Nothing has been changed yet.')
+
+    // ONLY THE TWO DATES CHANGED (20270122000000). No client document prints
+    // them, so this is not a new PI version: amend them in place, AS THE
+    // PERSON, through the schedule editor — which re-derives the authority
+    // (an active admin, with a reason), moves the Order's dates, records both
+    // histories, and supersedes nothing. A new version would have reset
+    // production alignment and asked Operations to accept the PI again.
+    if (isDatesOnlyEdit(diff)) {
+      const header = (proposal.payload as { header?: Record<string, unknown> }).header ?? {}
+      const fields: Record<string, string | null> = {}
+      for (const f of diff.fields) {
+        const v = header[f.key]
+        fields[f.key] = typeof v === 'string' && v.trim() !== '' ? v : null
+      }
+      const { error } = await authClient.rpc('update_order_submission_schedule_terms', {
+        p_submission_id: submissionId, p_fields: fields, p_expected_version: null, p_reason: reason || null,
+      })
+      if (error) {
+        const m = error.message ?? ''
+        if (/ORDER_SUBMISSION_NOT_EDITABLE/.test(m)) {
+          return fail(403, 'DATES_ADMIN_ONLY',
+            'Only an administrator can change the dates of a confirmed Order. No new PI version is needed — ask an administrator to change them.')
+        }
+        if (/ORDER_SUBMISSION_REASON_REQUIRED/.test(m)) return fail(400, 'REASON_REQUIRED', 'Say why the dates are changing.')
+        if (/ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION/.test(m)) {
+          return fail(400, 'DUE_BEFORE_CONFIRMATION', 'The due date cannot be before the order confirmation date.')
+        }
+        const f = describePiEditFailure(error)
+        return fail(f.status, f.code, f.message)
+      }
+      return NextResponse.json({ ok: true, mode, dates_amended: true, change_summary: proposal.change_summary })
+    }
+
     // Every picture the version will name: this PI's key, for that very line.
     if (!proposalImagesAreCanonical(proposal.payload, submissionId)) {
       return fail(400, 'EDIT_INVALID', PHOTO_NOT_THIS_PI)

@@ -323,10 +323,13 @@ describe('the detail page renders only what it fetched', () => {
     // Phase C, read ONCE and only when the record actually names an Order, so
     // the approved PI can show the official number and link to it — under the
     // caller's own RLS, so a viewer who may not see the Order gets no row rather
-    // than a number they were not entitled to. Nothing else.
+    // than a number they were not entitled to. The middleman commission
+    // (20270122000000 §1b) is its own table, whose RLS admits only its
+    // readers. Nothing else.
     assert.deepEqual([...targets].sort(), [
       'order_submission_activity',
-      'order_submission_item_images', 'order_submission_items', 'order_submissions',
+      'order_submission_item_images', 'order_submission_items',
+      'order_submission_middleman_commissions', 'order_submissions',
       'orders', 'users',
     ])
     // And it is a read of ONE named column, never a select('*') or a write.
@@ -393,7 +396,11 @@ describe('the detail page renders only what it fetched', () => {
     // read-shaped names would stop being a write allowlist.
     // Both are `stable`, take a submission id, and return a boolean; they are
     // the authorities this page asks instead of restating.
-    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission']
+    // can_read_order_submission_commission (20270122000000 §1b) answers only
+    // whether THIS caller may read the commission, so the card can say
+    // "Restricted" rather than "Not answered".
+    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission',
+      'can_read_order_submission_commission']
     const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     for (const probe of READ_ONLY_RPCS) {
       assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)
@@ -420,6 +427,12 @@ describe('the detail page renders only what it fetched', () => {
       // data — the migration asserts that of its own definition at apply time —
       // and is the owner's channel for a record that has left their hands.
       'request_order_submission_correction',
+      // The INTERNAL details (20270122000000): the app confirmation and due
+      // dates and the middleman commission answer. Eight named columns plus
+      // the confirmation stamp; unknown keys — any figure, any status — are
+      // refused by name. Owner or active admin, draft or returned only, with
+      // optimistic concurrency. Never printed on a client document.
+      'save_order_submission_internal_details',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
       // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
@@ -2204,12 +2217,25 @@ describe('the draft loads in two waves, not six', () => {
 
   test('the history rides in the first wave, with the reads that share its key', () => {
     assert.ok(body.includes(
-      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await detailReads'),
+      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable] = await detailReads'),
       'the history needs only the submission id, so it must not wait for the items')
     const group = body.indexOf('const detailReads = Promise.all([')
     const second = body.indexOf('await Promise.all([')
     assert.ok(body.indexOf('fetchAllRows<PersistedActivity>') > group && body.indexOf('fetchAllRows<PersistedActivity>') < second,
       'the paged history read belongs to the first group')
+  })
+
+  // 20270122000000 §1b: the commission is its own table with its own reader
+  // rule, read by id alone — so it rides in the first wave too, beside the rule.
+  test('the commission and its reader rule ride in the first wave, and fail closed', () => {
+    const group = body.indexOf('const detailReads = Promise.all([')
+    const second = body.indexOf('await Promise.all([')
+    for (const read of [".from('order_submission_middleman_commissions')", "supabase.rpc('can_read_order_submission_commission'"]) {
+      const at = body.indexOf(read)
+      assert.ok(at > group && at < second, `${read} belongs to the first group`)
+    }
+    assert.ok(body.includes('!commissionResult.error && !commissionReadable.error && commissionReadable.data === true'),
+      'an errored read or rule is "Restricted", never an answer')
   })
 
   test('the pictures, the names and the Order number ride in the second', () => {
