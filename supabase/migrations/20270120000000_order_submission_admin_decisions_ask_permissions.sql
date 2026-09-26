@@ -109,6 +109,13 @@ begin
      or to_regprocedure('public.finance_payment_requests_keep_reference()') is null then
     raise exception 'DEPENDENCY MISSING: 20270111120000 and 20270116000000 must be applied before this migration';
   end if;
+  -- The Record Payment sequence this file completes is record → attach proof →
+  -- complete_payment_entry. The proof can be attached at all only once the
+  -- reset write guard runs as its owner (20270117000000).
+  if not (select p.prosecdef from pg_proc p
+           where p.oid = 'public.order_finance_reset_write_guard()'::regprocedure) then
+    raise exception 'DEPENDENCY MISSING: 20270117000000 (the Order/Finance write guards run as their owner) must be applied before this migration';
+  end if;
 end $dep$;
 
 

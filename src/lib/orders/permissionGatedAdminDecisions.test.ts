@@ -165,6 +165,13 @@ describe('nothing is hard-coded: authority lives in Control Center', () => {
   })
 })
 
+describe('it lands after the proof fix it depends on', () => {
+  test('it sorts after 20270117000000 and refuses to apply before it', () => {
+    assert.ok(FILE > '20270117000000_order_finance_guards_run_as_owner.sql')
+    assert.match(SQL, /if not \(select p\.prosecdef from pg_proc p\s+where p\.oid = 'public\.order_finance_reset_write_guard\(\)'::regprocedure\) then\s+raise exception 'DEPENDENCY MISSING: 20270117000000/)
+  })
+})
+
 describe('complete_payment_entry: the last call, only for the caller\'s own pending payment', () => {
   const body = bodyOf(SQL, 'complete_payment_entry')!
 
