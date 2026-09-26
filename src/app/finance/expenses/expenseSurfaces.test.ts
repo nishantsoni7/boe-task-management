@@ -1670,6 +1670,22 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/attachmentStorage.ts',
   ])
 
+  /**
+   * PI layout by labels (2026-09-26): after a draft whose footer sat one row
+   * higher saved a blank Grand Total, the workbook parser finds every block
+   * by its own labels and column names and proves the footer by its own
+   * arithmetic; a missing Grand Total refuses the upload. Parser and its
+   * suites only — no migration, no screen, no permission.
+   */
+  const ALLOWED_PI_LAYOUT = new Set([
+    'src/lib/pi/layout.ts',
+    'src/lib/pi/masterSheetParser.ts',
+    'src/lib/pi/masterSheetParser.test.ts',
+    'src/lib/pi/types.ts',
+    'src/lib/orders/piReadiness.test.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1709,6 +1725,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(f) &&
     !ALLOWED_PROOF_VIEW.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
+    !ALLOWED_PI_LAYOUT.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2029,7 +2046,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_GUARDS_RUN_AS_OWNER.has(file)
         || ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(file)
         || ALLOWED_PROOF_VIEW.has(file)
-        || ALLOWED_TASK_IMAGE_GALLERY.has(file),
+        || ALLOWED_TASK_IMAGE_GALLERY.has(file)
+        || ALLOWED_PI_LAYOUT.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
