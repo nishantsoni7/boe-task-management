@@ -684,6 +684,28 @@ describe('the import preview and the parser are untouched', () => {
       .replace("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'\n", '')
 
     const source = now(PARSER)
+
+    //   4. THE LAYOUT BY LABELS (2026-09-26). After a production draft saved a
+    //      blank Grand Total, every fixed address was replaced: each block is
+    //      found by its own labels (src/lib/pi/layout.ts) and proved by its own
+    //      figures, and a missing Grand Total now refuses the upload. That is a
+    //      rewrite of how every cell is addressed, which no regex undo can
+    //      reverse. From that change on, the parser is held by its OWN suites —
+    //      masterSheetParser.test.ts, including "an edited sheet is read by its
+    //      labels and proved by its figures", which proves an unedited sheet
+    //      still reads exactly as the template did. This test keeps the
+    //      properties it existed to protect: the final-approval work added
+    //      nothing to the parser beyond the set-aside blocks.
+    if (source.includes("from './layout'")) {
+      assert.ok(source.includes('export function headerRequirementWarnings('), 'the header-requirement rule is still here')
+      assert.ok(source.includes('export function readFabricResponsibility('), 'the PI terms reader is still here')
+      assert.ok(source.includes('export function readCommercialTermsNote('), 'and the terms note with it')
+      assert.ok(source.includes('export function creationDateIso('), 'and the written date of creation')
+      assert.ok(!/approve|approval|order_submissions|supabase/i.test(source.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')),
+        'the parser still knows nothing about approval or the database')
+      return
+    }
+
     assert.ok(source.includes('export function headerRequirementWarnings('),
       'the first set-aside block is the header-requirement rule')
     assert.ok(source.includes('export function readFabricResponsibility('),
@@ -703,7 +725,9 @@ describe('the import preview and the parser are untouched', () => {
     // "no editor can fix this, correct the workbook and import it again", and
     // all three land in ordinary editable draft columns.
     const source = now(PARSER)
-    assert.ok(source.includes('warnings.push(...headerRequirementWarnings(header))'),
+    // Since 2026-09-26 the call also passes the cells the layout read them
+    // from, so a message names the real cell. The property is unchanged.
+    assert.ok(/warnings\.push\(\.\.\.headerRequirementWarnings\(header[,)]/.test(source),
       'the header requirements must be warnings')
     assert.ok(!source.includes('blockingIssues.push(...headerRequirement'),
       'a missing salesperson or date must not refuse the upload')
