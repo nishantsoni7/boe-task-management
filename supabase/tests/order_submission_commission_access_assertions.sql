@@ -445,6 +445,66 @@ begin
   raise notice 'section 5 (confirmation clearing) passed';
 end $$;
 
+-- ═══ 6. A NON-ADMIN PI REVIEWER: SEES NOTHING UNTIL GRANTED, THEN SEES IT ═══
+-- The production reviewer profile: role manager, team operations, and every
+-- one of these held by per-person Control Center overrides — Orders view,
+-- view_all, approve_order, approve, approve_advance_exception, align_production,
+-- manage; Finance view, view_all, approve. None of that reaches the commission.
+-- Only orders.view_pi_commission, written the way Control Center writes it, does.
+
+insert into public.users (id, full_name, email, role, team, is_active, employee_code)
+values ('c0000000-0000-4000-8000-00000000c010', 'ASSERT Reviewer', 'c-reviewer@example.test', 'manager', 'operations', true, 'ASSERT-C10')
+on conflict (id) do update set role = 'manager', team = 'operations', is_active = true, is_deleted = false;
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select 'c0000000-0000-4000-8000-00000000c010'::uuid, mpa.module_id, mpa.action_id, true, current_setting('test.admin_id')::uuid
+  from (values ('orders', 'view'), ('orders', 'view_all'), ('orders', 'approve_order'), ('orders', 'approve'),
+               ('orders', 'approve_advance_exception'), ('orders', 'align_production'), ('orders', 'manage'),
+               ('finance', 'view'), ('finance', 'view_all'), ('finance', 'approve')) g(m, a)
+  join public.permission_modules pm on pm.module_key = g.m
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
+
+do $$
+declare
+  rv uuid := 'c0000000-0000-4000-8000-00000000c010';
+  s  uuid := current_setting('test.pi_s')::uuid;
+  o  uuid := current_setting('test.pi_o')::uuid;
+begin
+  -- He can open and review the submitted PI...
+  perform pg_temp.become(rv);
+  perform pg_temp.check((select count(*) from public.order_submissions where id = s) = 1, '6. the reviewer sees the submitted PI');
+  perform pg_temp.check(public.actor_has_module_permission('orders', 'approve_order'), '6. the reviewer may approve it');
+  perform pg_temp.restore();
+  -- ...but not its commission, on the submitted or the Order-linked PI.
+  perform pg_temp.check(pg_temp.read_commission(rv, s) is null and pg_temp.read_commission(rv, o) is null,
+    '6. without orders.view_pi_commission the reviewer reads no commission');
+
+  -- The grant, as Control Center writes it (upsert on user, module, action).
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by, granted_at, revoked_by, revoked_at)
+  select rv, mpa.module_id, mpa.action_id, true, current_setting('test.admin_id')::uuid, now(), null, null
+    from public.module_permission_actions mpa
+    join public.permission_modules pm on pm.id = mpa.module_id and pm.module_key = 'orders'
+    join public.permission_actions pa on pa.id = mpa.action_id and pa.action_key = 'view_pi_commission'
+  on conflict (user_id, module_id, action_id) do update set allowed = true, revoked_by = null, revoked_at = null;
+
+  perform pg_temp.check(pg_temp.read_commission(rv, s) = 'ASSERT-RCPT-' || left(s::text, 8)
+                    and pg_temp.read_commission(rv, o) = 'ASSERT-RCPT-' || left(o::text, 8),
+    '6. with the grant the reviewer reads the commission');
+  -- The grant reached nobody else.
+  perform pg_temp.check(pg_temp.read_commission(current_setting('test.ops_id')::uuid, o) is null
+                    and pg_temp.read_commission(current_setting('test.approver_id')::uuid, s) is null
+                    and pg_temp.read_commission(current_setting('test.finance_id')::uuid, s) is null,
+    '6. Operations, other approvers and Finance still read nothing');
+
+  -- Revoked the way Control Center revokes (revoked_at set): gone again.
+  update public.employee_permission_overrides o2 set revoked_at = now(), revoked_by = current_setting('test.admin_id')::uuid
+    from public.permission_actions pa
+   where o2.user_id = rv and o2.action_id = pa.id and pa.action_key = 'view_pi_commission';
+  perform pg_temp.check(pg_temp.read_commission(rv, s) is null, '6. a revoked grant reads nothing');
+  raise notice 'section 6 (non-admin reviewer: nothing until granted) passed';
+end $$;
+
 do $$ begin raise notice 'ALL COMMISSION ACCESS ASSERTIONS PASSED'; end $$;
 
 rollback;

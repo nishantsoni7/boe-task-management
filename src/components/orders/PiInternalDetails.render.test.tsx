@@ -31,6 +31,25 @@ describe('PiInternalDetailsCard', () => {
     assert.doesNotMatch(html, /<button/)
   })
 
+  // "Needed before review" is only true while the PI is being prepared.
+  test('a submitted or approved PI never says "Needed before review"', () => {
+    for (const status of ['submitted', 'approved', 'rejected']) {
+      const html = renderToStaticMarkup(<PiInternalDetailsCard canEdit={false} onEdit={noop}
+        row={{ status, order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }} />)
+      assert.doesNotMatch(html, /Needed before review/, status)
+      assert.match(html, /Not confirmed in the app before this PI was sent for review\./, status)
+    }
+    for (const status of ['draft', 'needs_changes']) {
+      const html = renderToStaticMarkup(<PiInternalDetailsCard canEdit onEdit={noop}
+        row={{ status, order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }} />)
+      assert.match(html, /Needed before review: answer/, status)
+    }
+    const confirmed = renderToStaticMarkup(<PiInternalDetailsCard canEdit={false} onEdit={noop} row={{
+      status: 'approved', order_confirmation_date: '2026-09-20', due_date: '2026-11-20',
+      middleman_commission: 'no', internal_details_confirmed_at: '2026-09-26T11:00:00Z' }} />)
+    assert.match(confirmed, /Confirmed 26 Sep 2026/)
+  })
+
   test('an app date the workbook disagrees with is shown beside the workbook\'s', () => {
     const html = renderToStaticMarkup(<PiInternalDetailsCard canEdit={false} onEdit={noop} row={{
       order_confirmation_date: '2026-09-23', workbook_order_confirmation_date: '2026-09-20',

@@ -30,6 +30,7 @@ import {
   internalDetailsPayload,
   internalDetailsReadiness,
   internalDetailsShapeErrors,
+  internalDetailsStatusLine,
   workbookDateNotes,
   type PiInternalDetailsForm,
   type PiInternalDetailsRow,
@@ -51,6 +52,7 @@ export function PiInternalDetailsCard({ row, canEdit, onEdit }: {
   onEdit: () => void
 }) {
   const readiness = internalDetailsReadiness(row)
+  const statusLine = internalDetailsStatusLine(row)
   const notes = workbookDateNotes(row)
   return (
     <section
@@ -88,15 +90,12 @@ export function PiInternalDetailsCard({ row, canEdit, onEdit }: {
         role="status"
         style={{
           display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px',
-          color: readiness.ready ? colors.green : colors.amber,
+          color: statusLine.tone === 'ready' ? colors.green : colors.amber,
         }}
       >
-        {readiness.ready ? <CheckCircle2 size={14} aria-hidden /> : <AlertTriangle size={14} aria-hidden />}
-        <span style={{ color: colors.secondary }}>
-          {readiness.ready
-            ? `Confirmed ${formatIsoDay(row.internal_details_confirmed_at) ?? ''}`.trim()
-            : `Needed before review: ${readiness.problem}.`}
-        </span>
+        {statusLine.tone === 'ready' && <CheckCircle2 size={14} aria-hidden />}
+        {statusLine.tone === 'needed' && <AlertTriangle size={14} aria-hidden />}
+        <span style={{ color: colors.secondary }}>{statusLine.text}</span>
       </div>
     </section>
   )

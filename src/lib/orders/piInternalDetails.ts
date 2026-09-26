@@ -83,6 +83,28 @@ export type PiInternalDetailsRow = {
   internal_details_confirmed_by?: string | null
   /** True when this viewer may not read the commission (see withCommission). */
   commission_restricted?: boolean
+  /** The PI's status. "Needed before review" is only true while it is being prepared. */
+  status?: string | null
+}
+
+/** Draft or returned: the only stages at which the internal details can still be entered. */
+export function internalDetailsStillOpen(row: PiInternalDetailsRow): boolean {
+  return !row.status || row.status === 'draft' || row.status === 'needs_changes'
+}
+
+/**
+ * The card's status line. While the PI is being prepared, what is missing
+ * before review; once it has gone for review (or beyond), a plain statement
+ * that it was never confirmed — "Needed before review" is false by then.
+ */
+export function internalDetailsStatusLine(row: PiInternalDetailsRow):
+  { tone: 'ready' | 'needed' | 'neutral'; text: string } {
+  const readiness = internalDetailsReadiness(row)
+  if (readiness.ready) {
+    return { tone: 'ready', text: `Confirmed ${formatIsoDay(row.internal_details_confirmed_at) ?? ''}`.trim() }
+  }
+  if (internalDetailsStillOpen(row)) return { tone: 'needed', text: `Needed before review: ${readiness.problem}.` }
+  return { tone: 'neutral', text: 'Not confirmed in the app before this PI was sent for review.' }
 }
 
 /** What the form holds: every value as the text the inputs show. */
