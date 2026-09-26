@@ -283,6 +283,7 @@ describe('the file, and where it sits', () => {
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
+      '20270123000000_order_submission_internal_details_required_on_submit.sql',
     ])
   })
 
