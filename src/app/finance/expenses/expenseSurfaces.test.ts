@@ -920,8 +920,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       `${untouchable} is outside what removing the duplicate approval reaches`)
       // …unless PI numbering (20270114000000) reaches it on purpose: the three
       // reasons live in paymentGate.ts and the footer fingerprint in the parser;
-      // or the proof-failure change (20270117000000) do: who may decide
-      // their own payment is now a Control Center grant in finance.ts.
+      // or the proof-failure change (20270117000000) does, which names only
+      // the Record Payment screens it rewords.
       if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
@@ -1193,9 +1193,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable), false,
         `${untouchable} must not ride in on a presentation allowance`)
-      // …unless the proof-failure change (20270117000000) reach it on
-      // purpose: finance.ts derives the new grant, and the split-payment modal
-      // completes the entry after its proof.
+      // …unless the proof-failure change (20270117000000) reaches it on
+      // purpose: the split-payment modal's proof-failure notice now says the
+      // payment is recorded and awaiting verification.
       if (!ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
@@ -1726,9 +1726,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // call) over files this branch has no business touching.
     for (const intruder of [
       // Finance and payment surfaces the expense guard exists to protect.
-      // (src/app/finance/page.tsx is NAMED in ALLOWED_GUARDS_RUN_AS_OWNER since 20270120000000 —
-      // its Record Payment completes the entry — so the Finance layout probes
-      // the category instead.)
+      // (src/app/finance/page.tsx is NAMED in ALLOWED_GUARDS_RUN_AS_OWNER since 20270117000000 —
+      // a failed proof no longer deletes the payment there — so the Finance
+      // layout probes the category instead.)
       'src/app/finance/layout.tsx',
       // (ReceivedPaymentsView.tsx is allowed ONE change since 20270116000000 and
       // is held to it line by line below; the payment modules beside it are not.)
@@ -1964,14 +1964,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       const moved = diff.split('\n')
         .filter(l => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l))
         .map(l => l.slice(1).trim())
-      // Since 20270120000000 it may also word its Record Payment notice for a
-      // payment verified in the same action — the notice lines only.
-      const isRecordNotice = (l: string) => /summary\.(requestNumber|verified)/.test(l)
       assert.ok(moved.length > 0 && moved.every(l =>
         l === "PI_DRAFT_NAME_COLUMNS," ||
         l === ".select(PI_DRAFT_NAME_COLUMNS)" ||
-        l === ".select('id, reserved_order_number, source_workbook_name')" ||
-        isRecordNotice(l)),
+        l === ".select('id, reserved_order_number, source_workbook_name')"),
         'ReceivedPaymentsView.tsx changes only the PI Draft name columns: ' + JSON.stringify(moved))
     }
     for (const untouchable of [
@@ -1985,9 +1981,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/components/layout/ModuleGuard.tsx',
       'src/app/finance/layout.tsx',
     ]) {
-      // finance/page.tsx and permissions/finance.ts are reached on purpose by
-      // the proof-failure change (20270117000000); the money modules
-      // (entry, allocations, position, exact money, currency) are not.
+      // finance/page.tsx is reached on purpose by the proof-failure change
+      // (20270117000000): a failed proof no longer deletes the payment. The
+      // money modules (entry, allocations, position, exact money, currency) are not.
       if (ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) continue
       assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
     }
