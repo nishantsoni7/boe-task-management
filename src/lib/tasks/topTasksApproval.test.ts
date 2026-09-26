@@ -299,6 +299,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     '20270122000000_order_submission_internal_details.sql',
+    '20270123000000_order_submission_internal_details_required_on_submit.sql',
     // Every SECURITY DEFINER in public pins pg_temp last. THIS ONE DOES
     // REACH the completion trigger, deliberately and only this far: it ALTERs
     // cleanup_top_tasks_on_completion()'s search_path from `pg_catalog,

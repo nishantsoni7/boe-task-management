@@ -33,13 +33,20 @@ describe('the generated PI\'s deduction row', () => {
     assert.equal(out.find(r => r.key === 'discount')?.label, 'Discount')
     assert.equal(out.find(r => r.key === 'subtotal')?.label, 'Subtotal after discount')
     assert.ok(!out.some(r => /design fee/i.test(r.label)))
+    // The discount is taken off: gross − discount is the subtotal shown.
+    assert.equal(out.find(r => r.key === 'gross')?.value, fmt(3494400))
+    assert.equal(out.find(r => r.key === 'discount')?.value, fmt(94300))
+    assert.equal(out.find(r => r.key === 'subtotal')?.value, fmt(3494400 - 94300))
   })
 
-  test('zero or blank: the row is left off', () => {
+  test('zero or blank: the row is left off, and the next line is plain "Subtotal"', () => {
     const rows = buildCommercialRows(commercial(0))
     for (const amount of [0, '0', '0.00', null, undefined, '']) {
       const out = clientDeductionRows(rows, { amount })
       assert.ok(!out.some(r => r.key === 'discount'), `amount ${String(amount)} drops the row`)
+      assert.equal(out.find(r => r.key === 'subtotal')?.label, 'Subtotal', `amount ${String(amount)}: "Subtotal"`)
+      assert.ok(!out.some(r => /after discount/i.test(r.label)), `amount ${String(amount)}: no "after discount"`)
+      assert.deepEqual(out.map(r => r.value), rows.filter(r => r.key !== 'discount').map(r => r.value), 'no figure moves')
     }
     assert.equal(hasDeduction('94300.00'), true)
     assert.equal(hasDeduction(0), false)
