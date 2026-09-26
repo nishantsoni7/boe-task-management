@@ -1,8 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  LOADING_SELECTOR, LOADING_TEXT, LONG_NAVIGATION_MS, documentReport, errorReport, navigationReport, parseRouteHealthReport,
-  routeTemplate, scriptFile, scrubMessage,
+  LOADING_SELECTOR, LOADING_TEXT, LOCAL_EVIDENCE_DAYS, LOCAL_EVIDENCE_MAX, LONG_NAVIGATION_MS, appendLocalEvidence, documentReport,
+  errorReport, lineBudget, navigationReport, parseRouteHealthReport, readLocalEvidence, routeTemplate, safeErrorMessage, scriptFile,
+  scrubMessage, templateFromParams,
 } from './routeHealth'
 
 const NET = { effectiveType: '4g', rttMs: 150 }
@@ -101,7 +102,7 @@ describe('parseRouteHealthReport — the server whitelist', () => {
   })
   test('an unscrubbed message sent by hand is scrubbed again', () => {
     const r = parseRouteHealthReport({ kind: 'error', route: '/x', message: 'user riya@boe.test id 5ca406a4-4d9f-4a71-acd9-923d3d13c208', file: 'a.js', visible: true, deployment: null }) as { message: string }
-    assert.equal(r.message, 'user :email id :id')
+    assert.equal(r.message, 'Error: (message withheld)', 'an app-written message is withheld even after scrubbing')
   })
   test('unknown kinds, junk and bad deployment ids are refused or nulled', () => {
     assert.equal(parseRouteHealthReport({ kind: 'anything' }), null)
@@ -110,5 +111,85 @@ describe('parseRouteHealthReport — the server whitelist', () => {
     assert.equal(parseRouteHealthReport({ kind: 'document', route: '/', firstRouteMs: 'slow' }), null)
     const r = parseRouteHealthReport({ kind: 'error', route: '/', message: 'm', file: null, visible: false, deployment: 'not-a-deployment' }) as { deployment: unknown }
     assert.equal(r.deployment, null)
+  })
+})
+
+describe('templateFromParams names a route by its own parameters', () => {
+  test('a dynamic segment is replaced exactly, whatever it looks like', () => {
+    assert.equal(templateFromParams('/showroom/product/ZZ-TIMING-PROBE', { product_code: 'ZZ-TIMING-PROBE' }), '/showroom/product/:product_code')
+    assert.equal(templateFromParams('/showroom-admin/products/Riya%20Sofa/edit', { product_code: 'Riya Sofa' }), '/showroom-admin/products/:product_code/edit')
+    assert.equal(templateFromParams('/payroll/results/p1/e2', { periodId: 'p1', employeeId: 'e2' }), '/payroll/results/:periodId/:employeeId')
+    assert.equal(templateFromParams('/orders/drafts/abc?x=1', { submissionId: 'abc' }), '/orders/drafts/:submissionId')
+  })
+  test('without params the heuristics still apply; static routes are unchanged', () => {
+    assert.equal(templateFromParams('/orders/5ca406a4-4d9f-4a71-acd9-923d3d13c208', {}), '/orders/:id')
+    assert.equal(templateFromParams('/finance/expenses', null), '/finance/expenses')
+  })
+  test('a hostile param key cannot inject text', () => {
+    assert.equal(templateFromParams('/x/v', { 'a b<script>': 'v' }), '/x/v')
+  })
+})
+
+describe('safeErrorMessage keeps only messages written by the browser, React, Next or the database', () => {
+  test('known engine and framework messages survive', () => {
+    for (const m of [
+      'e.amount.trim is not a function',
+      "Cannot read properties of undefined (reading 'map')",
+      "Cannot access 'x' before initialization",
+      'Failed to fetch', 'Load failed', 'signal is aborted without reason',
+      'Loading chunk 123 failed.', 'ChunkLoadError',
+      'new row violates row-level security policy for table "orders"',
+      'permission denied for table order_submissions', 'JWT expired',
+    ]) assert.equal(safeErrorMessage(m), m, m)
+  })
+  test('a React production error keeps its number, not its arguments', () => {
+    const s = safeErrorMessage('Minified React error #418; visit https://react.dev/errors/418?args[]=Riya for the full message or use the non-minified dev environment for full errors and additional helpful warnings.')
+    assert.ok(s.startsWith('Minified React error #418; visit :url'), s)
+    assert.equal(s.includes('Riya'), false)
+  })
+  test('a JSON failure is normalised — it would otherwise quote the response', () => {
+    assert.equal(safeErrorMessage(`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`), 'Unexpected token (response was not JSON)')
+  })
+  test('anything else — an app-thrown message could name a customer or an amount — is withheld', () => {
+    assert.equal(safeErrorMessage('Customer Riya Traders has no GST number', 'Error'), 'Error: (message withheld)')
+    assert.equal(safeErrorMessage('Payment 45,000 for PI 7 failed', 'PostgrestError'), 'PostgrestError: (message withheld)')
+    assert.equal(safeErrorMessage('x', '<img>'), 'Error: (message withheld)')
+    assert.equal(safeErrorMessage(undefined), 'Error: (message withheld)')
+  })
+})
+
+describe('the device keeps its own copy (the server log lasts an hour on Hobby)', () => {
+  const r = errorReport({ path: '/finance', message: 'Failed to fetch', source: null, visible: true, deployment: DPL })
+  const now = new Date('2026-09-26T10:00:00Z')
+  test('newest last, capped', () => {
+    let list: unknown = []
+    for (let i = 0; i < LOCAL_EVIDENCE_MAX + 5; i++) list = appendLocalEvidence(list, r, new Date(now.getTime() + i * 1000))
+    const kept = readLocalEvidence(list)
+    assert.equal(kept.length, LOCAL_EVIDENCE_MAX)
+    assert.equal(kept[kept.length - 1].at, new Date(now.getTime() + (LOCAL_EVIDENCE_MAX + 4) * 1000).toISOString())
+  })
+  test('old entries are dropped', () => {
+    const old = [{ at: new Date(now.getTime() - (LOCAL_EVIDENCE_DAYS + 1) * 86_400_000).toISOString(), report: r }]
+    assert.equal(appendLocalEvidence(old, r, now).length, 1)
+  })
+  test('whatever is read back goes through the whitelist again', () => {
+    const tampered = [{ at: now.toISOString(), report: { ...r, message: 'Customer Riya owes 45,000', email: 'x@y.z' } }, { at: 'x', report: r }, 'junk']
+    const kept = readLocalEvidence(tampered)
+    assert.equal(kept.length, 1)
+    assert.equal((kept[0].report as { message: string }).message, 'Error: (message withheld)')
+    assert.equal('email' in kept[0].report, false)
+    assert.deepEqual(readLocalEvidence('not a list'), [])
+  })
+})
+
+describe('lineBudget caps log lines per minute and reports what it dropped', () => {
+  test('the excess is refused, then summarised once', () => {
+    const summaries: string[] = []
+    const take = lineBudget(3, line => summaries.push(line))
+    assert.deepEqual([0, 1, 2, 3, 4].map(at => take(at)), [true, true, true, false, false])
+    assert.equal(take(60_000), true)
+    assert.deepEqual(summaries, ['{"kind":"dropped","count":2}'])
+    assert.equal(take(120_000), true)
+    assert.equal(summaries.length, 1, 'no summary when nothing was dropped')
   })
 })

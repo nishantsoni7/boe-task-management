@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NextRequest } from 'next/server'
 import { POST } from './route'
+import { SERVER_MAX_LINES_PER_MINUTE } from '@/lib/telemetry/routeHealth'
 
 let lines: string[] = []
 const realLog = console.log
@@ -37,9 +38,28 @@ describe('POST /api/client-health', () => {
     assert.equal((await post('{}', { 'content-length': '999999' })).status, 204)
     assert.equal(lines.length, 0)
   })
+  test('a report posted from another site is refused', async () => {
+    lines = []
+    const ok = JSON.stringify({ kind: 'error', route: '/x', message: 'Failed to fetch', file: null, visible: true, deployment: null })
+    assert.equal((await post(ok, { 'sec-fetch-site': 'cross-site' })).status, 204)
+    assert.equal((await post(ok, { origin: 'https://evil.example', host: 'localhost' })).status, 204)
+    assert.equal(lines.length, 0)
+    await post(ok, { 'sec-fetch-site': 'same-origin', origin: 'http://localhost', host: 'localhost' })
+    assert.equal(lines.length, 1, 'the app itself is still heard')
+  })
   test('it reads no cookie, no session and no database', () => {
     const src = readFileSync(join(__dirname, 'route.ts'), 'utf8')
     assert.equal(/cookies\(|getUser|getSession|createClient|supabase/i.test(src.replace(/\/\/.*$/gm, '')), false)
+  })
+})
+
+describe('a flood costs at most SERVER_MAX_LINES_PER_MINUTE lines (runs last: it spends the budget)', () => {
+  test('beyond the budget nothing more is logged this minute', async () => {
+    lines = []
+    const ok = JSON.stringify({ kind: 'error', route: '/x', message: 'Failed to fetch', file: null, visible: true, deployment: null })
+    for (let i = 0; i < SERVER_MAX_LINES_PER_MINUTE + 15; i++) assert.equal((await post(ok)).status, 204)
+    assert.ok(lines.length <= SERVER_MAX_LINES_PER_MINUTE, `logged ${lines.length}`)
+    assert.ok(lines.length >= SERVER_MAX_LINES_PER_MINUTE - 5, 'earlier tests used only a few lines')
   })
 })
 
@@ -52,5 +72,16 @@ describe('the reporter is mounted once, for every route', () => {
     const src = readFileSync(join(__dirname, '../../../components/layout/RouteHealthReporter.tsx'), 'utf8')
     assert.ok(src.includes('navigator.sendBeacon'))
     assert.equal(/localStorage|document\.cookie|getSession|userId|email/.test(src), false)
+  })
+  test('routes are named from the route params, never from the raw location', () => {
+    const src = readFileSync(join(__dirname, '../../../components/layout/RouteHealthReporter.tsx'), 'utf8')
+    assert.ok(src.includes('templateFromParams(pathname, params'))
+    assert.equal(/(path|fromPath|toPath): window\.location/.test(src), false)
+  })
+  test('the device copy stores only through the whitelist', () => {
+    const src = readFileSync(join(__dirname, '../../../components/layout/routeHealthLocal.ts'), 'utf8')
+    assert.ok(src.includes('appendLocalEvidence(stored(), report, new Date())'))
+    assert.ok(src.includes('readLocalEvidence(stored())'))
+    assert.equal(/fetch\(|sendBeacon|XMLHttpRequest/.test(src), false, 'nothing leaves the device from here')
   })
 })

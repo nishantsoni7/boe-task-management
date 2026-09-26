@@ -18,18 +18,32 @@
 // daily quote (which covers the page) is counted as part of the wait.
 //
 // It never blocks anything: every report goes through navigator.sendBeacon, at
-// most MAX_REPORTS_PER_TAB per tab, and a repeated error is sent once. Timing
-// runs only while a navigation is in progress.
+// most MAX_REPORTS_PER_TAB per tab (counted across reloads), and a repeated
+// error is sent once. Timing runs only while a navigation is in progress.
+//
+// ROUTES are named from the route's own parameters (useParams), so a dynamic
+// segment is replaced exactly. Each report is also kept on this device
+// (routeHealthLocal) because the server's log lasts an hour on this plan.
 
 import { useEffect, useRef } from 'react'
-import { usePathname } from 'next/navigation'
+import { useParams, usePathname } from 'next/navigation'
 import {
   CONTENT_GIVE_UP_MS, CONTENT_QUIET_MS, LOADING_SELECTOR, LOADING_TEXT, LONG_NAVIGATION_MS,
   MAX_REPORTS_PER_TAB, MAX_REPORT_BYTES, STALLED_NAVIGATION_MS,
-  documentReport, errorReport, navigationReport, type NetworkHint, type RouteHealthReport,
+  documentReport, errorReport, navigationReport, templateFromParams, type NetworkHint, type RouteHealthReport,
 } from '@/lib/telemetry/routeHealth'
+import { keepLocally } from '@/components/layout/routeHealthLocal'
 
 const ENDPOINT = '/api/client-health'
+const SENT_KEY = 'boe_route_health_sent'
+
+/** Reports already sent from this tab, surviving reloads; a blocked store counts as full. */
+function sentFromTab(): number {
+  try { return Number(sessionStorage.getItem(SENT_KEY) ?? '0') || 0 } catch { return MAX_REPORTS_PER_TAB }
+}
+function countSent(n: number) {
+  try { sessionStorage.setItem(SENT_KEY, String(n)) } catch { /* best-effort */ }
+}
 
 function deploymentId(): string | null {
   const s = document.querySelector('script[src*="dpl="]') as HTMLScriptElement | null
@@ -79,17 +93,24 @@ function whenContentReady(startedAt: number, isCurrent: () => boolean): Promise<
 
 export function RouteHealthReporter() {
   const pathname = usePathname()
-  const sent = useRef(0)
+  const params = useParams()
+  // The CURRENT route's template, updated after each route commits. Read at
+  // click / Back time — before React renders the next route — it is the page
+  // being left. (At popstate, location already shows the destination.)
+  const template = useRef('/')
   const seenErrors = useRef(new Set<string>())
-  const pending = useRef<{ from: string; at: number; visible: boolean; stallTimer: number | null } | null>(null)
+  const pending = useRef<{ from: string; fromTemplate: string; at: number; visible: boolean; stallTimer: number | null } | null>(null)
   const generation = useRef(0)
   const firstRoute = useRef(true)
 
   const send = (report: RouteHealthReport | null) => {
-    if (!report || sent.current >= MAX_REPORTS_PER_TAB) return
+    if (!report) return
+    const sent = sentFromTab()
+    if (sent >= MAX_REPORTS_PER_TAB) return
     const body = JSON.stringify(report)
     if (body.length > MAX_REPORT_BYTES) return
-    sent.current++
+    countSent(sent + 1)
+    keepLocally(report)
     try {
       if (!navigator.sendBeacon?.(ENDPOINT, new Blob([body], { type: 'application/json' }))) {
         void fetch(ENDPOINT, { method: 'POST', body, headers: { 'content-type': 'application/json' }, keepalive: true }).catch(() => {})
@@ -110,10 +131,10 @@ export function RouteHealthReporter() {
         const p = pending.current
         if (!p || p.at !== at || window.location.pathname !== p.from) return
         pending.current = null
-        send(navigationReport({ fromPath: p.from, toPath: p.from, startedAt: p.at, endedAt: null, contentAt: null,
+        send(navigationReport({ fromPath: p.fromTemplate, toPath: p.fromTemplate, startedAt: p.at, endedAt: null, contentAt: null,
           visibleAtStart: p.visible, visibleAtEnd: visible(), hardLoad: false, network: networkHint(), deployment: deploymentId() }))
       }, STALLED_NAVIGATION_MS)
-      pending.current = { from, at, visible: visible(), stallTimer }
+      pending.current = { from, fromTemplate: template.current, at, visible: visible(), stallTimer }
     }
     const onClick = (e: MouseEvent) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
@@ -135,6 +156,11 @@ export function RouteHealthReporter() {
     return () => { document.removeEventListener('click', onClick, true); window.removeEventListener('popstate', onPop) }
   }, [])
 
+  // Declared before the timing effect below, so it runs first on each route.
+  useEffect(() => {
+    template.current = templateFromParams(pathname, params as Record<string, string | string[]>)
+  }, [pathname, params])
+
   // The route changed (or the document's first route mounted): time route and content.
   useEffect(() => {
     const gen = ++generation.current
@@ -148,7 +174,7 @@ export function RouteHealthReporter() {
           // The reader moved on before the first page settled: not a measurement.
           if (contentAt == null && !isCurrent() && firstRouteMs < LONG_NAVIGATION_MS) return
           const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-          send(documentReport({ path: window.location.pathname, firstRouteMs, contentMs: contentAt,
+          send(documentReport({ path: template.current, firstRouteMs, contentMs: contentAt,
             responseEndMs: nav ? nav.responseEnd : null, visible: visible(), network: networkHint(), deployment: deploymentId() }))
         })
       })
@@ -166,7 +192,7 @@ export function RouteHealthReporter() {
       void whenContentReady(p.at, isCurrent).then(contentAt => {
         // A newer navigation took over: this one's content is not measurable.
         if (!isCurrent() && contentAt == null) return
-        send(navigationReport({ fromPath: p.from, toPath: window.location.pathname, startedAt: p.at, endedAt: routeAt, contentAt,
+        send(navigationReport({ fromPath: p.fromTemplate, toPath: template.current, startedAt: p.at, endedAt: routeAt, contentAt,
           visibleAtStart: p.visible, visibleAtEnd: visible(), hardLoad: false, network: networkHint(), deployment: deploymentId() }))
       })
     })
@@ -174,18 +200,18 @@ export function RouteHealthReporter() {
 
   // Page errors, including render errors React reports as uncaught.
   useEffect(() => {
-    const report = (message: unknown, source: unknown) => {
-      const r = errorReport({ path: window.location.pathname, message, source, visible: visible(), deployment: deploymentId() })
+    const report = (message: unknown, name: unknown, source: unknown) => {
+      const r = errorReport({ path: template.current, message, name, source, visible: visible(), deployment: deploymentId() })
       const key = `${r.route}|${r.message}`
       if (seenErrors.current.has(key)) return
       seenErrors.current.add(key)
       send(r)
     }
-    const onError = (e: ErrorEvent) => report(e.error?.message ?? e.message, e.filename)
+    const onError = (e: ErrorEvent) => report(e.error?.message ?? e.message, e.error?.name, e.filename)
     const onRejection = (e: PromiseRejectionEvent) => {
-      const reason = e.reason as { message?: unknown; stack?: unknown } | undefined
+      const reason = e.reason as { message?: unknown; name?: unknown; stack?: unknown } | undefined
       const source = typeof reason?.stack === 'string' ? reason.stack.match(/\/_next\/static\/chunks\/[^\s):]+/)?.[0] : null
-      report(reason?.message ?? reason, source)
+      report(reason?.message ?? reason, reason?.name, source)
     }
     window.addEventListener('error', onError)
     window.addEventListener('unhandledrejection', onRejection)

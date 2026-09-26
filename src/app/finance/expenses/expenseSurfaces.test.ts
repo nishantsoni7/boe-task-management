@@ -1494,6 +1494,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/telemetry/routeHealth.test.ts',
     'src/app/api/client-health/route.ts',
     'src/app/api/client-health/clientHealth.test.ts',
+    'src/components/layout/routeHealthLocal.ts',
+    'src/app/diagnostics/page.tsx',
   ])
 
   /**
