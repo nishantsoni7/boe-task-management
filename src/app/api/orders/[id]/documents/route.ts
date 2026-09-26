@@ -26,6 +26,7 @@ import { buildConfirmedPdfModel } from '@/lib/orders/confirmedPdf'
 import { renderConfirmedPdf } from '@/lib/orders/confirmedPdfRender'
 import { ORDER_FILES_BUCKET, PI_DRAFT_ITEM_COLUMNS, type PersistedItem } from '@/lib/orders/draftsView'
 import { ORDER_PI_HANDOFF_COLUMNS, type OrderPiRow } from '@/lib/orders/orderPiHandoff'
+import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 import {
   formatOrderOperationalNumber,
   orderProductCodesByItemId,
@@ -437,7 +438,12 @@ async function generate(input: {
     if (image.role !== 'representative') continue
     const row = rowByItem.get(image.item_id)
     if (row === undefined || pathByRow.has(row)) continue
-    if (typeof image.storage_path === 'string' && image.storage_path.startsWith(`submissions/${submissionId}/`)) {
+    // The WHOLE canonical key of this PI's own picture for this line, role and
+    // slot (review R3) — the check every privileged image read makes, and the
+    // SQL twin (order_pi_image_key_is_canonical) makes before a key is stored.
+    if (isCanonicalPiImageKey(image.storage_path, {
+      submissionId, itemId: image.item_id, role: image.role, position: image.position,
+    })) {
       pathByRow.set(row, image.storage_path)
     }
   }
@@ -465,7 +471,8 @@ async function generate(input: {
       },
       loadImage: async (row) => {
         const path = pathByRow.get(row)
-        if (!path) return null
+        // The last check before the service-role read, on the exact key read.
+        if (!path || !isCanonicalPiImageKey(path, { submissionId })) return null
         return read(path)
       },
     })

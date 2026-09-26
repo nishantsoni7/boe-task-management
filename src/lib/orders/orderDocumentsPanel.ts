@@ -39,6 +39,22 @@ export const DOC_DESIGN_FILES_TITLE = 'Design Files'
 export const DOC_CLIENT_PO_TITLE = 'Client PO'
 
 /**
+ * The Main PI row's UPLOADED-WORKBOOK actions, named for what they open: the
+ * .xlsx Sales uploaded, not the PI document. The PI itself is the PDF
+ * (piVersionPdf.ts), generated from the version's details (20270116000000).
+ */
+export const DOC_VIEW_PI_LABEL = 'Uploaded workbook'
+export const DOC_DOWNLOAD_PI_LABEL = 'Download uploaded workbook (.xlsx)'
+export const DOC_DOWNLOAD_PI_PDF_LABEL = 'Download PI PDF'
+/** The quiet link to the PI versions and every supporting-file submission. */
+export const DOCUMENTS_HISTORY_LABEL = 'History'
+export const DOCUMENTS_HISTORY_TITLE = 'Document history'
+/** When a supporting file became current (its Operations acceptance). */
+export const DOC_ACCEPTED_LABEL = 'Accepted'
+/** The approved PI's own product pictures — read-only, opened in a dialog. */
+export const DOC_PI_PICTURES_LABEL = (total: number) => `PI product pictures (${total})`
+
+/**
  * WHAT AN EMPTY DOCUMENT SLOT SAYS, and it says it quietly.
  *
  * `Not attached` is a statement of fact, not a warning. Most Orders legitimately

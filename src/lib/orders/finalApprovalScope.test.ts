@@ -647,10 +647,36 @@ describe('the import preview and the parser are untouched', () => {
     //      commercial-terms note. Both are PREFILL and neither produces a
     //      diagnostic, so neither can change what the parser accepts.
     //
-    // Undoing both must yield the original file line for line. A changed cell
+    //   3. THE FOOTER FINGERPRINT (2026-09-24). A production PI with one product
+    //      row deleted stored its grand total as GST and left Grand total empty,
+    //      because the footer is read by position and nothing proved it. The
+    //      column-G labels now fingerprint it, and the footer — with the two
+    //      dates, the terms and the fabric cell below the band — is read as ONE
+    //      block at the offset where every label lines up (0 when the template
+    //      is intact, which is exactly the original reading). Plus one reported,
+    //      never-repaired check: Total + GST against the grand total.
+    //
+    // Undoing all three must yield the original file line for line. A changed cell
     // address, a changed tolerance, a dropped warning or a reworded diagnostic
     // all survive the undo and show up here.
-    const undo = (src: string) => src
+    const undoFooterFingerprint = (src: string) => src
+      .replace(/\n\/\*\*\n \* THE FOOTER IS FINGERPRINTED TOO[\s\S]*?\n {2}return `\$\{m\[1\]\}\$\{Number\(m\[2\]\) \+ offset\}`\n\}\n/, '')
+      .replace(/ {2}\/\/ ── Where the footer sits\.[\s\S]*?\n {2}\}\n\n(?= {2}\/\/ ── Products ──)/, '')
+      .replace('        lastRow: lastProductRow,\n', '        lastRow: LAST_PRODUCT_ROW,\n')
+      .replace('row <= lastProductRow; row++', 'row <= LAST_PRODUCT_ROW; row++')
+      .replace('between rows ${FIRST_PRODUCT_ROW} and ${lastProductRow}.', 'between rows ${FIRST_PRODUCT_ROW} and ${LAST_PRODUCT_ROW}.')
+      .replace('readHeader(sheet, warnings, footerOffset)', 'readHeader(sheet, warnings)')
+      .replace('readCommercial(sheet, products, warnings, footerOffset)', 'readCommercial(sheet, products, warnings)')
+      .replace('        lastProductRow,\n        footerOffset,\n', '        lastProductRow: LAST_PRODUCT_ROW,\n')
+      .replace('function readHeader(sheet: PiSheet, warnings: PiWarning[], footerOffset = 0): PiHeader {', 'function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {')
+      .replace('date(shiftAddress(HEADER_CELLS.orderConfirmationDate, footerOffset), ', 'date(HEADER_CELLS.orderConfirmationDate, ')
+      .replace('date(shiftAddress(HEADER_CELLS.dispatchCommitment, footerOffset), ', 'date(HEADER_CELLS.dispatchCommitment, ')
+      .replace('  warnings: PiWarning[],\n  footerOffset = 0,\n): PiCommercialSummary {\n', '  warnings: PiWarning[],\n): PiCommercialSummary {\n')
+      .replace(/ {2}\/\/ The template cells, moved as one block[\s\S]*?as Record<keyof typeof COMMERCIAL_CELLS, string>\n/, '')
+      .replace(/\n {2}\/\/ The last line of the footer must be the two above it[\s\S]*?\n {2}\}\n(?=\n {2}return \{\n {4}discount,)/, '')
+      .replace(/(function readCommercial\([\s\S]*?\n\}\n)/, block => block.replace(/\bCELLS\./g, 'COMMERCIAL_CELLS.'))
+
+    const undo = (src: string) => undoFooterFingerprint(src)
       .replace(/\n\/\*\*\n \* A DATE THE TEMPLATE WROTE AS WORDS[\s\S]*?\n\/\/ ── Header /, '\n// ── Header ')
       .replace(/\n {6}\/\/ What the workbook itself said about its terms[\s\S]*?\n {6}\},\n/, '\n')
       .replace(/\n\/\*\*\n \* The three header cells a PI is expected to fill[\s\S]*?\n {2}return issues\n\}\n/, '')
@@ -658,6 +684,28 @@ describe('the import preview and the parser are untouched', () => {
       .replace("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'\n", '')
 
     const source = now(PARSER)
+
+    //   4. THE LAYOUT BY LABELS (2026-09-26). After a production draft saved a
+    //      blank Grand Total, every fixed address was replaced: each block is
+    //      found by its own labels (src/lib/pi/layout.ts) and proved by its own
+    //      figures, and a missing Grand Total now refuses the upload. That is a
+    //      rewrite of how every cell is addressed, which no regex undo can
+    //      reverse. From that change on, the parser is held by its OWN suites —
+    //      masterSheetParser.test.ts, including "an edited sheet is read by its
+    //      labels and proved by its figures", which proves an unedited sheet
+    //      still reads exactly as the template did. This test keeps the
+    //      properties it existed to protect: the final-approval work added
+    //      nothing to the parser beyond the set-aside blocks.
+    if (source.includes("from './layout'")) {
+      assert.ok(source.includes('export function headerRequirementWarnings('), 'the header-requirement rule is still here')
+      assert.ok(source.includes('export function readFabricResponsibility('), 'the PI terms reader is still here')
+      assert.ok(source.includes('export function readCommercialTermsNote('), 'and the terms note with it')
+      assert.ok(source.includes('export function creationDateIso('), 'and the written date of creation')
+      assert.ok(!/approve|approval|order_submissions|supabase/i.test(source.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')),
+        'the parser still knows nothing about approval or the database')
+      return
+    }
+
     assert.ok(source.includes('export function headerRequirementWarnings('),
       'the first set-aside block is the header-requirement rule')
     assert.ok(source.includes('export function readFabricResponsibility('),
@@ -677,7 +725,9 @@ describe('the import preview and the parser are untouched', () => {
     // "no editor can fix this, correct the workbook and import it again", and
     // all three land in ordinary editable draft columns.
     const source = now(PARSER)
-    assert.ok(source.includes('warnings.push(...headerRequirementWarnings(header))'),
+    // Since 2026-09-26 the call also passes the cells the layout read them
+    // from, so a message names the real cell. The property is unchanged.
+    assert.ok(/warnings\.push\(\.\.\.headerRequirementWarnings\(header[,)]/.test(source),
       'the header requirements must be warnings')
     assert.ok(!source.includes('blockingIssues.push(...headerRequirement'),
       'a missing salesperson or date must not refuse the upload')

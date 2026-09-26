@@ -314,6 +314,42 @@ describe('the read side excludes system types too', () => {
     // pre-existing PI V1 approval to that reviewer, writing ONE Orders-type
     // row to ONE person, once. It installs no trigger, function or job.
     const ORDER_0524_HANDOFF = '20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
+    // An eighth, 20270112000000, is Order document submissions (Design Files
+    // and Client PO). Four RPCs a PERSON presses (create, the admin decision,
+    // the operations decision, sending a PI with its documents) act as that
+    // signed-in person; the three that notify tell the next owner inside that
+    // person's own transaction. Two AFTER triggers also write one Orders-type
+    // row each, and only inside a person's own action: the operations
+    // reviewer ACCEPTING a PI version (on order_operations_handoffs) tells the
+    // submitter their documents were accepted with it, and Control Center
+    // REASSIGNING the reviewer (on order_operations_reviewers) tells the new
+    // reviewer what now waits on them. Orders types only; nothing scheduled.
+    const DOCUMENT_SUBMISSIONS = '20270112000000_order_document_submissions.sql'
+    // A ninth, 20270113000000, stages a revised PI at admin approval and
+    // promotes it on operations acceptance. Every notification it writes is an
+    // Orders type, inside a PERSON'S own action: the admin approving (via the
+    // service-role door the route calls for them), the reviewer deciding, or
+    // Control Center reassigning (an AFTER trigger on the reviewer row).
+    const REVISED_PI_PROMOTION = '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
+    // A tenth, 20270116000000, puts a revised PI in force at the admin's
+    // approval. It writes ONE Orders-type row, to the person who proposed the
+    // revision, inside that approval (the service-role door the route calls
+    // for a verified admin); the reviewer is told by 20261229000000's trigger.
+    // The 40% advance after alignment (§4d) adds one more Orders type,
+    // order_update_production: when a PERSON's own write — an admin amending
+    // the value, Finance reversing a payment — leaves an aligned Order short,
+    // that same transaction tells the administrators and the reviewer it is on
+    // hold. Its re-emitted decide_order_operations_handoff() keeps the
+    // reviewer's decision notice. It installs no trigger on notifications and
+    // schedules nothing.
+    const REVISION_IN_FORCE = '20270116000000_order_pi_revision_in_force_at_admin_approval.sql'
+    // An eleventh, 20270120000000, makes the flow's Admin decisions ask Control
+    // Center permissions. Its restated Orders functions keep their existing
+    // writes (only who may act, and which holders are told, changed), and
+    // complete_payment_entry tells the other verify_own_payment holders, for
+    // information, that a payment was recorded and verified — a Finance type,
+    // inside that person's own Record Payment action. No trigger, nothing scheduled.
+    const ADMIN_DECISIONS = '20270120000000_order_submission_admin_decisions_ask_permissions.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -322,7 +358,72 @@ describe('the read side excludes system types too', () => {
       APPROVAL_SILENCE,
       OPERATIONS_HANDOFF,
       ORDER_0524_HANDOFF,
+      DOCUMENT_SUBMISSIONS,
+      REVISED_PI_PROMOTION,
+      REVISION_IN_FORCE,
+      ADMIN_DECISIONS,
     ])
+    {
+      const sql = read(join(dir, ADMIN_DECISIONS))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(t => t.replace(/'|::notification_type/g, ''))
+      assert.ok(types.length >= 4, `${ADMIN_DECISIONS}: the restated Orders writes are all found`)
+      for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false, `${ADMIN_DECISIONS} writes ${t}`)
+      assert.match(sql, /\(case when v_status = 'approved_linked' then 'finance_approved_linked'\s+else 'finance_approved_suspense' end\)::notification_type/)
+      assert.equal(isSystemGeneratedNotificationType('finance_approved_linked'), false)
+      assert.equal(isSystemGeneratedNotificationType('finance_approved_suspense'), false)
+      assert.equal(/create\s+trigger\s+\w+[\s\S]{0,80}on\s+public\.notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${ADMIN_DECISIONS}: nothing is scheduled`)
+    }
+    {
+      const sql = read(join(dir, REVISION_IN_FORCE))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      // Sales told the version is in force (the approval), the reviewer told an
+      // admin approved production below 40% (approve_order_advance_exception, a
+      // person's press), management told an aligned Order was put on hold (in
+      // the transaction of the person's write that caused it), and the
+      // approver told of the reviewer's decision (decide_order_operations_handoff,
+      // re-emitted). Orders types only.
+      assert.deepEqual(types, ['order_operations_review_decided', 'order_operations_review_requested',
+        'order_update_production', 'order_operations_review_decided'], `${REVISION_IN_FORCE}: four Orders-type writes`)
+      for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false)
+      assert.ok(/grant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/.test(sql),
+        `${REVISION_IN_FORCE}: the admin approval stays service-role, called by the route for a verified admin`)
+      assert.equal(/create\s+trigger\s+\w+[\s\S]{0,80}on\s+public\.notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${REVISION_IN_FORCE}: nothing is scheduled`)
+    }
+    {
+      const sql = read(join(dir, REVISED_PI_PROMOTION))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      assert.ok(types.length >= 5, `${REVISED_PI_PROMOTION}: its notification writes are all found`)
+      for (const t of types) {
+        assert.equal(isSystemGeneratedNotificationType(t), false, `${REVISED_PI_PROMOTION} writes ${t}, which must not be a system type`)
+        assert.ok(t.startsWith('order_operations_review_'), t)
+      }
+      // Two person-invoked doors: the reviewer's decision, and an active
+      // admin's re-approval when the approving admin has left (§6b).
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 2,
+        `${REVISED_PI_PROMOTION}: both person-invoked doors act as a signed-in person`)
+      assert.ok(/grant\s+execute on function public\.approve_order_pi_revision\(uuid, uuid, jsonb\) to service_role;/.test(sql),
+        `${REVISED_PI_PROMOTION}: the admin approval stays service-role, called by the route for a verified admin`)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${REVISED_PI_PROMOTION}: nothing is scheduled`)
+    }
+    {
+      const sql = read(join(dir, DOCUMENT_SUBMISSIONS))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      assert.ok(types.length >= 5, `${DOCUMENT_SUBMISSIONS}: its notification writes are all found`)
+      for (const t of types) {
+        assert.equal(isSystemGeneratedNotificationType(t), false, `${DOCUMENT_SUBMISSIONS} writes ${t}, which must not be a system type`)
+        assert.ok(t.startsWith('order_document_review_'), t)
+      }
+      assert.equal((sql.match(/public\.assert_order_submission_actor\(\)/g) ?? []).length, 4,
+        `${DOCUMENT_SUBMISSIONS}: the four RPCs act as a signed-in person`)
+      // Its AFTER triggers sit only on tables a PERSON'S action writes — never
+      // on a schedule, a job or the notifications table itself.
+      const afterTriggers = [...sql.matchAll(/create\s+trigger\s+\w+\s+after\s+[\w\s,]+?\s+on\s+public\.(\w+)/gi)].map(m => m[1]).sort()
+      assert.deepEqual(afterTriggers, ['order_operations_handoffs', 'order_operations_reviewers', 'order_submissions'],
+        `${DOCUMENT_SUBMISSIONS}: AFTER triggers only where a person decides`)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${DOCUMENT_SUBMISSIONS}: nothing is scheduled`)
+    }
     {
       const sql = read(join(dir, ORDER_0524_HANDOFF))
       assert.equal(/create\s+(or\s+replace\s+)?(trigger|function)/i.test(sql), false,
@@ -365,7 +466,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

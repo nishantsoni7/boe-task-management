@@ -96,6 +96,7 @@ import {
   allocationTargetNames,
   nameSummaryTargets,
   piDraftSafeName,
+  PI_DRAFT_NAME_COLUMNS,
   allocationCountLabel,
   buildAllocatedAgainst,
   completeAllocatedTotal,
@@ -3013,7 +3014,7 @@ function ReceivedPaymentsViewInner(
         : Promise.resolve({ data: [] }),
       submissionIds.size > 0
         ? supabase.from('order_submissions')
-            .select('id, reserved_order_number, source_workbook_name')
+            .select(PI_DRAFT_NAME_COLUMNS)
             .in('id', [...submissionIds])
         : Promise.resolve({ data: [] }),
     ])
@@ -3109,7 +3110,7 @@ function ReceivedPaymentsViewInner(
           : Promise.resolve({ data: [] }),
         submissionIds.size > 0
           ? supabase.from('order_submissions')
-              .select('id, reserved_order_number, source_workbook_name')
+              .select(PI_DRAFT_NAME_COLUMNS)
               .in('id', [...submissionIds])
           : Promise.resolve({ data: [] }),
       ])
@@ -3742,8 +3743,10 @@ function ReceivedPaymentsViewInner(
             setRecording(false)
             setRecordNotice(
               summary.allocationCount === 0
-                ? `Payment ${summary.requestNumber} recorded. None of it is allocated yet — it is available to allocate.`
-                : `Payment ${summary.requestNumber} recorded and divided across ${summary.allocationCount} record${summary.allocationCount === 1 ? '' : 's'}. Finance verification is still pending.`)
+                ? `Payment ${summary.requestNumber} ${summary.verified ? 'recorded and verified' : 'recorded'}. None of it is allocated yet — it is available to allocate.`
+                : summary.verified
+                  ? `Payment ${summary.requestNumber} recorded, verified and divided across ${summary.allocationCount} record${summary.allocationCount === 1 ? '' : 's'}. The other Admins have been told, for information.`
+                  : `Payment ${summary.requestNumber} recorded and divided across ${summary.allocationCount} record${summary.allocationCount === 1 ? '' : 's'}. Finance verification is still pending.`)
             refreshAfterMutation()
           }}
         />

@@ -95,9 +95,23 @@ export function allocationTargetLabel(row: Pick<AllocationTargetRow,
   'target_type' | 'target_reference' | 'reserved_order_number'>): string {
   const ref = row.target_reference?.trim() || null
   if (row.target_type === 'order') return ref ? `Order ${ref}` : 'Order'
-  const reserved = row.reserved_order_number?.trim() || null
-  if (reserved) return `PI Draft · Reserved Order ${reserved}`
-  return ref ? `PI Draft · ${ref}` : 'PI Draft'
+  const name = allocationTargetName(row)
+  return name ? `PI Draft · ${name}` : 'PI Draft'
+}
+
+/** A draft's stable reference (20270114000000), e.g. "PID-00012". */
+const PID = /^PID-\d+$/
+
+/**
+ * A PI Draft's name: its STABLE reference (PID-00012, 20270116000000), with the
+ * Order number it has reserved beside it when it holds one — that is the
+ * number the Order will take. A draft read before it had a reference falls
+ * back to the reserved number, then the workbook's file name.
+ */
+function draftName(reference: string | null, reserved: string | null): string | null {
+  if (reference && PID.test(reference)) return reserved ? `${reference} · Reserved ${reserved}` : reference
+  if (reserved) return `Reserved Order ${reserved}`
+  return reference
 }
 
 /**
@@ -109,8 +123,7 @@ export function allocationTargetName(row: Pick<AllocationTargetRow,
   'target_type' | 'target_reference' | 'reserved_order_number'>): string | null {
   const ref = row.target_reference?.trim() || null
   if (row.target_type === 'order') return ref
-  const reserved = row.reserved_order_number?.trim() || null
-  return reserved ? `Reserved Order ${reserved}` : ref
+  return draftName(ref, row.reserved_order_number?.trim() || null)
 }
 
 /** Safe names for every destination in the complete read, keyed by target id. */
@@ -125,19 +138,25 @@ export function allocationTargetNames(rows: readonly AllocationTargetRow[] | nul
 
 /**
  * The same name, for a PI Draft row read directly from order_submissions
- * (the reader's own RLS read). The reserved Order number when there is one,
- * otherwise the workbook's file name. NEVER source_order_number: that is
- * normally the number of an older PI the workbook was copied from.
+ * (the reader's own RLS read): its PID (with a reserved number beside it),
+ * otherwise the reserved Order number, otherwise the workbook's file name.
+ * NEVER source_order_number: that is normally the number of an older PI the
+ * workbook was copied from.
  */
 export function piDraftSafeName(row: {
+  draft_reference?: string | null
   reserved_order_number?: string | null
   source_workbook_name?: string | null
 }): string {
   const reserved = row.reserved_order_number?.trim() || null
-  if (reserved) return `Reserved Order ${reserved}`
+  const named = draftName(row.draft_reference?.trim() || null, reserved)
+  if (named) return named
   const file = (row.source_workbook_name ?? '').replace(/^.*[\\/]/, '').trim()
   return file || 'Draft'
 }
+
+/** The columns piDraftSafeName reads, for the two direct reads that use it. */
+export const PI_DRAFT_NAME_COLUMNS = 'id, draft_reference, reserved_order_number, source_workbook_name'
 
 /**
  * Give a detail-panel allocation summary the safe names the complete read

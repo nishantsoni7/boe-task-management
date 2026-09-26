@@ -841,6 +841,17 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // private PDF bucket and its storage policies. Purely additive; it reads
       // public.users and touches nothing this suite is about.
       '20270110000000_announcements.sql',
+      // A payment's typed reference is kept in proof_note on insert (trigger), carried
+      // forward on unverified rows, and read by pi_submission_payment_summary.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
+      '20270112000000_order_document_submissions.sql',
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+      '20270115000000_order_submission_pi_edit_revisions.sql',
+      '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
+      '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
+      '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       // Every SECURITY DEFINER in public pins pg_temp last: ALTER FUNCTION
       // ... SET search_path on ninety-five existing functions, and
       // get_or_create_quotation_no is revoked from client roles. Bodies are not

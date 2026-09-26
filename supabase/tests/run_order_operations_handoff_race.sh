@@ -38,7 +38,13 @@
 # is unresolved vs. an assignment for that Order, both orders — the case that
 # DEADLOCKED before approve_order_pi_revision took the reviewer row first
 # (the assignment's foreign-key check on the Order waited for the approval,
-# whose trigger waited for the assignment's reviewer row).
+# whose trigger waited for the assignment's reviewer row). Since 20270116000000
+# the approval puts V2 in force at once, so direction 4 now also proves V2's
+# handoff ends with the reviewer current after both commit. Direction 6a: two
+# admin approvals of one V2 apply it once. (Directions 5 and 6b–6d raced a
+# STAGED V2, a state 20270116000000 made unreachable; they are retired.)
+# Counts of readdressed handoffs are relative to what other fixtures on this
+# scratch database already hold.
 #
 # PREREQUISITES: the same disposable stack run_order_operations_handoff_local.sh
 # needs, with the migration applied, and Docker running.
@@ -186,6 +192,11 @@ PI1=$(scalar "select gen_random_uuid()")
 make_pi "$PI1" "ASSERT RACE 1 $RUN"
 assign "'$A'" >/dev/null
 echo "== direction 1: approval (reads A, holds the SHARE lock) … Control Center switches to B meanwhile"
+# Live, unresolved handoffs other fixtures on this scratch database already
+# committed (set_order_operations_reviewer's own criterion): the assignment
+# readdresses those too, so the claim is "exactly ONE more" (#209 review, H5).
+OTHERS=$(scalar "select count(*) from public.order_operations_handoffs h join public.orders o on o.id = h.order_id
+                  where h.superseded_at is null and h.status <> 'accepted' and o.status <> 'cancelled'")
 approve_holding_lock "$PI1" 3 >/dev/null 2>&1 &
 APPROVE_PID=$!
 sleep 1.0
@@ -196,8 +207,9 @@ wait $APPROVE_PID
 WAITED=$((T1 - T0))
 [ "$WAITED" -ge 1 ] || fail "direction 1: the assignment did not wait for the approval (took ${WAITED}s); the row is not serialized"
 echo "   the assignment waited ${WAITED}s for the approval's lock, then ran"
-printf '%s' "$OUT" | grep -q '"reassigned_handoffs" : 1\|"reassigned_handoffs": 1' \
-  || fail "direction 1: the assignment must readdress the handoff the approval had just committed, got: $OUT"
+EXPECTED=$((OTHERS + 1))
+printf '%s' "$OUT" | grep -q "\"reassigned_handoffs\" : $EXPECTED\|\"reassigned_handoffs\": $EXPECTED" \
+  || fail "direction 1: the assignment must readdress the handoff the approval had just committed ($OTHERS others + 1), got: $OUT"
 [ "$(live_reviewer_of_pi "$PI1")" = "$B" ] \
   || fail "direction 1: the new handoff must end up with B (the reviewer current after both commits), got $(live_reviewer_of_pi "$PI1")"
 [ "$(scalar "select count(*) from public.notifications n join public.orders o on o.id = n.entity_id where o.source_order_submission_id = '$PI1' and n.user_id = '$B'")" = "1" ] \
@@ -259,7 +271,8 @@ echo "   OK: cleared mid-approval → the committed handoff is unassigned with i
 #
 # To make that window deterministic, not lucky, the runner installs a pause
 # (public.zz_race_pause, dropped by retire) that fires on the approval's own
-# "V1 → superseded" version write — after the function has taken every lock
+# "V1 → superseded" version write (since 20270113000000: the "V2 → admin_approved"
+# staging write) — after the function has taken every lock
 # it takes before its trigger, and before the trigger — and sleeps only in a
 # session that sets race.pause. Nothing in the function under test is altered
 # or pre-empted.
@@ -279,7 +292,7 @@ begin
 end $f$;
 drop trigger if exists zz_race_pause on public.order_pi_versions;
 create trigger zz_race_pause before update on public.order_pi_versions
-  for each row when (new.status = 'superseded') execute function public.zz_race_pause();
+  for each row when (new.status in ('superseded', 'admin_approved', 'rejected')) execute function public.zz_race_pause();
 SQL
 
 # A confirmed Order with V1 approved and its handoff awaiting reviewer A, and a
@@ -329,7 +342,8 @@ select public.approve_order_pi_revision('$V2', '$OWNER', jsonb_build_object(
   'commercial', jsonb_build_object('gross_product_amount', 1000000, 'grand_total', 1000000),
   'items', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'source_row', 10, 'item_sequence', '1',
            'product_name', 'ASSERT chair', 'quantity', 2, 'cost_per_piece', 500000, 'total_amount', 1000000)),
-  'item_images', '[]'::jsonb)) is not null;
+  'item_images', '[]'::jsonb,
+  'seed_terms', jsonb_build_object('fabric_responsibility', null, 'commercial_terms_note', null, 'client_city', null))) is not null;
 commit;
 select public.finish_order_submission_processing('$PI', '$TOK');
 SQL
@@ -355,21 +369,27 @@ live_v2_handoff() {
 }
 
 check_v2_outcome() {
+  # 20270116000000: an Admin's approval puts V2 IN FORCE at once. V1 is
+  # superseded; V2's handoff is the live one, addressed to the reviewer current
+  # after BOTH sessions commit (B), who is told exactly once for V2; the
+  # revision is applied once and nothing is staged.
   local LABEL="$1" O="$2"
   [ "$(scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$O'")" = "1/superseded,2/approved" ] \
-    || fail "$LABEL: V1 must be superseded and V2 approved"
+    || fail "$LABEL: V2 must be in force and V1 superseded, got $(scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$O'")"
   [ "$(live_v2_handoff "$O")" = "2/$B/awaiting" ] \
-    || fail "$LABEL: V2's live handoff must await B, got $(live_v2_handoff "$O")"
-  [ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O' and version_number = 1 and superseded_at is not null")" = "1" ] \
-    || fail "$LABEL: V1's handoff must be superseded"
-  [ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O' and superseded_at is null")" = "1" ] \
-    || fail "$LABEL: exactly one live handoff"
+    || fail "$LABEL: V2's handoff must be the live one, addressed to B, got $(live_v2_handoff "$O")"
   local NB; NB=$(scalar "select count(*) from public.notifications where entity_id = '$O' and user_id = '$B' and type = 'order_operations_review_requested' and title like '%PI V2 %'")
   [ "$NB" = "1" ] || fail "$LABEL: B must be notified exactly once (for V2), got $NB"
   [ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O' and event_type = 'pi_revision_approved'")" = "1" ] \
-    || fail "$LABEL: the revision approval must be on the Order's history once"
-  [ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O' and event_type = 'operations_handoff_recorded' and (payload ->> 'version_number') = '2'")" = "1" ] \
-    || fail "$LABEL: V2's handoff must be recorded on the Order's history once"
+    || fail "$LABEL: the revision must be applied exactly once"
+  [ "$(scalar "select count(*) from public.order_pi_versions where order_id = '$O' and status = 'admin_approved'")" = "0" ] \
+    || fail "$LABEL: nothing may be staged"
+}
+
+# One field of the single history event of TYPE for revision version V on Order O.
+revision_event() {
+  scalar "select string_agg(payload ->> '$4', ',') from public.order_activity_log
+           where order_id = '$1' and event_type = '$2' and payload ->> 'version_number' = '$3'"
 }
 
 # One field of the single history event of TYPE for handoff version V on Order O.
@@ -416,13 +436,13 @@ report_pair "direction 4a" "$APPROVE_RC" "$SCRATCH/4a-approve.out" "$ASSIGN_RC" 
 echo "   both sessions completed; the change waited $((T1 - T0))s for the approval, then ran"
 check_v2_outcome "direction 4a" "$O4"
 # The serialization, read back from history: the approval read A (it held the
-# reviewer row), and the change — which waited — then readdressed V2 to B.
+# reviewer row) and recorded V2's handoff for A; the change — which waited —
+# then readdressed that live handoff to B.
 [ "$(handoff_event "$O4" operations_handoff_recorded 2 assigned_to)" = "$A" ] \
-  || fail "direction 4a: the approval must have recorded V2 for A (the reviewer when it locked), got $(handoff_event "$O4" operations_handoff_recorded 2 assigned_to)"
-[ "$(handoff_event "$O4" operations_reviewer_assigned 2 previously_assigned_to)" = "$A" ] \
-  && [ "$(handoff_event "$O4" operations_reviewer_assigned 2 assigned_to)" = "$B" ] \
-  || fail "direction 4a: the change must have readdressed V2 from A to B"
-echo "   OK: V2 recorded for A under the approval's lock, then readdressed to B; V1 superseded; B notified once"
+  || fail "direction 4a: the approval must have recorded V2's handoff for A (the reviewer when it locked), got $(handoff_event "$O4" operations_handoff_recorded 2 assigned_to)"
+[ "$(handoff_event "$O4" operations_reviewer_assigned 2 assigned_to)" = "$B" ] \
+  || fail "direction 4a: the change must have readdressed V2's handoff to B"
+echo "   OK: V2 in force under the approval's lock, its handoff recorded for A, then readdressed to B; B notified once"
 
 PI5=$(scalar "select gen_random_uuid()")
 read -r O5 PATH5 <<<"$(prepare_v2 "$PI5" "ASSERT RACE 4b $RUN" | tail -1)"
@@ -443,7 +463,43 @@ check_v2_outcome "direction 4b" "$O5"
 [ "$(handoff_event "$O5" operations_reviewer_assigned 1 assigned_to)" = "$B" ] \
   || fail "direction 4b: the change must have readdressed V1 to B before the approval"
 [ "$(handoff_event "$O5" operations_handoff_recorded 2 assigned_to)" = "$B" ] \
-  || fail "direction 4b: the approval must have recorded V2 for B directly, got $(handoff_event "$O5" operations_handoff_recorded 2 assigned_to)"
-echo "   OK: V1 readdressed to B by the change; V2 then recorded for B directly; B notified once for V2"
+  || fail "direction 4b: the approval must have recorded V2's handoff for B directly, got $(handoff_event "$O5" operations_handoff_recorded 2 assigned_to)"
+echo "   OK: V1 readdressed to B by the change; V2 then in force with its handoff recorded for B directly; B notified once for V2"
+
+
+# ── Directions 5 and 6b–6d (20270113000000): RETIRED BY 20270116000000 ──
+# They raced the OPERATIONS ACCEPTANCE of a STAGED V2 (admin_approved) and two
+# decisions on it. Since 20270116000000 an Admin's approval puts V2 in force at
+# once and no version can be staged: 20270116000000 refuses to apply while any
+# admin_approved row exists, and nothing creates one. The races that remain are
+# the approval against a reviewer change (direction 4, above), two approvals
+# of one V2 (6a, below), and the alignment against a payment reversal
+# (run_order_advance_hold_race.sh).
+[ "$(scalar "select count(*) from public.order_pi_versions where status = 'admin_approved'")" = "0" ] \
+  || fail "a staged (admin_approved) version exists; 20270116000000 makes that state unreachable"
+echo "== directions 5, 6b-6d: retired — no staged version can exist (checked: 0 admin_approved rows)"
+
+versions_of() { scalar "select string_agg(version_number || '/' || status, ',' order by version_number) from public.order_pi_versions where order_id = '$1'"; }
+
+# 6a. Two admin approvals of one pending V2: exactly one applies it.
+PI7=$(scalar "select gen_random_uuid()")
+read -r O7 PATH7 <<<"$(prepare_v2 "$PI7" "ASSERT RACE 6a $RUN" | tail -1)"
+echo "== direction 6a: two admin approvals of the same pending V2"
+approve_revision "$O7" "$PI7" "$PATH7" 3 >"$SCRATCH/6a-first.out" 2>&1 &
+FIRST_PID=$!
+wait_until_parked "approve_order_pi_revision"
+SECOND_RC=0; approve_revision "$O7" "$PI7" "$PATH7" 0 >"$SCRATCH/6a-second.out" 2>&1 || SECOND_RC=$?
+FIRST_RC=0; wait $FIRST_PID || FIRST_RC=$?
+grep -qi deadlock "$SCRATCH/6a-first.out" "$SCRATCH/6a-second.out" && fail "direction 6a: DEADLOCK"
+[ "$FIRST_RC" = "0" ] || fail "direction 6a: the first approval did not complete: $(tr '\n' ' ' <"$SCRATCH/6a-first.out")"
+[ "$SECOND_RC" != "0" ] || fail "direction 6a: the second approval must be refused"
+grep -qE "ORDER_SUBMISSION_PROCESSING|ORDER_PI_REVISION_NOT_PENDING|already being processed|lease" "$SCRATCH/6a-second.out" \
+  || fail "direction 6a: the second approval must be refused by the lease or as no longer pending, got: $(tr '\n' ' ' <"$SCRATCH/6a-second.out")"
+[ "$(versions_of "$O7")" = "1/superseded,2/approved" ] || fail "direction 6a: V2 in force once, V1 superseded; got $(versions_of "$O7")"
+[ "$(scalar "select count(*) from public.order_activity_log where order_id = '$O7' and event_type = 'pi_revision_approved'")" = "1" ] \
+  || fail "direction 6a: applied exactly once"
+[ "$(scalar "select count(*) from public.order_operations_handoffs where order_id = '$O7' and version_number = 2")" = "1" ] \
+  || fail "direction 6a: one V2 handoff"
+echo "   OK: the second approval was refused ($(grep -oE 'ORDER_[A-Z_]+' "$SCRATCH/6a-second.out" | head -1)); V2 in force once; one V2 handoff"
 
 echo "ALL RACE ASSERTIONS PASSED"

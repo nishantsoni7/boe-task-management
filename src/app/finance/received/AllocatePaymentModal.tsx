@@ -210,15 +210,16 @@ export async function searchAllocationTargets(
       .not('status', 'in', '(cancelled)')
       .order('created_at', { ascending: false })
       .limit(15),
-    // A PI HAS NO ALLOCATED NUMBER of its own until one is reserved or issued.
-    // So its "reference" is what the workbook itself carries: the source order
-    // number typed into the document, and the file name the employee uploaded.
-    // Both are searchable because a salesperson identifies a draft by whichever
-    // of the two they have.
+    // A PI DRAFT IS NAMED BY ITS OWN REFERENCE, PID-00001 (20270114000000):
+    // the name Sales and Admin see on the draft, and the one Finance is told.
+    // The workbook's own B20 number stays SEARCHABLE — a salesperson may quote
+    // it — but it is never shown as the draft's name: it is normally an older
+    // PI's number, and the draft page says it is not an Order number
+    // (allocatedAgainst.ts keeps the same rule).
     !wantDrafts ? Promise.resolve({ data: [] }) : supabase
       .from('order_submissions')
-      .select('id, source_order_number, source_workbook_name, client_name, grand_total, status')
-      .or(`source_order_number.ilike.%${term}%,source_workbook_name.ilike.%${term}%,client_name.ilike.%${term}%`)
+      .select('id, draft_reference, source_order_number, source_workbook_name, client_name, grand_total, status')
+      .or(`draft_reference.ilike.%${term}%,source_order_number.ilike.%${term}%,source_workbook_name.ilike.%${term}%,client_name.ilike.%${term}%`)
       // An approved PI has become an Order and its money belongs to the Order;
       // a rejected one receives nothing. The RPC refuses both, and this agrees
       // with it rather than offering a choice that would fail.
@@ -240,7 +241,7 @@ export async function searchAllocationTargets(
   const drafts: AllocationCandidate[] = ((draftsRes.data ?? []) as any[]).map(d => ({
     kind: 'submission',
     id: d.id,
-    reference: d.source_order_number || d.source_workbook_name || 'PI Draft',
+    reference: d.draft_reference || d.source_workbook_name || 'PI Draft',
     clientName: d.client_name ?? '—',
     status: d.status,
     value: d.grand_total,

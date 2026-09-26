@@ -349,7 +349,17 @@ describe('which commercial fields a human may edit', () => {
 
   test('there is no configurable GST rate, and the source agrees', () => {
     assert.equal(PI_HAS_CONFIGURABLE_GST_RATE, false)
-    const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
-    assert.ok(!/gst_?rate/i.test(parser), 'a GST rate appeared in the parser')
+    const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8').replace(/\r\n/g, '\n')
+    // Since the layout-by-labels change (2026-09-26) the parser reads the rate
+    // the WORKBOOK PRINTS on its own GST label ("GST @ 18%") — and uses it for
+    // one thing only: a GST_MISMATCH warning when the stored GST disagrees. No
+    // rate is configured anywhere, and GST is never computed into anything:
+    // the stored figure is always the workbook's own.
+    const uses = parser.match(/gst_?rate/gi) ?? []
+    assert.ok(uses.length > 0 && parser.includes('const gstRate = layout.footer.gstRate'),
+      'the only GST rate is the one read from the workbook label')
+    assert.ok(!/gst\s*=\s*[^;\n]*gstRate/.test(parser) && !/amount:\s*[^,\n]*gstRate/.test(parser),
+      'a GST rate is never used to produce a stored GST figure')
+    assert.ok(parser.includes("code: 'GST_MISMATCH'"), 'the printed rate only ever feeds a warning')
   })
 })
