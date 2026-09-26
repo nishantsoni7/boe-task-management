@@ -51,6 +51,7 @@ import {
   expenseSearchClause,
   expenseTotal,
   orderedDateRange,
+  withExpenseSearch,
   selectableCategories,
   type ExpenseCategory,
   type ExpenseFilters,
@@ -375,7 +376,9 @@ export function ExpensesView() {
   // without this every keystroke would be a round trip. The other controls are
   // each one deliberate click and are applied at once.
   useEffect(() => {
-    const at = setTimeout(() => setFilters(prev => ({ ...prev, search: searchTerm })), 300)
+    // withExpenseSearch keeps the same object when nothing changed, so the
+    // mount-time tick does not reload a list that is already loading.
+    const at = setTimeout(() => setFilters(prev => withExpenseSearch(prev, searchTerm)), 300)
     return () => clearTimeout(at)
   }, [searchTerm])
 

@@ -405,7 +405,9 @@ describe('the expense list', () => {
   })
 
   test('the search is debounced, because it is a database query', () => {
-    assert.ok(/setTimeout\(\(\) => setFilters\(prev => \(\{ \.\.\.prev, search: searchTerm \}\)\), 300\)/.test(view))
+    // Through withExpenseSearch, which keeps identity for an unchanged search
+    // so the mount-time tick does not load the list twice (expenseListLoad.test.ts).
+    assert.ok(/setTimeout\(\(\) => setFilters\(prev => withExpenseSearch\(prev, searchTerm\)\), 300\)/.test(view))
   })
 
   test('THE TOTAL IS EXACT, and says which rows it describes', () => {
