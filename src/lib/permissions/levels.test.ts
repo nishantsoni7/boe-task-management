@@ -245,12 +245,17 @@ describe('Manager never receives a protected action', () => {
     // records and verifies one's own payment in one action — it removes the
     // second pair of eyes on money received, so it is granted per person in
     // Control Center and never by a preset.
+    //
+    // And by one more in 20270122000000: `orders.view_pi_commission`, sight of
+    // a PI's middleman commission beyond its salesperson, assigned reviewer and
+    // active admins. The commission has its own table precisely so that no
+    // wider Orders authority reaches it; a preset must not either.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
-      'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_quotations',
-      'view_team',
+      'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_pi_commission',
+      'view_quotations', 'view_team',
     ])
   })
 

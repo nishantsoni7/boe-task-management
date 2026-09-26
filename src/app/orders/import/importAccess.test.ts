@@ -925,7 +925,10 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // The detail page's breakdown is a card of its own now — the preview's
     // component is untouched — and it is handed a SELECTION of exactly those
     // rows: nothing rebuilt, nothing recomputed.
-    assert.ok(detail.includes('const breakdown = buildBreakdownView(commercialRows)'),
+    // 20270122000000: the same rows, with only the deduction row's WORD set
+    // (Discount / Design Fee) — clientDeductionRows changes labels and drops a
+    // zero deduction; it never touches a value.
+    assert.ok(detail.includes('const breakdown = buildBreakdownView(clientDeductionRows(commercialRows, '),
       'the breakdown selects from exactly those rows')
     assert.ok(detail.includes('<PiCommercialBreakdown'),
       'the breakdown card is still the thing that renders it')

@@ -178,6 +178,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   view_team:             'See other employees’ performance',
   approve_order:             'Approve order submissions',
   approve_advance_exception: 'Approve advance exceptions',
+  view_pi_commission:        'See PI middleman commissions',
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
   verify_own_payment:        'Record and verify own payments in one step',

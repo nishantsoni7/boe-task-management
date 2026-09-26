@@ -193,7 +193,10 @@ export function PiEditor({
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setFailure(body.message ?? 'The PI could not be saved just now.'); setReviewing(false); return }
       onDone(mode === 'propose'
-        ? `PI V${body.version_number ?? ''} sent for approval. The current PI stays in force until it is approved.`
+        ? (body.dates_amended
+          // 20270122000000: a dates-only edit is not a new PI version.
+          ? 'The dates were updated on the PI and the Order. No new PI version was needed; production alignment and the Order documents are unchanged.'
+          : `PI V${body.version_number ?? ''} sent for approval. The current PI stays in force until it is approved.`)
         : 'The PI was saved.')
     } finally { setBusy(null) }
   }
