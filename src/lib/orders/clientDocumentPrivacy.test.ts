@@ -167,6 +167,10 @@ describe('the confirmed-order PDF and the live PI version PDF (same builder, sam
       assert.ok(!/\bDiscount\b/.test(text), `no Discount row (${String(discount_amount)})`)
       assert.ok(!/Design Fee/i.test(text), `no Design Fee row (${String(discount_amount)})`)
       assert.ok(!text.includes('Rs. 0 '), 'no zero row')
+      // ...and the next line says what it is: a subtotal, not one "after" a
+      // discount that is not there. The figure is the workbook's own.
+      assert.ok(!/after discount/i.test(text), `no "after discount" (${String(discount_amount)})`)
+      assert.ok(/\bSubtotal\b/.test(text) && text.includes('Rs. 34,94,400'), `"Subtotal" with the same figure (${String(discount_amount)})`)
     }
   })
 })
