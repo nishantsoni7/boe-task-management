@@ -60,6 +60,15 @@ import {
   CANNOT_ACCEPT_REASON_LABEL,
   CANNOT_ACCEPT_REASON_PLACEHOLDER,
   OPERATIONS_HANDOFF_REASON_MAX_LENGTH,
+  REALIGN_CHECK_LABEL,
+  REALIGN_CHECK_REQUIRED,
+  REALIGN_CONFIRM,
+  REALIGN_DIALOG_TITLE,
+  RECOVER_CONFIRM,
+  RECOVER_DIALOG_TITLE,
+  RECOVER_REASON_LABEL,
+  RECOVER_SAVE_LABEL,
+  validateRecoveryReason,
   WITHDRAW_ACCEPTANCE_LABEL,
   WITHDRAW_CONFIRM,
   WITHDRAW_DIALOG_TITLE,
@@ -298,8 +307,20 @@ export function ProductionAlignmentModal({
  * version's currency under a row lock; this dialog only collects the words.
  */
 export function OperationsHandoffDecisionModal({
-  orderNumber, versionLabel, decision, withdrawing = false, saving, failure, onClose, onConfirm,
+  orderNumber, versionLabel, decision, withdrawing = false, realigning = false, saving, failure, onClose, onConfirm, alsoAccepts = null,
 }: {
+  /**
+   * An "accepted" decision on an ACCEPTED version whose Order is on a
+   * production hold: aligning it again (review R1). The reviewer confirms
+   * they checked the Order; the note stays optional.
+   */
+  realigning?: boolean
+  /**
+   * The Design Files / Client PO sent with this PI (20270112000000 §11e):
+   * accepting the version accepts them too. Said in the dialog so nobody
+   * accepts files they were not shown.
+   */
+  alsoAccepts?: string | null
   orderNumber: string
   versionLabel: string
   decision: OperationsHandoffStatus
@@ -312,18 +333,38 @@ export function OperationsHandoffDecisionModal({
 }) {
   const [reason, setReason] = useState('')
   const [touched, setTouched] = useState(false)
+  const [checked, setChecked] = useState(false)
   const accepting = decision === 'accepted'
+  const realign = accepting && realigning
   const check = validateHandoffDecision(decision, reason)
+  const ready = check.ok && (!realign || checked)
 
   return (
     <OrderModal
-      title={accepting ? ACCEPT_DIALOG_TITLE : withdrawing ? WITHDRAW_DIALOG_TITLE : CANNOT_ACCEPT_DIALOG_TITLE}
+      title={realign ? REALIGN_DIALOG_TITLE : accepting ? ACCEPT_DIALOG_TITLE : withdrawing ? WITHDRAW_DIALOG_TITLE : CANNOT_ACCEPT_DIALOG_TITLE}
       subtitle={`Order ${orderNumber} · ${versionLabel}`}
       onClose={onClose}
     >
       <OrderModalNotice tone={accepting ? 'info' : 'warning'}>
-        {accepting ? ACCEPT_CONFIRM : withdrawing ? WITHDRAW_CONFIRM : CANNOT_ACCEPT_CONFIRM}
+        {realign ? REALIGN_CONFIRM : accepting ? ACCEPT_CONFIRM : withdrawing ? WITHDRAW_CONFIRM : CANNOT_ACCEPT_CONFIRM}
       </OrderModalNotice>
+      {realign && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14 }}>
+            <input type="checkbox" checked={checked} disabled={saving}
+              onChange={e => setChecked(e.target.checked)} />
+            <span>{REALIGN_CHECK_LABEL}</span>
+          </label>
+          {touched && !checked && <div style={{ fontSize: '11px', color: '#C13030' }}>{REALIGN_CHECK_REQUIRED}</div>}
+        </div>
+      )}
+      {alsoAccepts && !withdrawing && !realign && (
+        <OrderModalNotice tone="info">
+          {accepting
+            ? `Accepting also makes the documents sent with this PI current: ${alsoAccepts}.`
+            : `The documents sent with this PI stay awaiting until this version is accepted: ${alsoAccepts}.`}
+        </OrderModalNotice>
+      )}
       <OrderField
         label={accepting ? ACCEPT_NOTE_LABEL : CANNOT_ACCEPT_REASON_LABEL}
         error={touched && !check.ok ? check.message : undefined}
@@ -343,13 +384,59 @@ export function OperationsHandoffDecisionModal({
         onClose={onClose}
         onSave={() => {
           setTouched(true)
+          if (!ready || !check.ok || saving) return
+          onConfirm(check.reason)
+        }}
+        saving={saving}
+        disabled={touched && !ready}
+        destructive={!accepting}
+        saveLabel={realign ? REALIGN_DIALOG_TITLE : accepting ? ACCEPT_FOR_PRODUCTION_LABEL : withdrawing ? WITHDRAW_ACCEPTANCE_LABEL : CANNOT_ACCEPT_LABEL}
+      />
+    </OrderModal>
+  )
+}
+
+/**
+ * ADMINISTRATOR RECOVERY OF A HELD ORDER (review R1). Offered only when no
+ * operations reviewer can align it again. A reason is required;
+ * recover_order_production_alignment() re-checks all of it under lock, the 40%
+ * gate included, and records the recovery as its own event.
+ */
+export function ProductionRecoveryModal({ orderNumber, versionLabel, saving, failure, onClose, onConfirm }: {
+  orderNumber: string
+  versionLabel: string
+  saving: boolean
+  failure: string | null
+  onClose: () => void
+  onConfirm: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [touched, setTouched] = useState(false)
+  const check = validateRecoveryReason(reason)
+  return (
+    <OrderModal title={RECOVER_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose}>
+      <OrderModalNotice tone="warning">{RECOVER_CONFIRM}</OrderModalNotice>
+      <OrderField label={RECOVER_REASON_LABEL} error={touched && !check.ok ? check.message : undefined}>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          maxLength={OPERATIONS_HANDOFF_REASON_MAX_LENGTH}
+          disabled={saving}
+          rows={3}
+          style={TEXTAREA}
+        />
+      </OrderField>
+      {failure && <OrderModalError message={failure} />}
+      <OrderModalActions
+        onClose={onClose}
+        onSave={() => {
+          setTouched(true)
           if (!check.ok || saving) return
           onConfirm(check.reason)
         }}
         saving={saving}
         disabled={touched && !check.ok}
-        destructive={!accepting}
-        saveLabel={accepting ? ACCEPT_FOR_PRODUCTION_LABEL : withdrawing ? WITHDRAW_ACCEPTANCE_LABEL : CANNOT_ACCEPT_LABEL}
+        saveLabel={RECOVER_SAVE_LABEL}
       />
     </OrderModal>
   )

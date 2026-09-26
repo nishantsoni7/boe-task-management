@@ -12,29 +12,101 @@
 --   the CONSEQUENCE— what replace_order_submission_parse then does once the PI
 --                    has left draft. A defect here is a stale verification, a
 --                    stale document, or an Order whose identity moved.
+--
+-- AS THE CHAIN THROUGH 20270116000000 LEAVES IT (repaired in the #209 review):
+--   * Fixtures are built through the real doors (submit, approve, convert),
+--     by this file's own people, acting through request.jwt.claims.
+--   * A PI APPROVED AND IN FORCE ON AN ORDER no longer takes Change PI in
+--     place: 20270115000000 made it change only as a new version (Edit PI or
+--     a revised workbook, in force at an Admin's approval — proved by
+--     order_pi_revision_in_force_at_admin_approval_assertions.sql). §C7, §F,
+--     §G, §K and §M therefore prove the refusal and that NOTHING moved: not
+--     the Order's identity or values, not its documents, not one rupee.
+--   * Counts are this file's own rows, never the whole table.
 -- ═══════════════════════════════════════════════════════════════════════════
 \set ON_ERROR_STOP on
 begin;
+
+-- A complete PI of u_owner's, through the real doors: 'draft'; 'submitted'
+-- with p_paid verified (submit_pi_for_review); 'approved' and converted into
+-- an Order (approve_pi_review + approve_order_submission); or 'exception' —
+-- submitted below 40% with a reason and agreed terms, awaiting its decision.
+create function pg_temp.act(p_user uuid) returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+end $$;
+create function pg_temp.pi(p_id uuid, p_client text, p_to text, p_paid numeric) returns void language plpgsql as $$
+declare
+  v_owner uuid := 'c0e00000-0000-4000-8000-000000000001';
+  v_admin uuid := 'c0e00000-0000-4000-8000-000000000006';
+  v_wb    text := 'submissions/' || p_id || '/original/' || gen_random_uuid() || '.xlsx';
+  v_pay   uuid := gen_random_uuid();
+begin
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
+  values (p_id, 'draft', v_owner, v_owner, '[]', '[]');
+  update public.order_submissions
+     set client_name = p_client, gross_product_amount = 250000, discount_amount = 0, total_before_gst = 250000,
+         grand_total = 295000, billing_percentage = 40,
+         order_confirmation_date = '2026-05-01', due_date = '2026-07-01',
+         source_workbook_path = v_wb, source_workbook_sha256 = repeat('9', 64)
+   where id = p_id;
+  insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
+    jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+  insert into public.order_submission_items (submission_id, source_row, item_sequence, product_name, quantity, cost_per_piece, total_amount, sort_order)
+  values (p_id, 32, 'B001', p_client || ' chair', 10, 25000, 250000, 0);
+  insert into public.order_submission_item_images (submission_id, item_id, role, position, storage_path, mime_type, sha256, anchor_row)
+  select p_id, i.id, 'representative', 0,
+         'submissions/' || p_id || '/images/' || i.id || '/representative/0-' || repeat('c', 64) || '.png', 'image/png', repeat('c', 64), 32
+    from public.order_submission_items i where i.submission_id = p_id;
+  insert into storage.objects (bucket_id, name, metadata)
+  select 'order-files', storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images where submission_id = p_id;
+  if p_to = 'draft' then return; end if;
+  if p_paid > 0 then
+    insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+    values (v_pay, p_client, p_paid, current_date, 'hdfc', 'approved_unlinked', v_owner, null);
+    insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+    values (v_pay, p_id, p_paid, 'order_submission', v_owner);
+  end if;
+  execute 'set local role authenticated';
+  perform pg_temp.act(v_owner);
+  if p_to = 'exception' then
+    perform public.submit_pi_for_review(p_id, null, 'Against client PO', '50% advance, balance before dispatch', 'GST invoice on dispatch');
+  else
+    perform public.submit_pi_for_review(p_id, null, null, null, null);
+  end if;
+  if p_to = 'approved' then
+    perform pg_temp.act(v_admin);
+    if (select pi_approved_at from public.order_submissions where id = p_id) is null then
+      perform public.approve_pi_review(p_id);
+    end if;
+    perform public.approve_order_submission(p_id, v_owner, '2026-05-01', '2026-07-01', 'reference');
+  end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+end $$;
 
 do $$
 declare
   n_pass int := 0; n_fail int := 0;
   failures text[] := '{}'; v_report text;
 
-  u_owner    constant uuid := '11111111-1111-1111-1111-111111111111';
-  u_other    constant uuid := '22222222-2222-2222-2222-222222222222';
-  u_approver constant uuid := '33333333-3333-3333-3333-333333333333';
-  u_nobody   constant uuid := '44444444-4444-4444-4444-444444444444';
-  u_finance  constant uuid := '55555555-5555-5555-5555-555555555555';
-  u_admin    constant uuid := '66666666-6666-6666-6666-666666666666';
+  u_owner    constant uuid := 'c0e00000-0000-4000-8000-000000000001';
+  u_other    constant uuid := 'c0e00000-0000-4000-8000-000000000002';
+  u_approver constant uuid := 'c0e00000-0000-4000-8000-000000000003';
+  u_nobody   constant uuid := 'c0e00000-0000-4000-8000-000000000004';
+  u_finance  constant uuid := 'c0e00000-0000-4000-8000-000000000005';
+  u_admin    constant uuid := 'c0e00000-0000-4000-8000-000000000006';
 
   k_draft  constant uuid := 'c1000000-0000-0000-0000-00000000000d';
   k_subm   constant uuid := 'c2000000-0000-0000-0000-00000000000e';
   k_appr   constant uuid := 'c3000000-0000-0000-0000-00000000000a';
-  o_appr   constant uuid := 'c4000000-0000-0000-0000-00000000000b';
+  o_appr   uuid;
   d_ver    constant uuid := 'c5000000-0000-0000-0000-00000000000c';
   k_exc    constant uuid := 'c6000000-0000-0000-0000-00000000000d';
-  a_appr   constant uuid := 'c7000000-0000-0000-0000-00000000000e';
+  a_appr   uuid;
+  v_display text;
+  v_before  public.orders%rowtype;
   t_exc    constant uuid := 'aaaaaaa4-0000-0000-0000-000000000004';
 
   t_draft  constant uuid := 'aaaaaaa1-0000-0000-0000-000000000001';
@@ -45,59 +117,56 @@ declare
   v_res jsonb; v_txt text; v_num numeric; v_int int; v_ts timestamptz;
   v_uuid uuid; v_uuid2 uuid; v_bool boolean; v_long text; v_orders_before int;
 begin
+  -- ── People: this file's own (#209 review, H5) ──
+  -- It used to name ids other suites and seeds give other roles (11111111… is
+  -- the stack's admin, 44444444… a member with Orders access elsewhere), grant
+  -- without granted_by (NOT NULL since 20260660) and impersonate through a
+  -- test.uid GUC that auth.uid() does not read. It now creates exactly these.
+  insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+    (u_owner,    'ASSERT CP Owner',    'cp-owner@suite.test',    'member', 'sales',      true, 'CP-OWN'),
+    (u_other,    'ASSERT CP Other',    'cp-other@suite.test',    'member', 'sales',      true, 'CP-OTH'),
+    (u_approver, 'ASSERT CP Approver', 'cp-approver@suite.test', 'member', 'management', true, 'CP-APR'),
+    (u_nobody,   'ASSERT CP Nobody',   'cp-nobody@suite.test',   'member', 'design',     true, 'CP-NOB'),
+    (u_finance,  'ASSERT CP Finance',  'cp-finance@suite.test',  'member', 'management', true, 'CP-FIN'),
+    (u_admin,    'ASSERT CP Admin',    'cp-admin@suite.test',    'admin',  'management', true, 'CP-ADM')
+  on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+
   select id into m_orders  from public.permission_modules where module_key = 'orders';
   select id into a_create  from public.permission_actions where action_key = 'create';
   select id into a_approve from public.permission_actions where action_key = 'approve_order';
 
-  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed)
-  values (u_owner, m_orders, a_create, true),
-         (u_other, m_orders, a_create, true),
-         (u_approver, m_orders, a_approve, true);
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  select g.uid, mpa.module_id, mpa.action_id, true, u_admin
+    from (values (u_owner, 'view'), (u_owner, 'create'), (u_owner, 'can_be_order_assignee'),
+                 (u_other, 'view'), (u_other, 'create'),
+                 (u_approver, 'view'), (u_approver, 'approve_order'),
+                 (u_admin, 'approve_order'), (u_admin, 'approve_advance_exception'),
+                 (u_admin, 'can_be_order_assignee')) g(uid, a)
+    join public.permission_actions pa on pa.action_key = g.a
+    join public.module_permission_actions mpa on mpa.module_id = m_orders and mpa.action_id = pa.id
+  on conflict do nothing;
 
-  -- ── Three PIs, one at each stage that matters ──
-  insert into public.order_submissions
-    (id, status, client_name, created_by, submitted_by, order_id,
-     processing_token, grand_total, gross_product_amount, total_before_gst,
-     billing_percentage, order_confirmation_date, due_date)
-  values
-    (k_draft, 'draft',     'Draft Co',     u_owner, u_owner, null, t_draft,
-     295000, 250000, 250000, null, null, null),
-    (k_subm,  'submitted', 'Submitted Co', u_owner, u_owner, null, t_subm,
-     295000, 250000, 250000, 40, '2026-05-01', '2026-07-01'),
-    (k_appr,  'approved',  'Approved Co',  u_owner, u_owner, null, t_appr,
-     295000, 250000, 250000, 40, '2026-05-01', '2026-07-01'),
-    -- A submitted PI carrying an APPROVED reduced-payment exception, so §J can
-    -- ask the real derivation whether the decision is still current.
-    (k_exc,   'submitted', 'Exception Co', u_owner, u_owner, null, t_exc,
-     295000, 250000, 250000, 40, '2026-05-01', '2026-07-01');
+  -- ── Four PIs, one at each stage that matters, through the REAL doors ──
+  perform pg_temp.pi(k_draft, 'Draft Co',     'draft',     0);
+  perform pg_temp.pi(k_subm,  'Submitted Co', 'submitted', 118000);
+  perform pg_temp.pi(k_appr,  'Approved Co',  'approved',  118000);
+  -- A submitted PI asking for a reduced-payment exception (§J decides it).
+  perform pg_temp.pi(k_exc,   'Exception Co', 'exception', 0);
 
-  update public.order_submissions
-     set source_workbook_sha256  = repeat('9', 64),
-         payment_terms           = '50% advance, balance before dispatch',
-         billing_terms           = 'GST invoice on dispatch',
-         advance_declared_amount = 118000
-   where id = k_exc;
+  select order_id into o_appr from public.order_submissions where id = k_appr;
+  select id into a_appr from public.finance_payment_allocations where order_id = o_appr and status = 'active';
+  if o_appr is null or a_appr is null then
+    raise exception 'fixture: the approved PI''s Order or its moved allocation is missing';
+  end if;
+  select display_number into v_display from public.orders where id = o_appr;
 
-  update public.order_submissions
-     set finance_verified_by = u_approver,
-         finance_verified_at = now(),
-         finance_verified_submission_at = now()
-   where id in (k_subm, k_appr);
+  -- Each PI holds its own processing lease token, as the import route leaves it.
+  update public.order_submissions set processing_token = t_draft, processing_started_at = now() where id = k_draft;
+  update public.order_submissions set processing_token = t_subm,  processing_started_at = now() where id = k_subm;
+  update public.order_submissions set processing_token = t_appr,  processing_started_at = now() where id = k_appr;
+  update public.order_submissions set processing_token = t_exc,   processing_started_at = now() where id = k_exc;
 
-  -- The approved one carries an Order, with a ready document pair.
-  insert into public.orders (id, display_number, client_name, created_by, requested_by,
-                             confirm_date, due_date, total_value, total_product_value,
-                             billing_percentage, status, source_order_submission_id)
-  values (o_appr, '0001', 'Approved Co', u_owner, u_owner,
-          '2026-05-01', '2026-07-01', 295000, 250000, 40, 'running', k_appr);
-  update public.order_submissions set order_id = o_appr where id = k_appr;
-
-  -- Money that has already arrived against the Order. §K proves not one rupee
-  -- of it moves.
-  insert into public.finance_payment_allocations
-    (id, order_id, order_submission_id, allocated_amount, status)
-  values (a_appr, o_appr, null, 120000, 'active');
-
+  -- A ready document pair on the Order.
   insert into public.order_document_versions (id, order_id, version, status,
     excel_path, pdf_path, excel_sha256, pdf_sha256, excel_bytes, pdf_bytes, completed_at)
   values (d_ver, o_appr, 1, 'ready',
@@ -191,7 +260,11 @@ begin
     n_fail := n_fail + 1;
   end;
 
+  -- A FIXTURE: returned for changes, and (below) back to draft. Neither raw
+  -- move is one the app makes, so the transition guard is lifted for them.
+  alter table public.order_submissions disable trigger order_submissions_enforce_status_transition;
   update public.order_submissions set status = 'needs_changes' where id = k_draft;
+  alter table public.order_submissions enable trigger order_submissions_enforce_status_transition;
   begin
     v_res := public.assert_order_submission_workbook_editor(k_draft, u_owner, null);
     if (v_res ->> 'after_submission')::boolean = false then n_pass := n_pass + 1;
@@ -200,7 +273,9 @@ begin
     failures := array_append(failures, 'B4: the owner was refused a returned PI -> ' || sqlerrm);
     n_fail := n_fail + 1;
   end;
+  alter table public.order_submissions disable trigger order_submissions_enforce_status_transition;
   update public.order_submissions set status = 'draft' where id = k_draft;
+  alter table public.order_submissions enable trigger order_submissions_enforce_status_transition;
 
 
   -- ═══ C. ONCE IT HAS LEFT DRAFT — ADMIN ONLY ════════════════════════════
@@ -235,13 +310,14 @@ begin
   -- (finance.view) that module_entry_open resolves. Granting only the first
   -- would make the verifier fail for the wrong reason and the refusal below
   -- would prove nothing.
-  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed)
-  select u_finance, m.id, a.id, true
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  select u_finance, m.id, a.id, true, u_admin
   from public.permission_modules m, public.permission_actions a
-  where m.module_key = 'finance' and a.action_key in ('approve', 'view');
+  where m.module_key = 'finance' and a.action_key in ('approve', 'view')
+  on conflict do nothing;
 
   set local role authenticated;
-  perform set_config('test.uid', u_finance::text, true);
+  perform pg_temp.act(u_finance);
   v_bool := public.can_verify_pi_finance();
   reset role;
   if v_bool then n_pass := n_pass + 1;
@@ -291,16 +367,16 @@ begin
     failures := array_append(failures, 'C6: an admin was refused -> ' || sqlerrm); n_fail := n_fail + 1;
   end;
 
-  -- An approved PI carrying an Order is the furthest stage, and the answer is
-  -- the same one.
+  -- An approved PI carrying an Order is the furthest stage. The AUTHORITY
+  -- question still answers for the admin (who may revise it); what the admin
+  -- may no longer do is rewrite it in place — §F proves the write refused.
   begin
     v_res := public.assert_order_submission_workbook_editor(k_appr, u_admin, 'Wrong rate approved');
-    if (v_res ->> 'after_submission')::boolean = true
-       and (v_res ->> 'order_id')::uuid = o_appr then n_pass := n_pass + 1;
+    if (v_res ->> 'after_submission')::boolean = true then n_pass := n_pass + 1;
     else failures := array_append(failures, 'C7: ' || v_res::text); n_fail := n_fail + 1; end if;
   exception when others then
-    failures := array_append(failures, 'C7: an admin was refused an approved PI -> ' || sqlerrm);
-    n_fail := n_fail + 1;
+    if sqlerrm like '%ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'C7: ' || sqlerrm); n_fail := n_fail + 1; end if;
   end;
 
   -- ── THE CONTRAST THAT PROVES NOTHING WAS WIDENED ──
@@ -321,7 +397,7 @@ begin
 
   v_res := public.replace_order_submission_parse(k_draft, u_owner, jsonb_build_object(
     'processing_token', t_draft::text,
-    'fingerprint', 'fp-draft-1',
+    'fingerprint', encode(sha256(convert_to('fp-draft-1', 'UTF8')), 'hex'),
     'header', jsonb_build_object('client_name', 'Draft Co Revised'),
     'source', jsonb_build_object('workbook_path', 'pi/draft/v2.xlsx',
                                  'workbook_sha256', repeat('c', 64)),
@@ -349,7 +425,7 @@ begin
 
   v_res := public.replace_order_submission_parse(k_subm, u_admin, jsonb_build_object(
     'processing_token', t_subm::text,
-    'fingerprint', 'fp-subm-2',
+    'fingerprint', encode(sha256(convert_to('fp-subm-2', 'UTF8')), 'hex'),
     'change_reason', 'Rate corrected on line 3',
     'header', jsonb_build_object('client_name', 'Submitted Co'),
     'source', jsonb_build_object('workbook_path', 'pi/subm/v2.xlsx',
@@ -373,8 +449,11 @@ begin
   if v_uuid is null then n_pass := n_pass + 1;
   else failures := array_append(failures, 'E3: the verifier survived'); n_fail := n_fail + 1; end if;
 
-  if (v_res ->> 'finance_verification_cleared')::boolean = true then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'E4: the clearing was not reported'); n_fail := n_fail + 1; end if;
+  -- Since 20261226000000 a PI carries no Finance verification of its own
+  -- (verified PAYMENT is the gate), so a replacement has none to clear, and
+  -- says so rather than claiming it cleared one.
+  if coalesce((v_res ->> 'finance_verification_cleared')::boolean, false) = false then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'E4: a retired verification was reported cleared'); n_fail := n_fail + 1; end if;
 
   select count(*) into v_int from public.order_submission_activity
    where submission_id = k_subm and action = 'workbook_replaced_by_admin';
@@ -396,128 +475,90 @@ begin
   else failures := array_append(failures, 'E8: documents were superseded for a PI with no Order'); n_fail := n_fail + 1; end if;
 
 
-  -- ═══ F. A REPLACEMENT ONCE THE ORDER EXISTS ════════════════════════════
+  -- ═══ F. A REPLACEMENT ONCE THE ORDER EXISTS — REFUSED; A VERSION INSTEAD ══
+  --
+  -- 20270115000000: an approved PI in force on an Order changes only as a new
+  -- version. Change PI in place is refused, for an admin with a reason too,
+  -- and NOTHING moves: the Order's identity and values, its documents, its
+  -- history, its money.
 
-  select count(*) into v_orders_before from public.orders;
-  v_res := public.replace_order_submission_parse(k_appr, u_admin, jsonb_build_object(
-    'processing_token', t_appr::text,
-    'fingerprint', 'fp-appr-2',
-    'change_reason', 'Fabric cost was omitted',
-    'header', jsonb_build_object('client_name', 'Approved Co Ltd',
-                                 'order_confirmation_date', '2026-05-02',
-                                 'due_date', '2026-07-15'),
-    'source', jsonb_build_object('workbook_path', 'pi/appr/v2.xlsx',
-                                 'workbook_sha256', repeat('e', 64)),
-    'commercial', jsonb_build_object('grand_total', '350000',
-                                     'gross_product_amount', '290000'),
-    'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
+  select * into v_before from public.orders where id = o_appr;
+  select count(*) into v_orders_before from public.orders where source_order_submission_id = k_appr;
+  begin
+    v_res := public.replace_order_submission_parse(k_appr, u_admin, jsonb_build_object(
+      'processing_token', t_appr::text,
+      'fingerprint', encode(sha256(convert_to('fp-appr-2', 'UTF8')), 'hex'),
+      'change_reason', 'Fabric cost was omitted',
+      'header', jsonb_build_object('client_name', 'Approved Co Ltd',
+                                   'order_confirmation_date', '2026-05-02',
+                                   'due_date', '2026-07-15'),
+      'source', jsonb_build_object('workbook_path', 'submissions/' || k_appr || '/original/v2.xlsx',
+                                   'workbook_sha256', repeat('e', 64)),
+      'commercial', jsonb_build_object('grand_total', '350000',
+                                       'gross_product_amount', '290000'),
+      'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
+    failures := array_append(failures, 'F0: an approved PI in force was rewritten in place'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'F0: wrong refusal -> ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
 
-  -- ── THE ORDER'S IDENTITY DID NOT MOVE ──
+  -- ── THE ORDER DID NOT MOVE ──
   select display_number into v_txt from public.orders where id = o_appr;
-  if v_txt = '0001' then n_pass := n_pass + 1;
+  if v_txt = v_display then n_pass := n_pass + 1;
   else failures := array_append(failures, 'F1: the confirmed Order number changed'); n_fail := n_fail + 1; end if;
-
   select source_order_submission_id into v_uuid from public.orders where id = o_appr;
   if v_uuid = k_appr then n_pass := n_pass + 1;
   else failures := array_append(failures, 'F2: the PI linkage moved'); n_fail := n_fail + 1; end if;
-
-  select status into v_txt from public.orders where id = o_appr;
-  if v_txt = 'running' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F3: the Order status changed'); n_fail := n_fail + 1; end if;
-
-  select count(*) into v_int from public.orders;
-  if v_int = v_orders_before then n_pass := n_pass + 1;
+  if (select count(*) from public.orders where source_order_submission_id = k_appr) = v_orders_before then n_pass := n_pass + 1;
   else failures := array_append(failures, 'F4: a SECOND Order was created'); n_fail := n_fail + 1; end if;
-
   select order_id into v_uuid from public.order_submissions where id = k_appr;
   if v_uuid = o_appr then n_pass := n_pass + 1;
   else failures := array_append(failures, 'F5: the PI stopped naming its Order'); n_fail := n_fail + 1; end if;
+  if (select (client_name, total_value, total_product_value, confirm_date, due_date, status)
+             is not distinct from (v_before.client_name, v_before.total_value, v_before.total_product_value,
+                                   v_before.confirm_date, v_before.due_date, v_before.status)
+        from public.orders where id = o_appr) then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'F6: the Order''s values moved on a refused write'); n_fail := n_fail + 1; end if;
 
-  -- ── THE MIRRORED VALUES FOLLOWED ──
-  select client_name into v_txt from public.orders where id = o_appr;
-  if v_txt = 'Approved Co Ltd' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F6: the Order still names the old client: ' || coalesce(v_txt,'null')); n_fail := n_fail + 1; end if;
+  -- ── THE DOCUMENTS STAY CURRENT ──
+  select superseded_at into v_ts from public.order_document_versions where id = d_ver;
+  if v_ts is null then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'F11: a refused write superseded the documents'); n_fail := n_fail + 1; end if;
 
-  select total_value into v_num from public.orders where id = o_appr;
-  if v_num = 350000 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('F7: total_value is %s', v_num)); n_fail := n_fail + 1; end if;
-
-  select total_product_value into v_num from public.orders where id = o_appr;
-  if v_num = 290000 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('F8: total_product_value is %s', v_num)); n_fail := n_fail + 1; end if;
-
-  select due_date::text into v_txt from public.orders where id = o_appr;
-  if v_txt = '2026-07-15' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F9: the due date did not follow: ' || coalesce(v_txt,'null')); n_fail := n_fail + 1; end if;
-
-  select confirm_date::text into v_txt from public.orders where id = o_appr;
-  if v_txt = '2026-05-02' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F10: the confirm date did not follow'); n_fail := n_fail + 1; end if;
-
-  -- ── THE READY DOCUMENTS ARE NO LONGER CURRENT, AND STILL EXIST ──
-  select superseded_at, superseded_reason, excel_path
-    into v_ts, v_txt, v_long
-  from public.order_document_versions where id = d_ver;
-  if v_ts is not null then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F11: the ready documents were left current'); n_fail := n_fail + 1; end if;
-  if v_txt = 'pi_data_amended' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F12: reason ' || coalesce(v_txt,'null')); n_fail := n_fail + 1; end if;
-  if v_long = public.order_document_version_prefix(o_appr, 1) || '/order.xlsx' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F13: the generated file was rewritten or removed'); n_fail := n_fail + 1; end if;
-
-  select status into v_txt from public.order_document_versions where id = d_ver;
-  if v_txt = 'ready' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F14: a superseded version stopped being ready'); n_fail := n_fail + 1; end if;
-
-  if (v_res ->> 'superseded_documents')::int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F15: the impact was misreported'); n_fail := n_fail + 1; end if;
-
-  -- ── BOTH HISTORIES RECORD IT ──
+  -- ── NOTHING WAS RECORDED AS DONE ──
   select count(*) into v_int from public.order_activity_log
-   where order_id = o_appr and event_type = 'order_workbook_replaced';
-  if v_int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('F16: %s Order events', v_int)); n_fail := n_fail + 1; end if;
-
-  select payload ->> 'reason' into v_txt from public.order_activity_log
-   where order_id = o_appr and event_type = 'order_workbook_replaced';
-  if v_txt = 'Fabric cost was omitted' then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F17: the Order history lost the reason'); n_fail := n_fail + 1; end if;
-
+   where order_id = o_appr and event_type in ('order_workbook_replaced', 'order_amended');
+  if v_int = 0 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('F16: %s Order events for a refused write', v_int)); n_fail := n_fail + 1; end if;
   select count(*) into v_int from public.order_submission_activity
    where submission_id = k_appr and action = 'workbook_replaced_by_admin';
-  if v_int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'F18: the PI history lost the amendment'); n_fail := n_fail + 1; end if;
+  if v_int = 0 then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'F18: the PI history records a refused write'); n_fail := n_fail + 1; end if;
 
 
   -- ═══ G. WHAT A REPLACEMENT MUST NOT DO ═════════════════════════════════
 
-  -- A REPLAY IS NOT AN AMENDMENT. Same fingerprint, same file: pressing Retry
-  -- after a timeout must not supersede a second time, clear anything, or write
-  -- a second entry.
-  update public.order_submissions
-     set finance_verified_by = u_approver, finance_verified_at = now()
-   where id = k_appr;
-
-  v_res := public.replace_order_submission_parse(k_appr, u_admin, jsonb_build_object(
-    'processing_token', t_appr::text,
-    'fingerprint', 'fp-appr-2',
-    'change_reason', 'Fabric cost was omitted',
-    'header', jsonb_build_object('client_name', 'Approved Co Ltd'),
-    'source', jsonb_build_object('workbook_path', 'pi/appr/v2.xlsx'),
-    'commercial', jsonb_build_object('grand_total', '350000'),
-    'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
-
-  if (v_res ->> 'unchanged')::boolean = true then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'G1: a replay was not recognised'); n_fail := n_fail + 1; end if;
-
-  select finance_verified_at into v_ts from public.order_submissions where id = k_appr;
-  if v_ts is not null then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'G2: a replay cleared a verification'); n_fail := n_fail + 1; end if;
-
+  -- A REPLAY IS NOT A WAY IN EITHER: the same request pressed again after a
+  -- timeout is refused exactly the same way, and still records nothing.
+  begin
+    v_res := public.replace_order_submission_parse(k_appr, u_admin, jsonb_build_object(
+      'processing_token', t_appr::text,
+      'fingerprint', encode(sha256(convert_to('fp-appr-2', 'UTF8')), 'hex'),
+      'change_reason', 'Fabric cost was omitted',
+      'header', jsonb_build_object('client_name', 'Approved Co Ltd'),
+      'source', jsonb_build_object('workbook_path', 'submissions/' || k_appr || '/original/v2.xlsx'),
+      'commercial', jsonb_build_object('grand_total', '350000'),
+      'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
+    failures := array_append(failures, 'G1: a replay rewrote an approved PI'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'G1: wrong refusal -> ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
   select count(*) into v_int from public.order_submission_activity
    where submission_id = k_appr and action = 'workbook_replaced_by_admin';
-  if v_int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('G3: a replay logged again (%s)', v_int)); n_fail := n_fail + 1; end if;
+  if v_int = 0 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('G3: a replay logged (%s)', v_int)); n_fail := n_fail + 1; end if;
 
   -- THE LEASE STILL GOVERNS. An admin reason is not a way past it.
   begin
@@ -533,12 +574,13 @@ begin
   end;
 
   -- No payment or allocation may have been touched by any of the above. The
-  -- fixture deliberately carries ONE, so "nothing appeared" and "nothing was
-  -- removed" are both real claims here rather than a count of zero that would
-  -- pass however the money was handled. Section K then reads the row itself.
-  select count(*) into v_int from public.finance_payment_allocations;
-  if v_int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('G5: %s allocations exist, expected the one the fixture made', v_int)); n_fail := n_fail + 1; end if;
+  -- approved PI's Order carries ONE (moved there at conversion), so "nothing
+  -- appeared" and "nothing was removed" are both real claims. Section K then
+  -- reads the row itself.
+  select count(*) into v_int from public.finance_payment_allocations
+   where order_id = o_appr or order_submission_id in (k_draft, k_subm, k_appr, k_exc);
+  if v_int = 2 then n_pass := n_pass + 1;   -- the Order's, and the submitted PI's
+  else failures := array_append(failures, format('G5: %s allocations on this file''s records, expected 2', v_int)); n_fail := n_fail + 1; end if;
 
 
   -- ═══ H. THE LEASE IS THE GATE BEFORE THE GATE ══════════════════════════
@@ -602,7 +644,7 @@ begin
 
   -- A colleague who does not own the draft still cannot.
   begin
-    update public.order_submissions set processing_token = null where id = k_draft;
+    update public.order_submissions set processing_token = null, processing_started_at = null where id = k_draft;
     v_res := public.begin_order_submission_processing(k_draft, u_other, gen_random_uuid());
     failures := array_append(failures, 'H6: a non-owner took a lease on a draft'); n_fail := n_fail + 1;
   exception when others then
@@ -624,13 +666,12 @@ begin
   -- Asked through the REAL function, verbatim from 20260921000000, so this is a
   -- claim about what runs rather than about a re-implementation.
 
-  update public.order_submissions
-     set advance_exception_status                   = 'approved',
-         advance_exception_decided_grand_total      = grand_total,
-         advance_exception_decided_workbook_sha256  = source_workbook_sha256,
-         advance_exception_decided_payment_terms    = payment_terms,
-         advance_exception_decided_billing_terms    = billing_terms
-   where id = k_exc;
+  -- Decided through the real door, which records the basis itself.
+  set local role authenticated;
+  perform pg_temp.act(u_admin);
+  perform public.approve_pi_advance_exception(k_exc);
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
 
   select public.order_submission_exception_current(
            advance_exception_status,
@@ -645,10 +686,10 @@ begin
 
   v_res := public.replace_order_submission_parse(k_exc, u_admin, jsonb_build_object(
     'processing_token', t_exc::text,
-    'fingerprint', 'fp-exc-2',
+    'fingerprint', encode(sha256(convert_to('fp-exc-2', 'UTF8')), 'hex'),
     'change_reason', 'Rate corrected after the exception was approved',
     'header', jsonb_build_object('client_name', 'Exception Co'),
-    'source', jsonb_build_object('workbook_path', 'pi/exc/v2.xlsx',
+    'source', jsonb_build_object('workbook_path', 'submissions/' || k_exc || '/original/v2.xlsx',
                                  'workbook_sha256', repeat('f', 64)),
     'commercial', jsonb_build_object('grand_total', '420000'),
     'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
@@ -691,19 +732,20 @@ begin
   select count(*), coalesce(sum(allocated_amount), 0)
     into v_int, v_num
   from public.finance_payment_allocations where order_id = o_appr and status = 'active';
-  if v_int = 1 and v_num = 120000 then n_pass := n_pass + 1;
+  if v_int = 1 and v_num = 118000 then n_pass := n_pass + 1;
   else failures := array_append(failures, format('K1: %s active allocations totalling %s', v_int, v_num)); n_fail := n_fail + 1; end if;
 
   select id, allocated_amount, status, order_submission_id
     into v_uuid, v_num, v_txt, v_uuid2
   from public.finance_payment_allocations where id = a_appr;
-  if v_uuid = a_appr and v_num = 120000 and v_txt = 'active' and v_uuid2 is null
+  if v_uuid = a_appr and v_num = 118000 and v_txt = 'active' and v_uuid2 is null
   then n_pass := n_pass + 1;
   else failures := array_append(failures, 'K2: the allocation row was rewritten'); n_fail := n_fail + 1; end if;
 
-  select count(*) into v_int from public.finance_payment_allocations;
-  if v_int = 1 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('K3: %s allocation rows exist', v_int)); n_fail := n_fail + 1; end if;
+  select count(*) into v_int from public.finance_payment_allocations
+   where order_id = o_appr or order_submission_id in (k_draft, k_subm, k_appr, k_exc);
+  if v_int = 2 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('K3: %s allocation rows on this file''s records', v_int)); n_fail := n_fail + 1; end if;
 
 
   -- ═══ L. EVERY DECLARED ACTION IS ACCEPTED ══════════════════════════════
@@ -749,8 +791,8 @@ begin
     n_pass := n_pass + 1;
   end;
 
-  delete from public.order_submission_activity
-   where submission_id = k_draft and action <> 'parse_replaced';
+  -- (The probe rows stay: PI history is append-only now, and this file rolls
+  -- back. Nothing below counts k_draft's history.)
 
 
   -- ═══ M. THE BILLING PERCENTAGE RECORDS WHAT IT DID ═════════════════════
@@ -760,27 +802,37 @@ begin
   -- the authority alone would have exposed a CHECK violation to the next person
   -- who pressed Save. Both halves are exercised here, in that order.
 
+  -- The approved PI in force: refused (20270115000000), and the Order keeps
+  -- its percentage.
   set local role authenticated;
-  perform set_config('test.uid', u_admin::text, true);
+  perform pg_temp.act(u_admin);
   begin
-    v_res := public.set_order_submission_billing_percentage(
-      k_appr, 55, 'Corrected after approval');
+    v_res := public.set_order_submission_billing_percentage(k_appr, 55, 'Corrected after approval');
+    failures := array_append(failures, 'M0: the billing percentage of an approved PI in force was rewritten'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'M0: wrong refusal -> ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+  -- Where the admin amendment still applies — a PI under review — it writes
+  -- AND records what it did (the logging half this section exists for).
+  begin
+    v_res := public.set_order_submission_billing_percentage(k_subm, 55, 'Corrected under review');
     if (v_res ->> 'changed')::boolean then n_pass := n_pass + 1;
     else failures := array_append(failures, 'M1: ' || v_res::text); n_fail := n_fail + 1; end if;
   exception when others then
-    failures := array_append(failures, 'M1: the billing write failed -> ' || sqlerrm);
-    n_fail := n_fail + 1;
+    failures := array_append(failures, 'M1: the billing write failed -> ' || sqlerrm); n_fail := n_fail + 1;
   end;
   reset role;
+  perform set_config('request.jwt.claims', '', true);
 
   select count(*) into v_int from public.order_submission_activity
-   where submission_id = k_appr and action = 'billing_percentage_amended_by_admin';
+   where submission_id = k_subm and action = 'billing_percentage_amended_by_admin';
   if v_int = 1 then n_pass := n_pass + 1;
   else failures := array_append(failures, format('M2: %s activity rows recorded', v_int)); n_fail := n_fail + 1; end if;
 
   select billing_percentage into v_num from public.orders where id = o_appr;
-  if v_num = 55 then n_pass := n_pass + 1;
-  else failures := array_append(failures, format('M3: the Order says %s', v_num)); n_fail := n_fail + 1; end if;
+  if v_num is not distinct from v_before.billing_percentage then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('M3: the Order''s percentage moved to %s', v_num)); n_fail := n_fail + 1; end if;
 
 
   -- ═══ I. PRIVILEGES ═════════════════════════════════════════════════════

@@ -107,19 +107,27 @@ describe('the version in force, in words — and what alignment says as a result
     assert.equal(view.approvedLine, 'Approved by Nishant · @2026-09-20T10:00:00Z')
     assert.equal(view.reviewerName, 'Nitish')
     assert.deepEqual(view.actions, { accept: true, cannotAccept: true, withdraw: false })
-    assert.deepEqual(view.alignment, { aligned: false, label: 'Not Aligned', line: 'Awaiting operations acceptance of PI V1' })
+    assert.deepEqual(view.alignment, { aligned: false, held: false, label: 'Not Aligned', line: 'Awaiting operations acceptance of PI V1' })
     assert.equal(view.revisionReason, null, 'V1 was not a revision')
     assert.equal(view.readOnlyNote, null)
   })
 
   test('accepted: who and when; the Order IS aligned against this version; only Withdraw remains', () => {
-    const view = describeOperationsHandoff({ ...base, live: accepted() })
+    // Accepting aligns: the Order an accepted version belongs to IS aligned.
+    const view = describeOperationsHandoff({ ...base, productionAligned: true, live: accepted() })
     if (view.kind !== 'recorded') throw new Error('recorded')
     assert.equal(view.statusLabel, 'Accepted for production')
     assert.deepEqual(view.decision, { label: 'Accepted for production', by: 'Nitish', at: '@2026-09-20T12:00:00Z', note: 'ok' })
     assert.deepEqual(view.actions, { accept: false, cannotAccept: false, withdraw: true })
-    assert.deepEqual(view.alignment, { aligned: true, label: 'Aligned · PI V1', line: 'Accepted by Nitish · @2026-09-20T12:00:00Z' })
+    assert.deepEqual(view.alignment, { aligned: true, held: false, label: 'Aligned · PI V1', line: 'Accepted by Nitish · @2026-09-20T12:00:00Z' })
     assert.equal(view.withdrawn, null)
+  })
+
+  test('accepted, but the Order was put ON HOLD (advance below 40%): the acceptance stands, the alignment does not', () => {
+    const view = describeOperationsHandoff({ ...base, productionAligned: false, live: accepted() })
+    if (view.kind !== 'recorded') throw new Error('recorded')
+    assert.equal(view.statusLabel, 'Accepted for production')
+    assert.deepEqual(view.alignment, { aligned: false, held: true, label: 'Not Aligned', line: 'PI V1 accepted by Nitish · @2026-09-20T12:00:00Z; production on hold — advance below 40%' })
   })
 
   test('flagged: the reason; not aligned; only Accept remains', () => {
@@ -129,7 +137,7 @@ describe('the version in force, in words — and what alignment says as a result
     assert.equal(view.tone, 'red')
     assert.equal(view.decision?.note, 'Fabric?')
     assert.deepEqual(view.actions, { accept: true, cannotAccept: false, withdraw: false })
-    assert.deepEqual(view.alignment, { aligned: false, label: 'Not Aligned', line: 'PI V1 flagged for clarification' })
+    assert.deepEqual(view.alignment, { aligned: false, held: false, label: 'Not Aligned', line: 'PI V1 flagged for clarification' })
   })
 
   test('withdrawn: the acceptance stays on record beside the withdrawal, and the Order is not aligned', () => {
@@ -233,7 +241,7 @@ describe('a later version does not inherit an acceptance or an alignment', () =>
     assert.match(view.alignmentWarning ?? '', /Production was aligned before PI V2/)
     assert.match(view.alignmentWarning ?? '', /has been reset; it does not cover PI V2/)
     // Once V2 is accepted, the warning is gone and the Order is aligned against V2.
-    const acceptedV2 = describeOperationsHandoff({ ...base, live: accepted({ ...v2over, production_alignment_at_approval: 'aligned' }) })
+    const acceptedV2 = describeOperationsHandoff({ ...base, productionAligned: true, live: accepted({ ...v2over, production_alignment_at_approval: 'aligned' }) })
     if (acceptedV2.kind !== 'recorded') throw new Error('recorded')
     assert.equal(acceptedV2.alignmentWarning, null)
     assert.equal(acceptedV2.alignment.label, 'Aligned · PI V2')

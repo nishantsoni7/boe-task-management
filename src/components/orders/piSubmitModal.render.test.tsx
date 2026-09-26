@@ -37,11 +37,15 @@ import {
   PAYMENT_POSITION_LABEL,
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_REASON_LABEL,
+  EXCEPTION_REASON_NOT_A_DECISION,
+  OTHER_REMARK_LABEL,
+  OTHER_REMARK_REQUIRED,
   PAYMENT_REASON_REQUIRED,
   PAYMENT_STANDARD_PERCENT,
   PAYMENT_TERMS_LABEL,
   PAYMENT_TERMS_OPTIONAL_LABEL,
-  PAYMENT_TERMS_REQUIRED,
+  ATTACHED_MET_AWAITING_VERIFICATION,
+  SUBMISSION_POSITION_LABEL,
   type PiSubmissionTerms,
 } from '@/lib/orders/paymentGate'
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
@@ -186,46 +190,41 @@ describe('at or above the requirement the dialog asks for nothing mandatory', ()
 
 // ── Below the requirement ─────────────────────────────────────────────────────
 
-describe('below the requirement the dialog asks for a reason and payment terms', () => {
+describe('below the requirement the dialog asks for exactly one of three reasons (20270114000000)', () => {
   const html = render({ payment: below() })
 
   test('it says Admin approval is required to proceed', () => {
     assert.ok(html.includes(`Admin approval required to proceed below ${PAYMENT_STANDARD_PERCENT}%`))
   })
 
-  test('both mandatory fields are on screen, marked mandatory', () => {
+  test('three radio options, marked mandatory, and nothing else to fill in', () => {
     assert.ok(html.includes(PAYMENT_REASON_LABEL))
     assert.ok(PAYMENT_REASON_LABEL.endsWith('*'))
-    assert.ok(html.includes(PAYMENT_TERMS_LABEL))
-    assert.ok(PAYMENT_TERMS_LABEL.endsWith('*'))
+    assert.equal((html.match(/type="radio"/g) ?? []).length, 3)
+    for (const label of ['Against client PO', 'Sample order', 'Other']) assert.ok(html.includes(label))
+    assert.ok(!html.includes(PAYMENT_TERMS_LABEL), 'Payment terms are no longer demanded here')
+    assert.ok(!html.includes(BILLING_TERMS_LABEL), 'and no terms boxes clutter the request')
+    assert.ok(html.includes(EXCEPTION_REASON_NOT_A_DECISION), 'and it says a reason decides nothing')
   })
 
-  test('billing terms stay optional', () => {
-    assert.ok(html.includes(BILLING_TERMS_LABEL))
-    assert.ok(!BILLING_TERMS_LABEL.endsWith('*'))
+  test('"Other" reveals a remark box, and only "Other" does', () => {
+    const other = render({ payment: below(), initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other' } })
+    assert.ok(other.includes(OTHER_REMARK_LABEL))
+    const po = render({ payment: below(), initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'against_client_po' } })
+    assert.ok(!po.includes(OTHER_REMARK_LABEL))
   })
 
-  test('Submit is disabled until both are given', () => {
+  test('Submit is disabled until a reason is chosen, and Other has its remark', () => {
     assert.equal(submitDisabled(html), true)
-    assert.equal(
-      submitDisabled(render({
-        payment: below(),
-        initialTerms: { reason: 'client pays on delivery', paymentTerms: '', billingTerms: '' },
-      })),
-      true,
-      'a reason alone is not enough',
-    )
-    assert.equal(
-      submitDisabled(render({
-        payment: below(),
-        initialTerms: {
-          reason: 'client pays on delivery',
-          paymentTerms: '30% advance, 30% during production, 40% before dispatch',
-          billingTerms: '',
-        },
-      })),
-      false,
-    )
+    assert.equal(submitDisabled(render({
+      payment: below(), initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'sample_order' },
+    })), false, 'Sample order alone is enough — no payment terms needed')
+    assert.equal(submitDisabled(render({
+      payment: below(), initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other', otherRemark: 'short' },
+    })), true, 'Other needs a real remark')
+    assert.equal(submitDisabled(render({
+      payment: below(), initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other', otherRemark: 'long-standing client, pays on delivery' },
+    })), false)
   })
 
   test('the shortfall is named, so the salesperson knows what would close it', () => {
@@ -237,10 +236,10 @@ describe('below the requirement the dialog asks for a reason and payment terms',
     assert.ok(!html.includes(PAYMENT_REASON_REQUIRED))
     const typed = render({
       payment: below(),
-      initialTerms: { reason: 'client pays on delivery', paymentTerms: '', billingTerms: '' },
+      initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other', otherRemark: 'short' },
     })
-    assert.ok(typed.includes(PAYMENT_TERMS_REQUIRED),
-      'but once they have started, the missing field is named')
+    assert.ok(typed.includes(OTHER_REMARK_REQUIRED),
+      'but once they have started, what is missing is named')
   })
 })
 
@@ -288,7 +287,7 @@ describe('a PI whose payment position cannot be read fails CLOSED', () => {
 describe('a submission in flight cannot be started twice', () => {
   const html = render({
     payment: below(),
-    initialTerms: { reason: 'agreed', paymentTerms: '50% before dispatch', billingTerms: '' },
+    initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'other', otherRemark: 'agreed with the client directly' },
     submitting: true,
   })
 
@@ -299,6 +298,7 @@ describe('a submission in flight cannot be started twice', () => {
 
   test('and every field is frozen with it', () => {
     assert.ok(/<textarea[^>]*disabled=""/.test(html))
+    assert.ok(/<input[^>]*type="radio"[^>]*disabled=""/.test(html))
   })
 })
 
@@ -307,14 +307,15 @@ describe('a failed submission keeps the words on screen', () => {
     const html = render({
       payment: below(),
       initialTerms: {
-        reason: 'client pays on delivery',
-        paymentTerms: '30% advance, 70% before dispatch',
-        billingTerms: '',
+        ...EMPTY_SUBMISSION_TERMS,
+        reasonChoice: 'other',
+        otherRemark: 'client pays on delivery',
       },
       failure: 'This PI could not be submitted just now. Try again in a moment.',
     })
     assert.ok(html.includes('client pays on delivery'))
-    assert.ok(html.includes('30% advance, 70% before dispatch'))
+    const otherInput = (html.match(/<input[^>]*value="other"[^>]*>/) ?? [''])[0]
+    assert.ok(/ checked=""/.test(otherInput), 'the choice survives too: ' + otherInput)
     assert.ok(html.includes('could not be submitted just now'))
   })
 })
@@ -324,6 +325,11 @@ describe('a failed submission keeps the words on screen', () => {
 describe('this is the dialog the PI detail page opens, and the RPC it sends to', () => {
   const page = readFileSync(
     join(process.cwd(), 'src', 'app', 'orders', 'drafts', '[submissionId]', 'page.tsx'), 'utf8')
+  // The submit door's call lives in the supporting-documents sender (20270112000000 §11).
+  const supportingSource = readFileSync(
+    join(process.cwd(), 'src', 'components', 'orders', 'PiSupportingDocuments.tsx'), 'utf8')
+  const documentsMigration = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20270112000000_order_document_submissions.sql'), 'utf8').replace(/\r\n/g, '\n')
 
   test('the page imports THIS component, and there is no second submit modal', () => {
     assert.ok(/import \{[\s\S]*?\bPiSubmitConfirmModal\b[\s\S]*?\} from '@\/components\/orders\/piReviewModals'/
@@ -346,8 +352,15 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
   })
 
   test('submission goes through the ONE Phase 3 door, and no earlier one', () => {
-    assert.ok(page.includes("supabase.rpc('submit_pi_for_review'"),
+    // The dialog's submit goes through the supporting-documents sender, which
+    // calls ONE wrapper that runs submit_pi_for_review() unchanged and records
+    // the attached Design Files / Client PO in the same transaction
+    // (20270112000000 §11).
+    assert.ok(page.includes('supporting.send({ note, terms, acknowledgedMissing })'),
       'one door, whichever route the database chooses')
+    assert.ok(supportingSource.includes("supabase.rpc('submit_pi_for_review_with_documents'"))
+    assert.ok(/v_result := public.submit_pi_for_review\(p_submission_id, p_note, p_reason, p_payment_terms, p_billing_terms\);/
+      .test(documentsMigration), 'and that wrapper delegates to the one Phase 3 door')
     for (const retired of ['submit_order_submission', 'submit_order_submission_with_note',
                            'submit_order_submission_with_advance',
                            'submit_order_submission_with_advance_amount']) {
@@ -357,11 +370,11 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
   })
 
   test('the payload carries the reason and the terms, and no advance figure', () => {
-    assert.ok(page.includes('p_reason: terms.reason'))
-    assert.ok(page.includes('p_payment_terms: terms.paymentTerms'))
-    assert.ok(page.includes('p_billing_terms: terms.billingTerms'))
+    assert.ok(supportingSource.includes('p_reason: input.terms.reason'))
+    assert.ok(supportingSource.includes('p_payment_terms: input.terms.paymentTerms'))
+    assert.ok(supportingSource.includes('p_billing_terms: input.terms.billingTerms'))
     for (const forbidden of ['p_advance_amount', 'p_advance_percent', 'p_advance_condition']) {
-      assert.ok(!page.includes(forbidden),
+      assert.ok(!page.includes(forbidden) && !supportingSource.includes(forbidden),
         `${forbidden} must not be sent: the database decides the route from verified payment`)
     }
   })
@@ -393,7 +406,14 @@ describe('the submission rule reads attached payment', () => {
       attached_meets_standard: true, submission_position: 'attached_met',
     }) })
     assert.ok(!html.includes(PAYMENT_REASON_LABEL))
-    assert.ok(html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    // MET BY ATTACHED MONEY, NOT BY VERIFIED MONEY (acceptance review,
+    // 2026-09-26): the dialog must not say "Verified payment is at or above
+    // 40%" while verified alone is short. It names the attached position and
+    // says Finance must still verify before the Order can be created.
+    assert.ok(!html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    assert.ok(!html.includes(PAYMENT_POSITION_HINT.standard_met))
+    assert.ok(html.includes(SUBMISSION_POSITION_LABEL.attached_met))
+    assert.ok(html.includes(ATTACHED_MET_AWAITING_VERIFICATION))
     assert.equal(submitDisabled(html), false)
   })
 

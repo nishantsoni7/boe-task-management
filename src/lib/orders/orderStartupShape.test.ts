@@ -334,7 +334,22 @@ describe('no Order screen waits more than it must', () => {
       //   as the PI versions it is about (so the page still waits exactly
       //   three times), and decide_order_operations_handoff — a SAVE, fired
       //   from the decision dialog, never at load.
-      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 34,
+      // DETAIL 34 -> 36 (20270113000000): order_pi_revision_differences, read
+      //   when the operations reviewer OPENS the revision review, and
+      //   decide_order_pi_revision_operations, fired from that dialog. Neither
+      //   runs at load, so the page still waits exactly three times.
+      // DETAIL 36 -> 37 (20270113000000 §6b): reapprove_order_pi_revision, a
+      //   SAVE fired from an admin's confirmed Re-approve, and only when the
+      //   admin who approved the revision is no longer active. Nothing at load.
+      // DETAIL 37 -> 39 (20270116000000 §4d): order_advance_readiness, read
+      //   alongside the load but NOT awaited by it (the page still waits
+      //   exactly three times), and approve_order_advance_exception, a SAVE
+      //   fired from an admin's confirmed "Approve production below 40%".
+      // DETAIL 39 -> 40 (20270116000000, review R1):
+      //   recover_order_production_alignment, a SAVE fired from an admin's
+      //   confirmed "Recover production alignment…", offered only when no
+      //   operations reviewer can align a held Order again. Nothing at load.
+      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 40,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -390,7 +405,17 @@ describe('no Order screen waits more than it must', () => {
       // calls it. A SAVE rather than a load, so the startup path is unchanged
       // and the wait test above still requires exactly three — what changed is
       // that this screen now makes one fewer write of any kind.
-      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 28 -> 27 (20270112000000). The submit call MOVED, it did not
+      // go: submit_pi_for_review is now reached through the supporting-
+      // documents sender (src/components/orders/PiSupportingDocuments.tsx),
+      // which uploads the attached Design Files / Client PO and calls
+      // submit_pi_for_review_with_documents. A SAVE on a press, so the startup
+      // path is unchanged and the wait test above still requires three.
+      // PI_DETAIL 27 -> 26 (20270114000000): reserve_order_number_for_submission
+      // is retired — a PI Draft no longer reserves a number, so the page's
+      // Reserve action and its one RPC went with it. A write on a press, never
+      // on the startup path.
+      [DRAFTS]: 4, [PI_DETAIL]: 26, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

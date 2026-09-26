@@ -169,6 +169,9 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   id: string
   status: string
   client_name: string | null
+  /** The draft's own internal reference, PID-00001 … (20270114000000). Optional
+   *  so a fixture or a database that predates it still describes a submission. */
+  draft_reference?: string | null
 
   // ── Who filed it, and when it last reached a reviewer ──
   //
@@ -366,10 +369,16 @@ export const PI_DRAFT_LIST_COLUMNS = [
   // order_submission_deletable_by() both read, so the screen asks the same
   // question the database answers. A courtesy, never the authority.
   'created_by',
+  // THE DRAFT'S IDENTITY AND ITS NUMBER, as 20270114000000 left them: its own
+  // PID- reference, and a reservation only where an older draft holds one. The
+  // Order number itself is never read here — a PI Draft has none.
+  'draft_reference', 'reserved_order_number',
 ].join(', ')
 
 export const PI_DRAFT_DETAIL_COLUMNS = [
   'id', 'status', 'client_name',
+  // The draft's own PID- reference (20270114000000).
+  'draft_reference',
   'created_by', 'submitted_by', 'assigned_to', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
   'order_confirmation_date', 'dispatch_commitment',
@@ -517,8 +526,18 @@ export type PiDraftListEntry = {
   /** The goods, before discount, other costs and GST. "—" when the workbook
    *  printed no product figure. */
   productValue: string
-  /** What the client is billed. "—" when the workbook printed no total. */
+  /**
+   * What the client is billed, or GRAND_TOTAL_UNAVAILABLE when no total is
+   * stored — never "—" and never a zero, because a missing total is the one
+   * thing that stops the PI being sent, and a reader must see that it is missing.
+   */
   grandTotal: string
+  /** True when no grand total is stored, so the row can say why. */
+  grandTotalMissing: boolean
+  /** The draft's own reference (PID-00001), or "—" before 20270114000000. */
+  reference: string
+  /** "Reserved number 0525" or "Order number not allotted". Never a guess. */
+  numberLine: string
   status: string
   statusLabel: string
   statusTone: PiDraftStatusTone
@@ -569,6 +588,32 @@ export function formatSavedAt(iso: string | null | undefined): string {
     // is invisible in source and breaks a naive comparison.
     .replace(/ /g, ' ')
     .replace(/\b(am|pm)\b/gi, m => m.toUpperCase())
+}
+
+// ── The number a PI Draft may show ────────────────────────────────────────────
+
+/** Said wherever a draft has no Order number — every new draft, until approval. */
+export const NUMBER_NOT_ALLOTTED = 'Order number not allotted'
+
+/** What the list says when no grand total is stored. */
+export const GRAND_TOTAL_UNAVAILABLE = 'Not available'
+
+/** Why, in one sentence, for the row's tooltip and the detail page. */
+export const GRAND_TOTAL_UNAVAILABLE_NOTE =
+  "The PI file's Grand Total could not be read. Open the draft to see why, then correct the workbook and upload it again."
+
+/**
+ * THE ONE LINE A PI DRAFT SAYS ABOUT ITS NUMBER (20270114000000).
+ *
+ * A draft created before that migration may hold a GENUINE reservation — a
+ * number taken from the Confirmed Order cycle — and says so. Every other draft
+ * has no number until approval allots one, and says that. Nothing else is ever
+ * consulted: not source_order_number (the workbook's own B20, usually an older
+ * PI's number), not a count, not a guess.
+ */
+export function draftNumberLine(row: Pick<PiReservationFields, 'reserved_order_number'>): string {
+  const reserved = text(row.reserved_order_number ?? null)
+  return reserved ? `Reserved number ${reserved}` : NUMBER_NOT_ALLOTTED
 }
 
 export function draftDetailHref(submissionId: string): string {
@@ -625,7 +670,10 @@ export function describeDraftListEntry(
     uploader: text(names?.uploader ?? null) ?? '—',
     uploadedAt: formatSavedAt(row.created_at),
     productValue: formatMoney(toNumber(row.gross_product_amount)),
-    grandTotal: formatMoney(toNumber(row.grand_total)),
+    grandTotal: toNumber(row.grand_total) === null ? GRAND_TOTAL_UNAVAILABLE : formatMoney(toNumber(row.grand_total)),
+    grandTotalMissing: toNumber(row.grand_total) === null,
+    reference: text(row.draft_reference ?? null) ?? '—',
+    numberLine: draftNumberLine(row),
     status: row.status,
     statusLabel: draftStatusLabel(row.status),
     statusTone: draftStatusTone(row.status),

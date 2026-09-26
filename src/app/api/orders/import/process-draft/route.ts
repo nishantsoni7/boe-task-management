@@ -4,6 +4,7 @@ import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
+import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 import {
   buildSubmissionPlan,
   cityFromBillingAddress,
@@ -345,11 +346,13 @@ export async function resolveSalespersonContact(
  * Everything that happens while this request owns the submission.
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
- * applies a REVISED PI to an approved Order (20261119000000). It runs the very
- * same download, parse, image upload and cleanup — there is one parser path in
- * this product — and differs only at step 17, where `revisionVersionId` sends
- * the payload through approve_order_pi_revision() so the parse, the version
- * decision and the previous version's supersession land in one transaction.
+ * APPROVES a REVISED PI on an approved Order (20261119000000; in force at
+ * approval again since 20270116000000). It runs the very same download, parse
+ * and image upload — there is one parser path in this product — and differs
+ * where `revisionVersionId` is set: step 17 sends the payload to
+ * approve_order_pi_revision(), which applies it, amends the Order and seeds
+ * the terms in ONE transaction, so step 18b is skipped; step 19 is skipped
+ * because the replaced version's pictures stay readable in its history.
  */
 export async function processUnderLease(ctx: {
   service: ServiceClient
@@ -363,6 +366,12 @@ export async function processUnderLease(ctx: {
   priorWorkbookPath: string | null
   /** The pending order_pi_versions row this parse approves, if any. */
   revisionVersionId?: string | null
+  /**
+   * The admin's matching of a revised workbook's ambiguous lines to the lines
+   * in force ({new item id: old item id | 'new'}), when the database asked for
+   * it (ORDER_PI_REVISION_LINES_NEED_REVIEW, 20270116000000).
+   */
+  lineMap?: Record<string, string> | null
 }): Promise<NextResponse> {
   const { service, submissionId, workbookPath, actorId, processingToken,
           afterSubmission, changeReason } = ctx
@@ -475,6 +484,18 @@ export async function processUnderLease(ctx: {
   // not part of what makes two uploads the same file, and including it would
   // make an otherwise identical retry look like a change.
   if (changeReason) plan.payload.change_reason = changeReason
+  if (ctx.revisionVersionId && ctx.lineMap) (plan.payload as Record<string, unknown>).line_map = ctx.lineMap
+
+  // A REVISION'S TERMS TRAVEL WITH ITS PAYLOAD (20270113000000): the database
+  // seeds them inside the approval's own transaction (20270116000000), so a
+  // failure after commit can never leave the new version without them.
+  if (ctx.revisionVersionId) {
+    (plan.payload as Record<string, unknown>).seed_terms = {
+      fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
+      commercial_terms_note: parsed.data.piTerms.commercialTermsNote,
+      client_city: cityFromBillingAddress(parsed.data.header.billingAddress),
+    }
+  }
 
   // The image paths this draft points at TODAY. Needed twice: to know which
   // uploads are new (so a failed attempt cleans up only its own), and to know
@@ -543,7 +564,7 @@ export async function processUnderLease(ctx: {
     // rather than assumed, because "the path looks right" is not evidence about
     // the object behind it.
     if (isAlreadyExists(error)) {
-      const reusable = await verifyStoredImage(service, image)
+      const reusable = await verifyStoredImage(service, image, submissionId)
       if (reusable) continue
       // The key is taken by something that is NOT this picture. Never
       // overwritten, never reused, and reported as its own stable code — the
@@ -581,9 +602,16 @@ export async function processUnderLease(ctx: {
     // screen as fixed sentences; nothing else about the error does.
     if (ctx.revisionVersionId) {
       const marker = String((rpcErr as { message?: unknown })?.message ?? '')
-        .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+/)?.[0]
+        .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+|ORDER_CLOSED/)?.[0]
       if (marker) {
         await rollbackCreated()
+        // The lines the admin must match — item ids, numbers, names and
+        // quantities of THIS workbook and of the lines in force. Nothing else.
+        if (marker === 'ORDER_PI_REVISION_LINES_NEED_REVIEW') {
+          let review: unknown = null
+          try { review = JSON.parse(String((rpcErr as { details?: unknown }).details ?? '')) } catch { review = null }
+          return fail(409, marker, 'Some product lines of the revised PI must first be matched to the products in force.', { review })
+        }
         return fail(409, marker, 'The revised PI was not applied.')
       }
     }
@@ -619,9 +647,12 @@ export async function processUnderLease(ctx: {
   // a re-import.
   const seededCity = cityFromBillingAddress(parsed.data.header.billingAddress)
 
-  if (parsed.data.piTerms.fabricResponsibility !== null
+  // NOT for a revision: its terms travel in the payload (above) and were
+  // seeded by approve_order_pi_revision() in the same transaction.
+  if (!ctx.revisionVersionId
+      && (parsed.data.piTerms.fabricResponsibility !== null
       || parsed.data.piTerms.commercialTermsNote !== null
-      || seededCity !== null) {
+      || seededCity !== null)) {
     await service.rpc('seed_order_submission_pi_terms', {
       p_submission_id: submissionId,
       p_fabric_responsibility: parsed.data.piTerms.fabricResponsibility,
@@ -662,7 +693,11 @@ export async function processUnderLease(ctx: {
       ? [priorWorkbook]
       : []
 
-  await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
+  // NOT for a revision: the replaced version's pictures are what its captured
+  // content (order_pi_version_contents) still reads, so they stay.
+  if (!ctx.revisionVersionId) {
+    await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
+  }
 
   // ── 20. Counts and consequences, never content ──
   //
@@ -760,8 +795,14 @@ function isAlreadyExists(error: unknown): boolean {
 async function verifyStoredImage(
   service: { storage: { from: (b: string) => { download: (p: string) => Promise<{ data: Blob | null; error: unknown }> } } },
   image: PlannedImage,
+  submissionId: string,
 ): Promise<boolean> {
   try {
+    // Built on the server by buildImagePath, and still checked whole before a
+    // service-role read (review R3): the same rule as every other image read.
+    if (!isCanonicalPiImageKey(image.storagePath, {
+      submissionId, itemId: image.itemId, role: image.role, position: image.position, sha256: image.sha256,
+    })) return false
     const { data, error } = await service.storage.from('order-files').download(image.storagePath)
     if (error || !data) return false
     if (data.size > MAX_IMAGE_OBJECT_BYTES) return false

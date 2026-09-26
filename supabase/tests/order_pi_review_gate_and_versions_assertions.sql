@@ -8,8 +8,13 @@
 --                                               both count; the server decides
 --   * PI decision  approve_pi_review()          the PI approved on its own —
 --                                               no Order, no number, no money
---   * the gate     approve_order_submission()   unresolved payment creates no
---                                               Order; both gates → exactly one
+--   * the gate     approve_order_submission(    unresolved payment creates no
+--                    id, salesperson, confirm,  Order; both gates → exactly one.
+--                    due, lead source)          The one-argument form retired
+--                                               by 20261201000000 refuses and
+--                                               creates nothing.
+--   * sending      submit_pi_for_review_with_   the screen's door: absent
+--                    documents()                documents must be confirmed
 --   * independence a payment verified while the PI is held; a PI approved while
 --                  the payment is unresolved
 --   * exception    recorded on submission, required before confirmation
@@ -27,11 +32,16 @@
 --   * psql as a role that bypasses RLS and may SET the `role` GUC.
 --   * The Confirmed Order numbering cycle is configured (20260703000000).
 --   * The `order-files` storage bucket exists.
---   * Replace the FIVE user UUIDs below:
+--   * The FIVE people below are created by this file (upserted with exactly
+--     the role, team and grants listed, inside this transaction), so it no
+--     longer depends on a separate seed having run first (#209 review, H5).
+--     Replace the UUIDs only to run it as existing accounts:
 --       test.admin_id        -> role = 'admin', active
 --       test.sales_id        -> NON-admin, orders.view + orders.create, no Finance
 --       test.finance_id      -> NON-admin, finance.view + finance.approve
---       test.factory_id      -> NON-admin, orders.view + orders.align_production
+--       test.factory_id      -> NON-admin, orders.view + orders.align_production,
+--                               team 'operations' (or orders.view_all); the
+--                               suite makes it the pi_handoff reviewer
 --       test.outsider_id     -> NON-admin with no Orders and no Finance relationship
 --
 -- On success prints NOTICE 'ALL ASSERTIONS PASSED' and rolls back.
@@ -39,6 +49,35 @@
 \set ON_ERROR_STOP on
 
 begin;
+
+-- ── The five people, as the prerequisites describe them ─────────────────────
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('11111111-1111-1111-1111-111111111111', 'ASSERT RG Admin',    'rg-admin@suite.test',    'admin',  'management', true, 'RG-ADM'),
+  ('55555555-5555-5555-5555-555555555555', 'ASSERT RG Sales',    'rg-sales@suite.test',    'member', 'sales',      true, 'RG-SAL'),
+  ('66666666-6666-6666-6666-666666666666', 'ASSERT RG Finance',  'rg-finance@suite.test',  'member', 'management', true, 'RG-FIN'),
+  ('77777777-7777-7777-7777-777777777777', 'ASSERT RG Factory',  'rg-factory@suite.test',  'member', 'operations', true, 'RG-FAC'),
+  ('44444444-4444-4444-4444-444444444444', 'ASSERT RG Outsider', 'rg-outsider@suite.test', 'member', 'design',     true, 'RG-OUT')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+-- Exactly the grants described: nothing an earlier run or another suite left.
+delete from public.employee_permission_overrides
+ where user_id in ('55555555-5555-5555-5555-555555555555', '66666666-6666-6666-6666-666666666666',
+                   '77777777-7777-7777-7777-777777777777', '44444444-4444-4444-4444-444444444444');
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, '11111111-1111-1111-1111-111111111111'::uuid
+  from (values ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'approve_order'),
+               ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'approve_advance_exception'),
+               ('11111111-1111-1111-1111-111111111111'::uuid, 'orders', 'can_be_order_assignee'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'view'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'create'),
+               ('55555555-5555-5555-5555-555555555555'::uuid, 'orders', 'can_be_order_assignee'),
+               ('66666666-6666-6666-6666-666666666666'::uuid, 'finance', 'view'),
+               ('66666666-6666-6666-6666-666666666666'::uuid, 'finance', 'approve'),
+               ('77777777-7777-7777-7777-777777777777'::uuid, 'orders', 'view'),
+               ('77777777-7777-7777-7777-777777777777'::uuid, 'orders', 'align_production')) g(uid, m, a)
+  join public.permission_modules pm on pm.module_key = g.m
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
 
 do $$
 begin
@@ -119,9 +158,23 @@ begin
   execute 'reset role';
 end $$;
 
+-- Confirm an Order through the door the screen calls (20261201000000 onward):
+-- the four fields a Confirmed Order cannot be built without, all present.
+create function pg_temp.confirm(p_id uuid) returns jsonb language plpgsql as $$
+begin
+  return public.approve_order_submission(p_id, current_setting('test.sales_id')::uuid,
+    current_date, current_date + 30, 'reference');
+end $$;
+
 do $$
 declare v_sales uuid := current_setting('test.sales_id')::uuid;
 begin
+  -- Since 20261229000000 an Order's production alignment is its operations
+  -- handoff's decision. The factory user is that reviewer here.
+  delete from public.order_operations_reviewers where duty = 'pi_handoff';
+  insert into public.order_operations_reviewers (duty, user_id, assigned_by)
+  values ('pi_handoff', current_setting('test.factory_id')::uuid, current_setting('test.admin_id')::uuid);
+
   perform pg_temp.make_pi(current_setting('test.pi_a')::uuid, v_sales, 'ASSERT A attached 40', 1000000);
   perform pg_temp.make_pi(current_setting('test.pi_b')::uuid, v_sales, 'ASSERT B attached 20', 1000000);
   perform pg_temp.make_pi(current_setting('test.pi_c')::uuid, v_sales, 'ASSERT C nothing',     1000000);
@@ -188,11 +241,13 @@ begin
     assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_REASON_REQUIRED%', v_msg;
   end;
   perform pg_temp.become(v_sales);
-  v_res := public.submit_pi_for_review(v_b, null, 'client pays balance on delivery', '50% before dispatch', null);
+  v_res := public.submit_pi_for_review(v_b, null, 'Other: client pays balance on delivery', '50% before dispatch', null);
   perform pg_temp.restore();
   assert v_res ->> 'payment_route' = 'exception' and (v_res ->> 'exception_requested')::boolean;
   assert (select advance_exception_reason from public.order_submissions where id = v_b)
-       = 'client pays balance on delivery', 'B: the reason is stored permanently';
+       = 'Other: client pays balance on delivery', 'B: the reason is stored permanently';
+  assert (select advance_exception_reason_code from public.order_submissions where id = v_b)
+       = 'other', 'B: and its category (20270114000000)';
   assert (select advance_exception_status from public.order_submissions where id = v_b) = 'pending';
   assert exists (select 1 from public.order_submission_activity
                  where submission_id = v_b and action = 'advance_exception_requested'
@@ -213,7 +268,7 @@ begin
   perform pg_temp.become(v_sales);
   v_sum := public.pi_submission_payment_summary(v_c);
   assert v_sum ->> 'submission_position' = 'no_payment';
-  v_res := public.submit_pi_for_review(v_c, null, 'repeat client, pays on delivery', '100% before dispatch', null);
+  v_res := public.submit_pi_for_review(v_c, null, 'Sample order', null, null);
   perform pg_temp.restore();
   assert (select advance_exception_status from public.order_submissions where id = v_c) = 'pending',
     'C: the no-payment exception is recorded';
@@ -239,17 +294,35 @@ declare
   v_order  uuid;
   v_sub    public.order_submissions%rowtype;
 begin
-  -- D is submitted on the standard route: 40% ATTACHED, all of it pending.
+  -- D is sent through the screen's door, with no documents attached. Their
+  -- absence must be confirmed category by category before anything is sent.
   perform pg_temp.become(v_sales);
-  v_res := public.submit_pi_for_review(v_d, null, null, null, null);
-  perform pg_temp.restore();
-  assert v_res ->> 'payment_route' = 'standard';
+  begin
+    perform public.submit_pi_for_review_with_documents(v_d, null, null, null, null, null, '[]'::jsonb,
+      array['design_files']);
+    perform pg_temp.restore();
+    raise exception 'an unconfirmed missing Client PO must be refused';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    perform pg_temp.restore();
+    assert v_msg like 'ORDER_DOCUMENT_ABSENCE_NOT_CONFIRMED%', v_msg;
+  end;
+  assert (select status from public.order_submissions where id = v_d) = 'draft',
+    'a refused send leaves the PI a draft';
 
-  -- The finance CHECK, written directly: this section is about the gate.
-  update public.order_submissions
-     set finance_verified_by = v_admin, finance_verified_at = now(),
-         finance_verified_submission_at = submitted_at
-   where id = v_d;
+  -- Confirmed, D goes on the standard route: 40% ATTACHED, all of it pending.
+  perform pg_temp.become(v_sales);
+  v_res := public.submit_pi_for_review_with_documents(v_d, null, null, null, null, null, '[]'::jsonb,
+    array['design_files', 'client_po']);
+  perform pg_temp.restore();
+  assert (select status from public.order_submissions where id = v_d) = 'submitted';
+  assert (select advance_exception_status from public.order_submissions where id = v_d) is null,
+    'the standard route raises no exception';
+  assert not exists (select 1 from public.order_document_submissions where pi_submission_id = v_d),
+    'and no document submission is invented for a PI sent without documents';
+
+  -- (No PI-level finance verification is written: 20261226000000 made it no
+  -- longer a step. The gate below is judged on the payments themselves.)
 
   select count(*) into v_before from public.orders;
 
@@ -284,10 +357,36 @@ begin
   assert (select count(*) from public.order_submission_activity
           where submission_id = v_d and action = 'pi_approved') = 1, 'and writes no second event';
 
-  -- The Order gate still refuses: the money is with Finance.
+  -- The one-argument door retired by 20261201000000 still resolves, and only
+  -- refuses: it cannot confirm an Order without the four required fields.
   perform pg_temp.become(v_admin);
   begin
     perform public.approve_order_submission(v_d);
+    perform pg_temp.restore();
+    raise exception 'the retired one-argument door must not confirm an Order';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    perform pg_temp.restore();
+    assert v_msg like 'ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED%', v_msg;
+  end;
+
+  -- The current door refuses a missing field before it judges anything else.
+  perform pg_temp.become(v_admin);
+  begin
+    perform public.approve_order_submission(v_d, null, current_date, current_date + 30, 'reference');
+    perform pg_temp.restore();
+    raise exception 'an Order without a salesperson must be refused';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    perform pg_temp.restore();
+    assert v_msg like 'ORDER_CONFIRMATION_SALESPERSON_REQUIRED%', v_msg;
+  end;
+
+  -- With every field present, the Order gate still refuses: the money is with
+  -- Finance.
+  perform pg_temp.become(v_admin);
+  begin
+    perform pg_temp.confirm(v_d);
     perform pg_temp.restore();
     raise exception 'unresolved payment must not create a Confirmed Order';
   exception when sqlstate 'P0001' then
@@ -296,6 +395,9 @@ begin
     assert v_msg like 'ORDER_SUBMISSION_PAYMENT_AWAITING_VERIFICATION%', v_msg;
   end;
   assert (select count(*) from public.orders) = v_before, 'still no Order';
+  assert (select status from public.order_submissions where id = v_d) = 'submitted'
+     and (select order_id from public.order_submissions where id = v_d) is null,
+    'and the PI is left exactly as it was';
   assert (select pi_approved_at from public.order_submissions where id = v_d) is not null,
     'and the PI decision survives the refusal, because it was taken by its own door';
 
@@ -323,15 +425,19 @@ begin
 
   -- BOTH GATES CLEARED: the same door creates the Order, exactly once.
   perform pg_temp.become(v_admin);
-  v_res := public.approve_order_submission(v_d);
+  v_res := pg_temp.confirm(v_d);
   perform pg_temp.restore();
   v_order := (v_res ->> 'order_id')::uuid;
   assert not (v_res ->> 'already_approved')::boolean;
   assert (select count(*) from public.orders) = v_before + 1, 'exactly one Order';
+  assert (select assigned_to = v_sales and confirm_date = current_date
+                 and due_date = current_date + 30 and lead_source = 'reference'
+            from public.orders where id = v_order),
+    'the Order carries the four fields it was confirmed with';
   perform set_config('test.order_d', v_order::text, true);
 
   perform pg_temp.become(v_admin);
-  v_res := public.approve_order_submission(v_d);
+  v_res := pg_temp.confirm(v_d);
   perform pg_temp.restore();
   assert (v_res ->> 'already_approved')::boolean and (v_res ->> 'order_id')::uuid = v_order,
     'a retry finds the Order it already made';
@@ -370,9 +476,6 @@ begin
   perform pg_temp.become(v_sales);
   perform public.submit_pi_for_review(v_e, null, null, null, null);
   perform pg_temp.restore();
-  update public.order_submissions
-     set finance_verified_by = v_admin, finance_verified_at = now(), finance_verified_submission_at = submitted_at
-   where id = v_e;
   perform pg_temp.become(v_admin);
   perform public.approve_pi_review(v_e);
   perform public.request_order_submission_changes(v_e, 'line 3 quantity is wrong');
@@ -387,16 +490,13 @@ begin
 
   -- C: nothing attached, exception pending. PI approved; the Order waits for
   -- the explicit exception decision.
-  update public.order_submissions
-     set finance_verified_by = v_admin, finance_verified_at = now(), finance_verified_submission_at = submitted_at
-   where id = v_c;
   perform pg_temp.become(v_admin);
   perform public.approve_pi_review(v_c);
   perform pg_temp.restore();
   select count(*) into v_before from public.orders;
   perform pg_temp.become(v_admin);
   begin
-    perform public.approve_order_submission(v_c);
+    perform pg_temp.confirm(v_c);
     perform pg_temp.restore();
     raise exception 'a pending exception must not be inferred as approved';
   exception when sqlstate 'P0001' then
@@ -408,11 +508,16 @@ begin
 
   perform pg_temp.become(v_admin);
   perform public.approve_pi_advance_exception(v_c);
-  v_res := public.approve_order_submission(v_c);
+  v_res := pg_temp.confirm(v_c);
   perform pg_temp.restore();
   assert (select count(*) from public.orders) = v_before + 1,
     'an explicitly approved exception clears the gate';
-  assert v_res ->> 'payment_route' = 'exception';
+  -- The route is not in the door's answer; it is on the PI's trail.
+  assert exists (select 1 from public.order_submission_activity
+                 where submission_id = v_c and action = 'approved'
+                   and metadata ->> 'order_id' = v_res ->> 'order_id'
+                   and metadata ->> 'payment_route' = 'exception'),
+    'the Order was confirmed on the exception route';
 
   raise notice '3. hold independence and exception requirement OK';
 end $$;
@@ -446,19 +551,32 @@ begin
     assert v_msg like 'ORDER_PRODUCTION_ALIGNMENT_PATH_REQUIRED%', v_msg;
   end;
 
+  -- The Order's V1 went to its operations reviewer when it was confirmed.
+  assert (select assigned_to from public.order_operations_handoffs
+           where order_id = v_order and superseded_at is null and status = 'awaiting') = v_factory,
+    'V1 awaits the assigned operations reviewer';
+
+  -- Aligning IS accepting that handoff, and only its reviewer may.
   perform pg_temp.become(v_factory);
-  v_res := public.set_order_production_alignment(v_order, true, 'feasibility and costing checked');
+  perform public.set_order_production_alignment(v_order, true, 'feasibility and costing checked');
   perform pg_temp.restore();
-  assert v_res ->> 'production_alignment' = 'aligned' and not (v_res ->> 'unchanged')::boolean;
+  assert (select production_alignment from public.orders where id = v_order) = 'aligned';
   assert (select production_aligned_by from public.orders where id = v_order) = v_factory;
+  assert (select status = 'accepted' and accepted_by = v_factory from public.order_operations_handoffs
+           where order_id = v_order and superseded_at is null), 'the handoff is accepted by the reviewer';
   assert exists (select 1 from public.order_activity_log
-                 where order_id = v_order and event_type = 'production_alignment_changed'
-                   and payload ->> 'to' = 'aligned');
+                 where order_id = v_order and event_type = 'operations_handoff_accepted');
 
   perform pg_temp.become(v_factory);
-  v_res := public.set_order_production_alignment(v_order, true, null);
-  perform pg_temp.restore();
-  assert (v_res ->> 'unchanged')::boolean, 'aligning an aligned Order is a no-op';
+  begin
+    perform public.set_order_production_alignment(v_order, true, null);
+    perform pg_temp.restore();
+    raise exception 'an accepted handoff must not be accepted twice';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    perform pg_temp.restore();
+    assert v_msg like 'ORDER_OPERATIONS_HANDOFF_ALREADY_ACCEPTED%', v_msg;
+  end;
 
   raise notice '4. production alignment OK';
 end $$;
@@ -563,11 +681,12 @@ begin
     get stacked diagnostics v_msg = message_text;
     assert v_msg like 'ORDER_PI_VERSION_TRANSITION_INVALID%', v_msg;
   end;
-  -- two versions cannot both be current, whatever the caller;
+  -- two versions cannot both be current, whatever the caller (since
+  -- 20270113000000 the guard refuses pending → approved before the index can);
   begin
     update public.order_pi_versions set status = 'approved', decided_by = v_admin, decided_at = now() where id = v_v3;
     raise exception 'two approved versions on one Order must be refused';
-  exception when unique_violation then
+  exception when unique_violation or sqlstate '42501' then
     null;
   end;
   -- history cannot be deleted;
@@ -589,11 +708,17 @@ begin
   assert (select status from public.order_pi_versions where id = v_v3) = 'pending';
   assert (select status from public.order_pi_versions where id = v_v1) = 'approved';
 
-  -- The one legal way V3 becomes current: V1 superseded first, then V3 approved.
+  -- The one legal way V3 becomes current (20270113000000): an admin approval
+  -- stages it, and only inside the operations acceptance is V1 superseded and
+  -- V3 approved.
+  update public.order_pi_versions
+     set status = 'admin_approved', decided_by = v_admin, decided_at = now() where id = v_v3;
+  perform set_config('boe.pi_revision_apply', (select submission_id::text from public.order_pi_versions where id = v_v3), true);
   update public.order_pi_versions
      set status = 'superseded', superseded_at = now(), superseded_by_version_id = v_v3 where id = v_v1;
   update public.order_pi_versions
-     set status = 'approved', decided_by = v_admin, decided_at = now() where id = v_v3;
+     set status = 'approved', operations_decided_by = v_admin, operations_decided_at = now(), applied_at = now() where id = v_v3;
+  perform set_config('boe.pi_revision_apply', '', true);
   assert (select count(*) from public.order_pi_versions where order_id = v_order and status = 'approved') = 1,
     'exactly one current version';
   assert (select workbook_path from public.order_pi_versions where id = v_v1) is not null,
@@ -619,7 +744,7 @@ declare
 begin
   perform pg_temp.become(v_sales);
   begin
-    perform public.approve_order_submission(v_b);
+    perform pg_temp.confirm(v_b);
     perform pg_temp.restore();
     raise exception 'orders.create must not approve an Order';
   exception when sqlstate '42501' then

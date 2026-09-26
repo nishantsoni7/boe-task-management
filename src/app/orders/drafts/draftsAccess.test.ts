@@ -53,6 +53,9 @@ import {
   persistedProducts,
   toNumber,
   PI_DRAFT_DETAIL_COLUMNS,
+  PI_DRAFT_LIST_COLUMNS,
+  GRAND_TOTAL_UNAVAILABLE,
+  NUMBER_NOT_ALLOTTED,
   type PersistedItem,
   type PersistedItemImage,
   type PersistedSubmission,
@@ -418,7 +421,9 @@ describe('the detail page renders only what it fetched', () => {
       // and is the owner's channel for a record that has left their hands.
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
-      'submit_pi_for_review',
+      // submit_pi_for_review is reached through the supporting-documents
+      // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
+      // pinned in the submit-door tests; the page itself calls no submit RPC.
       // update_order_submission_client_details (20260928000000) writes ten
       // named TEXT columns — client, contact, and the two parties — and
       // nothing else. Its allow-list is enforced in the database, not here:
@@ -767,16 +772,35 @@ describe('the drafts list', () => {
     assert.equal(entry.grandTotal, '₹2,95,000')
   })
 
-  test('a missing money figure shows a dash, never a zero', () => {
+  test('a missing money figure is never a zero, and a missing grand total says so', () => {
     // ₹0 would be a figure nobody wrote, and the two are independent: a workbook
     // can print one and not the other.
     const noProduct = describeDraftListEntry(submission({ gross_product_amount: null }), formatInr)
     assert.equal(noProduct.productValue, '—')
     assert.equal(noProduct.grandTotal, '₹2,95,000', 'and the other figure is unaffected')
+    assert.equal(noProduct.grandTotalMissing, false)
 
+    // A missing GRAND TOTAL is the one that stops the PI being sent, so the
+    // list names it rather than drawing a dash a reader skims past.
     const noTotal = describeDraftListEntry(submission({ grand_total: null }), formatInr)
-    assert.equal(noTotal.grandTotal, '—')
+    assert.equal(noTotal.grandTotal, GRAND_TOTAL_UNAVAILABLE)
+    assert.equal(noTotal.grandTotalMissing, true)
     assert.equal(noTotal.productValue, '₹2,50,000')
+    assert.ok(read(LIST_PAGE).includes('GRAND_TOTAL_UNAVAILABLE_NOTE'), 'and the row can say why')
+  })
+
+  test('each row names the draft and its number, and invents neither (20270114000000)', () => {
+    const fresh = describeDraftListEntry(submission({ draft_reference: 'PID-00007', reserved_order_number: null }), formatInr)
+    assert.equal(fresh.reference, 'PID-00007')
+    assert.equal(fresh.numberLine, NUMBER_NOT_ALLOTTED)
+    const held = describeDraftListEntry(submission({ draft_reference: 'PID-00003', reserved_order_number: '0525' }), formatInr)
+    assert.equal(held.numberLine, 'Reserved number 0525')
+    // Only the genuine reservation is ever read: the workbook's own B20 is not.
+    const copied = describeDraftListEntry(
+      submission({ reserved_order_number: null, source_order_number: '0412' } as Partial<PersistedSubmission>), formatInr)
+    assert.equal(copied.numberLine, NUMBER_NOT_ALLOTTED)
+    assert.ok(PI_DRAFT_LIST_COLUMNS.includes('draft_reference') && PI_DRAFT_LIST_COLUMNS.includes('reserved_order_number'))
+    assert.ok(read(LIST_PAGE).includes('{entry.reference} · {entry.numberLine}'))
   })
 
   test('the row states both money figures, and never one as the other', () => {
@@ -1830,6 +1854,7 @@ describe('PI Drafts offers Upload PI', () => {
 
 describe('the resubmission reply reaches the database and the trail', () => {
   const source = read(DETAIL_PAGE)
+  const supportingSource = read('src/components/orders/PiSupportingDocuments.tsx')
 
   test('the field is offered only when management asked for changes', () => {
     assert.ok(source.includes('offerReply={submissionOffersReply(submission.status)}'),
@@ -1844,13 +1869,17 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // NO ADVANCE FIGURE IS SENT AT ALL. The database sums FINANCE-VERIFIED
     // payment itself and chooses the standard or the reduced-payment route, so a
     // browser can neither declare an advance nor claim a payment position.
-    assert.ok(source.includes("await supabase.rpc('submit_pi_for_review', {"))
-    assert.ok(source.includes('p_note: note,'))
-    assert.ok(source.includes('p_reason: terms.reason,'))
-    assert.ok(source.includes('p_payment_terms: terms.paymentTerms,'))
-    assert.ok(source.includes('p_billing_terms: terms.billingTerms,'))
+    // Since 20270112000000 that one call is submit_pi_for_review_with_documents,
+    // made by the supporting-documents sender: it runs submit_pi_for_review()
+    // unchanged and records the attached files in the same transaction.
+    assert.ok(source.includes('await supporting.send({ note, terms, acknowledgedMissing })'))
+    assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
+    assert.ok(supportingSource.includes('p_note: input.note,'))
+    assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))
+    assert.ok(supportingSource.includes('p_payment_terms: input.terms.paymentTerms,'))
+    assert.ok(supportingSource.includes('p_billing_terms: input.terms.billingTerms,'))
     for (const forbidden of ['p_advance_percent', 'p_advance_amount', 'p_advance_condition']) {
-      assert.ok(!source.includes(forbidden),
+      assert.ok(!source.includes(forbidden) && !supportingSource.includes(forbidden),
         `${forbidden} must not be sent — a declaration is not a payment`)
     }
   })
@@ -2045,11 +2074,13 @@ describe('the submit dialog states the payment position and asks only what is un
     assert.ok(!source.includes('parseFloat('), 'no second parser')
   })
 
-  test('below the requirement it asks for a reason and payment terms, and marks them', () => {
+  test('below the requirement it asks for one of three reasons, and nothing else (20270114000000)', () => {
     assert.ok(source.includes('{meetsStandard === false && ('))
     assert.ok(source.includes('PAYMENT_REASON_LABEL'))
-    assert.ok(source.includes('PAYMENT_TERMS_LABEL'))
-    assert.ok(source.includes('BILLING_TERMS_LABEL'))
+    assert.ok(source.includes('EXCEPTION_REASON_OPTIONS.map'), 'the three reasons are drawn from one list')
+    assert.ok(source.includes("terms.reasonChoice === 'other' && field("), 'and only Other asks for a remark')
+    assert.ok(!source.includes('PAYMENT_TERMS_LABEL,'), 'Payment terms are no longer demanded below the requirement')
+    assert.ok(source.includes('BILLING_TERMS_LABEL'), 'billing terms are still offered where they always were')
   })
 
   test('at or above the requirement it asks for nothing mandatory', () => {
