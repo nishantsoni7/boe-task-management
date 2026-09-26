@@ -337,11 +337,27 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Target employee's working calendar ──────────────────────────────────────
-  const { data: targetUser } = await client
-    .from('users')
-    .select('full_name, joining_date, exit_date, deleted_at, is_deleted, performance_tracking_enabled')
-    .eq('id', userId)
-    .maybeSingle()
+  // The raw span first; holidays only ever remove days from a known span, so
+  // they can be fetched once the span is known. The span comes from the request
+  // alone, so the holiday read and the employee read are independent and run
+  // side by side — both only after authorization has been decided above.
+  const windowDays = period === 'monthly' ? 30 : period === 'weekly' ? 14 : 7
+  const spanFrom = rangeFrom ?? (period === 'today' ? today : istAddDays(today, -(windowDays - 1)))
+  const spanTo   = rangeTo   ?? today
+  const holidaySpanFrom = spanFrom < date ? spanFrom : date
+
+  const [{ data: targetUser }, { data: holidayRows }] = await Promise.all([
+    client
+      .from('users')
+      .select('full_name, joining_date, exit_date, deleted_at, is_deleted, performance_tracking_enabled')
+      .eq('id', userId)
+      .maybeSingle(),
+    client
+      .from('payroll_holidays')
+      .select('holiday_date')
+      .gte('holiday_date', holidaySpanFrom < PERFORMANCE_ROLLOUT_DATE ? PERFORMANCE_ROLLOUT_DATE : holidaySpanFrom)
+      .lte('holiday_date', spanTo),
+  ])
 
   const userName = (targetUser?.full_name as string | undefined)
     ?? (userId === caller.id ? caller.full_name : userId)
@@ -356,19 +372,6 @@ export async function GET(req: NextRequest) {
       ?.performance_tracking_enabled !== false
 
   // ── Build the window ────────────────────────────────────────────────────────
-  // The raw span first; holidays only ever remove days from a known span, so
-  // they can be fetched once the span is known.
-  const windowDays = period === 'monthly' ? 30 : period === 'weekly' ? 14 : 7
-  const spanFrom = rangeFrom ?? (period === 'today' ? today : istAddDays(today, -(windowDays - 1)))
-  const spanTo   = rangeTo   ?? today
-
-  const holidaySpanFrom = spanFrom < date ? spanFrom : date
-  const { data: holidayRows } = await client
-    .from('payroll_holidays')
-    .select('holiday_date')
-    .gte('holiday_date', holidaySpanFrom < PERFORMANCE_ROLLOUT_DATE ? PERFORMANCE_ROLLOUT_DATE : holidaySpanFrom)
-    .lte('holiday_date', spanTo)
-
   const calendar: WorkingDayContext = {
     holidays:    new Set(((holidayRows ?? []) as { holiday_date: string }[]).map(h => h.holiday_date)),
     joiningDate: (targetUser?.joining_date as string | null) ?? null,

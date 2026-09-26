@@ -1322,6 +1322,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/attachmentStorage.ts',
   ])
 
+  /**
+   * Performance reads side by side: /api/performance-metrics measured 4.6 s in
+   * production as a chain of ~7 sequential server → database round trips. Two
+   * independent pairs now overlap (profile + permissions in the shared resolver;
+   * employee + holidays in the route). No Finance or Orders file.
+   */
+  const ALLOWED_PERFORMANCE_PARALLEL_READS = new Set([
+    'src/app/api/performance-metrics/route.ts',
+    'src/lib/permissions/performance.ts',
+    'src/lib/permissions/performanceAccessParallel.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1348,6 +1360,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
     !ALLOWED_ANNOUNCEMENTS.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
+    !ALLOWED_PERFORMANCE_PARALLEL_READS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1612,7 +1625,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
-        || ALLOWED_TASK_IMAGE_GALLERY.has(file),
+        || ALLOWED_TASK_IMAGE_GALLERY.has(file)
+        || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
