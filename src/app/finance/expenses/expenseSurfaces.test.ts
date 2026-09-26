@@ -1499,6 +1499,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * ALLOWED_EXISTING.
    */
   /**
+   * ROUTE ERROR BOUNDARIES.
+   *
+   * The app had no error.tsx and no global-error.tsx, so a render error on any
+   * route fell through to Next's bare default screen. Two new boundary files,
+   * the fallback they share, its rules, and their tests. No existing screen changes.
+   */
+  const ALLOWED_ROUTE_ERROR_BOUNDARY = new Set([
+    'src/app/error.tsx',
+    'src/app/global-error.tsx',
+    'src/components/errors/RouteErrorView.tsx',
+    'src/lib/errors/routeError.ts',
+    'src/lib/errors/routeError.test.tsx',
+  ])
+  /**
    * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111120000).
    *
    * One migration — the typed Reference / UTR kept in proof_note — the Order
@@ -1694,6 +1708,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
+    !ALLOWED_ROUTE_ERROR_BOUNDARY.has(f) &&
     !ALLOWED_REVISED_PI_PROMOTION.has(f) &&
     !ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT.has(f) &&
     !ALLOWED_PI_NUMBERING_AND_EDITING.has(f) &&
@@ -2020,6 +2035,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
+        || ALLOWED_ROUTE_ERROR_BOUNDARY.has(file)
         || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
         || ALLOWED_REVISED_PI_PROMOTION.has(file)
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
