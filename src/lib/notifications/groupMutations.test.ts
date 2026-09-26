@@ -518,6 +518,9 @@ describe('34/35. no regression into suppressed territory', () => {
       // private PDF bucket and its storage policies. Purely additive; it reads
       // public.users and touches nothing this suite is about.
       '20270110000000_announcements.sql',
+      // A payment's typed reference is kept in proof_note on insert (trigger), carried
+      // forward on unverified rows, and read by pi_submission_payment_summary.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
