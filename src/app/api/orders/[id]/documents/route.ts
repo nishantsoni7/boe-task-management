@@ -461,12 +461,10 @@ async function generate(input: {
     pdf = await renderConfirmedPdf({
       model,
       logo: await readLogo(),
-      // PINNED to the Order's own confirm date, so two regenerations of one
-      // version produce identical bytes and the recorded hash is an identity
-      // rather than a timestamp. A record with no confirm date falls back to the
-      // Unix epoch — a fixed instant, never the clock.
+      // The renderer pins both metadata dates to the Unix epoch (CLIENT_PDF_DATE):
+      // two regenerations produce identical bytes, and the Order's internal
+      // confirm date is not in the file (20270122000000).
       metadata: {
-        date: order.confirm_date ? new Date(`${order.confirm_date}T00:00:00Z`) : new Date(0),
         title: `Confirmed Order ${orderNumber}`,
       },
       loadImage: async (row) => {

@@ -3671,6 +3671,12 @@ body {
   margin-top: 3px;
   padding-top: 6px;
 }
+/* No discount: the subtotal follows the product value directly, and the one
+   rule under the product value is enough — two rules would stack. */
+.order-breakdown-line--base + .order-breakdown-line--running {
+  border-top: 0;
+  margin-top: 0;
+}
 .order-breakdown-line--running .order-breakdown-label { color: #4A5160; font-weight: 600; }
 .order-breakdown-line--group { margin-top: 2px; }
 

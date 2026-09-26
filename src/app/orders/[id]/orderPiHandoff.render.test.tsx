@@ -38,6 +38,7 @@ import {
   type OrderPiRow,
 } from '@/lib/orders/orderPiHandoff'
 import { PiCommercialSummary } from '@/components/orders/piPreview'
+import { orderCommercialLines } from '@/lib/orders/orderCommercial'
 import { persistedProducts, type PersistedItem, type PersistedProduct } from '@/lib/orders/draftsView'
 import { BILLING_UNDECLARED } from '@/lib/orders/billingPercentage'
 
@@ -377,6 +378,35 @@ describe('the commercial breakdown', () => {
     ]) {
       assert.ok(html.includes(label), `${label} must be in the breakdown`)
     }
+  })
+
+  // The Order screen's breakdown follows the PI screen and the PDFs: a zero or
+  // blank discount is left off and the next line is plain "Subtotal"; a real
+  // one is "Discount", taken off, then "Subtotal after discount".
+  test('zero or blank discount: no Discount line, and the subtotal reads "Subtotal"', () => {
+    for (const discount_amount of ['0.00', '0', null]) {
+      const row = piRow({ discount_amount, subtotal_after_discount: '1200000.00',
+        total_before_gst: '1220000.00', gst_amount: '219600.00', grand_total: '1439600.00' })
+      const rows = handoffOf(row, { totalProductValue: 1200000, totalValue: 1439600 }).commercialRows
+      assert.ok(!rows.some(r => r.key === 'discount'), `${String(discount_amount)}: no discount row`)
+      assert.equal(rows.find(r => r.key === 'subtotal')?.label, 'Subtotal')
+      assert.ok(!rows.some(r => /after discount/i.test(r.label)), `${String(discount_amount)}: no "after discount"`)
+      const lines = orderCommercialLines(rows)
+      assert.deepEqual(lines.slice(0, 2).map(l => [l.label, l.value]), [['Product value', '₹12,00,000'], ['Subtotal', '₹12,00,000']])
+      const html = renderToStaticMarkup(<PiCommercialSummary rows={rows} title="Commercial breakdown" variant="detail" />)
+      assert.ok(!html.includes('Discount') && !html.includes('after discount') && html.includes('Subtotal'))
+    }
+  })
+
+  test('non-zero discount: "Discount" is taken off, then "Subtotal after discount"', () => {
+    const rows = handoffOf().commercialRows
+    assert.equal(rows.find(r => r.key === 'discount')?.label, 'Discount')
+    assert.equal(rows.find(r => r.key === 'subtotal')?.label, 'Subtotal after discount')
+    const lines = orderCommercialLines(rows)
+    const [gross, discount, subtotal] = lines
+    assert.deepEqual([gross.value, discount.label, discount.value, discount.sign, subtotal.label, subtotal.value],
+      ['₹12,00,000', 'Discount', '₹50,000', '−', 'Subtotal after discount', '₹11,50,000'],
+      '12,00,000 − 50,000 = 11,50,000, with the minus drawn beside the discount')
   })
 
   test('keeps the cost MEANINGS the workbook stated', () => {

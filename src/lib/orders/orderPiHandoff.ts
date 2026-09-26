@@ -37,6 +37,7 @@ import {
   type PersistedHeaderSource,
 } from './draftsView'
 import { billingValue, readBillingPercentage } from './billingPercentage'
+import { clientDeductionRows } from './discountWording'
 import {
   buildClientDetails,
   buildDateSummary,
@@ -240,8 +241,13 @@ export function buildOrderPiHandoff(row: OrderPiRow, order: OrderCommercialFacts
   // THE SAME ROWS THE PI SCREEN SHOWS, minus the advance line. The advance is
   // a pre-approval condition — "40% is required before this becomes an Order" —
   // and this Order already exists, so printing it here would state a
-  // requirement that no longer applies.
-  const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(row)))
+  // requirement that no longer applies. A zero or blank discount is left off
+  // and the next line reads "Subtotal"; a real one reads "Discount" and
+  // "Subtotal after discount" — the same rule as the PI screen and the PDFs.
+  const commercialRows = clientDeductionRows(
+    commercialBreakdownRows(buildCommercialRows(persistedCommercial(row))),
+    { amount: row.discount_amount },
+  )
 
   return {
     kind: 'ready',

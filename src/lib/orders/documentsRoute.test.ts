@@ -411,12 +411,19 @@ describe('the PDF the route produces', () => {
     // pdfkit stamps the clock unless told otherwise, which would make the
     // recorded sha256 a timestamp rather than an identity.
     assert.ok(route.includes('metadata:'))
-    assert.ok(route.includes('order.confirm_date'))
     assert.ok(!/new Date\(\)/.test(route), 'the clock must not reach the document')
   })
 
-  test('falls back to a FIXED instant when the Order has no confirm date', () => {
-    assert.ok(route.includes('new Date(0)'))
+  // 20270122000000: the pinned date USED to be the Order's confirm date — the
+  // internal confirmation date, one "Document properties" click from a client.
+  // The renderer now stamps one fixed instant and accepts no date at all.
+  test('passes NO date to the renderer: the Order\'s confirm date never reaches the file', () => {
+    const at = route.indexOf('metadata: {')
+    const block = route.slice(at, route.indexOf('}', at))
+    assert.ok(!/date/.test(block), 'the metadata block carries no date')
+    const render = readFileSync(join(ROOT, 'src/lib/orders/confirmedPdfRender.ts'), 'utf8').replace(/\r/g, '')
+    assert.ok(render.includes('export const CLIENT_PDF_DATE = new Date(0)'))
+    assert.ok(render.includes('CreationDate: CLIENT_PDF_DATE') && render.includes('ModDate: CLIENT_PDF_DATE'))
   })
 
   test('reads the BOE mark from the repository, and survives its absence', () => {

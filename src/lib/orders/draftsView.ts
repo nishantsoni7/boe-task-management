@@ -45,6 +45,7 @@ import {
   type PersistedFinanceVerification,
   type PersistedPiDecision,
 } from './finalApproval'
+import { PI_INTERNAL_DETAIL_COLUMNS, type PiInternalDetailsRow } from './piInternalDetails'
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -165,7 +166,10 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PersistedPiDecision & PiReservationFields & {
+export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PersistedPiDecision & PiReservationFields
+  // The app dates Sales confirms and the middleman answer (20270122000000).
+  // INTERNAL: see piInternalDetails.ts. Optional, so older fixtures still type.
+  & PiInternalDetailsRow & {
   id: string
   status: string
   client_name: string | null
@@ -257,6 +261,12 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
 
   gross_product_amount: number | string | null
   discount_amount: number | string | null
+  /**
+   * The workbook's wording beside the deduction ("Design Fee", "Discount", …),
+   * recorded from 20270122000000. Display provenance only — see discountWording.ts.
+   * Undefined on a row read before that migration; null when the row was blank.
+   */
+  discount_label?: string | null
   subtotal_after_discount: number | string | null
   fabric_cost: number | string | null
   fabric_cost_meaning: string | null
@@ -454,6 +464,12 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // record. The same deployment ordering `billing_percentage` needed from
   // 20260923000000, for the same reason.
   ...PI_RESERVATION_COLUMNS,
+  // The workbook's wording for the deduction row, and the INTERNAL details
+  // (20270122000000) — read here, and ONLY here and on no client-facing
+  // select. 20270122000000 MUST BE APPLIED BEFORE THIS SHIPS, for the reason
+  // given above for PI_RESERVATION_COLUMNS.
+  'discount_label',
+  ...PI_INTERNAL_DETAIL_COLUMNS,
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [

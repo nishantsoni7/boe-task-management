@@ -727,3 +727,17 @@ export function summarizeChanges(diff: PiDiff, formatMoney: (n: number) => strin
 export function editChangesSomething(diff: PiDiff): boolean {
   return diff.fields.length + diff.added.length + diff.removed.length + diff.changed.length > 0
 }
+
+/**
+ * THE TWO DATES NO CLIENT DOCUMENT PRINTS (20270122000000). On a confirmed
+ * Order, an edit that changes ONLY these is not a new PI version: the route
+ * amends them through update_order_submission_schedule_terms — no Operations
+ * re-acceptance, no alignment reset, no superseded documents.
+ */
+export const UNPRINTED_DATE_KEYS: readonly string[] = ['order_confirmation_date', 'due_date']
+
+export function isDatesOnlyEdit(diff: PiDiff): boolean {
+  return diff.fields.length > 0
+    && diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0
+    && diff.fields.every(f => UNPRINTED_DATE_KEYS.includes(f.key))
+}

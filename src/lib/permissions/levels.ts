@@ -153,6 +153,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // between a commercial approval and work starting, and a preset must not
   // hand it to everyone who can manage the module. Registered by 20261119000000.
   'align_production',
+  // Seeing a PI's middleman commission — a private commercial arrangement —
+  // on PIs one did not prepare and is not assigned to review. Protected
+  // because the whole point of the separate table (20270122000000) is that no
+  // wider Orders authority reaches it; a preset handing it out would undo that.
+  'view_pi_commission',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -221,6 +226,8 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   approve_advance_exception: 'view',
   // Same again: aligning an Order one cannot open is a grant with nowhere to land.
   align_production: 'view',
+  // And again: the commission table is behind the same Orders module gate.
+  view_pi_commission: 'view',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use

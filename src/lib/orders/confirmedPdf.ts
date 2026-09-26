@@ -38,7 +38,7 @@
 // the repository — see toPdfText.
 
 import { formatBillingPercentage, readBillingPercentage, billingValue } from './billingPercentage'
-import { persistedCommercial, persistedHeader, persistedProducts } from './draftsView'
+import { persistedCommercial, persistedProducts } from './draftsView'
 import type { PersistedItem, PersistedProduct } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
 import {
@@ -48,13 +48,12 @@ import {
 } from './piTerms'
 import {
   buildCommercialRows,
-  buildHeaderRows,
   formatInr,
-  formatPiDate,
   orDash,
   type PiAmountRow,
 } from '@/lib/pi/previewView'
 import { commercialBreakdownRows } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { clientDeductionRows } from './discountWording'
 
 // ── Text ──────────────────────────────────────────────────────────────────────
 
@@ -236,12 +235,22 @@ const clean = (v: string | null | undefined): string => {
 export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfModel {
   const sub = input.submission
 
-  const headerRows = buildHeaderRows(persistedHeader(sub))
-  const confirmed = headerRows.find(r => r.key === 'confirmed')?.value ?? ''
+  // NO CONFIRMATION DATE AND NO DUE DATE ON A CLIENT PDF (20270122000000).
+  //
+  // Neither is printed, from any source: not the app-entered dates (Sales'
+  // internal answers) and not the dates the uploaded workbook stated. Nothing
+  // here reads order_confirmation_date, due_date or a workbook date;
+  // clientDocumentPrivacy.test.ts proves it on the rendered bytes with every
+  // one of them populated.
 
   // THE SAME ROWS THE SCREEN SHOWS, minus the advance — a pre-approval condition
-  // that no longer applies to an Order that already exists.
-  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(sub)))
+  // that no longer applies to an Order that already exists. The deduction is
+  // printed as "Discount" when non-zero and LEFT OFF when zero or blank,
+  // whatever the workbook called it. Figures untouched.
+  const rows = clientDeductionRows(
+    commercialBreakdownRows(buildCommercialRows(persistedCommercial(sub))),
+    { amount: sub.discount_amount },
+  )
 
   const products = persistedProducts(input.items)
 
@@ -263,15 +272,6 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   const author = clean(sub.source_created_by)
   if (author) meta.push({ label: 'Salesperson', value: toPdfText(author) })
   if (contact) meta.push({ label: 'Salesperson contact', value: toPdfText(contact) })
-  if (clean(confirmed)) meta.push({ label: 'Confirm date', value: toPdfText(confirmed) })
-  meta.push({
-    label: 'Due date',
-    // formatPiDate re-spells the ISO string WITHOUT constructing a Date — the
-    // timezone-safe path every other date in this system uses.
-    value: sub.due_date
-      ? toPdfText(formatPiDate({ iso: sub.due_date, text: sub.due_date, source: 'serial' }))
-      : 'Not set',
-  })
   // UNDECLARED IS SAID IN WORDS, never as 0%.
   meta.push({ label: 'Billing percentage', value: toPdfText(formatBillingPercentage(percent)) })
   if (percent !== null) {
