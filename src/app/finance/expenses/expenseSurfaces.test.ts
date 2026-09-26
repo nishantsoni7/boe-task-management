@@ -1532,6 +1532,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
+   * Payroll periods reads side by side: GET /api/payroll/periods waited 4.6 s
+   * on the server in production as a chain of sequential server → database
+   * round trips. Independent reads now overlap; responses are unchanged.
+   * (Placed apart from the newest allowances so parallel branches merge cleanly.)
+   */
+  const ALLOWED_PAYROLL_PERIODS_PARALLEL_READS = new Set([
+    'src/app/api/payroll/periods/route.ts',
+    'src/app/api/payroll/periods/periodsParallel.test.ts',
+  ])
+
+  /**
    * Task Detail image gallery: task attachments move out of the summary card
    * into their own card (under Activity on desktop), with a large image viewer
    * and a "Download all images" ZIP. Task Management only — no Finance or
@@ -1549,16 +1560,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/attachmentStorage.ts',
   ])
 
-  /**
-   * Payroll periods reads side by side: GET /api/payroll/periods waited 4.6 s
-   * on the server in production as a chain of sequential server → database
-   * round trips. Independent reads now overlap; responses are unchanged.
-   */
-  const ALLOWED_PAYROLL_PERIODS_PARALLEL_READS = new Set([
-    'src/app/api/payroll/periods/route.ts',
-    'src/app/api/payroll/periods/periodsParallel.test.ts',
-  ])
-
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1570,6 +1571,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !f.startsWith('docs/') &&
     !ALLOWED_EXISTING.has(f) &&
     !ALLOWED_TESTS.has(f) &&
+    !ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(f) &&
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
@@ -1595,7 +1597,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ANNOUNCEMENTS.has(f) &&
     !ALLOWED_PAYMENT_REFERENCE.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
-    !ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -1889,6 +1890,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
+        || ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
@@ -1905,8 +1907,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
         || ALLOWED_PAYMENT_REFERENCE.has(file)
-        || ALLOWED_TASK_IMAGE_GALLERY.has(file)
-        || ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(file),
+        || ALLOWED_TASK_IMAGE_GALLERY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
