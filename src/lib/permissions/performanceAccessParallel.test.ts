@@ -64,12 +64,19 @@ describe('the profile read and the permission read overlap', () => {
   })
 
   test('three round trips became two: auth, then both reads together', async () => {
+    // Structural, not wall-clock: a busy test runner stretches every delay, but
+    // it cannot reorder these. Auth finishes first; the two reads both start
+    // after it and before either of them finishes — two waves, not three.
     const { client, calls } = fakeClient({ profile: EMPLOYEE })
-    const t = Date.now()
     await resolvePerformanceAccess(client, 'token')
-    const elapsed = Date.now() - t
     assert.equal(calls.length, 3)
-    assert.ok(elapsed < DELAY * 3 - 10, `took ${elapsed} ms; sequential would be ≥ ${DELAY * 3}`)
+    const auth = calls.find(c => c.what === 'auth')!
+    const reads = calls.filter(c => c.what !== 'auth')
+    assert.equal(reads.length, 2)
+    for (const r of reads) assert.ok(r.start >= auth.end!, `${r.what} started after auth`)
+    const lastStart = Math.max(...reads.map(r => r.start))
+    const firstEnd = Math.min(...reads.map(r => r.end!))
+    assert.ok(lastStart < firstEnd, 'both reads were in flight at the same time')
   })
 })
 
