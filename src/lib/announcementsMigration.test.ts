@@ -100,6 +100,9 @@ describe('the migration', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      // The permission resolvers are not for anon (#213): REVOKE on existing
+      // resolver functions. It touches nothing Announcements creates.
+      '20270126000000_permission_resolvers_are_not_for_anon.sql',
     ])
   })
 })
