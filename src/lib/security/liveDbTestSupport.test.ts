@@ -16,6 +16,7 @@ import {
   UatEnvError,
   type CleanupStep,
 } from '@/lib/security/liveDbTestSupport'
+import { PRODUCTION_PROJECT_REF } from '../../../scripts/lib/uatEnv.mjs'
 
 // ─── The production-target guard ───────────────────────────────────────────
 
@@ -25,11 +26,18 @@ describe('resolveLiveDbTestEnvOrThrow — the target guard', () => {
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
   }
 
+  // A hosted project that is NOT production. These cases are about the
+  // override mechanism, so they must not use the production ref: that is
+  // refused outright now, and every assertion below would pass for a reason
+  // it does not name.
+  const UAT_URL = 'https://disposableuatproject.supabase.co'
+  const PRODUCTION_URL = `https://${PRODUCTION_PROJECT_REF}.supabase.co`
+
   test('refuses a hosted project with no override — the exact leak scenario', () => {
     assert.throws(
       () =>
         resolveLiveDbTestEnvOrThrow({
-          env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://albnsrohngkljfsrrrhf.supabase.co' },
+          env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: UAT_URL },
           shellOverride: undefined,
         }),
       UatEnvError,
@@ -40,7 +48,7 @@ describe('resolveLiveDbTestEnvOrThrow — the target guard', () => {
   test('refuses a hosted project when the override names a different project', () => {
     assert.throws(() =>
       resolveLiveDbTestEnvOrThrow({
-        env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://albnsrohngkljfsrrrhf.supabase.co' },
+        env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: UAT_URL },
         shellOverride: 'I-KNOW-THIS-IS-NOT-PRODUCTION:some-other-project',
       }),
     )
@@ -48,12 +56,41 @@ describe('resolveLiveDbTestEnvOrThrow — the target guard', () => {
 
   test('allows a hosted project when the override names that exact project', () => {
     const resolved = resolveLiveDbTestEnvOrThrow({
-      env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://albnsrohngkljfsrrrhf.supabase.co' },
-      shellOverride: 'I-KNOW-THIS-IS-NOT-PRODUCTION:albnsrohngkljfsrrrhf',
+      env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: UAT_URL },
+      shellOverride: 'I-KNOW-THIS-IS-NOT-PRODUCTION:disposableuatproject',
     })
-    assert.equal(resolved.url, 'https://albnsrohngkljfsrrrhf.supabase.co')
+    assert.equal(resolved.url, UAT_URL)
     assert.equal(resolved.serviceRoleKey, 'service-role-key')
     assert.equal(resolved.anonKey, 'anon-key')
+  })
+
+  // ─── Production is excluded by identity, not by promise ──────────────────
+
+  test('refuses production even when the override names it exactly', () => {
+    // This assertion used to run the other way: naming the production project
+    // in the override authorized it. The override is a claim the operator
+    // makes about the target, and "I-KNOW-THIS-IS-NOT-PRODUCTION:<production>"
+    // is a claim that is simply false — one habit or one paste away.
+    assert.throws(
+      () =>
+        resolveLiveDbTestEnvOrThrow({
+          env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_URL },
+          shellOverride: `I-KNOW-THIS-IS-NOT-PRODUCTION:${PRODUCTION_PROJECT_REF}`,
+        }),
+      UatEnvError,
+      'the production project must not be reachable by any override value',
+    )
+  })
+
+  test('refuses production with no override either', () => {
+    assert.throws(
+      () =>
+        resolveLiveDbTestEnvOrThrow({
+          env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_URL },
+          shellOverride: undefined,
+        }),
+      UatEnvError,
+    )
   })
 
   test('allows a local target with no override at all', () => {
@@ -71,7 +108,7 @@ describe('resolveLiveDbTestEnvOrThrow — the target guard', () => {
     assert.throws(() =>
       resolveLiveDbTestEnvOrThrow({
         env: { ...baseEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://brandnewprojectref.supabase.co' },
-        shellOverride: 'I-KNOW-THIS-IS-NOT-PRODUCTION:albnsrohngkljfsrrrhf',
+        shellOverride: 'I-KNOW-THIS-IS-NOT-PRODUCTION:disposableuatproject',
       }),
     )
   })
