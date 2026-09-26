@@ -1373,6 +1373,21 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
+  /**
+   * ROUTE ERROR BOUNDARIES.
+   *
+   * The app had no error.tsx and no global-error.tsx, so a render error on any
+   * route fell through to Next's bare default screen. Two new boundary files,
+   * the fallback they share, its rules, and their tests. No existing screen changes.
+   */
+  const ALLOWED_ROUTE_ERROR_BOUNDARY = new Set([
+    'src/app/error.tsx',
+    'src/app/global-error.tsx',
+    'src/components/errors/RouteErrorView.tsx',
+    'src/lib/errors/routeError.ts',
+    'src/lib/errors/routeError.test.tsx',
+  ])
+
   // Calmer Confirmed Order documents (#206): the ⋯ menu moved out of
   // OrderStatusWorkspace.tsx into its own module, unchanged in what it does.
   const ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT = new Set([
@@ -1498,20 +1513,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * permission. modules/page.tsx and globals.css are already in
    * ALLOWED_EXISTING.
    */
-  /**
-   * ROUTE ERROR BOUNDARIES.
-   *
-   * The app had no error.tsx and no global-error.tsx, so a render error on any
-   * route fell through to Next's bare default screen. Two new boundary files,
-   * the fallback they share, its rules, and their tests. No existing screen changes.
-   */
-  const ALLOWED_ROUTE_ERROR_BOUNDARY = new Set([
-    'src/app/error.tsx',
-    'src/app/global-error.tsx',
-    'src/components/errors/RouteErrorView.tsx',
-    'src/lib/errors/routeError.ts',
-    'src/lib/errors/routeError.test.tsx',
-  ])
   /**
    * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111120000).
    *
