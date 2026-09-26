@@ -12,6 +12,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
+import { RouteHealthReporter } from '@/components/layout/RouteHealthReporter'
 
 export function Providers({ children }: { children: ReactNode }) {
   // One QueryClient per browser session — created once, never recreated on re-render
@@ -43,6 +44,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Evidence for slow navigations and page errors — no user data; see
+          src/lib/telemetry/routeHealth.ts. Renders nothing. */}
+      <RouteHealthReporter />
       {/* Owns the single auth listener for THIS QueryClient, and must sit
           inside the provider so useQueryClient() resolves to that instance. */}
       <AuthIdentityBoundary>
