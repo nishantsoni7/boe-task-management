@@ -945,7 +945,7 @@ begin
   perform pg_temp.ok(v_bad is null,
     format('these internal functions are executable by a role: %s', coalesce(v_bad, '')));
 
-  -- The three client doors are authenticated-only.
+  -- No advance RPC reaches anon or PUBLIC.
   select count(*) into v_n
   from information_schema.role_routine_grants
   where routine_schema = 'public'
@@ -955,14 +955,28 @@ begin
     and grantee in ('anon', 'PUBLIC');
   perform pg_temp.ok(v_n = 0, 'no advance RPC is executable by anon or PUBLIC');
 
+  -- The two decisions are authenticated's. The LEGACY submit door is not:
+  -- 20270124000000 revoked it (and its amount twin), because the application
+  -- submits only through submit_pi_for_review(). This file still drives it as
+  -- the owner, which is how sections B-H reach the implementation.
   select count(distinct routine_name) into v_n
   from information_schema.role_routine_grants
   where routine_schema = 'public'
-    and routine_name in ('submit_order_submission_with_advance',
-                         'approve_pi_advance_exception',
+    and routine_name in ('approve_pi_advance_exception',
                          'reject_pi_advance_exception')
     and grantee = 'authenticated';
-  perform pg_temp.ok(v_n = 3, 'all three advance RPCs are executable by authenticated');
+  perform pg_temp.ok(v_n = 2, 'both advance decisions are executable by authenticated');
+
+  perform pg_temp.ok(
+    not has_function_privilege('authenticated',
+          'public.submit_order_submission_with_advance(uuid, text, text, numeric, text)', 'EXECUTE')
+    and not has_function_privilege('authenticated',
+          'public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text)', 'EXECUTE'),
+    'the legacy advance submit doors are not executable by authenticated');
+  perform pg_temp.ok(
+    has_function_privilege('authenticated',
+      'public.submit_pi_for_review(uuid, text, text, text, text)', 'EXECUTE'),
+    'the application''s submit door still is');
 
   -- Every one of them is SECURITY DEFINER with a pinned search_path.
   select string_agg(p.proname, ', ') into v_bad

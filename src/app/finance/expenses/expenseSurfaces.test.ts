@@ -665,6 +665,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // supabase/tests/order_submission_internal_details_assertions.sql.
       if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
       if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
+      // And the legacy advance submit doors closing (20270124000000): one
+      // REVOKE and one restated internal, held by its own suite.
+      if (f === 'supabase/migrations/20270124000000_order_submission_legacy_advance_doors_closed.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1779,6 +1782,31 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
   ])
 
+  /**
+   * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270124000000).
+   *
+   * One migration — a REVOKE from authenticated and the restated submit
+   * implementation — no screen, no rule, no money; its own suite, and the
+   * one-line inventory pins it moved.
+   */
+  const ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED = new Set([
+    'src/lib/orders/legacyAdvanceSubmitDoorsClosed.test.ts',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270124000000_order_submission_legacy_advance_doors_closed.sql'
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1822,7 +1850,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
-    f !== ORDER_0524_HANDOFF_MIGRATION
+    !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
+    f !== ORDER_0524_HANDOFF_MIGRATION &&
+    f !== LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2146,7 +2176,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_LAYOUT.has(file)
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
-        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file),
+        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
+        || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

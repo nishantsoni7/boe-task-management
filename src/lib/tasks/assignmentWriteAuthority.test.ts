@@ -854,6 +854,11 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      // The legacy advance submit doors are closed: REVOKE of the two
+      // legacy advance doors from authenticated, and CREATE OR REPLACE of
+      // submit_order_submission_advance_v2_internal (20260917's body plus
+      // clearing the decision basis). No table, policy or row is touched.
+      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

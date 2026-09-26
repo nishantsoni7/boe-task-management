@@ -569,6 +569,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      // The legacy advance submit doors are closed: REVOKE of the two
+      // legacy advance doors from authenticated, and CREATE OR REPLACE of
+      // submit_order_submission_advance_v2_internal (20260917's body plus
+      // clearing the decision basis). No table, policy or row is touched.
+      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 
