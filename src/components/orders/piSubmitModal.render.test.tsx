@@ -44,6 +44,8 @@ import {
   PAYMENT_STANDARD_PERCENT,
   PAYMENT_TERMS_LABEL,
   PAYMENT_TERMS_OPTIONAL_LABEL,
+  ATTACHED_MET_AWAITING_VERIFICATION,
+  SUBMISSION_POSITION_LABEL,
   type PiSubmissionTerms,
 } from '@/lib/orders/paymentGate'
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
@@ -404,7 +406,14 @@ describe('the submission rule reads attached payment', () => {
       attached_meets_standard: true, submission_position: 'attached_met',
     }) })
     assert.ok(!html.includes(PAYMENT_REASON_LABEL))
-    assert.ok(html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    // MET BY ATTACHED MONEY, NOT BY VERIFIED MONEY (acceptance review,
+    // 2026-09-26): the dialog must not say "Verified payment is at or above
+    // 40%" while verified alone is short. It names the attached position and
+    // says Finance must still verify before the Order can be created.
+    assert.ok(!html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    assert.ok(!html.includes(PAYMENT_POSITION_HINT.standard_met))
+    assert.ok(html.includes(SUBMISSION_POSITION_LABEL.attached_met))
+    assert.ok(html.includes(ATTACHED_MET_AWAITING_VERIFICATION))
     assert.equal(submitDisabled(html), false)
   })
 

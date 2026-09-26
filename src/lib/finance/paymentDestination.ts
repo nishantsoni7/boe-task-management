@@ -351,6 +351,26 @@ export async function loadPaymentDestinations(
   for (const row of data as unknown as PaymentDestinationRow[]) {
     map.set(row.payment_request_id, readPaymentDestination(row))
   }
+
+  // A PI DRAFT IS NAMED BY ITS OWN REFERENCE (PID-00001, 20270114000000), not
+  // by the workbook's B20 number the projection falls back to — that number is
+  // normally an older PI's, and the draft page says it is not an Order number.
+  // One batched, RLS-scoped read; a draft this reader cannot name keeps what
+  // the projection gave.
+  const draftIds = [...new Set([...map.values()]
+    .filter(d => d.kind === 'pi_draft' && d.submissionId)
+    .map(d => d.submissionId as string))]
+  if (draftIds.length > 0) {
+    const { data: drafts } = await supabase
+      .from('order_submissions').select('id, draft_reference').in('id', draftIds)
+    const named = new Map(((drafts ?? []) as { id: string; draft_reference: string | null }[])
+      .filter(d => d.draft_reference && d.draft_reference.trim() !== '')
+      .map(d => [d.id, d.draft_reference!.trim()]))
+    for (const [id, d] of map) {
+      const pid = d.submissionId ? named.get(d.submissionId) : undefined
+      if (d.kind === 'pi_draft' && pid) map.set(id, { ...d, reference: pid })
+    }
+  }
   return map
 }
 

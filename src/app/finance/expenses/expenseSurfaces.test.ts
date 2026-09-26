@@ -1418,6 +1418,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/orders/PiVersionsPanel.tsx',
     'src/components/orders/piEditor.render.test.tsx',
     'src/app/orders/[id]/page.tsx',
+    // Acceptance-review fixes to #209 (2026-09-26): the Admin sees a revised
+    // workbook's changes before approving it, and Finance names and finds a
+    // PI Draft by its PID.
+    'src/lib/orders/workbookRevisionPreview.ts',
+    'src/lib/orders/workbookRevisionPreview.test.ts',
+    'src/lib/finance/paymentDestination.ts',
+    'src/lib/finance/paymentDestination.test.ts',
+    'src/app/finance/received/AllocatePaymentModal.tsx',
     // Review fixes to #209: a PI's image keys are checked whole before any
     // privileged read (H1).
     'src/lib/orders/piImageKey.ts',

@@ -133,6 +133,8 @@ import {
   PAYMENT_NOT_A_DECLARATION,
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
+  ATTACHED_MET_AWAITING_VERIFICATION,
+  SUBMISSION_POSITION_LABEL,
   asSubmissionPosition,
   submissionReasonPrompt,
   asPaymentPosition,
@@ -318,6 +320,9 @@ function PaymentPositionPanel({
     formatPercentage:  formatPercent,
   })
   const submissionPosition = asSubmissionPosition(summary?.submission_position)
+  // The requirement is met only because payment AWAITING verification counts
+  // for submission — the verified position is not yet standard_met.
+  const attachedOnly = meetsStandard === true && position !== 'standard_met'
   const reasonPrompt = meetsStandard === false && submissionPosition !== null
     ? submissionReasonPrompt(submissionPosition, formatPercent(summary?.attached_percent))
     : null
@@ -397,16 +402,19 @@ function PaymentPositionPanel({
           color: meetsStandard ? '#166534' : '#9A6212',
           borderRadius: '7px', padding: '9px 11px',
         }}>
+          {/* MET BY ATTACHED MONEY IS NOT MET BY VERIFIED MONEY. The submission
+              rule counts payment awaiting verification; the Order does not. Only
+              a verified position may say "Verified payment is at or above 40%". */}
           <strong>
             {meetsStandard
-              ? PAYMENT_POSITION_LABEL.standard_met
+              ? (attachedOnly ? SUBMISSION_POSITION_LABEL.attached_met : PAYMENT_POSITION_LABEL.standard_met)
               : `Admin approval required to proceed below ${PAYMENT_STANDARD_PERCENT}%`}
           </strong>
           <span style={{ display: 'block', marginTop: '2px' }}>
             {position !== null && !meetsStandard
               ? PAYMENT_POSITION_HINT[position]
               : meetsStandard
-                ? PAYMENT_POSITION_HINT.standard_met
+                ? (attachedOnly ? ATTACHED_MET_AWAITING_VERIFICATION : PAYMENT_POSITION_HINT.standard_met)
                 : PAYMENT_UNVERIFIED_DOES_NOT_COUNT}
           </span>
         </div>

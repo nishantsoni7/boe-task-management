@@ -37,6 +37,16 @@ import {
   PI_VERSION_PDF_VIEW_LABEL,
   piVersionPdfHref,
 } from '@/lib/orders/piVersionPdf'
+import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
+import { ORDER_PI_WORKBOOK_URL_TTL_SECONDS } from '@/lib/orders/orderPiHandoff'
+import { approvalAdvanceNote, type WorkbookLineReview } from '@/lib/orders/workbookRevisionPreview'
+
+/** What an Admin reads above a revised workbook's comparison. */
+export const WORKBOOK_PREVIEW_NOTE =
+  'Read from the revised workbook on this device. The server reads the workbook again when you approve, and that is what is applied.'
+export const WORKBOOK_PREVIEW_LOADING = 'Reading the revised workbook…'
+export const WORKBOOK_PREVIEW_FAILED =
+  'The revised workbook could not be read here, so its changes cannot be shown. Open it from PI history before deciding.'
 
 export type PiVersionRow = {
   id: string
@@ -51,6 +61,8 @@ export type PiVersionRow = {
   decision_reason: string | null
   operations_reason: string | null
   proposal: { change_summary?: string[] } | null
+  /** A revised workbook's file, read for the Admin's preview before approval. */
+  workbook_path?: string | null
 }
 
 export const VERSION_STATUS_LABEL: Record<PiVersionRow['status'], string> = {
@@ -126,7 +138,7 @@ export function PiVersionsPanel({
     let live = true
     void (async () => {
       const { data, error } = await supabase.from('order_pi_versions')
-        .select('id, version_number, status, source_kind, uploaded_by, uploaded_at, decided_by, decided_at, revision_reason, decision_reason, operations_reason, proposal')
+        .select('id, version_number, status, source_kind, uploaded_by, uploaded_at, decided_by, decided_at, revision_reason, decision_reason, operations_reason, proposal, workbook_path')
         .eq('order_id', orderId).order('version_number', { ascending: true })
       if (!live) return
       if (error) { setReadError(true); return }
@@ -256,6 +268,10 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const [review, setReview] = useState<PiLineReviewData | null>(null)
+  // A pending revised WORKBOOK, read on this device so the Admin sees what they approve.
+  const [workbookPreview, setWorkbookPreview] = useState<'loading' | 'ready' | 'failed' | null>(null)
+  const [linesToMatch, setLinesToMatch] = useState<WorkbookLineReview[]>([])
+  const [verified, setVerified] = useState<number | null>(null)
 
   useEffect(() => {
     let live = true
@@ -268,10 +284,50 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
       const { data, error } = await supabase.rpc('order_pi_version_detail', { p_version_id: version.id })
       if (!live) return
       const n = error ? null : normalizeVersionContent(data as { source: string; content: Record<string, unknown> | null })
-      if (n) setContent(n); else setUnavailable(true)
+      if (n) { setContent(n); return }
+
+      // A REVISED WORKBOOK has no recorded contents until it is approved. Read
+      // it here, with the parser the upload uses, and map it as the approval does.
+      if (version.source_kind === 'workbook' && version.status === 'pending' && version.workbook_path && live$) {
+        setWorkbookPreview('loading')
+        try {
+          const { data: signed, error: urlError } = await supabase.storage.from(ORDER_FILES_BUCKET)
+            .createSignedUrl(version.workbook_path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS)
+          if (urlError || !signed?.signedUrl) throw new Error('no url')
+          const res = await fetch(signed.signedUrl)
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const bytes = new Uint8Array(await res.arrayBuffer())
+          const [{ parseBoePiWorkbook }, { previewWorkbookRevision }] = await Promise.all([
+            import('@/lib/pi/masterSheetParser'), import('@/lib/orders/workbookRevisionPreview'),
+          ])
+          const parsed = await parseBoePiWorkbook(bytes)
+          if (!parsed.ok) throw new Error('unreadable')
+          const preview = await previewWorkbookRevision(parsed.data, live$)
+          if (!live) return
+          setContent(preview.pi); setLinesToMatch(preview.needsReview); setWorkbookPreview('ready')
+          return
+        } catch {
+          if (!live) return
+          setWorkbookPreview('failed')
+        }
+      }
+      setUnavailable(true)
     })()
     return () => { live = false }
   }, [supabase, submissionId, version])
+
+  // THE VERIFIED ADVANCE, so the Admin reads what approval does to the 40% position.
+  useEffect(() => {
+    if (version.status !== 'pending') return
+    let live = true
+    void (async () => {
+      const { data, error } = await supabase.rpc('order_advance_readiness', { p_order_id: orderId })
+      if (!live || error || !data) return
+      const v = Number((data as AdvanceReadiness).verified)
+      if (Number.isFinite(v)) setVerified(v)
+    })()
+    return () => { live = false }
+  }, [supabase, orderId, version.status])
 
   const open = version.status === 'pending' || version.status === 'admin_approved'
   const diff = useMemo(() => (open && content && current ? diffPi(current, content) : null), [open, content, current])
@@ -309,7 +365,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
         <div className="boe-modal-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <strong style={{ flex: 1, fontSize: '15px' }}>PI V{version.version_number} · {VERSION_STATUS_LABEL[version.status]}</strong>
           {/* THIS version's own PDF, rendered from its own content (20270116000000). */}
-          {content && !unavailable && (
+          {content && !unavailable && workbookPreview !== 'ready' && (
             <>
               <button type="button" className="boe-btn boe-btn-ghost"
                 onClick={() => window.open(piVersionPdfHref(orderId, version.id, false), '_blank', 'noopener,noreferrer')}>
@@ -324,13 +380,33 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
           <button type="button" className="boe-btn boe-btn-ghost" onClick={onClose} disabled={busy}>Close</button>
         </div>
         <div className="boe-modal-body">
+          {workbookPreview === 'loading' && (
+            <div role="status" style={{ fontSize: '12.5px', color: colors.muted }}>{WORKBOOK_PREVIEW_LOADING}</div>
+          )}
           {unavailable && (
-            <div style={{ fontSize: '12.5px', color: colors.muted }}>
-              {version.source_kind === 'workbook' && version.status === 'pending'
-                ? 'This revision is a new workbook. Its contents are read when an Admin approves it; open the workbook from PI history to see it.'
-                : 'The contents of this version were not recorded in the app.'}
+            <div role={workbookPreview === 'failed' ? 'alert' : undefined} style={{ fontSize: '12.5px', color: workbookPreview === 'failed' ? '#991B1B' : colors.muted }}>
+              {workbookPreview === 'failed'
+                ? WORKBOOK_PREVIEW_FAILED
+                : version.source_kind === 'workbook' && version.status === 'pending'
+                  ? 'This revision is a new workbook. Its contents are read when an Admin approves it; open the workbook from PI history to see it.'
+                  : 'The contents of this version were not recorded in the app.'}
             </div>
           )}
+          {workbookPreview === 'ready' && (
+            <div style={{ fontSize: '11.5px', color: colors.muted }}>{WORKBOOK_PREVIEW_NOTE}</div>
+          )}
+          {linesToMatch.length > 0 && (
+            <div style={{ fontSize: '12px', color: '#9A6212', background: colors.amberTint, borderRadius: '7px', padding: '8px 10px' }}>
+              {linesToMatch.length} line{linesToMatch.length === 1 ? '' : 's'} cannot be matched by item number and are shown as new here;
+              approving asks you to match {linesToMatch.length === 1 ? 'it' : 'them'} first: {linesToMatch.map(l => `${l.name} (${l.why})`).join('; ')}.
+            </div>
+          )}
+          {open && content && (() => {
+            const note = approvalAdvanceNote(verified, content.grandTotal)
+            return note ? (
+              <div role="note" style={{ fontSize: '12px', color: '#9A6212', background: colors.amberTint, borderRadius: '7px', padding: '8px 10px' }}>{note}</div>
+            ) : null
+          })()}
           {diff && (
             <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px 12px' }}>
               <div style={{ fontWeight: 700, fontSize: '12.5px', marginBottom: '6px' }}>Compared with the PI in force</div>

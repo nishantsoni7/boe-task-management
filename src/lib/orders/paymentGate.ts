@@ -194,6 +194,13 @@ export const PAYMENT_ALLOCATION_NOT_MOVED =
   'This PI\u2019s payments could not be moved onto the Order, so no Order was created. Refresh and try once more.'
 export const PAYMENT_UNVERIFIED_DOES_NOT_COUNT =
   'Payment that Finance has not verified does not count towards the requirement.'
+/**
+ * The submission rule is met by ATTACHED payment (verified + awaiting
+ * verification), but the verified position is not: say so, rather than claim
+ * the verified requirement is met while ₹0 is verified.
+ */
+export const ATTACHED_MET_AWAITING_VERIFICATION =
+  `No approval to proceed below ${PAYMENT_STANDARD_PERCENT}% is needed to submit. Finance must still verify this payment before the Order can be created — only verified payment counts for the Order.`
 export const PAYMENT_NOT_A_DECLARATION =
   'Only payment Finance has verified counts. Nothing here records or requests money.'
 
