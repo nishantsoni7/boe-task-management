@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270122000000 — every SECURITY DEFINER in public pins pg_temp last
+-- 20270125000000 — every SECURITY DEFINER in public pins pg_temp last
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- AN AUDIT, AND ITS MECHANICAL RESULT. A SELECT-only read of production on
@@ -71,12 +71,13 @@
 -- Four TRIGGER functions also carry an anon grant. That is harmless, because a
 -- trigger function cannot be called directly.
 --
--- ORDERING. Numbered after 20270120000000, the newest migration applied to
--- production on 2026-09-26 (first 20270106000000, then 20270118000000; each
--- time production moved past it). The Orders release (#202 / #205 / #206 /
--- #209, 20270112000000 .. 20270116000000), the guards run as owner (#230,
--- 20270117000000), 20270111120000, 20270118120000 and 20270120000000 are all
--- applied. None of those drops or redefines any function listed here, and
+-- ORDERING. Numbered after 20270122000000, the newest migration applied to
+-- production on 2026-09-26, and after 20270123000000 (#236, not merged yet)
+-- (first 20270106000000, then 20270118000000, then 20270122000000; each time
+-- production moved past it). The Orders release (#202 / #205 / #206 / #209,
+-- 20270112000000 .. 20270116000000), the guards run as owner (#230,
+-- 20270117000000), 20270111120000, 20270118120000, 20270120000000 and
+-- 20270122000000 are all applied; #236 is 20270123000000. None of those drops or redefines any function listed here, and
 -- every definer they add already pins pg_temp, so the final schema-wide
 -- assertion holds. A LATER CREATE OR REPLACE of any function below must restate
 -- `set search_path = public, pg_temp`, or it silently undoes this.

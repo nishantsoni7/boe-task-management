@@ -100,7 +100,7 @@ describe('the migration', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       // Every SECURITY DEFINER in public pins pg_temp (#212): ALTER FUNCTION
       // on existing definers. Announcements' own definers already pin it.
-      '20270122000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270125000000_security_definer_search_path_pins_pg_temp.sql',
     ])
   })
 })

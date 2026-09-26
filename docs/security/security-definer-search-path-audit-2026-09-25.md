@@ -2,7 +2,7 @@
 
 Source: a SELECT-only read of production (`supabase db query --linked`) on 2026-09-25 for every
 `SECURITY DEFINER` function in `public` whose `search_path` does not name `pg_temp`. The fix is
-`supabase/migrations/20270122000000_security_definer_search_path_pins_pg_temp.sql`, and the forward
+`supabase/migrations/20270125000000_security_definer_search_path_pins_pg_temp.sql`, and the forward
 guard is `src/lib/securityDefinerSearchPath.test.ts`.
 
 ## Why it matters

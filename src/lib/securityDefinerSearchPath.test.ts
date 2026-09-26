@@ -1,5 +1,5 @@
 /**
- * EVERY SECURITY DEFINER IN public PINS pg_temp LAST (20270122000000), read as
+ * EVERY SECURITY DEFINER IN public PINS pg_temp LAST (20270125000000), read as
  * text, plus the guard that keeps it true.
  *
  * Executing it was done against a disposable local stack. It applies with and
@@ -23,7 +23,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270122000000_security_definer_search_path_pins_pg_temp.sql'
+const NAME = '20270125000000_security_definer_search_path_pins_pg_temp.sql'
 const MIGRATION = read(`supabase/migrations/${NAME}`)
 const SQL = stripSql(MIGRATION)
 

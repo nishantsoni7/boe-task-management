@@ -659,9 +659,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // A payment's proof opens for its recorder and its reviewers (20270118120000),
       // held by src/lib/finance/paymentProofViewMigration.test.ts.
       if (f === 'supabase/migrations/20270118120000_finance_payment_proof_opens_for_its_reviewers.sql') continue
-      // And the security-definer search_path audit (20270122000000): ALTER
+      // And the security-definer search_path audit (20270125000000): ALTER
       // FUNCTION and one revoke, held by its own suite.
-      if (f === 'supabase/migrations/20270122000000_security_definer_search_path_pins_pg_temp.sql') continue
+      if (f === 'supabase/migrations/20270125000000_security_definer_search_path_pins_pg_temp.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1288,7 +1288,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const ORDER_0524_HANDOFF_MIGRATION = 'supabase/migrations/20261230000000_order_0524_operations_handoff_for_existing_approval.sql'
 
   /**
-   * EVERY SECURITY DEFINER IN public PINS pg_temp LAST (20270122000000).
+   * EVERY SECURITY DEFINER IN public PINS pg_temp LAST (20270125000000).
    *
    * One migration of ALTER FUNCTION … SET search_path statements plus one
    * revoke on get_or_create_quotation_no — no screen, no rule, no money — its
@@ -1309,7 +1309,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
   ])
-  const DEFINER_SEARCH_PATH_MIGRATION = 'supabase/migrations/20270122000000_security_definer_search_path_pins_pg_temp.sql'
+  const DEFINER_SEARCH_PATH_MIGRATION = 'supabase/migrations/20270125000000_security_definer_search_path_pins_pg_temp.sql'
 
   /**
    * THE OPERATIONS REVIEW DECISION MOVES ONTO THE ATTENTION STRIP.
