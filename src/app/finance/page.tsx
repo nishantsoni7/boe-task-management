@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REQUEST_STAGE_STATUSES, canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
+import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
 import {
   COUNTED_TABS,
   archiveCutoffIso,
@@ -539,6 +540,7 @@ function DetailsModal({
   isAdmin,
   mayCorrectPayments,
   mayApprovePayments,
+  mayDecideOwnPayments,
   userId,
   supabase,
   onCorrected,
@@ -571,6 +573,12 @@ function DetailsModal({
    * its only affordance was a small "Review" chip. See the panel below.
    */
   mayApprovePayments?: boolean
+  /**
+   * May decide a payment this viewer recorded themselves — the protected
+   * finance.verify_own_payment authority (Control Center), which an admin holds
+   * through the admin branch. See FinanceCapabilities.canDecideOwnPayment.
+   */
+  mayDecideOwnPayments?: boolean
   userId?: string
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
@@ -601,10 +609,10 @@ function DetailsModal({
   // approval authority. Both are re-derived inside
   // approve_finance_payment_request under a row lock on every call, so this
   // decides whether a control is DRAWN and never whether it is allowed.
-  // Never on a payment this viewer recorded themselves, unless they are an
-  // admin — the database refuses that decision, so it is not offered.
+  // Never on a payment this viewer recorded themselves, unless they may verify
+  // their own payments — the database refuses that decision, so it is not offered.
   const canVerify = canVerifyPayment(r.status, mayApprovePayments)
-    && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)
+    && !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)
   const [verifyArmed, setVerifyArmed] = useState(false)
   const [verifyNote,  setVerifyNote]  = useState('')
   const [verifying,   setVerifying]   = useState(false)
@@ -1286,18 +1294,25 @@ function NewPaymentConfirmationModal({
       setSaving(false)
       return
     }
+    // THE LAST CALL (20270120000000), after the proof: a holder of
+    // finance.verify_own_payment has their own payment verified now, and the
+    // server tells the other holders for information. Nobody is asked to review
+    // it, so the "requires review" notice below is not sent.
+    const completion = await completePaymentEntry(supabase, created.payment_request_id)
     attempt.settle()
     setSaving(false)
 
     // Notify approvers that a new request is waiting (non-blocking). The
     // customer named here is the one the SERVER derived, not one this form
     // guessed — and it is honestly absent for a Suspense Entry.
-    void notifyFinance({
-      event: 'finance_submitted',
-      requestNumber: created.request_number,
-      entityId: created.payment_request_id,
-      clientName: customerDisplayName(created.client_name),
-    })
+    if (!completion.verified) {
+      void notifyFinance({
+        event: 'finance_submitted',
+        requestNumber: created.request_number,
+        entityId: created.payment_request_id,
+        clientName: customerDisplayName(created.client_name),
+      })
+    }
 
     onSaved()
   }
@@ -3197,7 +3212,7 @@ function FinancePageInner() {
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, isAdmin)) {
+        if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, caps.canDecideOwnPayment)) {
           setReviewRequest(match)
         } else {
           setDetailRequest(match)
@@ -3242,7 +3257,7 @@ function FinancePageInner() {
 
   // ── Row click handler ────────────────────────────────────────────────────────
   const handleRowClick = (r: PaymentRequest) => {
-    if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)) {
+    if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment)) {
       setReviewRequest(r)
     } else {
       setDetailRequest(r)
@@ -3447,6 +3462,7 @@ function FinancePageInner() {
           isAdmin={isAdmin}
           mayCorrectPayments={caps.canCorrectOrReversePayment}
           mayApprovePayments={caps.canApprovePayment}
+          mayDecideOwnPayments={caps.canDecideOwnPayment}
           userId={userId}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}

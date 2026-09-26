@@ -142,6 +142,12 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // other and from finance.approve. Registered by 20260918000000.
   'allocate',
   'allocate_correct',
+  // Recording a payment and verifying it in the same action, and deciding a
+  // pending payment one recorded oneself — the Admins' exemption from the
+  // separation of payment entry and decision. Protected because it removes the
+  // second pair of eyes on money received; it is granted per person in Control
+  // Center or not at all. Registered by 20270120000000.
+  'verify_own_payment',
   // Aligning a Confirmed Order for production: the Head of Manufacturing's
   // statement that the factory can make it. Protected because it is the gate
   // between a commercial approval and work starting, and a preset must not
@@ -192,6 +198,9 @@ export function isProtectedAction(actionKey: string): boolean {
  */
 export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   manage_quotations: 'view_quotations',
+  // Verifying one's own payment is still verifying: approve_finance_payment_request
+  // requires finance.approve, so the grant would have nowhere to act without it.
+  verify_own_payment: 'approve',
   view_quotations:   'view',
   // Team Performance is inside the Performance module, so it cannot be held by
   // somebody who may not open it.

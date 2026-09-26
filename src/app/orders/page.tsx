@@ -438,7 +438,9 @@ export default function OrdersDashboardPage() {
       <DocumentActionQueue
         supabase={supabase}
         viewerId={profile?.id ?? null}
-        isAdmin={profile?.role === 'admin'}
+        // The admin decision on documents and revised PIs is orders.approve_order
+        // (Control Center), not users.role — the RPCs ask the same (20270120000000).
+        isAdmin={ordersCaps.canApproveOrderSubmission}
         viewingAs={!!viewAsUserId}
         formatWhen={iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
       />

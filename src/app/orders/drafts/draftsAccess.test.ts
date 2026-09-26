@@ -505,6 +505,12 @@ describe('the detail page renders only what it fetched', () => {
       // and reject_finance_payment_request, both requiring finance.approve. Drawn
       // only for finance.approve; pinned call-for-call in paymentDecision.test.ts.
       'decidePayment',
+      // src/lib/finance/paymentEntryCompletion.ts — complete_payment_entry, the
+      // last call of Record Payment, after the proof (20270120000000). It
+      // verifies only the caller's own pending payment, only for a holder of
+      // finance.verify_own_payment, through approve_finance_payment_request;
+      // for everybody else it writes nothing.
+      'completePaymentEntry',
     ] as const
 
     const READ_ONLY_HELPERS = [

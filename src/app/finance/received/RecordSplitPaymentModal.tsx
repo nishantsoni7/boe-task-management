@@ -56,6 +56,7 @@
 // verify / correct-and-verify / reject authority, which this touches in no way.
 
 import { useRef, useState } from 'react'
+import { completePaymentEntry } from '@/lib/finance/paymentEntryCompletion'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
@@ -143,7 +144,8 @@ export function RecordSplitPaymentModal({
   /** Whoever is recording this. Seeds the first custody activity and the proof row. */
   userId?: string | null
   onClose: () => void
-  onRecorded: (summary: { requestNumber: string; allocationCount: number }) => void
+  /** `verified`: the recorder holds finance.verify_own_payment and it was verified in the same action (20270120000000). */
+  onRecorded: (summary: { requestNumber: string; allocationCount: number; verified?: boolean }) => void
   /**
    * ONE TARGET TO START FROM, for a caller that already knows which record the
    * reader is looking at — the Confirmed Order screen opens this from its own
@@ -325,9 +327,12 @@ export function RecordSplitPaymentModal({
       setProofNotice(`${proofError} The payment itself was recorded and is awaiting verification — retry the proof, or close and attach it later.`)
       return
     }
+    // The last call, after the proof (see paymentEntryCompletion.ts).
+    const completion = await completePaymentEntry(supabase, recordedWithoutProof.paymentRequestId)
     onRecorded({
       requestNumber:   recordedWithoutProof.requestNumber,
       allocationCount: recordedWithoutProof.allocationCount,
+      verified:        completion.verified,
     })
   }
 
@@ -441,9 +446,15 @@ export function RecordSplitPaymentModal({
       }
     }
 
+    // THE LAST CALL (20270120000000), after the proof: a holder of
+    // finance.verify_own_payment has their own payment verified now. Closing
+    // with the proof still missing (above) does NOT complete, so the proof can
+    // still be attached while the payment is pending.
+    const completion = await completePaymentEntry(supabase, result.payment_request_id)
     onRecorded({
       requestNumber:   result.request_number ?? '',
       allocationCount: result.allocation_count ?? 0,
+      verified:        completion.verified,
     })
   }
 

@@ -204,6 +204,10 @@ registerModule({
     // authority. Both are protected (see levels.ts). Registered by 20260918000000.
     { actionKey: 'allocate', displayName: 'Allocate Payments' },
     { actionKey: 'allocate_correct', displayName: 'Correct Payment Allocations' },
+    // A payment its holder records is verified in the same action, and they
+    // may decide a pending payment they recorded themselves. Needs 'approve'
+    // (levels.ts). Protected. Registered by 20270120000000.
+    { actionKey: 'verify_own_payment', displayName: 'Verify Own Payments' },
   ],
 })
 

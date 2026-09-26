@@ -148,6 +148,43 @@ type FixtureOptions = {
   includeDrawing?: boolean
   /** Extra archive entries, for package-level tests. */
   extraParts?: Record<string, Uint8Array>
+  /**
+   * Edits a person makes to the sheet, applied LAST the way Excel applies them:
+   * every cell, hidden row and picture anchor moves. Rows are 1-based, columns
+   * 0-based; deletions are applied before insertions, both in the template's
+   * own coordinates.
+   */
+  edits?: {
+    deleteRows?: readonly { at: number; count: number }[]
+    insertRows?: readonly { at: number; count: number }[]
+    insertCols?: readonly { at: number; count: number }[]
+  }
+}
+
+/** Where a template row / column lands after the fixture's edits (null: deleted). */
+function editedRow(edits: FixtureOptions['edits'], row: number): number | null {
+  let r = row
+  for (const d of edits?.deleteRows ?? []) {
+    if (row >= d.at && row < d.at + d.count) return null
+    if (row >= d.at + d.count) r -= d.count
+  }
+  for (const i of edits?.insertRows ?? []) if (row >= i.at) r += i.count
+  return r
+}
+function editedCol(edits: FixtureOptions['edits'], col: number): number {
+  let c = col
+  for (const i of edits?.insertCols ?? []) if (col >= i.at) c += i.count
+  return c
+}
+function colIndex(letters: string): number {
+  let n = 0
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n - 1
+}
+function colLetters(index: number): string {
+  let n = index + 1, out = ''
+  while (n > 0) { const m = (n - 1) % 26; out = String.fromCharCode(65 + m) + out; n = Math.floor((n - 1) / 26) }
+  return out
 }
 
 const DEFAULT_HEADER_BLOCK: Record<string, CellSpec> = {
@@ -286,7 +323,37 @@ function buildPiWorkbook(opts: FixtureOptions = {}): Uint8Array {
   }, 0)
   put('I116', num(grossDefault, 'SUM(I32:I111)-I115'))
   for (const [address, spec] of Object.entries(opts.commercial ?? {})) put(address, spec)
+  // …and the rest of the footer cached the way Excel would have evaluated it
+  // FROM THE CELLS AS THEY NOW STAND (a dash, "Inclusive" or words count as
+  // nothing), so a fixture's own arithmetic adds up and its footer is proved
+  // by its figures. A test that sets one of these itself keeps its own value.
+  const cachedNumber = (address: string) => {
+    const spec = cells.get(address)
+    return spec && (spec.kind === 'num') ? spec.value : 0
+  }
+  const own = opts.commercial ?? {}
+  const totalDefault = cachedNumber('I116') + cachedNumber('I117') + cachedNumber('I118') + cachedNumber('I119')
+  if (!('I120' in own)) put('I120', num(totalDefault, 'I116+I117+I118+I119'))
+  const total = cachedNumber('I120')
+  if (!('I121' in own)) put('I121', num(Math.round(total * 0.18 * 100) / 100, 'I120*0.18'))
+  if (!('I122' in own)) put('I122', num(total + cachedNumber('I121'), 'I120+I121'))
   for (const [address, spec] of Object.entries(opts.extraCells ?? {})) put(address, spec)
+
+  // ── The person's edits: every cell and hidden row moves ──
+  if (opts.edits) {
+    const moved = new Map<string, CellSpec>()
+    for (const [address, spec] of cells) {
+      const m = /^([A-Z]+)(\d+)$/.exec(address)!
+      const row = editedRow(opts.edits, Number(m[2]))
+      if (row === null) continue
+      moved.set(`${colLetters(editedCol(opts.edits, colIndex(m[1])))}${row}`, spec)
+    }
+    cells.clear()
+    for (const [address, spec] of moved) cells.set(address, spec)
+    const hidden = [...hiddenRows].map(r => editedRow(opts.edits, r)).filter((r): r is number => r !== null)
+    hiddenRows.clear()
+    for (const r of hidden) hiddenRows.add(r)
+  }
 
   // ── worksheet XML ──
   const byRow = new Map<number, string[]>()
@@ -329,7 +396,10 @@ function buildPiWorkbook(opts: FixtureOptions = {}): Uint8Array {
     + `</worksheet>`
 
   // ── drawing ──
-  const anchors = opts.anchors ?? []
+  const anchors = (opts.anchors ?? []).flatMap(a => {
+    const row = editedRow(opts.edits, a.row)
+    return row === null ? [] : [{ ...a, row, col: editedCol(opts.edits, a.col) }]
+  })
   const mediaTargets = new Map<string, string>()
   const anchorXml = anchors.map((anchor, i) => {
     const relId = `rIdImg${i}`
@@ -575,7 +645,7 @@ describe('template fingerprint', () => {
     assert.equal(result.ok, false)
     if (result.ok) throw new Error('unreachable')
     assert.deepEqual(result.errors.map(e => e.code), ['TEMPLATE_FINGERPRINT_MISMATCH'])
-    assert.match(result.errors[0].message, /G31 expected "Material", found "Fabric"/)
+    assert.match(result.errors[0].message, /"Material" was not found \(G31 holds "Fabric"\)/)
   })
 
   test('a missing header cell blocks and says which one', async () => {
@@ -587,7 +657,7 @@ describe('template fingerprint', () => {
     const result = await parseBoePiWorkbook(wb)
     assert.equal(result.ok, false)
     if (result.ok) throw new Error('unreachable')
-    assert.match(result.errors[0].message, /K31 expected "Customization", found nothing/)
+    assert.match(result.errors[0].message, /"Customization" was not found \(K31 holds nothing\)/)
   })
 
   test('a workbook with a Master sheet but a foreign layout is blocked', async () => {
@@ -1257,13 +1327,27 @@ describe('commercial summary', () => {
     assert.equal(countOf(result.warnings, 'FOOTER_NOT_VERIFIED'), 0)
   })
 
-  test('a footer whose labels line up nowhere is read at the template rows and flagged', async () => {
+  test('a footer whose labels line up nowhere is found by its own arithmetic, and said so', async () => {
+    // The labels no longer prove it (one is renamed), but Total + GST = Grand
+    // Total still holds in exactly one place: the footer is read there, and a
+    // reviewer is told how it was found. Nothing is read blindly from the template.
     const result = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
       products: inventProducts(2), anchors: anchorsFor(2),
       commercial: { G120: text('Net amount') },
     })))
     assert.equal(result.data.template.footerOffset, 0)
-    assert.equal(countOf(result.warnings, 'FOOTER_NOT_VERIFIED'), 1)
+    assert.equal(countOf(result.warnings, 'FOOTER_LOCATED_BY_ARITHMETIC'), 1)
+    assert.equal(countOf(result.warnings, 'FOOTER_NOT_VERIFIED'), 0)
+    assert.equal(result.blockingIssues.length, 0)
+    assert.ok((result.data.commercial.grandTotal.amount ?? 0) > 0)
+  })
+
+  test('a footer found neither by its labels nor by its arithmetic BLOCKS — nothing is read blindly', async () => {
+    const result = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { G120: text('Net amount'), I122: num(1) },
+    })))
+    assert.deepEqual(result.blockingIssues.map(i => i.code), ['FOOTER_NOT_FOUND'])
   })
 
   test('Total + GST that does not make the grand total is reported, and the grand total kept', async () => {
@@ -2638,5 +2722,151 @@ describe('the PI terms the workbook itself states', () => {
   test('text in the note region that is not the note is left alone', async () => {
     const result = await piTerms({ A115: text('Dispatch schedule') })
     assert.equal(result.data.piTerms.commercialTermsNote, null)
+  })
+})
+
+// ── An edited sheet reads exactly like the template it came from ─────────────
+//
+// People edit the PI: delete a spacer or an unused product row, add rows above
+// the table, insert a column. Every block is found by its own labels and the
+// footer is proved by its own figures, so each edit below must read the SAME
+// header, products and footer as the unedited sheet — and say what moved.
+
+describe('an edited sheet is read by its labels and proved by its figures', () => {
+  // The real template's date labels, so the dates are found by label too.
+  const DATE_LABELS = { A112: text('Date of Order Confirmation* from Client:'), E112: text('Dispatch Date Finalized:') }
+  const base = (edits?: FixtureOptions['edits']) => buildPiWorkbook({
+    products: inventProducts(3), anchors: anchorsFor(3), extraCells: DATE_LABELS, edits,
+  })
+  const figures = (r: ReturnType<typeof expectOk>) => ({
+    header: r.data.header,
+    products: r.data.products.map(p => ({
+      ...p, row: 0,
+      // The same picture, whichever row it is anchored to now.
+      representativeImage: p.representativeImage ? `${p.representativeImage.part}:${p.representativeImage.byteLength}` : null,
+      customizationImages: p.customizationImages.map(i => `${i.part}:${i.byteLength}`),
+    })),
+    commercial: Object.fromEntries(Object.entries(r.data.commercial).map(([k, v]) =>
+      [k, v !== null && typeof v === 'object' && 'amount' in v ? { amount: v.amount, text: v.text, zeroMeaning: v.zeroMeaning } : v])),
+    piTerms: r.data.piTerms,
+  })
+  let reference: ReturnType<typeof figures> | undefined
+  const unedited = async () => (reference ??= figures(expectOk(await parseBoePiWorkbook(base()))))
+
+  test('the unedited template reads in place, with nothing reported as moved', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base()))
+    assert.equal(r.data.template.headerRow, 31)
+    assert.equal(r.data.template.footerOffset, 0)
+    assert.equal(r.data.commercial.grandTotal.cell, 'I122')
+    assert.equal(countOf(r.warnings, 'LAYOUT_MOVED') + countOf(r.warnings, 'FOOTER_SHIFTED'), 0)
+    assert.deepEqual(r.blockingIssues, [])
+  })
+
+  test('the production case: a spacer row removed between the dates and the footer', async () => {
+    // Row 114 deleted: the footer moves up one, the dates do NOT.
+    const r = expectOk(await parseBoePiWorkbook(base({ deleteRows: [{ at: 114, count: 1 }] })))
+    assert.equal(r.data.commercial.grandTotal.cell, 'I121')
+    assert.equal(r.data.template.lastProductRow, 111, 'the product band keeps every row')
+    assert.ok(r.data.header.orderConfirmationDate?.iso, 'the date is read from A113, not from its label')
+    assert.equal(countOf(r.warnings, 'FOOTER_SHIFTED'), 1)
+    assert.deepEqual(r.blockingIssues, [])
+    assert.deepEqual(figures(r), await unedited())
+  })
+
+  test('an unused product row removed: products, dates and footer all move up one', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base({ deleteRows: [{ at: 100, count: 1 }] })))
+    assert.equal(r.data.commercial.grandTotal.cell, 'I121')
+    assert.deepEqual(figures(r), await unedited())
+  })
+
+  test('two rows added above the table: everything moves down two and reads the same', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base({ insertRows: [{ at: 5, count: 2 }] })))
+    assert.equal(r.data.template.headerRow, 33)
+    assert.equal(r.data.template.firstProductRow, 34)
+    assert.equal(r.data.commercial.grandTotal.cell, 'I124')
+    assert.equal(countOf(r.warnings, 'LAYOUT_MOVED'), 1)
+    assert.deepEqual(r.blockingIssues, [])
+    assert.deepEqual(figures(r), await unedited())
+  })
+
+  test('a column inserted between Material and Cost per piece: read by name, footer from "Total Cost"', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base({ insertCols: [{ at: 7, count: 1 }] })))
+    assert.equal(r.data.commercial.grandTotal.cell, 'J122', 'the amounts moved to J with the "Total Cost (INR)" column')
+    const moved = r.warnings.find(w => w.code === 'LAYOUT_MOVED')
+    assert.match(moved?.message ?? '', /"Total Cost \(INR\)" is in column J instead of I/)
+    assert.deepEqual(r.blockingIssues, [])
+    assert.deepEqual(figures(r), await unedited())
+  })
+
+  test('a column inserted at the very left: every block, the header values included, moves right one', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base({ insertCols: [{ at: 0, count: 1 }] })))
+    assert.equal(r.data.commercial.grandTotal.cell, 'J122')
+    assert.deepEqual(r.blockingIssues, [])
+    assert.deepEqual(figures(r), await unedited())
+  })
+
+  test('rows AND columns edited together still read the same', async () => {
+    const r = expectOk(await parseBoePiWorkbook(base({
+      deleteRows: [{ at: 114, count: 1 }], insertRows: [{ at: 10, count: 3 }], insertCols: [{ at: 5, count: 2 }],
+    })))
+    assert.deepEqual(r.blockingIssues, [])
+    assert.deepEqual(figures(r), await unedited())
+  })
+})
+
+describe('the figures prove the layout, and a missing Grand Total is refused', () => {
+  test('a blank Grand Total BLOCKS the upload — an order is never saved without one', async () => {
+    const r = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2), commercial: { I122: null },
+    })))
+    assert.deepEqual(r.blockingIssues.map(i => i.code), ['GRAND_TOTAL_MISSING'])
+    assert.equal(r.blockingIssues[0].cell, 'I122')
+  })
+
+  test('a Grand Total in words BLOCKS too', async () => {
+    const r = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2), commercial: { I122: text('TBC') },
+    })))
+    assert.deepEqual(r.blockingIssues.map(i => i.code), ['GRAND_TOTAL_MISSING'])
+  })
+
+  test('columns whose figures contradict their names on every line BLOCK', async () => {
+    const r = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: [
+        { name: 'A', quantity: 2, cost: 100, total: 999 },
+        { name: 'B', quantity: 3, cost: 100, total: 888 },
+      ],
+      anchors: anchorsFor(2),
+    })))
+    assert.ok(r.blockingIssues.some(i => i.code === 'PRODUCT_COLUMNS_UNVERIFIED'))
+  })
+
+  test('ONE line that disagrees is a warning about that line, not a refusal', async () => {
+    const r = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: [{ name: 'A', quantity: 2, cost: 100, total: 999 }, { name: 'B', quantity: 3, cost: 100 }],
+      anchors: anchorsFor(2),
+    })))
+    assert.equal(r.blockingIssues.some(i => i.code === 'PRODUCT_COLUMNS_UNVERIFIED'), false)
+    assert.equal(countOf(r.warnings, 'LINE_TOTAL_MISMATCH'), 1)
+  })
+
+  test('each step of the footer is checked: Total, GST at its printed rate, Grand Total', async () => {
+    const r = expectOk(await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { I120: num(10000), I121: num(900), I122: num(10900) },
+    })))
+    assert.equal(countOf(r.warnings, 'TOTAL_BEFORE_GST_MISMATCH'), 1)
+    assert.equal(countOf(r.warnings, 'GST_MISMATCH'), 1, '900 is not 18% of 10000')
+    assert.equal(countOf(r.warnings, 'GRAND_TOTAL_MISMATCH'), 0, '10000 + 900 = 10900')
+    assert.equal(r.data.commercial.grandTotal.amount, 10900, 'the workbook figure is kept')
+  })
+
+  test('column names on no row are refused, naming what was missing', async () => {
+    const result = await parseBoePiWorkbook(buildPiWorkbook({
+      products: inventProducts(1), anchors: anchorsFor(1), headerOverrides: { H31: 'Rate' },
+    }))
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.match(result.errors[0].message, /"Cost per piece \(INR\)" was not found \(H31 holds "Rate"\)/)
   })
 })
