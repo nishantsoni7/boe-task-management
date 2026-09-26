@@ -33,6 +33,11 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
+import {
+  SUBMIT_WITHOUT_FILES_LABEL,
+  missingSupportingQuestion,
+  type SupportingCategory,
+} from '@/lib/orders/orderDocumentSubmissions'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import {
   BOE_STANDARD_COMMERCIAL_TERMS,
@@ -116,19 +121,25 @@ import {
   PAYMENT_POSITION_HINT,
   PAYMENT_POSITION_LABEL,
   PAYMENT_REASON_LABEL,
+  EXCEPTION_REASON_OPTIONS,
+  EXCEPTION_REASON_NOT_A_DECISION,
+  OTHER_REMARK_LABEL,
+  OTHER_REMARK_PLACEHOLDER,
   PAYMENT_REASON_MAX_LENGTH,
-  PAYMENT_REASON_PLACEHOLDER,
   PAYMENT_STANDARD_PERCENT,
-  PAYMENT_TERMS_LABEL,
   PAYMENT_TERMS_MAX_LENGTH,
   PAYMENT_TERMS_OPTIONAL_LABEL,
   PAYMENT_TERMS_PLACEHOLDER,
   PAYMENT_NOT_A_DECLARATION,
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
+  ATTACHED_MET_AWAITING_VERIFICATION,
+  SUBMISSION_POSITION_LABEL,
   asSubmissionPosition,
   submissionReasonPrompt,
   asPaymentPosition,
+  exceptionReasonKept,
+  keptExceptionReason,
   paymentPositionLines,
   submissionTermsUntouched,
   validateSubmissionTerms,
@@ -273,9 +284,12 @@ function PaymentPositionPanel({
   disabled,
   invalid,
   onTerms,
+  keptReason = null,
 }: {
   summary: PiPaymentSummary | null
   terms: PiSubmissionTerms
+  /** An approved exception resubmitted as it is (keptExceptionReason). */
+  keptReason?: string | null
   /** Null when the position could not be read at all — the dialog fails closed. */
   meetsStandard: boolean | null
   disabled: boolean
@@ -306,6 +320,9 @@ function PaymentPositionPanel({
     formatPercentage:  formatPercent,
   })
   const submissionPosition = asSubmissionPosition(summary?.submission_position)
+  // The requirement is met only because payment AWAITING verification counts
+  // for submission — the verified position is not yet standard_met.
+  const attachedOnly = meetsStandard === true && position !== 'standard_met'
   const reasonPrompt = meetsStandard === false && submissionPosition !== null
     ? submissionReasonPrompt(submissionPosition, formatPercent(summary?.attached_percent))
     : null
@@ -385,25 +402,28 @@ function PaymentPositionPanel({
           color: meetsStandard ? '#166534' : '#9A6212',
           borderRadius: '7px', padding: '9px 11px',
         }}>
+          {/* MET BY ATTACHED MONEY IS NOT MET BY VERIFIED MONEY. The submission
+              rule counts payment awaiting verification; the Order does not. Only
+              a verified position may say "Verified payment is at or above 40%". */}
           <strong>
             {meetsStandard
-              ? PAYMENT_POSITION_LABEL.standard_met
+              ? (attachedOnly ? SUBMISSION_POSITION_LABEL.attached_met : PAYMENT_POSITION_LABEL.standard_met)
               : `Admin approval required to proceed below ${PAYMENT_STANDARD_PERCENT}%`}
           </strong>
           <span style={{ display: 'block', marginTop: '2px' }}>
             {position !== null && !meetsStandard
               ? PAYMENT_POSITION_HINT[position]
               : meetsStandard
-                ? PAYMENT_POSITION_HINT.standard_met
+                ? (attachedOnly ? ATTACHED_MET_AWAITING_VERIFICATION : PAYMENT_POSITION_HINT.standard_met)
                 : PAYMENT_UNVERIFIED_DOES_NOT_COUNT}
           </span>
         </div>
       )}
 
-      {/* Below the requirement the two fields are MANDATORY and marked so. The
-          reason is what management is being asked to accept; the terms are how
-          the rest of the money is expected to arrive, and a request to start
-          early without them is a request nobody can weigh. */}
+      {/* BELOW THE REQUIREMENT: ONE OF THREE REASONS, and nothing else
+          (20270114000000). "Other" asks for a remark. The stored Payment and
+          Billing terms are carried as they are; they are edited on the PI, not
+          here. Choosing a reason asks — an admin decides. */}
       {meetsStandard === false && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: '9px',
@@ -418,9 +438,42 @@ function PaymentPositionPanel({
               {reasonPrompt}
             </div>
           )}
-          {field('reason', PAYMENT_REASON_LABEL, PAYMENT_REASON_PLACEHOLDER, PAYMENT_REASON_MAX_LENGTH, 3)}
-          {field('paymentTerms', PAYMENT_TERMS_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
-          {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
+          {keptReason && terms.reasonChoice === '' && (
+            <div data-kept-exception style={{ fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+              {exceptionReasonKept(keptReason)}
+            </div>
+          )}
+          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <legend style={{ ...KEY_STYLE, padding: 0, marginBottom: '4px' }}>{PAYMENT_REASON_LABEL}</legend>
+            {EXCEPTION_REASON_OPTIONS.map(option => (
+              <label
+                key={option.value}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', cursor: disabled ? 'default' : 'pointer',
+                  padding: '8px 10px', borderRadius: '6px', fontSize: '13px', color: colors.primary,
+                  border: `1px solid ${terms.reasonChoice === option.value ? colors.blue : colors.border}`,
+                  background: terms.reasonChoice === option.value ? colors.blueTint : colors.base,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="pi-exception-reason"
+                  value={option.value}
+                  checked={terms.reasonChoice === option.value}
+                  disabled={disabled}
+                  onChange={() => onTerms('reasonChoice', option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </fieldset>
+          {terms.reasonChoice === 'other' && field(
+            'otherRemark', OTHER_REMARK_LABEL, OTHER_REMARK_PLACEHOLDER,
+            PAYMENT_REASON_MAX_LENGTH - 'Other: '.length, 2,
+          )}
+          <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+            {EXCEPTION_REASON_NOT_A_DECISION}
+          </div>
         </div>
       )}
 
@@ -477,6 +530,9 @@ export function PiSubmitConfirmModal({
   offerReply,
   onCancel,
   onConfirm,
+  supporting,
+  missingSupporting,
+  supportingBlocked,
 }: {
   client: string
   grandTotal: string
@@ -509,7 +565,19 @@ export function PiSubmitConfirmModal({
   onConfirm: (
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
+    /** The supporting categories the submitter confirmed going without. */
+    acknowledgedMissing?: string[],
   ) => void
+  /**
+   * DESIGN FILES AND CLIENT PO (20270112000000), drawn inside this dialog by the
+   * caller. Absent on a screen that does not offer them: the dialog is then
+   * exactly what it was.
+   */
+  supporting?: React.ReactNode
+  /** Categories with no file. Non-empty → one explicit confirmation first. */
+  missingSupporting?: readonly SupportingCategory[]
+  /** Why Submit must wait on the attachments (e.g. an invalid file). */
+  supportingBlocked?: string | null
 }) {
   /**
    * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
@@ -540,7 +608,8 @@ export function PiSubmitConfirmModal({
     : payment.meets_standard == null ? null
     : payment.meets_standard === true
 
-  const checked = validateSubmissionTerms({ meetsStandard, terms })
+  const keptReason = keptExceptionReason(payment)
+  const checked = validateSubmissionTerms({ meetsStandard, terms, keptReason })
   /**
    * The message is withheld while the revealed fields are still untouched.
    *
@@ -558,7 +627,11 @@ export function PiSubmitConfirmModal({
       ? null
       : (checked as { ok: false; message: string }).message
 
-  const blocked = submitting || tooLong || !checked.ok
+  const blocked = submitting || tooLong || !checked.ok || !!supportingBlocked
+  // THE ONE EXPLICIT CONFIRMATION for a missing supporting category. Cancel
+  // returns to the form and sends nothing.
+  const [confirmingMissing, setConfirmingMissing] = useState(false)
+  const missing = missingSupporting ?? []
 
   useScrollLock(true)
 
@@ -573,7 +646,8 @@ export function PiSubmitConfirmModal({
     // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
     // reaches the database is what it stores — no leading spaces, and nothing at
     // all where the field was only whitespace.
-    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value)
+    if (missing.length > 0 && !confirmingMissing) { setConfirmingMissing(true); return }
+    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing])
   }
 
   return (
@@ -604,11 +678,14 @@ export function PiSubmitConfirmModal({
           <PaymentPositionPanel
             summary={payment}
             terms={terms}
+            keptReason={keptReason}
             meetsStandard={meetsStandard}
             disabled={submitting}
             invalid={termsMessage}
             onTerms={(key, value) => setTerms(current => ({ ...current, [key]: value }))}
           />
+
+          {supporting}
 
           <div style={{
             fontSize: '12px', color: colors.primary, lineHeight: 1.5,
@@ -661,6 +738,26 @@ export function PiSubmitConfirmModal({
 
           {failure && <FailureNote message={failure} />}
 
+          {confirmingMissing ? (
+            <div role="alertdialog" aria-label="Submit without supporting files" style={{
+              border: '1px solid rgba(190,140,40,0.45)', background: '#FFFBF0', borderRadius: '8px',
+              padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px',
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.45 }}>
+                {missingSupportingQuestion(missing)}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setConfirmingMissing(false)} disabled={submitting} style={cancelStyle(submitting)}>
+                  Cancel
+                </button>
+                <button type="button" onClick={confirm} disabled={blocked}
+                        style={{ ...confirmStyle('#DC1F2E', blocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                  <Send size={13} strokeWidth={2} />
+                  {submitting ? 'Submitting…' : SUBMIT_WITHOUT_FILES_LABEL}
+                </button>
+              </div>
+            </div>
+          ) : (
           <Footer>
             <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
               Cancel
@@ -675,6 +772,7 @@ export function PiSubmitConfirmModal({
               {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}
             </button>
           </Footer>
+          )}
         </div>
       </div>
     </div>

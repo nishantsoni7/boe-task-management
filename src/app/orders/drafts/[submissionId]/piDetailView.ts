@@ -654,7 +654,7 @@ export const BLOCKING_INSTRUCTION =
  * copy, and it is not an Order yet.
  */
 export const STORED_COPY_NOTE =
-  'Stored PI copy. The Confirmed Order is created at management approval, with the Order number reserved here.'
+  'Stored PI copy. The Confirmed Order is created at management approval, and its Order number is allotted then.'
 
 // ── 9. Final approval ─────────────────────────────────────────────────────────
 //
@@ -1219,7 +1219,11 @@ export function buildPaymentMetrics(view: PaymentStatusView): PaymentMetric[] {
 
 // ── The context row: the reserved number, and where review stands ─────────────
 
-export const RESERVED_ORDER_LABEL = 'Reserved Order no.'
+/** The context row's first cell: the Order number, or the plain statement that
+ *  none is allotted yet (20270114000000). */
+export const RESERVED_ORDER_LABEL = 'Order number'
+/** The draft's own internal reference, beneath the number. */
+export const DRAFT_REFERENCE_LABEL = 'Draft reference'
 export const NOT_SUBMITTED_TEXT = 'Not submitted yet'
 
 /**

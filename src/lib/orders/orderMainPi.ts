@@ -88,6 +88,9 @@ export type MainPiCard =
       fileName: string | null
       /** A revision is waiting on a decision; the Main PI is unaffected. */
       pendingRevision: boolean
+      /** THE OPEN REVISION ITSELF (pending an admin, or awaiting operations) —
+       *  drawn beside the PI in force, never in its place. */
+      proposal: PiVersionView | null
     }
 
 /**
@@ -117,6 +120,7 @@ export function mainPiCard(history: PiVersionHistory): MainPiCard {
     hasFile: current.workbookPath !== null,
     fileName: current.workbookName,
     pendingRevision: history.pending !== null,
+    proposal: history.pending,
   }
 }
 

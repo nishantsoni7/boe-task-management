@@ -647,10 +647,36 @@ describe('the import preview and the parser are untouched', () => {
     //      commercial-terms note. Both are PREFILL and neither produces a
     //      diagnostic, so neither can change what the parser accepts.
     //
-    // Undoing both must yield the original file line for line. A changed cell
+    //   3. THE FOOTER FINGERPRINT (2026-09-24). A production PI with one product
+    //      row deleted stored its grand total as GST and left Grand total empty,
+    //      because the footer is read by position and nothing proved it. The
+    //      column-G labels now fingerprint it, and the footer — with the two
+    //      dates, the terms and the fabric cell below the band — is read as ONE
+    //      block at the offset where every label lines up (0 when the template
+    //      is intact, which is exactly the original reading). Plus one reported,
+    //      never-repaired check: Total + GST against the grand total.
+    //
+    // Undoing all three must yield the original file line for line. A changed cell
     // address, a changed tolerance, a dropped warning or a reworded diagnostic
     // all survive the undo and show up here.
-    const undo = (src: string) => src
+    const undoFooterFingerprint = (src: string) => src
+      .replace(/\n\/\*\*\n \* THE FOOTER IS FINGERPRINTED TOO[\s\S]*?\n {2}return `\$\{m\[1\]\}\$\{Number\(m\[2\]\) \+ offset\}`\n\}\n/, '')
+      .replace(/ {2}\/\/ ── Where the footer sits\.[\s\S]*?\n {2}\}\n\n(?= {2}\/\/ ── Products ──)/, '')
+      .replace('        lastRow: lastProductRow,\n', '        lastRow: LAST_PRODUCT_ROW,\n')
+      .replace('row <= lastProductRow; row++', 'row <= LAST_PRODUCT_ROW; row++')
+      .replace('between rows ${FIRST_PRODUCT_ROW} and ${lastProductRow}.', 'between rows ${FIRST_PRODUCT_ROW} and ${LAST_PRODUCT_ROW}.')
+      .replace('readHeader(sheet, warnings, footerOffset)', 'readHeader(sheet, warnings)')
+      .replace('readCommercial(sheet, products, warnings, footerOffset)', 'readCommercial(sheet, products, warnings)')
+      .replace('        lastProductRow,\n        footerOffset,\n', '        lastProductRow: LAST_PRODUCT_ROW,\n')
+      .replace('function readHeader(sheet: PiSheet, warnings: PiWarning[], footerOffset = 0): PiHeader {', 'function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {')
+      .replace('date(shiftAddress(HEADER_CELLS.orderConfirmationDate, footerOffset), ', 'date(HEADER_CELLS.orderConfirmationDate, ')
+      .replace('date(shiftAddress(HEADER_CELLS.dispatchCommitment, footerOffset), ', 'date(HEADER_CELLS.dispatchCommitment, ')
+      .replace('  warnings: PiWarning[],\n  footerOffset = 0,\n): PiCommercialSummary {\n', '  warnings: PiWarning[],\n): PiCommercialSummary {\n')
+      .replace(/ {2}\/\/ The template cells, moved as one block[\s\S]*?as Record<keyof typeof COMMERCIAL_CELLS, string>\n/, '')
+      .replace(/\n {2}\/\/ The last line of the footer must be the two above it[\s\S]*?\n {2}\}\n(?=\n {2}return \{\n {4}discount,)/, '')
+      .replace(/(function readCommercial\([\s\S]*?\n\}\n)/, block => block.replace(/\bCELLS\./g, 'COMMERCIAL_CELLS.'))
+
+    const undo = (src: string) => undoFooterFingerprint(src)
       .replace(/\n\/\*\*\n \* A DATE THE TEMPLATE WROTE AS WORDS[\s\S]*?\n\/\/ ── Header /, '\n// ── Header ')
       .replace(/\n {6}\/\/ What the workbook itself said about its terms[\s\S]*?\n {6}\},\n/, '\n')
       .replace(/\n\/\*\*\n \* The three header cells a PI is expected to fill[\s\S]*?\n {2}return issues\n\}\n/, '')

@@ -32,6 +32,8 @@
 \set ON_ERROR_STOP on
 
 begin;
+-- The known-defect note below survives the section blocks, not the file.
+select set_config('test.known_defects', '', false);
 
 -- ── Config: the ONLY lines a tester edits ─────────────────────────────────────
 do $$
@@ -39,6 +41,50 @@ begin
   perform set_config('test.admin_id', '11111111-1111-1111-1111-111111111111', true); -- REPLACE
   perform set_config('test.sales_a',  '22222222-2222-2222-2222-222222222222', true); -- REPLACE
   perform set_config('test.sales_b',  '33333333-3333-3333-3333-333333333333', true); -- REPLACE
+end $$;
+
+-- ── The three people, exactly as this file needs them (#209 review, H5) ─────
+-- Other suites and seeds give these ids other roles and teams (22222222… is an
+-- operations member elsewhere, which would let it see every Order), so this
+-- file states its own, inside its own transaction.
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('11111111-1111-1111-1111-111111111111', 'ASSERT AM Admin',   'am-admin@suite.test',  'admin',  'management', true, 'AM-ADM'),
+  ('22222222-2222-2222-2222-222222222222', 'ASSERT AM Sales A', 'am-sales-a@suite.test', 'member', 'sales',      true, 'AM-SA'),
+  ('33333333-3333-3333-3333-333333333333', 'ASSERT AM Sales B', 'am-sales-b@suite.test', 'member', 'sales',      true, 'AM-SB')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+delete from public.employee_permission_overrides
+ where user_id in ('22222222-2222-2222-2222-222222222222', '33333333-3333-3333-3333-333333333333');
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, '11111111-1111-1111-1111-111111111111'::uuid
+  from (values ('22222222-2222-2222-2222-222222222222'::uuid, 'view'), ('22222222-2222-2222-2222-222222222222'::uuid, 'create'),
+               ('33333333-3333-3333-3333-333333333333'::uuid, 'view'), ('33333333-3333-3333-3333-333333333333'::uuid, 'create')) g(uid, a)
+  join public.permission_modules pm on pm.module_key = 'orders'
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
+
+-- ── KNOWN DEFECT, OLDER THAN THIS CHAIN, AND LIVE IN PRODUCTION ─────────────
+-- (#209 review, H5; production read 2026-09-25: authenticated cannot execute
+-- in_test_data_cleanup(), and order_finance_reset_write_guard is not a definer
+-- function.) Every table carrying the reset write guard refuses a CLIENT'S OWN
+-- write with "permission denied for function in_test_data_cleanup" — including
+-- order_change_requests, which the Order page inserts into directly
+-- (OrderAmendmentModals.tsx). Sales cannot file a change request.
+-- The guard also calls open_order_finance_reset_scope(), revoked from clients
+-- too, so the fix is to run the guard as its owner: SECURITY DEFINER with a
+-- pinned search_path. This file records the defect, then applies that fix
+-- INSIDE ITS OWN ROLLED-BACK TRANSACTION so every later section still runs;
+-- it ends FAILED.
+do $$
+begin
+  if not has_function_privilege('authenticated', 'public.in_test_data_cleanup()', 'EXECUTE')
+     and not (select prosecdef from pg_proc where oid = 'public.order_finance_reset_write_guard()'::regprocedure) then
+    perform set_config('test.known_defects',
+      'a client''s own write to a reset-guarded table (e.g. filing an Order change request) is refused: '
+      || 'authenticated cannot execute in_test_data_cleanup() / open_order_finance_reset_scope(), which the non-definer order_finance_reset_write_guard() calls', false);
+    raise notice 'KNOWN DEFECT recorded: %', current_setting('test.known_defects');
+    alter function public.order_finance_reset_write_guard() security definer set search_path = public, pg_temp;
+  end if;
 end $$;
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
@@ -434,23 +480,31 @@ declare
   v_order   uuid;
   v_err     text;
   v_result  jsonb;
+  v_paid    uuid := gen_random_uuid();
+  v_pending uuid := gen_random_uuid();
 begin
   v_order := pg_temp.new_order();
 
   -- order_number is required alongside order_id for approved_linked, by
   -- finance_payment_requests_status_order_invariant (20260692000000).
+  perform set_config('request.jwt.claims', '', true);
   insert into public.finance_payment_requests
-    (client_name, amount, payment_date, payment_mode, received_in, proof_note,
+    (id, client_name, amount, payment_date, payment_mode, received_in, proof_note,
      status, submitted_by, order_id, order_number, payment_against)
   values
-    ('QA-AMEND client', 50000, current_date, 'bank_transfer', 'company_account',
+    (v_paid, 'QA-AMEND client', 50000, current_date, 'hdfc', 'company_account',
      'QA fixture', 'approved_linked', current_setting('test.sales_a')::uuid,
      v_order, (select display_number from public.orders where id = v_order),
      'existing_order'),
     -- A pending payment is NOT received money and must not be counted.
-    ('QA-AMEND client', 70000, current_date, 'bank_transfer', 'company_account',
+    (v_pending, 'QA-AMEND client', 70000, current_date, 'hdfc', 'company_account',
      'QA fixture pending', 'pending_approval', current_setting('test.sales_a')::uuid,
      v_order, null, 'existing_order');
+  -- Since 20261012000000 money reaches an Order through its ALLOCATION (the
+  -- single source); the parent order_id alone counts for nothing.
+  insert into public.finance_payment_allocations (payment_request_id, order_id, allocated_amount, origin_target_type, created_by)
+  values (v_paid,    v_order, 50000, 'confirmed_order', current_setting('test.sales_a')::uuid),
+         (v_pending, v_order, 70000, 'confirmed_order', current_setting('test.sales_a')::uuid);
 
   assert public.order_linked_payment_total(v_order) = 50000,
     'only approved_linked money counts toward the received total';
@@ -580,8 +634,8 @@ begin
 
   -- Every amendment function pins pg_temp last, so a temp table cannot shadow
   -- a relation inside a SECURITY DEFINER body.
-  assert not exists (
-    select 1 from pg_proc p
+  select string_agg(p.proname, ',' order by p.proname) into v_cols
+    from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.proname in (
@@ -590,8 +644,17 @@ begin
         'cancel_order_with_audit', 'assert_order_amender', 'amend_order',
         'cancel_order', 'approve_order_change_request',
         'reject_order_change_request', 'capture_order_change_baseline')
-      and not (coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=public, pg_temp%')
-  ), 'every amendment function must set search_path = public, pg_temp';
+      and not (coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=public, pg_temp%');
+  -- KNOWN DEFECT, OLDER THAN THIS CHAIN (#209 review, H5; production matches):
+  -- assert_order_amender pins search_path=public without pg_temp. Recorded,
+  -- and the file ends FAILED; any OTHER function missing it fails here.
+  if v_cols = 'assert_order_amender' then
+    perform set_config('test.known_defects',
+      current_setting('test.known_defects') || ' | assert_order_amender sets search_path=public without pg_temp', false);
+    raise notice 'KNOWN DEFECT recorded: assert_order_amender sets search_path=public without pg_temp';
+  else
+    assert v_cols is null, 'every amendment function must set search_path = public, pg_temp; missing: ' || v_cols;
+  end if;
 
   raise notice 'G. privileges and search_path OK';
 end $$;
@@ -791,6 +854,12 @@ begin
   raise notice 'J. status transition enforcement OK';
 end $$;
 
-do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;
+do $$
+begin
+  if nullif(current_setting('test.known_defects', true), '') is not null then
+    raise exception 'EVERY SECTION RAN; FAILED ON: %', current_setting('test.known_defects');
+  end if;
+  raise notice 'ALL ASSERTIONS PASSED';
+end $$;
 
 rollback;
