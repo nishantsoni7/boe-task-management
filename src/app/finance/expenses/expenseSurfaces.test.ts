@@ -1671,6 +1671,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
+   * Performance reads side by side: /api/performance-metrics measured 4.6 s in
+   * production as a chain of ~7 sequential server → database round trips. Two
+   * independent pairs now overlap (profile + permissions in the shared resolver;
+   * employee + holidays in the route). No Finance or Orders file.
+   */
+  const ALLOWED_PERFORMANCE_PARALLEL_READS = new Set([
+    'src/app/api/performance-metrics/route.ts',
+    'src/lib/permissions/performance.ts',
+    'src/lib/permissions/performanceAccessParallel.test.ts',
+  ])
+
+  /**
    * PI layout by labels (2026-09-26): after a draft whose footer sat one row
    * higher saved a blank Grand Total, the workbook parser finds every block
    * by its own labels and column names and proves the footer by its own
@@ -1725,6 +1737,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(f) &&
     !ALLOWED_PROOF_VIEW.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
+    !ALLOWED_PERFORMANCE_PARALLEL_READS.has(f) &&
     !ALLOWED_PI_LAYOUT.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
@@ -2042,6 +2055,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
+        || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file)
         || ALLOWED_PAYMENT_REFERENCE.has(file)
         || ALLOWED_GUARDS_RUN_AS_OWNER.has(file)
         || ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(file)

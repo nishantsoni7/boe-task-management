@@ -237,21 +237,23 @@ export async function resolvePerformanceAccess(
   const { data: { user }, error } = await client.auth.getUser(token)
   if (error || !user) return null
 
-  const { data } = await client
-    .from('users')
-    .select('id, role, full_name, team, position')
-    .eq('id', user.id)
-    .single()
+  // The profile and the permission list are both keyed by the AUTHENTICATED id
+  // and neither depends on the other, so they are read side by side: one
+  // server → database round trip instead of two (~0.45 s each, measured in
+  // production). The outcomes are unchanged — no profile still admits nobody,
+  // and a failed permission read still degrades to an empty list.
+  const [{ data }, permissions] = await Promise.all([
+    client
+      .from('users')
+      .select('id, role, full_name, team, position')
+      .eq('id', user.id)
+      .single(),
+    getEffectivePermissions(client, user.id, 'performance')
+      .catch((): EffectivePermission[] => []),
+  ])
   if (!data) return null
 
   const caller = data as PerformanceCaller
-
-  let permissions: EffectivePermission[] = []
-  try {
-    permissions = await getEffectivePermissions(client, caller.id, 'performance')
-  } catch {
-    permissions = []
-  }
 
   return { caller, capabilities: derivePerformanceCapabilities(caller.role, permissions) }
 }
