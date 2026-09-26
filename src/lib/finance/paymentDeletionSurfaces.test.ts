@@ -58,14 +58,13 @@ describe('there is one deletion route, reached through one client, from one shar
         `${file} must not fetch the delete route itself — it renders DeletePaymentModal, which calls deletePaymentEntry`)
     }
 
-    // The compensation path is unrelated to this feature: the Payment Requests
-    // submit flow rolls back a row it created moments earlier when the proof
-    // upload fails, by id only. It is not a second way to delete a payment.
+    // NO SECOND WAY TO DELETE A PAYMENT. The Payment Requests submit flow used
+    // to roll back the row it had just created when the proof upload failed;
+    // since 20270117000000 a failed proof leaves the payment recorded and
+    // pending, so that screen deletes no payment at all.
     const requests = code(read(REQUESTS))
-    const at = requests.indexOf("from('finance_payment_requests')\n        .delete({ count: 'exact' })")
-    assert.ok(at > 0, 'the compensation delete is still present')
-    assert.ok(requests.slice(at, at + 200).includes(".eq('id', created.payment_request_id)"),
-      'it deletes only the row this same submit just created')
+    assert.equal(/from\('finance_payment_requests'\)\s*\.delete\(/.test(requests), false,
+      'the Payment Requests screen never deletes a payment itself')
   })
 
   test('deletePaymentEntry sends exactly {paymentId, reason, confirmPaymentId} — nothing that could name a storage path', () => {

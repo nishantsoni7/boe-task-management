@@ -24,6 +24,7 @@ import {
   describeAlignmentEventReason,
   describeOperationsHandoffEvent,
 } from './operationsHandoff'
+import { holdCauseText } from './advanceReadiness'
 
 /** One row of order_activity_log, as the Order page reads it. */
 export type OrderActivityRow = {
@@ -64,6 +65,10 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_workbook_replaced:      'PI workbook replaced',
   order_client_details_amended: 'Client details amended',
   order_schedule_terms_amended: 'Schedule or terms amended',
+  // The 40% advance after alignment (20270116000000 §4d).
+  order_advance_hold_opened:        'Production on hold: advance below 40%',
+  order_advance_exception_approved: 'Production approved below 40% by an administrator',
+  order_advance_exception_voided:   'Below-40% approval void: payment reversed',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -75,6 +80,9 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   payment_verified:             'green',
   payment_rejected:             'red',
   order_workbook_replaced:      'amber',
+  order_advance_hold_opened:        'red',
+  order_advance_exception_approved: 'amber',
+  order_advance_exception_voided:   'red',
 }
 
 const text = (value: unknown): string | null =>
@@ -117,6 +125,26 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     }
     case 'order_workbook_replaced':
       return text(p.reason)
+    case 'order_advance_hold_opened': {
+      const why = holdCauseText(p.cause, p.previous_order_value, p.order_value)
+      const figures = p.value_known === false
+        ? 'no Order value on record'
+        : typeof p.percent === 'number' || typeof p.percent === 'string'
+          ? `${Number(p.percent).toLocaleString('en-IN', { maximumFractionDigits: 2 })}% verified` : null
+      const short = typeof p.shortfall === 'number' || typeof p.shortfall === 'string'
+        ? `₹${Number(p.shortfall).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} short` : null
+      return [why, figures, short].filter(Boolean).join(' · ')
+    }
+    case 'order_advance_exception_approved':
+      return text(p.reason)
+    case 'order_advance_exception_voided': {
+      const money = (v: unknown) => typeof v === 'number' || typeof v === 'string'
+        ? `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null
+      const now = money(p.verified), then = money(p.verified_at_grant)
+      return [p.source === 'pi' ? "the PI's own below-40% approval" : null,
+        now && then ? `verified payment fell to ${now}, below the ${then} it was approved against` : null,
+        'a new approval is needed'].filter(Boolean).join(' · ')
+    }
     default:
       return describeOperationsHandoffEvent(row.event_type, p)
   }
@@ -130,6 +158,23 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
  * which drops any action it cannot name. Ties on the timestamp are broken by
  * the key so two events written in one transaction cannot swap between renders.
  */
+/**
+ * THE PARSE WRITER'S OWN "WORKBOOK REPLACED" ROWS, WRITTEN INSIDE A REVISION.
+ *
+ * Since 20270116000000 an approved revision — a new workbook or an edit made
+ * in the app — is applied by approve_order_pi_revision() through the unchanged
+ * parse writer, which records "PI workbook replaced" on the Order and the PI
+ * with the reason it was handed: "PI V<n> approved: …". The revision's own
+ * entries already say it ("Revised PI approved", and "Order amended" with the
+ * old and new values), and for an edit no workbook was replaced at all. So
+ * those two rows are left out; a workbook genuinely replaced on a draft or
+ * under review keeps its row.
+ */
+export const REVISION_REASON = /^PI V\d+ approved: /
+function isRevisionReplay(reason: unknown): boolean {
+  return typeof reason === 'string' && REVISION_REASON.test(reason)
+}
+
 export function mergeOrderHistory(input: {
   orderRows: readonly OrderActivityRow[]
   /** The page's own label for an Order event, or null to use ORDER_EVENT_LABEL. */
@@ -139,7 +184,9 @@ export function mergeOrderHistory(input: {
   namesById: ReadonlyMap<string, string>
   formatWhen: (iso: string | null) => string
 }): OrderHistoryEntry[] {
-  const order: OrderHistoryEntry[] = input.orderRows.map(row => ({
+  const order: OrderHistoryEntry[] = input.orderRows
+    .filter(row => !(row.event_type === 'order_workbook_replaced' && isRevisionReplay(row.payload?.reason)))
+    .map(row => ({
     key: `order:${row.id}`,
     source: 'order',
     label: input.orderLabel(row.event_type) ?? ORDER_EVENT_LABEL[row.event_type] ?? row.event_type,
@@ -152,7 +199,8 @@ export function mergeOrderHistory(input: {
   // describeActivityEntries formats the time; the ISO instant is needed for the
   // merge, so it is looked back up by id.
   const isoById = new Map(input.piRows.map(r => [r.id, r.created_at]))
-  const pi: OrderHistoryEntry[] = describeActivityEntries(input.piRows, input.namesById, input.formatWhen)
+  const piRows = input.piRows.filter(r => !(r.action === 'workbook_replaced_by_admin' && isRevisionReplay(r.note)))
+  const pi: OrderHistoryEntry[] = describeActivityEntries(piRows, input.namesById, input.formatWhen)
     .map((entry: PiActivityEntry) => ({
       key: `pi:${entry.key}`,
       source: 'pi',

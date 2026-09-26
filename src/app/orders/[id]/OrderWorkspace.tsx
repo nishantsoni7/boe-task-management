@@ -14,8 +14,8 @@
 // sections already use, buttons are the record-header actions the Assets and
 // Order Request screens introduced, and every colour is a token.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, MoreHorizontal } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
@@ -575,7 +575,7 @@ export function OrderPaymentListDialog({
     // WHAT SOMEBODY WROTE ABOUT IT. Each is drawn only where it exists; an
     // empty heading over nothing is worse than no heading.
     const notes: { key: string; label: string; value: string }[] = d ? [
-      ...(d.proofNote ? [{ key: 'proof', label: 'Proof', value: d.proofNote }] : []),
+      ...(d.proofNote ? [{ key: 'proof', label: 'Reference / UTR', value: d.proofNote }] : []),
       ...(d.salesNote ? [{ key: 'sales', label: 'Sales note', value: d.salesNote }] : []),
       ...(d.adminNote ? [{ key: 'admin', label: 'Finance note', value: d.adminNote }] : []),
     ] : []
@@ -828,125 +828,9 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
 }
 
 // ── More actions ──────────────────────────────────────────────────────────────
-
-export type MoreActionItem<K extends string> = {
-  key: K
-  label: string
-  disabled?: boolean
-  title?: string
-  danger?: boolean
-}
-
-/**
- * The overflow menu for the rare paths. Keyboard behaviour is the WAI-ARIA
- * menu-button pattern: click or ArrowDown opens, focus lands on the first
- * enabled item, Up/Down/Home/End move, Escape closes and returns focus to the
- * trigger, Tab or an outside click closes. Renders nothing when there is no
- * item — an empty trigger would be a control that does nothing.
- */
-export function MoreActionsMenu<K extends string>({ items, onSelect }: {
-  items: readonly MoreActionItem<K>[]
-  onSelect: (key: K) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const wrapRef    = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const itemRefs   = useRef<(HTMLButtonElement | null)[]>([])
-
-  const close = useCallback((returnFocus: boolean) => {
-    setOpen(false)
-    if (returnFocus) triggerRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    const onPointer = (e: MouseEvent | TouchEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); close(true) }
-    }
-    document.addEventListener('mousedown', onPointer)
-    document.addEventListener('touchstart', onPointer)
-    document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('mousedown', onPointer)
-      document.removeEventListener('touchstart', onPointer)
-      document.removeEventListener('keydown', onKey, true)
-    }
-  }, [open, close])
-
-  useEffect(() => {
-    if (!open) return
-    const first = itemRefs.current.findIndex(el => el && !el.disabled)
-    if (first >= 0) itemRefs.current[first]?.focus()
-  }, [open])
-
-  if (items.length === 0) return null
-
-  const focusItem = (index: number) => {
-    const bounded = (index + items.length) % items.length
-    itemRefs.current[bounded]?.focus()
-  }
-
-  const onMenuKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === 'ArrowDown')      { e.preventDefault(); focusItem(index + 1) }
-    else if (e.key === 'ArrowUp')   { e.preventDefault(); focusItem(index - 1) }
-    else if (e.key === 'Home')      { e.preventDefault(); focusItem(0) }
-    else if (e.key === 'End')       { e.preventDefault(); focusItem(items.length - 1) }
-    else if (e.key === 'Tab')       { setOpen(false) }
-  }
-
-  return (
-    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-flex' }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        onKeyDown={e => {
-          if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true) }
-        }}
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="boe-record-action boe-record-action--icon"
-        style={{ background: open ? colors.float : undefined }}
-      >
-        <MoreHorizontal size={15} strokeWidth={2} />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          aria-label="More actions"
-          style={{
-            position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100,
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: '9px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
-            minWidth: '224px', padding: '4px 0', overflow: 'hidden',
-          }}
-        >
-          {items.map((item, index) => (
-            <button
-              key={item.key}
-              ref={el => { itemRefs.current[index] = el }}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              title={item.title}
-              onClick={() => { triggerRef.current?.focus(); setOpen(false); onSelect(item.key) }}
-              onKeyDown={e => onMenuKeyDown(e, index)}
-              className="order-menu-item"
-              style={{ color: item.danger ? '#B42318' : colors.secondary }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// Moved to ./MoreActionsMenu so the Documents card can use it too; re-exported
+// here so every existing import keeps working.
+export { MoreActionsMenu, type MoreActionItem } from './MoreActionsMenu'
 
 // ── Loading states ────────────────────────────────────────────────────────────
 
@@ -1035,36 +919,30 @@ export function OrderDetailSkeleton() {
         </div>
       </section>
 
-      {/* Documents two thirds, Fabric & Finish one third — the row's own grid. */}
+      {/* Fabric & Finish as a strip, then the Documents card's three rows. */}
       <div className="order-docs-row">
+        <div className="order-ff">
+          <SkeletonBlock w={104} h={11} />
+          <SkeletonBlock w={150} h={14} />
+          <SkeletonBlock w={150} h={14} />
+        </div>
         <section className="order-docs">
-          <div style={{ padding: '9px 14px', borderBottom: '1px solid #F0F2F5' }}>
+          <div className="order-docs-head">
             <SkeletonBlock w={88} h={11} />
           </div>
           {[0, 1, 2].map(i => (
             <div key={i} className="order-doc-section">
-              <SkeletonBlock w={76} h={12} />
               <div>
                 <SkeletonBlock w={132} h={15} />
-                <div style={{ marginTop: 6 }}><SkeletonBlock w="62%" h={11} /></div>
+                <div style={{ marginTop: 6 }}><SkeletonBlock w="46%" h={11} /></div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <SkeletonBlock w={70} h={26} radius={6} />
+              <SkeletonBlock w={140} h={24} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                {i === 0 && <SkeletonBlock w={78} h={28} radius={6} />}
               </div>
             </div>
           ))}
         </section>
-        <div className="order-status-card">
-          <div className="order-status-card-head"><SkeletonBlock w={104} h={11} /></div>
-          <div className="order-status-card-body">
-            {[0, 1].map(i => (
-              <div key={i}>
-                <SkeletonBlock w={52} h={10} />
-                <div style={{ marginTop: 6 }}><SkeletonBlock w={148} h={20} radius={999} /></div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       <div className="order-products">

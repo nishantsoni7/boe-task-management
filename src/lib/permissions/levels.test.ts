@@ -240,11 +240,16 @@ describe('Manager never receives a protected action', () => {
     // — the gate between commercial approval and work starting. Every Order is
     // born Not Aligned, and a preset must not hand out the decision that moves
     // it; it is neither approve_order nor manage, and implies neither.
+    //
+    // And by one more in 20270120000000: `finance.verify_own_payment`, which
+    // records and verifies one's own payment in one action — it removes the
+    // second pair of eyes on money received, so it is granted per person in
+    // Control Center and never by a preset.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
-      'mark_lost', 'receive', 'verify', 'view_all', 'view_quotations',
+      'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_quotations',
       'view_team',
     ])
   })
