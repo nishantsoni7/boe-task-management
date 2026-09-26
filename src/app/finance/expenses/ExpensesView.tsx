@@ -700,17 +700,22 @@ export function ExpensesView() {
           width="560px"
           closeOnBackdropClick={false}
         >
-          <ExpenseForm
-            supabase={supabase}
-            userId={userId}
-            mode="complete"
-            draft={completing}
-            categories={categories}
-            history={history}
-            onCategoryCreated={c => setCategories(prev => [...prev, c])}
-            onSaved={afterSave}
-            onCancel={() => setCompleting(null)}
-          />
+          {/* THE SAME GUARD AS EDIT. This form is also prefilled from a stored
+              row (parsed_amount arrives as a NUMBER), and before #179 it
+              crashed the whole route exactly as Edit did. */}
+          <ExpenseErrorBoundary label="complete" onReset={() => setCompleting(null)}>
+            <ExpenseForm
+              supabase={supabase}
+              userId={userId}
+              mode="complete"
+              draft={completing}
+              categories={categories}
+              history={history}
+              onCategoryCreated={c => setCategories(prev => [...prev, c])}
+              onSaved={afterSave}
+              onCancel={() => setCompleting(null)}
+            />
+          </ExpenseErrorBoundary>
         </FinanceModal>
       )}
 
