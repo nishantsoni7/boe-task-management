@@ -570,7 +570,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // The permission resolvers are not for anon: EXECUTE on six resolver
       // functions revoked from PUBLIC and anon, restated for authenticated
       // and service_role. No body, policy, table, search_path or row changes.
-      '20270123000000_permission_resolvers_are_not_for_anon.sql',
+      '20270126000000_permission_resolvers_are_not_for_anon.sql',
     ])
   })
 

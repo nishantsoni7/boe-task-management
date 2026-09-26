@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270123000000 — the permission resolvers are not for anon
+-- 20270126000000 — the permission resolvers are not for anon
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- SIX REVOKES AND SIX RESTATED GRANTS. A signed-out caller can no longer ask
@@ -22,7 +22,7 @@
 -- probe it through resolve_permission() and has_permission(). That is who can
 -- approve payments, who administers Orders and so on. It is not a write, but
 -- it is exactly the reconnaissance a targeted attack starts with, and nothing
--- that runs signed out needs it. (Found by the 20270122000000 audit, #212.)
+-- that runs signed out needs it. (Found by the 20270125000000 audit, #212.)
 --
 -- ── WHY REVOKING IT BREAKS NOTHING ─────────────────────────────────────────
 --
@@ -47,13 +47,14 @@
 --
 -- ── WHAT THIS DOES NOT TOUCH ───────────────────────────────────────────────
 --
--- No body, no search_path (20270122000000 does that), no policy, no table and
+-- No body, no search_path (20270125000000 does that), no policy, no table and
 -- no DML. Only these six ACLs change.
 --
--- ORDERING. Numbered after 20270122000000 (#212); independent of it and of #211.
--- Both sort after 20270120000000, the newest migration applied to production
--- on 2026-09-26 (this file was first 20270107000000, then 20270119000000).
--- 20270122000000's apply-time assertion requires `authenticated` to keep
+-- ORDERING. Numbered after 20270125000000 (#212). Both sort after
+-- 20270122000000, the newest migration applied to production on 2026-09-26,
+-- and after #236 (20270123000000) and #214 (20270124000000). This file was
+-- first 20270107000000, then 20270119000000, then 20270123000000.
+-- 20270125000000's apply-time assertion requires `authenticated` to keep
 -- EXECUTE on all six, and this file keeps it.
 --
 -- DEPENDENCIES: 20260634 (has_permission), 20260660 / 20260661 / 20260662

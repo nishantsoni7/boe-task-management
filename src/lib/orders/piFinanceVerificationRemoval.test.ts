@@ -531,7 +531,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       // The permission resolvers are not for anon: EXECUTE on six resolver
       // functions revoked from PUBLIC and anon, restated for authenticated
       // and service_role. No body, policy, table, search_path or row changes.
-      '20270123000000_permission_resolvers_are_not_for_anon.sql',
+      '20270126000000_permission_resolvers_are_not_for_anon.sql',
     ])
 
     const previous = lf(readFileSync(
