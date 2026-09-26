@@ -1036,6 +1036,7 @@ describe('the applied migrations are frozen', () => {
       '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270115000000_order_submission_pi_edit_revisions.sql',
       '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
   })
 
@@ -1323,6 +1324,7 @@ describe('the applied migrations are frozen', () => {
       '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
       '20270115000000_order_submission_pi_edit_revisions.sql',
       '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
