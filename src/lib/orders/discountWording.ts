@@ -9,9 +9,14 @@
  *
  * THE CONVENTION (20270122000000):
  *
- *   zero or blank   the row is LEFT OFF the generated client PI
+ *   zero or blank   the row is LEFT OFF, and the line after it is "Subtotal" —
+ *                   "after discount" would name a discount that is not there
  *   non-zero        the row is printed as "Discount" — never "Design Fee" —
- *                   whatever the workbook called it
+ *                   whatever the workbook called it, and the line after it is
+ *                   "Subtotal after discount"
+ *
+ * The same rule serves the generated client PDFs, the PI screen's breakdown and
+ * the Order screen's commercial breakdown.
  *
  * The figure and the arithmetic never change; only which rows appear and the
  * one word. `discount_label` keeps the wording the workbook printed, for
@@ -21,6 +26,8 @@
 
 export const DEDUCTION_LABEL = 'Discount'
 export const SUBTOTAL_AFTER_DEDUCTION_LABEL = 'Subtotal after discount'
+/** The same line when there is no deduction to be "after". */
+export const SUBTOTAL_LABEL = 'Subtotal'
 
 /** "Design Fee", "Design Fees", "design fee :" … — the template's default wording. */
 export function isDesignFeeWording(label: string): boolean {
@@ -44,10 +51,11 @@ export function hasDeduction(amount: number | string | null | undefined): boolea
 }
 
 /**
- * THE GENERATED PI'S COMMERCIAL ROWS: the shared builder's rows (figures
+ * THE COMMERCIAL ROWS AS THEY ARE SHOWN: the shared builder's rows (figures
  * untouched), with the deduction row printed as "Discount" when non-zero and
- * REMOVED when zero or blank. Nothing is recomputed; rows are only dropped and
- * the one label fixed.
+ * REMOVED when zero or blank, and the subtotal captioned to match ("Subtotal
+ * after discount" / "Subtotal"). Nothing is recomputed; rows are only dropped
+ * and two labels fixed.
  */
 export function clientDeductionRows<R extends { key: string; label: string }>(
   rows: readonly R[],
@@ -58,7 +66,7 @@ export function clientDeductionRows<R extends { key: string; label: string }>(
     .filter(row => present || row.key !== 'discount')
     .map(row => {
       if (row.key === 'discount') return { ...row, label: DEDUCTION_LABEL }
-      if (row.key === 'subtotal') return { ...row, label: SUBTOTAL_AFTER_DEDUCTION_LABEL }
+      if (row.key === 'subtotal') return { ...row, label: present ? SUBTOTAL_AFTER_DEDUCTION_LABEL : SUBTOTAL_LABEL }
       return row
     })
 }
