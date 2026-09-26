@@ -1373,6 +1373,21 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const REVISED_PI_PROMOTION_MIGRATION = 'supabase/migrations/20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql'
 
+  /**
+   * ROUTE ERROR BOUNDARIES.
+   *
+   * The app had no error.tsx and no global-error.tsx, so a render error on any
+   * route fell through to Next's bare default screen. Two new boundary files,
+   * the fallback they share, its rules, and their tests. No existing screen changes.
+   */
+  const ALLOWED_ROUTE_ERROR_BOUNDARY = new Set([
+    'src/app/error.tsx',
+    'src/app/global-error.tsx',
+    'src/components/errors/RouteErrorView.tsx',
+    'src/lib/errors/routeError.ts',
+    'src/lib/errors/routeError.test.tsx',
+  ])
+
   // Calmer Confirmed Order documents (#206): the ⋯ menu moved out of
   // OrderStatusWorkspace.tsx into its own module, unchanged in what it does.
   const ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT = new Set([
@@ -1722,6 +1737,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(f) &&
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(f) &&
+    !ALLOWED_ROUTE_ERROR_BOUNDARY.has(f) &&
     !ALLOWED_REVISED_PI_PROMOTION.has(f) &&
     !ALLOWED_CONFIRMED_ORDER_DOCUMENTS_LAYOUT.has(f) &&
     !ALLOWED_PI_NUMBERING_AND_EDITING.has(f) &&
@@ -2050,6 +2066,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDER_0524_HANDOFF.has(file)
         || ALLOWED_OPERATIONS_REVIEW_ON_STRIP.has(file)
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
+        || ALLOWED_ROUTE_ERROR_BOUNDARY.has(file)
         || ALLOWED_ORDER_DOCUMENT_SUBMISSIONS.has(file)
         || ALLOWED_REVISED_PI_PROMOTION.has(file)
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
