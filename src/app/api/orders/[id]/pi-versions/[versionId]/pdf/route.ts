@@ -128,8 +128,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     pdf = await renderConfirmedPdf({
       model,
       logo: await readLogo(),
+      // No date: the renderer stamps the fixed CLIENT_PDF_DATE, never the
+      // Order's internal confirm date (20270122000000).
       metadata: {
-        date: order.confirm_date ? new Date(`${order.confirm_date}T00:00:00Z`) : new Date(0),
         title: `Order ${orderNumber} — PI V${version.version_number}`,
       },
       loadImage: async (row) => {

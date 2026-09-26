@@ -98,6 +98,7 @@ describe('the migration', () => {
       '20270117000000_order_finance_guards_run_as_owner.sql',
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+      '20270122000000_order_submission_internal_details.sql',
       // Every SECURITY DEFINER in public pins pg_temp (#212): ALTER FUNCTION
       // on existing definers. Announcements' own definers already pin it.
       '20270125000000_security_definer_search_path_pins_pg_temp.sql',

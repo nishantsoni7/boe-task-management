@@ -80,8 +80,12 @@ describe('supersession follows what is PRINTED', () => {
 
   test('and that list was derived from the PDF, not guessed', () => {
     const pdf = readFileSync(join(process.cwd(), 'src/lib/orders/confirmedPdf.ts'), 'utf8')
-    assert.ok(pdf.includes("label: 'Due date'"), 'the PDF prints the due date')
-    assert.ok(pdf.includes("label: 'Confirm date'"), 'the PDF prints the confirm date')
+    // 20270122000000: the client PDF prints NO confirmation date and NO due
+    // date. The two dates still supersede the confirmed documents above — now
+    // more than strictly necessary (a regeneration nobody needs), never less.
+    // Narrowing c_printed is a separate, deliberate change to that RPC.
+    assert.ok(!pdf.includes("label: 'Due date'"), 'the PDF prints no due date')
+    assert.ok(!pdf.includes("label: 'Confirm date'"), 'the PDF prints no confirm date')
     for (const absent of ['dispatch_commitment', 'payment_terms', 'billing_terms']) {
       assert.ok(!pdf.includes(absent), `the PDF now prints ${absent}; the list must grow`)
     }
