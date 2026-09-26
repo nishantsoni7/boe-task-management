@@ -396,6 +396,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
+      '20270123000000_order_submission_internal_details_required_on_submit.sql',
       // The legacy advance submit doors are closed: REVOKE of the two
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
