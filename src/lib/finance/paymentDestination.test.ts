@@ -39,6 +39,7 @@ import {
   paymentAgainstDisplay,
   paymentDisplayState,
   readPaymentDestination,
+  loadPaymentDestinations,
   type PaymentDestinationRow,
 } from './paymentDestination'
 
@@ -377,5 +378,45 @@ describe('every surface reads one definition', () => {
       assert.ok(read(file).includes('paymentDisplayStateMeta(status, destination)'),
         `${file} must decide its badge from the status AND the destination`)
     }
+  })
+})
+// A PI DRAFT IS NAMED BY ITS PID (acceptance review of #209, 2026-09-26): the
+// projection falls back to the workbook's B20 number, which the draft page says
+// is not an Order number. Payment Requests read through loadPaymentDestinations,
+// so it must replace that with the draft's own reference.
+describe('loadPaymentDestinations names a PI Draft by its PID', () => {
+  const row = (over: Partial<PaymentDestinationRow>): PaymentDestinationRow => ({
+    payment_request_id: 'p1', destination_kind: 'pi_draft', destination_source: 'intent',
+    destination_order_count: 0, destination_submission_count: 1, destination_customer_count: 1,
+    destination_order_id: null, destination_order_number: null, destination_submission_id: 's1',
+    destination_reference: '0', ...over,
+  }) as PaymentDestinationRow
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fake = (destRows: PaymentDestinationRow[], drafts: { id: string; draft_reference: string | null }[]): any => ({
+    from: (table: string) => ({
+      select: () => ({
+        in: async () => table === PAYMENT_DESTINATIONS_SOURCE ? { data: destRows, error: null }
+          : table === 'order_submissions' ? { data: drafts, error: null } : { data: null, error: { message: 'unexpected' } },
+      }),
+    }),
+  })
+
+  test('the workbook number is replaced by PID-00003', async () => {
+    const map = await loadPaymentDestinations(fake([row({})], [{ id: 's1', draft_reference: 'PID-00003' }]), ['p1'])
+    const d = map.get('p1')!
+    assert.equal(d.reference, 'PID-00003')
+    assert.equal(paymentAgainstDisplay(d), 'PI Draft PID-00003')
+  })
+
+  test('a draft this reader cannot name keeps what the projection gave', async () => {
+    const map = await loadPaymentDestinations(fake([row({ destination_reference: 'Hotel.xlsx' })], []), ['p1'])
+    assert.equal(map.get('p1')!.reference, 'Hotel.xlsx')
+  })
+
+  test('an Order destination is untouched', async () => {
+    const map = await loadPaymentDestinations(fake([row({ destination_kind: 'confirmed_order', destination_order_count: 1,
+      destination_submission_count: 0, destination_submission_id: null, destination_order_number: '0526', destination_reference: '0526' })],
+      [{ id: 's1', draft_reference: 'PID-00001' }]), ['p1'])
+    assert.equal(map.get('p1')!.reference, '0526')
   })
 })

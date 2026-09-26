@@ -159,14 +159,17 @@ export async function POST(req: NextRequest) {
       .from('order_pi_versions')
       .select('uploaded_by')
       .eq('submission_id', submissionId)
-      .in('status', ['approved', 'rejected', 'superseded'])
+      .in('status', ['admin_approved', 'approved', 'rejected', 'superseded'])
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle()
-    const verb = event === 'pi_revision_approved' ? 'approved' : 'rejected'
-    push((latest as { uploaded_by?: string | null } | null)?.uploaded_by,
-      `The revised PI for ${clientName} was ${verb}.`)
-    push(owner, `The revised PI for ${clientName} was ${verb}.`)
+    // SINCE 20270116000000 AN ADMIN APPROVAL PUTS THE REVISION IN FORCE (and
+    // amends the Order to it); Operations is told by the database to review it.
+    const text = event === 'pi_revision_approved'
+      ? `The revised PI for ${clientName} was approved by an admin and is now the PI in force. Operations has been sent it for review.`
+      : `The revised PI for ${clientName} was rejected.`
+    push((latest as { uploaded_by?: string | null } | null)?.uploaded_by, text)
+    push(owner, text)
   } else {
     return NextResponse.json({ error: 'Unknown event' }, { status: 400 })
   }

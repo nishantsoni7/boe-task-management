@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OperationsReviewActions } from './OrderStatusWorkspace'
 import { OrderAttentionBar } from './OrderWorkspace'
-import { OperationsHandoffDecisionModal } from './OrderRevisionModals'
+import { OperationsHandoffDecisionModal, ProductionRecoveryModal } from './OrderRevisionModals'
 import {
   describeOperationsHandoff,
   type PersistedOperationsHandoff,
@@ -126,16 +126,18 @@ describe('the attention strip carries the decision, state by state', () => {
     assert.doesNotMatch(html, /<button[^>]*>Cannot accept/)
   })
 
+  // Accepting aligns, so an accepted version's Order is aligned (an accepted
+  // version on a NOT aligned Order is a production hold, 20270116000000).
   test('accepted: the review is resolved, so the strip neither names it nor offers a decision', () => {
-    assert.equal(strip(view(accepted(), NITISH)), '', 'nothing else needs attention on this Order')
+    assert.equal(strip(view(accepted(), NITISH, { productionAligned: true })), '', 'nothing else needs attention on this Order')
     assert.equal(
-      renderToStaticMarkup(<OperationsReviewActions view={view(accepted(), NITISH)} busy={false} onAccept={noop} onCannotAccept={noop} />),
+      renderToStaticMarkup(<OperationsReviewActions view={view(accepted(), NITISH, { productionAligned: true })} busy={false} onAccept={noop} onCannotAccept={noop} />),
       '',
     )
   })
 
   test('accepted beside other gaps: those items and their count are untouched, and no decision or anchor is drawn', () => {
-    const html = strip(view(accepted(), NITISH), { hasDueDate: false, pendingChangeRequests: 2 })
+    const html = strip(view(accepted(), NITISH, { productionAligned: true }), { hasDueDate: false, pendingChangeRequests: 2 })
     assert.match(html, /2 items need attention/)
     assert.match(html, /Due date not set/)
     assert.match(html, /2 change requests awaiting review/)
@@ -263,6 +265,29 @@ describe('the decision dialog', () => {
     assert.match(html, /The acceptance stays on record/)
     assert.match(html, /<button[^>]*>Withdraw acceptance/)
   })
+
+  test('aligning a HELD Order again asks the reviewer to confirm they checked it (review R1)', () => {
+    const html = renderToStaticMarkup(
+      <OperationsHandoffDecisionModal orderNumber="0524" versionLabel="PI V2" decision="accepted" realigning saving={false} failure={null} onClose={noop} onConfirm={noop} />,
+    )
+    assert.match(html, /aria-labelledby="([^"]+)"[\s\S]*id="\1"[^>]*>Align production again</, 'the dialog is titled for what it does')
+    assert.match(html, /That acceptance stays on record as it was; this re-alignment is recorded under your name, now/)
+    assert.match(html, /<input type="checkbox"[^>]*\/?>\s*<span>I have checked this Order and it can go back into production<\/span>/)
+    assert.match(html, /<button[^>]*>Align production again<\/button>/)
+    assert.doesNotMatch(html, /Accept for production/, 'it is not a second acceptance')
+  })
+
+  test('the administrator recovery dialog asks for a reason and says the acceptance stays (review R1)', () => {
+    const html = renderToStaticMarkup(
+      <ProductionRecoveryModal orderNumber="0524" versionLabel="PI V2" saving={false} failure={null} onClose={noop} onConfirm={noop} />,
+    )
+    assert.match(html, /Recover the production alignment/)
+    assert.match(html, /No operations reviewer can align this Order again/)
+    assert.match(html, /The acceptance stays on record; this recovery is recorded under your name, with the reason\. The 40% advance still applies\./)
+    assert.match(html, /Why production is aligned again without an operations reviewer/)
+    assert.match(html, /<textarea/)
+    assert.match(html, /<button[^>]*>Align production \(administrator recovery\)<\/button>/)
+  })
 })
 
 describe('Order 0524: an approval from before handoffs, sent to operations later (20261230000000)', () => {
@@ -346,7 +371,9 @@ describe('the page draws ONE production decision', () => {
 
   test('a decision re-reads the handoff AND the Order row, because acceptance moves the alignment columns', () => {
     const fn = page.slice(page.indexOf('const decideHandoff'), page.indexOf('const decideHandoff') + 2200)
-    assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadOrderRow\(\)\]\)/)
+    // …and the document submissions: accepting the version accepts the files
+    // sent with the PI (20270112000000 §11e).
+    assert.match(fn, /await Promise\.all\(\[reloadHandoffs\(\), reloadOrderRow\(\), docSubs\.reload\(\)\]\)/)
     assert.doesNotMatch(fn, /loadOrder\(\)/)
   })
 })

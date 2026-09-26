@@ -182,8 +182,12 @@ describe('what the route reads from the request', () => {
     assert.match(route, /excelPath !== expectedExcel \|\| pdfPath !== expectedPdf/)
   })
 
-  test('a product image path is accepted only inside its own submission', () => {
-    assert.match(route, /startsWith\(`submissions\/\$\{submissionId\}\//)
+  test('a product image path is accepted only as the WHOLE canonical key of its own submission (review R3)', () => {
+    // A prefix test let "submissions/{id}/../../x" through; the whole key is
+    // checked for this PI, line, role and slot, and again right before the read.
+    assert.ok(route.includes('isCanonicalPiImageKey(image.storage_path, {'))
+    assert.ok(route.includes('!isCanonicalPiImageKey(path, { submissionId })'))
+    assert.doesNotMatch(route, /startsWith\(`submissions\/\$\{submissionId\}\//)
   })
 })
 

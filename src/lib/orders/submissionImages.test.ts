@@ -91,8 +91,12 @@ describe('the migration itself', () => {
       //
       // The exception is by NAME. A second file redefining the lease still
       // fails, which is what this assertion was written to catch.
+      //
+      // A DEFINITION is what is refused, not a CALL: 20270113000000 applies a
+      // staged revision under the lease by calling begin/finish exactly as the
+      // route does, and redefines neither.
       if (file !== CHANGE_PI) {
-        assert.ok(!later.includes('begin_order_submission_processing('),
+        assert.ok(!/function\s+(public\.)?(begin|finish)_order_submission_processing\s*\(/i.test(later),
           `${file} must not redefine the processing lease`)
       }
     }

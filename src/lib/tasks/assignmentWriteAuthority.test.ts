@@ -844,6 +844,11 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // A payment's typed reference is kept in proof_note on insert (trigger), carried
       // forward on unverified rows, and read by pi_submission_payment_summary.
       '20270111120000_finance_payment_reference_survives_verification.sql',
+      '20270112000000_order_document_submissions.sql',
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+      '20270115000000_order_submission_pi_edit_revisions.sql',
+      '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

@@ -227,7 +227,10 @@ describe('a live image object is never overwritten', () => {
 
   test('an existing key is reused only after its BYTES are re-hashed', () => {
     assert.ok(route.includes('isAlreadyExists(error)'))
-    assert.ok(route.includes('await verifyStoredImage(service, image)'))
+    assert.ok(route.includes('await verifyStoredImage(service, image, submissionId)'))
+    // …and the key is checked whole before the service-role read (review R3).
+    assert.ok(route.indexOf('isCanonicalPiImageKey(image.storagePath, {') > 0
+      && route.indexOf('isCanonicalPiImageKey(image.storagePath, {') < route.indexOf(".download(image.storagePath)"))
     // The object is downloaded and verified, not judged by its metadata.
     assert.ok(route.includes("service.storage.from('order-files').download(image.storagePath)"))
     assert.ok(route.includes('verifyStoredImageBytes({'))
@@ -556,6 +559,24 @@ describe('the phase boundary holds', () => {
     assert.ok(!route.includes('finance_payment'))
     assert.ok(!route.includes('advance'))
   })
+
+  // A REVISION IS STAGED, NOT APPLIED (20270113000000). Admin approval of V2 may
+  // change nothing current, so the two post-commit steps that WRITE to the PI in
+  // force are skipped for it: seeding the terms (they travel in the payload and
+  // are seeded at acceptance) and deleting "obsolete" objects (V1's pictures and
+  // workbook are still the ones in force).
+  test('a revision seeds no terms and deletes no object after the staging commit', () => {
+    assert.match(route, /if \(ctx\.revisionVersionId\) \{\s*\(plan\.payload as Record<string, unknown>\)\.seed_terms = \{/,
+      'the terms travel with the staged payload')
+    assert.match(route, /if \(!ctx\.revisionVersionId\s*&& \([\s\S]{0,300}?\)\) \{\s*await service\.rpc\('seed_order_submission_pi_terms'/,
+      'step 18b is skipped for a revision')
+    assert.equal([...route.matchAll(/seed_order_submission_pi_terms/g)].length, 1, 'and there is no second seeding call')
+    assert.match(route, /if \(!ctx\.revisionVersionId\) \{\s*await removeObjects\(service, \[\.\.\.obsoleteImages, \.\.\.obsoleteWorkbook\]\)/,
+      'step 19 is skipped for a revision')
+    assert.equal([...route.matchAll(/removeObjects\(service,/g)].length, 2,
+      'the only other delete is a failed attempt removing its OWN new uploads')
+    assert.match(route, /removeObjects\(service, created\.filter\(p => !referenced\.has\(p\)\)\)/)
+  })
 })
 
 // ══ 9. Privacy ═══════════════════════════════════════════════════════════════
@@ -665,7 +686,15 @@ describe('service-role isolation', () => {
       }
     }
     walk('src')
-    assert.deepEqual(callers, [ROUTE], 'exactly one caller, and it is the server route')
+    // Since 20270115000000 the Edit PI route is the second caller: it builds
+    // and prices the payload on the server, under the same lease, and the
+    // writer re-derives the actor's authority exactly as it does for a workbook.
+    const EDIT_ROUTE = 'src/app/api/orders/pi-edits/route.ts'
+    assert.deepEqual(callers.sort(), [EDIT_ROUTE, ROUTE].sort(), 'exactly two callers, both server routes')
+    for (const caller of callers) {
+      assert.ok(caller.startsWith('src/app/api/'), `${caller} is server code`)
+      assert.ok(!raw(caller).includes("'use client'"))
+    }
   })
 
   test('the payload builder is server-only and says so by importing node crypto', () => {
