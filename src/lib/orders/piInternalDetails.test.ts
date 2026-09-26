@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  COMMISSION_RESTRICTED_TEXT,
+  PI_COMMISSION_COLUMNS,
   PI_INTERNAL_DETAIL_COLUMNS,
+  withCommission,
   describeMiddleman,
   formatIsoDay,
   internalDetailsForm,
@@ -184,5 +187,47 @@ describe('internal details — CLIENT PRIVACY', () => {
         assert.ok(!src.includes(bad), `${file} mentions ${bad}`)
       }
     }
+  })
+})
+
+// 20270122000000 §1b: the commission is its own reader-only table. The PI row
+// (readable by every Order viewer) carries no commission column at all.
+describe('the commission, laid over the PI row only for a reader', () => {
+  const commission = {
+    middleman_commission: 'yes', middleman_recipient: 'Agent', middleman_commission_basis: 'amount',
+    middleman_commission_amount: '50000', middleman_commission_percent: null, middleman_commission_percent_of: null,
+  }
+  const pi = { order_confirmation_date: '2026-09-20', due_date: '2026-11-20',
+    internal_details_confirmed_at: '2026-09-26T10:00:00Z' }
+
+  test('the PI row reads no commission column; the commission read names all six', () => {
+    for (const c of PI_INTERNAL_DETAIL_COLUMNS) assert.ok(!c.startsWith('middleman'), c)
+    assert.ok(!PI_DRAFT_DETAIL_COLUMNS.includes('middleman'), 'PI_DRAFT_DETAIL_COLUMNS names no commission column')
+    assert.equal(PI_COMMISSION_COLUMNS.split(', ').length, 6)
+  })
+
+  test('a reader sees the answer', () => {
+    const row = withCommission(pi, commission, true)
+    assert.equal(row.commission_restricted, false)
+    assert.match(describeMiddleman(row), /^Yes — Agent, /)
+  })
+
+  test('anybody else sees "Restricted", never "Not answered", and no value survives', () => {
+    const row = withCommission(pi, commission, false)
+    assert.equal(describeMiddleman(row), COMMISSION_RESTRICTED_TEXT)
+    assert.equal(row.middleman_recipient, null)
+    assert.equal(row.middleman_commission_amount, null)
+  })
+
+  test('a restricted viewer is not told the answer is missing; readiness is the stamp', () => {
+    assert.deepEqual(internalDetailsReadiness(withCommission(pi, null, false)), { ready: true })
+    assert.deepEqual(internalDetailsReadiness(withCommission({ ...pi, internal_details_confirmed_at: null }, null, false)),
+      { ready: false, problem: 'confirm the internal details' })
+  })
+
+  test('a reader with no row yet is "Not answered"', () => {
+    const row = withCommission(pi, null, true)
+    assert.equal(describeMiddleman(row), 'Not answered')
+    assert.equal(internalDetailsMissing(row), 'answer "Is there a middleman commission?"')
   })
 })

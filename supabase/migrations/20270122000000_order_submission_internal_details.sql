@@ -20,10 +20,12 @@
 --   workbook_order_confirmation_date,   what the workbook itself said, kept
 --   workbook_due_date                   apart so a correction in the app never
 --                                       pretends the workbook said something else.
---   middleman_commission                'yes' | 'no' — the question must be
---                                       answered, not assumed.
---   middleman_recipient, _basis,        when 'yes': who, and either a rupee
---   _amount, _percent, _percent_of      amount or a percentage OF A NAMED FIGURE.
+--   the middleman commission answer     'yes' | 'no', and when 'yes': who, and
+--                                       either a rupee amount or a percentage OF
+--                                       A NAMED FIGURE. Kept in ITS OWN TABLE,
+--                                       order_submission_middleman_commissions
+--                                       (§1b), because order_submissions is read
+--                                       by everyone who can see the Order.
 --   internal_details_confirmed_at/_by   stamped only by the save RPC's confirm.
 --   discount_label                      the wording the workbook printed beside
 --                                       the deduction row ("Design Fee",
@@ -34,7 +36,15 @@
 -- ----------------------------------------------
 -- PHASE 1 (this file) IS PURELY ADDITIVE for the deployed application:
 --   * nullable columns, no backfill;
---   * one new RPC, save_order_submission_internal_details();
+--   * the commission table, readable ONLY by the PI's salesperson/submitter,
+--     its assigned reviewer (order_submissions.assigned_to), an active admin,
+--     or a holder of the new PROTECTED Control Center action
+--     orders.view_pi_commission — can_read_order_submission_commission(). NOT
+--     through Order visibility, Operations membership, orders.view_all, PI
+--     approval or Finance verification. Nobody may write it but the RPC;
+--   * one new RPC, save_order_submission_internal_details(), whose activity
+--     entry records date changes from/to and only THAT the commission changed,
+--     never its values — the activity trail is readable by Order viewers;
 --   * a guard trigger that CLEARS the confirmation when a confirmed answer
 --     changes by any other path (a workbook replacement, the schedule editor)
 --     and refuses a confirmation stamp written by anything but the RPC;
@@ -83,60 +93,13 @@ alter table public.order_submissions
   add column if not exists workbook_order_confirmation_date date,
   add column if not exists workbook_due_date                date,
   add column if not exists discount_label                   text,
-  add column if not exists middleman_commission             text,
-  add column if not exists middleman_recipient              text,
-  add column if not exists middleman_commission_basis       text,
-  add column if not exists middleman_commission_amount      numeric(14, 2),
-  add column if not exists middleman_commission_percent     numeric(6, 3),
-  add column if not exists middleman_commission_percent_of  text,
   add column if not exists internal_details_confirmed_at    timestamptz,
   add column if not exists internal_details_confirmed_by    uuid references public.users(id);
 
--- SHAPE ONLY. A draft may be half-answered ("Yes", recipient not typed yet);
--- what it may never be is self-contradictory. Completeness is the readiness
--- check's job, at the moment it matters.
 alter table public.order_submissions
   drop constraint if exists order_submissions_discount_label_len,
   add  constraint order_submissions_discount_label_len
     check (discount_label is null or char_length(discount_label) between 1 and 200),
-  drop constraint if exists order_submissions_middleman_answer,
-  add  constraint order_submissions_middleman_answer
-    check (middleman_commission is null or middleman_commission in ('yes', 'no')),
-  drop constraint if exists order_submissions_middleman_recipient_len,
-  add  constraint order_submissions_middleman_recipient_len
-    check (middleman_recipient is null or char_length(middleman_recipient) between 1 and 200),
-  drop constraint if exists order_submissions_middleman_basis,
-  add  constraint order_submissions_middleman_basis
-    check (middleman_commission_basis is null or middleman_commission_basis in ('amount', 'percent')),
-  drop constraint if exists order_submissions_middleman_percent_of,
-  add  constraint order_submissions_middleman_percent_of
-    check (middleman_commission_percent_of is null or middleman_commission_percent_of in
-           ('gross_product_amount', 'subtotal_after_discount', 'total_before_gst', 'grand_total')),
-  drop constraint if exists order_submissions_middleman_amount_range,
-  add  constraint order_submissions_middleman_amount_range
-    check (middleman_commission_amount is null or middleman_commission_amount > 0),
-  drop constraint if exists order_submissions_middleman_percent_range,
-  add  constraint order_submissions_middleman_percent_range
-    check (middleman_commission_percent is null
-           or (middleman_commission_percent > 0 and middleman_commission_percent <= 100)),
-  -- "No" carries nothing else.
-  drop constraint if exists order_submissions_middleman_no_is_empty,
-  add  constraint order_submissions_middleman_no_is_empty
-    check (middleman_commission is distinct from 'no'
-           or (middleman_recipient is null and middleman_commission_basis is null
-               and middleman_commission_amount is null and middleman_commission_percent is null
-               and middleman_commission_percent_of is null)),
-  -- A basis belongs to a "Yes", and each basis carries only its own figure.
-  drop constraint if exists order_submissions_middleman_basis_fits,
-  add  constraint order_submissions_middleman_basis_fits
-    check ((middleman_commission_basis is null or middleman_commission = 'yes')
-           and (middleman_commission_basis is distinct from 'amount'
-                or (middleman_commission_percent is null and middleman_commission_percent_of is null))
-           and (middleman_commission_basis is distinct from 'percent'
-                or middleman_commission_amount is null)
-           and (middleman_commission_basis is not null
-                or (middleman_commission_amount is null and middleman_commission_percent is null
-                    and middleman_commission_percent_of is null))),
   drop constraint if exists order_submissions_internal_confirmation_pair,
   add  constraint order_submissions_internal_confirmation_pair
     check ((internal_details_confirmed_at is null) = (internal_details_confirmed_by is null));
@@ -147,12 +110,139 @@ comment on column public.order_submissions.workbook_due_date is
   'The due date AS THE WORKBOOK STATED IT at the last upload (null when blank or a commitment rather than a date). due_date is the app value Sales confirms. 20270122000000.';
 comment on column public.order_submissions.discount_label is
   'The wording the workbook printed beside the deduction row ("Design Fee" by default, "Discount" when one is offered). DISPLAY PROVENANCE ONLY: discount_amount is always a deduction whatever this says. 20270122000000.';
-comment on column public.order_submissions.middleman_commission is
-  'INTERNAL — never on a client document. Sales'' answer to "Is there a middleman commission?": yes | no; null = not yet answered. 20270122000000.';
-comment on column public.order_submissions.middleman_commission_percent_of is
-  'INTERNAL. The figure a percentage commission is a percentage OF, so "5%" is never ambiguous. 20270122000000.';
 comment on column public.order_submissions.internal_details_confirmed_at is
-  'When Sales last confirmed the internal details (dates and middleman answer). Stamped only by save_order_submission_internal_details(p_confirm => true); cleared by order_submissions_internal_details_guard when a confirmed answer changes by any other path while the PI is a draft or returned. 20270122000000.';
+  'When Sales last confirmed the internal details (dates and middleman answer). Stamped only by save_order_submission_internal_details(p_confirm => true); cleared by that RPC when a draft save changes an answer, and by order_submissions_internal_details_guard when a confirmed date or the workbook changes by any other path while the PI is a draft or returned. 20270122000000.';
+
+
+-- ═══ 1b. The middleman commission — its own table, its own readers ══════════
+--
+-- WHY NOT COLUMNS ON order_submissions. That row is readable by everyone who
+-- can see the Order it became (order_submissions_confirmed_order_select →
+-- can_view_order → orders RLS: every Operations member, orders.view_all, the
+-- Order's requester and assignee), and by PI approvers and Finance verifiers
+-- (order_submissions_select). A column there reaches all of them through a
+-- plain API select, whatever the screens show. A separate table has its own
+-- policy, and nothing about the Order reaches it.
+--
+-- WHO READS IT — exactly, and nothing else:
+--   * the PI's salesperson: created_by or submitted_by;
+--   * its assigned reviewer: order_submissions.assigned_to;
+--   * an active, non-deleted admin, or a holder of orders.view_pi_commission —
+--     actor_has_module_permission() is precisely those two branches. The action
+--     is PROTECTED (default false, no role/department grant, and in
+--     PROTECTED_ACTIONS in src/lib/permissions/levels.ts), so it is granted per
+--     person in Control Center and never by a preset.
+-- NOT Order visibility, Operations membership, orders.view_all, orders.approve_order
+-- or Finance verification rights: none of them appears below.
+
+insert into public.permission_actions (action_key, display_name, is_system)
+values ('view_pi_commission', 'View PI Middleman Commission', false)
+on conflict (action_key) do nothing;
+
+insert into public.module_permission_actions (module_id, action_id, default_allowed)
+select pm.id, pa.id, false
+from public.permission_modules pm
+join public.permission_actions pa on pa.action_key = 'view_pi_commission'
+where pm.module_key = 'orders'
+on conflict (module_id, action_id) do nothing;
+
+create table if not exists public.order_submission_middleman_commissions (
+  submission_id                   uuid primary key
+                                  references public.order_submissions(id) on delete cascade,
+  middleman_commission            text,
+  middleman_recipient             text,
+  middleman_commission_basis      text,
+  middleman_commission_amount     numeric(14, 2),
+  middleman_commission_percent    numeric(6, 3),
+  middleman_commission_percent_of text,
+  updated_at                      timestamptz not null default now(),
+  updated_by                      uuid references public.users(id),
+  -- SHAPE ONLY. A draft may be half-answered ("Yes", recipient not typed yet);
+  -- what it may never be is self-contradictory. Completeness is the readiness
+  -- check's job, at the moment it matters.
+  constraint order_submission_middleman_answer
+    check (middleman_commission is null or middleman_commission in ('yes', 'no')),
+  constraint order_submission_middleman_recipient_len
+    check (middleman_recipient is null or char_length(middleman_recipient) between 1 and 200),
+  constraint order_submission_middleman_basis
+    check (middleman_commission_basis is null or middleman_commission_basis in ('amount', 'percent')),
+  constraint order_submission_middleman_percent_of
+    check (middleman_commission_percent_of is null or middleman_commission_percent_of in
+           ('gross_product_amount', 'subtotal_after_discount', 'total_before_gst', 'grand_total')),
+  constraint order_submission_middleman_amount_range
+    check (middleman_commission_amount is null or middleman_commission_amount > 0),
+  constraint order_submission_middleman_percent_range
+    check (middleman_commission_percent is null
+           or (middleman_commission_percent > 0 and middleman_commission_percent <= 100)),
+  -- "No" carries nothing else.
+  constraint order_submission_middleman_no_is_empty
+    check (middleman_commission is distinct from 'no'
+           or (middleman_recipient is null and middleman_commission_basis is null
+               and middleman_commission_amount is null and middleman_commission_percent is null
+               and middleman_commission_percent_of is null)),
+  -- A basis belongs to a "Yes", and each basis carries only its own figure.
+  constraint order_submission_middleman_basis_fits
+    check ((middleman_commission_basis is null or middleman_commission = 'yes')
+           and (middleman_commission_basis is distinct from 'amount'
+                or (middleman_commission_percent is null and middleman_commission_percent_of is null))
+           and (middleman_commission_basis is distinct from 'percent'
+                or middleman_commission_amount is null)
+           and (middleman_commission_basis is not null
+                or (middleman_commission_amount is null and middleman_commission_percent is null
+                    and middleman_commission_percent_of is null)))
+);
+
+comment on table public.order_submission_middleman_commissions is
+  'INTERNAL — never on a client document, never in activity metadata. A PI''s answer to "Is there a middleman commission?" and, when yes, who and how much. One row per PI, written only by save_order_submission_internal_details(). Readable only per can_read_order_submission_commission(): the salesperson/submitter, the assigned reviewer, an active admin, or orders.view_pi_commission. 20270122000000.';
+comment on column public.order_submission_middleman_commissions.middleman_commission_percent_of is
+  'The figure a percentage commission is a percentage OF, so "5%" is never ambiguous. 20270122000000.';
+
+create or replace function public.can_read_order_submission_commission(p_submission_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  -- COALESCED: assigned_to is nullable, and a NULL inside an authorization OR
+  -- must never become anything but false.
+  select coalesce(
+    exists (
+      select 1 from public.order_submissions s
+      where s.id = p_submission_id
+        and auth.uid() is not null
+        and (s.created_by = auth.uid()
+             or s.submitted_by = auth.uid()
+             or s.assigned_to = auth.uid())
+    )
+    or (auth.uid() is not null
+        and exists (select 1 from public.order_submissions s where s.id = p_submission_id)
+        and public.actor_has_module_permission('orders', 'view_pi_commission')),
+    false);
+$$;
+revoke execute on function public.can_read_order_submission_commission(uuid) from public, anon;
+grant  execute on function public.can_read_order_submission_commission(uuid) to authenticated;
+comment on function public.can_read_order_submission_commission(uuid) is
+  'May the caller read this PI''s middleman commission? The salesperson (created_by/submitted_by), the assigned reviewer (assigned_to), an active admin, or a holder of the protected orders.view_pi_commission — nothing else. The SELECT policy of order_submission_middleman_commissions, and what the PI page asks to show "Restricted". 20270122000000.';
+
+alter table public.order_submission_middleman_commissions enable row level security;
+revoke all on table public.order_submission_middleman_commissions from public, anon, authenticated;
+grant  select on table public.order_submission_middleman_commissions to authenticated;
+
+drop policy if exists order_submission_middleman_commissions_module_entry_gate
+  on public.order_submission_middleman_commissions;
+create policy order_submission_middleman_commissions_module_entry_gate
+  on public.order_submission_middleman_commissions
+  as restrictive for all to authenticated
+  using (public.module_entry_open('orders'))
+  with check (public.module_entry_open('orders'));
+
+drop policy if exists order_submission_middleman_commissions_select
+  on public.order_submission_middleman_commissions;
+create policy order_submission_middleman_commissions_select
+  on public.order_submission_middleman_commissions
+  for select to authenticated
+  using (public.can_read_order_submission_commission(submission_id));
 
 
 -- ═══ 2. The activity action ══════════════════════════════════════════════════
@@ -238,14 +328,10 @@ begin
   if not v_confirming
      and old.status in ('draft', 'needs_changes')
      and old.internal_details_confirmed_at is not null
+     -- The commission lives in its own table and is written only by the save
+     -- RPC, which clears the confirmation itself when a draft save changes it.
      and (new.order_confirmation_date         is distinct from old.order_confirmation_date
        or new.due_date                        is distinct from old.due_date
-       or new.middleman_commission            is distinct from old.middleman_commission
-       or new.middleman_recipient             is distinct from old.middleman_recipient
-       or new.middleman_commission_basis      is distinct from old.middleman_commission_basis
-       or new.middleman_commission_amount     is distinct from old.middleman_commission_amount
-       or new.middleman_commission_percent    is distinct from old.middleman_commission_percent
-       or new.middleman_commission_percent_of is distinct from old.middleman_commission_percent_of
        or new.source_workbook_sha256          is distinct from old.source_workbook_sha256) then
     new.internal_details_confirmed_at := null;
     new.internal_details_confirmed_by := null;
@@ -276,11 +362,14 @@ set search_path = public, pg_temp
 as $$
 declare
   s public.order_submissions%rowtype;
+  m public.order_submission_middleman_commissions%rowtype;
 begin
   select * into s from public.order_submissions where id = p_submission_id;
   if not found then
     return 'the PI was not found';
   end if;
+  -- No commission row yet reads as all-null: "not answered".
+  select * into m from public.order_submission_middleman_commissions where submission_id = p_submission_id;
   if s.order_confirmation_date is null then
     return 'enter the order confirmation date';
   end if;
@@ -290,21 +379,21 @@ begin
   if s.due_date < s.order_confirmation_date then
     return 'the due date is before the order confirmation date';
   end if;
-  if s.middleman_commission is null then
+  if m.middleman_commission is null then
     return 'answer "Is there a middleman commission?"';
   end if;
-  if s.middleman_commission = 'yes' then
-    if s.middleman_recipient is null then
+  if m.middleman_commission = 'yes' then
+    if m.middleman_recipient is null then
       return 'name who receives the middleman commission';
     end if;
-    if s.middleman_commission_basis is null then
+    if m.middleman_commission_basis is null then
       return 'give the middleman commission as an amount or a percentage';
     end if;
-    if s.middleman_commission_basis = 'amount' and s.middleman_commission_amount is null then
+    if m.middleman_commission_basis = 'amount' and m.middleman_commission_amount is null then
       return 'enter the middleman commission amount';
     end if;
-    if s.middleman_commission_basis = 'percent'
-       and (s.middleman_commission_percent is null or s.middleman_commission_percent_of is null) then
+    if m.middleman_commission_basis = 'percent'
+       and (m.middleman_commission_percent is null or m.middleman_commission_percent_of is null) then
       return 'enter the middleman commission percentage and what it is a percentage of';
     end if;
   end if;
@@ -352,7 +441,13 @@ declare
   v_amount   numeric;
   v_percent  numeric;
   v_of       text;
+  v_had      public.order_submission_middleman_commissions%rowtype;
+  -- DATE changes, from/to — the activity entry carries these.
   v_changes  jsonb := '{}'::jsonb;
+  -- Whether the COMMISSION changed. The entry says only that: the activity
+  -- trail is readable by everyone who can see the Order, so no commission value
+  -- (answer, recipient, basis, amount, percentage or base) is ever written to it.
+  v_commission_changed boolean;
   v_version  integer;
   v_problem  text;
   v_stamp    boolean;
@@ -399,6 +494,11 @@ begin
       'ORDER_SUBMISSION_STALE: this PI changed while you were editing it. Reopen it and apply your change again.'
       using errcode = 'P0001';
   end if;
+
+  -- The commission as it stands (all-null when never saved). The PI row lock
+  -- above already serialises every writer of it: this RPC is the only one.
+  select * into v_had from public.order_submission_middleman_commissions
+   where submission_id = p_submission_id;
 
   -- ── Dates ──
   foreach v_key in array array['order_confirmation_date', 'due_date'] loop
@@ -502,54 +602,50 @@ begin
     v_changes := v_changes || jsonb_build_object('due_date',
       jsonb_build_object('from', v_sub.due_date, 'to', v_due));
   end if;
-  if v_answer is distinct from v_sub.middleman_commission then
-    v_changes := v_changes || jsonb_build_object('middleman_commission',
-      jsonb_build_object('from', v_sub.middleman_commission, 'to', v_answer));
-  end if;
-  if v_who is distinct from v_sub.middleman_recipient then
-    v_changes := v_changes || jsonb_build_object('middleman_recipient',
-      jsonb_build_object('from', v_sub.middleman_recipient, 'to', v_who));
-  end if;
-  if v_basis is distinct from v_sub.middleman_commission_basis then
-    v_changes := v_changes || jsonb_build_object('middleman_commission_basis',
-      jsonb_build_object('from', v_sub.middleman_commission_basis, 'to', v_basis));
-  end if;
-  if v_amount is distinct from v_sub.middleman_commission_amount then
-    v_changes := v_changes || jsonb_build_object('middleman_commission_amount',
-      jsonb_build_object('from', v_sub.middleman_commission_amount, 'to', v_amount));
-  end if;
-  if v_percent is distinct from v_sub.middleman_commission_percent then
-    v_changes := v_changes || jsonb_build_object('middleman_commission_percent',
-      jsonb_build_object('from', v_sub.middleman_commission_percent, 'to', v_percent));
-  end if;
-  if v_of is distinct from v_sub.middleman_commission_percent_of then
-    v_changes := v_changes || jsonb_build_object('middleman_commission_percent_of',
-      jsonb_build_object('from', v_sub.middleman_commission_percent_of, 'to', v_of));
-  end if;
+  v_commission_changed :=
+       v_answer  is distinct from v_had.middleman_commission
+    or v_who     is distinct from v_had.middleman_recipient
+    or v_basis   is distinct from v_had.middleman_commission_basis
+    or v_amount  is distinct from v_had.middleman_commission_amount
+    or v_percent is distinct from v_had.middleman_commission_percent
+    or v_of      is distinct from v_had.middleman_commission_percent_of;
 
   -- A confirm stamps even when nothing changed — "I have looked, and these are
   -- right" is the point. A plain save with nothing changed writes nothing.
   v_stamp := coalesce(p_confirm, false);
-  if v_changes = '{}'::jsonb and not v_stamp then
+  if v_changes = '{}'::jsonb and not v_commission_changed and not v_stamp then
     return jsonb_build_object('submission_id', p_submission_id, 'changed', false,
       'confirmed', v_sub.internal_details_confirmed_at is not null, 'row_version', v_sub.row_version);
+  end if;
+
+  if v_commission_changed then
+    insert into public.order_submission_middleman_commissions as c (
+      submission_id, middleman_commission, middleman_recipient, middleman_commission_basis,
+      middleman_commission_amount, middleman_commission_percent, middleman_commission_percent_of,
+      updated_at, updated_by)
+    values (p_submission_id, v_answer, v_who, v_basis, v_amount, v_percent, v_of, now(), v_actor)
+    on conflict (submission_id) do update set
+      middleman_commission            = excluded.middleman_commission,
+      middleman_recipient             = excluded.middleman_recipient,
+      middleman_commission_basis      = excluded.middleman_commission_basis,
+      middleman_commission_amount     = excluded.middleman_commission_amount,
+      middleman_commission_percent    = excluded.middleman_commission_percent,
+      middleman_commission_percent_of = excluded.middleman_commission_percent_of,
+      updated_at                      = excluded.updated_at,
+      updated_by                      = excluded.updated_by;
   end if;
 
   if v_stamp then
     perform set_config('boe.pi_internal_details_confirm', p_submission_id::text, true);
   end if;
 
+  -- A DRAFT save that changes anything clears an earlier confirmation, so Sales
+  -- confirms again before submitting; a confirm stamps it.
   update public.order_submissions set
     order_confirmation_date         = v_confirm,
     due_date                        = v_due,
-    middleman_commission            = v_answer,
-    middleman_recipient             = v_who,
-    middleman_commission_basis      = v_basis,
-    middleman_commission_amount     = v_amount,
-    middleman_commission_percent    = v_percent,
-    middleman_commission_percent_of = v_of,
-    internal_details_confirmed_at   = case when v_stamp then now()   else internal_details_confirmed_at end,
-    internal_details_confirmed_by   = case when v_stamp then v_actor else internal_details_confirmed_by end,
+    internal_details_confirmed_at   = case when v_stamp then now()   else null end,
+    internal_details_confirmed_by   = case when v_stamp then v_actor else null end,
     row_version                     = row_version + 1,
     updated_at                      = now()
   where id = p_submission_id
@@ -567,20 +663,24 @@ begin
 
   perform public.log_order_submission_activity(
     p_submission_id, v_actor, 'internal_details_updated', v_sub.status, v_sub.status, null,
+    -- Dates from/to; the commission only as a yes/no that it changed.
     jsonb_build_object(
-      'changed', v_changes, 'fields', (select count(*) from jsonb_object_keys(v_changes)),
+      'changed', v_changes,
+      'fields', (select count(*) from jsonb_object_keys(v_changes)) + case when v_commission_changed then 1 else 0 end,
+      'commission_changed', v_commission_changed,
       'confirmed', v_stamp, 'stage', v_sub.status)
   );
 
-  return jsonb_build_object('submission_id', p_submission_id, 'changed', v_changes <> '{}'::jsonb,
-    'confirmed', v_stamp or (v_sub.internal_details_confirmed_at is not null and v_changes = '{}'::jsonb),
+  return jsonb_build_object('submission_id', p_submission_id,
+    'changed', v_changes <> '{}'::jsonb or v_commission_changed,
+    'confirmed', v_stamp,
     'row_version', v_version);
 end;
 $$;
 revoke execute on function public.save_order_submission_internal_details(uuid, jsonb, integer, boolean) from public, anon;
 grant  execute on function public.save_order_submission_internal_details(uuid, jsonb, integer, boolean) to authenticated;
 comment on function public.save_order_submission_internal_details(uuid, jsonb, integer, boolean) is
-  'Saves a PI''s INTERNAL details — the app confirmation and due dates and the middleman commission answer — while it is a draft or returned. Full state, not a patch. p_confirm stamps internal_details_confirmed_at/by and requires the answers to be complete. Never printed on a client document. 20270122000000.';
+  'Saves a PI''s INTERNAL details — the app confirmation and due dates (on order_submissions) and the middleman commission answer (order_submission_middleman_commissions) — while it is a draft or returned, by its owner or an active admin. Full state, not a patch. p_confirm stamps internal_details_confirmed_at/by and requires the answers to be complete; any other change clears the stamp. The activity entry records date changes from/to and only whether the commission changed — never a commission value. Never printed on a client document. 20270122000000.';
 
 
 -- ═══ 6. replace_order_submission_parse, as 20261120000000 left it, plus ═══════
@@ -1377,6 +1477,54 @@ begin
   -- The readiness check exists and is not a client door.
   if has_function_privilege('authenticated', 'public.order_submission_internal_details_problem(uuid)', 'execute') then
     raise exception 'ASSERTION FAILED: order_submission_internal_details_problem is callable by authenticated';
+  end if;
+
+  -- §1b: the commission is NOT on the PI row that Order viewers can read.
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'order_submissions'
+                and column_name like 'middleman%') then
+    raise exception 'ASSERTION FAILED: a middleman column is on order_submissions, which every Order viewer can read';
+  end if;
+  -- Its table: RLS on; signed-in users may only SELECT; anon nothing.
+  if not (select relrowsecurity from pg_class where oid = 'public.order_submission_middleman_commissions'::regclass) then
+    raise exception 'ASSERTION FAILED: order_submission_middleman_commissions has no row level security';
+  end if;
+  if has_table_privilege('anon', 'public.order_submission_middleman_commissions', 'select')
+     or has_table_privilege('authenticated', 'public.order_submission_middleman_commissions', 'insert')
+     or has_table_privilege('authenticated', 'public.order_submission_middleman_commissions', 'update')
+     or has_table_privilege('authenticated', 'public.order_submission_middleman_commissions', 'delete')
+     or not has_table_privilege('authenticated', 'public.order_submission_middleman_commissions', 'select') then
+    raise exception 'ASSERTION FAILED: order_submission_middleman_commissions grants are wrong';
+  end if;
+  -- Exactly two policies, and the only permissive one is the reader rule.
+  if (select count(*) from pg_policies where schemaname = 'public'
+        and tablename = 'order_submission_middleman_commissions') <> 2
+     or (select count(*) from pg_policies where schemaname = 'public'
+           and tablename = 'order_submission_middleman_commissions' and permissive = 'PERMISSIVE') <> 1
+     or not exists (select 1 from pg_policies where schemaname = 'public'
+           and tablename = 'order_submission_middleman_commissions' and permissive = 'PERMISSIVE'
+           and cmd = 'SELECT' and qual = 'can_read_order_submission_commission(submission_id)') then
+    raise exception 'ASSERTION FAILED: order_submission_middleman_commissions policies are not exactly the reader rule plus the module gate';
+  end if;
+  -- The reader rule names none of the wider audiences.
+  v_def := pg_get_functiondef('public.can_read_order_submission_commission(uuid)'::regprocedure);
+  if v_def ~* '(view_all|approve_order|can_view_order|can_verify_pi_finance|operations|can_view_order_submission)' then
+    raise exception 'ASSERTION FAILED: can_read_order_submission_commission reaches a wider audience than the reader list';
+  end if;
+  -- The protected action: registered on orders, default false, granted by no
+  -- role or department (Control Center grants it per person).
+  if not exists (select 1 from public.module_permission_actions mpa
+                   join public.permission_modules pm on pm.id = mpa.module_id
+                   join public.permission_actions pa on pa.id = mpa.action_id
+                  where pm.module_key = 'orders' and pa.action_key = 'view_pi_commission'
+                    and mpa.default_allowed = false)
+     or exists (select 1 from public.role_permissions rp
+                  join public.permission_actions pa on pa.id = rp.action_id
+                 where pa.action_key = 'view_pi_commission' and rp.allowed)
+     or exists (select 1 from public.department_permissions dp
+                  join public.permission_actions pa on pa.id = dp.action_id
+                 where pa.action_key = 'view_pi_commission' and dp.allowed) then
+    raise exception 'ASSERTION FAILED: orders.view_pi_commission is not a default-false action granted by no role or department';
   end if;
 
   -- PHASE 1 WIRES NOTHING IN FRONT OF SUBMISSION.

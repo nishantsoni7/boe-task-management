@@ -23,13 +23,50 @@ export type CommissionPercentOf =
   | 'total_before_gst'
   | 'grand_total'
 
-/** The columns, as PI_DRAFT_DETAIL_COLUMNS reads them. */
+/** The order_submissions columns, as PI_DRAFT_DETAIL_COLUMNS reads them. No
+ *  commission column is among them: that row is readable by every Order viewer. */
 export const PI_INTERNAL_DETAIL_COLUMNS = [
   'workbook_order_confirmation_date', 'workbook_due_date',
-  'middleman_commission', 'middleman_recipient', 'middleman_commission_basis',
-  'middleman_commission_amount', 'middleman_commission_percent', 'middleman_commission_percent_of',
   'internal_details_confirmed_at', 'internal_details_confirmed_by',
 ] as const
+
+/**
+ * THE COMMISSION HAS ITS OWN TABLE (20270122000000 §1b), readable only by the
+ * PI's salesperson/submitter, its assigned reviewer, an active admin or a
+ * holder of orders.view_pi_commission — can_read_order_submission_commission().
+ * RLS returns no row to anybody else, which is indistinguishable from "not yet
+ * answered", so the page asks that function too and shows "Restricted".
+ * The page names both literally, so its table and RPC allow-lists see them.
+ */
+export const PI_COMMISSION_COLUMNS = [
+  'middleman_commission', 'middleman_recipient', 'middleman_commission_basis',
+  'middleman_commission_amount', 'middleman_commission_percent', 'middleman_commission_percent_of',
+].join(', ')
+
+export const COMMISSION_RESTRICTED_TEXT =
+  'Restricted — visible to the salesperson, the assigned reviewer and people allowed in Control Center'
+
+type CommissionFields = Pick<PiInternalDetailsRow,
+  | 'middleman_commission' | 'middleman_recipient' | 'middleman_commission_basis'
+  | 'middleman_commission_amount' | 'middleman_commission_percent' | 'middleman_commission_percent_of'>
+
+/**
+ * The PI row with its commission laid over it, as the card and editor read it.
+ * FAILS CLOSED: a reader check that errored, or said no, is "restricted", and
+ * no commission value is carried even if one somehow arrived.
+ */
+export function withCommission<T extends object>(
+  row: T,
+  commission: CommissionFields | null | undefined,
+  readable: boolean,
+): T & PiInternalDetailsRow {
+  const blank: CommissionFields = {
+    middleman_commission: null, middleman_recipient: null, middleman_commission_basis: null,
+    middleman_commission_amount: null, middleman_commission_percent: null, middleman_commission_percent_of: null,
+  }
+  if (!readable) return { ...row, ...blank, commission_restricted: true }
+  return { ...row, ...blank, ...(commission ?? {}), commission_restricted: false }
+}
 
 export type PiInternalDetailsRow = {
   order_confirmation_date?: string | null
@@ -44,6 +81,8 @@ export type PiInternalDetailsRow = {
   middleman_commission_percent_of?: string | null
   internal_details_confirmed_at?: string | null
   internal_details_confirmed_by?: string | null
+  /** True when this viewer may not read the commission (see withCommission). */
+  commission_restricted?: boolean
 }
 
 /** What the form holds: every value as the text the inputs show. */
@@ -172,6 +211,9 @@ export function internalDetailsMissing(row: PiInternalDetailsRow): string | null
   if (!confirm) return 'enter the order confirmation date'
   if (!due) return 'enter the due date'
   if (due < confirm) return 'the due date is before the order confirmation date'
+  // A viewer who may not read the commission cannot judge it; the database's
+  // own check still does, and the confirmation stamp says it passed.
+  if (row.commission_restricted) return null
   const answer = text(row.middleman_commission)
   if (!answer) return `answer "${MIDDLEMAN_QUESTION}"`
   if (answer === 'yes') {
@@ -219,6 +261,7 @@ const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR',
 
 /** One line a reviewer reads: "No", "Yes — ASSERT agent, ₹50,000.00", "Yes — X, 2.5% of Total before GST". */
 export function describeMiddleman(row: PiInternalDetailsRow): string {
+  if (row.commission_restricted) return COMMISSION_RESTRICTED_TEXT
   const answer = text(row.middleman_commission)
   if (!answer) return 'Not answered'
   if (answer === 'no') return 'No'

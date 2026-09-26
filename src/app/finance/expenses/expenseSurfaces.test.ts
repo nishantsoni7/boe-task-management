@@ -1714,7 +1714,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * dates Sales confirms, the middleman commission answer, and the deduction
    * row's workbook wording. The PI detail page, its record read and payload,
    * the new card and editor, and the inventories the new migration and RPC
-   * extend. Named files only; no Finance file, no permission file.
+   * extend. Named files only; no Finance file. The three permission files
+   * register ONE protected Orders action, view_pi_commission, which reads the
+   * commission's own table and nothing else.
    */
   const ALLOWED_PI_INTERNAL_DETAILS = new Set([
     'src/app/orders/drafts/[submissionId]/page.tsx',
@@ -1733,6 +1735,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/confirmedPdf.test.ts',
     'src/lib/orders/clientDocumentPrivacy.test.ts',
     'src/app/orders/import/importAccess.test.ts',
+    // The one protected action that reads the commission table.
+    'src/lib/permissions/modules.ts',
+    'src/lib/permissions/levels.ts',
+    'src/lib/permissions/levels.test.ts',
+    'src/lib/permissions/accessControlChanges.ts',
     // Inventories: the new RPC, the new activity action, the new column read,
     // the recorded wording, and the migration-sequence pins.
     'src/app/orders/drafts/draftsAccess.test.ts',
@@ -2003,7 +2010,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|announcements/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.

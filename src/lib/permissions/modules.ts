@@ -340,6 +340,12 @@ registerModule({
     // approve_order (commercial approval) nor manage. Confers no order
     // visibility of its own.
     { actionKey: 'align_production', displayName: 'Align Order for Production' },
+    // Sight of a PI's MIDDLEMAN COMMISSION — who is paid and how much — on
+    // every PI. Registered by 20270122000000. The PI's
+    // salesperson/submitter, its assigned reviewer and active admins see it
+    // without this; nobody else does, whatever they hold: Order visibility,
+    // view_all, approve_order and Finance verification all stop short of it.
+    { actionKey: 'view_pi_commission', displayName: 'View PI Middleman Commission' },
     // Company-wide sight of every order. Until 20260903000000, plain 'view'
     // carried this through the blanket SELECT policies added by 20260685000000
     // and 20260686000000 — module entry and seeing the whole company were the

@@ -32,15 +32,17 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import zlib from 'node:zlib'
 import { buildConfirmedPdfModel } from './confirmedPdf'
 import { renderConfirmedPdf } from './confirmedPdfRender'
+import { CONFIRMED_EDITABLE_CELLS } from './confirmedWorkbook'
 import { piVersionPdfSource } from './piVersionPdf'
 import type { PersistedItem } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
 
 const SUB = '3f2504e0-4f89-11d3-9a0c-0305e82c3301'
-const METADATA = { date: new Date('2026-07-04T00:00:00Z'), title: 'Confirmed Order BOE/0001' }
+const METADATA = { title: 'Confirmed Order BOE/0001' }
 
 // Every date source populated, each with a distinctive day.
 const DATES = {
@@ -193,5 +195,62 @@ describe('the PI version PDF for a CAPTURED version', () => {
     assert.ok(text.includes('Cane Lounge Chair'), 'the version rendered')
     assertNoDatesOrInternal(text, 'the captured version PDF')
     assert.ok(/\bDiscount\b/.test(text) && !/Design Fee/i.test(text))
+  })
+})
+
+/** The day (YYYYMMDD) of CreationDate and ModDate. pdfkit writes each as an
+ *  indirect object — `/CreationDate 13 0 R` … `13 0 obj (D:…) endobj`. */
+function metadataDays(raw: string): string[] {
+  return [...raw.matchAll(/\/(CreationDate|ModDate)\s+(\d+) 0 R/g)].map(m => {
+    const obj = new RegExp(`(?:^|\\n)${m[2]} 0 obj\\s*\\(D:(\\d{8})`).exec(raw)
+    return obj ? obj[1] : 'unresolved'
+  })
+}
+
+describe('the PDF FILE, not only its pages: no date in its metadata', () => {
+  // A PDF's CreationDate / ModDate are one "Document properties" click away.
+  // Both routes used to stamp the Order's confirm date there — the internal
+  // confirmation date. The renderer now stamps one fixed instant and takes no
+  // date from any caller (PdfMetadata has no date field).
+  test('CreationDate and ModDate are the Unix epoch, and no 2026 date is anywhere in the file', async () => {
+    const model = buildConfirmedPdfModel({ orderNumber: 'BOE/0525', submission: row(), items: ITEMS })
+    const raw = (await renderConfirmedPdf({ model, metadata: METADATA })).toString('latin1')
+    assert.deepEqual(metadataDays(raw), ['19700101', '19700101'], 'both metadata dates are the fixed epoch')
+    assert.ok(!/D:2026/.test(raw), 'no 2026 date is stamped anywhere')
+    for (const t of ['2026-09-23', '2026-09-29', '20260923', '20260929']) {
+      assert.ok(!raw.includes(t), `the file does not carry ${t}`)
+    }
+  })
+
+  test('neither PDF route passes a date to the renderer', () => {
+    for (const route of ['src/app/api/orders/[id]/documents/route.ts',
+                         'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts']) {
+      const source = fs.readFileSync(route, 'utf8').replace(/\r/g, '')
+      const at = source.indexOf('metadata: {')
+      assert.ok(at > -1, `${route} renders with metadata`)
+      const block = source.slice(at, source.indexOf('}', at))
+      assert.ok(!/date|confirm_date|due_date/.test(block), `${route} passes no date in its PDF metadata`)
+    }
+  })
+})
+
+describe('the confirmed Excel: only the Order number and the template cells are written', () => {
+  // The confirmed Excel is the uploaded workbook with the Order number and the
+  // record's corrections written into NAMED cells; buildConfirmedWorkbook
+  // REFUSES any other key (WORKBOOK_UNSUPPORTED). So no app date and no
+  // commission can reach it unless one of these names does.
+  test('no editable cell is a date or an internal detail', () => {
+    for (const key of Object.keys(CONFIRMED_EDITABLE_CELLS)) {
+      assert.ok(!/date|due|confirm|middleman|commission|internal/i.test(key), `${key} must not be a writable Excel cell`)
+    }
+  })
+
+  test('the documents route hands the workbook exactly those cells, nothing else', () => {
+    const source = fs.readFileSync('src/app/api/orders/[id]/documents/route.ts', 'utf8').replace(/\r/g, '')
+    const at = source.indexOf('const corrections = {')
+    assert.ok(at > -1, 'the corrections object is where the route builds it')
+    const block = source.slice(at, source.indexOf('\n  }', at))
+    const keys = [...block.matchAll(/^\s+([a-z_]+):/gm)].map(m => m[1]).sort()
+    assert.deepEqual(keys, Object.keys(CONFIRMED_EDITABLE_CELLS).sort())
   })
 })

@@ -95,7 +95,10 @@ import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiDiscountWordingNotice, PiInternalDetailsCard, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
-import { describeMiddleman, formatIsoDay, internalDetailsSubmitBlock } from '@/lib/orders/piInternalDetails'
+import {
+  PI_COMMISSION_COLUMNS,
+  describeMiddleman, formatIsoDay, internalDetailsSubmitBlock, withCommission,
+} from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
@@ -632,6 +635,20 @@ function PiDraftDetailPageInner() {
           .eq('submission_id', submissionId)
           .order('id', { ascending: true })
           .range(from, to)),
+
+      /**
+       * THE MIDDLEMAN COMMISSION (20270122000000 §1b): its own table, which RLS
+       * shows only to the salesperson/submitter, the assigned reviewer, an
+       * active admin or orders.view_pi_commission. No row is also what an
+       * unanswered PI returns, so the reader rule itself is asked alongside —
+       * and a failure of either reads as "Restricted", never as an answer.
+       */
+      supabase
+        .from('order_submission_middleman_commissions')
+        .select(PI_COMMISSION_COLUMNS)
+        .eq('submission_id', submissionId)
+        .maybeSingle(),
+      supabase.rpc('can_read_order_submission_commission', { p_submission_id: submissionId }),
     ])
     // Handled here too, so a group whose answer is discarded (the record is
     // missing) can never surface as an unhandled rejection.
@@ -647,7 +664,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await detailReads
+    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable] = await detailReads
 
     if (itemsResult.error || imagesResult.error) {
       if (quiet) { setRefreshFailed(true); return }
@@ -660,7 +677,11 @@ function PiDraftDetailPageInner() {
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
-    const row = submission as unknown as PersistedSubmission
+    const row = withCommission(
+      submission as unknown as PersistedSubmission,
+      commissionResult.error ? null : (commissionResult.data as unknown as Parameters<typeof withCommission>[1]),
+      !commissionResult.error && !commissionReadable.error && commissionReadable.data === true,
+    )
     const history = activityRows.ok ? activityRows.rows : []
 
     const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]

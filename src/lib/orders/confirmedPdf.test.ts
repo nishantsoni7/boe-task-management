@@ -469,7 +469,7 @@ describe('page breaks', () => {
 // content streams, because "the table head repeats" is not a claim a plan can
 // settle.
 
-const METADATA = { date: new Date('2026-07-04T00:00:00Z'), title: 'Confirmed Order BOE/0001' }
+const METADATA = { title: 'Confirmed Order BOE/0001' }
 
 /**
  * The text pdfkit actually drew.
@@ -520,10 +520,20 @@ describe('the rendered PDF', () => {
       'pdfkit stamps the clock unless the metadata dates are pinned')
   })
 
-  test('a different metadata date produces different bytes', async () => {
+  // 20270122000000: the metadata dates are no longer the caller's to choose —
+  // they were the Order's internal confirm date. One fixed instant, always.
+  test('the metadata dates are the fixed epoch, never a caller\'s date', async () => {
+    const raw = (await renderConfirmedPdf({ model: model(3), metadata: METADATA })).toString('latin1')
+    // pdfkit writes each date as an indirect object: `/CreationDate 13 0 R`.
+    const stamps = [...raw.matchAll(/\/(CreationDate|ModDate)\s+(\d+) 0 R/g)].map(m =>
+      new RegExp(`(?:^|\\n)${m[2]} 0 obj\\s*\\(D:(\\d{8})`).exec(raw)?.[1] ?? 'unresolved')
+    assert.deepEqual(stamps, ['19700101', '19700101'])
+  })
+
+  test('a different title produces different bytes', async () => {
     const m = model(3)
     const a = await renderConfirmedPdf({ model: m, metadata: METADATA })
-    const b = await renderConfirmedPdf({ model: m, metadata: { ...METADATA, date: new Date('2020-01-01T00:00:00Z') } })
+    const b = await renderConfirmedPdf({ model: m, metadata: { title: 'Confirmed Order BOE/0002' } })
     assert.notEqual(Buffer.compare(a, b), 0)
   })
 

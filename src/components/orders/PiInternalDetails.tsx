@@ -4,8 +4,10 @@
 //
 // The confirmation date and due date Sales confirms in the app, beside what the
 // workbook itself said, and the answer to "Is there a middleman commission?".
-// Shown to everybody who can open the PI — Sales, the reviewer, Operations —
-// and to nobody outside BOE: no client-facing document reads these columns.
+// The dates are shown to everybody who can open the PI. The commission is shown
+// only to those can_read_order_submission_commission() admits — everybody else
+// sees "Restricted" (withCommission) — and to nobody outside BOE: no
+// client-facing document reads any of it.
 //
 // The editor saves through save_order_submission_internal_details(). "Save
 // draft" keeps half an answer; "Confirm details" requires the whole answer and

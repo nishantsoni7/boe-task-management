@@ -418,7 +418,11 @@ describe('no Order screen waits more than it must', () => {
       // PI_DETAIL 26 -> 27 (20270122000000): save_order_submission_internal_details,
       // the internal-details editor's one SAVE, on a press. Its columns ride the
       // page's existing record read, so the startup path is unchanged.
-      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 27 -> 29 (20270122000000 §1b): the middleman commission moved
+      // to its own reader-only table, so the page reads it, and asks
+      // can_read_order_submission_commission, in the EXISTING first wave —
+      // two more reads, no more waits.
+      [DRAFTS]: 4, [PI_DETAIL]: 29, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
