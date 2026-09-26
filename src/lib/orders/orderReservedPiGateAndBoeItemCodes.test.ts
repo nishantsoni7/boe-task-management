@@ -425,7 +425,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // The permission resolvers are not for anon: EXECUTE on six resolver
       // functions revoked from PUBLIC and anon, restated for authenticated
       // and service_role. No body, policy, table, search_path or row changes.
-      '20270119000000_permission_resolvers_are_not_for_anon.sql',
+      '20270123000000_permission_resolvers_are_not_for_anon.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

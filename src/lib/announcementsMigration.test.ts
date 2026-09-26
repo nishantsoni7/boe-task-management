@@ -83,7 +83,7 @@ describe('the migration', () => {
     assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
       // The permission resolvers are not for anon (#213): REVOKE on existing
       // resolver functions. It touches nothing Announcements creates.
-      '20270119000000_permission_resolvers_are_not_for_anon.sql',
+      '20270123000000_permission_resolvers_are_not_for_anon.sql',
     ])
   })
 })

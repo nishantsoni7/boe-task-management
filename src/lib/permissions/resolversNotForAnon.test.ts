@@ -1,5 +1,5 @@
 /**
- * THE PERMISSION RESOLVERS ARE NOT FOR anon (20270119000000), read as text,
+ * THE PERMISSION RESOLVERS ARE NOT FOR anon (20270123000000), read as text,
  * plus the guard that keeps it true.
  *
  * Executing it was done against a disposable local stack. Before it, anon read
@@ -22,7 +22,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270119000000_permission_resolvers_are_not_for_anon.sql'
+const NAME = '20270123000000_permission_resolvers_are_not_for_anon.sql'
 const SQL = stripSql(read(`supabase/migrations/${NAME}`))
 
 const SIX = [
