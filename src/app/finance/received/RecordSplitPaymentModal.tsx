@@ -322,7 +322,7 @@ export function RecordSplitPaymentModal({
     })
     setRetryingProof(false)
     if (proofError) {
-      setProofNotice(`${proofError} The payment itself was recorded — retry the proof, or close and attach it later.`)
+      setProofNotice(`${proofError} The payment itself was recorded and is awaiting verification — retry the proof, or close and attach it later.`)
       return
     }
     onRecorded({
@@ -431,7 +431,7 @@ export function RecordSplitPaymentModal({
       if (proofError) {
         // NOT reset: the payment exists, and a second click must not record it
         // again. See recordedWithoutProof.
-        setProofNotice(`${proofError} The payment itself was recorded — retry the proof below; the payment will not be recorded again.`)
+        setProofNotice(`${proofError} The payment itself was recorded and is awaiting verification — retry the proof below; the payment will not be recorded again.`)
         setRecordedWithoutProof({
           requestNumber:    result.request_number ?? '',
           allocationCount:  result.allocation_count ?? 0,

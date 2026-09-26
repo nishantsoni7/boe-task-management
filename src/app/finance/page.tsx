@@ -1276,22 +1276,13 @@ function NewPaymentConfirmationModal({
 
     const proofErr = await persistProof(created.payment_request_id)
     if (proofErr) {
-      // Compensation: don't leave a request claiming a proof that wasn't saved.
-      // Deleting the payment cascades its intent away with it
-      // (payment_request_id ... on delete cascade), so no orphaned intent is
-      // left promising an allocation for a payment that no longer exists.
-      const { error: delErr, count } = await supabase
-        .from('finance_payment_requests')
-        .delete({ count: 'exact' })
-        .eq('id', created.payment_request_id)
-      const cleaned = !delErr && count !== 0
+      // THE PAYMENT STAYS, PENDING (20270117000000). A proof failure never undoes
+      // a recorded payment: the money is real, and it waits for verification
+      // like any other. Nothing is verified — the last call below is not made.
+      // THE KEY IS NOT SETTLED, so Send replays THIS payment and retries only
+      // the proof; it is never recorded twice.
       submitting.current = false
-      // THE KEY IS NOT SETTLED. If the request was removed, its key went with
-      // it and Send records it once more; if it could not be removed, Send
-      // replays THAT request and retries only the proof. Either way one payment.
-      setError(cleaned
-        ? proofErr
-        : `${proofErr} The request itself was recorded. Press Send again to retry the proof — the payment will not be recorded twice.`)
+      setError(`Payment ${created.request_number} is recorded and awaiting verification, but its proof did not upload: ${proofErr} Press Send again to retry the proof — the payment will not be recorded twice.`)
       setSaving(false)
       return
     }

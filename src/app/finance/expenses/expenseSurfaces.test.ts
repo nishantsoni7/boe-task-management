@@ -649,6 +649,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // A payment's reference surviving verification (20270111120000): a trigger,
       // a carry-forward and one restated read, held by its own SQL check.
       if (f === 'supabase/migrations/20270111120000_finance_payment_reference_survives_verification.sql') continue
+      // The Order/Finance write guards run as their owner (20270117000000): ALTER
+      // FUNCTION only, held by src/lib/orders/orderFinanceGuardsRunAsOwner.test.ts.
+      if (f === 'supabase/migrations/20270117000000_order_finance_guards_run_as_owner.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -831,7 +834,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -916,8 +919,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(untouchable), false,
       `${untouchable} is outside what removing the duplicate approval reaches`)
       // …unless PI numbering (20270114000000) reaches it on purpose: the three
-      // reasons live in paymentGate.ts and the footer fingerprint in the parser.
-      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+      // reasons live in paymentGate.ts and the footer fingerprint in the parser;
+      // or the proof-failure change (20270117000000) does, which names only
+      // the Record Payment screens it rewords.
+      if (!ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1188,7 +1193,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     ]) {
       assert.equal(ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable), false,
         `${untouchable} must not ride in on a presentation allowance`)
-      assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      // …unless the proof-failure change (20270117000000) reaches it on
+      // purpose: the split-payment modal's proof-failure notice now says the
+      // payment is recorded and awaiting verification.
+      if (!ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
+        assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
+      }
     }
   })
 
@@ -1507,6 +1517,37 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  /**
+   * The Order/Finance write guards run as their owner (20270117000000), so a
+   * signed-in person can attach a payment proof again. One migration (ALTER
+   * FUNCTION only), its text test, and the one-line inventory pins it moved.
+   */
+  const ALLOWED_GUARDS_RUN_AS_OWNER = new Set([
+    'supabase/migrations/20270117000000_order_finance_guards_run_as_owner.sql',
+    'src/lib/orders/orderFinanceGuardsRunAsOwner.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    // A failed proof leaves the payment recorded and pending, and each Record
+    // Payment screen says so; the Payment Requests screen no longer deletes it.
+    'src/app/finance/page.tsx',
+    'src/lib/finance/piPaymentView.ts',
+    'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    'src/lib/finance/paymentDeletionSurfaces.test.ts',
+    'src/lib/finance/paymentIdempotency.test.ts',
+    // migration inventories: one line each
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+
   const ALLOWED_ANNOUNCEMENTS = new Set([
     'supabase/migrations/20270110000000_announcements.sql',
     'src/lib/announcements.ts',
@@ -1596,6 +1637,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
     !ALLOWED_ANNOUNCEMENTS.has(f) &&
     !ALLOWED_PAYMENT_REFERENCE.has(f) &&
+    !ALLOWED_GUARDS_RUN_AS_OWNER.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     !ALLOWED_PERFORMANCE_PARALLEL_READS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
@@ -1625,7 +1667,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(ALLOWED_OPERATIONS_HANDOFF.has(untouchable), false, `${untouchable} must not ride in on the handoff`)
       // …unless the revised-PI promotion (20270113000000) reaches it on purpose:
       // staging a revision IS a change to the PI revision path.
-      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable)) {
+      if (!ALLOWED_REVISED_PI_PROMOTION.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1697,7 +1739,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // call) over files this branch has no business touching.
     for (const intruder of [
       // Finance and payment surfaces the expense guard exists to protect.
-      'src/app/finance/page.tsx',
+      // (src/app/finance/page.tsx is NAMED in ALLOWED_GUARDS_RUN_AS_OWNER since 20270117000000 —
+      // a failed proof no longer deletes the payment there — so the Finance
+      // layout probes the category instead.)
+      'src/app/finance/layout.tsx',
       // (ReceivedPaymentsView.tsx is allowed ONE change since 20270116000000 and
       // is held to it line by line below; the payment modules beside it are not.)
       'src/lib/finance/paymentAllocations.ts',
@@ -1741,8 +1786,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // End to end: an intruder in the touched set makes the guard FAIL, not
     // merely register. This is the assertion 'NO EXISTING FINANCE OR ORDERS
     // SCREEN WAS EDITED' runs, with one extra file in the input.
-    const withIntruder = [...touched, 'src/app/finance/page.tsx'].filter(isUnexpectedFile)
-    assert.deepEqual(withIntruder, ['src/app/finance/page.tsx'])
+    // (The Finance layout, not finance/page.tsx, which ALLOWED_GUARDS_RUN_AS_OWNER names.)
+    const withIntruder = [...touched, 'src/app/finance/layout.tsx'].filter(isUnexpectedFile)
+    assert.deepEqual(withIntruder, ['src/app/finance/layout.tsx'])
   })
 
   test('the PI refinement allowance names files, never a directory', () => {
@@ -1772,7 +1818,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // authorized branch changing the file says nothing about this one.
       if (!ALLOWED_PI_DRAFT_BUSINESS_RULES.has(untouchable)
           && !ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable)
+          && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1906,9 +1953,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
+        || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file)
         || ALLOWED_PAYMENT_REFERENCE.has(file)
-        || ALLOWED_TASK_IMAGE_GALLERY.has(file)
-        || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file),
+        || ALLOWED_GUARDS_RUN_AS_OWNER.has(file)
+        || ALLOWED_TASK_IMAGE_GALLERY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
@@ -1947,6 +1995,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/components/layout/ModuleGuard.tsx',
       'src/app/finance/layout.tsx',
     ]) {
+      // finance/page.tsx is reached on purpose by the proof-failure change
+      // (20270117000000): a failed proof no longer deletes the payment. The
+      // money modules (entry, allocations, position, exact money, currency) are not.
+      if (ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable)) continue
       assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
     }
   })
