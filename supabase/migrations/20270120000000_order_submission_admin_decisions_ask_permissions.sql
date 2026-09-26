@@ -116,6 +116,11 @@ begin
            where p.oid = 'public.order_finance_reset_write_guard()'::regprocedure) then
     raise exception 'DEPENDENCY MISSING: 20270117000000 (the Order/Finance write guards run as their owner) must be applied before this migration';
   end if;
+  -- And the reviewer who verifies a payment must be able to open its proof
+  -- (20270118120000), or the second Admin verifies blind.
+  if to_regprocedure('public.can_open_payment_proof(uuid)') is null then
+    raise exception 'DEPENDENCY MISSING: 20270118120000 (a payment''s proof opens for its reviewers) must be applied before this migration';
+  end if;
 end $dep$;
 
 

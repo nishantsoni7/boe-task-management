@@ -170,6 +170,11 @@ describe('it lands after the proof fix it depends on', () => {
     assert.ok(FILE > '20270117000000_order_finance_guards_run_as_owner.sql')
     assert.match(SQL, /if not \(select p\.prosecdef from pg_proc p\s+where p\.oid = 'public\.order_finance_reset_write_guard\(\)'::regprocedure\) then\s+raise exception 'DEPENDENCY MISSING: 20270117000000/)
   })
+
+  test('it sorts after 20270118120000 and refuses to apply before it (reviewers open the proof)', () => {
+    assert.ok(FILE > '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql')
+    assert.match(SQL, /if to_regprocedure\('public\.can_open_payment_proof\(uuid\)'\) is null then\s+raise exception 'DEPENDENCY MISSING: 20270118120000/)
+  })
 })
 
 describe('complete_payment_entry: the last call, only for the caller\'s own pending payment', () => {
