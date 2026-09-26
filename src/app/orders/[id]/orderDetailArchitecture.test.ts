@@ -99,9 +99,10 @@ describe('the redundant surfaces are gone', () => {
     }
   })
 
-  test('Fabric & Finish is BESIDE the box, and is the only place the approvals are stated', () => {
+  test('Fabric & Finish is a strip ABOVE the box, and is the only place the approvals are stated', () => {
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.ok(row.indexOf('<OrderDocumentsPanel') < row.indexOf('<OrderFabricFinishCard'))
+    assert.ok(row.indexOf('<OrderFabricFinishCard') >= 0)
+    assert.ok(row.indexOf('<OrderFabricFinishCard') < row.indexOf('<OrderDocumentsPanel'))
     // The Documents box does not summarise them a column away from the card
     // that states them in full.
     const panel = code(STATUS).slice(code(STATUS).indexOf('export function OrderDocumentsPanel'))
@@ -139,7 +140,7 @@ describe('the redundant surfaces are gone', () => {
   })
 
   test('Main PI and Design Files are both still there, in the Documents box', () => {
-    const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('<OrderFabricFinishCard'))
+    const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('</OrderDocumentsRow>'))
     // The box is handed all three kinds of paperwork, and every control the
     // Main PI card used to own.
     for (const kept of ['mainPi', 'design', 'clientPo',
@@ -264,12 +265,13 @@ describe('the redundant surfaces are gone', () => {
     }
   })
 
-  test('the alignment date and actor are shown ONLY for an aligned Order', () => {
+  test('the alignment date and actor are shown ONLY for an aligned Order — or the reason for a HELD one (walkthrough W2)', () => {
     // describeProductionAlignment already nulls the line for an unaligned
     // Order; the view refuses to draw it a second time rather than trusting a
     // caller that hands over a stale one.
     const ws = read('src/lib/orders/orderWorkspace.ts')
-    assert.ok(ws.includes('line: input.productionAligned ? (production?.detail ?? null) : null'))
+    assert.ok(ws.includes('line: input.productionAligned || input.productionHeld ? (production?.detail ?? null) : null'))
+    assert.ok(page.includes('productionHeld: !!handoffAlignment?.held,'))
   })
 
   test('and each of the three still comes from its original source', () => {
@@ -410,7 +412,26 @@ describe('no Order fact is stated twice', () => {
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
     assert.ok(body.indexOf('className="order-products"') < body.indexOf('PAYMENT_SECTION_TITLE'))
+    // ONE line is allowed to name the advance above the products: the attention
+    // strip's figure-free "Production blocked: advance below 40% — see Payment"
+    // (20270116000000). Its figures are in the Payment section.
     const above = body.slice(0, body.indexOf('className="order-products"'))
+      .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
+      // …and the same words as the reason Accept for production is disabled.
+      .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
+      // …and two figure-free yes/no answers: is the Order on hold, so the
+      // reviewer's "Align production again" is offered (20270116000000 §4d).
+      .replace('heldForAdvance={!!advance?.hold}', '')
+      .replace('const operationsRealignOffered = !!advance?.hold', '')
+      // …and who may align a held Order again: the current reviewer, or an
+      // administrator's recovery when none can act (review R1). Yes/no only.
+      .replace('const realignBy = viewAsUserId ? null : (advance?.realign ?? null)', '')
+      .replace('const operationsRecoverOffered = !!advance?.hold', '')
+      // …and the amber 'ready again' line for a held Order (review W3): words only.
+      .replace("advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),", '')
+      // …and whether a held Order is covered again, for its line (review N1).
+      .replace('holdCovered: advanceHoldCovered(advance),', '')
+    assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
       assert.equal(above.includes(figure), false, figure + ' appears above the product list')
@@ -471,8 +492,13 @@ describe('no Order fact is stated twice', () => {
     // The net-effect line took the module's only arithmetic with it.
     assert.equal((lib.match(/Math\.round\(/g) ?? []).length, 0)
     assert.equal(lib.includes('total - base'), false)
-    // The page hands the section rows and nothing else — no net, no formatter.
-    assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows)'))
+    // The page hands the section rows — and, only for an AMENDED Order, the
+    // Order's own stored value, formatted by the PI rows' own formatter so the
+    // two read alike (walkthrough O-1). No net, no arithmetic on either figure.
+    assert.ok(page.includes('orderCommercialLines(piHandoff.commercialRows, orderValueAmended ? { orderValue: formatInr(Number(order.total_value)) } : null)'))
+    for (const combined of ['Number(order.total_value) -', 'Number(order.total_value) +', '- piGrandTotal', '+ piGrandTotal']) {
+      assert.equal(page.includes(combined), false, `the two figures are compared, never combined: ${combined}`)
+    }
     assert.ok(page.includes('<OrderCommercialBreakdown lines={commercialLines} embedded />'))
     assert.equal(page.includes('orderCommercialNet'), false)
   })
@@ -642,6 +668,16 @@ describe('every supporting record opens over the Order, not in another module', 
     assert.ok(fn.includes("'_blank', 'noopener,noreferrer'"))
     // And it is a storage URL, never an app route.
     assert.equal(/router\.push|href=/.test(fn), false)
+  })
+
+  test('A PI VERSION\'S PDF IS A FILE HAND-OFF TOO (20270116000000)', () => {
+    // Rendered by the server from that version's own details. The browser is
+    // handed a PDF document in a new tab — never an app page.
+    const fn = page.slice(page.indexOf('const openVersionPdf'), page.indexOf('const viewEvidence'))
+    assert.ok(fn.includes('piVersionPdfHref('))
+    assert.ok(fn.includes("'_blank', 'noopener,noreferrer'"))
+    assert.equal(/router\.push|href=/.test(fn), false)
+    assert.ok(read('src/lib/orders/piVersionPdf.ts').includes('/pi-versions/${versionId}/pdf'))
   })
 
   test('no dialog navigates with the browser', () => {

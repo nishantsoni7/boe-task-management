@@ -429,7 +429,12 @@ export function measureRowHeight(row: PdfProductRow, longestText: number): numbe
   // Roughly one extra line per 34 characters in the widest wrapping column, at
   // the 7.5pt the renderer uses. Deliberately generous: a row given too much
   // space looks airy, a row given too little collides with the next one.
-  const lines = Math.max(1, Math.ceil(longestText / 34))
+  // The CODE column is narrow (about six characters a line), so an Order
+  // Product Code such as "5-BE004" wraps onto two lines. A row sized only by
+  // the other columns clipped it to "5-…" whenever there was no photo to make
+  // the row tall anyway.
+  const codeLines = Math.max(1, Math.ceil((row.code ?? '').length / 6))
+  const lines = Math.max(1, Math.ceil(longestText / 34), codeLines)
   const textHeight = PDF_MIN_ROW_HEIGHT + (lines - 1) * 10
   const base = row.hasImage ? Math.max(textHeight, PDF_IMAGE_ROW_HEIGHT) : textHeight
   return Math.min(base, PDF_MAX_ROW_HEIGHT)

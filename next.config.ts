@@ -50,6 +50,9 @@ const nextConfig: NextConfig = {
     ],
     '/api/image-editor/convert': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
     '/api/orders/\\[id\\]/documents': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
+    // A PI version's PDF (#209) renders through confirmedPdfRender, which loads
+    // sharp. Without this it died in production with the same ERR_DLOPEN_FAILED.
+    '/api/orders/\\[id\\]/pi-versions/\\[versionId\\]/pdf': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
     '/api/showroom/quotation/\\[id\\]': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
   },
 

@@ -709,7 +709,7 @@ describe('the payment detail', () => {
 
   test('and the notes somebody actually wrote, each only where it exists', () => {
     const body = text(detail())
-    assert.ok(body.includes('Proof'))
+    assert.ok(body.includes('Reference / UTR'))
     assert.ok(body.includes('NEFT reference N260901.'))
     assert.ok(body.includes('Sales note'))
     // No Finance note on this payment, so no empty heading for one.
@@ -750,7 +750,7 @@ describe('the payment detail', () => {
     const body = text(dialog([bare], 'verified', {
       openId: 'p5', detail: { state: 'ready', paymentId: 'p5', fields: paymentDetailFields({}) },
     }))
-    for (const absent of ['Payment reference', 'Received in', 'Verified on', 'Proof', 'Finance note']) {
+    for (const absent of ['Payment reference', 'Received in', 'Verified on', 'Reference / UTR', 'Finance note']) {
       assert.equal(body.includes(absent), false, absent)
     }
     // What it does have is still stated.
@@ -891,7 +891,7 @@ describe('a reader who may see the Order but NOT enter Finance', () => {
       const body = text(noFinance({ openId: 'p1', detail }))
       for (const secret of ['PAY-2026-0311', 'Company account', 'NEFT reference N260901.',
                             'Advance on 0524.', 'Payment reference', 'Received in',
-                            'Verified on', 'Proof', 'Sales note', 'Finance note']) {
+                            'Verified on', 'Reference / UTR', 'Sales note', 'Finance note']) {
         assert.equal(body.includes(secret), false, secret + ' reached a non-Finance reader')
       }
     }

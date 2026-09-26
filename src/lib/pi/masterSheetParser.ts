@@ -153,6 +153,67 @@ const COMMERCIAL_CELLS = {
 } as const
 
 /**
+ * THE FOOTER IS FINGERPRINTED TOO, BY ITS OWN LABELS.
+ *
+ * Row 31 proves the product columns; nothing used to prove the footer. A PI
+ * whose sender deleted one product row from the 80-row band moves every row
+ * below it up by one, and the fixed addresses then read the NEXT figure along:
+ * "Total" landed in Transportation, GST in Total before GST, the grand total in
+ * GST, and Grand total came back empty (a production draft, 2026-09-24).
+ *
+ * So the column-G labels the template prints beside each amount are checked,
+ * and the footer is read at the one offset where EVERY label lines up. The
+ * discount's label is deliberately not among them — it reads "Discount" in some
+ * files and "Design Fees" in others (see the note at the top of this file).
+ * A partial match proves nothing and is never used: position still outranks
+ * wording, it is only allowed to move as a block, and only once proven.
+ */
+const FOOTER_LABELS: readonly { row: number; matches: (label: string) => boolean }[] = [
+  { row: 116, matches: l => l === 'subtotal' },
+  { row: 117, matches: l => l.includes('fabric') },
+  { row: 118, matches: l => l.includes('packing') },
+  { row: 119, matches: l => l.includes('transport') },
+  { row: 120, matches: l => l === 'total' },
+  { row: 121, matches: l => l.startsWith('gst') },
+  { row: 122, matches: l => l === 'grandtotal' },
+]
+
+/** How far the footer may have moved: a handful of deleted or added rows. */
+export const MAX_FOOTER_OFFSET = 20
+
+/** Lower-case letters only — "Sub Total", "Sub-Total" and "SUBTOTAL" are one label. */
+const footerLabelKey = (value: string | null): string =>
+  (value ?? '').toLowerCase().replace(/\([a-z]\)/g, '').replace(/[^a-z]/g, '')
+
+/**
+ * Where the footer sits, relative to the template.
+ *
+ * Tries 0 first, then ±1, ±2 … so the template's own layout always wins when it
+ * is there. `verified: false` means no offset matched every label; the caller
+ * then reads the template rows exactly as before and says so.
+ */
+export function locateFooter(sheet: PiSheet): { offset: number; verified: boolean } {
+  const matchesAt = (offset: number) => FOOTER_LABELS.every(({ row, matches }) => {
+    const label = footerLabelKey(textOf(sheet.cells.get(`G${row + offset}`)))
+    return label !== '' && matches(label)
+  })
+  for (let step = 0; step <= MAX_FOOTER_OFFSET; step++) {
+    for (const offset of step === 0 ? [0] : [-step, step]) {
+      if (matchesAt(offset)) return { offset, verified: true }
+    }
+  }
+  return { offset: 0, verified: false }
+}
+
+/** The same column, `offset` rows further down (negative: up). */
+export function shiftAddress(address: string, offset: number): string {
+  if (offset === 0) return address
+  const m = /^([A-Z]+)(\d+)$/.exec(address)
+  if (!m) return address
+  return `${m[1]}${Number(m[2]) + offset}`
+}
+
+/**
  * Rupee tolerance for every arithmetic cross-check.
  *
  * Workbook money is stored to two decimal places, so a real discrepancy is
@@ -275,6 +336,23 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     }
   }
 
+  // ── Where the footer sits. Everything below the product band moves with it. ──
+  const footer = locateFooter(sheet)
+  const footerOffset = footer.offset
+  const lastProductRow = LAST_PRODUCT_ROW + footerOffset
+  if (!footer.verified) {
+    warnings.push({
+      code: 'FOOTER_NOT_VERIFIED',
+      message: `The commercial footer's labels (Sub Total … Grand Total in column G) were not found where the template puts them, rows 116–122, or anywhere near. The footer figures were read from their template cells and may not be what the workbook shows — check them against the PI.`,
+    })
+  } else if (footerOffset !== 0) {
+    warnings.push({
+      code: 'FOOTER_SHIFTED',
+      row: 122 + footerOffset,
+      message: `The commercial footer sits ${Math.abs(footerOffset)} row${Math.abs(footerOffset) === 1 ? '' : 's'} ${footerOffset < 0 ? 'higher' : 'lower'} than the template's (Grand Total is on row ${122 + footerOffset}), so a product row was ${footerOffset < 0 ? 'removed from' : 'added to'} the sheet. The footer, the confirmation and dispatch dates, the terms and the fabric choice were all read ${Math.abs(footerOffset)} row${Math.abs(footerOffset) === 1 ? '' : 's'} ${footerOffset < 0 ? 'up' : 'down'}.`,
+    })
+  }
+
   // ── Products ──
   const drawingPart = resolveDrawingPart(entries, resolution.part)
   const harvest: PiImageHarvest = drawingPart
@@ -284,7 +362,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
         representativeColumn: COL.image,
         customizationColumn: COL.customization,
         firstRow: FIRST_PRODUCT_ROW,
-        lastRow: LAST_PRODUCT_ROW,
+        lastRow: lastProductRow,
       })
     : {
         representativeByRow: new Map<number, PiProductImage[]>(),
@@ -318,7 +396,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
   const representativeImages: PiProductImage[] = []
   const customizationImages: PiProductImage[] = []
 
-  for (let row = FIRST_PRODUCT_ROW; row <= LAST_PRODUCT_ROW; row++) {
+  for (let row = FIRST_PRODUCT_ROW; row <= lastProductRow; row++) {
     const hidden = sheet.hiddenRows.has(row)
     const hasContent = rowHasProductContent(sheet, row)
     if (hidden) hiddenProductRows.push(row)
@@ -357,7 +435,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       warnings,
       errors: [{
         code: 'NO_PRODUCT_ROWS',
-        message: `The template matched but no genuine product rows were found between rows ${FIRST_PRODUCT_ROW} and ${LAST_PRODUCT_ROW}.`,
+        message: `The template matched but no genuine product rows were found between rows ${FIRST_PRODUCT_ROW} and ${lastProductRow}.`,
       }],
     }
   }
@@ -369,9 +447,9 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     })
   }
 
-  const header = readHeader(sheet, warnings)
+  const header = readHeader(sheet, warnings, footerOffset)
   warnings.push(...headerRequirementWarnings(header))
-  const commercial = readCommercial(sheet, products, warnings)
+  const commercial = readCommercial(sheet, products, warnings, footerOffset)
 
   return {
     ok: true,
@@ -385,7 +463,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
         drawingPart,
         headerRow: HEADER_ROW,
         firstProductRow: FIRST_PRODUCT_ROW,
-        lastProductRow: LAST_PRODUCT_ROW,
+        lastProductRow,
+        footerOffset,
         fingerprint,
         hiddenProductRows,
         genuineProductRows,
@@ -398,8 +477,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       // it said anything this parser recognises. Prefill only — neither is
       // required here, and neither produces a diagnostic.
       piTerms: {
-        fabricResponsibility: readFabricResponsibility(sheet),
-        commercialTermsNote: readCommercialTermsNote(sheet),
+        fabricResponsibility: readFabricResponsibility(sheet, footerOffset),
+        commercialTermsNote: readCommercialTermsNote(sheet, footerOffset),
       },
       representativeImages,
       customizationImages,
@@ -689,9 +768,9 @@ const normalizeChoice = (value: string): string =>
  * not a defect. It means the same as it means everywhere else in this feature:
  * nobody has answered, and the person working on the draft is asked.
  */
-export function readFabricResponsibility(sheet: PiSheet): 'boe' | 'client' | 'not_selected' | null {
+export function readFabricResponsibility(sheet: PiSheet, footerOffset = 0): 'boe' | 'client' | 'not_selected' | null {
   for (const address of FABRIC_CHOICE_CELLS) {
-    const text = textOf(sheet.cells.get(address))
+    const text = textOf(sheet.cells.get(shiftAddress(address, footerOffset)))
     if (text === null) continue
     const match = FABRIC_CHOICE_WORDS[normalizeChoice(text)]
     if (match !== undefined) return match
@@ -714,9 +793,9 @@ const TERMS_NOTE_MARKER = 'ex-factory'
  * document's own, because this text is the record of what the client was
  * quoted.
  */
-export function readCommercialTermsNote(sheet: PiSheet): string | null {
+export function readCommercialTermsNote(sheet: PiSheet, footerOffset = 0): string | null {
   for (const address of TERMS_NOTE_CELLS) {
-    const text = textOf(sheet.cells.get(address))
+    const text = textOf(sheet.cells.get(shiftAddress(address, footerOffset)))
     if (text === null) continue
     if (!text.toLowerCase().includes(TERMS_NOTE_MARKER)) continue
     const withoutHeading = text.replace(/^\s*note\s*:?\s*/i, '').trim()
@@ -727,7 +806,7 @@ export function readCommercialTermsNote(sheet: PiSheet): string | null {
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {
+function readHeader(sheet: PiSheet, warnings: PiWarning[], footerOffset = 0): PiHeader {
   const at = (address: string) => sheet.cells.get(address)
   const text = (address: string, what: string) => {
     const cell = at(address)
@@ -754,8 +833,8 @@ function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {
     shipToPhone:           text(HEADER_CELLS.shipToPhone, 'Ship-to phone'),
     shipToGst:             text(HEADER_CELLS.shipToGst, 'Ship-to GST'),
     shippingAddress:       text(HEADER_CELLS.shippingAddress, 'Shipping address'),
-    orderConfirmationDate: date(HEADER_CELLS.orderConfirmationDate, 'Order confirmation date'),
-    dispatchCommitment:    date(HEADER_CELLS.dispatchCommitment, 'Dispatch commitment'),
+    orderConfirmationDate: date(shiftAddress(HEADER_CELLS.orderConfirmationDate, footerOffset), 'Order confirmation date'),
+    dispatchCommitment:    date(shiftAddress(HEADER_CELLS.dispatchCommitment, footerOffset), 'Dispatch commitment'),
   }
 }
 
@@ -1085,7 +1164,12 @@ function readCommercial(
   sheet: PiSheet,
   products: readonly PiProduct[],
   warnings: PiWarning[],
+  footerOffset = 0,
 ): PiCommercialSummary {
+  // The template cells, moved as one block to where the footer was proven to be.
+  const CELLS = Object.fromEntries(
+    Object.entries(COMMERCIAL_CELLS).map(([k, a]) => [k, shiftAddress(a, footerOffset)]),
+  ) as Record<keyof typeof COMMERCIAL_CELLS, string>
   const amountOrText = (
     address: string,
     what: string,
@@ -1126,7 +1210,7 @@ function readCommercial(
   }
 
   // ── The discount. Position, not label. ──
-  const discountCell = sheet.cells.get(COMMERCIAL_CELLS.discount)
+  const discountCell = sheet.cells.get(CELLS.discount)
   noteMissingCachedValue(discountCell, warnings, 'Discount')
   const discountAmount = numberOf(discountCell)
   let discount = 0
@@ -1137,26 +1221,26 @@ function readCommercial(
     // "this PI has no discount" case and needs no warning at all.
     warnings.push({
       code: 'DISCOUNT_NOT_NUMERIC',
-      cell: COMMERCIAL_CELLS.discount,
-      message: `The discount cell (${COMMERCIAL_CELLS.discount}) is not a number, so a discount of 0 has been used.`,
+      cell: CELLS.discount,
+      message: `The discount cell (${CELLS.discount}) is not a number, so a discount of 0 has been used.`,
     })
   }
 
-  const subtotalAfterDiscount = amountOrText(COMMERCIAL_CELLS.subtotalAfterDiscount, 'Sub total', 'strict', true)
+  const subtotalAfterDiscount = amountOrText(CELLS.subtotalAfterDiscount, 'Sub total', 'strict', true)
   // Fabric and packing are the two "as per actual" rows, and the template has
   // two shorthands for them: a dash means there is no such charge, and
   // "Inclusive"/"Included" means the charge is already inside another figure.
   // Both are zero and neither is a problem; anything ELSE written there still
   // is. These are the ONLY two cells that accept either.
-  const fabricCost = amountOrText(COMMERCIAL_CELLS.fabricCost, 'Fabric cost', 'wordedZero', true)
-  const packingCost = amountOrText(COMMERCIAL_CELLS.packingCost, 'Packing cost', 'wordedZero', true)
+  const fabricCost = amountOrText(CELLS.fabricCost, 'Fabric cost', 'wordedZero', true)
+  const packingCost = amountOrText(CELLS.packingCost, 'Packing cost', 'wordedZero', true)
   // Transportation is EXPECTED to be words as often as numbers ("as applicable"
   // is the standard BOE wording), so text here is not a warning — it is the
   // fact, and it is preserved verbatim rather than resolved to zero.
-  const transportation = amountOrText(COMMERCIAL_CELLS.transportation, 'Transportation', 'strict', false)
-  const totalBeforeGst = amountOrText(COMMERCIAL_CELLS.totalBeforeGst, 'Total before GST', 'strict', true)
-  const gst = amountOrText(COMMERCIAL_CELLS.gst, 'GST', 'strict', true)
-  const grandTotal = amountOrText(COMMERCIAL_CELLS.grandTotal, 'Grand total', 'strict', true)
+  const transportation = amountOrText(CELLS.transportation, 'Transportation', 'strict', false)
+  const totalBeforeGst = amountOrText(CELLS.totalBeforeGst, 'Total before GST', 'strict', true)
+  const gst = amountOrText(CELLS.gst, 'GST', 'strict', true)
+  const grandTotal = amountOrText(CELLS.grandTotal, 'Grand total', 'strict', true)
 
   // ── Derived figures ──
   const grossProductAmount = products.reduce((sum, p) => {
@@ -1176,16 +1260,31 @@ function readCommercial(
   ) {
     warnings.push({
       code: 'SUBTOTAL_MISMATCH',
-      cell: COMMERCIAL_CELLS.subtotalAfterDiscount,
+      cell: CELLS.subtotalAfterDiscount,
       stored: subtotalAfterDiscount.amount,
       computed: expectedSubtotal,
       message: `The sum of the product lines less the discount does not equal the stored sub total. The workbook's figure has been kept.`,
     })
   }
 
+  // The last line of the footer must be the two above it added up. Reported,
+  // never repaired — the workbook's own grand total is what is kept.
+  if (
+    totalBeforeGst.amount !== null && gst.amount !== null && grandTotal.amount !== null &&
+    Math.abs(totalBeforeGst.amount + gst.amount - grandTotal.amount) > MONEY_EPSILON
+  ) {
+    warnings.push({
+      code: 'GRAND_TOTAL_MISMATCH',
+      cell: CELLS.grandTotal,
+      stored: grandTotal.amount,
+      computed: totalBeforeGst.amount + gst.amount,
+      message: `Total before GST plus GST does not equal the stored grand total (${CELLS.grandTotal}). The workbook's figure has been kept.`,
+    })
+  }
+
   return {
     discount,
-    discountLabel: textOf(sheet.cells.get(COMMERCIAL_CELLS.discountLabel)),
+    discountLabel: textOf(sheet.cells.get(CELLS.discountLabel)),
     subtotalAfterDiscount,
     fabricCost,
     packingCost,

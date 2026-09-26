@@ -78,6 +78,16 @@ const ROLE: Record<string, { role: CommercialRole; label?: string }> = {
 export const PRODUCT_VALUE_LABEL = ROLE.gross.label as string
 export const ORDER_VALUE_LABEL = ROLE.grandTotal.label as string
 
+// AN AMENDED ORDER HAS TWO FIGURES, SO THEY ARE NAMED APART. amend_order (and an
+// approved change request) move orders.total_value — the Order's value, which
+// the 40% advance and the Payment section measure against — while the approved
+// PI keeps its own Grand Total until a revised PI is approved. Captioning the
+// PI's total "Order value" beside a different Order value told a reader two
+// different things under one name. When they differ, the PI's line says it is
+// the PI's, and the Order's amended value closes the breakdown.
+export const PI_VALUE_LABEL = 'PI value'
+export const ORDER_VALUE_AMENDED_NOTE = 'Amended on the Order; the PI above keeps its own total until a revised PI is approved.'
+
 /** `₹0` exactly — what formatInr prints for a nil amount. A nil factor takes no
  *  sign: `− ₹0` reads as a deduction that is not one. */
 const isNil = (value: string): boolean => value.trim() === '₹0'
@@ -103,8 +113,12 @@ function signOf(role: CommercialRole, row: PiAmountRow): '−' | '+' | null {
  * total, tax, the total — and reordering a calculation is how it stops reading
  * as one. This maps each row where it stands.
  */
-export function orderCommercialLines(rows: readonly PiAmountRow[]): CommercialLine[] {
-  return rows.map(row => {
+export function orderCommercialLines(
+  rows: readonly PiAmountRow[],
+  /** The Order's own value, formatted, when it was amended away from the PI's total. */
+  amended?: { orderValue: string } | null,
+): CommercialLine[] {
+  const lines = rows.map(row => {
     const known = Object.prototype.hasOwnProperty.call(ROLE, row.key)
     const meta = known ? ROLE[row.key] : { role: 'addition' as CommercialRole }
     return {
@@ -118,6 +132,14 @@ export function orderCommercialLines(rows: readonly PiAmountRow[]): CommercialLi
       note: row.note ?? null,
     }
   })
+  if (!amended) return lines
+  return [
+    ...lines.map(l => (l.key === 'grandTotal' ? { ...l, label: PI_VALUE_LABEL, role: 'running' as CommercialRole } : l)),
+    {
+      key: 'orderValue', label: ORDER_VALUE_LABEL, value: amended.orderValue, kind: 'amount' as PiValueKind,
+      role: 'final' as CommercialRole, sign: null, groupStart: true, note: ORDER_VALUE_AMENDED_NOTE,
+    },
+  ]
 }
 
 // ── The fallback for an Order that never came from a PI ───────────────────────

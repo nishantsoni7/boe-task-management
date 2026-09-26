@@ -77,9 +77,25 @@ describe('the migration', () => {
     assert.doesNotMatch(SQL, /notification_type/)
   })
 
-  test('it is the newest migration file', () => {
+  test('everything sitting behind it is accounted for', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20270110000000_announcements.sql')
+    assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
+    assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // A payment's typed reference survives verification: a trigger on
+      // finance_payment_requests, a carry-forward of unverified rows, and
+      // pi_submission_payment_summary. It touches nothing Announcements creates.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
+      // Order document submissions (#202), renumbered after this applied
+      // migration. It touches nothing Announcements creates.
+      '20270112000000_order_document_submissions.sql',
+      // Revised-PI promotion (#205), renumbered likewise.
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      // PI numbering, PI edit revisions and the revision in force at Admin
+      // approval (#209), renumbered likewise.
+      '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+      '20270115000000_order_submission_pi_edit_revisions.sql',
+      '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+    ])
   })
 })
 

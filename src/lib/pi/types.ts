@@ -186,6 +186,15 @@ export type PiWarningCode =
    *  text and a null amount are returned; nothing is coerced. A blank or a dash
    *  in the fabric/packing cost cells is NOT this — see PiAmountOrText. */
   | 'COMMERCIAL_VALUE_NON_NUMERIC'
+  /** The footer's column-G labels sit a whole number of rows away from the
+   *  template's (a product row was deleted or inserted). Every footer, date,
+   *  terms and fabric cell was read at that same offset, which this names. */
+  | 'FOOTER_SHIFTED'
+  /** The footer's labels were found neither at the template rows nor at any one
+   *  uniform offset, so the footer was read at the template rows, unproven. */
+  | 'FOOTER_NOT_VERIFIED'
+  /** Total + GST disagrees with the stored grand total. Nothing is repaired. */
+  | 'GRAND_TOTAL_MISMATCH'
 
 export type PiError = {
   code: PiErrorCode
@@ -483,6 +492,9 @@ export type PiTemplateInfo = {
   headerRow: number
   firstProductRow: number
   lastProductRow: number
+  /** Rows the footer block sits away from where the template puts it (0 = in
+   *  place). Optional so a fixture that predates it still describes a template. */
+  footerOffset?: number
   /** Every fingerprint cell that was checked, passing and failing alike. */
   fingerprint: readonly PiTemplateCellCheck[]
   /** Rows inside the product band the workbook marks hidden. */
