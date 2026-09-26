@@ -1062,6 +1062,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   })
 
   /**
+   * Non-blocking first open: the daily quote on Modules lifts on the first
+   * interaction and after 1.6 s instead of holding every first open for 2.5 s.
+   * No Finance or Orders file. (Placed apart from the other recent allowances.)
+   */
+  const ALLOWED_DAILY_QUOTE = new Set([
+    'src/components/DailyQuoteLoader.tsx',
+    'src/components/dailyQuoteLoader.test.tsx',
+  ])
+
+  /**
    * THE PERSONAL MODULE ORDER (branch feat/personal-module-order).
    *
    * Each signed-in person can arrange their own /modules launcher cards. Five
@@ -1563,6 +1573,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
+    !ALLOWED_DAILY_QUOTE.has(f) &&
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
     !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
     !ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(f) &&
@@ -1881,6 +1892,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
+        || ALLOWED_DAILY_QUOTE.has(file)
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
         || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
         || ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(file)

@@ -95,7 +95,8 @@ function getDailyQuote() {
 //
 // Children are now always rendered and the quote sits on top of them, so the
 // page loads underneath it and is ready when it lifts. Nothing about the quote
-// itself changed: same design, same 2.5s, same once-per-day localStorage key.
+// itself changed then: same design, same 2.5s, same once-per-day localStorage key.
+// (Its length and dismissal changed later — see QUOTE_TOTAL_MS below.)
 //
 // COVERING IS NOT ENOUGH — the overlay must also make what is beneath it
 // unreachable. It already blocked the mouse by being opaque and on top; while
@@ -106,6 +107,23 @@ function getDailyQuote() {
 //
 // The wrapper carrying `inert` uses `display: contents`, so it generates no box
 // of its own and the layout underneath is byte-for-byte what it was before.
+// ── NOT A WAIT THE READER HAS TO SIT THROUGH ─────────────────────────────────
+//
+// Measured 2026-09-26 (local production build, mid-range phone profile: 4x CPU,
+// 150 ms RTT, 1.6 Mbps): the first open of the day showed Modules at 6.15–6.31 s
+// with the quote and 4.51–4.75 s without it — the fixed 2.5 s overlay, which
+// starts only after hydration, added 1.6 s on a phone and 2.1 s on desktop to
+// every person's first open, whether or not the page underneath was ready.
+//
+// So the quote stays (same design, same once-per-day key) but no longer holds
+// anybody: it lifts on the reader's first tap, click, key, scroll or touch, and
+// on its own after QUOTE_TOTAL_MS instead of 2.5 s. The page still loads
+// underneath exactly as before.
+export const QUOTE_FADE_OUT_AT_MS = 1200
+export const QUOTE_TOTAL_MS = 1600
+/** Interactions that mean "I want to use the page now". */
+export const QUOTE_DISMISS_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
+
 export default function DailyQuoteLoader({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<'check' | 'quote' | 'done'>('check')
   const [visible, setVisible] = useState(false)
@@ -140,7 +158,7 @@ export default function DailyQuoteLoader({ children }: { children: React.ReactNo
     // Recording it at the moment it is shown is what makes the once-per-day
     // promise actually true, and is what stops the quote from delaying repeat
     // navigation back to /modules. Nothing else moves: same key, same local
-    // calendar day, same 2.5s presentation, same visuals.
+    // calendar day, same visuals.
     try {
       localStorage.setItem(key, '1')
     } catch {
@@ -150,16 +168,23 @@ export default function DailyQuoteLoader({ children }: { children: React.ReactNo
     setPhase('quote')
     // Fade in
     const fadeIn = setTimeout(() => setVisible(true), 30)
-    // Start fade out at 2.1s, then hand the page back at 2.5s
-    const fadeOut = setTimeout(() => setVisible(false), 2100)
+    // Start fading out, then hand the page back (see QUOTE_TOTAL_MS above).
+    const fadeOut = setTimeout(() => setVisible(false), QUOTE_FADE_OUT_AT_MS)
     const finish  = setTimeout(() => {
       setPhase('done')
-    }, 2500)
+    }, QUOTE_TOTAL_MS)
+
+    // The reader wants the page: hand it back at once. Capture phase, so the
+    // very first interaction counts; the tap that dismisses is not passed on to
+    // whatever happens to be beneath it (the page is still inert at that moment).
+    const dismiss = () => setPhase('done')
+    for (const type of QUOTE_DISMISS_EVENTS) window.addEventListener(type, dismiss, { capture: true, once: true, passive: true })
 
     return () => {
       clearTimeout(fadeIn)
       clearTimeout(fadeOut)
       clearTimeout(finish)
+      for (const type of QUOTE_DISMISS_EVENTS) window.removeEventListener(type, dismiss, { capture: true })
     }
   }, [])
 
@@ -258,9 +283,13 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
             height: '100%',
             background: '#4A90D9',
             borderRadius: '999px',
-            animation: 'boe-progress 2.1s linear forwards',
+            animation: `boe-progress ${QUOTE_FADE_OUT_AT_MS}ms linear forwards`,
           }} />
         </div>
+
+        <p style={{ margin: '18px 0 0', fontSize: '12px', color: '#64748B', letterSpacing: '0.02em' }}>
+          Tap anywhere to continue
+        </p>
 
         <style>{`
           @keyframes boe-progress {
