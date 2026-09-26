@@ -51,6 +51,7 @@ import {
   expenseSearchClause,
   expenseTotal,
   orderedDateRange,
+  withExpenseSearch,
   selectableCategories,
   type ExpenseCategory,
   type ExpenseFilters,
@@ -375,7 +376,9 @@ export function ExpensesView() {
   // without this every keystroke would be a round trip. The other controls are
   // each one deliberate click and are applied at once.
   useEffect(() => {
-    const at = setTimeout(() => setFilters(prev => ({ ...prev, search: searchTerm })), 300)
+    // withExpenseSearch keeps the same object when nothing changed, so the
+    // mount-time tick does not reload a list that is already loading.
+    const at = setTimeout(() => setFilters(prev => withExpenseSearch(prev, searchTerm)), 300)
     return () => clearTimeout(at)
   }, [searchTerm])
 
@@ -700,17 +703,22 @@ export function ExpensesView() {
           width="560px"
           closeOnBackdropClick={false}
         >
-          <ExpenseForm
-            supabase={supabase}
-            userId={userId}
-            mode="complete"
-            draft={completing}
-            categories={categories}
-            history={history}
-            onCategoryCreated={c => setCategories(prev => [...prev, c])}
-            onSaved={afterSave}
-            onCancel={() => setCompleting(null)}
-          />
+          {/* THE SAME GUARD AS EDIT. This form is also prefilled from a stored
+              row (parsed_amount arrives as a NUMBER), and before #179 it
+              crashed the whole route exactly as Edit did. */}
+          <ExpenseErrorBoundary label="complete" onReset={() => setCompleting(null)}>
+            <ExpenseForm
+              supabase={supabase}
+              userId={userId}
+              mode="complete"
+              draft={completing}
+              categories={categories}
+              history={history}
+              onCategoryCreated={c => setCategories(prev => [...prev, c])}
+              onSaved={afterSave}
+              onCancel={() => setCompleting(null)}
+            />
+          </ExpenseErrorBoundary>
         </FinanceModal>
       )}
 

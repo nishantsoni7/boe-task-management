@@ -393,6 +393,19 @@ export function expenseFiltersActive(filters: ExpenseFilters): boolean {
 }
 
 /**
+ * The filters with the debounced search applied — THE SAME OBJECT when the
+ * search has not changed.
+ *
+ * The list reloads whenever `filters` changes identity. The debounce fires once
+ * on mount with the unchanged empty search, and a fresh object there reloaded
+ * the list ~300 ms after the first load had started, discarding that load and
+ * running the list → names round trips a second time before any row appeared.
+ */
+export function withExpenseSearch(filters: ExpenseFilters, search: string): ExpenseFilters {
+  return filters.search === search ? filters : { ...filters, search }
+}
+
+/**
  * A date range typed the wrong way round is read as the range BETWEEN the two
  * bounds, not answered with an empty list — the same courtesy the Confirmed
  * Payments toolbar extends.
