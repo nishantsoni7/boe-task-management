@@ -1664,6 +1664,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
+   * Payroll periods reads side by side: GET /api/payroll/periods waited 4.6 s
+   * on the server in production as a chain of sequential server → database
+   * round trips. Independent reads now overlap; responses are unchanged.
+   * (Placed apart from the newest allowances so parallel branches merge cleanly.)
+   */
+  const ALLOWED_PAYROLL_PERIODS_PARALLEL_READS = new Set([
+    'src/app/api/payroll/periods/route.ts',
+    'src/app/api/payroll/periods/periodsParallel.test.ts',
+  ])
+
+  /**
    * Task Detail image gallery: task attachments move out of the summary card
    * into their own card (under Activity on desktop), with a large image viewer
    * and a "Download all images" ZIP. Task Management only — no Finance or
@@ -1774,6 +1785,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !f.startsWith('docs/') &&
     !ALLOWED_EXISTING.has(f) &&
     !ALLOWED_TESTS.has(f) &&
+    !ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(f) &&
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
@@ -2106,6 +2118,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
+        || ALLOWED_PAYROLL_PERIODS_PARALLEL_READS.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
