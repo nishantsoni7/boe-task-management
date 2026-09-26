@@ -15,7 +15,12 @@
 // see src/lib/navigation/tabRecovery.ts for why BOE never reloads by itself.
 
 export type RouteErrorKind =
-  /** The page's code for this deployment is gone — BOE was updated since this tab loaded. */
+  /**
+   * Part of the page's code never arrived. Either BOE was updated since this tab
+   * loaded, or a download failed earlier — a link's code is fetched ahead of the
+   * tap, and a chunk that failed then is not fetched again, so the tap fails even
+   * after the connection is back. Only a reload fetches it again.
+   */
   | 'updated'
   /** The network dropped while loading. Retrying usually works. */
   | 'network'
@@ -35,8 +40,9 @@ export function classifyRouteError(error: { name?: unknown; message?: unknown } 
 
 export const ROUTE_ERROR_COPY: Record<RouteErrorKind, { title: string; body: string; primary: 'retry' | 'reload' }> = {
   updated: {
-    title: 'BOE has been updated',
-    body: 'This page needs the latest version. Reload to continue.',
+    // Not "BOE has been updated": the same error follows a dropped download.
+    title: 'This page didn’t finish loading',
+    body: 'Part of the page could not be downloaded. Reload to continue.',
     primary: 'reload',
   },
   network: {

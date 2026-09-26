@@ -49,11 +49,16 @@ describe('the fallback', () => {
     assert.ok(html.includes('href="/modules"'))
     assert.ok(html.includes('role="alert"'))
   })
-  test('after a deployment the primary action is Reload, and it is a button the person presses', () => {
+  test('missing code: the primary action is Reload, and it is a button the person presses', () => {
     const html = render(err('Loading chunk 9 failed.'))
     assert.ok(html.includes(ROUTE_ERROR_COPY.updated.title))
     assert.ok(html.includes('>Reload<'))
+    // Try again re-renders with the same failed chunk; only a reload refetches it.
     assert.equal(html.includes('>Try again<'), false)
+  })
+  test('missing code does not claim an update — a dropped prefetch throws the same error', () => {
+    const { title, body } = ROUTE_ERROR_COPY.updated
+    assert.equal(/updated|new version|latest version/i.test(title + ' ' + body), false)
   })
   test('a server digest is shown as a reference; anything else is not', () => {
     assert.ok(render(err('x', 'Error', '3147581029')).includes('Reference: 3147581029'))
