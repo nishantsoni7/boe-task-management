@@ -102,7 +102,7 @@ describe('the migration', () => {
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal. It touches nothing
       // Announcements creates.
-      '20270121000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 })

@@ -1,5 +1,5 @@
 /**
- * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270121000000), read as text.
+ * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270124000000), read as text.
  *
  * Executing it was done against a disposable local stack (main's chain plus
  * this file, then the #209 chain on top, then this file again). Before it,
@@ -30,7 +30,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270121000000_order_submission_legacy_advance_doors_closed.sql'
+const NAME = '20270124000000_order_submission_legacy_advance_doors_closed.sql'
 const MIGRATION = read(`supabase/migrations/${NAME}`)
 const SQL = stripSql(MIGRATION)
 const PREVIOUS = read('supabase/migrations/20260917000000_order_submission_advance_amount.sql')
@@ -57,8 +57,8 @@ function definition(sql: string, name: string): string {
 }
 
 describe('the file, and where it sits', () => {
-  test('it sorts after the newest applied migration (20270120000000)', () => {
-    assert.ok(NAME > '20270120000000_order_submission_admin_decisions_ask_permissions.sql')
+  test('it sorts after the newest applied migration (20270122000000)', () => {
+    assert.ok(NAME > '20270122000000_order_submission_internal_details.sql')
   })
 
   test('it re-emits exactly one function, the implementation', () => {
@@ -84,7 +84,7 @@ describe('§1. the implementation clears the decision basis, and changes nothing
       ...BASIS_CLEARED.map(s => s + ','),
       BASIS_CLEARED[3],
       'advance_exception_rejection_reason = null,',
-      '-- the decision basis goes with the decision (20270121000000): it may only',
+      '-- the decision basis goes with the decision (20270124000000): it may only',
       '-- stand on an approved exception (order_submissions_exception_basis_scope)',
     ])
     for (const line of added) {

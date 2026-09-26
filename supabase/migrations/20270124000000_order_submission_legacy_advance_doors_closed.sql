@@ -41,9 +41,9 @@
 -- migrations already applied to production. No migration applied since
 -- 20260917000000 redefines the implementation or grants either door.
 --
--- NUMBERED AFTER 20270120000000, the newest migration already applied to
--- production when this was written (first 20270106000000, then 20270111000000;
--- each time production moved past it): a lower number would sit behind an
+-- NUMBERED AFTER 20270122000000, the newest migration already applied to
+-- production when this was written (first 20270106000000, then 20270111000000,
+-- then 20270121000000; each time production moved past it): a lower number would sit behind an
 -- applied one, and `supabase db push` refuses that without --include-all.
 --
 -- REVERSAL: re-run 20260917000000's §5 definition of
@@ -461,7 +461,7 @@ begin
            advance_exception_decided_by = null,
            advance_exception_decided_at = null,
            advance_exception_rejection_reason = null,
-           -- the decision basis goes with the decision (20270121000000): it may only
+           -- the decision basis goes with the decision (20270124000000): it may only
            -- stand on an approved exception (order_submissions_exception_basis_scope)
            advance_exception_decided_grand_total     = null,
            advance_exception_decided_workbook_sha256 = null,
@@ -540,7 +540,7 @@ begin
              advance_exception_decided_by = null,
              advance_exception_decided_at = null,
              advance_exception_rejection_reason = null,
-             -- the decision basis goes with the decision (20270121000000): it may only
+             -- the decision basis goes with the decision (20270124000000): it may only
              -- stand on an approved exception (order_submissions_exception_basis_scope)
              advance_exception_decided_grand_total     = null,
              advance_exception_decided_workbook_sha256 = null,
@@ -609,10 +609,10 @@ revoke execute on function public.submit_order_submission_with_advance_amount(uu
   from public, anon, authenticated;
 
 comment on function public.submit_order_submission_with_advance(uuid, text, text, numeric, text) is
-  'LEGACY, not callable by clients since 20270121000000: the application submits a PI through submit_pi_for_review(). Submits a PI for review under a declared advance requirement: ''standard'' for the configured 40% rule, or ''exception'' with a percentage of at least 0 and below 40 and a mandatory reason.';
+  'LEGACY, not callable by clients since 20270124000000: the application submits a PI through submit_pi_for_review(). Submits a PI for review under a declared advance requirement: ''standard'' for the configured 40% rule, or ''exception'' with a percentage of at least 0 and below 40 and a mandatory reason.';
 
 comment on function public.submit_order_submission_with_advance_amount(uuid, text, text, numeric, text) is
-  'LEGACY, not callable by clients since 20270121000000: the application submits a PI through submit_pi_for_review(). Submits a PI for review under a declared advance AMOUNT in rupees: ''standard'' for an amount of at least 40% of the grand total, or ''exception'' with an amount below 40% and a mandatory reason.';
+  'LEGACY, not callable by clients since 20270124000000: the application submits a PI through submit_pi_for_review(). Submits a PI for review under a declared advance AMOUNT in rupees: ''standard'' for an amount of at least 40% of the grand total, or ''exception'' with an amount below 40% and a mandatory reason.';
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- §3. Assertions: the transaction fails unless every promise above holds

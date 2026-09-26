@@ -659,9 +659,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // A payment's proof opens for its recorder and its reviewers (20270118120000),
       // held by src/lib/finance/paymentProofViewMigration.test.ts.
       if (f === 'supabase/migrations/20270118120000_finance_payment_proof_opens_for_its_reviewers.sql') continue
-      // And the legacy advance submit doors closing (20270121000000): one
+      // And the legacy advance submit doors closing (20270124000000): one
       // REVOKE and one restated internal, held by its own suite.
-      if (f === 'supabase/migrations/20270121000000_order_submission_legacy_advance_doors_closed.sql') continue
+      if (f === 'supabase/migrations/20270124000000_order_submission_legacy_advance_doors_closed.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1702,7 +1702,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
-   * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270121000000).
+   * THE LEGACY ADVANCE SUBMIT DOORS ARE CLOSED (20270124000000).
    *
    * One migration — a REVOKE from authenticated and the restated submit
    * implementation — no screen, no rule, no money; its own suite, and the
@@ -1724,7 +1724,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/topTasksApproval.test.ts',
     'src/lib/announcementsMigration.test.ts',
   ])
-  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270121000000_order_submission_legacy_advance_doors_closed.sql'
+  const LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION = 'supabase/migrations/20270124000000_order_submission_legacy_advance_doors_closed.sql'
 
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&

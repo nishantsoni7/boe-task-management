@@ -1043,7 +1043,7 @@ describe('the applied migrations are frozen', () => {
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
       // clearing the decision basis). No table, policy or row is touched.
-      '20270121000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 
@@ -1338,7 +1338,7 @@ describe('the applied migrations are frozen', () => {
       // legacy advance doors from authenticated, and CREATE OR REPLACE of
       // submit_order_submission_advance_v2_internal (20260917's body plus
       // clearing the decision basis). No table, policy or row is touched.
-      '20270121000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
