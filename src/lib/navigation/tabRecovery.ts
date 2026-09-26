@@ -11,9 +11,11 @@
 // FIX: notice the new deployment BEFORE the person clicks. When a tab returns
 // after a while hidden (or periodically while hidden) it asks /api/deployment
 // which deployment is live. If it differs from the tab's own and the person is
-// not looking and has nothing unsaved, the tab reloads quietly — the full load
-// happens while nobody is waiting. Otherwise a small notice offers Refresh;
-// nothing is forced on somebody mid-task.
+// not looking and has nothing unsaved (unsavedWorkReasons — typed text, chosen
+// files, open modals, saves in flight, filled forms, the page's own leave
+// guards), the tab reloads quietly — the full load happens while nobody is
+// waiting. Otherwise a small notice offers Refresh; nothing is forced on
+// somebody mid-task.
 //
 // MEASURED PROBLEM 2 — A NAVIGATION THAT NEVER STARTS. Production traces showed
 // requests queued 4–19 s on a dead HTTP/2 connection before Chrome opened a new
@@ -56,9 +58,37 @@ export function parseDeploymentId(value: unknown): string | null {
 }
 
 /**
- * Does the page hold something a reload would lose? Deliberately cautious:
- * anything the person typed or changed on this page since arriving, any open
- * dialog, or a focused editable field.
+ * Everything on a page that a reload could lose. Each signal is collected by
+ * the component (src/components/layout/TabRecovery.tsx); the decision is here.
+ */
+export type PageWorkSignals = {
+  /** An `input` / `change` event on a field since this route was opened. */
+  editedSinceArrival: boolean
+  /** A focused field or contenteditable. */
+  editableFocused: boolean
+  /** role=dialog, <dialog open>, aria-modal, the app's modal classes, or any
+   *  fixed layer covering most of the screen (the app's inline-styled modals). */
+  openOverlays: number
+  /** File inputs holding a chosen file (a proof, an import sheet, a photo). */
+  chosenFiles: number
+  /** Writes still in flight: non-GET fetches plus React Query mutations. */
+  pendingSaves: number
+  /** Editable fields with a value inside a form or an overlay. */
+  filledFormFields: number
+  /** The page's own "leave site?" guards (beforeunload listeners it added). */
+  leaveGuards: number
+  /** Elements marked data-unsaved="true" by a page that knows better. */
+  declaredUnsaved: number
+}
+
+export type UnsavedReason = keyof PageWorkSignals
+
+/**
+ * Why a reload would lose something — an empty list means nothing would be lost.
+ *
+ * DELIBERATELY CAUTIOUS. A false "unsaved" only costs a notice instead of a
+ * quiet reload; a false "clean" loses somebody's work. So a prefilled edit
+ * form counts as unsaved even if nothing was changed yet.
  *
  * WHY "TYPED SINCE ARRIVING" AND NOT value ≠ defaultValue. React keeps a
  * controlled input's `defaultValue` (its value attribute) in step with its
@@ -66,10 +96,34 @@ export function parseDeploymentId(value: unknown): string | null {
  * found by the stale-tab test, which reloaded a page with a half-typed search.
  * The component therefore records real `input` / `change` events instead.
  */
-export function hasUnsavedWork(doc: {
-  editedSinceArrival: boolean
-  openDialogs: number
-  editableFocused: boolean
-}): boolean {
-  return doc.editedSinceArrival || doc.openDialogs > 0 || doc.editableFocused
+export function unsavedWorkReasons(signals: PageWorkSignals): UnsavedReason[] {
+  return (Object.keys(signals) as UnsavedReason[]).filter(k => {
+    const v = signals[k]
+    return typeof v === 'boolean' ? v : !(Number.isFinite(v) && v <= 0)
+  })
+}
+
+export function hasUnsavedWork(signals: PageWorkSignals): boolean {
+  return unsavedWorkReasons(signals).length > 0
+}
+
+/** A write that a reload would cut off. GET/HEAD/OPTIONS only read. */
+export function isWriteRequest(method: string | undefined | null): boolean {
+  return !/^(GET|HEAD|OPTIONS)$/i.test(method || 'GET')
+}
+
+/**
+ * Is a fixed layer actually in the way? The phone layout keeps its sidebar
+ * backdrop mounted at full screen with opacity 0 and pointer-events none —
+ * found by the phone-profile test, where it made every clean page look busy.
+ */
+export function isBlockingLayer(style: { position: string; visibility: string; opacity: string; pointerEvents: string; display?: string }): boolean {
+  return style.position === 'fixed' && style.display !== 'none' && style.visibility !== 'hidden'
+    && style.pointerEvents !== 'none' && !(Number(style.opacity) <= 0.05)
+}
+
+/** Does a fixed layer this large cover the page like a modal backdrop? */
+export function coversScreen(rect: { width: number; height: number }, viewport: { width: number; height: number }): boolean {
+  if (viewport.width <= 0 || viewport.height <= 0) return false
+  return rect.width >= viewport.width * 0.9 && rect.height >= viewport.height * 0.9
 }
