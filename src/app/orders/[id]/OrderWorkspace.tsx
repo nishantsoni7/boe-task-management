@@ -575,7 +575,7 @@ export function OrderPaymentListDialog({
     // WHAT SOMEBODY WROTE ABOUT IT. Each is drawn only where it exists; an
     // empty heading over nothing is worse than no heading.
     const notes: { key: string; label: string; value: string }[] = d ? [
-      ...(d.proofNote ? [{ key: 'proof', label: 'Proof', value: d.proofNote }] : []),
+      ...(d.proofNote ? [{ key: 'proof', label: 'Reference / UTR', value: d.proofNote }] : []),
       ...(d.salesNote ? [{ key: 'sales', label: 'Sales note', value: d.salesNote }] : []),
       ...(d.adminNote ? [{ key: 'admin', label: 'Finance note', value: d.adminNote }] : []),
     ] : []

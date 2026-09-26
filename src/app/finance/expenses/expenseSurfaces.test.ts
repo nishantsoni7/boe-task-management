@@ -635,6 +635,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Announcements is a second named exception: additive tables of its own,
       // held by src/lib/announcementsMigration.test.ts and its SQL suite.
       if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
+      // A payment's reference surviving verification (20270111120000): a trigger,
+      // a carry-forward and one restated read, held by its own SQL check.
+      if (f === 'supabase/migrations/20270111120000_finance_payment_reference_survives_verification.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1280,6 +1283,32 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * permission. modules/page.tsx and globals.css are already in
    * ALLOWED_EXISTING.
    */
+  /**
+   * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111120000).
+   *
+   * One migration — the typed Reference / UTR kept in proof_note — the Order
+   * payment detail's label for it, and the one-line inventory pins it moved.
+   */
+  const ALLOWED_PAYMENT_REFERENCE = new Set([
+    'supabase/migrations/20270111120000_finance_payment_reference_survives_verification.sql',
+    'src/app/orders/[id]/OrderWorkspace.tsx',
+    'src/app/orders/[id]/orderWorkspace.render.test.tsx',
+    'src/lib/finance/paymentReferenceMigration.test.ts',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+
   const ALLOWED_ANNOUNCEMENTS = new Set([
     'supabase/migrations/20270110000000_announcements.sql',
     'src/lib/announcements.ts',
@@ -1359,6 +1388,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_FORMAT_DOWNLOAD.has(f) &&
     !ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(f) &&
     !ALLOWED_ANNOUNCEMENTS.has(f) &&
+    !ALLOWED_PAYMENT_REFERENCE.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     !ALLOWED_PERFORMANCE_PARALLEL_READS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
@@ -1625,6 +1655,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_FORMAT_DOWNLOAD.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
+        || ALLOWED_PAYMENT_REFERENCE.has(file)
         || ALLOWED_TASK_IMAGE_GALLERY.has(file)
         || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
