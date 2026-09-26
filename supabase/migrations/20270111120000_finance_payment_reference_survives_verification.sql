@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- 20270111500000 — A PAYMENT'S REFERENCE SURVIVES VERIFICATION
+-- 20270111120000 — A PAYMENT'S REFERENCE SURVIVES VERIFICATION
 -- ════════════════════════════════════════════════════════════════════════════
 --
 -- THE DEFECT (found in the #209 acceptance review, 2026-09-26; live since
@@ -54,7 +54,7 @@ end;
 $fn$;
 
 comment on function public.finance_payment_requests_keep_reference() is
-  'A payment''s typed Reference / UTR, copied from order_number into proof_note on insert (only when there is no order_id and no proof_note), so that verification — which rewrites order_number — cannot erase it. 20270111500000.';
+  'A payment''s typed Reference / UTR, copied from order_number into proof_note on insert (only when there is no order_id and no proof_note), so that verification — which rewrites order_number — cannot erase it. 20270111120000.';
 
 revoke execute on function public.finance_payment_requests_keep_reference() from public, anon, authenticated;
 

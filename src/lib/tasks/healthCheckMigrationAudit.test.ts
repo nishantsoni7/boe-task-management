@@ -726,7 +726,7 @@ describe('the migration is placed correctly', () => {
       '20270110000000_announcements.sql',
       // A payment's typed reference is kept in proof_note on insert (trigger), carried
       // forward on unverified rows, and read by pi_submission_payment_summary.
-      '20270111500000_finance_payment_reference_survives_verification.sql',
+      '20270111120000_finance_payment_reference_survives_verification.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

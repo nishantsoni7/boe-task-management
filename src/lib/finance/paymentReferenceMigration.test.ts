@@ -1,4 +1,4 @@
-// A payment's typed Reference / UTR survives verification (20270111500000).
+// A payment's typed Reference / UTR survives verification (20270111120000).
 //
 // record_pi_submission_payment_core and record_payment_with_allocations_core put
 // the reference in finance_payment_requests.order_number; verification
@@ -13,16 +13,25 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const DIR = join(process.cwd(), 'supabase/migrations')
-const FILE = '20270111500000_finance_payment_reference_survives_verification.sql'
+const FILE = '20270111120000_finance_payment_reference_survives_verification.sql'
 const sql = readFileSync(join(DIR, FILE), 'utf8').replace(/\r/g, '')
 const code = sql.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
 
-describe('20270111500000 — a payment reference survives verification', () => {
+describe('20270111120000 — a payment reference survives verification', () => {
   test('it sits after production\'s latest migration and before #209\'s first', () => {
     const files = readdirSync(DIR).filter(f => f.endsWith('.sql')).sort()
     assert.ok(files.includes(FILE))
     assert.ok(FILE > '20270110000000_announcements.sql')
     assert.ok(FILE < '20270112000000')
+  })
+
+  test('its version is a real YYYYMMDDHHMMSS timestamp, like every other 14-digit migration', () => {
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_/.exec(FILE)
+    assert.ok(m, 'fourteen digits and an underscore')
+    const [, y, mo, d, h, mi, s] = m!.map(Number)
+    const t = new Date(Date.UTC(y, mo - 1, d, h, mi, s))
+    assert.deepEqual([t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds()],
+      [y, mo, d, h, mi, s], 'a calendar date and a clock time that exist')
   })
 
   test('the trigger copies the reference only into an EMPTY proof_note, only when there is no order_id, and never moves it', () => {

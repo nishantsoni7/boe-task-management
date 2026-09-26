@@ -289,7 +289,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270110000000_announcements.sql',
     // A payment's typed reference is kept in proof_note on insert (trigger), carried
     // forward on unverified rows, and read by pi_submission_payment_summary.
-    '20270111500000_finance_payment_reference_survives_verification.sql',
+    '20270111120000_finance_payment_reference_survives_verification.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

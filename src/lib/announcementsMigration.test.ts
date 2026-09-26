@@ -84,7 +84,7 @@ describe('the migration', () => {
       // A payment's typed reference survives verification: a trigger on
       // finance_payment_requests, a carry-forward of unverified rows, and
       // pi_submission_payment_summary. It touches nothing Announcements creates.
-      '20270111500000_finance_payment_reference_survives_verification.sql',
+      '20270111120000_finance_payment_reference_survives_verification.sql',
     ])
   })
 })

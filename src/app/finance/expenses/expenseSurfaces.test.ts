@@ -635,9 +635,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Announcements is a second named exception: additive tables of its own,
       // held by src/lib/announcementsMigration.test.ts and its SQL suite.
       if (f === 'supabase/migrations/20270110000000_announcements.sql') continue
-      // A payment's reference surviving verification (20270111500000): a trigger,
+      // A payment's reference surviving verification (20270111120000): a trigger,
       // a carry-forward and one restated read, held by its own SQL check.
-      if (f === 'supabase/migrations/20270111500000_finance_payment_reference_survives_verification.sql') continue
+      if (f === 'supabase/migrations/20270111120000_finance_payment_reference_survives_verification.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1284,13 +1284,13 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * ALLOWED_EXISTING.
    */
   /**
-   * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111500000).
+   * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111120000).
    *
    * One migration — the typed Reference / UTR kept in proof_note — the Order
    * payment detail's label for it, and the one-line inventory pins it moved.
    */
   const ALLOWED_PAYMENT_REFERENCE = new Set([
-    'supabase/migrations/20270111500000_finance_payment_reference_survives_verification.sql',
+    'supabase/migrations/20270111120000_finance_payment_reference_survives_verification.sql',
     'src/app/orders/[id]/OrderWorkspace.tsx',
     'src/app/orders/[id]/orderWorkspace.render.test.tsx',
     'src/lib/finance/paymentReferenceMigration.test.ts',

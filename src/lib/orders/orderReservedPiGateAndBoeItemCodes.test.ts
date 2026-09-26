@@ -424,7 +424,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270110000000_announcements.sql',
       // A payment's typed reference is kept in proof_note on insert (trigger), carried
       // forward on unverified rows, and read by pi_submission_payment_summary.
-      '20270111500000_finance_payment_reference_survives_verification.sql',
+      '20270111120000_finance_payment_reference_survives_verification.sql',
     ],'every migration at or after this one is accounted for')
   })
 })
