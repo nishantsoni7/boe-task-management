@@ -83,7 +83,7 @@ describe('the migration', () => {
     assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
       // Every SECURITY DEFINER in public pins pg_temp (#212): ALTER FUNCTION
       // on existing definers. Announcements' own definers already pin it.
-      '20270118000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270122000000_security_definer_search_path_pins_pg_temp.sql',
     ])
   })
 })

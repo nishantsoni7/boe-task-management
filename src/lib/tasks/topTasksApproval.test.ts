@@ -293,7 +293,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // public` to `pg_catalog, public, pg_temp`. The body, the trigger, the
     // revoke and user_top_tasks are unchanged, so what the trigger does is
     // unchanged.
-    '20270118000000_security_definer_search_path_pins_pg_temp.sql',
+    '20270122000000_security_definer_search_path_pins_pg_temp.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which changes what user_top_tasks or the completion trigger do')
 })
 
