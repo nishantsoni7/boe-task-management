@@ -360,6 +360,308 @@ body {
 .boe-activity-scroll::-webkit-scrollbar-thumb:hover { background: #B0B8C4; }
 
 .boe-activity-action:hover { color: #4A5261 !important; text-decoration: underline; }
+
+/* ── Task attachment gallery (Task Detail) ──
+   Its own card: under Activity in the sticky right column on desktop, under
+   the summary card when the columns stack. The grid scrolls inside the card so
+   a task with forty photos cannot push Activity off the sticky column. */
+.boe-task-gallery {
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #E1E5EA;
+  border-radius: 10px;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.boe-task-right-col > .boe-task-gallery { flex: 0 0 auto; }
+.boe-task-gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px 11px;
+  border-bottom: 1px solid #E9ECF1;
+}
+.boe-task-gallery-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: #7C8595;
+  background: #F4F6F8;
+  border: 1px solid #E3E7EC;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.boe-task-gallery-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #5585E8;
+  background: rgba(85,133,232,0.07);
+  border: 1px solid rgba(85,133,232,0.25);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.boe-task-gallery-download:hover:not(:disabled) { background: rgba(85,133,232,0.13); }
+.boe-task-gallery-download:disabled { cursor: progress; opacity: 0.75; }
+.boe-task-gallery-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 16px 0;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #B43C3C;
+  background: rgba(217,79,79,0.07);
+  border: 1px solid rgba(217,79,79,0.22);
+  border-radius: 6px;
+}
+.boe-task-gallery-error button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.boe-task-gallery-grid {
+  list-style: none;
+  margin: 0;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #C7CDD6 #F4F5F7;
+}
+.boe-task-gallery-grid > li { min-width: 0; }
+.boe-task-gallery-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  font: inherit;
+  text-align: left;
+}
+.boe-task-gallery-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #E1E5EA;
+  background: #F4F6F8;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.boe-task-gallery-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.boe-task-gallery-thumb:hover .boe-task-gallery-frame { border-color: #5585E8; }
+.boe-task-gallery-thumb:focus-visible { outline: none; }
+.boe-task-gallery-thumb:focus-visible .boe-task-gallery-frame {
+  border-color: #5585E8;
+  box-shadow: 0 0 0 3px rgba(85,133,232,0.25);
+}
+.boe-task-gallery-name {
+  display: block;
+  font-size: 11px;
+  color: #4A5261;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boe-task-gallery-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  min-width: 0;
+}
+.boe-task-gallery-grid + .boe-task-gallery-files { border-top: 1px solid #E9ECF1; }
+@media (max-width: 560px) {
+  .boe-task-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+    max-height: none;
+  }
+  .boe-task-gallery-head { padding: 11px 12px 10px; }
+  .boe-task-gallery-files { padding: 10px 12px; }
+}
+
+/* ── Task image viewer (lightbox) ──
+   Portalled to <body> and solid black: it covers the sidebar, the top header
+   and the page, none of which stays visible behind it. The z-index clears
+   every layer in this file (the highest is 9999). */
+.boe-image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  background: #000000;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior: contain;
+}
+.boe-image-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: #F2F3F5;
+  flex-shrink: 0;
+}
+.boe-image-viewer-counter {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.12);
+}
+.boe-image-viewer-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boe-image-viewer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #F2F3F5;
+  text-decoration: none;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.boe-image-viewer-action:hover:not(:disabled) { background: rgba(255,255,255,0.18); }
+.boe-image-viewer-action:disabled { opacity: 0.5; cursor: default; }
+.boe-image-viewer-action:focus-visible,
+.boe-image-viewer-nav:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
+.boe-image-viewer-close { padding: 5px 7px; }
+/* The one primary action in the viewer: downloads the image on screen. */
+.boe-image-viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111318;
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.boe-image-viewer-download:hover:not(:disabled) { background: #E8EBF0; }
+.boe-image-viewer-download:disabled { opacity: 0.55; cursor: default; }
+.boe-image-viewer-download:focus-visible { outline: 2px solid #8FB0F5; outline-offset: 2px; }
+.boe-image-viewer-error {
+  margin: 0 14px 6px;
+  font-size: 12px;
+  color: #FFB4B4;
+  text-align: right;
+}
+.boe-image-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 72px 16px;
+}
+.boe-image-viewer-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+  user-select: none;
+}
+.boe-image-viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.12);
+  color: #ffffff;
+  cursor: pointer;
+}
+.boe-image-viewer-nav:hover { background: rgba(255,255,255,0.22); }
+.boe-image-viewer-nav-prev { left: 14px; }
+.boe-image-viewer-nav-next { right: 14px; }
+.boe-image-viewer-hint {
+  margin: 0;
+  padding: 0 0 12px;
+  text-align: center;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+.boe-image-viewer-hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .boe-image-viewer-hint-keys { display: none; }
+  .boe-image-viewer-hint-touch { display: inline; }
+}
+@media (max-width: 560px) {
+  .boe-image-viewer-bar { gap: 8px; padding: 8px 10px; flex-wrap: wrap; }
+  .boe-image-viewer-action-text { display: none; }
+  /* The filename takes its own row so the counter and the actions keep room. */
+  .boe-image-viewer-name { order: 3; flex: 1 1 100%; font-size: 12px; }
+  .boe-image-viewer-bar > div { margin-left: auto; }
+  .boe-image-viewer-stage { padding: 4px 8px 72px; }
+  /* Controls stay visible below the image, where a thumb reaches them,
+     rather than covering the middle of the photo. */
+  .boe-image-viewer-nav {
+    top: auto;
+    bottom: 14px;
+    transform: none;
+    width: 44px;
+    height: 44px;
+  }
+  .boe-image-viewer-nav-prev { left: calc(50% - 56px); }
+  .boe-image-viewer-nav-next { right: calc(50% - 56px); }
+}
 .boe-activity-action-danger:hover { color: #D94F4F !important; }
 
 /* ─────────────────────────────────────────────────────
@@ -2360,104 +2662,223 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* ── Documents, and Fabric & Finish beside them ──
-   TWO THIRDS AND ONE THIRD, because that is the shape of the content: three
-   subsections of prose against two statuses and their evidence. Equal columns
-   gave the narrower card a third of a screen of white under it.
+/* ── Fabric & Finish, then Documents ──
+   BOTH FULL WIDTH, STACKED, ONE GAP. They used to share a two-thirds / one-third
+   row, which gave Fabric & Finish a short card beside a tall one and left the
+   Documents card a 40/60 split of its own with an empty Main PI column.
 
-   ALIGNED TO THE TOP, NOT STRETCHED. `align-items: start` is what stops the
-   grid handing the shorter card a blank tail the height of the taller one —
-   the single commonest cause of empty space on a page built from cards. */
+   ALIGNED TO THE TOP, NOT STRETCHED — nothing here is given a height; each
+   block ends where its content ends. */
 .order-docs-row {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
-@media (max-width: 900px) {
-  /* STACKED, IN THE SAME ORDER: the paperwork first, the approvals under it. */
-  .order-docs-row { grid-template-columns: minmax(0, 1fr); }
-}
 
-/* ── The Documents box ──
-   ONE OUTLINE, THREE SUBSECTIONS, RULES BETWEEN THEM. Not three cards: a
-   reader asks "what paperwork does this Order have?" once, and three outlines
-   answered it three times with three sets of padding. */
-.order-docs {
+/* ── Fabric & Finish: one strip ──
+   The title, the two statuses, and the one action on the right. The status is
+   WORDS with a small dot: "Not Approved" is where every Order starts, and two
+   large red pills made the calmest state on the page its loudest. */
+.order-ff {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  padding: 9px 14px;
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
   min-width: 0;
 }
-.order-docs-title {
+.order-ff-title {
   margin: 0;
-  padding: 9px 14px;
-  border-bottom: 1px solid #F0F2F5;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #6B7384;
 }
+.order-ff-items {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 32px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.order-ff-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.order-ff-label { font-size: 12px; font-weight: 500; color: #6B7384; min-width: 40px; }
+.order-ff-value {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.order-ff-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111318;
+}
+.order-ff-dot { width: 7px; height: 7px; border-radius: 50%; background: #B7BDC8; flex: 0 0 auto; }
+.order-ff-status--green .order-ff-dot { background: #45A870; }
+.order-ff-status--amber .order-ff-dot { background: #D9A441; }
+.order-ff-status--red   .order-ff-dot { background: #D97A7A; }
+.order-ff-value .order-approval-history { margin-top: 0; }
+.order-ff-end { margin-left: auto; min-width: 0; }
+.order-ff-end .order-status-note { max-width: 340px; text-align: right; }
 
-/* ONE SUBSECTION: its name, what is on file, and what can be done with it.
-   THE TITLE COLUMN IS FIXED, which is what lines the three bodies up into a
-   column that can be scanned rather than read. The actions take what they
-   need and no more — `auto`, so a subsection with one button does not
-   reserve the width of one with three. */
+/* ── The Documents card ──
+   A HEADER (title, History, Update documents), a CHANGES PANEL only when
+   something is pending or rejected, then ONE ROW PER CURRENT DOCUMENT. */
+.order-docs {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  min-width: 0;
+}
+.order-docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 7px 14px;
+  border-bottom: 1px solid #F0F2F5;
+  min-width: 0;
+}
+.order-docs-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+}
+.order-docs-head-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* A QUIET LINK, not a fourth button: History, and the PI product pictures. */
+.order-docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3A7ABE;
+  cursor: pointer;
+}
+.order-docs-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.order-docs-link--small { font-size: 11.5px; font-weight: 500; }
+.order-docs-link:focus-visible, .order-doc-file:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ONE ROW PER DOCUMENT, THE SAME THREE COLUMNS FOR ALL THREE: what is on file,
+   when, and the one action. The date and action columns are fixed, so the
+   rows line up and the card is scanned rather than read. */
+/* The actions column fits its buttons (the Main PI row carries the PI PDF,
+   the uploaded workbook and a menu since 20270116000000) and is never
+   narrower than the 170px the other rows were drawn for. */
 .order-doc-section {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 4px 14px;
-  padding: 10px 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 330px) minmax(170px, auto);
+  align-items: center;
+  gap: 6px 20px;
+  padding: 11px 14px;
   min-width: 0;
 }
 .order-doc-section + .order-doc-section { border-top: 1px solid #F0F2F5; }
-.order-doc-section-title {
+.order-doc-row-main, .order-doc-row-meta { min-width: 0; }
+.order-doc-row-head {
   margin: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #79808F;
-  overflow-wrap: anywhere;
-}
-.order-doc-section-body { min-width: 0; }
-.order-doc-section-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.order-doc-row-title { font-size: 13.5px; font-weight: 700; color: #111318; }
+/* The Main PI leads: the document the Order runs on. */
+.order-doc-section--primary .order-doc-row-title { font-size: 15px; letter-spacing: -0.01em; }
+.order-doc-row-value { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #111318; }
+.order-doc-row-file { margin-top: 2px; }
+.order-doc-count { font-size: 12px; font-weight: 500; color: #6B7384; }
+.order-doc-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.order-doc-action { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
+.order-doc-action--icon { padding: 5px 8px; }
+
+/* THE TWO DATES: a small label above each value, side by side, never one
+   crowded line. */
+.order-doc-dates { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 22px; }
+.order-doc-dates-item { min-width: 0; }
+.order-doc-dates dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+}
+.order-doc-dates dd {
+  margin: 1px 0 0;
+  font-size: 12.5px;
+  color: #3A4150;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A FILE NAME IS THE LINK THAT OPENS IT. It wraps rather than widening the
+   page; past three names the rest fold behind "N more". */
+.order-doc-files {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  min-width: 0;
+}
+.order-doc-files li { min-width: 0; max-width: 100%; }
+.order-doc-file {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  max-width: 100%;
   min-width: 0;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  color: #1F5FBF;
+  text-align: left;
+  cursor: pointer;
 }
-.order-doc-action { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+.order-doc-file svg { flex: 0 0 auto; }
+.order-doc-file:hover .order-doc-file-name { text-decoration: underline; }
+.order-doc-file-name { overflow-wrap: anywhere; min-width: 0; }
+.order-doc-files-more > summary { margin-top: 2px; font-size: 11.5px; color: #6B7384; cursor: pointer; }
 
-/* WHAT IS ON FILE. The headline, then its qualifier, then a note — each drawn
-   only when there is one, so an empty slot is one muted line and not a stack
-   of blank rows. */
-.order-doc-lead {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-.order-doc-lead-value {
-  font-size: 15px;
-  font-weight: 700;
-  color: #111318;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.order-doc-facts {
-  margin: 5px 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 18px;
-  min-width: 0;
-}
 .order-doc-note {
   margin: 4px 0 0;
   font-size: 11.5px;
@@ -2465,23 +2886,127 @@ body {
   color: #8C94A6;
   overflow-wrap: anywhere;
 }
-/* `Not attached` is a statement, not a warning: muted, and never a colour this
-   page spends on a status. */
+/* `No client PO on file` is a statement, not a warning: muted, and never a
+   colour this page spends on a status. */
 .order-doc-empty {
-  margin: 0;
+  margin: 3px 0 0;
   font-size: 13px;
   font-weight: 500;
   color: #8C94A6;
 }
-.order-doc-loading { margin: 0; font-size: 13px; color: #8C94A6; }
-.order-doc-unavailable { margin: 0; font-size: 13px; font-weight: 600; color: #B42318; }
+.order-doc-loading { margin: 3px 0 0; font-size: 13px; color: #8C94A6; }
+.order-doc-unavailable { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #B42318; }
+.order-docs-error { padding: 0 14px 12px; }
+
+/* ── What is changing ──
+   DRAWN ONLY WHEN SOMETHING IS, above the current rows and never mixed into
+   them. A left rule marks it when the reader is the one who has to act. */
+.order-doc-changes {
+  margin: 12px 14px 2px;
+  padding: 8px 12px;
+  background: #FFFBF2;
+  border: 1px solid rgba(190,140,40,0.32);
+  border-radius: 8px;
+  min-width: 0;
+}
+.order-doc-changes--you { border-color: rgba(190,140,40,0.55); box-shadow: inset 3px 0 0 #E8A030; }
+.order-doc-changes-title {
+  margin: 2px 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9A6A12;
+}
+.order-doc-change-list { list-style: none; margin: 0; padding: 0; }
+.order-doc-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 16px;
+  padding: 8px 0;
+  min-width: 0;
+}
+.order-doc-change + .order-doc-change { border-top: 1px solid rgba(190,140,40,0.2); }
+.order-doc-change-main { min-width: 0; }
+.order-doc-change-head { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.order-doc-change-title { font-size: 13px; font-weight: 700; color: #111318; }
+.order-doc-change-line {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #3A4150;
+  overflow-wrap: anywhere;
+}
+.order-doc-change-line strong { font-weight: 600; color: #111318; }
+.order-doc-change-muted { color: #6B7384; }
+.order-doc-change-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.order-doc-change-confirm { grid-column: 1 / -1; }
+
+/* ── The dialogs' file lists and controls (submit, review, history) ── */
+.order-docsub-files { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.order-docsub-file {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  background: none; border: 0; padding: 2px 0; cursor: pointer;
+  font-size: 12.5px; color: #1F5FBF; text-align: left;
+}
+.order-docsub-file:hover .order-docsub-file-name { text-decoration: underline; }
+.order-docsub-file-name { overflow-wrap: anywhere; min-width: 0; }
+.order-docsub-file-size { color: #8C94A6; font-size: 11px; white-space: nowrap; }
+.order-docsub-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.order-docsub-fieldset legend { font-size: 11px; font-weight: 600; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.order-docsub-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
+.order-docsub-compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid #F0F2F5; }
+.order-docsub-compare-title { margin: 0; font-size: 12px; font-weight: 700; color: #3A4150; }
+.order-docsub-decide { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.order-docsub-reject { color: #B42318; border-color: rgba(217,79,79,0.4); }
+.order-history-section-title { margin: 14px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #6B7384; }
+
+/* TABLET: the date column moves under what it dates; the action keeps the
+   right-hand side. */
+@media (max-width: 900px) {
+  .order-doc-section { grid-template-columns: minmax(0, 1fr) auto; }
+  .order-doc-row-meta { grid-column: 1; grid-row: 2; }
+  .order-doc-row-actions { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+/* PHONE: everything stacks in reading order, empty cells take no room, and
+   the primary actions are full-width and easy to tap. */
+@media (max-width: 560px) {
+  .order-ff { gap: 8px 16px; }
+  .order-ff-items { flex-basis: 100%; flex-direction: column; gap: 6px; }
+  .order-ff-end { margin-left: 0; flex-basis: 100%; }
+  .order-ff-end .order-status-note { text-align: left; max-width: none; }
+  .order-ff-end .order-status-action { width: 100%; justify-content: center; }
+  .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .order-doc-row-meta, .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+  .order-doc-row-meta:empty, .order-doc-row-actions:empty { display: none; }
+  .order-doc-row-actions { justify-content: flex-start; }
+  .order-doc-action--main { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+  .order-doc-changes { margin: 10px 10px 2px; }
+  .order-doc-change { grid-template-columns: minmax(0, 1fr); }
+  .order-doc-change-actions { justify-content: stretch; }
+  .order-doc-change-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+}
+
+/* The "Needs your action" queue on the Orders dashboard. */
+.order-docq { background: #FFFFFF; border: 1px solid rgba(190,140,40,0.45); border-radius: 10px; margin-bottom: 14px; min-width: 0; }
+.order-docq-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #F0F2F5; flex-wrap: wrap; }
+.order-docq-title { margin: 0; font-size: 13px; font-weight: 700; color: #111318; }
+.order-docq-count { font-size: 11px; font-weight: 700; background: #9A6A12; color: #FFFFFF; border-radius: 999px; padding: 1px 8px; }
+.order-docq-list { list-style: none; margin: 0; padding: 0; }
+.order-docq-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 9px 14px; min-width: 0; }
+.order-docq-row + .order-docq-row { border-top: 1px solid #F0F2F5; }
+.order-docq-main { min-width: 0; font-size: 12.5px; color: #3A4150; }
+.order-docq-main strong { color: #111318; }
+.order-docq-meta { display: block; font-size: 11.5px; color: #8C94A6; overflow-wrap: anywhere; }
+.order-docq-sub { margin: 0; padding: 8px 14px; font-size: 11px; font-weight: 700; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid #F0F2F5; }
 
 @media (max-width: 720px) {
-  /* THE PARTS STACK: the title, then what is on file, then the actions under
-     what they act on. No horizontal scroll at any width. */
-  .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .order-doc-section-actions { justify-content: flex-start; }
-  .order-doc-action { flex: 0 1 auto; }
+  .order-docsub-compare { grid-template-columns: minmax(0, 1fr); }
+  .order-docsub-decide .boe-btn { flex: 1 1 100%; justify-content: center; }
+  .order-docq-row { grid-template-columns: minmax(0, 1fr); }
+  .order-docq-row .boe-btn { width: 100%; justify-content: center; }
 }
 
 /* ── The design-file dialog ──
@@ -2669,21 +3194,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.order-status-approvals {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.order-status-approval { min-width: 0; }
-.order-status-approval-value {
-  margin: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
 .order-status-approval-at {
   font-size: 11.5px;
   color: #6B7384;
@@ -6748,6 +7258,13 @@ h1.boe-page-title { margin-top: 0; }
      them — no horizontal scrolling, and each stays a comfortable tap target. */
   .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
 }
+
+/* ── The operations review of a revised PI (20270113000000) ── */
+.order-revdiff { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid #F0F2F5; }
+.order-revdiff-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.order-revdiff-table th { text-align: left; font-size: 11px; font-weight: 600; color: #6B7384; padding: 4px 6px; border-bottom: 1px solid #F0F2F5; }
+.order-revdiff-table td { padding: 5px 6px; border-bottom: 1px solid #F7F8FA; overflow-wrap: anywhere; }
+.order-revdiff-lines { margin: 0; padding-left: 18px; font-size: 12.5px; color: #3A4150; display: flex; flex-direction: column; gap: 3px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ANNOUNCEMENTS — the Modules banner, the header bell, /announcements and

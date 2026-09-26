@@ -1,5 +1,6 @@
 /**
- * The status workspace, rendered: the Main PI card and the PI history modal.
+ * The area above the product list, rendered: the Fabric & Finish strip, the
+ * Documents card (Main PI first) and the PI history modal.
  *
  * Every component is a function of its props; these check what they SAY, that
  * nothing depends on colour alone, that no storage URL reaches the markup, and
@@ -29,7 +30,9 @@ import {
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
-  DOC_VIEW_FILES_LABEL,
+  DOC_PI_PICTURES_LABEL,
+  DOC_VIEW_PI_LABEL,
+  DOCUMENTS_HISTORY_LABEL,
   DOC_NOT_ATTACHED,
   clientPoDocument,
   designFilesDocument,
@@ -48,7 +51,6 @@ import {
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_AWAITING,
-  MAIN_PI_HISTORY_LABEL,
   MAIN_PI_NONE,
   MAIN_PI_UPLOADED_LABEL,
   PI_HISTORY_MODAL_TITLE,
@@ -129,18 +131,36 @@ const card = (rows: PersistedPiVersion[] = [row()]) => {
 // ── The Main PI card ──────────────────────────────────────────────────────────
 
 describe('the Main PI card', () => {
-  test('states the version, its status and both dates', () => {
+  test('states the version, ONE status and both dates', () => {
     const body = text(card())
-    for (const s of [DOC_MAIN_PI_TITLE, 'PI V1', 'Approved',
+    for (const s of ['Main PI · V1', 'Current',
                      MAIN_PI_UPLOADED_LABEL, '2026-09-02',
                      MAIN_PI_APPROVED_LABEL, '2026-09-08']) {
       assert.ok(body.includes(s), s)
     }
+    // One status for the current PI, not a stack of badges.
+    assert.equal((card().match(/order-status-chip/g) ?? []).length, 1)
   })
 
-  test('offers View, Download and View history', () => {
-    const body = text(card())
-    for (const s of ['View', 'Download', MAIN_PI_HISTORY_LABEL]) assert.ok(body.includes(s), s)
+  test('View PI is the main action; Download stays reachable; History is in the card header', () => {
+    const html = card()
+    assert.ok(text(html).includes(DOC_VIEW_PI_LABEL))
+    assert.match(html, /aria-label="Download"/)
+    assert.ok(text(docs()).includes(DOCUMENTS_HISTORY_LABEL))
+  })
+
+  test('a supplied ⋯ menu replaces the Download button on the row', () => {
+    const html = renderToStaticMarkup(
+      <OrderDocumentsPanel
+        mainPi={mainPiCard(history([row()]))}
+        design={{ kind: 'loading' }}
+        onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+        viewing={false} downloading={false}
+        mainPiMenu={<button type="button" aria-label="More PI actions">⋯</button>}
+      />,
+    )
+    assert.ok(html.includes('aria-label="More PI actions"'))
+    assert.equal(html.includes('aria-label="Download"'), false)
   })
 
   test('NO STORAGE PATH OR URL REACHES THE MARKUP', () => {
@@ -170,15 +190,21 @@ describe('the Main PI card', () => {
     assert.equal((html.match(/disabled/g) ?? []).length, 2, 'no double submission')
   })
 
-  test('A PENDING REVISION IS A NOTE, NEVER THE HEADLINE', () => {
-    const body = text(card([
+  test('A PENDING REVISION IS A CHANGE, NEVER THE CURRENT ROW', () => {
+    const html = docs({ rows: [
       row(),
       row({ id: 'v2', version_number: 2, status: 'pending',
             revision_reason: 'Client added 6 chairs', decided_by: null, decided_at: null }),
-    ]))
-    assert.ok(body.includes('PI V1'), 'the approved version is still the headline')
-    assert.ok(!body.includes('PI V2'))
-    assert.ok(/waiting for a decision/i.test(body))
+    ] })
+    const rows = text(html.slice(html.indexOf('class="order-docs-rows"')))
+    const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-rows"')))
+    assert.ok(rows.includes('Main PI · V1'), 'the approved version is still the current row')
+    assert.equal(rows.includes('V2'), false)
+    // SINCE 20270113000000 the proposal is NAMED — but only in the changes
+    // panel, above the rows, with its stage and its owner.
+    assert.ok(changes.includes('New PI · V2 Waiting for Admin'))
+    assert.ok(changes.includes('With: Admin'))
+    assert.ok(changes.includes('V1 stays current'))
   })
 
   test('an Order with no PI says so and substitutes no other document', () => {
@@ -250,7 +276,7 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     const html = docs()
     // ONE outer card.
     assert.equal((html.match(/class="order-docs"/g) ?? []).length, 1)
-    assert.equal((html.match(/class="order-doc-section"/g) ?? []).length, 3)
+    assert.equal((html.match(/class="order-doc-section[ "]/g) ?? []).length, 3)
     // And the rule between them is a border on the section, not a card each.
     assert.match(css, /\.order-doc-section \+ \.order-doc-section \{ border-top:/)
   })
@@ -263,29 +289,22 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/screenshot on file/i.test(body), false)
   })
 
-  test('THE DESIGN-FILE CONTROL IS NAMED FOR WHAT IT DOES', () => {
-    // It said 'View / Manage' and manages nothing: the dialog previews the
-    // pictures and offers no upload, replacement or deletion, because this
-    // Order has no way to perform any of the three. A label promising
-    // management where none exists sends somebody hunting for a control that
-    // was never built.
+  test('THE PI PICTURES CONTROL IS NAMED FOR WHAT IT OPENS', () => {
+    // The dialog previews the approved PI's own pictures and manages nothing,
+    // so the link says whose pictures they are and how many.
     const html = docs()
-    assert.equal(DOC_VIEW_FILES_LABEL, 'View files')
-    assert.ok(text(html).includes(DOC_VIEW_FILES_LABEL))
-    // Scoped to the Design Files subsection: 'Uploaded' is the Main PI's own
-    // date label a few lines above, and is not a promise about anything.
     const design = text(html.slice(
       html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'),
       html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"')))
+    assert.ok(design.includes(DOC_PI_PICTURES_LABEL(9)))
     assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
-      'the box must not promise an action the Order cannot perform')
+      'the row must not promise an action the Order cannot perform')
   })
 
-  test('Design Files says how many, and offers one action', () => {
+  test('Design Files (no submission read) says how many pictures the PI holds', () => {
     const body = text(docs())
     assert.ok(body.includes('9 files'))
     assert.ok(body.includes('6 representative · 3 customization · 6 product lines'))
-    assert.ok(body.includes(DOC_VIEW_FILES_LABEL))
   })
 
   test('an EMPTY design record says so quietly, and offers no action', () => {
@@ -296,7 +315,7 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.ok(design.includes('order-doc-empty'), 'drawn in the muted empty style')
     // No View files control on a list with nothing in it.
     assert.equal(design.slice(0, design.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"'))
-      .includes(DOC_VIEW_FILES_LABEL), false)
+      .includes('PI product pictures'), false)
     // And it is not an alarm: no red, no warning word.
     assert.equal(/order-doc-unavailable/.test(design), false)
   })
@@ -345,28 +364,28 @@ describe('the Documents box holds all three kinds of paperwork', () => {
   })
 })
 
-describe('Documents and Fabric & Finish sit side by side', () => {
-  test('the row puts the paperwork first and the approvals second', () => {
+describe('Fabric & Finish, then Documents — full width, stacked', () => {
+  test('the row keeps its children in the order given', () => {
     const html = renderToStaticMarkup(
-      <OrderDocumentsRow><div>docs</div><div>fabric</div></OrderDocumentsRow>,
+      <OrderDocumentsRow><div>fabric</div><div>docs</div></OrderDocumentsRow>,
     )
     assert.match(html, /class="order-docs-row"/)
     const body = text(html)
-    assert.ok(body.indexOf('docs') < body.indexOf('fabric'))
+    assert.ok(body.indexOf('fabric') < body.indexOf('docs'))
   })
 
-  test('two thirds and one third on desktop, stacked below 900px', () => {
-    assert.match(css, /\.order-docs-row \{[\s\S]*?grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/)
-    assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.order-docs-row \{ grid-template-columns: minmax\(0, 1fr\); \}/)
-    // ALIGNED TO THE TOP: the shorter card must not be handed a blank tail.
+  test('one column at every width, aligned to the top, no fixed heights', () => {
+    assert.match(css, /\.order-docs-row \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/)
+    assert.equal(/\.order-docs-row \{[^}]*2fr/.test(css), false, 'the two-thirds split is gone')
     assert.match(css.slice(css.indexOf('.order-docs-row {')), /align-items: start/)
     assert.equal(/\.order-docs-row \{[^}]*overflow-x/.test(css), false)
-    // NO FIXED OR MINIMUM HEIGHT on the box or its subsections: content decides.
-    // (Sliced to the box itself — the dialog rules below it size a thumbnail
-    // and a screenshot frame, which are pictures and must be given a box.)
-    const box = css.slice(css.indexOf('.order-docs {'), css.indexOf('/* ── The design-file dialog ──'))
+    // NO FIXED OR MINIMUM HEIGHT on the card or its rows: content decides.
+    // (Sliced to the card itself — the dialog rules and the phone tap sizes
+    // below it are not the card's height.)
+    const box = css.slice(css.indexOf('.order-docs {'), css.indexOf("/* ── The dialogs' file lists"))
+    assert.ok(box.length > 100)
     assert.equal(/min-height|(^|[^-])height:\s*\d/.test(box), false,
-      'the box must take its content height')
+      'the card must take its content height')
   })
 })
 

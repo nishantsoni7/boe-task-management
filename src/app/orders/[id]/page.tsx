@@ -111,7 +111,7 @@ import {
   type PersistedItemImage,
   type PersistedProduct,
 } from '@/lib/orders/draftsView'
-import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
+import { buildImageViewerItems, formatInr, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
 import { PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
@@ -130,9 +130,37 @@ import {
   PiHistoryModal,
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal, type ApprovalSubmission } from './OrderApprovalModal'
+import { RevisionOperationsReviewModal } from './RevisionOperationsReviewModal'
+import {
+  canDecideRevisionOperations,
+  canReapproveRevision,
+  describeRevisionOperationsFailure,
+  type RevisionDifferences,
+} from '@/lib/orders/orderPiVersions'
+import {
+  ReviewSubmissionModal,
+  SubmissionHistoryList,
+  SubmitDocumentsModal,
+  uploadAvailability,
+  useOrderDocumentSubmissions,
+} from './OrderDocumentSubmissions'
+import type { DocumentCategory, DocumentViewer, PersistedDocumentSubmission } from '@/lib/orders/orderDocumentSubmissions'
+import {
+  UPDATE_DOCUMENTS_LABEL,
+  UPLOAD_CLIENT_PO_LABEL,
+  UPLOAD_DESIGN_FILES_LABEL,
+  UPLOAD_NEW_PI_LABEL,
+  absenceLine,
+  documentChanges,
+  supportingRow,
+} from '@/lib/orders/orderDocumentSubmissions'
 import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
+import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
+import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
+import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
@@ -146,6 +174,7 @@ import {
 import {
   ApproveRevisionModal,
   OperationsHandoffDecisionModal,
+  ProductionRecoveryModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
   RejectRevisionModal,
@@ -156,6 +185,7 @@ import {
   WITHDRAW_ACCEPTANCE_LABEL,
   describeHandoffFailure,
   describeOperationsHandoff,
+  latestRealignment,
   splitOperationsHandoffs,
   type OperationsHandoffStatus,
   type PersistedOperationsHandoff,
@@ -205,6 +235,7 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // One payment, its allocations and every gate belong to
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
+import { PiVersionsPanel } from '@/components/orders/PiVersionsPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -691,6 +722,9 @@ export default function OrderDetailPage() {
   // an Order with no source PI never leaves it, and the screen is then exactly
   // what it has always been. See src/lib/orders/orderPiHandoff.ts.
   const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
+  // The approved PI's grand total as a NUMBER, to tell an amended Order's own
+  // value apart from it in the Commercial breakdown (walkthrough O-1).
+  const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
   // Lazily, so the two empty Maps are built once rather than on every render.
   const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
@@ -800,6 +834,11 @@ export default function OrderDetailPage() {
   const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
   const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
   const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
+  const [advance,      setAdvance]      = useState<AdvanceReadiness | null>(null)
+  const [piInactive,   setPiInactive]   = useState<Set<string>>(new Set())
+  const [reapproveConfirming, setReapproveConfirming] = useState(false)
+  const [reapproveBusy,       setReapproveBusy]       = useState(false)
+  const [reapproveError,      setReapproveError]      = useState<string | null>(null)
   const [revisionDialog, setRevisionDialog] = useState<
     | { kind: 'propose' }
     | { kind: 'approve'; version: PiVersionView }
@@ -807,6 +846,12 @@ export default function OrderDetailPage() {
     | null
   >(null)
   const [revisionBusy,  setRevisionBusy]  = useState(false)
+  const [lineReview, setLineReview] = useState<{ version: PiVersionView; review: PiLineReviewData } | null>(null)
+  // ── The operations decision on a revised PI (20270113000000) ──
+  const [revOpsOpen,  setRevOpsOpen]  = useState(false)
+  const [revOpsDiff,  setRevOpsDiff]  = useState<RevisionDifferences | null | 'unavailable'>(null)
+  const [revOpsBusy,  setRevOpsBusy]  = useState(false)
+  const [revOpsError, setRevOpsError] = useState<string | null>(null)
   const [revisionError, setRevisionError] = useState<string | null>(null)
   const [historyOpen,   setHistoryOpen]   = useState(false)
   const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
@@ -823,6 +868,8 @@ export default function OrderDetailPage() {
   // versions themselves. The dialog holds which answer is being given.
   const [handoffs,      setHandoffs]      = useState<PersistedOperationsHandoff[]>([])
   const [handoffDialog, setHandoffDialog] = useState<OperationsHandoffStatus | null>(null)
+  // An administrator's recovery of a held Order no reviewer can realign (review R1).
+  const [recoverOpen, setRecoverOpen] = useState(false)
   const [handoffBusy,   setHandoffBusy]   = useState(false)
   const [handoffError,  setHandoffError]  = useState<string | null>(null)
 
@@ -836,6 +883,13 @@ export default function OrderDetailPage() {
   const id         = params.id as string
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
+
+  // ── Design Files and Client PO submissions (20270112000000) ──
+  // Read beside the Order; the dialogs hold which category or submission is open.
+  const docSubs = useOrderDocumentSubmissions(supabase, id, order?.source_order_submission_id ?? null)
+  const [docUpload, setDocUpload] = useState<{ category: DocumentCategory; resubmission: PersistedDocumentSubmission | null } | null>(null)
+  const [docReview, setDocReview] = useState<PersistedDocumentSubmission | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
 
   /**
    * THE APPROVED PI BEHIND A CONFIRMED ORDER.
@@ -976,8 +1030,8 @@ export default function OrderDetailPage() {
     // its honest "No image" box rather than a broken one.
     const [peopleRes, signedRes] = await Promise.all([
       actorIds.length > 0
-        ? supabase.from('users').select('id, full_name').in('id', actorIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+        ? supabase.from('users').select('id, full_name, is_active').in('id', actorIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string | null; is_active: boolean | null }[] }),
       paths.length > 0
         ? supabase.storage.from(ORDER_FILES_BUCKET)
             .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
@@ -985,10 +1039,14 @@ export default function OrderDetailPage() {
     ])
 
     const names = new Map<string, string>()
-    for (const person of (peopleRes.data ?? []) as { id: string; full_name: string | null }[]) {
+    const inactive = new Set<string>()
+    for (const person of (peopleRes.data ?? []) as { id: string; full_name: string | null; is_active: boolean | null }[]) {
       if (person?.id && person.full_name) names.set(person.id, person.full_name)
+      // Only an explicit false: an unreadable flag never offers the recovery.
+      if (person?.id && person.is_active === false) inactive.add(person.id)
     }
     setPiNames(names)
+    setPiInactive(inactive)
 
     const signedByPath = new Map<string, string>()
     for (const entry of (signedRes.data ?? []) as { path?: string | null; signedUrl?: string; error?: unknown }[]) {
@@ -1033,6 +1091,7 @@ export default function OrderDetailPage() {
         ? { kind: 'unavailable' }
         : { kind: 'ready', counts: countDesignImages(images) },
     })
+    setPiGrandTotal(row.grand_total === null || row.grand_total === undefined || String(row.grand_total).trim() === '' ? null : Number(row.grand_total))
     setPiHandoff(buildOrderPiHandoff(row, {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
@@ -1147,7 +1206,14 @@ export default function OrderDetailPage() {
   const reloadOrderRow = async () => {
     const { data: o } = await orderRowQuery()
     if (o) setOrder(mapOrderRow(o))
-    await reloadActivity()
+    await Promise.all([reloadActivity(), loadAdvance()])
+  }
+
+  // THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000). Read as the reader;
+  // the database enforces it whatever this shows.
+  const loadAdvance = async () => {
+    const { data, error } = await supabase.rpc('order_advance_readiness', { p_order_id: id })
+    setAdvance(error ? null : (data as AdvanceReadiness | null))
   }
 
   /**
@@ -1212,6 +1278,7 @@ export default function OrderDetailPage() {
 
   /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
+    void loadAdvance()
     // A REFRESH REPLACES THE PAYMENT SET, so a detail read issued against the
     // OLD one describes a list this page is about to stop showing. It is
     // superseded here rather than allowed to land afterwards; the reader's
@@ -1567,21 +1634,22 @@ export default function OrderDetailPage() {
    * and the server reads the bytes it holds, applies them and decides the
    * version rows in one transaction.
    */
-  const approveRevision = async (version: PiVersionView) => {
+  const approveRevision = async (version: PiVersionView, lineMap?: Record<string, string>) => {
     if (!order?.source_order_submission_id || revisionBusy) return
     setRevisionBusy(true)
     setRevisionError(null)
     try {
-      const res = await fetch('/api/orders/pi-revisions/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ versionId: version.id }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
-        setRevisionError(describePiRevisionFailure(body?.error ?? body?.message ?? '', 'approve'))
+      const { ok, body, review } = await requestPiRevisionApproval(version.id, lineMap)
+      // A revised workbook whose lines cannot all be matched by item number:
+      // the admin matches them, then approves again (20270116000000).
+      if (review) { setLineReview({ version, review }); return }
+      if (!ok) {
+        const b = body as { error?: string; message?: string }
+        // Both the code and the sentence: a marker may sit in either.
+        setRevisionError(describePiRevisionFailure(`${b.error ?? ''} ${b.message ?? ''}`, 'approve'))
         return
       }
+      setLineReview(null)
       setRevisionDialog(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
       await loadOrder()
@@ -1619,7 +1687,9 @@ export default function OrderDetailPage() {
         p_aligned: aligned,
         p_note: note,
       })
-      if (error) { setAlignError(describeAlignmentFailure(error)); return }
+      // The 40% advance (20270116000000) refuses in its own words: the
+      // percentage, the shortfall and what to do.
+      if (error) { setAlignError(describeAdvanceRefusal(error.message) ?? describeAlignmentFailure(error)); return }
       setAlignDialog(null)
       // Production moved. The people on this Order plan against it, so they
       // hear about it — from the production_alignment_changed row the RPC just
@@ -1662,6 +1732,27 @@ export default function OrderDetailPage() {
       // `orders` (accepting aligns; flagging or withdrawing un-aligns), and
       // appended the activity entries — so the handoff and the Order row are
       // re-read, and the trail with the row. Nothing else changed.
+      // Accepting the version also accepts the documents sent with the PI
+      // (20270112000000 §11e), so those are re-read with it.
+      await Promise.all([reloadHandoffs(), reloadOrderRow(), docSubs.reload()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
+  // ── ADMINISTRATOR RECOVERY OF A HELD ORDER (20270116000000, review R1) ──
+  //
+  // Offered only when readiness says no operations reviewer can act; the door
+  // re-checks that, the hold, the accepted version and the 40% gate under lock,
+  // and records the recovery with its reason. The acceptance is not touched.
+  const recoverAlignment = async (reason: string) => {
+    if (!order || handoffBusy) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('recover_order_production_alignment', { p_order_id: order.id, p_reason: reason })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setRecoverOpen(false)
       await Promise.all([reloadHandoffs(), reloadOrderRow()])
     } finally {
       setHandoffBusy(false)
@@ -1753,6 +1844,13 @@ export default function OrderDetailPage() {
    * bucket's SELECT policy — which asks can_view_order — decides again at that
    * moment. No proof is signed at load, and a key never reaches the markup.
    */
+  // A PI VERSION'S PDF (20270116000000): the third file hand-off. Rendered by
+  // the server from that version's own details; the browser gets a document,
+  // never another module's page.
+  const openVersionPdf = (versionId: string, download: boolean) => {
+    window.open(piVersionPdfHref(id, versionId, download), '_blank', 'noopener,noreferrer')
+  }
+
   const viewEvidence = async (path: string) => {
     if (proofBusy) return
     setProofBusy(path)
@@ -1909,6 +2007,13 @@ export default function OrderDetailPage() {
   // user and suppressed under View As for exactly the reason above: viewing
   // as someone else must not lend them your authority.
   const mayManageOrders = ordersCaps.canManageOrders && !viewAsUserId
+  // THE FLOW'S ADMIN DECISIONS FOLLOW CONTROL CENTER, NOT users.role
+  // (20270120000000). Approving, rejecting or re-approving a revised PI and the
+  // admin decision on documents ask orders.approve_order; production below the
+  // 40% advance asks orders.approve_advance_exception — the same actions the
+  // RPCs now require. Never under View As.
+  const mayDecidePiAsAdmin = ordersCaps.canApproveOrderSubmission && !viewAsUserId
+  const mayApproveBelowAdvance = ordersCaps.canApproveAdvanceException && !viewAsUserId
   const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
   const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
 
@@ -1945,7 +2050,62 @@ export default function OrderDetailPage() {
       hasPendingRevision: piHistory.pending !== null,
     },
   )
-  const mayDecideRevision = canDecidePiRevision({ isAdmin: actingAsAdmin })
+  const mayDecideRevision = canDecidePiRevision({ isAdmin: mayDecidePiAsAdmin })
+  // THE REVIEWER'S CONTROL, for the one person a staged revision is addressed
+  // to (never under View As). decide_order_pi_revision_operations() re-derives
+  // it under row locks — and refuses an acceptance the Order is not amended for.
+  const mayReviewRevision = canDecideRevisionOperations(piHistory.pending, viewAsUserId ? null : (profile?.id ?? null), !!viewAsUserId)
+  const openRevisionReview = async () => {
+    const v = piHistory.pending
+    if (!v) return
+    setRevOpsError(null)
+    setRevOpsDiff(null)
+    setRevOpsOpen(true)
+    const { data, error } = await supabase.rpc('order_pi_revision_differences', { p_version_id: v.id })
+    setRevOpsDiff(error || !data ? 'unavailable' : (data as RevisionDifferences))
+  }
+  const decideRevisionOperations = async (decision: 'accepted' | 'rejected', reason: string | null) => {
+    const v = piHistory.pending
+    if (!v || revOpsBusy) return
+    setRevOpsBusy(true)
+    setRevOpsError(null)
+    try {
+      const { error } = await supabase.rpc('decide_order_pi_revision_operations', {
+        p_version_id: v.id, p_decision: decision, p_reason: reason,
+      })
+      if (error) { setRevOpsError(describeRevisionOperationsFailure(error)); return }
+      setRevOpsOpen(false)
+      // Accepting moves the version in force, the lines, pictures, codes, the
+      // handoff and the alignment; rejecting moves one version row. The whole
+      // Order is re-read either way, and the documents with it.
+      await Promise.all([loadOrder(), docSubs.reload()])
+    } finally {
+      setRevOpsBusy(false)
+    }
+  }
+
+  // THE RECOVERY (20270113000000 §6b): the admin who approved the proposal is
+  // no longer active, so it cannot be accepted until an active admin
+  // re-approves it. reapprove_order_pi_revision() re-derives all of it.
+  const revisionApproverInactive = !!piHistory.pending?.decidedById
+    && piHistory.pending.status === 'admin_approved' && piInactive.has(piHistory.pending.decidedById)
+  const mayReapproveRevision = canReapproveRevision(piHistory.pending, {
+    isAdmin: mayDecidePiAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
+  })
+  const reapproveRevision = async () => {
+    const v = piHistory.pending
+    if (!v || reapproveBusy) return
+    setReapproveBusy(true)
+    setReapproveError(null)
+    try {
+      const { error } = await supabase.rpc('reapprove_order_pi_revision', { p_version_id: v.id })
+      if (error) { setReapproveError(describeRevisionOperationsFailure(error)); return }
+      setReapproveConfirming(false)
+      await loadOrder()
+    } finally {
+      setReapproveBusy(false)
+    }
+  }
 
   /** Production alignment, and whether this reader may move it. */
   const mayAlignProduction = canAlignProduction(ordersCaps, Boolean(viewAsUserId))
@@ -1978,6 +2138,12 @@ export default function OrderDetailPage() {
     // WHY the version in force was revised: the approved version's own
     // revision_reason, from the same rows the PI history reads.
     revisionReason: piHistory.current?.revisionReason ?? null,
+    // WHO PUT A HELD ORDER BACK (review W1): the newest re-alignment on the
+    // Order's history, so the alignment line names them, not only the acceptance.
+    realignment: latestRealignment(activity, operationsSplit.live?.pi_version_id ?? null),
+    // A held Order whose advance is covered again is only waiting to be aligned
+    // again; its line must not still say "below 40%" (review N1).
+    holdCovered: advanceHoldCovered(advance),
   }) : null
 
   /**
@@ -2133,8 +2299,13 @@ export default function OrderDetailPage() {
   // totals where there is not. Every amount is a string somebody else already
   // formatted; orderCommercial only roles and signs them. The net is the one
   // derived figure on the page and is a subtraction of the two stored columns.
+  // AN AMENDED ORDER (amend_order, an approved change request) carries a value
+  // of its own that the PI's total no longer states; the breakdown then names
+  // the two apart rather than captioning both "Order value".
+  const orderValueAmended = piHandoff.kind === 'ready' && order.total_value != null && piGrandTotal != null
+    && Number(order.total_value) !== piGrandTotal
   const commercialLines = piHandoff.kind === 'ready'
-    ? orderCommercialLines(piHandoff.commercialRows)
+    ? orderCommercialLines(piHandoff.commercialRows, orderValueAmended ? { orderValue: formatInr(Number(order.total_value)) } : null)
     : orderStoredCommercialLines({
         productValue: fmtAmount(order.total_product_value),
         orderValue: fmtAmount(order.total_value),
@@ -2215,6 +2386,76 @@ export default function OrderDetailPage() {
    * as a mis-typed design file and no local state pretends otherwise.
    */
   const clientPo = clientPoDocument()
+
+  /**
+   * WHO ACTS ON A DOCUMENT SUBMISSION, for drawing controls only. Submitting:
+   * an admin, or the Order's requester or salesperson holding orders.create —
+   * can_submit_order_document() re-derives it (plus the source PI's owners).
+   * Deciding: submissionActions() by stage; the RPCs re-check under locks.
+   */
+  const docMe = viewAsUserId ? null : (profile?.id ?? null)
+  const docViewer: DocumentViewer = {
+    viewerId: docMe,
+    isAdmin: mayDecidePiAsAdmin,
+    canSubmit: !!docMe && order.status !== 'cancelled'
+      && (actingAsAdmin || (ordersCaps.canCreateOrder && (order.requested_by === docMe || order.assigned_to === docMe))),
+    viewingAs: !!viewAsUserId,
+  }
+  const docWhen = (iso: string | null) => (iso ? fmtDateTime(iso) : '—')
+  const openDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
+    setDocError(null)
+    void docSubs.openFile(f).then(e => { if (e) setDocError(e) })
+  }
+  const docNameOf = (uid: string | null) => (uid ? docSubs.names.get(uid) ?? null : null)
+  // WHAT IS CURRENT, per category — accepted submissions only — and WHAT IS
+  // CHANGING, each submission once. Both are the lib's answers; the card draws.
+  const docSupporting = {
+    design: supportingRow(docSubs, 'design_files', absenceLine(docSubs.absence, 'design_files', docNameOf, docWhen)),
+    clientPo: supportingRow(docSubs, 'client_po', absenceLine(docSubs.absence, 'client_po', docNameOf, docWhen)),
+    formatWhen: docWhen,
+  }
+  const docChanges = docSubs.state === 'ready' ? documentChanges(docSubs.rows, docViewer, docNameOf, docWhen) : []
+
+  /**
+   * ONE "UPDATE DOCUMENTS" CONTROL instead of an upload button per row: New PI
+   * (the existing revised-PI door), Design Files and Client PO (the submission
+   * dialog). Each is offered on exactly the rule its own button was drawn on; a
+   * category with a submission already under review is listed, disabled, with
+   * the reason. Nothing is offered to a reader who may do none of the three.
+   */
+  type DocUpdateKey = 'pi' | DocumentCategory
+  const docUpdateItems: MoreActionItem<DocUpdateKey>[] = []
+  if (mayProposeRevision) docUpdateItems.push({ key: 'pi', label: UPLOAD_NEW_PI_LABEL })
+  for (const category of ['design_files', 'client_po'] as const) {
+    const upload = uploadAvailability(category, docSubs, docViewer)
+    if (!upload.offered) continue
+    docUpdateItems.push({
+      key: category,
+      label: `${category === 'design_files' ? UPLOAD_DESIGN_FILES_LABEL : UPLOAD_CLIENT_PO_LABEL}${upload.blockedReason ? ' — change under review' : ''}`,
+      disabled: upload.blockedReason !== null,
+      title: upload.blockedReason ?? undefined,
+    })
+  }
+  const runDocUpdate = (key: DocUpdateKey) => {
+    if (key === 'pi') { setRevisionError(null); setRevisionDialog({ kind: 'propose' }); return }
+    setDocUpload({ category: key, resubmission: null })
+  }
+  // The files sent with the PI that the operations decision will accept too.
+  const initialDocumentsAwaiting = (() => {
+    const names = docSubs.rows
+      .filter(r => r.stage === 'initial' && r.status === 'awaiting_operations')
+      .flatMap(r => (r.files ?? []).map(f => `${f.file_name} (${f.category === 'client_po' ? 'Client PO' : 'Design File'})`))
+    return names.length > 0 ? names.join(', ') : null
+  })()
+  const mainPiOperations = operationsView?.kind === 'recorded'
+    ? {
+        label: operationsView.status === 'awaiting' ? 'Waiting for Operations' : operationsView.statusLabel,
+        tone: operationsView.tone,
+        line: operationsView.status === 'awaiting'
+          ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
+          : null,
+      }
+    : null
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -2277,7 +2518,18 @@ export default function OrderDetailPage() {
     facts: recordFacts,
     clientContact: piHandoff.kind === 'ready' ? clientContactText(piHandoff.client) : null,
     productionAligned,
+    productionHeld: !!handoffAlignment?.held,
   })
+
+  // An accepted version whose Order was put on hold (its advance fell below
+  // 40%, 20270116000000) is aligned again from here by whoever is the
+  // operations reviewer NOW — or, when no reviewer can act, recovered by an
+  // administrator with a reason (review R1). Never under View As.
+  const realignBy = viewAsUserId ? null : (advance?.realign ?? null)
+  const operationsRealignOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && !!realignBy?.by_viewer
+  const operationsRecoverOffered = !!advance?.hold && operationsView?.kind === 'recorded'
+    && operationsView.status === 'accepted' && !!realignBy?.recover_by_viewer
 
   const attention = orderAttentionItems({
     status: order.status,
@@ -2307,13 +2559,15 @@ export default function OrderDetailPage() {
     // and its RLS are untouched — only this page stops asking.
     documentsFailed: false,
     documentsOutdated: false,
+    advanceBelowLabel: advanceAttentionLabel(advance),
+    advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),
   })
 
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
   // strip names the review, and only to whom view.actions offers it.
   const operationsReviewOpen = attention.some(item => item.key === 'operations_review')
-  const operationsDecisionOffered = operationsReviewOpen && operationsView?.kind === 'recorded'
-    && (operationsView.actions.accept || operationsView.actions.cannotAccept)
+  const operationsDecisionOffered = (operationsReviewOpen && operationsView?.kind === 'recorded'
+    && (operationsView.actions.accept || operationsView.actions.cannotAccept)) || operationsRealignOffered || operationsRecoverOffered
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
   // only decides where each one sits. The cleanup gate is the existing one,
@@ -2545,6 +2799,11 @@ export default function OrderDetailPage() {
               busy={handoffBusy}
               onAccept={() => { setHandoffError(null); setHandoffDialog('accepted') }}
               onCannotAccept={() => { setHandoffError(null); setHandoffDialog('clarification_needed') }}
+              acceptBlockedReason={advanceAttentionLabel(advance)}
+              heldForAdvance={!!advance?.hold}
+              realignOffered={operationsRealignOffered}
+              recoverOffered={operationsRecoverOffered}
+              onRecover={() => { setHandoffError(null); setRecoverOpen(true) }}
             />
           ) : undefined}
         />
@@ -2561,39 +2820,27 @@ export default function OrderDetailPage() {
           </section>
         )}
 
-        {/* ══ 3. DOCUMENTS, AND FABRIC & FINISH BESIDE THEM ══
-            THE PAPERWORK IN ONE BOX. The PI this Order runs on, the design
-            files behind its products and the client's own purchase order used
-            to be two separate cards and nothing — three outlines, three
-            headings and a column of white space under the shorter card, for one
-            question a reader asks once.
+        {/* ══ 3. FABRIC & FINISH, THEN DOCUMENTS ══
+            BOTH FULL WIDTH, STACKED. They used to share a two-thirds / one-third
+            row: Fabric & Finish was a short card beside a tall one, and the
+            Documents card split again 40/60 with an empty Main PI column under
+            its buttons. Now the approvals are a one-line strip and the paperwork
+            is rows that use the whole width.
 
-            WHAT WENT WITH THE CARDS. The Design Files card summarised the
-            fabric and finish approvals that the card beside it states in full,
-            with their dates, their actors and their evidence. That summary is
-            gone: the approvals have one home, and it is the card on the right.
+            THE DOCUMENTS CARD ANSWERS TWO QUESTIONS, IN THIS ORDER: is anything
+            changing (a panel drawn only when something is pending or rejected,
+            each submission once, with its owner and this reader's one control),
+            and what is current (Main PI · V1 with its two dates and View PI, then
+            the accepted Design Files and Client PO, which open on a click).
 
-            ADVANCE RECEIVED IS GONE TOO, and did not move: every figure it drew
-            is in the Payment section below the products, which is the one place
-            on this page money is stated. Its builder, orderAdvance.ts, and its
-            tests are untouched — this removed a second display of one answer,
-            not the answer.
+            EVERY FORMER ACTION STILL HAS A ROUTE: Download PI and PI history in
+            the Main PI row's ⋯ menu; every PI version and every supporting-file
+            submission behind History; New PI, Design Files and Client PO in the
+            one Update documents menu; the reviews in the existing dialogs.
 
-            TWO THIRDS AND ONE THIRD, because that is the shape of the content:
-            three subsections of prose against two statuses. Stacked in the same
-            order below 900px. */}
+            ADVANCE RECEIVED IS STILL GONE, and did not move: every figure it drew
+            is in the Payment section below the products. */}
         <OrderDocumentsRow>
-          <OrderDocumentsPanel
-            mainPi={mainPi}
-            design={designFiles}
-            clientPo={clientPo}
-            onView={v => { void openVersionFile(v, 'view') }}
-            onDownload={v => { void openVersionFile(v, 'download') }}
-            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            onManageDesign={() => setDesignOpen(true)}
-            viewing={piFileBusy !== null}
-            downloading={piFileBusy !== null}
-          />
           <OrderFabricFinishCard
             standing={approvalView}
             canUpdate={mayRecordApproval}
@@ -2601,7 +2848,85 @@ export default function OrderDetailPage() {
             onViewEvidence={path => { void viewEvidence(path) }}
             busyEvidence={proofBusy}
           />
+          <OrderDocumentsPanel
+            mainPi={mainPi}
+            design={designFiles}
+            clientPo={clientPo}
+            onView={v => { void openVersionFile(v, 'view') }}
+            onDownload={v => { void openVersionFile(v, 'download') }}
+            onOpenPdf={openVersionPdf}
+            onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
+            onManageDesign={() => setDesignOpen(true)}
+            viewing={piFileBusy !== null}
+            downloading={piFileBusy !== null}
+            mainPiMenu={mainPi.kind === 'ready' ? (
+              <MoreActionsMenu<'pdf' | 'download' | 'history'>
+                ariaLabel="More PI actions"
+                triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
+                items={[
+                  { key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` },
+                  {
+                    key: 'download',
+                    label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
+                    disabled: !mainPi.hasFile || piFileBusy !== null,
+                  },
+                  { key: 'history', label: 'PI history' },
+                ]}
+                onSelect={key => {
+                  if (key === 'pdf') { openVersionPdf(mainPi.version.id, true); return }
+                  if (key === 'download') { void openVersionFile(mainPi.version, 'download'); return }
+                  setRevisionError(null)
+                  setHistoryOpen(true)
+                }}
+              />
+            ) : undefined}
+            updateMenu={docUpdateItems.length > 0 ? (
+              <MoreActionsMenu<DocUpdateKey>
+                label={UPDATE_DOCUMENTS_LABEL}
+                triggerClassName="boe-btn boe-btn-ghost order-doc-action"
+                items={docUpdateItems}
+                onSelect={runDocUpdate}
+              />
+            ) : undefined}
+            mainPiOperations={mainPiOperations}
+            supporting={docSupporting}
+            changes={docChanges}
+            onReviewChange={s => setDocReview(s)}
+            onResubmitChange={s => setDocUpload({ category: s.includes_design_files ? 'design_files' : 'client_po', resubmission: s })}
+            onOpenFile={openDocFile}
+            fileError={docError}
+            onReviewRevision={mayReviewRevision ? () => { void openRevisionReview() } : undefined}
+            onApproveRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) } : undefined}
+            onRejectRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) } : undefined}
+            onOpenProposal={v => { void openVersionFile(v, 'view') }}
+            revisionApproverInactive={revisionApproverInactive}
+            reapprove={mayReapproveRevision ? {
+              confirming: reapproveConfirming,
+              busy: reapproveBusy,
+              error: reapproveError,
+              onStart: () => { setReapproveError(null); setReapproveConfirming(true) },
+              onConfirm: () => { void reapproveRevision() },
+              onCancel: () => setReapproveConfirming(false),
+            } : undefined}
+          />
         </OrderDocumentsRow>
+
+        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270115000000) ══
+            V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
+            An edit becomes a pending version; an Admin's approval puts it in
+            force and amends the Order (20270116000000). */}
+        {order.source_order_submission_id && handoffReady && (
+          <PiVersionsPanel
+            supabase={supabase}
+            orderId={order.id}
+            submissionId={order.source_order_submission_id}
+            mayEdit={!viewAsUserId && order.status !== 'cancelled'
+              && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
+            isAdmin={mayDecidePiAsAdmin}
+            onChanged={() => { void loadOrder() }}
+            refreshKey={piVersions.map(v => `${v.id}:${v.status}`).join(',')}
+          />
+        )}
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
@@ -2704,6 +3029,20 @@ export default function OrderDetailPage() {
               finance={finance}
               loaded={recordsReady}
               onOpenList={setPaymentList}
+            />
+            {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
+                with the rest of the payment position, and nowhere above. */}
+            <AdvanceGatePanel
+              readiness={advance}
+              versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
+              isAdmin={mayApproveBelowAdvance}
+              approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
+              formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
+              onApprove={async reason => {
+                const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
+                if (!error) await reloadOrderRow()
+                return { error }
+              }}
             />
           </div>
         </PiCard>
@@ -2981,6 +3320,42 @@ export default function OrderDetailPage() {
           onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
           onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
           error={revisionDialog === null ? revisionError : null}
+          supporting={<SubmissionHistoryList api={docSubs} formatWhen={docWhen} onOpenFile={openDocFile} />}
+        />
+      )}
+
+      {revOpsOpen && piHistory.pending && (
+        <RevisionOperationsReviewModal
+          orderNumber={order.display_number}
+          current={piHistory.current}
+          proposal={piHistory.pending}
+          differences={revOpsDiff}
+          saving={revOpsBusy}
+          failure={revOpsError}
+          onOpen={v => { void openVersionFile(v, 'view') }}
+          onClose={() => { if (!revOpsBusy) setRevOpsOpen(false) }}
+          onDecide={(d, r) => { void decideRevisionOperations(d, r) }}
+        />
+      )}
+
+      {/* ── Design Files and Client PO submissions (20270112000000) ── */}
+      {docUpload && (
+        <SubmitDocumentsModal
+          orderNumber={order.display_number}
+          initialCategory={docUpload.category}
+          api={docSubs}
+          resubmissionOf={docUpload.resubmission}
+          onClose={() => setDocUpload(null)}
+        />
+      )}
+      {docReview && (
+        <ReviewSubmissionModal
+          orderNumber={order.display_number}
+          submission={docSubs.rows.find(r => r.id === docReview.id) ?? docReview}
+          api={docSubs}
+          viewer={docViewer}
+          formatWhen={docWhen}
+          onClose={() => setDocReview(null)}
         />
       )}
 
@@ -3016,6 +3391,18 @@ export default function OrderDetailPage() {
           onConfirm={() => approveRevision(revisionDialog.version)}
         />
       )}
+      {lineReview && (
+        <div className="boe-modal-overlay" role="dialog" aria-modal="true" aria-label={PI_LINE_REVIEW_TITLE}>
+          <div className="boe-modal-sheet" style={{ maxWidth: '640px' }}>
+            <div className="boe-modal-body">
+              <PiLineReview versionNumber={lineReview.version.versionNumber} review={lineReview.review} busy={revisionBusy}
+                failure={revisionError}
+                onConfirm={lineMap => { void approveRevision(lineReview.version, lineMap) }}
+                onCancel={() => setLineReview(null)} />
+            </div>
+          </div>
+        </div>
+      )}
       {revisionDialog?.kind === 'reject' && (
         <RejectRevisionModal
           orderNumber={order.display_number}
@@ -3042,10 +3429,22 @@ export default function OrderDetailPage() {
           versionLabel={operationsView.versionLabel}
           decision={handoffDialog}
           withdrawing={handoffDialog === 'clarification_needed' && operationsView.status === 'accepted'}
+          realigning={handoffDialog === 'accepted' && operationsView.status === 'accepted'}
           saving={handoffBusy}
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setHandoffDialog(null) }}
           onConfirm={reason => decideHandoff(handoffDialog, reason)}
+          alsoAccepts={initialDocumentsAwaiting}
+        />
+      )}
+      {recoverOpen && operationsView?.kind === 'recorded' && (
+        <ProductionRecoveryModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setRecoverOpen(false) }}
+          onConfirm={reason => recoverAlignment(reason)}
         />
       )}
 

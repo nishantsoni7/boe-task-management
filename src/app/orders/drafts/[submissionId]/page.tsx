@@ -92,6 +92,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
+import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -149,7 +151,6 @@ import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision
 import {
   describeReservation,
   reservationApprovalMessage,
-  reservationErrorMessage,
 } from '@/lib/orders/orderNumberReservation'
 import {
   PI_PAYMENT_PROOF_RETRY,
@@ -165,6 +166,7 @@ import {
   type PiPaymentFormState,
   type PiPaymentSummary,
 } from '@/lib/finance/piPaymentView'
+import { completePaymentEntry, PAYMENT_RECORDED_AND_VERIFIED_BODY } from '@/lib/finance/paymentEntryCompletion'
 import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
 import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
@@ -188,7 +190,7 @@ import {
   describeAdvance,
   describeAdvanceActions,
 } from '@/lib/orders/advanceRequirement'
-import { asPaymentPosition } from '@/lib/orders/paymentGate'
+import { asPaymentPosition, readExceptionReason } from '@/lib/orders/paymentGate'
 import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
@@ -349,6 +351,8 @@ function PiDraftDetailPageInner() {
   const supabase = useMemo(() => createClient(), [])
 
   const submissionId = params.submissionId as string
+  // Design Files and Client PO offered where the PI is sent (20270112000000 §11).
+  const supporting = usePiSupportingDocuments(supabase, submissionId)
   /**
    * The one thing the query string is trusted for: whether to congratulate.
    *
@@ -409,14 +413,13 @@ function PiDraftDetailPageInner() {
    */
   const [canAdminAmend, setCanAdminAmend] = useState(false)
 
-  // ── The reserved Order number ──
+  // ── The Order number ──
   //
-  // The number itself arrives WITH the record — it is four columns on the row
-  // the page already reads, spread into PI_DRAFT_DETAIL_COLUMNS — so nothing is
-  // held here but the in-flight and failure state of the one action.
-  const [reserving, setReserving] = useState(false)
-  const [reservationFailure, setReservationFailure] = useState<string | null>(null)
+  // The number (a held reservation, if an older draft has one) arrives WITH the
+  // record. There is no action: since 20270114000000 a PI Draft reserves no
+  // number, and the Order's is allotted when the PI is approved.
   const [copiedNumber, setCopiedNumber] = useState(false)
+  const [piEditorOpen, setPiEditorOpen] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
   /**
@@ -960,29 +963,6 @@ function PiDraftDetailPageInner() {
   }, [supabase, submissionId])
 
   /**
-   * Takes the next Order number and holds it for this PI.
-   *
-   * IDEMPOTENT AT BOTH ENDS. The RPC returns the existing reservation rather
-   * than taking a second number, and `reserving` keeps a second click from
-   * even asking — so a double-click, a refresh mid-flight and a retried request
-   * all end with the same one number.
-   *
-   * ON SUCCESS THE PAGE RE-READS rather than patching state from the reply: the
-   * panel's standing depends on the workbook hash as well as the number, and one
-   * read of the record is the truth about both.
-   */
-  const reserveOrderNumber = useCallback(async () => {
-    if (reserving) return
-    setReserving(true)
-    setReservationFailure(null)
-    const { error } = await supabase.rpc(
-      'reserve_order_number_for_submission', { p_submission_id: submissionId })
-    setReserving(false)
-    if (error) { setReservationFailure(reservationErrorMessage(error)); return }
-    await loadDraft({ quiet: true })
-  }, [supabase, submissionId, reserving, loadDraft])
-
-  /**
    * Puts the number on the clipboard, and says so.
    *
    * A FAILURE IS NOT REPORTED AS ONE. Clipboard access is refused in plenty of
@@ -1033,7 +1013,6 @@ function PiDraftDetailPageInner() {
       }
 
       const paymentId = result.paymentRequestId
-      const notice = PI_PAYMENT_RECORDED_BODY
 
       if (proof && paymentId) {
         // The payment is already recorded and committed. A proof failure is
@@ -1051,8 +1030,12 @@ function PiDraftDetailPageInner() {
         }
       }
 
+      // THE LAST CALL (20270120000000): after the proof, never before it. A
+      // holder of finance.verify_own_payment has their own payment verified now;
+      // for everybody else nothing changes and it waits for verification.
+      const completion = await completePaymentEntry(supabase, paymentId)
       attempt.settle()
-      setPaymentNotice(notice)
+      setPaymentNotice(completion.verified ? PAYMENT_RECORDED_AND_VERIFIED_BODY : PI_PAYMENT_RECORDED_BODY)
       // ONLY the payment section is refreshed. The submission, its items, its
       // images and its signed workbook URL are untouched.
       await loadPayments()
@@ -1109,14 +1092,12 @@ function PiDraftDetailPageInner() {
   const submitForApproval = useCallback((
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
+    acknowledgedMissing: string[] = [],
   ) => runAction('submit', async () => {
-    const { data, error } = await supabase.rpc('submit_pi_for_review', {
-      p_submission_id: submissionId,
-      p_note: note,
-      p_reason: terms.reason,
-      p_payment_terms: terms.paymentTerms,
-      p_billing_terms: terms.billingTerms,
-    })
+    // ONE CALL: submit_pi_for_review_with_documents() sends the PI through
+    // submit_pi_for_review() unchanged and records the attached Design Files /
+    // Client PO (and any confirmed absence) in the same transaction.
+    const { data, error } = await supporting.send({ note, terms, acknowledgedMissing })
     if (!error) {
       // WHO IS TOLD FOLLOWS THE ROUTE THE DATABASE CHOSE, never the one the
       // browser guessed: `exception_requested` comes back from the RPC and is
@@ -1133,7 +1114,7 @@ function PiDraftDetailPageInner() {
       }
     }
     return { error }
-  }), [runAction, supabase, submissionId, loadPayments])
+  }), [runAction, submissionId, loadPayments, supporting])
 
   /**
    * Accept the proposed advance. THE PI STAYS UNDER REVIEW.
@@ -1869,7 +1850,14 @@ function PiDraftDetailPageInner() {
    * is asked in four places in the markup below, and four copies of the same
    * expression is four chances for one of them to drift.
    */
-  const canEditProducts = canEditSubmission || canAdminAmend
+  // ONE "EDIT PI" (20270115000000). The per-field doors (client, terms,
+  // schedule, billing %, product text, reorder) are no longer drawn: the whole
+  // PI is edited in one place. On a PI that is not yet an Order it is written
+  // directly; once it is an Order it can only change as a new version, from the
+  // Order page (the database refuses anything else).
+  const piIsOrder = Boolean(submission.order_id)
+  const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder
+  const canEditProducts = false
 
   const ownsSubmission = viewerId !== null && (
     submission.created_by === viewerId || submission.submitted_by === viewerId)
@@ -2100,27 +2088,41 @@ function PiDraftDetailPageInner() {
         <PiContextRow
           reservation={reservationView}
           confirmedNumber={draft.orderDisplayNumber}
-          reserving={reserving}
-          reservationFailure={reservationFailure}
-          /* THE COMPATIBILITY ACTION, and only that. A PI created after
-             20261009000000 takes its number automatically as soon as its file
-             is uploaded, so there is nothing for anybody to press — offering a
-             button there would suggest a decision that is not being made. The
-             control exists for the grandfathered population, which reserves by
-             hand or not at all.
-
-             Offered only where the RPC would accept it. The RPC re-derives
-             every one of these conditions under its own lock, so this is a
-             drawing rule and authorizes nothing. */
-          onReserve={reservationView.state === 'available' && !submission.reservation_required
-            ? () => { setCopiedNumber(false); void reserveOrderNumber() }
-            : null}
+          draftReference={submission.draft_reference ?? null}
           onCopy={copyOrderNumber}
           copied={copiedNumber}
           context={submissionContext}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
         />
+
+        {/* ── 1b. EDIT PI (20270115000000) ── one action for the whole PI. */}
+        {(mayEditPi || (piIsOrder && submission.status === 'approved')) && (
+          <div className="pi-edit-bar" style={{
+            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+            border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '10px 14px', background: colors.base,
+          }}>
+            <span style={{ flex: 1, fontSize: '12.5px', color: colors.secondary, minWidth: '220px' }}>
+              {mayEditPi
+                ? 'Client, dates, terms, products, quantities, prices and photos are all edited in one place.'
+                : 'This PI is approved and in force. It changes only as a new version, proposed from its Order.'}
+            </span>
+            {mayEditPi ? (
+              <button type="button" className="boe-btn boe-btn-primary" onClick={() => setPiEditorOpen(true)}>
+                {EDIT_PI_LABEL}
+              </button>
+            ) : approvedOrder ? (
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => router.push(orderHref(approvedOrder.orderId))}>
+                {EDIT_PI_LABEL} on the Order
+              </button>
+            ) : null}
+          </div>
+        )}
+        {piEditorOpen && (
+          <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
+            onClose={() => setPiEditorOpen(false)}
+            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }) }} />
+        )}
 
         {/* ── 2. The PI overview ──
             Who it is for, who prepared and submitted it, when it was confirmed
@@ -2134,11 +2136,11 @@ function PiDraftDetailPageInner() {
              only; every other state is read-only for everyone. The RPC behind
              the dialog re-derives exactly this, so the control and the write
              cannot disagree. */
-          canEditBilling={canEditSubmission || canAdminAmend}
+          canEditBilling={false}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           /* The same two authorities the billing control uses. The owner rule
              covers a draft; the admin rule covers every stage after it. */
-          canEditDetails={canEditSubmission || canAdminAmend}
+          canEditDetails={false}
           onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
           onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
           /* The owner's channel, offered only where they have no edit door:
@@ -2201,12 +2203,10 @@ function PiDraftDetailPageInner() {
                  at a submitted PI is not the person who fills these in. */
               readiness={actions.canSubmit ? submissionReadiness : null}
               onFixReadiness={
-                canEditSubmission || canAdminAmend
+                mayEditPi
                   ? section => {
-                      setClientFailure(null)
-                      setProductFailure(null)
                       if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                      setEditSection(section)
+                      setPiEditorOpen(true)
                     }
                   : null
               }
@@ -2256,6 +2256,12 @@ function PiDraftDetailPageInner() {
                  where Finance stands; the panel keeps its controls and notes. */
               statusShownAbove
             />
+            {submission.status === 'submitted' && (
+              <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
+            )}
+            {(submission.status === 'draft' || submission.status === 'needs_changes') && (
+              <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
+            )}
           </div>
         </div>
 
@@ -2490,9 +2496,7 @@ function PiDraftDetailPageInner() {
               view={breakdown}
               fabricResponsibility={submission.fabric_responsibility ?? null}
               commercialTerms={submission.commercial_terms_note ?? null}
-              onEditTerms={canEditSubmission || canAdminAmend
-                ? () => { setClientFailure(null); setEditSection('terms') }
-                : null}
+              onEditTerms={null}
             />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
@@ -2710,7 +2714,9 @@ function PiDraftDetailPageInner() {
           // returned for an unrelated correction does not silently drop the
           // commercial terms while the employee fixes something else.
           initialTerms={{
-            reason: payments?.exception_reason ?? '',
+            // A reason given before the three existed opens unchosen.
+            reasonChoice: readExceptionReason(payments?.exception_reason).choice,
+            otherRemark: readExceptionReason(payments?.exception_reason).remark,
             paymentTerms: payments?.payment_terms ?? '',
             billingTerms: payments?.billing_terms ?? '',
           }}
@@ -2719,6 +2725,9 @@ function PiDraftDetailPageInner() {
           offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
+          supporting={<PiSupportingDocumentsPicker state={supporting} disabled={acting} />}
+          missingSupporting={supporting.missing}
+          supportingBlocked={supporting.error}
         />
       )}
 

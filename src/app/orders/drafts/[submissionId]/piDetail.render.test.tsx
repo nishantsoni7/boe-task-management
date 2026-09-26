@@ -113,6 +113,7 @@ import { ADVANCE_NOT_A_PAYMENT_NOTE, buildCommercialRows, formatInr } from '@/li
 import {
   draftStatusLabel,
   draftStatusTone,
+  NUMBER_NOT_ALLOTTED,
   persistedCommercial,
   type PersistedSubmission,
 } from '@/lib/orders/draftsView'
@@ -385,7 +386,7 @@ const contextHtml = (over: {
   piApprovedLine?: string | null
   rejectedLine?: string | null
   reservation?: ReservationView
-  onReserve?: (() => void) | null
+  draftReference?: string | null
   copied?: boolean
   confirmedNumber?: string | null
 } = {}) => {
@@ -394,9 +395,7 @@ const contextHtml = (over: {
     <PiContextRow
       reservation={over.reservation ?? HELD}
       confirmedNumber={over.confirmedNumber ?? null}
-      reserving={false}
-      reservationFailure={null}
-      onReserve={over.onReserve ?? null}
+      draftReference={over.draftReference === undefined ? 'PID-00042' : over.draftReference}
       onCopy={() => {}}
       copied={over.copied ?? false}
       context={buildSubmissionContext({
@@ -422,7 +421,7 @@ describe('the context row puts the reserved number beside where review stands', 
     assert.equal((html.match(/class="pi-detail-context-cell"/g) ?? []).length, 2)
     const t = text(html)
     assert.ok(t.indexOf(RESERVED_ORDER_LABEL) < t.indexOf(SALESPERSON_LABEL),
-      'Reserved Order no. on the left, who the PI is from on the right')
+      'the Order number on the left, who the PI is from on the right')
     assert.ok(html.includes(`aria-label="${SUBMISSION_CELL_HEADING}"`),
       'and the whole cell is named for assistive technology, not just its first label')
   })
@@ -430,27 +429,49 @@ describe('the context row puts the reserved number beside where review stands', 
   test('the number is prominent, copyable, and explained in exactly one line', () => {
     const html = contextHtml()
     assert.ok(html.includes('class="pi-detail-context-number"'))
-    assert.ok(text(html).includes('0521'))
+    assert.ok(text(html).includes('Reserved number 0521'),
+      'a held reservation reads "Reserved number 0521" (20270114000000)')
+    assert.ok(text(html).includes(NUMBER_NOT_ALLOTTED),
+      'and, until the Order exists, says in words that no Order number is allotted')
+    assert.ok(text(html).includes('Draft reference PID-00042'), 'beside the draft’s own reference')
     assert.ok(html.includes('aria-label="Copy Order number 0521"'))
     assert.equal((text(html).match(/Reserved for this PI/g) ?? []).length, 1)
     assert.ok(text(contextHtml({ copied: true })).includes('Copied'))
   })
 
-  test('no number: the Reserve control only where it is offered, otherwise a quiet absence', () => {
+  test('no number: "Order number not allotted", the draft reference, and no Reserve control', () => {
     const none: ReservationView = {
-      state: 'available', number: null, standing: 'No Order number is held for this PI yet.',
+      state: 'blocked', number: null, standing: 'BOE allots the Order number when this PI is approved.',
       blockedReason: null, canCopy: false,
     }
-    assert.ok(buttonLabels(contextHtml({ reservation: none, onReserve: () => {} })).includes(RESERVE_ACTION_LABEL))
     const quiet = contextHtml({ reservation: none })
-    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL))
-    assert.ok(text(quiet).includes('Not reserved'))
+    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL), 'a PI Draft no longer reserves (20270114000000)')
+    assert.ok(text(quiet).includes(NUMBER_NOT_ALLOTTED))
+    assert.equal((text(quiet).match(/Order number not allotted/g) ?? []).length, 1, 'said once')
+    assert.ok(text(quiet).includes('Draft reference PID-00042'))
     assert.ok(!quiet.includes('Copy Order number'), 'nothing to copy')
+    assert.ok(!text(quiet).includes('Reserved number'), 'and no number is implied')
   })
 
   test('the Confirmed Order number, once there is one, keeps its own label', () => {
     const t = text(contextHtml({ status: 'approved', confirmedNumber: '0521' }))
     assert.ok(t.includes('Confirmed Order number 0521'))
+    assert.ok(!t.includes(NUMBER_NOT_ALLOTTED), 'and "not allotted" is gone once it is')
+  })
+
+  test('numbered at conversion (no reservation): once approved, the Order number stands alone — never "not allotted" beside it', () => {
+    // Acceptance review of #209, 2026-09-26: the approved PID-00001 read "Order
+    // number not allotted … BOE allots the Order number when this PI is
+    // approved" and "Confirmed Order number 0526" at once.
+    const none: ReservationView = {
+      state: 'blocked', number: null, standing: 'BOE allots the Order number when this PI is approved.',
+      blockedReason: null, canCopy: false,
+    }
+    const t = text(contextHtml({ status: 'approved', reservation: none, confirmedNumber: '0526', draftReference: 'PID-00001' }))
+    assert.ok(t.includes('Confirmed Order number 0526'))
+    assert.ok(t.includes('Draft reference PID-00001'))
+    assert.ok(!t.includes(NUMBER_NOT_ALLOTTED), '"not allotted" contradicts the number')
+    assert.ok(!t.includes('BOE allots the Order number when this PI is approved'), 'the pre-approval explanation is gone')
   })
 
   test('THE SALESPERSON LEADS, and the badge sits beside them', () => {
@@ -837,8 +858,11 @@ describe('the billing declaration, as the third figure', () => {
       'the authority is asked of the database')
     assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
       'and so is the admin authority, which the owner rule cannot answer')
-    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'),
-      'and both answers together are what the card is given')
+    // Since 20270115000000 the billing percentage is edited inside the one Edit
+    // PI, which both answers together open; the card's own control is off.
+    assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'),
+      'and both answers together are what opens Edit PI')
+    assert.ok(page.includes('canEditBilling={false}'), 'the per-field billing door is no longer drawn')
     assert.ok(!/canEditBilling=\{actions\./.test(page),
       'not describeSubmissionActions, which knows only about the owner')
     const code = page
@@ -3405,7 +3429,9 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'request_order_submission_changes',
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
-      'submit_pi_for_review',
+      // submit_pi_for_review is reached through the supporting-documents
+      // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
+      // pinned in the submit-door tests; the page itself calls no submit RPC.
       // The client and party details editor (20260928000000). The one write on
       // this page that supplies BUSINESS DATA rather than moving a status, and
       // the answer to a PI imported without a client name — which previously
@@ -3515,7 +3541,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     for (const [name, region] of regions) {
       assert.ok(!region.includes('canApprovePayments'), `${name} must not read the payment authority`)
     }
-    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'))
+    // The one Edit PI (20270115000000) carries the billing percentage; it is
+    // opened by the same two authorities and never by the payment authority.
+    assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'))
+    assert.ok(!slice('const mayEditPi =', '\n').includes('canApprovePayments'))
   })
 })
 

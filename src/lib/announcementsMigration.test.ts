@@ -81,6 +81,23 @@ describe('the migration', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
     assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
     assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // A payment's typed reference survives verification: a trigger on
+      // finance_payment_requests, a carry-forward of unverified rows, and
+      // pi_submission_payment_summary. It touches nothing Announcements creates.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
+      // Order document submissions (#202), renumbered after this applied
+      // migration. It touches nothing Announcements creates.
+      '20270112000000_order_document_submissions.sql',
+      // Revised-PI promotion (#205), renumbered likewise.
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      // PI numbering, PI edit revisions and the revision in force at Admin
+      // approval (#209), renumbered likewise.
+      '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+      '20270115000000_order_submission_pi_edit_revisions.sql',
+      '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
+      '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
+      '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       // The permission resolvers are not for anon (#213): REVOKE on existing
       // resolver functions. It touches nothing Announcements creates.
       '20270123000000_permission_resolvers_are_not_for_anon.sql',
@@ -108,11 +125,14 @@ describe('the wiring', () => {
     assert.doesNotMatch(hook, /\.(insert|update|upsert|delete)\(/)
   })
 
-  test('the Modules page shows the banner and the bell, but not while previewing somebody else', () => {
+  test('the Modules page shows the latest announcement and the bell, but not while previewing somebody else', () => {
+    // The launcher's redesign (#218) shows the latest announcement beside the
+    // greeting instead of the unread banner; it reads the same query.
     const page = read('src/app/modules/page.tsx')
     assert.match(page, /const showAnnouncements = !viewMode && !!userId/)
     assert.match(page, /useMyAnnouncements\(userId, showAnnouncements\)/)
-    assert.match(page, /\{showAnnouncements && !editingOrder && <AnnouncementBanner announcements=\{myAnnouncements\} \/>\}/)
+    assert.match(page, /\{!editingOrder && showAnnouncements && myAnnouncements\.length > 0 && \(/)
+    assert.match(page, /<LatestAnnouncement latest=\{myAnnouncements\[0\]\} \/>/)
     assert.match(page, /\{showBell && <AnnouncementBell announcements=\{myAnnouncements\} \/>\}/)
   })
 
