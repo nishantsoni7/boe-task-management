@@ -94,6 +94,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
+import { PiDiscountWordingNotice, PiInternalDetailsCard, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
+import { describeMiddleman, formatIsoDay, internalDetailsSubmitBlock } from '@/lib/orders/piInternalDetails'
+import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -1238,6 +1241,38 @@ function PiDraftDetailPageInner() {
   }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
   /**
+   * SAVE (AND OPTIONALLY CONFIRM) THE INTERNAL DETAILS (20270122000000).
+   *
+   * Full state, with the row version the dialog opened at. The RPC re-derives
+   * the authority, the stage, the date order and every commission rule; a
+   * refusal is shown in its own words, inside the dialog, with the form kept.
+   */
+  const [internalOpen, setInternalOpen] = useState(false)
+  const [internalSaving, setInternalSaving] = useState(false)
+  const [internalFailure, setInternalFailure] = useState<string | null>(null)
+  const saveInternalDetails = useCallback(async (payload: Record<string, string | null>, confirm: boolean) => {
+    if (internalSaving) return
+    setInternalSaving(true)
+    setInternalFailure(null)
+    try {
+      const { error } = await supabase.rpc('save_order_submission_internal_details', {
+        p_submission_id: submissionId,
+        p_details: payload,
+        p_expected_version: rowVersion,
+        p_confirm: confirm,
+      })
+      if (error) {
+        setInternalFailure((error as { message?: string }).message ?? 'The internal details could not be saved.')
+        return
+      }
+      setInternalOpen(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setInternalSaving(false)
+    }
+  }, [internalSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
    * SAVE THE DATES AND TERMS.
    *
    * Its own RPC and therefore its own transaction, exactly like the client
@@ -1760,6 +1795,19 @@ function PiDraftDetailPageInner() {
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
 
+  // THE INTERNAL DETAILS (20270122000000) and the deduction row's wording.
+  // Editable exactly where can_edit_order_submission says the record is; the
+  // submit dialog waits on the same readiness the database checks.
+  const canEditInternalDetails = canEditSubmission && (submission.status === 'draft' || submission.status === 'needs_changes')
+  const internalSubmitBlock = internalDetailsSubmitBlock(submission)
+  // The generated client PI always prints a non-zero deduction as "Discount";
+  // this flags an uploaded workbook that says otherwise (or is not on record).
+  const discountWording = classifyDiscountWording({
+    amount: toNumber(submission.discount_amount),
+    label: submission.discount_label ?? null,
+    formatAmount: n => formatInr(n),
+  })
+
   // ── What the page SAYS, from the page's own view module ──
   //
   // Pure functions with their own tests. Nothing below chooses a heading, a
@@ -2011,7 +2059,9 @@ function PiDraftDetailPageInner() {
   })
 
   /** The breakdown card's selection of the same shared rows. Nothing is recomputed. */
-  const breakdown = buildBreakdownView(commercialRows)
+  // The deduction row as the generated client PI prints it (20270122000000):
+  // "Discount" when non-zero, left off when zero. Every figure is the builder's.
+  const breakdown = buildBreakdownView(clientDeductionRows(commercialRows, { amount: submission.discount_amount }))
 
   /**
    * The employee's reply, shown to a reviewer WHILE THE PI IS WITH THEM.
@@ -2162,6 +2212,17 @@ function PiDraftDetailPageInner() {
           workbookName={workbookName}
           dates={summaryDates}
           figures={summaryFigures}
+        />
+
+        {/* ── 2b. The deduction row's wording, where it would mislead a client,
+            and the INTERNAL details (20270122000000): the dates Sales confirms
+            and the middleman answer. Read by the reviewer here; never printed
+            on a client document. */}
+        <PiDiscountWordingNotice notice={discountWording.notice} />
+        <PiInternalDetailsCard
+          row={submission}
+          canEdit={canEditInternalDetails}
+          onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
         />
 
         {/* ── 2a + 3. Payment status beside Management review ──
@@ -2725,9 +2786,40 @@ function PiDraftDetailPageInner() {
           offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
-          supporting={<PiSupportingDocumentsPicker state={supporting} disabled={acting} />}
+          supporting={<>
+            {/* What the reviewer will read as internal details, restated
+                where Sales presses Submit. Never on the client PI. */}
+            <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.5 }}>
+              <strong style={{ color: colors.primary }}>Internal details</strong>{' — '}
+              confirmed {formatIsoDay(submission.order_confirmation_date) ?? 'not entered'},
+              due {formatIsoDay(submission.due_date) ?? 'not entered'}; middleman commission: {describeMiddleman(submission)}
+            </div>
+            {internalSubmitBlock && (
+              // supportingBlocked only disables Submit; the reason is said here.
+              <div role="alert" style={{
+                fontSize: '12.5px', color: colors.primary, background: colors.amberTint,
+                border: `1px solid ${colors.amber}`, borderRadius: '8px', padding: '8px 10px',
+              }}>
+                {internalSubmitBlock}
+              </div>
+            )}
+            <PiSupportingDocumentsPicker state={supporting} disabled={acting} />
+          </>}
           missingSupporting={supporting.missing}
-          supportingBlocked={supporting.error}
+          // THE INTERNAL DETAILS WAIT FIRST: from 20270123000000 the database
+          // refuses a submission without them, so the dialog says so up front.
+          supportingBlocked={internalSubmitBlock ?? supporting.error}
+        />
+      )}
+
+      {internalOpen && (
+        <PiInternalDetailsModal
+          row={submission}
+          grandTotal={grandTotalValue}
+          saving={internalSaving}
+          failure={internalFailure}
+          onCancel={() => { if (!internalSaving) setInternalOpen(false) }}
+          onSave={(payload, confirm) => { void saveInternalDetails(payload, confirm) }}
         />
       )}
 

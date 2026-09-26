@@ -149,7 +149,7 @@ describe('the document identifies itself and its client', () => {
     assert.deepEqual(m.shipTo, [], 'an empty block prints its own absence once')
   })
 
-  test('carries the salesperson, their number and both dates', () => {
+  test('carries the salesperson and their number — and NO date', () => {
     const meta = Object.fromEntries(model().meta.map(f => [f.label, f.value]))
     // NAMED FOR WHOSE IT IS. contact_number is the BOE-side number the
     // workbook carries at G22; it was labelled a bare "Contact" beside a
@@ -159,9 +159,11 @@ describe('the document identifies itself and its client', () => {
     assert.equal(meta['Salesperson contact'], '+91 98200 11223')
     assert.equal(meta['Contact'], undefined, 'the unqualified label is gone')
     assert.equal(meta['PI created by'], undefined)
-    assert.match(meta['Confirm date'], /Jul 2026/)
-    assert.match(meta['Due date'], /15/)
-    assert.match(meta['Due date'], /Aug/)
+    // 20270122000000: a client PDF prints no confirmation date and no due
+    // date, from the app or from the workbook. This fixture carries both.
+    assert.equal(meta['Confirm date'], undefined)
+    assert.equal(meta['Due date'], undefined)
+    assert.ok(!Object.values(meta).some(v => /Jul 2026|Aug 2026/.test(v)))
   })
 
   test('the salesperson line never falls back to a client’s number', () => {
@@ -179,18 +181,10 @@ describe('the document identifies itself and its client', () => {
       'the client’s number must not appear under a BOE label')
   })
 
-  test('an absent due date says `Not set` rather than inventing one', () => {
-    const meta = Object.fromEntries(model(1, { due_date: null }).meta.map(f => [f.label, f.value]))
-    assert.equal(meta['Due date'], 'Not set')
-    // The prose commitment is NOT turned into a date, here or anywhere.
-    assert.ok(!Object.values(meta).some(v => v.includes('6 weeks')))
-  })
-
-  test('the due date is not shifted by a timezone', () => {
-    // formatPiDate re-spells the ISO string without constructing a Date, so a
-    // 1 January due date does not become 31 December on a machine behind UTC.
+  test('no date field of any kind, and the prose commitment is not turned into one', () => {
     const meta = Object.fromEntries(model(1, { due_date: '2027-01-01' }).meta.map(f => [f.label, f.value]))
-    assert.match(meta['Due date'], /1 Jan 2027/)
+    assert.ok(!Object.keys(meta).some(k => /date/i.test(k)), 'no date label')
+    assert.ok(!Object.values(meta).some(v => v.includes('6 weeks') || v.includes('Jan 2027')))
   })
 })
 
@@ -243,10 +237,11 @@ describe('the commercial summary', () => {
     assert.ok(!model().commercial.some(r => r.key === 'advance'))
   })
 
-  test('the DISCOUNT row is labelled Discount, whatever the workbook called it', () => {
-    // Some templates say "Design Fees" for the same cell with the same meaning.
-    // buildCommercialRows resolved that once; this prints what it is given.
+  test('a non-zero deduction is "Discount"; a zero one is left off', () => {
+    // 20270122000000: the generated PI's convention, whatever the workbook said.
     assert.equal(model().commercial.find(r => r.key === 'discount')?.label, 'Discount')
+    const zero = model(3, { discount_amount: '0', subtotal_after_discount: '1200000.00' }).commercial
+    assert.equal(zero.find(r => r.key === 'discount'), undefined)
   })
 
   test('the grand total is the emphasised row, and it is the only one', () => {
@@ -693,7 +688,7 @@ describe('the rendered PDF', () => {
     })
     const text = pdfText(await renderConfirmedPdf({ model: m, metadata: METADATA }))
     assert.ok(text.includes('Not provided'), 'an absent block says so once')
-    assert.ok(text.includes('Not set'), 'and an absent due date says so')
+    assert.ok(!/DUE DATE/i.test(text), 'and no due date line at all')
     assert.ok(text.includes('Undeclared'))
     assert.ok(!text.includes('null'))
     assert.ok(!text.includes('undefined'))

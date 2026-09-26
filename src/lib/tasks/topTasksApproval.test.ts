@@ -298,6 +298,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270117000000_order_finance_guards_run_as_owner.sql',
     '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+    '20270122000000_order_submission_internal_details.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

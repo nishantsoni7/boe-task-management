@@ -1039,6 +1039,7 @@ describe('the applied migrations are frozen', () => {
       '20270117000000_order_finance_guards_run_as_owner.sql',
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+      '20270122000000_order_submission_internal_details.sql',
     ])
   })
 
@@ -1329,6 +1330,7 @@ describe('the applied migrations are frozen', () => {
       '20270117000000_order_finance_guards_run_as_owner.sql',
       '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+      '20270122000000_order_submission_internal_details.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

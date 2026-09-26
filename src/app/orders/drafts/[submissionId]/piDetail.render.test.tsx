@@ -3428,6 +3428,8 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'reorder_order_submission_items',
       'request_order_submission_changes',
       'request_order_submission_correction',
+      // The internal-details editor (20270122000000), a SAVE on a press.
+      'save_order_submission_internal_details',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
       // sender (submit_pi_for_review_with_documents, 20270112000000 §11),

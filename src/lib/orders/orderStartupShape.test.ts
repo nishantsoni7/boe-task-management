@@ -415,7 +415,10 @@ describe('no Order screen waits more than it must', () => {
       // is retired — a PI Draft no longer reserves a number, so the page's
       // Reserve action and its one RPC went with it. A write on a press, never
       // on the startup path.
-      [DRAFTS]: 4, [PI_DETAIL]: 26, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 26 -> 27 (20270122000000): save_order_submission_internal_details,
+      // the internal-details editor's one SAVE, on a press. Its columns ride the
+      // page's existing record read, so the startup path is unchanged.
+      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

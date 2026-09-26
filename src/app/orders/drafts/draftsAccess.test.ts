@@ -420,6 +420,12 @@ describe('the detail page renders only what it fetched', () => {
       // data — the migration asserts that of its own definition at apply time —
       // and is the owner's channel for a record that has left their hands.
       'request_order_submission_correction',
+      // The INTERNAL details (20270122000000): the app confirmation and due
+      // dates and the middleman commission answer. Eight named columns plus
+      // the confirmation stamp; unknown keys — any figure, any status — are
+      // refused by name. Owner or active admin, draft or returned only, with
+      // optimistic concurrency. Never printed on a client document.
+      'save_order_submission_internal_details',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
       // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
