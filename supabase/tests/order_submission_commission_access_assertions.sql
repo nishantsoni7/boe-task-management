@@ -419,15 +419,21 @@ declare
   s uuid := current_setting('test.sales_id')::uuid;
   r jsonb;
   m jsonb;
+  before uuid[];
 begin
   perform pg_temp.check((select internal_details_confirmed_at is not null from public.order_submissions where id = d),
     '5. confirmed before');
+  -- One transaction: every row shares now(), so the new entry is found by
+  -- elimination rather than by time.
+  before := array(select id from public.order_submission_activity where submission_id = d);
   r := pg_temp.save(s, d, pg_temp.commission(d) || '{"middleman_commission_amount":"5000"}', false);
   perform pg_temp.check((r ->> 'changed')::boolean and not (r ->> 'confirmed')::boolean, '5. the RPC reports changed, not confirmed');
   perform pg_temp.check((select internal_details_confirmed_at is null and internal_details_confirmed_by is null
                            from public.order_submissions where id = d), '5. a commission-only draft save clears the confirmation');
+  perform pg_temp.check((select count(*) from public.order_submission_activity
+                          where submission_id = d and not (id = any (before))) = 1, '5. the save wrote exactly one entry');
   select metadata into m from public.order_submission_activity
-   where submission_id = d and action = 'internal_details_updated' order by created_at desc, id desc limit 1;
+   where submission_id = d and not (id = any (before));
   perform pg_temp.check(m -> 'changed' = '{}'::jsonb and (m ->> 'commission_changed')::boolean and (m ->> 'fields')::int = 1,
     '5. the entry is a flag, with no dates changed and no value');
   -- An unchanged draft save writes nothing.

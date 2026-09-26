@@ -3389,6 +3389,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'order_submission_activity',
       'order_submission_item_images',
       'order_submission_items',
+      // The middleman commission (20270122000000 §1b): its own table, whose RLS
+      // admits only the salesperson, the assigned reviewer, an active admin and
+      // orders.view_pi_commission — never an Order viewer.
+      'order_submission_middleman_commissions',
       'order_submissions',
       'orders',
       'users',
@@ -3419,6 +3423,9 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       // owner rule and is deliberately unwidened.
       'can_admin_edit_order_submission',
       'can_edit_order_submission',
+      // A read too (20270122000000 §1b): may this viewer read the commission,
+      // so the card says "Restricted" rather than "Not answered".
+      'can_read_order_submission_commission',
       'reject_order_submission',
       'reject_pi_advance_exception',
       // The order the lines are printed in (20261002000000). One write over
