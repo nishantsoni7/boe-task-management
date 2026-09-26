@@ -1482,6 +1482,23 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * ALLOWED_EXISTING.
    */
   /**
+   * Route health evidence: a client reporter (mounted once in Providers) and a
+   * log-only endpoint for slow navigations and page errors. No Finance or Orders
+   * file, no migration, no permission. (Placed apart from the other recent
+   * allowances so parallel branches merge cleanly.)
+   */
+  const ALLOWED_ROUTE_HEALTH = new Set([
+    'src/components/layout/Providers.tsx',
+    'src/components/layout/RouteHealthReporter.tsx',
+    'src/lib/telemetry/routeHealth.ts',
+    'src/lib/telemetry/routeHealth.test.ts',
+    'src/app/api/client-health/route.ts',
+    'src/app/api/client-health/clientHealth.test.ts',
+    'src/components/layout/routeHealthLocal.ts',
+    'src/app/diagnostics/page.tsx',
+  ])
+
+  /**
    * A PAYMENT'S REFERENCE SURVIVES VERIFICATION (20270111120000).
    *
    * One migration — the typed Reference / UTR kept in proof_note — the Order
@@ -1561,6 +1578,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_EXISTING.has(f) &&
     !ALLOWED_TESTS.has(f) &&
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
+    !ALLOWED_ROUTE_HEALTH.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
@@ -1879,6 +1897,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const file of editedTests) {
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
+        || ALLOWED_ROUTE_HEALTH.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
