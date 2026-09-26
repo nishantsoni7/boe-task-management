@@ -841,6 +841,9 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // private PDF bucket and its storage policies. Purely additive; it reads
       // public.users and touches nothing this suite is about.
       '20270110000000_announcements.sql',
+      // A payment's typed reference is kept in proof_note on insert (trigger), carried
+      // forward on unverified rows, and read by pi_submission_payment_summary.
+      '20270111500000_finance_payment_reference_survives_verification.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
