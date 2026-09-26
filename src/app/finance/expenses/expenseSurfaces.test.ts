@@ -1470,6 +1470,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   /**
+   * Tab recovery: a tab left open across a deploy refreshes before its next
+   * click (quietly only while hidden with nothing unsaved), and a stalled link
+   * offers Retry. No Finance or Orders file, no migration, no permission.
+   * (Placed apart from the other recent allowances so branches merge cleanly.)
+   */
+  const ALLOWED_TAB_RECOVERY = new Set([
+    'src/components/layout/Providers.tsx',
+    'src/components/layout/TabRecovery.tsx',
+    'src/lib/navigation/tabRecovery.ts',
+    'src/lib/navigation/tabRecovery.test.ts',
+    'src/app/api/deployment/route.ts',
+  ])
+
+  /**
    * Account Settings moves into the shared BoeOsLayout shell. The page itself,
    * the identity menu that now marks it as the current destination, and the
    * Back-button pin that becomes "returnTo is no longer followed". No Finance
@@ -1603,6 +1617,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_TESTS.has(f) &&
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
+    !ALLOWED_TAB_RECOVERY.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
     !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
     !ALLOWED_PI_CONFIRMATION_DIALOG.has(f) &&
@@ -1927,6 +1942,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
         || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
+        || ALLOWED_TAB_RECOVERY.has(file)
         || ALLOWED_PI_CONFIRMATION_DIALOG.has(file)
         || ALLOWED_MODULE_CARD_AND_QUOTATION_CREATE.has(file)
         || ALLOWED_PERSONAL_MODULE_ORDER.has(file)
