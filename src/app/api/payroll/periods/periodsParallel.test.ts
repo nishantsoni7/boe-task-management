@@ -107,11 +107,18 @@ describe('the independent reads overlap', () => {
     assert.ok(s.start < a.end, `status events at ${s.start}, attendance done at ${a.end}`)
   })
 
-  test('fewer sequential round trips: under 5 delays, where the old chain took 7', async () => {
-    failPeriods = false
-    const { elapsed } = await call()
+  test('fewer sequential round trips: at most 4 waves, where the old chain made 7', async () => {
+    // Structural, not wall-clock (a busy runner stretches every delay): a new
+    // wave starts whenever a call begins after everything before it finished.
     // auth → profile → [periods|gens|results] → [attendance|status events]
-    assert.ok(elapsed < DELAY * 5 + 40, `took ${elapsed} ms`)
+    failPeriods = false
+    await call()
+    let waves = 0, busyUntil = -1
+    for (const c of [...calls].sort((a, b) => a.start - b.start)) {
+      if (c.start >= busyUntil) waves++
+      busyUntil = Math.max(busyUntil, c.end)
+    }
+    assert.ok(waves <= 4, `${waves} sequential waves of database calls`)
   })
 })
 
