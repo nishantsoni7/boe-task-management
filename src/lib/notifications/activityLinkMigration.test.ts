@@ -384,6 +384,9 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // private PDF bucket and its storage policies. Purely additive; it reads
       // public.users and touches nothing this suite is about.
       '20270110000000_announcements.sql',
+      // A payment's typed reference is kept in proof_note on insert (trigger), carried
+      // forward on unverified rows, and read by pi_submission_payment_summary.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
       '20270112000000_order_document_submissions.sql',
       '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
       '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',

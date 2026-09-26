@@ -81,6 +81,10 @@ describe('the migration', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
     assert.ok(files.includes('20270110000000_announcements.sql'), 'the migration file is missing')
     assert.deepEqual(files.slice(files.indexOf('20270110000000_announcements.sql') + 1), [
+      // A payment's typed reference survives verification: a trigger on
+      // finance_payment_requests, a carry-forward of unverified rows, and
+      // pi_submission_payment_summary. It touches nothing Announcements creates.
+      '20270111120000_finance_payment_reference_survives_verification.sql',
       // Order document submissions (#202), renumbered after this applied
       // migration. It touches nothing Announcements creates.
       '20270112000000_order_document_submissions.sql',
