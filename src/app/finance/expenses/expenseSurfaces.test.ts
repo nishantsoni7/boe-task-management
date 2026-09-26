@@ -1686,6 +1686,18 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/finalApprovalScope.test.ts',
   ])
 
+  /**
+   * BOE OS phone drawer tab order (2026-09-26): below 768px the closed drawer
+   * is inert, so its links are no longer invisible Tab stops or exposed to
+   * screen readers; focus moves in on open and back to the menu button on
+   * close. The BOE OS shell and its own suite only — no Finance or Orders
+   * file, no shared CSS, no migration.
+   */
+  const ALLOWED_DRAWER_TAB_ORDER = new Set([
+    'src/components/layout/BoeOsLayout.tsx',
+    'src/components/layout/boeOsDrawerInert.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1726,6 +1738,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PROOF_VIEW.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     !ALLOWED_PI_LAYOUT.has(f) &&
+    !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2047,7 +2060,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(file)
         || ALLOWED_PROOF_VIEW.has(file)
         || ALLOWED_TASK_IMAGE_GALLERY.has(file)
-        || ALLOWED_PI_LAYOUT.has(file),
+        || ALLOWED_PI_LAYOUT.has(file)
+        || ALLOWED_DRAWER_TAB_ORDER.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
