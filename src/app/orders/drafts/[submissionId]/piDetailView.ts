@@ -276,28 +276,36 @@ export function commercialBreakdownRows(rows: readonly PiAmountRow[]): PiAmountR
 }
 
 /**
- * The two commercial figures the top summary repeats beside the payment.
+ * The two commercial figures the commercial card repeats beside the payment.
  *
  * PICKED OUT OF THE BREAKDOWN'S OWN ROWS, not recomputed from the submission.
  * The card and the Commercial breakdown are handed the SAME PiAmountRow[], so
- * "Product value" here and "Gross product amount" there are the identical
- * formatted string by construction — there is no second formatting path that
- * could round differently, and no arithmetic here at all.
+ * each figure here is the identical formatted string the breakdown prints —
+ * there is no second formatting path that could round differently, and no
+ * arithmetic here at all.
  *
- * WHY THE LABEL DIFFERS FROM THE BREAKDOWN'S. The breakdown is a calculation and
- * names each line as the workbook's own arithmetic does. The summary is read at
- * a glance by somebody asking what the order is worth, and "Product value" is
- * that question's wording. The FIGURE is the same figure; only the caption
- * suits its context.
+ * PRODUCT VALUE IS THE PRODUCTS AFTER THE DISCOUNT: the breakdown's `subtotal`
+ * row (subtotal_after_discount, workbook I116 = gross − discount). It used to
+ * be the `gross` row, which left a PI with a ₹73,900 discount showing Product
+ * value ₹10,38,100 above a Total before GST of ₹9,64,200 — the discount taken
+ * off one figure and not the other.
  *
- * MISSING IS NOT ZERO. `total_before_gst` is nullable, and formatPiValue already
+ * TOTAL BEFORE GST IS THE WORKBOOK'S OWN PRE-TAX TOTAL (total_before_gst, I120):
+ * that discounted product amount plus the quoted fabric and packing charges
+ * (and transport, where one is quoted), before GST. The parser checks that sum
+ * against the stored cell and keeps the workbook's figure, so neither figure is
+ * added up here — a discount or a charge cannot be counted twice. The two stay
+ * separate cards even when they are equal (no fabric, packing or transport).
+ *
+ * MISSING IS NOT ZERO. Both columns are nullable, and formatPiValue already
  * renders an absent one as an em dash with kind `missing`. That is carried
- * through untouched: a PI whose workbook never stated a pre-tax total says so,
- * rather than claiming ₹0. `gross_product_amount` is NOT NULL in the schema, so
- * a zero there is a real zero and prints as one.
+ * through untouched: a PI whose workbook never stated a figure says so, rather
+ * than claiming ₹0.
  */
+export type SummaryFigureKey = 'productValue' | 'beforeGst'
+
 export type SummaryFigure = {
-  key: 'gross' | 'beforeGst'
+  key: SummaryFigureKey
   label: string
   /** Already formatted by the shared builder. Never re-formatted here. */
   value: string
@@ -305,14 +313,20 @@ export type SummaryFigure = {
   kind: PiAmountRow['kind']
 }
 
-const SUMMARY_FIGURE_LABEL: Record<'gross' | 'beforeGst', string> = {
-  gross: 'Product value',
+const SUMMARY_FIGURE_LABEL: Record<SummaryFigureKey, string> = {
+  productValue: 'Product value',
   beforeGst: 'Total before GST',
 }
 
+/** Which breakdown row each summary figure is. */
+const SUMMARY_FIGURE_ROW: Record<SummaryFigureKey, string> = {
+  productValue: 'subtotal',
+  beforeGst: 'beforeGst',
+}
+
 export function summaryCommercialFigures(rows: readonly PiAmountRow[]): SummaryFigure[] {
-  return (['gross', 'beforeGst'] as const).flatMap(key => {
-    const row = rows.find(r => r.key === key)
+  return (['productValue', 'beforeGst'] as const).flatMap(key => {
+    const row = rows.find(r => r.key === SUMMARY_FIGURE_ROW[key])
     // A row the builder did not produce is not invented here. In practice both
     // always exist; this simply refuses to print a figure that has no source.
     if (!row) return []
@@ -958,6 +972,12 @@ export type DateSummary = {
   /** What to say when there is no value. */
   absent: string
   /**
+   * True while the PI is still being prepared: an absent date is simply not
+   * asked for yet — Submit for Approval collects both — so it is said in
+   * neutral words and styled as a fact, never as something wrong.
+   */
+  pending?: boolean
+  /**
    * A muted second line under an absent due date — the commitment the document
    * actually stated, prefixed so it can never be misread as a date. Null on
    * every other row and whenever there is a real date to show.
@@ -979,6 +999,9 @@ export type DateSummary = {
  * confirmation`. That text is prose and is presented as prose. It is never
  * turned into a date, and no duration is ever added to anything.
  */
+/** A date a draft has not been asked for yet — Submit for Approval asks for it. */
+export const DATE_SET_AT_SUBMISSION = 'Set at submission'
+
 export function buildDateSummary(input: {
   /** Already formatted by the shared header builder, or null. */
   confirmed: string | null
@@ -986,8 +1009,15 @@ export function buildDateSummary(input: {
   due?: string | null
   /** order_submissions.dispatch_commitment, verbatim. */
   commitment?: string | null
+  /**
+   * The PI is a draft or returned for changes. The two dates are asked for in
+   * the Submit for Approval dialog, so a blank one here is "Set at submission"
+   * — never a warning, and never something that stops a draft being saved.
+   */
+  beforeSubmission?: boolean
 }): DateSummary[] {
   const due = input.due ?? null
+  const pending = input.beforeSubmission === true
   // The commitment is supporting text for an ABSENT due date only. Beside a real
   // date it would be a second, vaguer answer to a question already answered.
   const note = due === null ? supportingCommitment(input.commitment) : null
@@ -997,13 +1027,15 @@ export function buildDateSummary(input: {
       key: 'confirmed',
       label: 'Confirm date',
       value: input.confirmed ?? null,
-      absent: NOT_PROVIDED,
+      absent: pending ? DATE_SET_AT_SUBMISSION : NOT_PROVIDED,
+      pending: pending && !input.confirmed,
     },
     {
       key: 'due',
       label: 'Due date',
       value: due,
-      absent: DUE_DATE_ABSENT,
+      absent: pending ? DATE_SET_AT_SUBMISSION : DUE_DATE_ABSENT,
+      pending: pending && due === null,
       note: note === null ? null : `${COMMITMENT_PREFIX} ${note}`,
     },
   ]
@@ -1219,10 +1251,8 @@ export function buildPaymentMetrics(view: PaymentStatusView): PaymentMetric[] {
 
 // ── The context row: the reserved number, and where review stands ─────────────
 
-/** The context row's first cell: the Order number, or the plain statement that
- *  none is allotted yet (20270114000000). */
-export const RESERVED_ORDER_LABEL = 'Order number'
-/** The draft's own internal reference, beneath the number. */
+/** The draft's own internal reference — the Order group's headline until an
+ *  Order number exists (20270114000000). */
 export const DRAFT_REFERENCE_LABEL = 'Draft reference'
 export const NOT_SUBMITTED_TEXT = 'Not submitted yet'
 
@@ -1380,15 +1410,25 @@ export type BreakdownView = {
  * a zero discount, and a subtotal identical to the product value above it
  * (compared as the displayed strings, not by arithmetic) — plus the advance row
  * and the total itself, which leads the card instead of closing it.
+ *
+ * THE GROSS ROW'S NAME FOLLOWS THE CARD. The commercial card's "Product value"
+ * is the amount AFTER the discount, so where there is a discount the gross row
+ * says it is the value before it; with none, the two are the same figure and
+ * share the name.
  */
+export const PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL = 'Product value before discount'
+
 export function buildBreakdownView(rows: readonly PiAmountRow[]): BreakdownView {
   const total = rows.find(row => row.key === 'grandTotal') ?? null
   const gross = rows.find(row => row.key === 'gross')?.value ?? null
+  const discounted = rows.some(row => row.key === 'discount' && row.kind === 'amount' && row.value !== formatInr(0))
   const shown = rows
     .filter(row => row.key !== 'grandTotal' && row.key !== ADVANCE_ROW_KEY)
     .filter(row => row.kind !== 'missing' && row.kind !== 'notApplicable')
     .filter(row => !(row.key === 'discount' && row.value === formatInr(0)))
     .filter(row => !(row.key === 'subtotal' && gross !== null && row.value === gross))
-    .map(row => row.key === 'gross' ? { ...row, label: SUMMARY_FIGURE_LABEL.gross } : row)
+    .map(row => row.key === 'gross'
+      ? { ...row, label: discounted ? PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL : SUMMARY_FIGURE_LABEL.productValue }
+      : row)
   return { total, rows: shown }
 }

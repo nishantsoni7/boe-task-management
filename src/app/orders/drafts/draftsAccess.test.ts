@@ -1234,23 +1234,24 @@ describe('the top summary answers four questions and repeats none of them', () =
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('two columns, and every group in them names itself without a heading', () => {
-    // Who and when on the left, what it is worth on the right. The figures and
-    // the metadata are labelled by the view model, not by the component.
+  test('three groups and a figures card, and every group in them names itself without a heading', () => {
+    // Order | Client | Sales and dates in the top card; what it is worth in its
+    // own card beside Payment status. The figures and the metadata are labelled
+    // by the view model, not by the component.
     assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
     assert.ok(view.includes("BILLING_NOT_DECLARED_LABEL = 'Not declared'"),
       'billing without a declaration is said as a state')
     for (const heading of ['<GroupLabel>', 'Financial summary', 'Payment received']) {
       assert.ok(!sections.includes(heading), `${heading} is a label for something already obvious`)
     }
-    assert.ok(sections.includes('pi-detail-overview-main'),
-      'the order — who, when, whose — is one column')
+    assert.ok(sections.includes('pi-detail-top-grid'),
+      'the order, the client and the sale are one card of three groups')
     assert.ok(sections.includes('pi-detail-dates'),
       'the two dates share one band rather than one carrying a box of its own')
     assert.ok(sections.includes('pi-detail-figures'),
-      'and the three figures fill the other column')
-    // The client's own two facts sit ABOVE the dates in the left column, in the
-    // strip the BOE metadata used to occupy.
+      'and the three figures fill their own card')
+    // The client's own two facts sit ABOVE the dates, in the Client group, and
+    // the dates in the Sales and dates group after it.
     assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') > 0)
     assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') < sections.indexOf('dates.map'),
       'the client’s contact and location read before the dates')
@@ -2022,7 +2023,7 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // It used to be answered twice — a block in the top overview and a full
     // card below the product table. One compact summary now, with the records
     // behind it.
-    assert.equal((source.match(/<PiSummaryCard/g) ?? []).length, 1)
+    assert.equal((source.match(/<PiPaymentStatusCard/g) ?? []).length, 1)
     assert.ok(!source.includes('<PiPaymentCard'), 'the standalone payments section is gone')
     // WHERE it sits is checked in src/app/orders/piSectionOrder.test.ts, against
     // the parsed JSX tree. The string comparison that used to be here said

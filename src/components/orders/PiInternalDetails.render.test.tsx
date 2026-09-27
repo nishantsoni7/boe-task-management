@@ -13,7 +13,10 @@ describe('PiCommissionSummary — the middleman answer in the PI summary', () =>
     assert.match(html, /Middleman commission/)
     assert.match(html, /class="pi-detail-state-chip">Not answered</)
     assert.match(html, /Never printed on the client PI/)
-    assert.match(html, /Needed before review: enter the order confirmation date\./)
+    // THE DATES ARE ASKED FOR AT SUBMISSION (2026-09-27), so a blank date is
+    // never the warning here; the unanswered middleman question is.
+    assert.match(html, /Needed before review: answer &quot;Is there a middleman commission\?&quot;\./)
+    assert.doesNotMatch(html, /confirmation date\./)
     assert.match(html, />Enter and confirm</)
     // The dates are the summary's own band; this block never repeats them.
     assert.doesNotMatch(html, /Order confirmation date|Due date/)
@@ -24,6 +27,17 @@ describe('PiCommissionSummary — the middleman answer in the PI summary', () =>
       row={{ status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }} />)
     assert.match(html, /pi-detail-internal-status--needed/)
     assert.match(html, /Needed before review: answer &quot;Is there a middleman commission\?&quot;\./)
+  })
+
+  test('answered, dates still blank: a neutral line, no warning — Submit collects the dates', () => {
+    for (const status of ['draft', 'needs_changes']) {
+      const html = renderToStaticMarkup(<PiCommissionSummary canEdit onEdit={noop}
+        row={{ status, middleman_commission: 'no' }} />)
+      assert.doesNotMatch(html, /pi-detail-internal-status--needed/, status)
+      assert.doesNotMatch(html, /Needed before review/, status)
+      assert.match(html, /pi-detail-internal-status--neutral/, status)
+      assert.match(html, /entered and confirmed when this PI is submitted/, status)
+    }
   })
 
   test('the reviewer reads the confirmed answer, with no edit control and no dates', () => {

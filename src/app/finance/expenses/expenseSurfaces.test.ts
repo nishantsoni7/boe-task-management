@@ -673,6 +673,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // (20270205000000) — held by supabase/tests/order_advance_hold_assertions.sql §12
       // and src/lib/orders/advanceReadiness.test.ts.
       if (f === 'supabase/migrations/20270205000000_order_production_needs_order_level_exception.sql') continue
+      // The PI draft's optional internal order highlight (20270210000000) —
+      // held by src/lib/orders/highlightRemark.test.tsx.
+      if (f === 'supabase/migrations/20270210000000_order_submission_highlight_remark.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -860,7 +863,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable) && !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1864,6 +1867,41 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  // The saved PI Draft's top layout, its corrected Product value, and the
+  // optional internal order highlight shown on the Confirmed Order
+  // (20270210000000). No Finance file; orderPiHandoff.ts only follows the
+  // renamed summary-figure key.
+  const ALLOWED_PI_DRAFT_TOP_LAYOUT = new Set([
+    'supabase/migrations/20270210000000_order_submission_highlight_remark.sql',
+    'src/app/globals.css',
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/piSectionOrder.test.ts',
+    'src/components/orders/PiHighlightRemark.tsx',
+    'src/components/orders/PiInternalDetails.render.test.tsx',
+    'src/lib/orders/highlightRemark.ts',
+    'src/lib/orders/highlightRemark.test.tsx',
+    'src/lib/orders/orderPiHandoff.ts',
+    'src/lib/orders/orderPiHandoff.test.ts',
+    'src/lib/orders/piInternalDetails.ts',
+    // The migration-sequence pins.
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1910,6 +1948,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
     !ALLOWED_PRODUCTION_ADVANCE_GATE.has(f) &&
+    !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
@@ -2239,7 +2278,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
         || ALLOWED_PRODUCTION_ADVANCE_GATE.has(file)
-        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
+        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
+        || ALLOWED_PI_DRAFT_TOP_LAYOUT.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

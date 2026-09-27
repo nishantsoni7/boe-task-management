@@ -94,10 +94,16 @@ export function internalDetailsStillOpen(row: PiInternalDetailsRow): boolean {
   return !row.status || row.status === 'draft' || row.status === 'needs_changes'
 }
 
+/** Said while a prepared PI waits only on what the Submit dialog collects. */
+export const INTERNAL_DETAILS_AT_SUBMISSION =
+  'The order dates are entered and confirmed when this PI is submitted.'
+
 /**
- * The card's status line. While the PI is being prepared, what is missing
- * before review; once it has gone for review (or beyond), a plain statement
- * that it was never confirmed — "Needed before review" is false by then.
+ * The card's status line. While the PI is being prepared, only the middleman
+ * answer is something to act on here: the two dates are asked for, and the
+ * whole set confirmed, in the Submit for Approval dialog (2026-09-27), so a
+ * blank date is not a warning. Once it has gone for review (or beyond), a plain
+ * statement that it was never confirmed — "Needed before review" is false by then.
  */
 export function internalDetailsStatusLine(row: PiInternalDetailsRow):
   { tone: 'ready' | 'needed' | 'neutral'; text: string } {
@@ -105,7 +111,11 @@ export function internalDetailsStatusLine(row: PiInternalDetailsRow):
   if (readiness.ready) {
     return { tone: 'ready', text: `Confirmed ${formatIsoDay(row.internal_details_confirmed_at) ?? ''}`.trim() }
   }
-  if (internalDetailsStillOpen(row)) return { tone: 'needed', text: `Needed before review: ${readiness.problem}.` }
+  if (internalDetailsStillOpen(row)) {
+    const answer = middlemanAnswerMissing(row)
+    if (answer) return { tone: 'needed', text: `Needed before review: ${answer}.` }
+    return { tone: 'neutral', text: INTERNAL_DETAILS_AT_SUBMISSION }
+  }
   return { tone: 'neutral', text: 'Not confirmed in the app before this PI was sent for review.' }
 }
 

@@ -95,6 +95,8 @@ import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
+import { PiHighlightRemark } from '@/components/orders/PiHighlightRemark'
+import { Pencil } from 'lucide-react'
 import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
@@ -267,10 +269,10 @@ import {
   PiAdvanceBand,
   PiBlockingPanel,
   PiCommercialBreakdown,
-  PiContextRow,
   PiLowerGrid,
   PiPaymentStatusCard,
-  PiSummaryCard,
+  PiTopCard,
+  PiCommercialCard,
   PiSavedStrip,
   PiStoredCopyNote,
   PiWarningPanel,
@@ -2076,6 +2078,9 @@ function PiDraftDetailPageInner() {
       ? formatPiDate({ iso: submission.due_date, text: submission.due_date, source: 'serial' })
       : null,
     commitment: submission.dispatch_commitment,
+    // Draft or returned: Submit for Approval asks for both dates, so a blank
+    // one is "Set at submission" — never a warning here.
+    beforeSubmission: submission.status === 'draft' || submission.status === 'needs_changes',
   })
 
   /**
@@ -2097,7 +2102,7 @@ function PiDraftDetailPageInner() {
    * changes with it, because there is only one.
    */
   const productValueLabel =
-    summaryFigures.find(figure => figure.key === 'gross')?.value ?? orDash(null)
+    summaryFigures.find(figure => figure.key === 'productValue')?.value ?? orDash(null)
 
   /**
    * The billing declaration, and what it comes to.
@@ -2201,6 +2206,28 @@ function PiDraftDetailPageInner() {
     ? { reason: advance.rejectionReason, instruction: ADVANCE_REJECTED_INSTRUCTION }
     : null
 
+  /**
+   * EDIT PI, TOP RIGHT, beside Back. Same destination and the same rule as the
+   * bar it replaced: the one editor while this PI may be edited, and on an
+   * approved PI that is an Order, the way to propose a new version from it.
+   */
+  const editPiAction = mayEditPi ? (
+    <button type="button" className="boe-btn boe-btn-primary" onClick={() => setPiEditorOpen(true)}>
+      <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
+      {EDIT_PI_LABEL}
+    </button>
+  ) : piIsOrder && submission.status === 'approved' && mayEditOnOrder && approvedOrder ? (
+    <button
+      type="button"
+      className="boe-btn boe-btn-ghost"
+      title="This PI is approved and in force. It changes only as a new version, proposed from its Order."
+      onClick={() => router.push(orderHref(approvedOrder.orderId))}
+    >
+      <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
+      {EDIT_PI_LABEL} on the Order
+    </button>
+  ) : null
+
   return (
     <OrdersLayout
       profile={profile}
@@ -2214,7 +2241,7 @@ function PiDraftDetailPageInner() {
       // The payment summary is read separately (its figures depend on the PI's
       // grand total), so a refresh re-reads both.
       onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}
-      actions={backButton}
+      actions={editPiAction ? <>{editPiAction}{backButton}</> : backButton}
     >
       <div className="pi-detail-stack">
 
@@ -2229,11 +2256,11 @@ function PiDraftDetailPageInner() {
           </div>
         )}
 
-        {/* ── 1. The context row ──
-            The Order number this PI will carry, beside where it stands with
-            management and Finance: two equal columns on a desktop, stacked on
-            a phone, and the first thing under any save banner. */}
-        <PiContextRow
+        {/* ── 1. The top card ──
+            Order | Client | Sales and dates: three groups in one card on a
+            wide column, stacked in that order on a phone, and the first thing
+            under any save banner. Edit PI is in the header, top right. */}
+        <PiTopCard
           reservation={reservationView}
           confirmedNumber={draft.orderDisplayNumber}
           draftReference={submission.draft_reference ?? null}
@@ -2242,54 +2269,11 @@ function PiDraftDetailPageInner() {
           context={submissionContext}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
-        />
-
-        {/* ── 1b. EDIT PI (20270115000000) ── one action for the whole PI. */}
-        {(mayEditPi || (piIsOrder && submission.status === 'approved' && mayEditOnOrder)) && (
-          <div className="pi-edit-bar" style={{
-            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-            border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '10px 14px', background: colors.base,
-          }}>
-            <span style={{ flex: 1, fontSize: '12.5px', color: colors.secondary, minWidth: '220px' }}>
-              {mayEditPi
-                ? 'Client, dates, terms, products, quantities, prices and photos are all edited in one place.'
-                : 'This PI is approved and in force. It changes only as a new version, proposed from its Order.'}
-            </span>
-            {mayEditPi ? (
-              <button type="button" className="boe-btn boe-btn-primary" onClick={() => setPiEditorOpen(true)}>
-                {EDIT_PI_LABEL}
-              </button>
-            ) : approvedOrder ? (
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => router.push(orderHref(approvedOrder.orderId))}>
-                {EDIT_PI_LABEL} on the Order
-              </button>
-            ) : null}
-          </div>
-        )}
-        {piEditorOpen && (
-          <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
-            onClose={() => setPiEditorOpen(false)}
-            // An edit can move the grand total, and the payment position (the
-            // 40% shortfall the Submit dialog states) is computed from it.
-            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }); void loadPayments() }} />
-        )}
-
-        {/* ── 2. The PI overview ──
-            Who it is for, who prepared and submitted it, when it was confirmed
-            and when it is due — beside what it is worth. */}
-        <PiSummaryCard
           client={clientDetails}
           onOpenClient={() => setClientDialog(true)}
-          billing={billingSummary}
-          /* THE DATABASE'S OWN ANSWER, not a second opinion. can_edit_order_submission
-             covers the owner AND an active admin, in draft and needs_changes
-             only; every other state is read-only for everyone. The RPC behind
-             the dialog re-derives exactly this, so the control and the write
-             cannot disagree. */
-          canEditBilling={false}
-          onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           /* The same two authorities the billing control uses. The owner rule
-             covers a draft; the admin rule covers every stage after it. */
+             covers a draft; the admin rule covers every stage after it. Edit PI
+             is the one editor now, so these stay off. */
           canEditDetails={false}
           onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
           onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
@@ -2311,31 +2295,27 @@ function PiDraftDetailPageInner() {
           }
           workbookName={workbookName}
           dates={summaryDates}
-          figures={summaryFigures}
           /* THE INTERNAL DETAILS (20270122000000). The dates above ARE the
-             confirmed app dates (order_confirmation_date, due_date), so only
-             the workbook disagreement and the middleman answer are added.
-             Read by the reviewer here; never printed on a client document. */
+             confirmed app dates (order_confirmation_date, due_date); where the
+             workbook disagrees, it is said under them. Never on a client document. */
           dateNotes={workbookDateNotes(submission)}
-          internal={
-            <PiCommissionSummary
-              row={submission}
-              canEdit={canEditInternalDetails}
-              onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
-            />
-          }
         />
+        {piEditorOpen && (
+          <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
+            onClose={() => setPiEditorOpen(false)}
+            // An edit can move the grand total, and the payment position (the
+            // 40% shortfall the Submit dialog states) is computed from it.
+            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }); void loadPayments() }} />
+        )}
 
-        {/* ── 2b. The deduction row's wording, where it would mislead a client. */}
+        {/* ── 1b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
 
-        {/* ── 2a + 3. Payment status beside Management review ──
-            One row on a wide column — payment ~70%, the review decisions ~30% —
-            stacked when the column is narrow, payment first. Each card keeps
-            its own controls: nothing about money moves into the review card,
-            and no review decision moves into the payment card. */}
-        <div className="pi-detail-decision-row">
-          <div className="pi-detail-decision-grid">
+        {/* ── 2. Payment status beside what the PI is worth ──
+            ~60/40 on a wide column, stacked when narrow, payment first. Each
+            card keeps its own controls. */}
+        <div className="pi-detail-split">
+          <div className="pi-detail-split-grid">
             {/* ── 2a. Payment status ──
                 Confirmed and how far along the PI total, and what is still with
                 Finance — with the ways in to every payment record. The verify
@@ -2352,7 +2332,52 @@ function PiDraftDetailPageInner() {
               onDismissNotice={() => setPaymentNotice(null)}
             />
 
-            {/* ── 3. Workflow and actions, ABOVE the products ──
+            {/* ── 2b. Product value, Total before GST, billing, commission ── */}
+            <PiCommercialCard
+              figures={summaryFigures}
+              billing={billingSummary}
+              /* THE DATABASE'S OWN ANSWER, not a second opinion. Edit PI edits
+                 the billing declaration now, so the inline control stays off;
+                 set_order_submission_billing_percentage re-derives it anyway. */
+              canEditBilling={false}
+              onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
+              internal={
+                <PiCommissionSummary
+                  row={submission}
+                  canEdit={canEditInternalDetails}
+                  onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
+                />
+              }
+            />
+          </div>
+        </div>
+
+        {/* ── 3. Documents and the highlight beside the decisions ──
+            Left: the optional Client PO and Design Files, and the optional
+            internal order highlight. Right: Ready for management? and the
+            submission controls — or, for a reviewer, the review decisions. */}
+        <div className="pi-detail-split">
+          <div className="pi-detail-split-grid">
+            <div className="pi-detail-split-stack">
+              {submission.status === 'submitted' && (
+                <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
+              )}
+              {(submission.status === 'draft' || submission.status === 'needs_changes') && (
+                <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
+              )}
+              {/* THE ORDER HIGHLIGHT (20270210000000): optional, internal, and
+                  shown on the Confirmed Order. Editable exactly where
+                  can_edit_order_submission says so; the RPC re-derives it. */}
+              <PiHighlightRemark
+                supabase={supabase}
+                submissionId={submissionId}
+                canEdit={canEditSubmission}
+                rowVersion={rowVersion}
+                onSaved={() => { void loadDraft({ quiet: true }) }}
+              />
+            </div>
+
+            {/* ── Workflow and actions, ABOVE the products ──
                 Whatever is being asked of this viewer, in one coordinated panel,
                 so nobody scrolls a product table to find out that nothing is. */}
             <PiWorkflowPanel
@@ -2424,16 +2449,10 @@ function PiDraftDetailPageInner() {
               onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
               openOrderHref={approvedOrder ? orderHref(approvedOrder.orderId) : null}
               advanceBand={advanceBand}
-              /* The context row above already says who submitted it, when, and
-                 where Finance stands; the panel keeps its controls and notes. */
+              /* The top card already says who submitted it, when, and where
+                 review stands; the panel keeps its controls and notes. */
               statusShownAbove
             />
-            {submission.status === 'submitted' && (
-              <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
-            )}
-            {(submission.status === 'draft' || submission.status === 'needs_changes') && (
-              <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
-            )}
           </div>
         </div>
 

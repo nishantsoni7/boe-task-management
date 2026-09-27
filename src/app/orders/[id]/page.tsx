@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { OrderHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -2785,6 +2786,17 @@ export default function OrderDetailPage() {
             <MoreActionsMenu items={overflowItems} onSelect={runAction} />
           </div>
         </header>
+
+        {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══
+            The internal remark Sales wrote on the PI before approval, read from
+            that PI row under this viewer's own RLS, in its own failure-tolerant
+            query. Labelled internal; never on a client document. Nothing is
+            drawn when there is none. */}
+        <OrderHighlightRemark
+          supabase={supabase}
+          submissionId={order.source_order_submission_id ?? null}
+          refreshKey={order.updated_at}
+        />
 
         {/* ══ 2. THE SUMMARY PANEL ══
             THREE GROUPS, ONE SURFACE, in the order a reader asks them: who the
