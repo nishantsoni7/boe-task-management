@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
+import { calendarThroughFor } from '@/lib/payroll/periodCompletion'
 import {
   fetchAttendanceForPeriod,
   fetchHolidaysForPeriod,
@@ -92,7 +93,9 @@ export async function GET(req: NextRequest) {
 
   // The preview must show the same figures the generated payroll will, so it
   // applies the same manual corrections and the same BOE Credits coverage.
-  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments, corrections, undefined, redemptions)
+  // Same rule as the month preview: an in-progress month stops at yesterday (IST).
+  const calendarThrough = calendarThroughFor(previewPeriod.payroll_year, previewPeriod.payroll_month)
+  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments, corrections, undefined, redemptions, { calendarThrough })
 
   if (isSkip(outcome)) {
     return NextResponse.json({

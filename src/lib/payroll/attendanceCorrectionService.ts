@@ -38,6 +38,7 @@ import {
 import { toEngineCorrection, buildCorrectionAudit, type DaySnapshot, type ValidatedCorrection } from './correctionRules'
 import { reconcileAttendanceCoverage } from './creditCoverage'
 import { fetchActiveSettings, fetchPeriodSettingsContext, settingsForPeriod } from './settingsStore'
+import { isPayrollMonthComplete, monthInProgressMessage } from './periodCompletion'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -55,7 +56,7 @@ export type CorrectionRefused = { ok: false; status: number; error: string }
 
 export async function applyAttendanceCorrection(
   svc: Svc,
-  input: { periodId: string; employeeId: string; correction: ValidatedCorrection; actorId: string },
+  input: { periodId: string; employeeId: string; correction: ValidatedCorrection; actorId: string; /** IST date; defaults to now. */ today?: string },
 ): Promise<CorrectionApplied | CorrectionRefused> {
   const { periodId, employeeId, correction, actorId } = input
 
@@ -66,6 +67,12 @@ export async function applyAttendanceCorrection(
   // A locked month is final here, whatever the caller checked.
   if ((period.status as string) === 'locked') {
     return { ok: false, status: 422, error: 'Payroll for this period is locked. Attendance can no longer be corrected.' }
+  }
+
+  // A correction recalculates and WRITES the month's result, so it obeys the
+  // same month-end rule as generation.
+  if (!isPayrollMonthComplete(period.payroll_year, period.payroll_month, input.today)) {
+    return { ok: false, status: 422, error: monthInProgressMessage(period.payroll_year, period.payroll_month, 'corrected') }
   }
 
   // The date must belong to the period being corrected, or the recalculation

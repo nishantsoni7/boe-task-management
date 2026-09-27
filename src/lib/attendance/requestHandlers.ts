@@ -533,6 +533,7 @@ export async function saveReview(caller: Caller, body: Record<string, unknown> |
       employeeId: input.employee_id,
       correction: plan.correction,
       actorId: caller.id,
+      today,
     })
     if (!outcome.ok) return fail(outcome.status, `The decision was not saved: ${outcome.error}`)
     appliedCorrectionId = outcome.correction_id

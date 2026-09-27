@@ -12,16 +12,19 @@
 //        fingerprint, per-employee counts, reason) in the same transaction
 //      → 409 attendance_ack_stale if anything changed since step 1
 //
-// If the review cannot be read at all, the lock is refused with
-// attendance_check_failed unless the admin deliberately overrides it with
-// { unverified: true, reason } — recorded as check_failed. Payroll is never
-// blocked forever, and never locked past open items without a record.
+// If the review cannot be READ (a database or application error), the lock is
+// refused with 503 attendance_review_unavailable and nothing else happens. That
+// is not an unresolved item to acknowledge — nobody knows what is open — so
+// there is no override: the admin retries once the read works. An
+// acknowledgement is only ever accepted for a review that was read
+// successfully and still contains open items.
 //
 // A direct call to /api/payroll/lock goes through this module too, so the
 // browser's confirmation is no longer the only thing standing in the way.
 
 import { createHash } from 'node:crypto'
 import { loadReconciliation } from '@/lib/attendance/requestHandlers'
+import { isPayrollMonthComplete, monthInProgressMessage, MONTH_IN_PROGRESS_CODE } from './periodCompletion'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -69,7 +72,7 @@ export async function attendanceLockState(svc: Svc, year: number, month: number,
   }
 }
 
-type Ack = { fingerprint?: unknown; reason?: unknown; unverified?: unknown }
+type Ack = { fingerprint?: unknown; reason?: unknown }
 
 export async function lockPayrollPeriod(
   svc: Svc,
@@ -89,6 +92,10 @@ export async function lockPayrollPeriod(
   if (!period) return { status: 404, body: { error: 'Period not found' } }
   if (period.status === 'locked') return { status: 422, body: { error: 'Period is already locked' } }
   if (period.status !== 'generated') return { status: 422, body: { error: 'Only generated periods can be locked' } }
+  // A month still in progress cannot be finalised, whatever was generated for it.
+  if (!isPayrollMonthComplete(period.payroll_year, period.payroll_month, today)) {
+    return { status: 422, body: { code: MONTH_IN_PROGRESS_CODE, error: monthInProgressMessage(period.payroll_year, period.payroll_month, 'locked') } }
+  }
 
   const state = await attendanceLockState(svc, period.payroll_year, period.payroll_month, today)
   const ack = (body.attendance_acknowledgement ?? null) as Ack | null
@@ -105,20 +112,18 @@ export async function lockPayrollPeriod(
     return { status: 200, body: { success: true } }
   }
 
-  // ── The review could not be read: only a deliberate override locks ─────────
+  // ── The review could not be read: refuse, retryably. No acknowledgement or
+  //    reason can stand in for a review nobody could see. ────────────────────
   if (!state.ok) {
-    if (ack?.unverified !== true || !reason) {
-      return {
-        status: 409,
-        body: {
-          code: 'attendance_check_failed',
-          requires_acknowledgement: true,
-          error: 'The attendance review for this month could not be checked. Lock only with a stated reason, as an override.',
-          detail: state.error,
-        },
-      }
+    console.error('[payroll/lock] attendance review unreadable:', state.error)
+    return {
+      status: 503,
+      body: {
+        code: 'attendance_review_unavailable',
+        retryable: true,
+        error: 'The attendance review for this month could not be loaded, so the month was not locked. Nothing was changed. Try again in a moment.',
+      },
     }
-    return lockWithAck(svc, periodId, actor, { unresolved: 0, conflicts: 0, fingerprint: null, summary: [], reason, checkFailed: true })
   }
 
   // ── Open items: an acknowledgement of THIS state is required ───────────────
@@ -143,7 +148,6 @@ export async function lockPayrollPeriod(
     fingerprint: state.fingerprint,
     summary: state.employees.map(e => ({ employee_id: e.employee_id, unresolved: e.unresolved, conflicts: e.conflicts })),
     reason,
-    checkFailed: false,
   })
 }
 
@@ -151,7 +155,7 @@ async function lockWithAck(
   svc: Svc,
   periodId: string,
   actor: { id: string; name: string | null },
-  a: { unresolved: number; conflicts: number; fingerprint: string | null; summary: unknown[]; reason: string; checkFailed: boolean },
+  a: { unresolved: number; conflicts: number; fingerprint: string; summary: unknown[]; reason: string },
 ): Promise<LockResult> {
   // One transaction: the acknowledgement record and the lock land together.
   const { data, error } = await svc.rpc('lock_payroll_period_with_attendance_ack', {
@@ -162,7 +166,6 @@ async function lockWithAck(
     p_fingerprint: a.fingerprint,
     p_summary: a.summary,
     p_reason: a.reason,
-    p_check_failed: a.checkFailed,
   })
   if (error) {
     const m = String(error.message)

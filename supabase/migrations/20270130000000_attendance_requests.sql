@@ -16,6 +16,7 @@
 --   public.payroll_lock_attendance_acknowledgements
 --                                     the record of a month locked while
 --                                     attendance items were still open
+--                                     (read successfully, then acknowledged)
 --   public.lock_payroll_period_with_attendance_ack()
 --                                     locks a period AND writes that record in
 --                                     one transaction (service role only)
@@ -57,7 +58,7 @@
 --   drop function if exists public.attendance_request_events_guard();
 --   drop function if exists public.attendance_day_reviews_supersede();
 --   drop function if exists public.attendance_day_reviews_guard();
---   drop function if exists public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean);
+--   drop function if exists public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text);
 --   drop table if exists public.payroll_lock_attendance_acknowledgements;
 --   drop function if exists public.payroll_lock_attendance_acknowledgements_guard();
 -- (Dropping the acknowledgement table loses the record of months locked with
@@ -441,9 +442,10 @@ create trigger attendance_day_reviews_guard
 -- transaction, so a month can never be locked "with acknowledgement" without
 -- the record, nor recorded without being locked.
 --
--- check_failed = true records the deliberate override: the review could not be
--- read at all and the admin locked anyway, with a reason. Payroll is never
--- blocked forever.
+-- There is no acknowledgement for a review that could not be READ: the lock
+-- route refuses such a month with a retryable error (src/lib/payroll/lockPeriod.ts).
+-- Every row here therefore records a review that was read, with its fingerprint.
+-- A month that has not ended cannot be locked at all (periodCompletion.ts).
 
 create table if not exists public.payroll_lock_attendance_acknowledgements (
   id                 uuid        not null default gen_random_uuid() primary key,
@@ -453,13 +455,11 @@ create table if not exists public.payroll_lock_attendance_acknowledgements (
   unresolved_count   integer     not null check (unresolved_count >= 0),
   conflict_count     integer     not null check (conflict_count >= 0),
   -- sha-256 over the open items (employee, date, event, status) as the server
-  -- saw them when it validated the acknowledgement. Null only when check_failed.
-  fingerprint        text,
+  -- saw them when it validated the acknowledgement.
+  fingerprint        text        not null,
   -- Per-employee counts only; no amounts, no names.
   summary            jsonb       not null default '[]'::jsonb,
-  reason             text        not null check (btrim(reason) <> ''),
-  check_failed       boolean     not null default false,
-  constraint payroll_lock_attendance_ack_fingerprint check (check_failed or fingerprint is not null)
+  reason             text        not null check (btrim(reason) <> '')
 );
 
 create index if not exists payroll_lock_attendance_acknowledgements_period
@@ -487,8 +487,7 @@ create or replace function public.lock_payroll_period_with_attendance_ack(
   p_conflicts    integer,
   p_fingerprint  text,
   p_summary      jsonb,
-  p_reason       text,
-  p_check_failed boolean
+  p_reason       text
 )
 returns uuid
 language plpgsql
@@ -515,9 +514,9 @@ begin
   end if;
 
   insert into public.payroll_lock_attendance_acknowledgements
-    (payroll_period_id, actor_id, unresolved_count, conflict_count, fingerprint, summary, reason, check_failed)
+    (payroll_period_id, actor_id, unresolved_count, conflict_count, fingerprint, summary, reason)
   values
-    (p_period_id, p_actor_id, p_unresolved, p_conflicts, p_fingerprint, coalesce(p_summary, '[]'::jsonb), p_reason, coalesce(p_check_failed, false))
+    (p_period_id, p_actor_id, p_unresolved, p_conflicts, p_fingerprint, coalesce(p_summary, '[]'::jsonb), p_reason)
   returning id into v_ack;
 
   update public.payroll_periods
@@ -530,8 +529,8 @@ $$;
 
 -- Called only by the service-role lock route, which resolves the actor from
 -- the bearer token. No client may call it.
-revoke all on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean) from public, anon, authenticated;
-grant execute on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean) to service_role;
+revoke all on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text) from public, anon, authenticated;
+grant execute on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text) to service_role;
 
 -- ─── 6. Row level security ───────────────────────────────────────────────────
 

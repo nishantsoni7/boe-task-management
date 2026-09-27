@@ -24,6 +24,7 @@ import { ParticipationModal, type ParticipationMember } from './ParticipationMod
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
+import { isPayrollMonthComplete, payrollMonthOpensOn } from '@/lib/payroll/periodCompletion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -744,6 +745,16 @@ function PayrollPeriodsPage() {
                           // with Payroll visibility never sees it.
                           onDelete={isPayrollAdmin ? () => openDelete(p) : undefined}
                         />
+                        {/* The server refuses to generate or lock a month that has
+                            not ended (src/lib/payroll/periodCompletion.ts); say
+                            so before anyone presses the button. */}
+                        {p.status !== 'locked' && !isPayrollMonthComplete(p.payroll_year, p.payroll_month) && (
+                          <div style={{ fontSize: 11.5, color: '#B45309', marginTop: 6, maxWidth: 260, lineHeight: 1.4 }}>
+                            Month in progress — payroll can be generated and locked from{' '}
+                            {formatOpensOn(payrollMonthOpensOn(p.payroll_year, p.payroll_month))} (IST).
+                            Use Payroll Monthly Preview for the month so far.
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
@@ -885,4 +896,10 @@ function attentionOf(period: PayrollPeriodRow) {
     outOfDate:  period.out_of_date,
     reopened:   period.last_unlock != null,
   })
+}
+
+/** "1 Oct" from YYYY-MM-DD. */
+function formatOpensOn(date: string): string {
+  const [, m, d] = date.split('-').map(Number)
+  return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]}`
 }

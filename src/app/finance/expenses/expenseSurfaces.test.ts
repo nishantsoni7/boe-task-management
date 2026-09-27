@@ -1834,6 +1834,13 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/payroll/lockPeriod.ts',
     'src/app/api/payroll/lock/route.ts',
     'src/lib/payroll/engine.ts',
+    // Pass 4: payroll is written only for a month that has ended; previews trim future days.
+    'src/lib/payroll/periodCompletion.ts',
+    'src/lib/payroll/periodCompletion.test.ts',
+    'src/app/api/payroll/generate/route.ts',
+    'src/app/api/payroll/monthly-review/route.ts',
+    'src/app/api/payroll/monthly-review/detail/route.ts',
+    'src/app/payroll/monthly-review/page.tsx',
     'src/components/layout/attendancePayrollNav.tsx',
     'src/lib/attendance/requests.ts',
     'src/lib/attendance/requests.test.ts',

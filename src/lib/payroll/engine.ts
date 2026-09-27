@@ -74,6 +74,14 @@ export function generatePayrollForEmployee(
   corrections: AttendanceDayCorrection[] = [],
   settings: PayrollSettings = DEFAULT_PAYROLL_SETTINGS,
   redemptions: AttendanceCreditRedemption[] = [],
+  /**
+   * READ-ONLY previews of a month still in progress pass the last date that
+   * has fully happened. Later dates are left out of the calendar entirely —
+   * never worked, absent or charged. Omitted by every write path: payroll is
+   * only generated for a month that has ended (src/lib/payroll/periodCompletion.ts),
+   * so completed and historical periods calculate exactly as before.
+   */
+  options: { calendarThrough?: string } = {},
 ): EngineOutcome {
   // Step 1 — Guard checks
   const skip = runGuards(employee, period)
@@ -83,7 +91,7 @@ export function generatePayrollForEmployee(
   const rates = computeRates(employee.monthly_salary, settings)
 
   // Step 3 — Build the working-day calendar
-  const calendar = buildWorkingDayCalendar(employee, period, holidays, settings)
+  const calendar = buildWorkingDayCalendar(employee, period, holidays, settings, options.calendarThrough)
 
   // Step 4 — Classify each working day and produce per-day deduction lines
   const dayResults = classifyAttendanceDays(
@@ -271,6 +279,7 @@ function buildWorkingDayCalendar(
   period: EnginePeriod,
   holidays: EngineHoliday[],
   s: PayrollSettings,
+  calendarThrough?: string,
 ): CalendarResult {
   const { payroll_month, payroll_year } = period
   // Only a FULL-DAY holiday excludes the date entirely — unchanged from
@@ -294,7 +303,10 @@ function buildWorkingDayCalendar(
 
   const allDays: string[] = []
   for (let d = 1; d <= daysInMonth; d++) {
-    allDays.push(`${payroll_year}-${mm}-${String(d).padStart(2, '0')}`)
+    const date = `${payroll_year}-${mm}-${String(d).padStart(2, '0')}`
+    // A date that has not happened yet is not in the calendar at all.
+    if (calendarThrough && date > calendarThrough) break
+    allDays.push(date)
   }
 
   // Exclude Sundays (UTC day-of-week = 0) and full-day holidays. A half-day

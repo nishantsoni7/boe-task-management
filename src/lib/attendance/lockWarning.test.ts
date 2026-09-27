@@ -12,16 +12,34 @@ const open = {
 
 describe('lock confirmation text', () => {
   test('open items and draft conflicts are counted and named; a reason is asked for', () => {
-    const text = lockWarningText(open, false)
+    const text = lockWarningText(open)
     assert.match(text, /3 unresolved salary items, of which 1 disagree with this draft/)
     assert.match(text, /Asha: 2 unresolved, 1 disagree with the draft/)
     assert.match(text, /type the reason below\. It is recorded with your name/)
   })
   test('a stale acknowledgement says the review changed', () => {
-    assert.match(lockWarningText(open, false, true), /THE REVIEW CHANGED SINCE YOU LOOKED/)
+    assert.match(lockWarningText(open, true), /THE REVIEW CHANGED SINCE YOU LOOKED/)
   })
-  test('a failed server check is an explicit override, never read as "nothing open"', () => {
-    assert.match(lockWarningText(null, true), /could not be checked on the server[\s\S]*reason for this override/)
+})
+
+describe('refusals that can never be acknowledged', () => {
+  test('an unreadable review (503) is shown as an error: no prompt, nothing sent again', async () => {
+    const bodies: Record<string, unknown>[] = []
+    let prompts = 0
+    const out = await runLockFlow('t', 'p', 'Lock?', { confirm: () => true, prompt: () => { prompts++; return 'reason' } },
+      async b => { bodies.push(b); return { ok: false, status: 503, json: { code: 'attendance_review_unavailable', retryable: true, error: 'could not be loaded … Try again in a moment.' } } })
+    assert.equal(out.status, 'error')
+    assert.match(out.error!, /Try again/)
+    assert.equal(prompts, 0)
+    assert.equal(bodies.length, 1)
+  })
+
+  test('a month still in progress is shown as an error, never acknowledged', async () => {
+    let prompts = 0
+    const out = await runLockFlow('t', 'p', 'Lock?', { confirm: () => true, prompt: () => { prompts++; return 'x' } },
+      async () => ({ ok: false, status: 422, json: { code: 'payroll_month_in_progress', error: 'September 2026 has not ended yet' } }))
+    assert.equal(out.status, 'error')
+    assert.equal(prompts, 0)
   })
 })
 

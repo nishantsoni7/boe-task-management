@@ -31,7 +31,8 @@ const ADMIN_B = 'bbbbbbbb-0000-0000-0000-00000000000b'
 const EMP     = 'eeeeeeee-0000-0000-0000-00000000000e'
 const OTHER   = 'ffffffff-0000-0000-0000-00000000000f'
 const PERIOD  = '99999999-0000-0000-0000-000000000099'
-const TODAY   = '2026-10-31'
+// The day after October ends: payroll for October may be generated and locked.
+const TODAY   = '2026-11-01'
 
 let db: MemorySupabase
 
@@ -426,7 +427,7 @@ describe('case 6 — a locked month refuses every new review and correction writ
     assert.equal(excuse.status, 422)
 
     const direct = await applyAttendanceCorrection(db, {
-      periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B,
+      periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B, today: TODAY,
       correction: {
         attendance_date: '2026-10-05', corrected_check_in_at: istClockToUtc('2026-10-05', '10:40'),
         corrected_check_out_at: istClockToUtc('2026-10-05', '18:35'), day_treatment: 'auto',
@@ -448,7 +449,7 @@ describe('the shared correction service', () => {
     // Pin a different divisor so the rate visibly differs from the defaults.
     db.rows('payroll_periods')[0].settings_snapshot = { ...DEFAULT_PAYROLL_SETTINGS, per_day_divisor: 30 }
     const out = await applyAttendanceCorrection(db, {
-      periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B,
+      periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B, today: TODAY,
       correction: {
         attendance_date: '2026-10-07', corrected_check_in_at: istClockToUtc('2026-10-07', '10:35'),
         corrected_check_out_at: istClockToUtc('2026-10-07', '18:35'), day_treatment: 'auto',
@@ -461,7 +462,7 @@ describe('the shared correction service', () => {
   })
 
   const correct7th = () => applyAttendanceCorrection(db, {
-    periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B,
+    periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B, today: TODAY,
     correction: {
       attendance_date: '2026-10-07', corrected_check_in_at: istClockToUtc('2026-10-07', '10:35'),
       corrected_check_out_at: istClockToUtc('2026-10-07', '18:35'), day_treatment: 'auto',
@@ -512,7 +513,7 @@ describe('item 2 — the lock checks open attendance items on the server and rec
         id: `ack-${d.rows('payroll_lock_attendance_acknowledgements').length + 1}`,
         payroll_period_id: a.p_period_id, actor_id: a.p_actor_id, acknowledged_at: new Date().toISOString(),
         unresolved_count: a.p_unresolved, conflict_count: a.p_conflicts, fingerprint: a.p_fingerprint,
-        summary: a.p_summary, reason: a.p_reason, check_failed: a.p_check_failed,
+        summary: a.p_summary, reason: a.p_reason,
       }
       ;(d.tables.payroll_lock_attendance_acknowledgements ??= []).push(ack)
       Object.assign(p, { status: 'locked', locked_by: a.p_actor_id, locked_at: new Date().toISOString() })
@@ -558,7 +559,6 @@ describe('item 2 — the lock checks open attendance items on the server and rec
     assert.equal(ack.unresolved_count, first.body.unresolved)
     assert.equal(ack.conflict_count, first.body.conflicts)
     assert.equal(ack.fingerprint, first.body.fingerprint)
-    assert.equal(ack.check_failed, false)
     assert.match(String(ack.reason), /Reviewed with accounts/)
     const summary = ack.summary as Record<string, unknown>[]
     assert.ok(summary.length > 0)
@@ -592,23 +592,70 @@ describe('item 2 — the lock checks open attendance items on the server and rec
     assert.equal(period().status, 'generated')
   })
 
-  test('if the review cannot be read, only a deliberate, recorded override locks — payroll is never blocked forever', async () => {
+  test('UNREADABLE review: the lock fails with a retryable 503 and nothing — not even an acknowledgement with a reason — locks it', async () => {
     emulateLockFunction()
     await generateDraft(EMP)
-    db.failOn.set('attendance_day_reviews:select', 'relation "attendance_day_reviews" does not exist')
-    const refused = await lock({})
-    assert.equal(refused.status, 409)
-    assert.equal(refused.body.code, 'attendance_check_failed')
-    const r = await lock({ attendance_acknowledgement: { unverified: true, reason: 'Review table unavailable; month agreed offline' } })
+    const known = await lock({})                     // read successfully first, to hold a valid fingerprint
+    assert.equal(known.body.code, 'attendance_unresolved')
+    db.failOn.set('attendance_day_reviews:select', 'connection reset by peer')
+    for (const body of [
+      {},
+      { attendance_acknowledgement: { fingerprint: known.body.fingerprint, reason: 'I know what is open' } },
+      { attendance_acknowledgement: { unverified: true, reason: 'override please' } },
+    ]) {
+      const r = await lock(body)
+      assert.equal(r.status, 503, JSON.stringify(body))
+      assert.equal(r.body.code, 'attendance_review_unavailable')
+      assert.equal(r.body.retryable, true)
+    }
+    assert.equal(period().status, 'generated')
+    assert.equal(db.rows('payroll_lock_attendance_acknowledgements').length, 0)
+    assert.equal(db.rows('payroll_period_status_events').length, 0)
+    // Once the read works again, the ordinary acknowledgement path applies.
+    db.failOn.clear()
+    const r = await lock({ attendance_acknowledgement: { fingerprint: known.body.fingerprint, reason: 'Reviewed' } })
     assert.equal(r.status, 200)
-    const [ack] = db.rows('payroll_lock_attendance_acknowledgements')
-    assert.equal(ack.check_failed, true)
-    assert.equal(ack.fingerprint, null)
+  })
+
+  test('READ review with open items: the acknowledgement is accepted and recorded (the separate, legitimate path)', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const first = await lock({})
+    assert.equal(first.status, 409)
+    assert.equal(first.body.code, 'attendance_unresolved')
+    const r = await lock({ attendance_acknowledgement: { fingerprint: first.body.fingerprint, reason: 'Known items; settled next month' } })
+    assert.equal(r.status, 200)
+    assert.equal(db.rows('payroll_lock_attendance_acknowledgements')[0].fingerprint, first.body.fingerprint)
+  })
+
+  test('a month that has not ended cannot be locked, even with nothing open and a generated draft', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const r = await lockPayrollPeriod(db, { id: ADMIN_B, name: 'Second Admin' }, { payroll_period_id: PERIOD }, '2026-10-27')
+    assert.equal(r.status, 422)
+    assert.equal(r.body.code, 'payroll_month_in_progress')
+    assert.match(String(r.body.error), /October 2026 has not ended yet[\s\S]*from 1 Nov \(IST\)/)
+    assert.equal(period().status, 'generated')
   })
 
   test('an already locked month is refused as before', async () => {
     emulateLockFunction()
     period().status = 'locked'
     assert.equal((await lock({})).status, 422)
+  })
+})
+
+describe('item 1 — an in-progress month', () => {
+  test('a waiver decision mid-month is refused before anything is written; an excuse (no pay effect) is still recorded', async () => {
+    await generateDraft(EMP)
+    const MID = '2026-10-20'
+    const r = await saveReview(secondAdmin(), { employee_id: EMP, attendance_date: '2026-10-05', event_key: 'late_arrival', pay_decision: 'paid_waived', decision_reason: 'x' }, MID)
+    assert.equal(r.status, 422)
+    assert.match(String(r.body.error), /October 2026 has not ended yet/)
+    assert.equal(db.rows('attendance_day_corrections').length, 0)
+    assert.equal(db.rows('attendance_day_reviews').length, 0)
+    const excuse = await saveReview(secondAdmin(), { employee_id: EMP, attendance_date: '2026-10-05', event_key: 'late_arrival', excused: true, excuse_reason: 'Reported by phone' }, MID)
+    assert.equal(excuse.status, 201)
+    assert.equal(db.rows('attendance_day_corrections').length, 0)
   })
 })
