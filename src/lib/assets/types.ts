@@ -27,7 +27,7 @@ export type Asset = {
   asset_code: string
   /**
    * The asset's CATEGORY — the immutable key of an asset_categories row
-   * (20270130000000). Named asset_type in the database since 20260640. Show it
+   * (20270131000000). Named asset_type in the database since 20260640. Show it
    * through categoryLabel() in src/lib/assets/catalogue.ts, never raw: a
    * category's display name can be changed and this key cannot.
    */

@@ -21,7 +21,7 @@ import type { EffectivePermission } from './types'
 //             every employee. Governs access_records and nothing else.
 //   manage_asset_catalogue
 //           → the CATALOGUE: add, rename, retire and reactivate asset
-//             categories and products (20270130000000). Governs
+//             categories and products (20270131000000). Governs
 //             asset_categories / asset_products and nothing else — it neither
 //             opens the inventory nor edits a single asset.
 //
@@ -113,7 +113,7 @@ export type AssetsAccessCapabilities = {
    * Add, rename, retire and reactivate categories and products. Admin, or an
    * explicit `manage_asset_catalogue` grant — never implied by any asset
    * action, and implying none. Mirrors can_manage_asset_catalogue()
-   * (20270130000000).
+   * (20270131000000).
    */
   canManageCatalogue: boolean
 }

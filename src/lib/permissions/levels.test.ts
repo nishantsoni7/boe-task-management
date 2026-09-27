@@ -251,7 +251,7 @@ describe('Manager never receives a protected action', () => {
     // active admins. The commission has its own table precisely so that no
     // wider Orders authority reaches it; a preset must not either.
     //
-    // And by one more in 20270130000000: `assets_access.manage_asset_catalogue`,
+    // And by one more in 20270131000000: `assets_access.manage_asset_catalogue`,
     // which defines the categories and products every company asset is filed
     // under. It carries no asset authority, and a "Manager" preset must not be
     // a way to acquire it.

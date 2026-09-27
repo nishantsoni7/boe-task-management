@@ -530,7 +530,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
-      '20270130000000_asset_catalogue.sql',
+      '20270131000000_asset_catalogue.sql',
     ])
 
     const previous = lf(readFileSync(

@@ -153,7 +153,7 @@ const GUARD_PREFIXES = [
   'ASSET_TRANSFER_IMMUTABLE:',
   'ASSET_ACTIVITY_IMMUTABLE:',
   'ASSET_CODE_IMMUTABLE:',
-  // The catalogue (20270130000000). Each sentence after the prefix is written
+  // The catalogue (20270131000000). Each sentence after the prefix is written
   // for the reader — "A category named "Phone" already exists".
   'ASSET_CATALOGUE_DENIED:',
   'ASSET_CATALOGUE_INVALID:',

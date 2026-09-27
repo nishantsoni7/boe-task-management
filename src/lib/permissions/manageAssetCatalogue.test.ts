@@ -1,5 +1,5 @@
 /**
- * Assets & Access — "Manage Asset Catalogue" (20270130000000).
+ * Assets & Access — "Manage Asset Catalogue" (20270131000000).
  *
  * The capability derivation is exercised in assetsAccess.test.ts, and the
  * database behaviour — denial of direct requests, duplicates, retirement,
@@ -36,7 +36,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
 const ACTION = 'manage_asset_catalogue'
-const MIGRATION = read('supabase/migrations/20270130000000_asset_catalogue.sql')
+const MIGRATION = read('supabase/migrations/20270131000000_asset_catalogue.sql')
 /** The migration with its comments removed, so prose can never satisfy an assertion. */
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')
 

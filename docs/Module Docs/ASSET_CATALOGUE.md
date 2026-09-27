@@ -1,6 +1,6 @@
 # Asset Catalogue and Owner Overview
 
-Migration `20270130000000_asset_catalogue.sql`. Assets & Access module.
+Migration `20270131000000_asset_catalogue.sql`. Assets & Access module.
 
 ## The three words
 
@@ -89,6 +89,6 @@ Catalogue**. It is protected, denied by default and depends on `view`.
 - **Deploy order.** Apply the migration **before** deploying the frontend. The app reads
   `assets.product_id` and the catalogue tables, and an older database would answer 400.
 - **Rollback.** A reviewed script is kept outside the repo in
-  `temporary/asset-catalogue/rollback_20270130000000.sql`. It was tested on a local copy and
+  `temporary/asset-catalogue/rollback_20270131000000.sql`. It was tested on a local copy and
   refuses to run while any asset names a product. `assets.asset_type` is never modified, so no
   asset data needs restoring.

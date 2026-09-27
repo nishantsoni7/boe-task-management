@@ -90,7 +90,7 @@ registerModule({
     // the products within them. Its own key: it decides what KINDS of asset
     // exist, which is not the same decision as creating, editing or handing
     // out an individual asset, and it carries none of those. Custom action,
-    // PROTECTED, denied by default. Registered by 20270130000000.
+    // PROTECTED, denied by default. Registered by 20270131000000.
     { actionKey: 'manage_asset_catalogue', displayName: 'Manage Asset Catalogue' },
   ],
 })

@@ -66,7 +66,7 @@ import {
   PeopleList,
   type OverviewLens,
 } from '@/components/assets/AssetOverviewParts'
-// Category and product names come from the managed catalogue (20270130000000).
+// Category and product names come from the managed catalogue (20270131000000).
 import { categoryLabel } from '@/lib/assets/catalogue'
 import { useAssetCatalogue } from '@/hooks/useAssetCatalogue'
 import { AssetCatalogueManager } from '@/components/assets/AssetCatalogueManager'

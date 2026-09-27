@@ -67,7 +67,7 @@ type AssetsLayoutProps = {
   canReviewAssetRequests: boolean
   /**
    * Catalogue nav — admin, or an explicit `manage_asset_catalogue` grant
-   * (20270130000000). Optional so the module's sub-pages need not resolve it;
+   * (20270131000000). Optional so the module's sub-pages need not resolve it;
    * they simply do not show the entry.
    */
   canManageCatalogue?: boolean

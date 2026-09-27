@@ -300,7 +300,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     '20270122000000_order_submission_internal_details.sql',
     '20270123000000_order_submission_internal_details_required_on_submit.sql',
-    '20270130000000_asset_catalogue.sql',
+    '20270131000000_asset_catalogue.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

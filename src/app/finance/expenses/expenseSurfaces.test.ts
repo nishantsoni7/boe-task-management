@@ -665,10 +665,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // supabase/tests/order_submission_internal_details_assertions.sql.
       if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
       if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
-      // The managed asset catalogue (20270130000000), held by
+      // The managed asset catalogue (20270131000000), held by
       // src/lib/permissions/manageAssetCatalogue.test.ts and
       // supabase/tests/asset_catalogue_assertions.sql.
-      if (f === 'supabase/migrations/20270130000000_asset_catalogue.sql') continue
+      if (f === 'supabase/migrations/20270131000000_asset_catalogue.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1799,7 +1799,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   // Assets & Access: the managed asset catalogue and the owner overview
-  // (20270130000000). Asset screens, asset helpers and the one new protected
+  // (20270131000000). Asset screens, asset helpers and the one new protected
   // action; the Orders / Finance / Tasks entries are the migration-sequence
   // pins and nothing else.
   const ALLOWED_ASSET_CATALOGUE = new Set([
@@ -1842,7 +1842,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/boeCredits/reviewReward.test.ts',
     'src/lib/modules/moduleOrderStorage.test.ts',
     'src/lib/announcementsMigration.test.ts',
-    'supabase/migrations/20270130000000_asset_catalogue.sql',
+    'supabase/migrations/20270131000000_asset_catalogue.sql',
   ])
 
   const isUnexpectedFile = (f: string) =>
