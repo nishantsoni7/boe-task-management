@@ -215,7 +215,6 @@ import {
 } from '@/lib/orders/submissionActivity'
 import { mergeOrderHistory } from '@/lib/orders/orderHistory'
 import {
-  formatOrderOperationalNumber,
   orderProductCodesByItemId,
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
@@ -2261,9 +2260,9 @@ export default function OrderDetailPage() {
     !['dispatched', 'cancelled'].includes(order.status) &&
     new Date(order.due_date) < new Date()
 
-  // The stored, permanent display_number keeps its four-digit, zero-padded
-  // shape; what BOE shows and refers to drops the leading zeros (20261124000000).
-  const operationalNumber = formatOrderOperationalNumber(order.display_number) ?? order.display_number
+  // THE ORDER NUMBER AS EVERY ORDERS SCREEN SHOWS IT: the stored four-digit
+  // display_number (0526). Product codes (526-BE001) keep their own format.
+  const shownOrderNumber = order.display_number
 
   // ── What this screen says, decided once ──
   //
@@ -2730,7 +2729,7 @@ export default function OrderDetailPage() {
             below; every date in Important Dates under it. */}
         <header className="order-command-header">
           <div className="order-command-identity">
-            <h1 className="order-command-title">Order {operationalNumber}</h1>
+            <h1 className="order-command-title">Order {shownOrderNumber}</h1>
             <OrderStatusPill label={STATUS_META[order.status]?.label ?? order.status} tone={statusTone} />
           </div>
 
