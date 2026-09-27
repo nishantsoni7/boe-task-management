@@ -151,6 +151,19 @@ export function piVersionPdfHref(orderId: string, versionId: string, download: b
   return `/api/orders/${orderId}/pi-versions/${versionId}/pdf${download ? '?download=1' : ''}`
 }
 
+/** The Order reference a version's PDF prints — in its header, its title and
+ *  its filename — exactly as stored on the version
+ *  (order_pi_versions.pdf_order_number, 20270201000000): "526" for a version
+ *  that existed before, "0526" for one created since. The PDF is rendered on
+ *  every open, so it is never re-derived from the Order's number: that would
+ *  change PDFs already issued. Null when nothing usable is stored; the route
+ *  then refuses rather than guess. */
+export function piVersionPdfOrderNumber(stored: string | null | undefined): string | null {
+  if (typeof stored !== 'string') return null
+  const value = stored.trim()
+  return value === '' ? null : value
+}
+
 /** "Order-524-PI-V2.pdf" — a filename a person can recognise in Downloads. */
 export function piVersionPdfFilename(orderNumber: string, versionNumber: number): string {
   const safe = orderNumber.replace(/[^0-9A-Za-z-]/g, '') || 'Order'
