@@ -397,6 +397,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      '20270201000000_order_pi_version_pdf_order_number.sql',
     ])
   })
 

@@ -665,6 +665,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // supabase/tests/order_submission_internal_details_assertions.sql.
       if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
       if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
+      // Each PI version keeps the Order number its PDF prints (20270201000000) —
+      // held by src/lib/orders/piVersionPdf.test.ts and
+      // supabase/tests/order_pi_version_pdf_order_number_assertions.sql.
+      if (f === 'supabase/migrations/20270201000000_order_pi_version_pdf_order_number.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1810,6 +1814,32 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
   ])
 
+  // Each PI version keeps the Order number its PDF prints (20270201000000): the
+  // PDF route and its helper read the stored value. No Finance file, no figure.
+  const ALLOWED_PI_PDF_ORDER_NUMBER = new Set([
+    'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
+    'src/lib/orders/piVersionPdf.ts',
+    'src/lib/orders/piVersionPdf.test.ts',
+    // #242's pin that the PDF still formatted the Order's number, replaced by
+    // one for the number stored on each version.
+    'src/lib/orders/orderProductCodes.test.ts',
+    'supabase/migrations/20270201000000_order_pi_version_pdf_order_number.sql',
+    'supabase/tests/_order_pi_version_pdf_order_number_helpers.sql',
+    'supabase/tests/_order_pi_version_pdf_order_number_prior_versions.sql',
+    'supabase/tests/order_pi_version_pdf_order_number_assertions.sql',
+    'supabase/tests/run_order_pi_version_pdf_order_number_local.sh',
+    // The migration-sequence pins.
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1854,6 +1884,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
+    !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
@@ -2060,7 +2091,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|announcements/.test(f),
+      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2181,6 +2212,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
+        || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')

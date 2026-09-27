@@ -99,8 +99,12 @@ describe('Orders screens show 0526; product codes keep 526-BE001', () => {
     // Issued exports are never rewritten: each generation writes new keys.
     assert.ok(docs.includes('upsert: false'))
   })
-  test('the PI version PDF is left as it was: it re-renders on every open, so a change would alter PDFs already issued', () => {
-    assert.ok(read('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts').includes('formatOrderOperationalNumber(displayNumber)'))
+  test('the PI version PDF prints the number stored on each version: issued PDFs keep 526, versions created after the switch print 0526 (20270201000000, 20270202000000)', () => {
+    // It re-renders on every open, so it never re-derives the number from the
+    // Order: that would alter PDFs already issued.
+    const pdf = read('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts')
+    assert.ok(pdf.includes('const orderNumber = piVersionPdfOrderNumber(version.pdf_order_number)'))
+    assert.equal(/formatOrderOperationalNumber/.test(pdf), false, 'the route does not format the Order number itself')
   })
   test('product codes are unchanged', () => {
     assert.equal(formatOrderOperationalNumber('0526'), '526')
