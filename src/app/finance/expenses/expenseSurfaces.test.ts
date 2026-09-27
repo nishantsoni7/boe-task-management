@@ -669,6 +669,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/orders/piVersionPdf.test.ts and
       // supabase/tests/order_pi_version_pdf_order_number_assertions.sql.
       if (f === 'supabase/migrations/20270201000000_order_pi_version_pdf_order_number.sql') continue
+      // …and the deliberate switch of NEW versions to the stored number
+      // (20270202000000), held by
+      // supabase/tests/order_pi_version_pdf_order_number_switch_assertions.sql.
+      if (f === 'supabase/migrations/20270202000000_order_pi_version_pdf_order_number_stored_form.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1840,6 +1844,25 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  // The switch of NEW PI versions to the stored Order number (20270202000000),
+  // applied only after the route that prints the stored value is live.
+  const ALLOWED_PI_PDF_ORDER_NUMBER_SWITCH = new Set([
+    'supabase/migrations/20270202000000_order_pi_version_pdf_order_number_stored_form.sql',
+    'supabase/tests/_order_pi_version_pdf_order_number_between_versions.sql',
+    'supabase/tests/order_pi_version_pdf_order_number_switch_assertions.sql',
+    'supabase/tests/run_order_pi_version_pdf_order_number_switch_local.sh',
+    // The migration-sequence pins.
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1885,6 +1908,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
+    !ALLOWED_PI_PDF_ORDER_NUMBER_SWITCH.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
@@ -2213,6 +2237,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
+        || ALLOWED_PI_PDF_ORDER_NUMBER_SWITCH.has(file)
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
