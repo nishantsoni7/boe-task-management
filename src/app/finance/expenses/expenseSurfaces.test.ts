@@ -1761,6 +1761,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/resubmissionChanges.test.ts',
     // The Order number shown as 0526 on every Orders screen (list, header).
     'src/lib/orders/orderProductCodes.test.ts',
+    'src/app/api/orders/[id]/documents/route.ts',
+    'src/app/api/orders/[id]/notify/route.ts',
   ])
 
   const ALLOWED_PI_INTERNAL_DETAILS = new Set([

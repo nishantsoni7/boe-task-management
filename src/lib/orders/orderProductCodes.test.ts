@@ -90,6 +90,18 @@ describe('Orders screens show 0526; product codes keep 526-BE001', () => {
     assert.ok(detail.includes('const shownOrderNumber = order.display_number'))
     assert.ok(detail.includes('Order {shownOrderNumber}</h1>'))
   })
+  test('the Order documents export and Order notifications say 0526 too', () => {
+    const docs = read('src/app/api/orders/[id]/documents/route.ts')
+    const notify = read('src/app/api/orders/[id]/notify/route.ts')
+    assert.ok(docs.includes("const orderNumber = String(order.display_number ?? '').trim()"))
+    assert.ok(notify.includes('const orderNumber = order.display_number'))
+    assert.equal(/formatOrderOperationalNumber/.test(docs + notify), false)
+    // Issued exports are never rewritten: each generation writes new keys.
+    assert.ok(docs.includes('upsert: false'))
+  })
+  test('the PI version PDF is left as it was: it re-renders on every open, so a change would alter PDFs already issued', () => {
+    assert.ok(read('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts').includes('formatOrderOperationalNumber(displayNumber)'))
+  })
   test('product codes are unchanged', () => {
     assert.equal(formatOrderOperationalNumber('0526'), '526')
   })
