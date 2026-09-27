@@ -86,9 +86,61 @@ Catalogue**. It is protected, denied by default and depends on `view`.
 
 ## Deploy order and rollback
 
-- **Deploy order.** Apply the migration **before** deploying the frontend. The app reads
-  `assets.product_id` and the catalogue tables, and an older database would answer 400.
-- **Rollback.** A reviewed script is kept outside the repo in
-  `temporary/asset-catalogue/rollback_20270131000000.sql`. It was tested on a local copy and
-  refuses to run while any asset names a product. `assets.asset_type` is never modified, so no
-  asset data needs restoring.
+### Required order: migration first, then frontend
+
+1. **Before the release**, run `asset-catalogue-post-release-checks.sql` (read-only) and keep
+   the section A values as the baseline.
+2. **Apply the migration.** Confirm first that `npx supabase migration list --linked` shows
+   `20270131000000` as the only pending version. Its number must still be above every applied
+   version: if production has moved past it, renumber before pushing. It is safe for the
+   **currently deployed** frontend. The old app never selects `product_id`, reads no catalogue
+   table, and only ever writes one of the six backfilled category keys, all of which pass the
+   new foreign key.
+3. **Deploy the frontend.** The new app selects `assets.product_id` and reads
+   `asset_categories` / `asset_products`. Against a database without the migration, every asset
+   screen gets a 400 from PostgREST. **Never deploy the frontend first.**
+
+### After the release: exact checks
+
+Run `docs/Module Docs/asset-catalogue-post-release-checks.sql` (SELECT only). It returns one
+JSON row, and every value has an `expect:` beside it in the file:
+
+| Check | Expected |
+|---|---|
+| Section A (asset count, per type/status, assignments by status, access records, status/custody mismatch) | Identical to the pre-release baseline |
+| `B_ledger_has_version` | 1 |
+| `C_original_six_present` / `C_categories_total` | 6 / 6 |
+| `C_assets_without_category`, `C_products_total`, `C_assets_with_product`, `C_catalogue_history_rows` | 0 |
+| `D_action_default_denied` | 1 |
+| `D_non_admin_role_grants`, `D_employee_grants` | 0 |
+| `E_authenticated_write_privs`, `E_anon_select`, `E_permissive_write_policies`, `F_rpcs_anon_executable` | 0 |
+| `E_entry_gates` | 3 |
+| `F_write_rpcs_definer_pinned` | 6 |
+| `F_asset_triggers` | 2 |
+| `F_restrict_fks` | 3 |
+| `F_history_guard` | 1 |
+
+Then check the app itself:
+
+- **As Admin:** Asset Inventory loads with the same counts as before. Catalogue shows the six
+  categories, with "used by" totals that add up to the asset count. Edit an existing asset,
+  change nothing, and save: it must succeed.
+- **As an ordinary employee:** My Assets shows category names. `?view=asset-catalogue` falls
+  back to My Assets.
+
+A failed check is a stop: do not grant the permission to anyone until every check passes.
+
+### Rollback, and its limit
+
+`docs/Module Docs/asset-catalogue-rollback.sql` restores the pre-migration schema. It was tested
+locally: on a freshly migrated database it removes every table, column, function and permission
+row it added. Roll the **frontend back first**, because the new frontend cannot run on the old
+schema.
+
+**The limit:** once any asset names a product, the script refuses. That link exists only in
+`assets.product_id`, so rolling back would destroy it. Clear or record those assignments first,
+as a deliberate decision.
+
+Categories created after the release do not block a rollback. Assets keep that key as plain
+text, and the old app shows it in words but cannot offer it for new assets.
+`assets.asset_type` itself is never modified, so no other asset data needs restoring.
