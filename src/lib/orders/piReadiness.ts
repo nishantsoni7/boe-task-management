@@ -138,7 +138,7 @@ export type PiRequirement = {
    * Which editor section supplies it, so "Add client details" can open at the
    * right place instead of at the top of a long form.
    */
-  section: 'client' | 'terms' | 'schedule' | 'products' | 'workbook'
+  section: 'client' | 'terms' | 'schedule' | 'products' | 'workbook' | 'internal'
   /**
    * True when no editor can fix this — the workbook itself has to be corrected
    * and re-imported. Telling somebody to edit a field that no form owns is
@@ -305,6 +305,11 @@ export function piReadiness(
     missing,
     summary: missing.length === 0 ? null : summarize(purpose, missing),
   }
+}
+
+/** The summary sentence, for a caller that adds a requirement of its own (see piInternalDetails). */
+export function summarizePiReadiness(purpose: PiReadinessPurpose, missing: readonly PiRequirement[]): string {
+  return summarize(purpose, missing)
 }
 
 function summarize(purpose: PiReadinessPurpose, missing: readonly PiRequirement[]): string {

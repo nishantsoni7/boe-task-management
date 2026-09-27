@@ -753,3 +753,15 @@ export function describeAlignmentEventReason(payload: Record<string, unknown> | 
       return p.legacy_order === true ? 'set the old way (no handoff on this Order)' : null
   }
 }
+
+/**
+ * The Main PI row's line while Operations has flagged the version in force:
+ * who, and the reason they recorded. The reason is required by
+ * decide_order_operations_handoff(), so a missing one is said, not hidden.
+ */
+export function clarificationLine(versionLabel: string, decision: OperationsHandoffDecisionLine): string {
+  const who = decision.by ?? 'Operations'
+  const note = decision.note?.trim() ?? ''
+  const why = note === '' ? 'No reason recorded.' : /[.!?]$/.test(note) ? note : `${note}.`
+  return `${who} cannot accept ${versionLabel} yet. Reason: ${why} It can be accepted once this is settled, or a revised PI brings a new version.`
+}

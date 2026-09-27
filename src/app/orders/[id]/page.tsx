@@ -180,6 +180,7 @@ import {
   RejectRevisionModal,
 } from './OrderRevisionModals'
 import {
+  clarificationLine,
   OPERATIONS_REVIEW_ANCHOR,
   ORDER_OPERATIONS_HANDOFF_COLUMNS,
   WITHDRAW_ACCEPTANCE_LABEL,
@@ -1000,7 +1001,6 @@ export default function OrderDetailPage() {
     const trailRows = (trailRes.data ?? []) as unknown as PersistedActivity[]
     const handoffRows = (handoffsRes.data ?? []) as unknown as PersistedOperationsHandoff[]
     setPiVersions(versionRows)
-    setPiVersionsRead(true)
     setPiActivity(trailRows)
     setHandoffs(handoffRows)
 
@@ -1056,6 +1056,9 @@ export default function OrderDetailPage() {
       if (person?.id && person.is_active === false) inactive.add(person.id)
     }
     setPiNames(names)
+    // THE MAIN PI CARD WAITS FOR THE NAMES TOO: it states who uploaded and who
+    // decided, and drawn before this batch it said "Unknown user".
+    setPiVersionsRead(true)
     setPiInactive(inactive)
 
     const signedByPath = new Map<string, string>()
@@ -2476,7 +2479,12 @@ export default function OrderDetailPage() {
         tone: operationsView.tone,
         line: operationsView.status === 'awaiting'
           ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
-          : null,
+          // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
+          // Activity at the foot of the page (clarification_reason, required by
+          // decide_order_operations_handoff).
+          : operationsView.status === 'clarification_needed' && operationsView.decision
+            ? clarificationLine(operationsView.versionLabel, operationsView.decision)
+            : null,
       }
     : null
   /**

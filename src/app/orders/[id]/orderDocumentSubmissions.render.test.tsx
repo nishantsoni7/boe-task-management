@@ -290,3 +290,12 @@ describe('the permanent trail and the upload menu', () => {
     assert.equal(uploadAvailability('client_po', api([]), viewer({ viewingAs: true })).offered, false)
   })
 })
+
+describe('the upload dialog names the files it will send', () => {
+  test('each chosen file is listed under its field', () => {
+    const src = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderDocumentSubmissions.tsx'), 'utf8')
+    assert.ok(src.includes('<ChosenFiles files={design} />'))
+    assert.ok(src.includes('<ChosenFiles files={po} />'))
+    assert.match(css, /.order-docsub-chosen {/)
+  })
+})

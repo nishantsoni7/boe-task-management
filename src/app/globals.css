@@ -2961,6 +2961,10 @@ body {
 .order-docsub-file:hover .order-docsub-file-name { text-decoration: underline; }
 .order-docsub-file-name { overflow-wrap: anywhere; min-width: 0; }
 .order-docsub-file-size { color: #8C94A6; font-size: 11px; white-space: nowrap; }
+/* The files chosen in the upload dialog, named before they are sent. */
+.order-docsub-chosen { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.order-docsub-chosen li { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: #3A4150; }
+.order-docsub-chosen .order-docsub-file-name { min-width: 0; overflow-wrap: anywhere; }
 .order-docsub-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .order-docsub-fieldset legend { font-size: 11px; font-weight: 600; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .order-docsub-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
@@ -6418,6 +6422,27 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   .pi-detail-internal-action { grid-column: 1 / -1; grid-row: auto; order: 10; min-height: 38px; justify-content: center; }
   .pi-detail-internal-note { order: 11; }
 }
+
+/* WHAT CHANGED SINCE THE RETURN — beside the employee's reply, for the reviewer. */
+.pi-detail-resubmission {
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: #f5f8ff;
+  border: 1px solid rgba(85, 133, 232, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pi-detail-resubmission-title { font-size: 11px; font-weight: 700; color: #3a5fb0; }
+.pi-detail-resubmission-line { margin: 0; font-size: 12px; color: #111318; line-height: 1.45; }
+.pi-detail-resubmission-note { margin: 0; font-size: 11px; color: #6b7384; line-height: 1.4; }
+.pi-detail-resubmission-figures { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pi-detail-resubmission-figure { display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr); gap: 2px 8px; font-size: 12px; min-width: 0; }
+.pi-detail-resubmission-figure dt { color: #6b7384; }
+.pi-detail-resubmission-figure dd { margin: 0; color: #111318; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pi-detail-resubmission-before { color: #6b7384; text-decoration: line-through; }
 
 /* ── Payment status ───────────────────────────────────────────────────────── */
 

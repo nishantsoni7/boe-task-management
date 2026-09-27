@@ -95,9 +95,10 @@ import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
+import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
-  describeMiddleman, formatIsoDay, internalDetailsSaveFailure, internalDetailsSubmitBlock, withCommission, workbookDateNotes,
+  describeMiddleman, formatIsoDay, internalDetailsSaveFailure, internalDetailsSubmitBlock, withCommission, withInternalDetailsRequirement, workbookDateNotes,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -290,6 +291,9 @@ type Draft = {
   warnings: PiDiagnosticEntry[]
   /** The append-only history, newest first, already resolved to names. */
   activity: ActivityEntry[]
+  /** What Sales changed between the last return for changes and the latest
+   *  submission, from the same trail. Null for a first submission. */
+  resubmission: ResubmissionChanges | null
   /** Who submitted it, and who rejected it. Null when the record has not
    *  reached that state, or when the name could not be resolved. */
   submitterName: string | null
@@ -787,6 +791,7 @@ function PiDraftDetailPageInner() {
           ? namesById.get(row.pi_approved_by) ?? null : null,
         orderDisplayNumber,
         activity: describeActivityEntries(history, namesById, formatSavedAt),
+        resubmission: changesSinceReturn(history),
         submitterName: row.submitted_by ? namesById.get(row.submitted_by) ?? null : null,
         rejectedByName: row.rejected_by ? namesById.get(row.rejected_by) ?? null : null,
         advanceRequesterName: row.advance_exception_requested_by
@@ -1931,6 +1936,15 @@ function PiDraftDetailPageInner() {
   const ownsSubmission = viewerId !== null && (
     submission.created_by === viewerId || submission.submitted_by === viewerId)
 
+  // WHO IS OFFERED "Edit PI on the Order" once this PI is an Order: the rule the
+  // Order page applies to its own Edit PI (an admin, or the PI's owner holding
+  // orders.create). Operations and other readers used to be offered a link to a
+  // page that then gave them no Edit PI. A courtesy only; the Order page and
+  // propose_order_pi_edit_revision() decide.
+  // canAdminAmend is can_admin_edit_order_submission's answer (an active admin),
+  // so no role is read here.
+  const mayEditOnOrder = canAdminAmend || (canCreate && ownsSubmission)
+
   /**
    * WHERE THIS PI STANDS ON ITS ORDER NUMBER.
    *
@@ -2170,7 +2184,7 @@ function PiDraftDetailPageInner() {
         />
 
         {/* ── 1b. EDIT PI (20270115000000) ── one action for the whole PI. */}
-        {(mayEditPi || (piIsOrder && submission.status === 'approved')) && (
+        {(mayEditPi || (piIsOrder && submission.status === 'approved' && mayEditOnOrder)) && (
           <div className="pi-edit-bar" style={{
             display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
             border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '10px 14px', background: colors.base,
@@ -2286,15 +2300,22 @@ function PiDraftDetailPageInner() {
               status={submission.status}
               reviewNote={submission.review_note}
               employeeReply={employeeReply}
+              // Shown with the reply, so the reply is not the only account of
+              // what changed (read from the activity trail, never re-derived).
+              resubmission={submission.status === 'submitted' ? draft.resubmission : null}
               advanceRefusal={advanceRefusal}
               blockingCount={draft.blocking.length}
               /* The same list the approval control and the finance dialog read.
                  Offered only where submitting is the question: a reviewer looking
                  at a submitted PI is not the person who fills these in. */
-              readiness={actions.canSubmit ? submissionReadiness : null}
+              // The shared list plus the internal details the database also
+              // requires before a submission (20270123000000).
+              readiness={actions.canSubmit ? withInternalDetailsRequirement(submissionReadiness, submission) : null}
               onFixReadiness={
-                mayEditPi
+                mayEditPi || canEditInternalDetails
                   ? section => {
+                      if (section === 'internal') { setInternalFailure(null); setInternalOpen(true); return }
+                      if (!mayEditPi) return
                       if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
                       setPiEditorOpen(true)
                     }

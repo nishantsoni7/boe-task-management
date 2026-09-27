@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 
 import {
   NO_PI_NUMBER_NOTE,
+  ORDER_CREATED_NUMBER_NOT_SHOWN,
   NUMBER_ALLOTTED_AT_APPROVAL,
   NUMBER_LABEL,
   PI_RESERVATION_COLUMNS,
@@ -389,5 +390,20 @@ describe('the refusals that name two numbers are passed through, not rewritten',
 
   test('and anything that is not a reservation refusal is still NOT claimed', () => {
     assert.equal(reservationApprovalMessage({ message: 'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT: …' }), null)
+  })
+})
+
+// 2026-09-27: Finance reads an approved PI (to verify its payments) but not the
+// Order row. The page used to tell them 'Order number not allotted'.
+describe('an Order this reader cannot open', () => {
+  test('says an Order was created, never "not allotted", and offers no number to copy', () => {
+    const v = describeReservation({ ...draft, status: 'approved', hasOrder: true, confirmedNumber: null })
+    assert.equal(v.state, 'used')
+    assert.equal(v.number, null)
+    assert.equal(v.canCopy, false)
+    assert.equal(v.standing, ORDER_CREATED_NUMBER_NOT_SHOWN)
+  })
+  test('a reader who can open it still gets the number', () => {
+    assert.notEqual(describeReservation({ ...draft, status: 'approved', hasOrder: true, confirmedNumber: '0526' }).standing, ORDER_CREATED_NUMBER_NOT_SHOWN)
   })
 })

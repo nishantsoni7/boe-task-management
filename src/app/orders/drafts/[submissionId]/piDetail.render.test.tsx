@@ -3720,3 +3720,18 @@ describe('an edit or a refresh re-reads the payment summary too', () => {
     assert.match(page, /onRefresh=\{async \(\) => \{ await Promise\.all\(\[loadDraft\(\{ quiet: true \}\), loadPayments\(\)\]\) \}\}/)
   })
 })
+
+// 2026-09-27: Operations were offered 'Edit PI on the Order' on an approved PI,
+// and the Order then gave them no Edit PI. Same rule as the Order page now.
+describe('Edit PI on the Order is offered only to somebody who can edit there', () => {
+  test('an admin, or the PI owner holding orders.create', () => {
+    const page = read(PAGE)
+    assert.ok(page.includes("const mayEditOnOrder = canAdminAmend || (canCreate && ownsSubmission)"))
+    assert.ok(page.includes("{(mayEditPi || (piIsOrder && submission.status === 'approved' && mayEditOnOrder)) && ("))
+  })
+  test('the reviewer sees what changed since the return beside the reply', () => {
+    const page = read(PAGE)
+    assert.ok(page.includes("resubmission={submission.status === 'submitted' ? draft.resubmission : null}"))
+    assert.ok(page.includes('resubmission: changesSinceReturn(history),'))
+  })
+})
