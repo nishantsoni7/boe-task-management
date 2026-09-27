@@ -154,7 +154,7 @@ export function piVersionPdfHref(orderId: string, versionId: string, download: b
 /** The Order reference a version's PDF prints — in its header, its title and
  *  its filename — exactly as stored on the version
  *  (order_pi_versions.pdf_order_number, 20270201000000): "526" for a version
- *  that existed before, "0526" for one created since. The PDF is rendered on
+ *  created before 20270202000000, "0526" for one created after. The PDF is rendered on
  *  every open, so it is never re-derived from the Order's number: that would
  *  change PDFs already issued. Null when nothing usable is stored; the route
  *  then refuses rather than guess. */
