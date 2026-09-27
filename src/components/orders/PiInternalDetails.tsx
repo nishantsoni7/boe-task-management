@@ -32,8 +32,11 @@ import {
   internalDetailsShapeErrors,
   internalDetailsStatusLine,
   workbookDateNotes,
+  SUBMISSION_DATE_LABEL,
+  SUBMISSION_DATES_NOTE,
   type PiInternalDetailsForm,
   type PiInternalDetailsRow,
+  type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 
 const label: React.CSSProperties = { fontSize: '11.5px', fontWeight: 600, color: colors.secondary }
@@ -259,5 +262,61 @@ export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
       <AlertTriangle size={15} color={colors.amber} aria-hidden style={{ flexShrink: 0, marginTop: '1px' }} />
       <span>{notice}</span>
     </div>
+  )
+}
+
+/**
+ * THE TWO DATES, INSIDE SUBMIT FOR APPROVAL (2026-09-27).
+ *
+ * The same columns the editor above writes, labelled in the workbook's own
+ * words. Controlled by the submit dialog, which keeps the values across a
+ * failed attempt; each message sits under its own input and is announced.
+ * Errors are handed in already filtered to "shown" — the dialog says nothing
+ * until Submit has been pressed once.
+ */
+export function PiSubmissionDatesFields({ dates, errors, disabled, onChange, inputRef }: {
+  dates: SubmissionDates
+  errors: Partial<Record<keyof SubmissionDates, string>>
+  disabled: boolean
+  onChange: (key: keyof SubmissionDates, value: string) => void
+  inputRef?: (key: keyof SubmissionDates, el: HTMLInputElement | null) => void
+}) {
+  const keys: (keyof SubmissionDates)[] = ['order_confirmation_date', 'due_date']
+  return (
+    <fieldset style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '12px 14px', margin: 0, minWidth: 0 }}>
+      <legend style={{ ...label, padding: '0 4px', color: colors.primary }}>
+        Order dates <span style={{ fontWeight: 400, color: colors.tertiary }}>· BOE only</span>
+      </legend>
+      <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45 }}>
+        {SUBMISSION_DATES_NOTE}
+      </p>
+      <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+        {keys.map(key => {
+          const id = `pi-submit-${key}`
+          const error = errors[key]
+          return (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+              <label htmlFor={id} style={label}>
+                {SUBMISSION_DATE_LABEL[key]} <span aria-hidden style={{ color: colors.red }}>*</span>
+              </label>
+              <input
+                id={id}
+                ref={el => inputRef?.(key, el)}
+                type="date"
+                required
+                value={dates[key]}
+                min={key === 'due_date' && dates.order_confirmation_date ? dates.order_confirmation_date : undefined}
+                disabled={disabled}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+                onChange={e => onChange(key, e.target.value)}
+                style={{ ...input, borderColor: error ? 'rgba(217,79,79,0.6)' : colors.border }}
+              />
+              {error && <span id={`${id}-error`} role="alert" style={fieldError}>{error}</span>}
+            </div>
+          )
+        })}
+      </div>
+    </fieldset>
   )
 }

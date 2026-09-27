@@ -51,6 +51,8 @@ import {
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { SUBMIT_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import { formatInr } from '@/lib/pi/previewView'
+import { PiSubmissionDatesFields } from './PiInternalDetails'
+import type { SubmissionDates } from '@/lib/orders/piInternalDetails'
 
 const GRAND_TOTAL = 118000
 
@@ -96,6 +98,7 @@ function render(over: {
   submitting?: boolean
   failure?: string | null
   offerReply?: boolean
+  submissionDates?: SubmissionDates | null
 } = {}): string {
   return renderToStaticMarkup(
     <PiSubmitConfirmModal
@@ -108,6 +111,7 @@ function render(over: {
       offerReply={over.offerReply ?? false}
       onCancel={() => {}}
       onConfirm={() => {}}
+      submissionDates={over.submissionDates}
     />,
   )
 }
@@ -452,5 +456,74 @@ describe('the submission rule reads attached payment', () => {
     // No attached fields at all: `meets_standard` decides, as before.
     assert.equal(submitDisabled(render({ payment: summary() })), false)
     assert.equal(submitDisabled(render({ payment: below() })), true)
+  })
+})
+
+// ── The two internal dates, asked for at Submit (2026-09-27) ─────────────────
+//
+// Sales leaves Date of Order Confirmation and Dispatch Date Finalized off the
+// client-facing workbook; this dialog is where they are required. Static
+// markup cannot press a button, so the press itself is held by reading the
+// dialog's own source below — the same way the page wiring is held above.
+describe('the Submit dialog asks for the two internal dates', () => {
+  const blank = { order_confirmation_date: '', due_date: '' }
+
+  test('both fields are drawn with the workbook\'s labels, marked required', () => {
+    const html = render({ submissionDates: blank })
+    assert.ok(html.includes('Date of Order Confirmation'))
+    assert.ok(html.includes('Dispatch Date Finalized'))
+    assert.equal((html.match(/type="date"/g) ?? []).length, 2)
+    assert.equal((html.match(/required=""/g) ?? []).length, 2)
+    assert.ok(html.includes('not printed on the client PI'), 'and it says they are internal')
+  })
+
+  test('nothing is scolded before Submit is pressed, and Submit stays pressable to reveal what is missing', () => {
+    const html = render({ submissionDates: blank })
+    assert.ok(!html.includes('Enter the Date of Order Confirmation.'))
+    assert.ok(!html.includes('aria-invalid'))
+    assert.equal(submitDisabled(html), false,
+      'a disabled Submit beside two empty boxes would say nothing about why')
+  })
+
+  test('the record\'s dates are what the fields open on', () => {
+    const html = render({ submissionDates: { order_confirmation_date: '2026-09-20', due_date: '2026-11-20' } })
+    assert.ok(html.includes('value="2026-09-20"'))
+    assert.ok(html.includes('value="2026-11-20"'))
+    assert.ok(html.includes('min="2026-09-20"'), 'the dispatch picker starts at the confirmation date')
+  })
+
+  test('without the prop the dialog is exactly what it was', () => {
+    const html = render({})
+    assert.ok(!html.includes('Dispatch Date Finalized'))
+    assert.ok(!html.includes('type="date"'))
+  })
+
+  test('an error sits under its own field, announced, with the typed value kept', () => {
+    const html = renderToStaticMarkup(
+      <PiSubmissionDatesFields
+        dates={{ order_confirmation_date: '2026-09-23', due_date: '2026-09-15' }}
+        errors={{ due_date: 'The Dispatch Date Finalized cannot be before the Date of Order Confirmation.' }}
+        disabled={false}
+        onChange={() => {}}
+      />,
+    )
+    assert.ok(html.includes('value="2026-09-23"') && html.includes('value="2026-09-15"'), 'nothing typed is lost')
+    assert.equal((html.match(/aria-invalid="true"/g) ?? []).length, 1, 'only the field at fault')
+    assert.ok(html.includes('aria-describedby="pi-submit-due_date-error"'))
+    assert.ok(html.includes('id="pi-submit-due_date-error" role="alert"'))
+    assert.ok(html.includes('for="pi-submit-order_confirmation_date"'), 'labels are tied to their inputs')
+  })
+
+  test('pressing Submit checks the dates first and hands nothing up while one is missing', () => {
+    const modal = readFileSync(join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8').replace(/\r/g, '')
+    const confirm = modal.slice(modal.indexOf('  const confirm = () => {'), modal.indexOf('  return (', modal.indexOf('  const confirm = () => {')))
+    const check = confirm.indexOf('if (dates && datesInvalid) {')
+    const hand = confirm.indexOf('onConfirm(')
+    assert.ok(check > -1 && hand > check, 'the check comes before the hand-up')
+    assert.ok(confirm.slice(check, hand).includes('return'), 'and an invalid date stops it')
+    assert.ok(confirm.includes('dates ?? undefined)'), 'the entered dates travel with the confirmation')
+    // The dates live in the dialog's own state, which a failed submission does
+    // not unmount — so what was typed survives the error.
+    assert.ok(modal.includes('const [dates, setDates] = useState<SubmissionDates | null>(submissionDates ?? null)'))
   })
 })

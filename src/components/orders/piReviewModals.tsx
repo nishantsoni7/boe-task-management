@@ -39,6 +39,8 @@ import {
   type SupportingCategory,
 } from '@/lib/orders/orderDocumentSubmissions'
 import { useScrollLock } from '@/hooks/useScrollLock'
+import { PiSubmissionDatesFields } from '@/components/orders/PiInternalDetails'
+import { submissionDateErrors, type SubmissionDates } from '@/lib/orders/piInternalDetails'
 import {
   BOE_STANDARD_COMMERCIAL_TERMS,
   COMMERCIAL_TERMS_LABEL,
@@ -533,6 +535,7 @@ export function PiSubmitConfirmModal({
   supporting,
   missingSupporting,
   supportingBlocked,
+  submissionDates,
 }: {
   client: string
   grandTotal: string
@@ -567,6 +570,8 @@ export function PiSubmitConfirmModal({
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
     /** The supporting categories the submitter confirmed going without. */
     acknowledgedMissing?: string[],
+    /** The two internal dates as entered here — present only when asked for. */
+    dates?: SubmissionDates,
   ) => void
   /**
    * DESIGN FILES AND CLIENT PO (20270112000000), drawn inside this dialog by the
@@ -578,6 +583,12 @@ export function PiSubmitConfirmModal({
   missingSupporting?: readonly SupportingCategory[]
   /** Why Submit must wait on the attachments (e.g. an invalid file). */
   supportingBlocked?: string | null
+  /**
+   * DATE OF ORDER CONFIRMATION AND DISPATCH DATE FINALIZED (2026-09-27), opened
+   * on what the record holds. When given, both are REQUIRED before this dialog
+   * hands anything up; absent, the dialog is exactly what it was.
+   */
+  submissionDates?: SubmissionDates | null
 }) {
   /**
    * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
@@ -589,6 +600,15 @@ export function PiSubmitConfirmModal({
    */
   const [reply, setReply] = useState('')
   const [terms, setTerms] = useState<PiSubmissionTerms>(initialTerms ?? EMPTY_SUBMISSION_TERMS)
+  // The dates live here for the same reason as the reply: a refused or failed
+  // submission keeps the dialog mounted, so what was typed is still on screen.
+  const [dates, setDates] = useState<SubmissionDates | null>(submissionDates ?? null)
+  // Nothing is said about a date until Submit has been pressed once; from then
+  // on each message follows the field as it is corrected.
+  const [datesAttempted, setDatesAttempted] = useState(false)
+  const dateInputs = useRef<Partial<Record<keyof SubmissionDates, HTMLInputElement | null>>>({})
+  const dateErrors = dates ? submissionDateErrors(dates) : {}
+  const datesInvalid = Object.keys(dateErrors).length > 0
 
   const validation = validateResubmitReply(reply)
   const tooLong = !validation.ok
@@ -643,11 +663,20 @@ export function PiSubmitConfirmModal({
 
   const confirm = () => {
     if (blocked || !checked.ok) return
+    // THE DATES ARE CHECKED ON PRESS, not by disabling the button: a disabled
+    // Submit with two empty date boxes says nothing about why. The first
+    // invalid field takes focus and its message is announced.
+    if (dates && datesInvalid) {
+      setDatesAttempted(true)
+      const first = (['order_confirmation_date', 'due_date'] as const).find(key => dateErrors[key])
+      if (first) dateInputs.current[first]?.focus()
+      return
+    }
     // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
     // reaches the database is what it stores — no leading spaces, and nothing at
     // all where the field was only whitespace.
     if (missing.length > 0 && !confirmingMissing) { setConfirmingMissing(true); return }
-    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing])
+    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing], dates ?? undefined)
   }
 
   return (
@@ -674,6 +703,16 @@ export function PiSubmitConfirmModal({
               </span>
             </div>
           </div>
+
+          {dates && (
+            <PiSubmissionDatesFields
+              dates={dates}
+              errors={datesAttempted ? dateErrors : {}}
+              disabled={submitting}
+              onChange={(key, value) => setDates(current => current && ({ ...current, [key]: value }))}
+              inputRef={(key, el) => { dateInputs.current[key] = el }}
+            />
+          )}
 
           <PaymentPositionPanel
             summary={payment}
