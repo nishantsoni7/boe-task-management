@@ -7437,6 +7437,79 @@ h1.boe-page-title { margin-top: 0; }
   .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
 }
 
+/* ── Reimbursement (20270205120000) ──
+   The "Missing bill" toggle sits in the toolbar at the height of its selects;
+   the payee opens the expense's details; the selection bar stays in reach at the
+   bottom of the screen while pending expenses are ticked. */
+.expense-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #3A4150;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-open-link {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-open-link:hover,
+.expense-open-link:focus-visible { text-decoration: underline; }
+.expense-selection-bar {
+  position: fixed;
+  left: 282px;
+  right: 22px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #E3E6EB;
+  border-radius: 10px;
+  background: #FFFFFF;
+  box-shadow: 0 -2px 10px rgba(20, 25, 34, 0.06);
+}
+.expense-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.expense-selection-spacer { height: 88px; }
+@media (max-width: 480px) {
+  .expense-filter-check { height: 38px; font-size: 13px; }
+}
+/* The bar is FIXED, not sticky: below 768px .boe-main-content sets
+   overflow-x: hidden, which makes it the container sticky binds to while the
+   WINDOW scrolls, so sticky would never engage. Beside the 260px sidebar on a
+   desktop, full width on a phone (no sidebar); the spacer keeps the last row
+   reachable above it. */
+@media (max-width: 767px) {
+  .expense-selection-bar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .expense-selection-spacer { height: 96px; }
+}
+
 /* ── The operations review of a revised PI (20270113000000) ── */
 .order-revdiff { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid #F0F2F5; }
 .order-revdiff-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }

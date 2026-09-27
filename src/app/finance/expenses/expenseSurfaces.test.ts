@@ -285,7 +285,7 @@ describe('saving', () => {
     assert.ok(form.includes('setSaveError(friendlyWriteError(error))'))
     assert.ok(/if \(error\) \{[\s\S]{0,400}setSaveError[\s\S]{0,80}return/.test(form))
     // The only reset is the deliberate one, after a SUCCESSFUL "add another".
-    const resets = form.match(/setForm\(emptyExpenseForm\(todayIso\)\)/g) ?? []
+    const resets = form.match(/setForm\(emptyExpenseForm(?:WithSource)?\(todayIso(?:, userId)?\)\)/g) ?? []
     assert.equal(resets.length, 1)
     assert.ok(/if \(andAnother\) \{\s*setForm\(emptyExpenseForm/.test(form))
   })
@@ -673,6 +673,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // (20270205000000) — held by supabase/tests/order_advance_hold_assertions.sql §12
       // and src/lib/orders/advanceReadiness.test.ts.
       if (f === 'supabase/migrations/20270205000000_order_production_needs_order_level_exception.sql') continue
+      // Expenses Phase 3 — who paid, reimbursement batches and bills
+      // (20270205120000), held by supabase/tests/expense_reimbursement_assertions.sql.
+      if (f === 'supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1864,6 +1867,29 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  /**
+   * Expenses Phase 3 (20270205120000): who paid, reimbursement batches, bills.
+   * Its screens and rules live under the expense prefixes already admitted
+   * above; the only other files are its migration and the migration-sequence
+   * pins every new migration has to extend by one line. No Finance payment,
+   * Orders, payroll or permission file.
+   */
+  const ALLOWED_EXPENSE_REIMBURSEMENTS = new Set([
+    'supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1911,6 +1937,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
     !ALLOWED_PRODUCTION_ADVANCE_GATE.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
+    !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2116,7 +2143,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|announcements/.test(f),
+      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2239,7 +2266,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
         || ALLOWED_PRODUCTION_ADVANCE_GATE.has(file)
-        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
+        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
+        || ALLOWED_EXPENSE_REIMBURSEMENTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
