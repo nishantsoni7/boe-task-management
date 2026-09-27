@@ -45,6 +45,10 @@ import {
   PI_ADVANCE_PERCENT,
   ADVANCE_NOT_A_PAYMENT_NOTE,
   groupPiDiagnostics,
+  isRetiredWarning,
+  RETIRED_WARNING_CODES,
+  READY_NOTE,
+  READY_TITLE,
   describePiFailure,
   describeFileRejection,
   createPiImageUrls,
@@ -1494,5 +1498,68 @@ describe('unstorable image formats are not previewed', () => {
       assert.equal(created.length, 1, format)
       assert.equal(bag.representativeByRow.get(32), created[0])
     }
+  })
+})
+
+// ── The two workbook dates are not asked for on upload (2026-09-27) ──────────
+//
+// Sales leaves Date of Order Confirmation and Dispatch Date Finalized off the
+// client-facing PI; they are internal details required at Submit for Approval.
+
+describe('the upload preview asks nothing of the workbook dates', () => {
+  const dateWarning = (code: 'PI_CONFIRMATION_DATE_MISSING' | 'PI_DISPATCH_DATE_MISSING') =>
+    warning({ code, message: 'Old wording about a blank date cell.', row: 113, cell: code === 'PI_CONFIRMATION_DATE_MISSING' ? 'A113' : 'E113' })
+
+  test('a missing-date warning on record is not shown', () => {
+    const groups = groupPiDiagnostics({
+      blockingIssues: [],
+      warnings: [dateWarning('PI_CONFIRMATION_DATE_MISSING'), dateWarning('PI_DISPATCH_DATE_MISSING')],
+    })
+    assert.deepEqual(groups.warnings, [], 'no "Worth checking" entry for a date')
+    assert.equal(groups.readyToSubmit, true, 'and nothing stops the save')
+  })
+
+  test('every other warning, and every blocking issue, is kept', () => {
+    const groups = groupPiDiagnostics({
+      blockingIssues: [blockingIssue()],
+      warnings: [dateWarning('PI_DISPATCH_DATE_MISSING'), warning(),
+        warning({ code: 'PI_SALESPERSON_MISSING', message: 'Sales Person (cell G21) is empty.', row: 21, cell: 'G21' })],
+    })
+    assert.deepEqual(groups.blocking.map(e => e.code), ['PRODUCT_IMAGE_REQUIRED'])
+    assert.deepEqual(groups.warnings.map(e => e.code).sort(), ['PI_SALESPERSON_MISSING', 'PRODUCT_MATERIAL_MISSING'])
+    assert.equal(groups.readyToSubmit, false, 'a genuine blocking issue still blocks')
+  })
+
+  test('only warnings are ever retired, and only the two date codes', () => {
+    assert.deepEqual([...RETIRED_WARNING_CODES].sort(), ['PI_CONFIRMATION_DATE_MISSING', 'PI_DISPATCH_DATE_MISSING'])
+    assert.equal(isRetiredWarning('PRODUCT_IMAGE_REQUIRED'), false)
+    assert.equal(isRetiredWarning('PI_SALESPERSON_MISSING'), false)
+  })
+
+  test('blank dates leave no empty rows in Order information', () => {
+    const rows = buildOrderInformationRows({
+      header: header({ billToName: 'Zzyzx Fixture Co', createdBy: 'Fixture Operator' }),
+      grossProductAmount: 512000,
+      upload: { by: 'Fixture Uploader', at: '02 Sep 2026, 11:20 AM' },
+    })
+    assert.deepEqual(rows.map(r => r.key), [
+      'client', 'productValue', 'location', 'salesperson', 'uploadedBy', 'uploadedAt',
+    ])
+  })
+
+  test('a date the workbook does carry is still shown, alone', () => {
+    const rows = buildOrderInformationRows({
+      header: header({ orderConfirmationDate: { iso: '2026-08-20', text: '20/08/2026', source: 'serial' } }),
+      grossProductAmount: 1,
+      upload: { by: null, at: null },
+    })
+    assert.ok(rows.some(r => r.key === 'confirmed'))
+    assert.ok(!rows.some(r => r.key === 'due'))
+  })
+
+  test('the Save Draft card says saving is not submitting', () => {
+    assert.ok(!/submission/i.test(READY_TITLE), READY_TITLE)
+    assert.match(READY_NOTE, /private draft/)
+    assert.match(READY_NOTE, /not sent for approval/)
   })
 })

@@ -42,7 +42,7 @@ export function requestDbError(message: string): { status: number; error: string
  * sense that matters: a notification failure is logged and never fails the
  * submission, which has already been saved.
  *
- * REQUIRES 20270130000100 (the enum values).
+ * REQUIRES 20270215000100 (the enum values).
  */
 export async function notifyAdminsOfRequest(
   svc: ServiceClient,

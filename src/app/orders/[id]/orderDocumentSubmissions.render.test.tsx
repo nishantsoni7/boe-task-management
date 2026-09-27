@@ -81,15 +81,54 @@ const changesOf = (html: string) => {
 describe('the Documents card', () => {
   const accepted = sub({ id: 'a', status: 'accepted', admin_decided_by: 'admin', admin_decided_at: '2026-09-21T00:00:00Z', operations_decided_by: 'ops', operations_decided_at: '2026-09-22T00:00:00Z' })
 
-  test('Main PI, Design Files, Client PO — one row each, in that order, full width', () => {
+  test('Main PI on the left; Design Files above Client PO on the right — in that reading order', () => {
     const html = card([accepted])
     assert.ok(html.includes('id="documents"'), 'the anchor the queue links to')
     const t = rowsOf(html)
     assert.ok(t.indexOf('Main PI · V1') < t.indexOf('Design Files'))
     assert.ok(t.indexOf('Design Files') < t.indexOf('Client PO'))
     assert.equal((html.match(/class="order-doc-section[ "]/g) ?? []).length, 3)
-    // No split grid inside the card any more.
-    assert.equal(/order-docs-grid|order-docs-main|order-docs-side/.test(html), false)
+    // The Main PI alone in the main column; the two supporting rows in the side one.
+    const main = html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"'))
+    const side = html.slice(html.indexOf('class="order-docs-side"'))
+    assert.ok(text(main).includes('Main PI · V1') && !text(main).includes('Design Files'))
+    assert.ok(text(side).includes('Design Files') && text(side).includes('Client PO'))
+    assert.equal(/order-docs-grid/.test(html), false)
+  })
+
+  test('PI history and Edit PI sit on the Main PI row; Document history stays in the header', () => {
+    const withVersions = (edit: { onEdit: () => void; blockedNote: string | null } | null, notice: string | null = null) =>
+      renderToStaticMarkup(
+        <OrderDocumentsPanel
+          mainPi={mainPiCard(describePiVersionHistory([V1], NAMES, when))}
+          design={designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2)}
+          onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
+          viewing={false} downloading={false}
+          piVersions={{ count: 2, onOpen: noop, edit, notice }}
+        />,
+      )
+    const html = withVersions({ onEdit: noop, blockedNote: null })
+    const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
+    assert.ok(main.includes('PI history (2)'))
+    assert.ok(main.includes('Edit PI'))
+    const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
+    assert.ok(head.includes('Document history') && !head.includes('PI history'),
+      'the two histories are named apart, each in its own place')
+
+    // Nobody allowed to propose: the history, never the editor.
+    assert.equal(text(withVersions(null)).includes('Edit PI'), false)
+    assert.ok(text(withVersions(null)).includes('PI history'))
+
+    // A revision waiting for a decision: Edit PI is shown, disabled, with the reason.
+    const blocked = withVersions({ onEdit: noop, blockedNote: 'A revised PI is waiting for a decision.' })
+    assert.match(blocked, /<button type="button" class="boe-btn boe-btn-ghost order-doc-action" disabled=""[^>]*title="A revised PI is waiting for a decision\."/)
+    assert.ok(text(blocked).includes('A revised PI is waiting for a decision.'))
+
+    // The outcome of the last proposal is said on the row.
+    assert.ok(text(withVersions({ onEdit: noop, blockedNote: null }, 'PI V2 sent to an Admin.')).includes('PI V2 sent to an Admin.'))
+
+    // An Order the page gives no versions to (legacy / still loading): neither control.
+    assert.equal(/PI history|Edit PI/.test(text(card([accepted]))), false)
   })
 
   test('the Main PI row: one status, the two dates, the PI PDF and the uploaded workbook', () => {
@@ -137,8 +176,12 @@ describe('the Documents card', () => {
     assert.equal(/Upload Design Files|Upload Client PO|Upload New PI/.test(text(card([accepted]))), false)
   })
 
-  test('full width, stacked; three aligned columns on desktop; one column on a phone', () => {
+  test('stacked by default; ~60/40 once the CARD is wide; one column on a phone', () => {
     assert.match(css, /\.order-docs-row \{\n  display: grid;\n  grid-template-columns: minmax\(0, 1fr\);/)
+    assert.match(css, /\.order-docs \{[^}]*container-type: inline-size;/)
+    assert.match(css, /@container \(min-width: 760px\) \{\s*\.order-docs-rows \{\s*display: grid;\s*grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\);/)
+    // Inside a column, a row stacks rather than squeezing three columns of its own.
+    assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-rows \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)
     assert.match(css, /\.order-doc-section \{\n  display: grid;\n  grid-template-columns: minmax\(0, 1fr\) minmax\(0, 330px\) minmax\(170px, auto\);/)
     assert.match(css, /@media \(max-width: 560px\) \{[\s\S]*?\.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)
   })
@@ -245,5 +288,14 @@ describe('the permanent trail and the upload menu', () => {
     assert.deepEqual(uploadAvailability('client_po', api([]), viewer()), { offered: true, blockedReason: null })
     assert.equal(uploadAvailability('client_po', api([]), viewer({ canSubmit: false })).offered, false)
     assert.equal(uploadAvailability('client_po', api([]), viewer({ viewingAs: true })).offered, false)
+  })
+})
+
+describe('the upload dialog names the files it will send', () => {
+  test('each chosen file is listed under its field', () => {
+    const src = readFileSync(join(process.cwd(), 'src/app/orders/[id]/OrderDocumentSubmissions.tsx'), 'utf8')
+    assert.ok(src.includes('<ChosenFiles files={design} />'))
+    assert.ok(src.includes('<ChosenFiles files={po} />'))
+    assert.match(css, /.order-docsub-chosen {/)
   })
 })

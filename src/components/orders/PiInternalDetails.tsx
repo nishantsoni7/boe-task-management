@@ -1,6 +1,6 @@
 'use client'
 
-// THE INTERNAL DETAILS CARD AND ITS EDITOR (20270122000000).
+// THE INTERNAL DETAILS: THE SUMMARY'S COMMISSION ANSWER AND THE EDITOR (20270122000000).
 //
 // The confirmation date and due date Sales confirms in the app, beside what the
 // workbook itself said, and the answer to "Is there a middleman commission?".
@@ -32,74 +32,82 @@ import {
   internalDetailsShapeErrors,
   internalDetailsStatusLine,
   workbookDateNotes,
+  SUBMISSION_CONFIRM_LABEL,
+  SUBMISSION_DATE_LABEL,
+  SUBMISSION_DATES_NOTE,
+  SUBMISSION_MIDDLEMAN_HINT,
   type PiInternalDetailsForm,
   type PiInternalDetailsRow,
+  type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 
 const label: React.CSSProperties = { fontSize: '11.5px', fontWeight: 600, color: colors.secondary }
-const value: React.CSSProperties = { fontSize: '13.5px', fontWeight: 600, color: colors.primary }
 const input: React.CSSProperties = {
   padding: '7px 10px', fontSize: '13px', border: `1px solid ${colors.border}`,
   borderRadius: '7px', background: colors.base, color: colors.primary, width: '100%', boxSizing: 'border-box',
 }
 const fieldError: React.CSSProperties = { fontSize: '11.5px', color: colors.red }
 
-const dateText = (iso: string | null | undefined) => formatIsoDay(iso) ?? 'Not entered'
-
-export function PiInternalDetailsCard({ row, canEdit, onEdit }: {
+/**
+ * THE MIDDLEMAN ANSWER, IN THE PI SUMMARY beside Billing percentage.
+ *
+ * The two dates are not repeated here: the summary's date band prints the same
+ * two columns (order_confirmation_date, due_date), and the workbook notes sit
+ * under that band. What is left of the old Internal details card is the answer,
+ * the one control that opens the editor, and the review-gate status line.
+ * Presentation only — withCommission still decides what this viewer may read.
+ */
+export function PiCommissionSummary({ row, canEdit, onEdit }: {
   row: PiInternalDetailsRow
   canEdit: boolean
   onEdit: () => void
 }) {
   const readiness = internalDetailsReadiness(row)
   const statusLine = internalDetailsStatusLine(row)
-  const notes = workbookDateNotes(row)
+  const answer = describeMiddleman(row)
+  const unanswered = !row.commission_restricted && !row.middleman_commission
   return (
-    <section
-      aria-label={INTERNAL_DETAILS_TITLE}
-      style={{
-        border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.base,
-        padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <Lock size={14} color={colors.tertiary} aria-hidden />
-        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: colors.primary }}>{INTERNAL_DETAILS_TITLE}</h2>
-        <span style={{ fontSize: '11.5px', color: colors.tertiary, flex: 1, minWidth: '180px' }}>{INTERNAL_DETAILS_NOTE}</span>
-        {canEdit && (
-          <button type="button" className="boe-btn boe-btn-ghost" onClick={onEdit}>
-            {readiness.ready ? 'Edit' : 'Enter and confirm'}
-          </button>
-        )}
+    <section className="pi-detail-internal" aria-label={MIDDLEMAN_LABEL}>
+      <div className="pi-detail-internal-head">
+        <span className="pi-detail-figure-label">{MIDDLEMAN_LABEL}</span>
+        <span className="pi-detail-internal-tag" title={INTERNAL_DETAILS_NOTE}>
+          <Lock size={10} strokeWidth={2.2} aria-hidden />
+          BOE only
+        </span>
       </div>
+      {/* Top-right beside the label on a wide column; last, after the
+          warning it resolves, on a phone (CSS order). */}
+      {canEdit && (
+        <button
+          type="button"
+          className="boe-btn boe-btn-ghost pi-detail-internal-action"
+          onClick={onEdit}
+          aria-haspopup="dialog"
+          aria-label={`${readiness.ready ? 'Edit' : 'Enter and confirm'} ${INTERNAL_DETAILS_TITLE.toLowerCase()}`}
+        >
+          {readiness.ready ? 'Edit' : 'Enter and confirm'}
+        </button>
+      )}
 
-      <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-        <div><div style={label}>Order confirmation date</div><div style={value}>{dateText(row.order_confirmation_date)}</div></div>
-        <div><div style={label}>Due date</div><div style={value}>{dateText(row.due_date)}</div></div>
-        <div style={{ gridColumn: 'span 2', minWidth: 0 }}>
-          <div style={label}>{MIDDLEMAN_QUESTION}</div>
-          <div style={{ ...value, overflowWrap: 'anywhere' }}>{describeMiddleman(row)}</div>
-        </div>
-      </div>
+      {/* UNANSWERED IS A STATE, like an undeclared billing percentage. */}
+      {unanswered ? (
+        <span className="pi-detail-state-chip">{answer}</span>
+      ) : (
+        <div className={row.commission_restricted ? 'pi-detail-internal-restricted' : 'pi-detail-internal-value'}>{answer}</div>
+      )}
 
-      {notes.map(n => (
-        <div key={n} style={{ fontSize: '12px', color: colors.secondary }}>{n}</div>
-      ))}
-
-      <div
-        role="status"
-        style={{
-          display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px',
-          color: statusLine.tone === 'ready' ? colors.green : colors.amber,
-        }}
-      >
-        {statusLine.tone === 'ready' && <CheckCircle2 size={14} aria-hidden />}
-        {statusLine.tone === 'needed' && <AlertTriangle size={14} aria-hidden />}
-        <span style={{ color: colors.secondary }}>{statusLine.text}</span>
-      </div>
+      <p className={`pi-detail-internal-status pi-detail-internal-status--${statusLine.tone}`} role="status">
+        {statusLine.tone === 'ready' && <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0 }} />}
+        {statusLine.tone === 'needed' && <AlertTriangle size={13} aria-hidden style={{ flexShrink: 0 }} />}
+        <span>{statusLine.text}</span>
+      </p>
+      <p className="pi-detail-internal-note">{INTERNAL_DETAILS_NOTE}</p>
     </section>
   )
 }
+
+/** The summary's label for the answer to MIDDLEMAN_QUESTION. */
+export const MIDDLEMAN_LABEL = 'Middleman commission'
 
 export function PiInternalDetailsModal({ row, grandTotal, saving, failure, onCancel, onSave }: {
   row: PiInternalDetailsRow
@@ -256,5 +264,117 @@ export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
       <AlertTriangle size={15} color={colors.amber} aria-hidden style={{ flexShrink: 0, marginTop: '1px' }} />
       <span>{notice}</span>
     </div>
+  )
+}
+
+/**
+ * What the Submit dialog says about confirming. `needed` is true exactly when
+ * pressing Submit will write the internal details (submissionNeedsConfirmation);
+ * then the tick is required and starts UNTICKED. When nothing will be written,
+ * the line says the details are already confirmed.
+ */
+export type SubmissionConfirmation = {
+  needed: boolean
+  checked: boolean
+  onToggle: (checked: boolean) => void
+  /** Shown only after Submit was pressed without the tick. */
+  error?: string | null
+  /** "26 Sep 2026" when the record is confirmed and nothing will change. */
+  confirmedOn?: string | null
+}
+
+/**
+ * THE TWO DATES, INSIDE SUBMIT FOR APPROVAL (2026-09-27).
+ *
+ * The same columns the editor above writes, labelled in the workbook's own
+ * words. Controlled by the submit dialog, which keeps the values across a
+ * failed attempt; each message sits under its own input and is announced.
+ * Errors are handed in already filtered to "shown" — the dialog says nothing
+ * until Submit has been pressed once.
+ */
+export function PiSubmissionDatesFields({ dates, errors, disabled, onChange, inputRef, middleman, confirmation, confirmRef }: {
+  dates: SubmissionDates
+  errors: Partial<Record<keyof SubmissionDates, string>>
+  disabled: boolean
+  onChange: (key: keyof SubmissionDates, value: string) => void
+  inputRef?: (key: keyof SubmissionDates, el: HTMLInputElement | null) => void
+  /**
+   * The CURRENT middleman commission answer, as describeMiddleman() words it.
+   * Shown beside the dates because Submit confirms both together.
+   */
+  middleman?: string
+  confirmation?: SubmissionConfirmation
+  confirmRef?: (el: HTMLInputElement | null) => void
+}) {
+  const keys: (keyof SubmissionDates)[] = ['order_confirmation_date', 'due_date']
+  return (
+    <fieldset style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '12px 14px', margin: 0, minWidth: 0 }}>
+      <legend style={{ ...label, padding: '0 4px', color: colors.primary }}>
+        Internal details <span style={{ fontWeight: 400, color: colors.tertiary }}>· BOE only</span>
+      </legend>
+      <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45 }}>
+        {SUBMISSION_DATES_NOTE}
+      </p>
+      <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+        {keys.map(key => {
+          const id = `pi-submit-${key}`
+          const error = errors[key]
+          return (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+              <label htmlFor={id} style={label}>
+                {SUBMISSION_DATE_LABEL[key]} <span aria-hidden style={{ color: colors.red }}>*</span>
+              </label>
+              <input
+                id={id}
+                ref={el => inputRef?.(key, el)}
+                type="date"
+                required
+                value={dates[key]}
+                min={key === 'due_date' && dates.order_confirmation_date ? dates.order_confirmation_date : undefined}
+                disabled={disabled}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+                onChange={e => onChange(key, e.target.value)}
+                style={{ ...input, borderColor: error ? 'rgba(217,79,79,0.6)' : colors.border }}
+              />
+              {error && <span id={`${id}-error`} role="alert" style={fieldError}>{error}</span>}
+            </div>
+          )
+        })}
+      </div>
+      {middleman !== undefined && (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={label}>{MIDDLEMAN_LABEL}</span>
+          <span data-testid="pi-submit-middleman" style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{middleman}</span>
+          <span style={{ fontSize: '11px', color: colors.tertiary }}>{SUBMISSION_MIDDLEMAN_HINT}</span>
+        </div>
+      )}
+      {confirmation && (confirmation.needed ? (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, cursor: disabled ? 'default' : 'pointer' }}>
+            <input
+              id="pi-submit-confirm-internal"
+              ref={confirmRef}
+              type="checkbox"
+              checked={confirmation.checked}
+              disabled={disabled}
+              aria-invalid={confirmation.error ? true : undefined}
+              aria-describedby={confirmation.error ? 'pi-submit-confirm-internal-error' : undefined}
+              onChange={e => confirmation.onToggle(e.target.checked)}
+              style={{ marginTop: '2px', flexShrink: 0 }}
+            />
+            <span>{SUBMISSION_CONFIRM_LABEL}</span>
+          </label>
+          {confirmation.error && (
+            <span id="pi-submit-confirm-internal-error" role="alert" style={fieldError}>{confirmation.error}</span>
+          )}
+        </div>
+      ) : (
+        <p style={{ margin: '12px 0 0', fontSize: '11.5px', color: colors.secondary, display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0, color: colors.green }} />
+          <span>Confirmed{confirmation.confirmedOn ? ` ${confirmation.confirmedOn}` : ''} — nothing here will change.</span>
+        </p>
+      ))}
+    </fieldset>
   )
 }

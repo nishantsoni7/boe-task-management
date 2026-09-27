@@ -11,6 +11,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { advanceAttentionLabel, advanceGateView, describeAdvanceRefusal, holdCauseText, valueChangeWord, type AdvanceReadiness } from './advanceReadiness'
 import { describeHandoffFailure, validateRecoveryReason } from './operationsHandoff'
 import { orderAttentionItems } from './orderWorkspace'
@@ -205,5 +206,25 @@ describe('Operations re-aligns a held Order from the same place', () => {
     assert.match(describeHandoffFailure({ message: 'ORDER_REALIGN_RECOVERY_REASON_REQUIRED: x' }), /at least 10 characters/)
     assert.equal(validateRecoveryReason('short').ok, false)
     assert.equal(validateRecoveryReason('  reviewer left the company  ').ok, true)
+  })
+})
+
+describe('production below 40% needs an administrator\'s Order-level exception (20270205000000)', () => {
+  const sql = readFileSync('supabase/migrations/20270205000000_order_production_needs_order_level_exception.sql', 'utf8').replace(/\r/g, '')
+  const code = sql.replace(/--.*$/gm, '').replace(/'[^']*'/g, "''")
+  test('the PI\'s own exception no longer makes an Order ready for production', () => {
+    assert.match(sql, /'ready',\s+\(v_known and v_short = 0\) or v_exc\.id is not null\);/)
+    assert.equal(/or v_pi_exc\)/.test(code), false)
+  })
+  test('it refuses to strand an Order already in production on a PI exception alone', () => {
+    assert.match(sql, /ADVANCE_GATE_BLOCKED/)
+  })
+  test('the screen shows such an Order as blocked, with an administrator\'s approval as the way on', () => {
+    const view = advanceGateView({
+      below: true, ready: false, threshold_percent: 40, percent: 0, verified: 0, order_value: 400000,
+      shortfall: 160000, awaiting: 0, value_known: true, hold: null, exception: { source: 'pi' },
+    } as unknown as AdvanceReadiness, { versionNumber: 1 })
+    assert.equal(view.kind, 'blocked')
+    assert.match(String((view as { action?: string }).action), /an administrator approves production below 40%/)
   })
 })

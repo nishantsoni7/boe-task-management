@@ -2746,7 +2746,15 @@ body {
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
   min-width: 0;
+  /* The card's own width, not the window's, decides the two-column layout:
+     the sidebar takes a different share at every desktop size. */
+  container-type: inline-size;
 }
+/* MAIN PI | DESIGN FILES over CLIENT PO. Stacked, in that order, by default;
+   side by side (about 60 / 40) once the card is wide enough for both. */
+.order-docs-main, .order-docs-side { min-width: 0; }
+.order-docs-side { border-top: 1px solid #F0F2F5; }
+.order-docs-link.order-doc-pi-history { margin-left: auto; padding: 2px 0; }
 .order-docs-head {
   display: flex;
   align-items: center;
@@ -2953,6 +2961,10 @@ body {
 .order-docsub-file:hover .order-docsub-file-name { text-decoration: underline; }
 .order-docsub-file-name { overflow-wrap: anywhere; min-width: 0; }
 .order-docsub-file-size { color: #8C94A6; font-size: 11px; white-space: nowrap; }
+/* The files chosen in the upload dialog, named before they are sent. */
+.order-docsub-chosen { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.order-docsub-chosen li { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: #3A4150; }
+.order-docsub-chosen .order-docsub-file-name { min-width: 0; overflow-wrap: anywhere; }
 .order-docsub-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .order-docsub-fieldset legend { font-size: 11px; font-weight: 600; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .order-docsub-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
@@ -2988,6 +3000,42 @@ body {
   .order-doc-change-actions { justify-content: stretch; }
   .order-doc-change-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
 }
+
+/* TWO COLUMNS once the Documents card is wide enough. Inside them every row
+   stacks what it is, when, and its actions, so neither column squeezes three
+   columns of its own. Declared after the viewport rules above so it wins in a
+   wide card whatever the window width. */
+@container (min-width: 760px) {
+  .order-docs-rows {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: stretch;
+  }
+  .order-docs-side { border-top: 0; border-left: 1px solid #F0F2F5; }
+  .order-docs-rows .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+  .order-docs-rows .order-doc-row-meta,
+  .order-docs-rows .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+  .order-docs-rows .order-doc-row-meta:empty,
+  .order-docs-rows .order-doc-row-actions:empty { display: none; }
+  .order-docs-rows .order-doc-row-actions { justify-content: flex-start; }
+  .order-docs-main .order-doc-section { padding: 13px 16px 14px; }
+}
+
+/* ── The PI history popup (PiVersionHistory) ── */
+.pi-history-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+.pi-history-intro { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12px; color: #6B7384; line-height: 1.45; }
+.pi-history-notice { margin: 0; font-size: 12px; color: #166534; line-height: 1.45; }
+.pi-history-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pi-history-summary { font-size: 12.5px; color: #111318; line-height: 1.4; overflow-wrap: anywhere; }
+.pi-history-rejected { font-size: 11.5px; color: #991B1B; overflow-wrap: anywhere; }
 
 /* The "Needs your action" queue on the Orders dashboard. */
 .order-docq { background: #FFFFFF; border: 1px solid rgba(190,140,40,0.45); border-radius: 10px; margin-bottom: 14px; min-width: 0; }
@@ -6120,6 +6168,16 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   gap: 12px 20px;
 }
 
+/* The app date and the uploaded workbook disagree: both are said, nothing is
+   chosen silently (workbookDateNotes). */
+.pi-detail-dates-workbook {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #6b7384;
+  overflow-wrap: anywhere;
+}
+
 .pi-detail-dates-edit {
   position: absolute;
   top: 10px;
@@ -6176,6 +6234,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   container-type: inline-size;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   border-radius: 9px;
   background: #fafbfc;
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -6271,6 +6330,119 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   font-weight: 700;
   color: #9a6212;
 }
+
+/* THE INTERNAL MIDDLEMAN ANSWER — a full-width row under the three figures, so
+   a long answer ("Yes — agent, 2.5% of Total before GST") wraps rather than
+   squeezing Billing percentage. BOE-only, and labelled as such. */
+.pi-detail-internal {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: 5px 10px;
+  padding: 12px 16px 13px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Everything but the action spans the row; the action sits beside the label. */
+.pi-detail-internal > :not(.pi-detail-internal-head):not(.pi-detail-internal-action) { grid-column: 1 / -1; }
+.pi-detail-internal .pi-detail-state-chip { justify-self: start; }
+
+.pi-detail-internal-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.pi-detail-internal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef0f4;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #6b7384;
+  white-space: nowrap;
+}
+
+.pi-detail-internal-action {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pi-detail-internal-value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #111318;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-restricted {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #6b7384;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-status {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #3a4150;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-status svg { margin-top: 1px; }
+.pi-detail-internal-status--ready svg { color: #2f7a52; }
+/* NEEDED BEFORE REVIEW is the one thing here somebody must act on. */
+.pi-detail-internal-status--needed { color: #8a4b12; font-weight: 600; }
+.pi-detail-internal-status--needed svg { color: #d9a552; }
+.pi-detail-internal-status--neutral { color: #6b7384; }
+
+.pi-detail-internal-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8c94a6;
+}
+
+@media (max-width: 560px) {
+  /* Answer, warning, then the action that resolves it — full width to tap. */
+  .pi-detail-internal-action { grid-column: 1 / -1; grid-row: auto; order: 10; min-height: 38px; justify-content: center; }
+  .pi-detail-internal-note { order: 11; }
+}
+
+/* WHAT CHANGED SINCE THE RETURN — beside the employee's reply, for the reviewer. */
+.pi-detail-resubmission {
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: #f5f8ff;
+  border: 1px solid rgba(85, 133, 232, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pi-detail-resubmission-title { font-size: 11px; font-weight: 700; color: #3a5fb0; }
+.pi-detail-resubmission-line { margin: 0; font-size: 12px; color: #111318; line-height: 1.45; }
+.pi-detail-resubmission-note { margin: 0; font-size: 11px; color: #6b7384; line-height: 1.4; }
+.pi-detail-resubmission-figures { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pi-detail-resubmission-figure { display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr); gap: 2px 8px; font-size: 12px; min-width: 0; }
+.pi-detail-resubmission-figure dt { color: #6b7384; }
+.pi-detail-resubmission-figure dd { margin: 0; color: #111318; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pi-detail-resubmission-before { color: #6b7384; text-decoration: line-through; }
 
 /* ── Payment status ───────────────────────────────────────────────────────── */
 
@@ -7263,6 +7435,79 @@ h1.boe-page-title { margin-top: 0; }
   /* On a phone the two sit side by side on their own line, full width between
      them — no horizontal scrolling, and each stays a comfortable tap target. */
   .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
+}
+
+/* ── Reimbursement (20270205120000) ──
+   The "Missing bill" toggle sits in the toolbar at the height of its selects;
+   the payee opens the expense's details; the selection bar stays in reach at the
+   bottom of the screen while pending expenses are ticked. */
+.expense-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #3A4150;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-open-link {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-open-link:hover,
+.expense-open-link:focus-visible { text-decoration: underline; }
+.expense-selection-bar {
+  position: fixed;
+  left: 282px;
+  right: 22px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #E3E6EB;
+  border-radius: 10px;
+  background: #FFFFFF;
+  box-shadow: 0 -2px 10px rgba(20, 25, 34, 0.06);
+}
+.expense-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.expense-selection-spacer { height: 88px; }
+@media (max-width: 480px) {
+  .expense-filter-check { height: 38px; font-size: 13px; }
+}
+/* The bar is FIXED, not sticky: below 768px .boe-main-content sets
+   overflow-x: hidden, which makes it the container sticky binds to while the
+   WINDOW scrolls, so sticky would never engage. Beside the 260px sidebar on a
+   desktop, full width on a phone (no sidebar); the spacer keeps the last row
+   reachable above it. */
+@media (max-width: 767px) {
+  .expense-selection-bar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .expense-selection-spacer { height: 96px; }
 }
 
 /* ── The operations review of a revised PI (20270113000000) ── */

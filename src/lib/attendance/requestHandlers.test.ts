@@ -504,7 +504,7 @@ describe('item 2 — the lock checks open attendance items on the server and rec
   const lock = (body: Record<string, unknown>) =>
     lockPayrollPeriod(db, { id: ADMIN_B, name: 'Second Admin' }, { payroll_period_id: PERIOD, ...body }, TODAY)
 
-  // What 20270130000000's lock_payroll_period_with_attendance_ack() does, in one step.
+  // What 20270215000000's lock_payroll_period_with_attendance_ack() does, in one step.
   const emulateLockFunction = () => {
     db.rpcHandlers.lock_payroll_period_with_attendance_ack = (a, d) => {
       const p = d.rows('payroll_periods').find(r => r.id === a.p_period_id)!

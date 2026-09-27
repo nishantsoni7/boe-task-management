@@ -128,7 +128,7 @@ describe('attendance_payroll is a real category with exactly four members', () =
     const migrations = [
       read('supabase/migrations/20260824000000_objection_notification_types.sql'),
       read('supabase/migrations/20260825000000_objection_review_notification_types.sql'),
-      read('supabase/migrations/20270130000100_attendance_request_notification_types.sql'),
+      read('supabase/migrations/20270215000100_attendance_request_notification_types.sql'),
     ].join('\n')
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) {
       assert.ok(migrations.includes(`ADD VALUE IF NOT EXISTS '${t}'`), t)

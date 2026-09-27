@@ -297,7 +297,7 @@ Lock cases:
 
 ## 6. Data, access and notifications
 
-Migration `20270130000000_attendance_requests.sql`:
+Migration `20270215000000_attendance_requests.sql`:
 
 | Object | Purpose |
 |---|---|
@@ -311,12 +311,12 @@ Migration `20270130000000_attendance_requests.sql`:
   reviews and acknowledgements are admin-only.
 - **Grants:** `authenticated` gets SELECT only; `anon` gets nothing.
 
-Migration `20270130000100_attendance_request_notification_types.sql` adds
+Migration `20270215000100_attendance_request_notification_types.sql` adds
 `attendance_request_submitted` and `attendance_request_decided`.
 
 ### ⚠ Notification enum dependency: apply before deploying code
 
-If the code ships before `20270130000100`, the Attendance & Payroll feed's
+If the code ships before `20270215000100`, the Attendance & Payroll feed's
 filter (`type=in.(…)`, which PostgREST runs as `type = ANY('{…}')`) fails with
 **22P02 invalid input value for enum notification_type**:
 - the list, unread-count, mark-all-read and delete-all requests all return
@@ -333,13 +333,13 @@ Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 ### Ordering against current main and other branches (checked 2026-09-27)
 
 - **Production:** the newest applied migration is `20270123000000`. This PR's
-  `20270130000000` and `20270130000100` are above it. `main` has no newer
+  `20270215000000` and `20270215000100` are above it. `main` has no newer
   migration.
 - **Open PRs with migrations:**
   - #214 (`20270124000000`), #212 (`20270125000000`), #213
     (`20270126000000`) and #241 (`20270127000000`) are numbered **below**
     this PR. If this PR ships first, they must be renumbered above
-    `20270130000100` before `db push`, or it refuses them without
+    `20270215000100` before `db push`, or it refuses them without
     `--include-all`.
   - #240 (`20270131000000`) is above; no conflict.
   - No number collides.
@@ -361,8 +361,8 @@ Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 
 1. Recheck `npx supabase migration list --linked`. Renumber if anything above
    `20270123000000` has been applied.
-2. Apply `20270130000000_attendance_requests.sql`.
-3. Apply `20270130000100_attendance_request_notification_types.sql`. **This must
+2. Apply `20270215000000_attendance_requests.sql`.
+3. Apply `20270215000100_attendance_request_notification_types.sql`. **This must
    happen before step 4** (see §6).
 4. Merge and deploy the application.
 5. Smoke test with two admins and one employee (§8).
@@ -375,7 +375,7 @@ migrations must go first.
 
 - **Application:** redeploy the previous build. The new objects are unused by
   old code.
-- **Schema:** run the drop block in `20270130000000`'s header, after exporting
+- **Schema:** run the drop block in `20270215000000`'s header, after exporting
   `payroll_lock_attendance_acknowledgements` if it has rows. Enum values stay;
   they are harmless.
 - **Pay:** review-applied waivers are ordinary attendance corrections. Neither

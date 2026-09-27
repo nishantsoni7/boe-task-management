@@ -120,6 +120,16 @@ begin
   if v <> 'OK' then raise notice '  try_as(%): %', left(p_sql, 60), v; end if;
   return v;
 end $$;
+-- A PI must carry its internal details before it is submitted (20270123000000):
+-- the salesperson confirms them, as the app does.
+create function pg_temp.internal_details(p_sub uuid) returns void language plpgsql as $$
+begin
+  if pg_temp.try_as(current_setting('test.sales_id')::uuid, format(
+       'select public.save_order_submission_internal_details(%L, %L::jsonb, null, true)', p_sub,
+       jsonb_build_object('order_confirmation_date', current_date, 'due_date', current_date + 30, 'middleman_commission', 'no'))) <> 'OK' then
+    raise exception 'fixture: internal details could not be saved for %', p_sub;
+  end if;
+end $$;
 
 -- A Confirmed Order of p_total with p_paid verified, converted through the real
 -- doors. p_pi_exception: submitted below 40% with a reason, and an admin
@@ -151,10 +161,13 @@ begin
   insert into storage.objects (bucket_id, name, metadata)
   select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images m where m.submission_id = v_sub;
   perform set_config('request.jwt.claims', '', true);
-  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
-  values (v_pay, 'ASSERT hold', p_paid, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
-  insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
-  values (v_pay, v_sub, p_paid, 'order_submission', v_sales);
+  if p_paid > 0 then   -- 20270205000000 §12: an Order converted with nothing paid
+    insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+    values (v_pay, 'ASSERT hold', p_paid, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
+    insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+    values (v_pay, v_sub, p_paid, 'order_submission', v_sales);
+  end if;
+  perform pg_temp.internal_details(v_sub);
   perform pg_temp.become(v_sales);
   perform public.submit_pi_for_review(v_sub, null, case when p_pi_exception then 'Against client PO' end, null, null);
   perform pg_temp.restore();
@@ -400,20 +413,19 @@ begin
   assert v_msg = 'OK' and pg_temp.alignment(o) = 'aligned' and (pg_temp.open_hold(o)).id is null,
     '3d. a reversal that leaves 40% verified does not hold';
 
-  -- 3e. An Order converted under the PI's own below-40% exception: ready while
-  -- the money it was decided on stands; a reversal below that share holds it.
+  -- 3e. An Order converted under the PI's own below-40% exception is NOT ready
+  -- for production (20270205000000): the PI exception made it an Order, no
+  -- more. Production needs the Order-level exception; a reversal then holds it.
   o := pg_temp.fresh_order('ASSERT hold 3e', 1000000, 200000, true);
   assert public.order_advance_position(o) #>> '{exception,source}' = 'pi'
-     and (public.order_advance_position(o) ->> 'ready')::boolean, '3e. ready under the PI''s exception';
-  a := pg_temp.pay_order(o, 50000, 'approved_unlinked');
-  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '3e. aligned';
-  assert pg_temp.try_as(current_setting('test.fin_id')::uuid,
-    format('select public.reverse_payment_allocation(%L, %L)', a, 'ASSERT extra reversed')) = 'OK', '3e. extra reversed';
-  assert pg_temp.alignment(o) = 'aligned', '3e. money above what the exception was decided on can go';
+     and not (public.order_advance_position(o) ->> 'ready')::boolean, '3e. the PI''s exception is on record but does not make it ready';
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '3e. Operations cannot accept it for production';
+  assert pg_temp.approve_exception(o) = 'OK', '3e. an administrator approves production below 40%, with a reason';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and pg_temp.alignment(o) = 'aligned', '3e. then Operations accepts';
   assert pg_temp.try_as(current_setting('test.fin_id')::uuid,
     format('select public.reverse_payment_allocation(%L, %L)', pg_temp.conversion_allocation(o), 'ASSERT bounced')) = 'OK', '3e. reversed';
   assert pg_temp.alignment(o) = 'not_aligned' and (pg_temp.open_hold(o)).cause = 'payment_changed',
-    '3e. below the share the PI''s exception was decided at: held';
+    '3e. the money the approval was given against fell: held';
   raise notice '3. reversal, reduced allocation, payment unverified, PI exception undercut: held; money up or still 40%%: untouched OK';
 end $$;
 
@@ -686,6 +698,7 @@ begin
   select 'order-files', m.storage_path, jsonb_build_object('mimetype', 'image/png') from public.order_submission_item_images m where m.submission_id = v_sub;
 
   -- Submitted below 40% with a reason, approved, then returned for an unrelated fix.
+  perform pg_temp.internal_details(v_sub);
   v_msg := pg_temp.try_as(v_sales, format('select public.submit_pi_for_review(%L, null, %L, null, null)', v_sub, 'Other: ASSERT client pays on delivery'));
   assert v_msg = 'OK', '10. submitted below 40%: ' || v_msg;
   assert pg_temp.try_as(v_admin, format('select public.approve_pi_advance_exception(%L)', v_sub)) = 'OK', '10. exception approved';
@@ -992,6 +1005,7 @@ begin
   values (v_p1, 'ASSERT hold', 100000, current_date, 'hdfc', 'approved_unlinked', v_sales, null);
   insert into public.finance_payment_allocations (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
   values (v_p1, v_sub, 100000, 'order_submission', v_sales);
+  perform pg_temp.internal_details(v_sub);
   assert pg_temp.try_as(v_sales, format('select public.submit_pi_for_review(%L, null, %L, null, null)', v_sub, 'Sample order')) = 'OK',
     '11f. requested at 10% verified';
   -- More money is verified before the admin decides.
@@ -1014,8 +1028,8 @@ begin
   v_res := public.approve_order_submission(v_sub, v_sales, current_date, current_date + 30, 'reference');
   perform pg_temp.restore();
   o := (v_res ->> 'order_id')::uuid;
-  assert (public.order_advance_position(o) ->> 'ready')::boolean and public.order_advance_position(o) #>> '{exception,source}' = 'pi',
-    '11f. ready under the PI''s exception';
+  assert not (public.order_advance_position(o) ->> 'ready')::boolean and public.order_advance_position(o) #>> '{exception,source}' = 'pi',
+    '11f. the PI''s exception is on record, and does not make the Order ready for production (20270205000000)';
   -- Reverse the money added before the decision: 1,00,000 is still above the
   -- 10% requested, but below the 2,50,000 the admin decided on.
   select id into a2 from public.finance_payment_allocations where payment_request_id = v_p2 and status = 'active';
@@ -1062,6 +1076,55 @@ begin
       '11g. refused: ' || v_case::text || ' → ' || v_msg;
   end loop;
   raise notice '11g. R4: image rows with missing parts, and line pictures with no line, are refused OK';
+end $$;
+
+
+-- ═══ 12. A PI EXCEPTION IS NOT PERMISSION TO START PRODUCTION (20270205000000) ═══
+-- The agreed rule: verified advance >= 40% of the CURRENT Order value, unless an
+-- authorised administrator approves production below 40% with a reason.
+do $$
+declare
+  o       uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_ops   uuid := current_setting('test.ops_id')::uuid;
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  e       public.order_advance_exceptions%rowtype;
+begin
+  -- 12a. Nothing paid: the PI exception lets the PI become an Order…
+  o := pg_temp.fresh_order('ASSERT hold 12a', 400000, 0, true);
+  assert o is not null, '12a. converted under the PI''s exception with nothing paid';
+  assert (public.order_advance_position(o) ->> 'verified')::numeric = 0
+     and not (public.order_advance_position(o) ->> 'ready')::boolean, '12a. ₹0 verified: not ready';
+  -- …but Operations cannot start production on it.
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '12a. Accept for production refused at ₹0';
+  assert pg_temp.alignment(o) = 'not_aligned', '12a. not aligned';
+
+  -- 12b. Who may approve production below 40%, and what it takes.
+  assert pg_temp.try_as(v_sales, format('select public.approve_order_advance_exception(%L, %L)', o, 'Sales cannot approve this'))
+         like 'Only an administrator can approve production below the 40%', '12b. Sales refused';
+  assert pg_temp.try_as(v_ops, format('select public.approve_order_advance_exception(%L, %L)', o, 'Operations cannot approve this'))
+         like 'Only an administrator can approve production below the 40%', '12b. Operations (without the permission) refused';
+  assert pg_temp.try_as(v_admin, format('select public.approve_order_advance_exception(%L, %L)', o, 'too short'))
+         like 'ORDER_ADVANCE_EXCEPTION_REASON_REQUIRED%', '12b. a reason under 10 characters refused';
+  assert pg_temp.approve_exception(o) = 'OK', '12b. the administrator approves with a reason';
+  select * into e from public.order_advance_exceptions where order_id = o;
+  assert e.approved_by = v_admin and e.reason = 'ASSERT long-standing client, balance on delivery' and e.approved_at is not null
+     and e.order_value = 400000 and e.verified_at_grant = 0, '12b. who, why, when, for which value and money: recorded';
+
+  -- 12c. Then, and only then, Operations accepts.
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK' and pg_temp.alignment(o) = 'aligned', '12c. accepted for production';
+
+  -- 12d. A later increase in the Order value needs a new approval for the new value.
+  perform pg_temp.revalue(o, 600000, 'ASSERT 12d value up');
+  assert pg_temp.alignment(o) = 'not_aligned' and (pg_temp.open_hold(o)).id is not null, '12d. value up: held';
+  assert not (public.order_advance_position(o) ->> 'ready')::boolean, '12d. the approval for 4,00,000 does not cover 6,00,000';
+  assert pg_temp.ops_decide(o, 'accepted') like 'ORDER_ADVANCE_BELOW_THRESHOLD%', '12d. Operations cannot align it again';
+
+  -- 12e. The standard route is untouched: 40% verified, no exception, accepted.
+  o := pg_temp.fresh_order('ASSERT hold 12e', 400000, 160000, false);
+  assert (public.order_advance_position(o) ->> 'ready')::boolean, '12e. exactly 40% verified: ready';
+  assert pg_temp.ops_decide(o, 'accepted') = 'OK', '12e. accepted';
+  raise notice '12. a PI exception converts but never starts production; an administrator''s reasoned approval, per value, does OK';
 end $$;
 
 do $$ begin raise notice 'ALL ADVANCE-HOLD ASSERTIONS PASSED'; end $$;

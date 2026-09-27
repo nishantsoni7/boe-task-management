@@ -1524,7 +1524,8 @@ describe('coming back to the tab does not reload anything', () => {
   })
 
   test('the manual refresh control still re-reads, in place', () => {
-    assert.ok(source.includes('onRefresh={() => loadDraft({ quiet: true })}'),
+    // Re-reads the PI quietly and, since 2026-09-27, the payment summary too.
+    assert.ok(source.includes('onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}'),
       'the header control is still wired to a real re-read')
     assert.ok(source.includes('if (!quiet) setLoad({ kind: \'loading\' })'),
       'and a refresh keeps the record on screen instead of blanking it')
@@ -1891,7 +1892,9 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // Since 20270112000000 that one call is submit_pi_for_review_with_documents,
     // made by the supporting-documents sender: it runs submit_pi_for_review()
     // unchanged and records the attached files in the same transaction.
-    assert.ok(source.includes('await supporting.send({ note, terms, acknowledgedMissing })'))
+    // (Since 2026-09-27 the call is named once and made either directly or
+    // after the internal dates are saved — still one call, with all three.)
+    assert.ok(source.includes('const send = () => supporting.send({ note, terms, acknowledgedMissing })'))
     assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
     assert.ok(supportingSource.includes('p_note: input.note,'))
     assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))

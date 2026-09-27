@@ -1,3 +1,5 @@
+import { summarizePiReadiness, type PiReadiness, type PiRequirement } from '@/lib/orders/piReadiness'
+
 /**
  * A PI'S INTERNAL DETAILS (20270122000000) — the confirmation and due dates
  * Sales confirms in the app, and the answer to "Is there a middleman
@@ -233,6 +235,15 @@ export function internalDetailsMissing(row: PiInternalDetailsRow): string | null
   if (!confirm) return 'enter the order confirmation date'
   if (!due) return 'enter the due date'
   if (due < confirm) return 'the due date is before the order confirmation date'
+  return middlemanAnswerMissing(row)
+}
+
+/**
+ * The commission half of internalDetailsMissing: the first thing the middleman
+ * answer still lacks, or null. Split out so Submit for Approval can collect the
+ * two dates itself and still wait on this half (see submissionDetailsSave).
+ */
+export function middlemanAnswerMissing(row: PiInternalDetailsRow): string | null {
   // A viewer who may not read the commission cannot judge it; the database's
   // own check still does, and the confirmation stamp says it passed.
   if (row.commission_restricted) return null
@@ -317,4 +328,233 @@ export function workbookDateNotes(row: PiInternalDetailsRow): string[] {
     if (a && b && a !== b) notes.push(`The workbook's ${label} is ${formatIsoDay(b)}; the app says ${formatIsoDay(a)}.`)
   }
   return notes
+}
+
+/** Said when the save never reached the database. Nothing typed is lost: the dialog stays open. */
+export const INTERNAL_DETAILS_NETWORK_FAILURE =
+  'The internal details could not be saved because BOE could not be reached. Check your connection and press the button again — what you entered is still here.'
+
+/**
+ * What the editor says when a save fails. A refusal from the database is shown
+ * in its own words (it names the rule); a request that never arrived — the
+ * browser's bare "TypeError: Failed to fetch" — is said in plain language.
+ */
+export function internalDetailsSaveFailure(error: { message?: string; code?: string } | null | undefined): string {
+  const message = (error?.message ?? '').trim()
+  if (!error?.code && /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(message)) {
+    return INTERNAL_DETAILS_NETWORK_FAILURE
+  }
+  return message || 'The internal details could not be saved.'
+}
+
+/**
+ * THE SUBMISSION CHECKLIST, WITH THE INTERNAL DETAILS IN IT.
+ *
+ * The database refuses a submission until the internal details are complete and
+ * confirmed (20270123000000), so the owner's "Ready for management?" list says so
+ * too — otherwise it reads "ready" while Submit is refused. Display only: the
+ * shared piReadiness() (which the payment surface also reads) is not changed.
+ */
+export const INTERNAL_DETAILS_REQUIREMENT_KEY = 'internal_details'
+
+export function internalDetailsRequirementLabel(problem: string): string {
+  if (problem === 'enter the order confirmation date') return 'Order confirmation date (internal details)'
+  if (problem === 'enter the due date') return 'Due date (internal details)'
+  if (problem.startsWith('the due date is before')) return 'A due date on or after the confirmation date'
+  if (problem.includes(MIDDLEMAN_QUESTION)) return 'Middleman commission answer'
+  if (problem === 'confirm the internal details') return 'Confirmation of the internal details'
+  return 'Middleman commission details'
+}
+
+/**
+ * WHAT STILL DISABLES THE SUBMIT BUTTON (revised 2026-09-27): the middleman
+ * answer only. The two dates, and the confirmation of the details, are asked
+ * for INSIDE the Submit for Approval dialog (submissionDateErrors /
+ * submissionDetailsSave), so a missing date must not disable the button that
+ * opens the form that collects it. The database gate is unchanged: a PI without
+ * both dates, in order, and confirmed is still refused (20270123000000).
+ */
+export function withInternalDetailsRequirement(readiness: PiReadiness, row: PiInternalDetailsRow): PiReadiness {
+  if (!internalDetailsStillOpen(row)) return readiness
+  const problem = middlemanAnswerMissing(row)
+  if (!problem) return readiness
+  const requirement: PiRequirement = {
+    key: INTERNAL_DETAILS_REQUIREMENT_KEY,
+    label: internalDetailsRequirementLabel(problem),
+    section: 'internal',
+  }
+  const missing = [...readiness.missing, requirement]
+  return { ready: false, missing, summary: summarizePiReadiness('submission', missing) }
+}
+
+// ── The two dates, at Submit for Approval (2026-09-27) ───────────────────────
+//
+// Sales leaves Date of Order Confirmation and Dispatch Date Finalized off the
+// client-facing workbook, so the upload no longer asks for them. They are asked
+// for where they are REQUIRED: in the Submit for Approval dialog. These are the
+// SAME two columns the Internal details editor writes (order_confirmation_date,
+// due_date), saved through the SAME RPC (save_order_submission_internal_details)
+// and enforced by the SAME trigger (20270123000000). No new field, no second
+// rule — only a second place to enter them.
+
+export type SubmissionDates = { order_confirmation_date: string; due_date: string }
+
+/** The words the workbook uses, so Sales recognises the two facts. */
+export const SUBMISSION_DATE_LABEL: Record<keyof SubmissionDates, string> = {
+  order_confirmation_date: 'Date of Order Confirmation',
+  due_date: 'Dispatch Date Finalized',
+}
+
+export const SUBMISSION_DATES_NOTE =
+  'Internal order details — needed before this PI goes for approval. They are not printed on the client PI, and the workbook does not need to change.'
+
+/** The dialog opens on what the record already holds. */
+export function submissionDatesFrom(row: PiInternalDetailsRow): SubmissionDates {
+  return {
+    order_confirmation_date: text(row.order_confirmation_date).slice(0, 10),
+    due_date: text(row.due_date).slice(0, 10),
+  }
+}
+
+/**
+ * Field-keyed, so each message sits under its own input. Both dates are
+ * REQUIRED here — this is the submission — and the order rule is the RPC's own.
+ */
+export function submissionDateErrors(dates: SubmissionDates): Partial<Record<keyof SubmissionDates, string>> {
+  const errors: Partial<Record<keyof SubmissionDates, string>> = {}
+  const confirm = dates.order_confirmation_date.trim()
+  const due = dates.due_date.trim()
+  if (!confirm) errors.order_confirmation_date = `Enter the ${SUBMISSION_DATE_LABEL.order_confirmation_date}.`
+  else if (!isRealDate(confirm)) errors.order_confirmation_date = 'Enter a real calendar date.'
+  if (!due) errors.due_date = `Enter the ${SUBMISSION_DATE_LABEL.due_date}.`
+  else if (!isRealDate(due)) errors.due_date = 'Enter a real calendar date.'
+  if (!errors.order_confirmation_date && !errors.due_date && due < confirm) {
+    errors.due_date = `The ${SUBMISSION_DATE_LABEL.due_date} cannot be before the ${SUBMISSION_DATE_LABEL.order_confirmation_date}.`
+  }
+  return errors
+}
+
+/**
+ * What still stops Submit that the dialog CANNOT collect: the middleman answer.
+ * Null when only the dates (or the confirmation) are outstanding.
+ */
+export function submissionCommissionBlock(row: PiInternalDetailsRow): string | null {
+  const problem = middlemanAnswerMissing(row)
+  return problem ? `Before sending this PI for review, ${problem} in ${INTERNAL_DETAILS_TITLE}.` : null
+}
+
+export type SubmissionDetailsSave =
+  /** The record already holds these dates, confirmed: submit as it is. */
+  | { kind: 'none' }
+  /** Save these (full state) and confirm them, then submit. */
+  | { kind: 'save'; payload: Record<string, string | null>; confirm: true }
+  /** Saving here would be unsafe; the message says where to go instead. */
+  | { kind: 'refused'; message: string }
+
+/**
+ * WHETHER SUBMIT MUST SAVE THE DATES FIRST, and exactly what it sends.
+ *
+ * The RPC takes FULL STATE, so the payload is the record's own answers with the
+ * two dates laid over them — the commission is resent unchanged, never blanked.
+ * It CONFIRMS: pressing Submit with the dates and the middleman answer on
+ * screen is the confirmation the gate asks for, and the RPC refuses a confirm
+ * unless every answer is complete.
+ *
+ * A viewer who may not read the commission is refused rather than trusted:
+ * their copy of it is blank, and resending blank would erase it.
+ */
+export function submissionDetailsSave(row: PiInternalDetailsRow, dates: SubmissionDates): SubmissionDetailsSave {
+  const confirm = dates.order_confirmation_date.trim()
+  const due = dates.due_date.trim()
+  const held = submissionDatesFrom(row)
+  if (confirm === held.order_confirmation_date && due === held.due_date && row.internal_details_confirmed_at) {
+    return { kind: 'none' }
+  }
+  if (row.commission_restricted) {
+    return { kind: 'refused', message: `Only someone who can see the middleman commission can confirm the ${INTERNAL_DETAILS_TITLE.toLowerCase()} for this PI.` }
+  }
+  const payload = internalDetailsPayload({
+    ...internalDetailsForm(row),
+    order_confirmation_date: confirm,
+    due_date: due,
+  })
+  return { kind: 'save', payload, confirm: true }
+}
+
+// ── Confirming at Submit, never silently (2026-09-27, #247 review) ──────────
+//
+// Saving the dates from the Submit dialog also CONFIRMS the internal details —
+// the dates AND the middleman commission answer — because the submission
+// trigger requires the confirmation stamp. So the dialog states the answer
+// beside the dates and asks for an explicit tick whenever a confirmation will
+// be written. No tick, nothing is written.
+
+export const SUBMISSION_CONFIRM_LABEL =
+  'I have checked these dates and the middleman commission answer. Submitting confirms them as this PI’s internal details.'
+export const SUBMISSION_CONFIRM_REQUIRED =
+  'Tick the box to confirm the internal details, or Cancel and correct them first.'
+export const SUBMISSION_MIDDLEMAN_HINT =
+  'To change it, Cancel and use Edit beside Middleman commission.'
+
+/** Whether pressing Submit with these dates will write (and so confirm) the internal details. */
+export function submissionNeedsConfirmation(row: PiInternalDetailsRow, dates: SubmissionDates): boolean {
+  return submissionDetailsSave(row, dates).kind === 'save'
+}
+
+const sameDates = (a: SubmissionDates | null, b: SubmissionDates) =>
+  !!a && a.order_confirmation_date.trim() === b.order_confirmation_date.trim() && a.due_date.trim() === b.due_date.trim()
+
+export type InternalDatesSubmitResult =
+  | { ok: true; data: unknown; saved: SubmissionDates | null }
+  /** `message` is a sentence written for the reader; null means "describe `error` as usual". */
+  | { ok: false; error: unknown; message: string | null; saved: SubmissionDates | null }
+
+/**
+ * SAVE THE DATES (AND CONFIRM), THEN SEND — two transactions, so the second
+ * can fail after the first has committed. What this guarantees:
+ *
+ *   - nothing is written without `acknowledged` when a confirmation is due;
+ *   - a refused save sends nothing, and says so;
+ *   - a send that fails AFTER the save says the dates are saved and the PI was
+ *     not sent, and reports `saved` so a retry with the same dates skips the
+ *     save (no second write, no stale-version refusal) and only sends. It says
+ *     "Submit again", not a button label: when files were missing, the dialog
+ *     is still on its "Submit without these files" step.
+ */
+export async function submitWithInternalDates(input: {
+  row: PiInternalDetailsRow
+  dates: SubmissionDates
+  acknowledged: boolean
+  /** Dates this dialog already saved and confirmed in an earlier attempt. */
+  savedEarlier: SubmissionDates | null
+  saveDetails: (payload: Record<string, string | null>, confirm: true) =>
+    PromiseLike<{ error: { message?: string; code?: string } | null }>
+  send: () => PromiseLike<{ data: unknown; error: unknown }>
+  describeSendFailure: (error: unknown) => string
+}): Promise<InternalDatesSubmitResult> {
+  const { row, dates, acknowledged, savedEarlier } = input
+  let saved: SubmissionDates | null = sameDates(savedEarlier, dates) ? savedEarlier : null
+
+  if (!saved) {
+    const plan = submissionDetailsSave(row, dates)
+    if (plan.kind === 'refused') return { ok: false, error: null, message: plan.message, saved: null }
+    if (plan.kind === 'save') {
+      if (!acknowledged) return { ok: false, error: null, message: SUBMISSION_CONFIRM_REQUIRED, saved: null }
+      const { error } = await input.saveDetails(plan.payload, plan.confirm)
+      if (error) {
+        return { ok: false, error, message: `${internalDetailsSaveFailure(error)} The PI was not sent.`, saved: null }
+      }
+      saved = { order_confirmation_date: dates.order_confirmation_date.trim(), due_date: dates.due_date.trim() }
+    }
+  }
+
+  const { data, error } = await input.send()
+  if (!error) return { ok: true, data, saved }
+  if (!saved) return { ok: false, error, message: null, saved: null }
+  return {
+    ok: false,
+    error,
+    message: `The dates were saved and the internal details confirmed, but the PI was not sent. ${input.describeSendFailure(error)} Submit again to retry — the dates are kept and will not be saved twice.`,
+    saved,
+  }
 }

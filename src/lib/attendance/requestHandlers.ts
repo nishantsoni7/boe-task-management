@@ -10,7 +10,7 @@
 //              OWN request or attendance (another admin must decide it)
 //
 // Every route runs on the service role, so these checks ARE the boundary.
-// RLS in 20270130000000 says the same again for any direct PostgREST client.
+// RLS in 20270215000000 says the same again for any direct PostgREST client.
 
 import type { Caller, ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
 import {

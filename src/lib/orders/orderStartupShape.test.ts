@@ -422,7 +422,11 @@ describe('no Order screen waits more than it must', () => {
       // to its own reader-only table, so the page reads it, and asks
       // can_read_order_submission_commission, in the EXISTING first wave —
       // two more reads, no more waits.
-      [DRAFTS]: 4, [PI_DETAIL]: 29, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 29 -> 30 (2026-09-27): the same save_order_submission_internal_details
+      // SAVE, called a second time from Submit for Approval, which now takes the
+      // two internal dates and saves them before sending. A press, never at load;
+      // the startup path is unchanged.
+      [DRAFTS]: 4, [PI_DETAIL]: 30, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
