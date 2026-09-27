@@ -65,6 +65,7 @@ import {
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
   leadSourceLabel,
+  salespersonSelectorNote,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
@@ -688,13 +689,9 @@ export function PiSubmitConfirmModal({
   useEscapeDismiss(dismiss, !submitting)
 
   const confirm = () => {
+    // Missing or out-of-order dates block the button (see `blocked`): they are
+    // fixed in the section, not here, and the review already says so.
     if (blocked || !checked.ok) return
-    // Missing or out-of-order dates are fixed in the section, not here: the
-    // review already says so, and nothing is sent.
-    if (dates && datesInvalid) {
-      setDatesAttempted(true)
-      return
-    }
     // Nothing is confirmed on the submitter's behalf: when Submit would write
     // the internal details, the tick is required first.
     if (needsAcknowledgement && !acknowledged) {
@@ -1237,6 +1234,7 @@ export function PiApproveOrderModal({
   onConfirmationChange,
   confirmationField,
   provided,
+  workbookSalesperson,
   detailsReview,
 }: {
   client: string
@@ -1270,6 +1268,11 @@ export function PiApproveOrderModal({
     confirmDate: string | null
     dueDate: string | null
   }
+  /**
+   * A LEGACY PI's workbook author name (workbookSalespersonHint), shown under the
+   * selector as a hint only — never matched, never selected.
+   */
+  workbookSalesperson?: string | null
   /** Billing, fabric and commission as Sales entered them — review only. */
   detailsReview?: readonly OrderDetailsReviewRow[]
 }) {
@@ -1418,11 +1421,9 @@ export function PiApproveOrderModal({
                     <option key={person.id} value={person.id}>{person.name}</option>
                   ))}
                 </select>
-                {!provided?.salesperson && (
-                  <span style={{ fontSize: '11px', color: colors.muted }}>
-                    This PI has no saved salesperson. Choose one; nobody is picked for you.
-                  </span>
-                )}
+                <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '11px', color: colors.muted }}>
+                  {salespersonSelectorNote({ savedName: provided?.salesperson?.name ?? null, workbookName: workbookSalesperson ?? null })}
+                </span>
               </label>
               )}
 

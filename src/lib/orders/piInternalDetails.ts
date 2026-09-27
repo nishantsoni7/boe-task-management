@@ -1,4 +1,3 @@
-
 /**
  * A PI'S INTERNAL DETAILS (20270122000000) — the confirmation and due dates
  * Sales confirms in the app, and the answer to "Is there a middleman

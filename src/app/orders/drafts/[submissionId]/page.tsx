@@ -161,8 +161,8 @@ import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   describeConfirmationFailure,
-  resolveSavedSalesperson,
   validateOrderConfirmation,
+  workbookSalespersonHint,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
@@ -2447,26 +2447,20 @@ function PiDraftDetailPageInner() {
               approvedOrder={approvedOrder}
               onApprove={() => {
                 setActionFailure(null)
-                /* THE PI'S OWN SALESPERSON, PRESELECTED — never the viewer, the
-                   submitter, the only option or the first one. It is resolved
-                   from source_created_by (the name the document carries, and
-                   the one the summary card prints) by an EXACT, UNIQUE match
-                   against the very list this control offers; anything else
-                   resolves to null and the field opens unselected, where
-                   validateOrderConfirmation still refuses to confirm without
-                   it. Re-derived on every open rather than remembered, so the
-                   dialog always reflects the PI as it stands now. */
+                /* THE PI'S OWN SAVED SALESPERSON, or nobody — never the viewer,
+                   the submitter, the only option, the first one, or a person
+                   matched by the workbook's printed name. A legacy PI with no
+                   saved id opens unselected (the name is shown as a hint), and
+                   validateOrderConfirmation refuses to confirm until management
+                   chooses. Re-derived on every open rather than remembered, so
+                   the dialog always reflects the PI as it stands now. */
                 setConfirmationField(null)
                 setConfirmation(prev => ({
                   ...prev,
                   // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
-                  // there is one — never the approver. A PI from before that
-                  // has none, and keeps the old exact-name preselection, which
-                  // resolves to nothing rather than guess.
-                  salesperson: salesDetails.salesperson_id ?? resolveSavedSalesperson({
-                    savedName: documentAuthor,
-                    options: salespeople,
-                  }),
+                  // there is one — never the approver. A PI from before that has
+                  // none, and nobody is selected for it.
+                  salesperson: salesDetails.salesperson_id ?? null,
                   leadSource: salesDetails.lead_source ?? prev.leadSource,
                   confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
                   dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
@@ -3022,6 +3016,8 @@ function PiDraftDetailPageInner() {
             confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? null,
             dueDate: submission.due_date?.slice(0, 10) ?? null,
           }}
+          // A legacy PI's workbook name, shown beside the selector as a hint only.
+          workbookSalesperson={workbookSalespersonHint(documentAuthor)}
           detailsReview={orderDetailsReview(detailsRow, salespeople)
             .filter(row => APPROVAL_REVIEW_KEYS.includes(row.key))}
           confirmation={confirmation}

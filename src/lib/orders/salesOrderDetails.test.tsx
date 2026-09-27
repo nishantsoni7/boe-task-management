@@ -316,14 +316,14 @@ describe('approval reviews what Sales provided instead of asking again', () => {
     const html = render({ salesperson: null, leadSource: null, confirmDate: '2026-09-27', dueDate: '2026-11-20' },
       { salesperson: null, confirmDate: '2026-09-27', dueDate: '2026-11-20', leadSource: null })
     assert.match(html, /Select a salesperson…/)
-    assert.match(html, /This PI has no saved salesperson\. Choose one; nobody is picked for you\./)
+    assert.match(html, /This PI has no saved salesperson\. Choose the person responsible; nobody is selected for you\./)
     assert.match(html, /<option value="" selected="">Select a salesperson…/)
     assert.match(html, /Select a lead source…/)
     assert.match(html, /data-review="confirm_date"/, 'the dates Sales gave are still review values')
   })
 
   test('the page prefills from the PI, never from the approver', () => {
-    assert.ok(PAGE.includes('salesperson: salesDetails.salesperson_id ?? resolveSavedSalesperson({'))
+    assert.ok(PAGE.includes('salesperson: salesDetails.salesperson_id ?? null,'), 'the saved id, or nobody — never a name match')
     assert.ok(PAGE.includes('leadSource: salesDetails.lead_source ?? prev.leadSource,'))
     assert.ok(!/salesperson:\s*viewerId/.test(PAGE) && !/salesperson:\s*profile/.test(PAGE))
   })

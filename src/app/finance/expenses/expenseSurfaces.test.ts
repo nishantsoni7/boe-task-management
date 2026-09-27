@@ -1907,6 +1907,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderPiHandoff.ts',
     'src/lib/orders/orderPiHandoff.test.ts',
     'src/lib/orders/piInternalDetails.ts',
+    // Round 4: Product value on the PI Drafts list and Edit PI; no name-matched
+    // salesperson on a legacy PI.
+    'src/lib/orders/draftsView.ts',
+    'src/app/orders/drafts/page.tsx',
+    'src/lib/orders/piEdit.ts',
+    'src/lib/orders/piEdit.test.ts',
+    'src/components/orders/PiEditor.tsx',
+    'src/lib/orders/orderConfirmation.ts',
     // The migration-sequence pins.
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',

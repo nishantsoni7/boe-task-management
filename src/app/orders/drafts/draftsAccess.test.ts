@@ -706,7 +706,7 @@ describe('the drafts list', () => {
     assert.ok(entry.authoredOn.includes('2026'), 'and the date the document carries')
     assert.equal(entry.uploader, 'Priya Nair', 'the app user who uploaded it')
     assert.ok(entry.uploadedAt.includes('2026'), 'and when they did')
-    assert.equal(entry.productValue, '₹2,50,000', 'the goods, before costs and GST')
+    assert.equal(entry.productValue, '₹2,50,000', 'the goods after the discount, before costs and GST')
     assert.equal(entry.grandTotal, '₹2,95,000', 'and what the client is billed')
     assert.equal(entry.statusLabel, 'Draft')
     assert.equal(entry.href, '/orders/drafts/11111111-1111-4111-8111-111111111111')
@@ -735,7 +735,8 @@ describe('the drafts list', () => {
     assert.ok(listColumns.length > 0, 'the list column set must be readable')
     assert.ok(!listColumns.includes("'source_workbook_name'"),
       'the file name is not selected by the list any more')
-    assert.ok(listColumns.includes("'gross_product_amount'"))
+    assert.ok(listColumns.includes("'subtotal_after_discount'"), 'Product value is the stored subtotal')
+    assert.ok(!listColumns.includes("'gross_product_amount'"), 'the gross is no longer shown, so not read')
     assert.ok(listColumns.includes("'grand_total'"), 'both money figures are read')
     assert.ok(listColumns.includes("'source_created_by'"))
     assert.ok(listColumns.includes("'creation_date'"))
@@ -794,7 +795,7 @@ describe('the drafts list', () => {
   test('a missing money figure is never a zero, and a missing grand total says so', () => {
     // ₹0 would be a figure nobody wrote, and the two are independent: a workbook
     // can print one and not the other.
-    const noProduct = describeDraftListEntry(submission({ gross_product_amount: null }), formatInr)
+    const noProduct = describeDraftListEntry(submission({ subtotal_after_discount: null }), formatInr)
     assert.equal(noProduct.productValue, '—')
     assert.equal(noProduct.grandTotal, '₹2,95,000', 'and the other figure is unaffected')
     assert.equal(noProduct.grandTotalMissing, false)
@@ -820,6 +821,31 @@ describe('the drafts list', () => {
     assert.equal(copied.numberLine, NUMBER_NOT_ALLOTTED)
     assert.ok(PI_DRAFT_LIST_COLUMNS.includes('draft_reference') && PI_DRAFT_LIST_COLUMNS.includes('reserved_order_number'))
     assert.ok(read(LIST_PAGE).includes('{entry.reference} · {entry.numberLine}'))
+  })
+
+  test('Product value is the stored subtotal after the discount, with or without one', () => {
+    // Discounted: gross 10,00,000 less 50,000. The list says what the PI Draft,
+    // the approval dialog and the Order page say — the subtotal, as stored.
+    const discounted = describeDraftListEntry(submission({
+      gross_product_amount: 1000000, discount_amount: 50000, subtotal_after_discount: 950000,
+      total_before_gst: 1010000, grand_total: 1191800,
+    }), formatInr)
+    assert.equal(discounted.productValue, '₹9,50,000', 'after the discount, not the ₹10,00,000 gross')
+    assert.equal(discounted.grandTotal, '₹11,91,800', 'the bill is unchanged')
+    // Nothing is recomputed: a stored subtotal that disagrees with gross − discount is shown as stored.
+    const stored = describeDraftListEntry(submission({
+      gross_product_amount: 1000000, discount_amount: 50000, subtotal_after_discount: 949999,
+    }), formatInr)
+    assert.equal(stored.productValue, '₹9,49,999')
+    // Undiscounted: the subtotal equals the gross, so the figure is the same one it always was.
+    const plain = describeDraftListEntry(submission({
+      gross_product_amount: 250000, discount_amount: 0, subtotal_after_discount: 250000,
+    }), formatInr)
+    assert.equal(plain.productValue, '₹2,50,000')
+    // Both layouts — the table and the phone card — print this one field under "Product value".
+    const page = read(LIST_PAGE)
+    assert.equal((page.match(/\{entry\.productValue\}/g) ?? []).length, 2)
+    assert.ok(page.includes('>Product value</span>'), 'the phone card labels it the same way')
   })
 
   test('the row states both money figures, and never one as the other', () => {

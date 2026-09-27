@@ -356,11 +356,12 @@ export type PersistedItemImage = {
 export const PI_DRAFT_LIST_COLUMNS = [
   'id', 'status', 'client_name', 'bill_to_name',
   // WHAT THE ORDER IS WORTH, BOTH WAYS, because they answer different questions
-  // and the gap between them is itself information. gross_product_amount is the
-  // goods; grand_total is what the client is billed once discount, fabric,
-  // packing, transport and GST are applied. A row showing only one of them
-  // leaves a reader to guess which.
-  'gross_product_amount', 'grand_total',
+  // and the gap between them is itself information. subtotal_after_discount is
+  // the goods after the discount — "Product value", as the PI Draft, the approval
+  // dialog and the Order page state it; grand_total is what the client is billed
+  // once fabric, packing, transport and GST are added. A row showing only one of
+  // them leaves a reader to guess which.
+  'subtotal_after_discount', 'grand_total',
   // WHO AUTHORED THE PI, AND WHEN — read out of the workbook itself, not from
   // any app user. A PI is usually written by one person and uploaded by another,
   // and a list that names only the uploader cannot answer "whose order is this?"
@@ -539,8 +540,8 @@ export type PiDraftListEntry = {
   uploader: string
   /** When it was uploaded, in Indian business time. */
   uploadedAt: string
-  /** The goods, before discount, other costs and GST. "—" when the workbook
-   *  printed no product figure. */
+  /** "Product value": the goods after the discount, before other costs and GST —
+   *  the stored subtotal_after_discount, never recomputed. "—" when none is stored. */
   productValue: string
   /**
    * What the client is billed, or GRAND_TOTAL_UNAVAILABLE when no total is
@@ -685,7 +686,7 @@ export function describeDraftListEntry(
     authoredOn: formatDateOnly(row.creation_date),
     uploader: text(names?.uploader ?? null) ?? '—',
     uploadedAt: formatSavedAt(row.created_at),
-    productValue: formatMoney(toNumber(row.gross_product_amount)),
+    productValue: formatMoney(toNumber(row.subtotal_after_discount)),
     grandTotal: toNumber(row.grand_total) === null ? GRAND_TOTAL_UNAVAILABLE : formatMoney(toNumber(row.grand_total)),
     grandTotalMissing: toNumber(row.grand_total) === null,
     reference: text(row.draft_reference ?? null) ?? '—',

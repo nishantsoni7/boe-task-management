@@ -502,7 +502,9 @@ describe('the Submit dialog REVIEWS the internal order details — it never asks
     const modal = readFileSync(join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8').replace(/\r/g, '')
     assert.ok(modal.includes('const dates: SubmissionDates | null = internalDetails ? submissionDatesFrom(internalDetails) : null'))
     const confirm = modal.slice(modal.indexOf('  const confirm = () => {'), modal.indexOf('  return (', modal.indexOf('  const confirm = () => {')))
-    const check = confirm.indexOf('if (dates && datesInvalid) {')
+    // An incomplete record blocks Submit, and a blocked confirm returns before anything is handed up.
+    assert.ok(modal.includes('|| (!!dates && datesInvalid)'), 'missing or out-of-order dates block the button')
+    const check = confirm.indexOf('if (blocked || !checked.ok) return')
     assert.ok(check > -1 && check < confirm.indexOf('onConfirm('), 'an incomplete record hands nothing up')
     assert.ok(confirm.includes('dates ?? undefined, needsAcknowledgement && acknowledged)'))
   })
