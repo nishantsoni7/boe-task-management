@@ -154,7 +154,7 @@ import {
   documentChanges,
   supportingRow,
 } from '@/lib/orders/orderDocumentSubmissions'
-import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import { MAIN_PI_LOADING, mainPiCard, piVersionTimeline, type MainPiCard } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
 import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
@@ -832,6 +832,9 @@ export default function OrderDetailPage() {
   // decides the versions, can_view_order_submission_via_order the trail. The
   // names are one batched users read for every actor either mentions.
   const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
+  // False until the first version read answers, so the Main PI row says it is
+  // loading rather than that this Order has no PI.
+  const [piVersionsRead, setPiVersionsRead] = useState(false)
   const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
   const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
   const [advance,      setAdvance]      = useState<AdvanceReadiness | null>(null)
@@ -942,6 +945,7 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
       setPiVersions([])
+      setPiVersionsRead(true)
       setPiActivity([])
       setHandoffs([])
       // No PI behind this Order, so there is nothing to count and nothing
@@ -996,6 +1000,7 @@ export default function OrderDetailPage() {
     const trailRows = (trailRes.data ?? []) as unknown as PersistedActivity[]
     const handoffRows = (handoffsRes.data ?? []) as unknown as PersistedOperationsHandoff[]
     setPiVersions(versionRows)
+    setPiVersionsRead(true)
     setPiActivity(trailRows)
     setHandoffs(handoffRows)
 
@@ -2337,7 +2342,7 @@ export default function OrderDetailPage() {
    * card states the APPROVED version and the modal states every one; neither
    * re-derives which is current, so they cannot disagree.
    */
-  const mainPi = mainPiCard(piHistory)
+  const mainPi: MainPiCard = piVersionsRead ? mainPiCard(piHistory) : { kind: 'loading', message: MAIN_PI_LOADING }
   const piTimeline = piVersionTimeline(piHistory)
 
   /**
@@ -2346,7 +2351,9 @@ export default function OrderDetailPage() {
    * PI to the PI's owner holding orders.create or an admin, never under View
    * As and never on a cancelled Order. The database re-checks every write.
    */
-  const piVersionsSource = handoffReady ? (order.source_order_submission_id ?? null) : null
+  // Not gated on handoffReady (products and pictures): the versions and the
+  // edit rule need neither, and the link should arrive with the Main PI row.
+  const piVersionsSource = order.source_order_submission_id ?? null
   const mayEditPi = !viewAsUserId && order.status !== 'cancelled'
     && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))
   const piRevisionOpen = piVersions.some(v => isOpenRevision(v.status))

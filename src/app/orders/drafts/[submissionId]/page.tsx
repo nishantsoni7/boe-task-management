@@ -97,7 +97,7 @@ import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePi
 import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
 import {
   PI_COMMISSION_COLUMNS,
-  describeMiddleman, formatIsoDay, internalDetailsSubmitBlock, withCommission, workbookDateNotes,
+  describeMiddleman, formatIsoDay, internalDetailsSaveFailure, internalDetailsSubmitBlock, withCommission, workbookDateNotes,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -1283,7 +1283,7 @@ function PiDraftDetailPageInner() {
         p_confirm: confirm,
       })
       if (error) {
-        setInternalFailure((error as { message?: string }).message ?? 'The internal details could not be saved.')
+        setInternalFailure(internalDetailsSaveFailure(error))
         return
       }
       setInternalOpen(false)
@@ -2136,7 +2136,9 @@ function PiDraftDetailPageInner() {
       onSignOut={handleSignOut}
       // The header control re-reads in place: the record stays on screen, the
       // scroll position is kept, and the spinner in the header is the feedback.
-      onRefresh={() => loadDraft({ quiet: true })}
+      // The payment summary is read separately (its figures depend on the PI's
+      // grand total), so a refresh re-reads both.
+      onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}
       actions={backButton}
     >
       <div className="pi-detail-stack">
@@ -2192,7 +2194,9 @@ function PiDraftDetailPageInner() {
         {piEditorOpen && (
           <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
             onClose={() => setPiEditorOpen(false)}
-            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }) }} />
+            // An edit can move the grand total, and the payment position (the
+            // 40% shortfall the Submit dialog states) is computed from it.
+            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }); void loadPayments() }} />
         )}
 
         {/* ── 2. The PI overview ──

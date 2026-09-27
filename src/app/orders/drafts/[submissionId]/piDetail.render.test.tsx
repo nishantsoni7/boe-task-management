@@ -3709,3 +3709,14 @@ describe('the three dialogs stay separate', () => {
     }
   })
 })
+
+// Found in the 2026-09-27 workflow run: after Edit PI moved the grand total,
+// the Submit dialog still stated the old total and a wrong 40% shortfall,
+// because only the PI was re-read. The payment summary is its own read.
+describe('an edit or a refresh re-reads the payment summary too', () => {
+  test('Edit PI and the header refresh both call loadPayments', () => {
+    const page = read(PAGE).replace(/\r\n/g, '\n')
+    assert.match(page, /onDone=\{\(\) => \{ setPiEditorOpen\(false\); void loadDraft\(\{ quiet: true \}\); void loadPayments\(\) \}\}/)
+    assert.match(page, /onRefresh=\{async \(\) => \{ await Promise\.all\(\[loadDraft\(\{ quiet: true \}\), loadPayments\(\)\]\) \}\}/)
+  })
+})

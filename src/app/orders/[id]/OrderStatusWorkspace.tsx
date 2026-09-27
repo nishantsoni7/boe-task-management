@@ -490,8 +490,14 @@ export function OrderDocumentsPanel({
         <div className="order-docs-main">
         {mainPi.kind !== 'ready' ? (
           <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink} actions={editPiButton}>
-            <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
-            <p className="order-doc-note">{mainPi.message}</p>
+            {mainPi.kind === 'loading' ? (
+              <p className="order-doc-loading" role="status">{mainPi.message}</p>
+            ) : (
+              <>
+                <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
+                <p className="order-doc-note">{mainPi.message}</p>
+              </>
+            )}
             {piVersionNotes}
           </DocRow>
         ) : (

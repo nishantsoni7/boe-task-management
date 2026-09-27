@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  INTERNAL_DETAILS_NETWORK_FAILURE,
+  internalDetailsSaveFailure,
   COMMISSION_RESTRICTED_TEXT,
   PI_COMMISSION_COLUMNS,
   PI_INTERNAL_DETAIL_COLUMNS,
@@ -229,5 +231,20 @@ describe('the commission, laid over the PI row only for a reader', () => {
     const row = withCommission(pi, null, true)
     assert.equal(describeMiddleman(row), 'Not answered')
     assert.equal(internalDetailsMissing(row), 'answer "Is there a middleman commission?"')
+  })
+})
+
+// Found in the 2026-09-27 workflow run: a dropped connection showed Sales the
+// browser's bare 'TypeError: Failed to fetch'.
+describe('internalDetailsSaveFailure', () => {
+  test('a request that never arrived is said in plain language', () => {
+    for (const message of ['TypeError: Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed']) {
+      assert.equal(internalDetailsSaveFailure({ message, code: '' }), INTERNAL_DETAILS_NETWORK_FAILURE, message)
+    }
+  })
+  test('a database refusal keeps its own words', () => {
+    const refusal = 'ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION: the due date cannot be before the order confirmation date'
+    assert.equal(internalDetailsSaveFailure({ message: refusal, code: 'P0001' }), refusal)
+    assert.equal(internalDetailsSaveFailure(null), 'The internal details could not be saved.')
   })
 })

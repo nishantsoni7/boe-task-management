@@ -318,3 +318,20 @@ export function workbookDateNotes(row: PiInternalDetailsRow): string[] {
   }
   return notes
 }
+
+/** Said when the save never reached the database. Nothing typed is lost: the dialog stays open. */
+export const INTERNAL_DETAILS_NETWORK_FAILURE =
+  'The internal details could not be saved because BOE could not be reached. Check your connection and press the button again — what you entered is still here.'
+
+/**
+ * What the editor says when a save fails. A refusal from the database is shown
+ * in its own words (it names the rule); a request that never arrived — the
+ * browser's bare "TypeError: Failed to fetch" — is said in plain language.
+ */
+export function internalDetailsSaveFailure(error: { message?: string; code?: string } | null | undefined): string {
+  const message = (error?.message ?? '').trim()
+  if (!error?.code && /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(message)) {
+    return INTERNAL_DETAILS_NETWORK_FAILURE
+  }
+  return message || 'The internal details could not be saved.'
+}
