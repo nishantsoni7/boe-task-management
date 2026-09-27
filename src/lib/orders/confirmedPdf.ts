@@ -53,7 +53,8 @@ import {
   type PiAmountRow,
 } from '@/lib/pi/previewView'
 import { commercialBreakdownRows } from '@/app/orders/drafts/[submissionId]/piDetailView'
-import { clientDeductionRows } from './discountWording'
+import { clientDeductionRows, hasDeduction } from './discountWording'
+import { PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL } from './orderCommercial'
 
 // ── Text ──────────────────────────────────────────────────────────────────────
 
@@ -247,10 +248,18 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   // that no longer applies to an Order that already exists. The deduction is
   // printed as "Discount" when non-zero and LEFT OFF when zero or blank,
   // whatever the workbook called it. Figures untouched.
+  //
+  // WITH A DISCOUNT, THE GROSS IS NAMED AS THE FIGURE BEFORE IT. "Product value"
+  // on every BOE screen is the amount after the discount, so the opening line —
+  // the gross, followed here by a separate Discount line — reads "Product value
+  // before discount". Only the caption changes: the same stored figures, the
+  // discount printed once, and the Grand Total exactly as stored. With no
+  // discount the line keeps its "Gross product amount" caption.
+  const discounted = hasDeduction(sub.discount_amount)
   const rows = clientDeductionRows(
     commercialBreakdownRows(buildCommercialRows(persistedCommercial(sub))),
     { amount: sub.discount_amount },
-  )
+  ).map(row => (discounted && row.key === 'gross' ? { ...row, label: PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL } : row))
 
   const products = persistedProducts(input.items)
 

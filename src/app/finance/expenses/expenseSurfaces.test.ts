@@ -1915,6 +1915,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/piEdit.test.ts',
     'src/components/orders/PiEditor.tsx',
     'src/lib/orders/orderConfirmation.ts',
+    // Round 4b: the Upload PI preview's Product value and the client PDF's gross caption.
+    'src/lib/pi/previewView.ts',
+    'src/lib/pi/previewView.test.ts',
+    'src/app/orders/import/page.tsx',
+    'src/app/orders/import/importAccess.test.ts',
+    'src/lib/orders/confirmedPdf.ts',
+    'src/lib/orders/pdfProductValueLabel.test.ts',
+    'src/lib/orders/piTerms.test.ts',
     // The migration-sequence pins.
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',
