@@ -5,7 +5,7 @@ import type { AttendanceRequestRow } from './requests'
 import { istClockToUtc } from '../istDate'
 
 const EMP = 'e1'
-const SCHEDULE = { scheduled_in_minutes: 600, grace_end_minutes: 615, scheduled_out_minutes: 1110, weekly_off_day: 0 }
+const SCHEDULE = { scheduled_in_minutes: 600, grace_end_minutes: 615, scheduled_out_minutes: 1110, weekly_off_day: 0, rounding_block_minutes: 30, rounding_block_hours: 0.5 }
 
 const punch = (date: string, inClock: string | null, outClock: string | null) => ({
   employee_id: EMP,
@@ -381,5 +381,70 @@ describe('validateReviewInput', () => {
   test('only late arrivals can be excused; event keys are closed', () => {
     assert.equal(validateReviewInput({ ...ok, event_key: 'absent', excused: true, excuse_reason: 'x' }).ok, false)
     assert.equal(validateReviewInput({ ...ok, event_key: 'anything', pay_decision: 'paid_waived', decision_reason: 'x' }).ok, false)
+  })
+})
+
+describe('item 1 — the charge is explained with the payroll rule and the draft figure', () => {
+  const lateLine = (h: number, amt: number, date = '2026-10-05') =>
+    ({ employee_id: EMP, line_date: date, deduction_type: 'late_arrival', hours_deducted: h, amount_deducted: amt })
+
+  test('"40 minutes late · payroll rule charges 1 hour · ₹118 proposed in the draft"', () => {
+    const r = buildReconciliation(input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), draftLines: [lateLine(1, 118)] }))
+    const ev = eventsOf(r).find(e => e.kind === 'late_arrival')!
+    assert.equal(ev.charge?.text, '40 minutes late · payroll rule charges 1 hour · ₹118 proposed in the draft')
+    assert.equal(ev.charge?.rule_hours, 1)
+    assert.equal(ev.charge?.draft_hours, 1)
+    assert.match(ev.charge!.rule_text, /up to 15 minutes past the scheduled time costs nothing; beyond that, the time is rounded up to the next 30 minutes and charged at 0.5 hour/)
+  })
+
+  test('the rule is the engine\'s: 16 min → ½ hour, 30 → ½, 31 → 1, 91 → 2; within grace → nothing', () => {
+    const at = (clock: string) => {
+      const r = buildReconciliation(input({ attendance: fullMonth({ '2026-10-05': [clock, '18:35'] }) }))
+      return eventsOf(r).find(e => e.kind === 'late_arrival')?.charge ?? null
+    }
+    assert.equal(at('10:16')?.rule_hours, 0.5)
+    assert.equal(at('10:30')?.rule_hours, 0.5)
+    assert.equal(at('10:31')?.rule_hours, 1)
+    assert.equal(at('11:31')?.rule_hours, 2)
+    assert.equal(at('10:15'), null, 'inside the grace period there is no late event at all')
+    assert.match(at('10:16')!.text, /no payroll draft yet/)
+  })
+
+  test('early departure uses the same rule; a waived one says ₹0 without inventing an amount', () => {
+    const corr = {
+      id: 'c', employee_id: EMP, attendance_date: '2026-10-05',
+      corrected_check_in_at: istClockToUtc('2026-10-05', '09:55'), corrected_check_out_at: istClockToUtc('2026-10-05', '17:50'),
+      day_treatment: 'auto', waive_late_arrival: false, waive_early_checkout: true, waive_missing_punch: false, remark: 'x',
+    }
+    const r = buildReconciliation(input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['09:55', '17:50'] }), corrections: [corr] }))
+    const ev = eventsOf(r).find(e => e.kind === 'early_departure')!
+    assert.equal(ev.charge?.text, '40 minutes early · payroll rule charges 1 hour · waived by attendance correction — ₹0 in the draft')
+  })
+
+  test('when the draft charges different hours from the rule, both are shown', () => {
+    const r = buildReconciliation(input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), draftLines: [lateLine(1.5, 176)] }))
+    assert.match(eventsOf(r).find(e => e.kind === 'late_arrival')!.charge!.text, /₹176 proposed in the draft · the draft charges 1.5 hours — see the payslip/)
+  })
+})
+
+describe('item 3 — notice given on time stays "informed" even when the request is rejected', () => {
+  test('rejected but submitted before 10:00: informed, not counted, timestamp and label untouched; Unpaid still allowed', () => {
+    const rejected = request({ status: 'rejected', decision_note: 'Reason not accepted', informed_before_shift: true, submitted_at: '2026-10-05T03:00:00.000Z' })
+    const r = buildReconciliation(input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), requests: [rejected] }))
+    const ev = eventsOf(r).find(e => e.kind === 'late_arrival')!
+    assert.equal(ev.informed, true)
+    assert.equal(ev.counts_toward_policy, false)
+    assert.equal(ev.request?.submitted_at, '2026-10-05T03:00:00.000Z')
+    assert.equal(ev.request?.informed_before_shift, true)
+    assert.ok(ev.flags.includes('The request was rejected.'))
+    assert.ok(ev.allowed_decisions.includes('unpaid_actual'), 'payroll may still treat the time as unpaid')
+  })
+
+  test('the same request submitted after 10:00 is uninformed whatever its decision', () => {
+    for (const status of ['approved', 'rejected', 'pending'] as const) {
+      const late = request({ status, informed_before_shift: false, submitted_at: '2026-10-05T05:00:00.000Z', decision_note: status === 'rejected' ? 'x' : null })
+      const r = buildReconciliation(input({ attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), requests: [late] }))
+      assert.equal(eventsOf(r).find(e => e.kind === 'late_arrival')!.informed, false, status)
+    }
   })
 })

@@ -233,6 +233,10 @@ describe('cases 1 & 2 — the review decision changes the draft through the corr
     assert.equal(ev.request?.status, 'approved')
     assert.equal(ev.salary_status, 'needs_decision')
     assert.equal(ev.draft_amount, 118)
+    // Item 1: what the review states is what the real engine wrote to the draft.
+    assert.equal(ev.charge?.text, '40 minutes late · payroll rule charges 1 hour · ₹118 proposed in the draft')
+    assert.equal(ev.charge?.rule_hours, Number(lateLine[0].hours_deducted))
+    assert.equal(ev.charge?.draft_amount, Number(lateLine[0].amount_deducted))
 
     // Paid / waived → one correction, applied through the shared service.
     const saved = await saveReview(secondAdmin(), {

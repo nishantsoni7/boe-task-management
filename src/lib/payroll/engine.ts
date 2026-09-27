@@ -346,7 +346,9 @@ function computePaidLeaveEntitlement(daysPresent: number, s: PayrollSettings): n
 //   9  → 0h   |  16 → 0.5h  |  30 → 0.5h
 //  31  → 1.0h |  38 → 1.0h  |  47 → 1.0h
 //  61  → 1.5h |  67 → 1.5h  |  91 → 2.0h
-function roundDeductionHours(minutesFromScheduled: number, s: PayrollSettings): number {
+// Exported unchanged so the attendance review can state the chargeable time
+// from the SAME rule (src/lib/attendance/requestReconciliation.ts).
+export function roundDeductionHours(minutesFromScheduled: number, s: Pick<PayrollSettings, 'grace_end_minutes' | 'scheduled_in_minutes' | 'rounding_block_minutes' | 'rounding_block_hours'>): number {
   if (minutesFromScheduled <= s.grace_end_minutes - s.scheduled_in_minutes) return 0
   return Math.ceil(minutesFromScheduled / s.rounding_block_minutes) * s.rounding_block_hours
 }

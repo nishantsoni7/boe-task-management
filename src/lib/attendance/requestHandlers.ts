@@ -403,6 +403,8 @@ export async function loadReconciliation(svc: ServiceClient, year: number, month
       grace_end_minutes: settings.grace_end_minutes,
       scheduled_out_minutes: settings.scheduled_out_minutes,
       weekly_off_day: settings.weekly_off_day,
+      rounding_block_minutes: settings.rounding_block_minutes,
+      rounding_block_hours: settings.rounding_block_hours,
     },
     holidayDates: new Set(holidays.filter(h => (h.holiday_type ?? 'full_day') === 'full_day').map(h => h.holiday_date)),
     draftGenerated,

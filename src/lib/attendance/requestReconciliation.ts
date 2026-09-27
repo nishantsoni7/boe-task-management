@@ -26,6 +26,7 @@ import type { AttendanceRequestRow, RequestType, ReasonCode } from './requests'
 import { REQUEST_TYPE_LABEL, REASON_LABEL, requestSummary, clockMinutes } from './requests'
 import { istDateRange, istMinutesOfDay } from '../istDate'
 import type { ValidatedCorrection } from '../payroll/correctionRules'
+import { roundDeductionHours } from '../payroll/engine'
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,34 @@ export type ReconSchedule = {
   grace_end_minutes: number
   scheduled_out_minutes: number
   weekly_off_day: number
+  /** The payroll rounding rule — the SAME values the engine charges with. */
+  rounding_block_minutes: number
+  rounding_block_hours: number
+}
+
+/**
+ * "40 minutes late · payroll rule charges 1 hour · ₹118 proposed in the draft".
+ *
+ * `rule_hours` comes from the engine's own roundDeductionHours with the
+ * period's settings: 0–15 minutes past the boundary costs nothing, then the
+ * time is rounded UP to the next 30-minute block at ½ hour per block. The
+ * rupees are never computed here — they are the stored draft line's amount, so
+ * what is shown is what payroll will pay. When the draft charges a different
+ * number of hours (a day the engine classified another way), both are shown.
+ */
+export type ChargeExplanation = {
+  minutes: number
+  direction: 'late' | 'early'
+  rule_hours: number
+  draft_hours: number | null
+  draft_amount: number | null
+  text: string
+  /** The rule itself, in words, from the period's settings. */
+  rule_text: string
+}
+
+function hoursLabel(h: number): string {
+  return h === 1 ? '1 hour' : `${h} hours`
 }
 
 export type ReconInput = {
@@ -224,6 +253,8 @@ export type ReconEvent = {
   /** Attendance or the request changed after the decision was recorded. */
   stale: boolean
   stale_reasons: string[]
+  /** Late arrivals and early departures: actual minutes, chargeable time, rupees. */
+  charge: ChargeExplanation | null
   salary_status: SalaryStatus
   /** Why payroll does not yet reflect the decision, and what to do. */
   action_note: string | null
@@ -436,6 +467,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
         title: string,
         req: AttendanceRequestRow | null,
         draftTypes: string[],
+        measured: { minutes: number; direction: 'late' | 'early' } | null = null,
       ): ReconEvent => {
         const waiverField = WAIVER_FIELD[eventKey]
         const waived = !!(corr && waiverField && corr.day_treatment === 'auto' && corr[waiverField])
@@ -459,6 +491,33 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           correction: corr ? { treatment: corr.day_treatment, waived: waiverField ? !!corr[waiverField] : false } : null,
           requests: reqs.map(r => [r.id, r.status, r.decided_at] as [string, string, string | null]).sort(),
           schedule: [s.scheduled_in_minutes, s.grace_end_minutes, s.scheduled_out_minutes],
+        }
+
+        let charge: ChargeExplanation | null = null
+        if (measured) {
+          const ruleHours = roundDeductionHours(measured.minutes, {
+            grace_end_minutes: s.grace_end_minutes,
+            scheduled_in_minutes: s.scheduled_in_minutes,
+            rounding_block_minutes: s.rounding_block_minutes,
+            rounding_block_hours: s.rounding_block_hours,
+          })
+          const draftHours = lines.length ? lines.reduce((t, l) => t + Number(l.hours_deducted || 0), 0) : null
+          const parts = [`${measured.minutes} minutes ${measured.direction}`]
+          parts.push(ruleHours === 0 ? 'within the grace period — payroll rule charges nothing' : `payroll rule charges ${hoursLabel(ruleHours)}`)
+          if (!input.draftGenerated) parts.push('no payroll draft yet')
+          else if (waived) parts.push('waived by attendance correction — ₹0 in the draft')
+          else if (lines.length === 0) { if (ruleHours > 0) parts.push('the draft charges nothing for this (the day is classified another way — see the payslip)') }
+          else if (amount === 0) parts.push(credits > 0 ? '₹0 in the draft (covered by BOE Credits)' : '₹0 in the draft (absorbed by automatic paid leave)')
+          else parts.push(`${rupees(amount)} proposed in the draft`)
+          if (draftHours != null && draftHours !== ruleHours && !waived) parts.push(`the draft charges ${hoursLabel(draftHours)} — see the payslip`)
+          charge = {
+            minutes: measured.minutes, direction: measured.direction, rule_hours: ruleHours,
+            draft_hours: draftHours, draft_amount: input.draftGenerated ? amount : null,
+            text: parts.join(' · '),
+            rule_text: `Payroll rule (unchanged): up to ${s.grace_end_minutes - s.scheduled_in_minutes} minutes past the scheduled time costs nothing; ` +
+              `beyond that, the time is rounded up to the next ${s.rounding_block_minutes} minutes and charged at ${s.rounding_block_hours} hour of pay per block. ` +
+              "The rupee amount is the draft's own figure.",
+          }
         }
         const fingerprint = JSON.stringify(fp)
         const review = reviewBy.get(`${k}|${eventKey}`) ?? null
@@ -503,6 +562,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           } : null,
           stale: reasons.length > 0,
           stale_reasons: reasons,
+          charge,
           salary_status: 'needs_decision',
           action_note: null,
           applies_in_one_step: blocker == null,
@@ -530,7 +590,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           r.informed_before_shift)
         const related = lateReq ?? informedBy ?? null
         if (related) consumed.add(related.id)
-        const ev = makeEvent('late_arrival', 'late_arrival', `Late arrival · ${minutesLate} min`, related, DRAFT_TYPES.late_arrival)
+        const ev = makeEvent('late_arrival', 'late_arrival', `Late arrival · ${minutesLate} min`, related, DRAFT_TYPES.late_arrival, { minutes: minutesLate, direction: 'late' })
         ev.informed = !!informedBy
         ev.counts_toward_policy = !ev.informed && !ev.excused
         if (!related) ev.flags.push('No request was submitted.')
@@ -552,7 +612,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           ?? reqs.find(r => r.request_type === 'half_day' && r.half_session === 'second_half')
           ?? reqOf('full_day_leave')
         if (earlyReq) consumed.add(earlyReq.id)
-        const ev = makeEvent('early_departure', 'early_departure', `Early departure · ${minutesEarly} min`, earlyReq, DRAFT_TYPES.early_departure)
+        const ev = makeEvent('early_departure', 'early_departure', `Early departure · ${minutesEarly} min`, earlyReq, DRAFT_TYPES.early_departure, { minutes: minutesEarly, direction: 'early' })
         if (!earlyReq) ev.flags.push('No request was submitted.')
         if (earlyReq?.request_type === 'early_departure' && earlyReq.status === 'approved' && earlyReq.departure_time && outMin != null) {
           if (outMin < clockMinutes(earlyReq.departure_time)! - 15)

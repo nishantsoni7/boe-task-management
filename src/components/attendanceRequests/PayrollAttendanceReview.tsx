@@ -242,6 +242,9 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         Actual: {ev.actual.check_in ? istClockOf(ev.actual.check_in) : '—'} → {ev.actual.check_out ? istClockOf(ev.actual.check_out) : '—'}
         {ev.actual.source === 'corrected' ? ' (corrected)' : ev.actual.source === 'none' ? ' (no record)' : ''}
       </div>
+      {ev.charge && (
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: colors.primary }}>{ev.charge.text}</div>
+      )}
       {ev.request && (
         <div style={{ fontSize: 12, color: colors.tertiary }}>
           Request: {ev.request.summary} · {ev.request.reason_label}{ev.request.reason_note ? ` — ${ev.request.reason_note}` : ''}
@@ -322,7 +325,13 @@ function ReviewModal({ emp, ev, onClose, onSave }: {
     <PayrollModal title="Payroll review decision" subtitle={`${emp.employee.full_name ?? 'Employee'} · ${formatShortDate(ev.date)} · ${ev.title}`}
       onClose={onClose} width={480}>
       {error && <PayrollModalError message={error} />}
+      {ev.charge && (
+        <div style={{ fontSize: 13, fontWeight: 600, color: colors.primary }}>{ev.charge.text}</div>
+      )}
       <div style={{ fontSize: 12.5, color: colors.tertiary }}>{ev.payroll_state}</div>
+      {ev.charge && (
+        <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>{ev.charge.rule_text}</div>
+      )}
 
       {isLate && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
