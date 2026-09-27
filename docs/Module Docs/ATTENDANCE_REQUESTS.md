@@ -185,15 +185,55 @@ header totals both.
     transaction. The row records the actor, time, counts, fingerprint,
     per-employee counts (no names, no amounts) and reason. It is append-only;
     only admins can read it.
-- **Review unreadable** (e.g. migrations missing): `409 attendance_check_failed`.
-  An admin can still lock with `{ unverified: true, reason }`, recorded with
-  `check_failed = true`. Payroll is never blocked forever.
+- **Review unreadable** (a database or application read error, or missing
+  migrations): **`503 attendance_review_unavailable`, `retryable: true`**.
+  Nothing is locked and nothing is recorded. No acknowledgement or reason can
+  stand in for a review nobody could see; the admin retries once the read
+  works. The database enforces this too: an acknowledgement row must carry a
+  fingerprint, so an unread review cannot be recorded as acknowledged.
+- **Month not ended**: `422 payroll_month_in_progress` (see §3b).
 - **Both Lock buttons** follow the server's answer. They show the open items,
   ask for a reason (a blank reason cancels), resend with the server's
   fingerprint, and show the new state if it went stale. A direct API call can
   no longer skip any of this.
 - Once locked, the review and the correction service refuse every write for
   that month.
+
+### 3b. A payroll month is written only after it has ended
+
+**The defect (real, not a fixture artefact).** The engine
+(`buildWorkingDayCalendar`) has no notion of today. Every non-Sunday,
+non-holiday date in the month is a working day, and a working day with no punch
+is an **absence**. Nothing in generation, correction or lock checked whether the
+month had ended.
+- On 27 Sep 2026 the real `/api/payroll/generate` charged **28, 29 and 30 Sep
+  as full-day absences** (₹1,000 each), and that draft was then locked.
+- Reproduced with the real engine on a fixed date in
+  `src/lib/payroll/periodCompletion.test.ts`.
+- Production today has only July and August periods (both ended), but a normal
+  admin could have created and generated September on any day in September.
+
+**The rule** (`src/lib/payroll/periodCompletion.ts`): a month can be
+**generated, recalculated through an attendance correction, or locked** only once
+it has ended in IST, i.e. from 00:00 IST on the 1st of the next month.
+- **Generate** refuses with `422 payroll_month_in_progress` before any engine
+  run or settings pin. The message says why and from when it opens, e.g.
+  "September 2026 has not ended yet … from 1 Oct (IST)".
+- **The correction service** refuses before recalculating. A review waiver
+  decision mid-month is therefore not saved; an excuse, which has no pay
+  effect, still is.
+- **Lock** refuses before the attendance check.
+- **Payroll Runs** shows "Month in progress — payroll can be generated and
+  locked from 1 Oct (IST)" on that row.
+- **Payroll Monthly Preview** (read-only) shows the current month only up to
+  yesterday. A new engine option, `calendarThrough`, leaves later dates out of
+  the calendar entirely, so they are never worked, absent or charged. The page
+  says so.
+
+**Unchanged:** a month that has ended calculates exactly as before; the option
+is off in every write path, and a test asserts identical results. **No bypass:**
+BOE has no final-settlement or early-close path in payroll (`users.exit_date`
+is not read by the engine), so none is invented. See §9.
 
 **Behaviour change to note:** before this, any generated month could be locked
 with one click. Now, a month with any unresolved attendance item needs the
@@ -249,7 +289,11 @@ Lock cases:
 - an acknowledgement → locked and recorded;
 - the state changes in between → stale refusal, then a fresh acknowledgement works;
 - a blank reason → 400;
-- the review is unreadable → only the recorded override locks.
+- the review is unreadable → 503 retryable; nothing locks, even with a valid
+  fingerprint and reason, and it works again once the read succeeds;
+- a month that has not ended → 422, even with nothing open;
+- a waiver decision mid-month → 422, nothing written; an excuse is still
+  recorded.
 
 ## 6. Data, access and notifications
 
@@ -323,8 +367,8 @@ Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 4. Merge and deploy the application.
 5. Smoke test with two admins and one employee (§8).
 
-New code on an unmigrated database would refuse locks of any month (the check
-fails) until the recorded override is used. This is another reason
+New code on an unmigrated database cannot read the review, so every lock fails
+with the retryable 503 until the migrations are applied. This is another reason
 migrations must go first.
 
 ### Rollback
@@ -387,6 +431,10 @@ same three roles and records.
    a review flag pending BOE's payroll/legal adviser.
 3. Time out has no measured duration; no mid-day punch assumptions are made.
 4. The shift is company-wide; there are no per-employee or overnight shifts.
+5. **Existing gap, not changed here:** payroll ignores `users.exit_date`, so an
+   employee who leaves mid-month is charged as absent for the working days
+   after their exit. A final-settlement rule (generate a leaver before month
+   end, counting only days up to the exit date) is a separate payroll decision.
 
 ## 10. Not built
 
@@ -403,7 +451,8 @@ same three roles and records.
 |---|---|
 | `src/lib/attendance/requests.test.ts` | Validation, informed-on-time in IST, overlaps, cancel window, decisions |
 | `src/lib/attendance/requestReconciliation.test.ts` | Flag, informed/excused (incl. rejected-but-on-time), draft matching, stale reasons, time out, paid-leave wording, planner, **charge explanation and rounding** |
-| `src/lib/attendance/requestHandlers.test.ts` | **Route-level:** authorisation, self-decision, review → correction → draft with the real engine, charge text = stored line, lock acknowledgement (simple, refused, recorded, stale, blank reason, override), correction = full generation |
+| `src/lib/attendance/requestHandlers.test.ts` | **Route-level:** authorisation, self-decision, review → correction → draft with the real engine, charge text = stored line, lock acknowledgement (simple, refused, recorded, stale, blank reason), **unreadable review → 503**, **month not ended → 422**, correction = full generation |
+| `src/lib/payroll/periodCompletion.test.ts` | **Future dates:** the defect reproduced with the real engine (27 Sep 2026), the month-end rule, every write checks it first, the preview trims, completed months unchanged |
 | `src/lib/attendance/lockWarning.test.ts` | The Lock button's conversation with the server |
 | `src/components/attendanceRequests/attendanceRequests.render.test.tsx` | The phone form and the correction pre-fill |
 
