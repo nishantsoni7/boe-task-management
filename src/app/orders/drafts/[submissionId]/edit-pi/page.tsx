@@ -13,7 +13,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
-import { editPiPageHref, editPiReturnHref } from '@/lib/orders/editPiPage'
+import { editPiPageHref } from '@/lib/orders/editPiPage'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
 
@@ -90,7 +90,8 @@ export default function EditDraftPiPage() {
           orderId={null}
           backHref={draftHref}
           context={[ready.draft_reference, ready.client_name].filter(Boolean).join(' · ') || 'PI draft'}
-          onDone={outcome => router.push(editPiReturnHref(draftHref, outcome))}
+          // The draft page reads the PI afresh on arrival, so the change is simply there.
+          onDone={() => router.push(draftHref)}
           attachments={{
             designFiles: 'attached on the PI draft',
             clientPo: 'attached on the PI draft',

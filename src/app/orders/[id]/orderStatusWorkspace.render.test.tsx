@@ -27,12 +27,10 @@ import {
 } from './OrderStatusWorkspace'
 import { OrderApprovalModal } from './OrderApprovalModal'
 import {
-  CLIENT_PO_UNSUPPORTED_NOTE,
   DOCUMENTS_TITLE,
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
-  DOC_PI_PICTURES_LABEL,
   DOC_VIEW_PI_LABEL,
   DOCUMENTS_HISTORY_LABEL,
   DOC_NOT_ATTACHED,

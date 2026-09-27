@@ -3005,12 +3005,15 @@ body {
    stacks what it is, when, and its actions, so neither column squeezes three
    columns of its own. Declared after the viewport rules above so it wins in a
    wide card whatever the window width. */
+/* MAIN PI: stacked in a narrow card — what it is, its dates, then its actions. */
+.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.order-docs-main .order-doc-row-meta,
+.order-docs-main .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+.order-docs-main .order-doc-row-actions { justify-content: flex-start; }
 @container (min-width: 760px) {
-  /* MAIN PI across the full width: what it is | its dates | how to open it. */
-  .order-docs-main .order-doc-section { padding: 14px 18px; }
-  .order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr) minmax(0, 300px) auto; }
-  .order-docs-main .order-doc-row-meta,
-  .order-docs-main .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+  /* MAIN PI across the full width: what it is beside its dates, actions below. */
+  .order-docs-main .order-doc-section { padding: 14px 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .order-docs-main .order-doc-row-actions { grid-column: 1 / -1; }
   /* DESIGN FILES | CLIENT PO, side by side, each stacking what, when and files. */
   .order-docs-side {
     display: grid;
@@ -3061,6 +3064,12 @@ body {
 }
 .order-doc-file-download:hover { background: #F2F4F7; color: #111318; }
 .order-doc-file-download:focus-visible { outline: 2px solid #2F6FEB; outline-offset: 1px; }
+
+@container (min-width: 1100px) {
+  /* Wide enough for all three side by side: what | when | how to open it. */
+  .order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr) minmax(0, 320px) auto; }
+  .order-docs-main .order-doc-row-actions { grid-column: auto; justify-content: flex-end; }
+}
 
 @media (max-width: 560px) {
   .order-doc-pictures { margin: 0 14px 12px; }
@@ -8065,11 +8074,11 @@ h1.boe-page-title { margin-top: 0; }
   .pi-edit-card-head { padding: 12px 14px 10px; flex-wrap: wrap; }
   .pi-edit-card-body { padding: 14px; }
   .pi-edit-product-body { grid-template-columns: minmax(0, 1fr); }
-  .pi-edit-photo { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .pi-edit-photo-frame { width: 88px; }
+  .pi-edit-photo { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; align-items: start; }
+  .pi-edit-photo-frame { grid-row: span 2; }
   .pi-edit-attach-item { flex-wrap: wrap; }
   .pi-edit-attach-item > .boe-btn { width: 100%; justify-content: center; }
-  .pi-edit-bar { border-radius: 0; margin: 0 -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .pi-edit-bar { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .pi-edit-bar > .boe-btn { flex: 1 1 auto; justify-content: center; min-height: 42px; }
   .pi-edit-bar-status { flex-basis: 100%; }
 }

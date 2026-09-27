@@ -176,6 +176,22 @@ export function PiEditor({
     return () => { live = false }
   }, [supabase, submissionId, orderId, mode])
 
+  // A resumed edit can carry photos uploaded in an earlier session: sign them
+  // too, so the preview shows what will be submitted rather than "No photo".
+  const unsignedNewPhotos = useMemo(() => (state?.items ?? [])
+    .flatMap(i => (i.photo.kind === 'new' ? [i.photo.storage_path] : []))
+    .filter(path => !photoUrls[path]), [state, photoUrls])
+  useEffect(() => {
+    if (unsignedNewPhotos.length === 0) return
+    let live = true
+    void supabase.storage.from('order-files').createSignedUrls(unsignedNewPhotos, 600).then(({ data }) => {
+      if (!live || !data) return
+      const signed = data.filter(s => s.signedUrl && s.path).map(s => [s.path as string, s.signedUrl as string])
+      if (signed.length > 0) setPhotoUrls(u => ({ ...u, ...Object.fromEntries(signed) }))
+    })
+    return () => { live = false }
+  }, [supabase, unsignedNewPhotos])
+
   const problems = useMemo(() => (state ? validateEdit(state) : []), [state])
   const priced = useMemo(() => (current && state && problems.length === 0 ? priceEdit(current, state) : null), [current, state, problems])
   const diff = useMemo(() => {
@@ -296,7 +312,7 @@ export function PiEditor({
     client: [state.header.client_name, state.header.client_city].map(s => s.trim()).filter(Boolean).join(' · ') || 'Client not named',
     dates: [
       shortDay(state.header.due_date) ? `Due ${shortDay(state.header.due_date)}` : null,
-      state.terms.fabric_responsibility ? `Fabric: ${fabricResponsibilityLabel(state.terms.fabric_responsibility)}` : null,
+      state.terms.fabric_responsibility ? fabricResponsibilityLabel(state.terms.fabric_responsibility) : null,
     ].filter(Boolean).join(' · ') || null,
     products: [`${live.length} line${live.length === 1 ? '' : 's'}`, added ? `${added} new` : null, removed ? `${removed} to remove` : null]
       .filter(Boolean).join(' · '),
@@ -569,6 +585,7 @@ export function PiEditor({
             {failure
               ? <span className="pi-edit-bar-failure">{failure}</span>
               : busy === 'photo' ? 'Uploading photo…'
+              : problems.length > 0 ? `To review: ${problems[0].message}`
               : dirty ? 'Unsaved changes'
               : savedAt ? `Saved ${savedAt}`
               : changed ? 'Changes ready to review' : 'No changes'}

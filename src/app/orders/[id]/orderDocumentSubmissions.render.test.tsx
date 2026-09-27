@@ -197,8 +197,10 @@ describe('the Documents card', () => {
   test('stacked by default; Main PI across, Design Files beside Client PO once the CARD is wide', () => {
     assert.match(css, /\.order-docs-row \{\n  display: grid;\n  grid-template-columns: minmax\(0, 1fr\);/)
     assert.match(css, /\.order-docs \{[^}]*container-type: inline-size;/)
-    // The Main PI row: what it is | its dates | how to open it.
-    assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-main \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 300px\) auto; \}/)
+    // The Main PI row: stacked in a narrow card; what | when beside each other at 760px; actions on the right at 1100px.
+    assert.ok(css.includes('.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }'))
+    const wide = css.slice(css.indexOf('@container (min-width: 1100px) {'))
+    assert.ok(wide.includes('.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr) minmax(0, 320px) auto; }'))
     // The two supporting categories side by side, each stacking what, when and its files.
     assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-side \{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/)
     assert.match(css, /\.order-docs-side \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)

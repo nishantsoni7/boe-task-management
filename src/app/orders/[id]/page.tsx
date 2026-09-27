@@ -1704,6 +1704,8 @@ export default function OrderDetailPage() {
       }
       setLineReview(null)
       setRevisionDialog(null)
+      // A decided revision retires the last proposal's notice.
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
@@ -1722,6 +1724,7 @@ export default function OrderDetailPage() {
       })
       if (error) { setRevisionError(describePiRevisionFailure(error, 'reject')); return }
       setRevisionDialog(null)
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_rejected', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
