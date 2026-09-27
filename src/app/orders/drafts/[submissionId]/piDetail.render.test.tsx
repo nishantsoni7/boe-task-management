@@ -3625,7 +3625,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     assert.ok(read('src/lib/orders/draftsView.ts').includes("'billing_percentage'"),
       'the column is in PI_DRAFT_DETAIL_COLUMNS')
     const selects = [...page.matchAll(/\.from\('order_submissions'\)/g)]
-    assert.ok(selects.length <= 1, 'still at most one order_submissions read on this page')
+    // The record, and the one failure-tolerant read of the 20270211000000
+    // sales-details columns; billing rides with the record.
+    assert.ok(selects.length <= 2, 'at most the record and the sales-details read')
+    assert.ok(page.includes('.select(SALES_DETAILS_COLUMNS)'))
   })
 
   test('no decorative field was given a fetch of its own', () => {

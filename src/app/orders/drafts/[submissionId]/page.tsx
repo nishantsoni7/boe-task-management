@@ -94,14 +94,27 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
-import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
+import { PiCommissionSummary, PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
+import { PiOrderDetailsSection } from '@/components/orders/PiOrderDetailsSection'
+import {
+  SALES_DETAILS_COLUMNS,
+  SALES_DETAILS_UNAVAILABLE,
+  orderDetailsFieldOf,
+  orderDetailsReview,
+  readSalesDetails,
+  salespersonName,
+  withOrderDetailsRequirements,
+  type OrderDetailsFieldKey,
+  type OrderDetailsRow,
+  type SalesDetails,
+} from '@/lib/orders/salesOrderDetails'
 import { PiHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { Pencil } from 'lucide-react'
 import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
-  internalDetailsSaveFailure, internalDetailsStillOpen, submissionCommissionBlock,
-  submitWithInternalDates, withCommission, withInternalDetailsRequirement, workbookDateNotes, type SubmissionDates,
+  internalDetailsStillOpen, submissionCommissionBlock,
+  submitWithInternalDates, withCommission, workbookDateNotes, type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -361,6 +374,11 @@ const diagnosticEntries = (value: unknown): PiDiagnosticEntry[] =>
       return a.code.localeCompare(b.code)
     })
 
+/** What the approval dialog reviews from the section beside the four Order fields. */
+const APPROVAL_REVIEW_KEYS: readonly OrderDetailsFieldKey[] = [
+  'billing_percentage', 'billing_terms', 'fabric_responsibility', 'middleman_commission',
+]
+
 export default function PiDraftDetailPage() {
   return (
     <Suspense fallback={<OrdersRouteFallback />}>
@@ -533,6 +551,12 @@ function PiDraftDetailPageInner() {
   const [confirmationField, setConfirmationField] = useState<OrderConfirmationField | null>(null)
   /** Who may be named as the salesperson. Read once, with the record. */
   const [salespeople, setSalespeople] = useState<{ id: string; name: string }[]>([])
+  // The salesperson and lead source Sales chose on this PI (20270211000000).
+  const [salesDetails, setSalesDetails] = useState<SalesDetails>(SALES_DETAILS_UNAVAILABLE)
+  // Set by the readiness checklist and the commission card: open the Internal
+  // order details form and focus this field. The nonce re-fires a repeat press.
+  const [detailsFocus, setDetailsFocus] = useState<{ field: OrderDetailsFieldKey; nonce: number } | null>(null)
+  const focusOrderDetails = (field: OrderDetailsFieldKey) => setDetailsFocus({ field, nonce: Date.now() })
   /**
    * What the approval RPC returned, kept ONLY so the number is on screen the
    * instant the call commits.
@@ -668,6 +692,17 @@ function PiDraftDetailPageInner() {
         .eq('submission_id', submissionId)
         .maybeSingle(),
       supabase.rpc('can_read_order_submission_commission', { p_submission_id: submissionId }),
+
+      /**
+       * THE SALESPERSON AND LEAD SOURCE SALES CHOSE (20270211000000), in their
+       * own read: a database that does not have the two columns yet answers
+       * with an error, which means "not available" — never a failed page.
+       */
+      supabase
+        .from('order_submissions')
+        .select(SALES_DETAILS_COLUMNS)
+        .eq('id', submissionId)
+        .maybeSingle(),
     ])
     // Handled here too, so a group whose answer is discarded (the record is
     // missing) can never surface as an unhandled rejection.
@@ -683,12 +718,14 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable] = await detailReads
+    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable, salesResult] = await detailReads
 
     if (itemsResult.error || imagesResult.error) {
       if (quiet) { setRefreshFailed(true); return }
       setLoad({ kind: 'failed' }); return
     }
+
+    setSalesDetails(readSalesDetails(salesResult.error ? null : salesResult.data))
 
     // FAIL CLOSED. A capability that could not be resolved is not a capability.
     setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
@@ -1328,38 +1365,6 @@ function PiDraftDetailPageInner() {
   }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
   /**
-   * SAVE (AND OPTIONALLY CONFIRM) THE INTERNAL DETAILS (20270122000000).
-   *
-   * Full state, with the row version the dialog opened at. The RPC re-derives
-   * the authority, the stage, the date order and every commission rule; a
-   * refusal is shown in its own words, inside the dialog, with the form kept.
-   */
-  const [internalOpen, setInternalOpen] = useState(false)
-  const [internalSaving, setInternalSaving] = useState(false)
-  const [internalFailure, setInternalFailure] = useState<string | null>(null)
-  const saveInternalDetails = useCallback(async (payload: Record<string, string | null>, confirm: boolean) => {
-    if (internalSaving) return
-    setInternalSaving(true)
-    setInternalFailure(null)
-    try {
-      const { error } = await supabase.rpc('save_order_submission_internal_details', {
-        p_submission_id: submissionId,
-        p_details: payload,
-        p_expected_version: rowVersion,
-        p_confirm: confirm,
-      })
-      if (error) {
-        setInternalFailure(internalDetailsSaveFailure(error))
-        return
-      }
-      setInternalOpen(false)
-      await loadDraft({ quiet: true })
-    } finally {
-      setInternalSaving(false)
-    }
-  }, [internalSaving, supabase, submissionId, rowVersion, loadDraft])
-
-  /**
    * SAVE THE DATES AND TERMS.
    *
    * Its own RPC and therefore its own transaction, exactly like the client
@@ -1886,6 +1891,12 @@ function PiDraftDetailPageInner() {
   // Editable exactly where can_edit_order_submission says the record is; the
   // submit dialog waits on the same readiness the database checks.
   const canEditInternalDetails = canEditSubmission && (submission.status === 'draft' || submission.status === 'needs_changes')
+  /** The PI row plus the two 20270211000000 values, as the Internal order details read it. */
+  const detailsRow: OrderDetailsRow = {
+    ...(submission as unknown as OrderDetailsRow),
+    salesperson_id: salesDetails.salesperson_id,
+    lead_source: salesDetails.lead_source,
+  }
   // Only the middleman answer still waits outside the dialog: the two dates
   // are entered in Submit for Approval itself (2026-09-27).
   const internalSubmitBlock = submissionCommissionBlock(submission)
@@ -2345,7 +2356,7 @@ function PiDraftDetailPageInner() {
                 <PiCommissionSummary
                   row={submission}
                   canEdit={canEditInternalDetails}
-                  onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
+                  onEdit={() => focusOrderDetails('middleman_commission')}
                 />
               }
             />
@@ -2359,6 +2370,23 @@ function PiDraftDetailPageInner() {
         <div className="pi-detail-split">
           <div className="pi-detail-split-grid">
             <div className="pi-detail-split-stack">
+              {/* ── INTERNAL ORDER DETAILS ── what Sales owns about the order,
+                  seen and entered together; each value saved by the RPC that
+                  already owns it. Editable exactly where can_edit_order_submission
+                  says; read-only for everybody else. */}
+              <PiOrderDetailsSection
+                supabase={supabase}
+                submissionId={submissionId}
+                row={detailsRow}
+                rowVersion={rowVersion}
+                canEdit={canEditInternalDetails}
+                salesDetailsAvailable={salesDetails.available}
+                people={salespeople}
+                grandTotal={grandTotalValue}
+                fabricCost={toNumber(submission.fabric_cost)}
+                focus={detailsFocus}
+                onSaved={() => { void loadDraft({ quiet: true }) }}
+              />
               {submission.status === 'submitted' && (
                 <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
               )}
@@ -2396,11 +2424,11 @@ function PiDraftDetailPageInner() {
                  at a submitted PI is not the person who fills these in. */
               // The shared list plus the internal details the database also
               // requires before a submission (20270123000000).
-              readiness={actions.canSubmit ? withInternalDetailsRequirement(submissionReadiness, submission) : null}
+              readiness={actions.canSubmit ? withOrderDetailsRequirements(submissionReadiness, detailsRow) : null}
               onFixReadiness={
                 mayEditPi || canEditInternalDetails
-                  ? section => {
-                      if (section === 'internal') { setInternalFailure(null); setInternalOpen(true); return }
+                  ? (section, key) => {
+                      if (section === 'internal') { focusOrderDetails(orderDetailsFieldOf(key) ?? 'middleman_commission'); return }
                       if (!mayEditPi) return
                       if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
                       setPiEditorOpen(true)
@@ -2431,10 +2459,17 @@ function PiDraftDetailPageInner() {
                 setConfirmationField(null)
                 setConfirmation(prev => ({
                   ...prev,
-                  salesperson: resolveSavedSalesperson({
+                  // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
+                  // there is one — never the approver. A PI from before that
+                  // has none, and keeps the old exact-name preselection, which
+                  // resolves to nothing rather than guess.
+                  salesperson: salesDetails.salesperson_id ?? resolveSavedSalesperson({
                     savedName: documentAuthor,
                     options: salespeople,
                   }),
+                  leadSource: salesDetails.lead_source ?? prev.leadSource,
+                  confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
+                  dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
                 }))
                 // THE DOOR FOLLOWS THE DECISION, never the other way round: the
                 // PI-only dialog opens only when the payment condition is the one
@@ -2913,8 +2948,12 @@ function PiDraftDetailPageInner() {
             // A reason given before the three existed opens unchosen.
             reasonChoice: readExceptionReason(payments?.exception_reason).choice,
             otherRemark: readExceptionReason(payments?.exception_reason).remark,
-            paymentTerms: payments?.payment_terms ?? '',
-            billingTerms: payments?.billing_terms ?? '',
+            // THE RECORD'S OWN TERMS, re-read with it — not the payment summary
+            // read when the page opened. The submission writes these back, so a
+            // stale copy would blank billing terms saved in Internal order
+            // details since (found in the 2026-09-27 walkthrough).
+            paymentTerms: submission.payment_terms ?? payments?.payment_terms ?? '',
+            billingTerms: submission.billing_terms ?? payments?.billing_terms ?? '',
           }}
           submitting={acting}
           failure={actionFailure}
@@ -2943,17 +2982,7 @@ function PiDraftDetailPageInner() {
           // Asked for while the PI is still being prepared — the only stages at
           // which the internal details can be saved.
           internalDetails={internalDetailsStillOpen(submission) ? submission : null}
-        />
-      )}
-
-      {internalOpen && (
-        <PiInternalDetailsModal
-          row={submission}
-          grandTotal={grandTotalValue}
-          saving={internalSaving}
-          failure={internalFailure}
-          onCancel={() => { if (!internalSaving) setInternalOpen(false) }}
-          onSave={(payload, confirm) => { void saveInternalDetails(payload, confirm) }}
+          detailsReview={orderDetailsReview(detailsRow, salespeople)}
         />
       )}
 
@@ -2983,6 +3012,18 @@ function PiDraftDetailPageInner() {
           // The four fields the Order is built from. Not offered in
           // `approve_pi`, which records a decision and creates no Order.
           salespeople={salespeople}
+          // What Sales already provided, shown as review values with a Change
+          // path; the approver types only what is genuinely missing.
+          provided={{
+            salesperson: salesDetails.salesperson_id
+              ? { id: salesDetails.salesperson_id, name: salespersonName(salesDetails.salesperson_id, salespeople) ?? 'Saved salesperson (not in the list)' }
+              : null,
+            leadSource: salesDetails.lead_source,
+            confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? null,
+            dueDate: submission.due_date?.slice(0, 10) ?? null,
+          }}
+          detailsReview={orderDetailsReview(detailsRow, salespeople)
+            .filter(row => APPROVAL_REVIEW_KEYS.includes(row.key))}
           confirmation={confirmation}
           onConfirmationChange={next => { setConfirmationField(null); setConfirmation(next) }}
           confirmationField={confirmationField}

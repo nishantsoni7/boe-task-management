@@ -1337,8 +1337,12 @@ describe('the top summary answers four questions and repeats none of them', () =
     // header field. What this pins is that it costs NO EXTRA REQUEST: the page
     // reads the submission once, and the due date comes with it.
     assert.ok(PI_DRAFT_DETAIL_COLUMNS.includes('due_date'))
-    assert.equal((page.match(/\.from\('order_submissions'\)/g) ?? []).length, 1,
-      'exactly one read of order_submissions on this page')
+    // ONE READ OF THE RECORD, plus exactly one deliberate, failure-tolerant
+    // read of the two 20270211000000 columns (salesperson, lead source), kept
+    // apart so a database without them cannot fail the page.
+    assert.equal((page.match(/\.from\('order_submissions'\)/g) ?? []).length, 2,
+      'the record, and the separate sales-details read')
+    assert.ok(page.includes('.select(SALES_DETAILS_COLUMNS)'), 'the second read is that one and nothing else')
     assert.ok(page.includes('due: submission.due_date'), 'straight off the row')
   })
 
@@ -2221,7 +2225,7 @@ describe('the draft loads in two waves, not six', () => {
 
   test('the history rides in the first wave, with the reads that share its key', () => {
     assert.ok(body.includes(
-      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable] = await detailReads'),
+      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable, salesResult] = await detailReads'),
       'the history needs only the submission id, so it must not wait for the items')
     const group = body.indexOf('const detailReads = Promise.all([')
     const second = body.indexOf('await Promise.all([')

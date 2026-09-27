@@ -12,8 +12,6 @@ import {
   submissionNeedsConfirmation,
   submitWithInternalDates,
   SUBMISSION_CONFIRM_REQUIRED,
-  INTERNAL_DETAILS_REQUIREMENT_KEY,
-  withInternalDetailsRequirement,
   INTERNAL_DETAILS_NETWORK_FAILURE,
   internalDetailsSaveFailure,
   COMMISSION_RESTRICTED_TEXT,
@@ -260,38 +258,8 @@ describe('internalDetailsSaveFailure', () => {
   })
 })
 
-// The owner's checklist used to read 'ready' while the database refused the submission.
-describe('withInternalDetailsRequirement', () => {
-  const ready = { ready: true, missing: [], summary: null } as const
-  test('an unanswered middleman question makes the checklist say so, and blocks Submit', () => {
-    const r = withInternalDetailsRequirement(ready, { status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20' })
-    assert.equal(r.ready, false)
-    assert.deepEqual(r.missing.map(m => [m.key, m.label, m.section]), [[INTERNAL_DETAILS_REQUIREMENT_KEY, 'Middleman commission answer', 'internal']])
-    assert.equal(r.summary, 'Before this PI can be submitted, middleman commission answer is needed.')
-  })
-  test('joins the shared list and recounts it', () => {
-    const base = { ready: false, missing: [{ key: 'client_city', label: 'Client city', section: 'client' as const }], summary: 'x' }
-    const r = withInternalDetailsRequirement(base, { status: 'needs_changes', order_confirmation_date: '2026-09-20', due_date: '2026-11-20' })
-    assert.deepEqual(r.missing.map(m => m.label), ['Client city', 'Middleman commission answer'])
-    assert.equal(r.summary, 'Before this PI can be submitted, 2 things are needed.')
-  })
-  test('missing dates, or an unconfirmed answer, do NOT disable Submit — the dialog asks for them (2026-09-27)', () => {
-    const ready = { ready: true, missing: [], summary: null } as const
-    // Both dates blank, the middleman answered: Submit opens, and asks there.
-    assert.equal(withInternalDetailsRequirement(ready, { status: 'draft', middleman_commission: 'no' }), ready)
-    // Complete but never confirmed: pressing Submit is the confirmation.
-    assert.equal(withInternalDetailsRequirement(ready, { status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20', middleman_commission: 'no' }), ready)
-  })
-  test('complete and confirmed, or past draft, adds nothing', () => {
-    assert.equal(withInternalDetailsRequirement(ready, { status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20', middleman_commission: 'no', internal_details_confirmed_at: '2026-09-26T00:00:00Z' }), ready)
-    assert.equal(withInternalDetailsRequirement(ready, { status: 'submitted' }), ready)
-  })
-  test('the page feeds the checklist with it and its Add opens the internal details editor', () => {
-    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
-    assert.ok(page.includes('readiness={actions.canSubmit ? withInternalDetailsRequirement(submissionReadiness, submission) : null}'))
-    assert.ok(page.includes("if (section === 'internal') { setInternalFailure(null); setInternalOpen(true); return }"))
-  })
-})
+// The checklist's internal-details gaps now come from withOrderDetailsRequirements —
+// see salesOrderDetails.test.tsx.
 
 // ── The two dates, at Submit for Approval (2026-09-27) ───────────────────────
 //

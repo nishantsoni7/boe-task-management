@@ -44,6 +44,7 @@ import {
   orderAttentionItems,
   orderRecordFacts,
   orderSummaryView,
+  orderProductValue,
   orderSummaryFields,
   type OrderHeaderActionKey,
   type WorkspaceTone,
@@ -726,6 +727,9 @@ export default function OrderDetailPage() {
   // The approved PI's grand total as a NUMBER, to tell an amended Order's own
   // value apart from it in the Commercial breakdown (walkthrough O-1).
   const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
+  // The approved PI's stored product figures, so the summary's Total product
+  // value can say the same thing the PI and the approval dialog say.
+  const [piProduct, setPiProduct] = useState<{ gross: number | null; discount: number | null; subtotal: number | null } | null>(null)
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
   // Lazily, so the two empty Maps are built once rather than on every render.
   const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
@@ -1105,6 +1109,8 @@ export default function OrderDetailPage() {
         : { kind: 'ready', counts: countDesignImages(images) },
     })
     setPiGrandTotal(row.grand_total === null || row.grand_total === undefined || String(row.grand_total).trim() === '' ? null : Number(row.grand_total))
+    const figure = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : Number(v))
+    setPiProduct({ gross: figure(row.gross_product_amount), discount: figure(row.discount_amount), subtotal: figure(row.subtotal_after_discount) })
     setPiHandoff(buildOrderPiHandoff(row, {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
@@ -2296,6 +2302,13 @@ export default function OrderDetailPage() {
    */
   const clientLocation = piHandoff.kind === 'ready' ? piHandoff.client.city : null
 
+  // THE PI'S MEANING OF "PRODUCT VALUE" — after the discount — wherever the
+  // Order still carries its PI's figure. Nothing stored is changed or computed.
+  const productValue = orderProductValue({
+    stored: order.total_product_value === null ? null : Number(order.total_product_value),
+    pi: piHandoff.kind === 'ready' ? piProduct : null,
+  })
+
   const summaryFields = orderSummaryFields({
     clientName: order.client_name,
     location: clientLocation,
@@ -2303,7 +2316,8 @@ export default function OrderDetailPage() {
     uploadDate: piUploadedAt,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     isOverdue: !!isOverdue,
-    totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value),
+    totalProductValue: productValue.amount === null ? null : fmtAmount(productValue.amount),
+    totalProductValueDetail: productValue.detail,
   })
 
   // ── THE ONE COMMERCIAL PRESENTATION ──

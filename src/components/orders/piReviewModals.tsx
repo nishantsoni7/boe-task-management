@@ -29,7 +29,7 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -39,10 +39,11 @@ import {
   type SupportingCategory,
 } from '@/lib/orders/orderDocumentSubmissions'
 import { useScrollLock } from '@/hooks/useScrollLock'
-import { PiSubmissionDatesFields } from '@/components/orders/PiInternalDetails'
+import { PiSubmissionDetailsReview } from '@/components/orders/PiInternalDetails'
+import { formatIsoDay as fmtDay } from '@/lib/orders/piInternalDetails'
+import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsAbsent, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
 import {
   SUBMISSION_CONFIRM_REQUIRED,
-  describeMiddleman,
   formatIsoDay,
   submissionDateErrors,
   submissionDatesFrom,
@@ -60,8 +61,10 @@ import {
   fabricResponsibilityNeedsConfirmation,
 } from '@/lib/orders/piTerms'
 import {
+  ORDER_CONFIRMATION_LABEL,
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
+  leadSourceLabel,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
@@ -545,6 +548,7 @@ export function PiSubmitConfirmModal({
   missingSupporting,
   supportingBlocked,
   internalDetails,
+  detailsReview,
 }: {
   client: string
   grandTotal: string
@@ -603,6 +607,11 @@ export function PiSubmitConfirmModal({
    * dialog is exactly what it was.
    */
   internalDetails?: PiInternalDetailsRow | null
+  /**
+   * THE INTERNAL ORDER DETAILS AS SALES ENTERED THEM on the PI Draft
+   * (orderDetailsReview). Stated for a last look — never re-entered here.
+   */
+  detailsReview?: readonly OrderDetailsReviewRow[]
 }) {
   /**
    * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
@@ -614,9 +623,9 @@ export function PiSubmitConfirmModal({
    */
   const [reply, setReply] = useState('')
   const [terms, setTerms] = useState<PiSubmissionTerms>(initialTerms ?? EMPTY_SUBMISSION_TERMS)
-  // The dates live here for the same reason as the reply: a refused or failed
-  // submission keeps the dialog mounted, so what was typed is still on screen.
-  const [dates, setDates] = useState<SubmissionDates | null>(internalDetails ? submissionDatesFrom(internalDetails) : null)
+  // THE DATES ARE THE RECORD'S, entered in the Internal order details section.
+  // They are reviewed here, not typed; Submit confirms them (with the tick).
+  const dates: SubmissionDates | null = internalDetails ? submissionDatesFrom(internalDetails) : null
   // NEVER PRE-TICKED: confirming is the submitter's act, not a default.
   const [acknowledged, setAcknowledged] = useState(false)
   const confirmInput = useRef<HTMLInputElement | null>(null)
@@ -624,7 +633,6 @@ export function PiSubmitConfirmModal({
   // Nothing is said about a date until Submit has been pressed once; from then
   // on each message follows the field as it is corrected.
   const [datesAttempted, setDatesAttempted] = useState(false)
-  const dateInputs = useRef<Partial<Record<keyof SubmissionDates, HTMLInputElement | null>>>({})
   const dateErrors = dates ? submissionDateErrors(dates) : {}
   const datesInvalid = Object.keys(dateErrors).length > 0
 
@@ -665,7 +673,7 @@ export function PiSubmitConfirmModal({
       ? null
       : (checked as { ok: false; message: string }).message
 
-  const blocked = submitting || tooLong || !checked.ok || !!supportingBlocked
+  const blocked = submitting || tooLong || !checked.ok || !!supportingBlocked || (!!dates && datesInvalid)
   // THE ONE EXPLICIT CONFIRMATION for a missing supporting category. Cancel
   // returns to the form and sends nothing.
   const [confirmingMissing, setConfirmingMissing] = useState(false)
@@ -681,13 +689,10 @@ export function PiSubmitConfirmModal({
 
   const confirm = () => {
     if (blocked || !checked.ok) return
-    // THE DATES ARE CHECKED ON PRESS, not by disabling the button: a disabled
-    // Submit with two empty date boxes says nothing about why. The first
-    // invalid field takes focus and its message is announced.
+    // Missing or out-of-order dates are fixed in the section, not here: the
+    // review already says so, and nothing is sent.
     if (dates && datesInvalid) {
       setDatesAttempted(true)
-      const first = (['order_confirmation_date', 'due_date'] as const).find(key => dateErrors[key])
-      if (first) dateInputs.current[first]?.focus()
       return
     }
     // Nothing is confirmed on the submitter's behalf: when Submit would write
@@ -730,13 +735,9 @@ export function PiSubmitConfirmModal({
           </div>
 
           {dates && (
-            <PiSubmissionDatesFields
-              dates={dates}
-              errors={datesAttempted ? dateErrors : {}}
-              disabled={submitting}
-              onChange={(key, value) => setDates(current => current && ({ ...current, [key]: value }))}
-              inputRef={(key, el) => { dateInputs.current[key] = el }}
-              middleman={internalDetails ? describeMiddleman(internalDetails) : undefined}
+            <PiSubmissionDetailsReview
+              rows={detailsReview ?? []}
+              missing={datesInvalid ? SUBMISSION_DETAILS_INCOMPLETE : null}
               confirmation={internalDetails ? {
                 needed: needsAcknowledgement,
                 checked: acknowledged,
@@ -1235,6 +1236,8 @@ export function PiApproveOrderModal({
   confirmation,
   onConfirmationChange,
   confirmationField,
+  provided,
+  detailsReview,
 }: {
   client: string
   /** buildApprovalSummary's rows. This component chooses no wording of its own. */
@@ -1255,8 +1258,24 @@ export function PiApproveOrderModal({
   onConfirmationChange?: (next: OrderConfirmationDraft) => void
   /** Which field the last refusal named, so it can be focused and marked. */
   confirmationField?: OrderConfirmationField | null
+  /**
+   * WHAT SALES ALREADY PROVIDED ON THE PI (the Internal order details). Each
+   * one present is shown as a review value with a Change control, and the page
+   * has already put it in `confirmation`; a control is drawn only for what is
+   * missing or what the approver chooses to change. Null for a legacy PI.
+   */
+  provided?: {
+    salesperson: { id: string; name: string } | null
+    leadSource: string | null
+    confirmDate: string | null
+    dueDate: string | null
+  }
+  /** Billing, fabric and commission as Sales entered them — review only. */
+  detailsReview?: readonly OrderDetailsReviewRow[]
 }) {
   useScrollLock(true)
+  // The fields the approver has chosen to change rather than accept.
+  const [changing, setChanging] = useState<ReadonlySet<OrderConfirmationField>>(() => new Set())
 
   const dismiss = (reason: ModalDismissReason) => {
     if (saving) return
@@ -1285,6 +1304,47 @@ export function PiApproveOrderModal({
     width: '100%',
     borderColor: confirmationField === field ? 'rgba(217,79,79,0.65)' : undefined,
   })
+
+  /**
+   * A field is a REVIEW when Sales provided it, the draft still holds exactly
+   * that value, the approver has not asked to change it, and the database did
+   * not just refuse it. Otherwise it is the ordinary control.
+   */
+  const providedValue: Record<OrderConfirmationField, string | null> = {
+    salesperson: provided?.salesperson?.id ?? null,
+    confirm_date: provided?.confirmDate ?? null,
+    due_date: provided?.dueDate ?? null,
+    lead_source: provided?.leadSource ?? null,
+  }
+  const draftValue: Record<OrderConfirmationField, string | null> = {
+    salesperson: draft.salesperson, confirm_date: draft.confirmDate, due_date: draft.dueDate, lead_source: draft.leadSource,
+  }
+  const reviewing = (field: OrderConfirmationField): boolean =>
+    !!providedValue[field] && draftValue[field] === providedValue[field]
+    && !changing.has(field) && confirmationField !== field
+  const reviewText: Record<OrderConfirmationField, string | null> = {
+    salesperson: provided?.salesperson?.name ?? null,
+    confirm_date: fmtDay(provided?.confirmDate ?? null),
+    due_date: fmtDay(provided?.dueDate ?? null),
+    lead_source: leadSourceLabel(provided?.leadSource ?? null),
+  }
+  const reviewRow = (field: OrderConfirmationField, wide: boolean) => (
+    <div key={field} data-review={field} style={{
+      display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: wide ? '1 / -1' : undefined, minWidth: 0,
+    }}>
+      <span className="boe-input-label">{ORDER_CONFIRMATION_LABEL[field]}</span>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+        <strong style={{ fontSize: '13.5px', color: colors.primary, overflowWrap: 'anywhere' }}>{reviewText[field]}</strong>
+        <span style={{ fontSize: '11px', color: colors.muted }}>From the PI</span>
+        <button type="button" disabled={saving}
+          onClick={() => setChanging(current => new Set(current).add(field))}
+          aria-label={`Change ${ORDER_CONFIRMATION_LABEL[field].toLowerCase()}`}
+          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.blue, cursor: saving ? 'default' : 'pointer' }}>
+          Change
+        </button>
+      </span>
+    </div>
+  )
 
   return (
     <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={copy.title}>
@@ -1338,6 +1398,7 @@ export function PiApproveOrderModal({
               there. */}
           {asksForOrderFields && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px 12px' }}>
+              {reviewing('salesperson') ? reviewRow('salesperson', true) : (
               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
                 <span className="boe-input-label">{SALESPERSON_LABEL} *</span>
                 <select
@@ -1350,12 +1411,22 @@ export function PiApproveOrderModal({
                   aria-invalid={confirmationField === 'salesperson' || undefined}
                 >
                   <option value="">Select a salesperson…</option>
+                  {provided?.salesperson && !(salespeople ?? []).some(p => p.id === provided.salesperson?.id) && (
+                    <option value={provided.salesperson.id}>{provided.salesperson.name}</option>
+                  )}
                   {(salespeople ?? []).map(person => (
                     <option key={person.id} value={person.id}>{person.name}</option>
                   ))}
                 </select>
+                {!provided?.salesperson && (
+                  <span style={{ fontSize: '11px', color: colors.muted }}>
+                    This PI has no saved salesperson. Choose one; nobody is picked for you.
+                  </span>
+                )}
               </label>
+              )}
 
+              {reviewing('confirm_date') ? reviewRow('confirm_date', false) : (
               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span className="boe-input-label">Confirm date *</span>
                 <input
@@ -1369,7 +1440,9 @@ export function PiApproveOrderModal({
                   aria-invalid={confirmationField === 'confirm_date' || undefined}
                 />
               </label>
+              )}
 
+              {reviewing('due_date') ? reviewRow('due_date', false) : (
               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span className="boe-input-label">Due date *</span>
                 <input
@@ -1383,7 +1456,9 @@ export function PiApproveOrderModal({
                   aria-invalid={confirmationField === 'due_date' || undefined}
                 />
               </label>
+              )}
 
+              {reviewing('lead_source') ? reviewRow('lead_source', true) : (
               <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
                 <span className="boe-input-label">Lead source *</span>
                 <select
@@ -1401,7 +1476,26 @@ export function PiApproveOrderModal({
                   ))}
                 </select>
               </label>
+              )}
             </div>
+          )}
+
+          {/* ── What Sales entered about billing, fabric and commission ──
+              Review only: management approves the PI, it does not re-enter it. */}
+          {detailsReview && detailsReview.length > 0 && (
+            <dl data-testid="pi-approve-details-review" style={{
+              margin: 0, padding: '10px 13px', borderRadius: '8px', border: `1px solid ${colors.border}`,
+              display: 'grid', gap: '5px 14px', gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)',
+            }}>
+              {detailsReview.map(row => (
+                <Fragment key={row.key}>
+                  <dt style={{ ...KEY_STYLE, fontSize: '12px' }}>{row.label}</dt>
+                  <dd style={{ margin: 0, fontSize: '12.5px', fontWeight: row.value ? 600 : 500, color: row.value ? colors.primary : colors.muted, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                    {row.value ?? orderDetailsAbsent(row.need, row.key)}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
           )}
 
           <div style={{

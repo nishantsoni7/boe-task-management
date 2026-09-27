@@ -1094,7 +1094,7 @@ export function PiWorkflowPanel({
    */
   readiness: PiReadiness | null
   /** Opens the editor at the first section a form can actually fix, or null. */
-  onFixReadiness: ((section: PiRequirement['section']) => void) | null
+  onFixReadiness: ((section: PiRequirement['section'], key: string) => void) | null
   acting: boolean
   /**
    * The one sentence explaining why Approve cannot be pressed yet, or null.
@@ -1236,7 +1236,7 @@ export function PiWorkflowPanel({
                       type="button"
                       className="boe-btn boe-btn-ghost"
                       style={{ marginLeft: '8px' }}
-                      onClick={() => onFixReadiness(requirement.section)}
+                      onClick={() => onFixReadiness(requirement.section, requirement.key)}
                       disabled={acting}
                     >
                       Add

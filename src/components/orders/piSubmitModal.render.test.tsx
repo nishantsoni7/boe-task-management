@@ -51,7 +51,7 @@ import {
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { SUBMIT_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import { formatInr } from '@/lib/pi/previewView'
-import { PiSubmissionDatesFields } from './PiInternalDetails'
+import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsReview } from '@/lib/orders/salesOrderDetails'
 import { SUBMISSION_CONFIRM_LABEL, type PiInternalDetailsRow } from '@/lib/orders/piInternalDetails'
 
 const GRAND_TOTAL = 118000
@@ -99,6 +99,7 @@ function render(over: {
   failure?: string | null
   offerReply?: boolean
   internalDetails?: PiInternalDetailsRow | null
+  detailsReview?: ReturnType<typeof orderDetailsReview>
 } = {}): string {
   return renderToStaticMarkup(
     <PiSubmitConfirmModal
@@ -112,6 +113,7 @@ function render(over: {
       onCancel={() => {}}
       onConfirm={() => {}}
       internalDetails={over.internalDetails}
+      detailsReview={over.detailsReview}
     />,
   )
 }
@@ -465,33 +467,28 @@ describe('the submission rule reads attached payment', () => {
 // client-facing workbook; this dialog is where they are required. Static
 // markup cannot press a button, so the press itself is held by reading the
 // dialog's own source below — the same way the page wiring is held above.
-describe('the Submit dialog asks for the two internal dates', () => {
+describe('the Submit dialog REVIEWS the internal order details — it never asks for them again', () => {
   const blank: PiInternalDetailsRow = { status: 'draft', middleman_commission: 'no' }
   const dated: PiInternalDetailsRow = { status: 'draft', middleman_commission: 'no',
     order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }
+  const reviewOf = (row: PiInternalDetailsRow) => orderDetailsReview({ ...row, lead_source: 'website', billing_terms: '50% on dispatch' }, [])
 
-  test('both fields are drawn with the workbook\'s labels, marked required', () => {
-    const html = render({ internalDetails: blank })
-    assert.ok(html.includes('Date of Order Confirmation'))
-    assert.ok(html.includes('Dispatch Date Finalized'))
-    assert.equal((html.match(/type="date"/g) ?? []).length, 2)
-    assert.equal((html.match(/required=""/g) ?? []).length, 2)
-    assert.ok(html.includes('not printed on the client PI'), 'and it says they are internal')
+  test('the values Sales entered are stated, and there is no date input left to type in', () => {
+    const html = render({ internalDetails: dated, detailsReview: reviewOf(dated) })
+    const review = html.slice(html.indexOf('data-testid="pi-submit-details-review"'), html.indexOf('</dl>'))
+    for (const expected of ['Date of Order Confirmation', '20 Sep 2026', 'Dispatch Date Finalized', '20 Nov 2026',
+      'Lead source', 'Website', 'Billing terms', '50% on dispatch', 'Fabric responsibility', 'Middleman commission', 'No']) {
+      assert.ok(review.includes(expected), `${expected} is reviewed`)
+    }
+    assert.ok(!html.includes('type="date"'), 'no second place to type a date')
+    assert.ok(html.includes('Internal order details on the PI'), 'and it says where to change them')
   })
 
-  test('nothing is scolded before Submit is pressed, and Submit stays pressable to reveal what is missing', () => {
-    const html = render({ internalDetails: blank })
-    assert.ok(!html.includes('Enter the Date of Order Confirmation.'))
-    assert.ok(!html.includes('aria-invalid'))
-    assert.equal(submitDisabled(html), false,
-      'a disabled Submit beside two empty boxes would say nothing about why')
-  })
-
-  test('the record\'s dates are what the fields open on', () => {
-    const html = render({ internalDetails: dated })
-    assert.ok(html.includes('value="2026-09-20"'))
-    assert.ok(html.includes('value="2026-11-20"'))
-    assert.ok(html.includes('min="2026-09-20"'), 'the dispatch picker starts at the confirmation date')
+  test('missing dates are said, and Submit waits — the fix is the section, not this dialog', () => {
+    const html = render({ internalDetails: blank, detailsReview: reviewOf(blank) })
+    assert.ok(html.includes(SUBMISSION_DETAILS_INCOMPLETE))
+    assert.equal(submitDisabled(html), true)
+    assert.ok(!html.includes('type="checkbox"'), 'nothing to confirm until they are complete')
   })
 
   test('without the prop the dialog is exactly what it was', () => {
@@ -501,34 +498,18 @@ describe('the Submit dialog asks for the two internal dates', () => {
     assert.ok(!html.includes('type="checkbox"'))
   })
 
-  test('an error sits under its own field, announced, with the typed value kept', () => {
-    const html = renderToStaticMarkup(
-      <PiSubmissionDatesFields
-        dates={{ order_confirmation_date: '2026-09-23', due_date: '2026-09-15' }}
-        errors={{ due_date: 'The Dispatch Date Finalized cannot be before the Date of Order Confirmation.' }}
-        disabled={false}
-        onChange={() => {}}
-      />,
-    )
-    assert.ok(html.includes('value="2026-09-23"') && html.includes('value="2026-09-15"'), 'nothing typed is lost')
-    assert.equal((html.match(/aria-invalid="true"/g) ?? []).length, 1, 'only the field at fault')
-    assert.ok(html.includes('aria-describedby="pi-submit-due_date-error"'))
-    assert.ok(html.includes('id="pi-submit-due_date-error" role="alert"'))
-    assert.ok(html.includes('for="pi-submit-order_confirmation_date"'), 'labels are tied to their inputs')
-  })
-
-  test('pressing Submit checks the dates first and hands nothing up while one is missing', () => {
+  test('the dates handed up are the record\'s own, never typed here', () => {
     const modal = readFileSync(join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8').replace(/\r/g, '')
+    assert.ok(modal.includes('const dates: SubmissionDates | null = internalDetails ? submissionDatesFrom(internalDetails) : null'))
     const confirm = modal.slice(modal.indexOf('  const confirm = () => {'), modal.indexOf('  return (', modal.indexOf('  const confirm = () => {')))
     const check = confirm.indexOf('if (dates && datesInvalid) {')
-    const hand = confirm.indexOf('onConfirm(')
-    assert.ok(check > -1 && hand > check, 'the check comes before the hand-up')
-    assert.ok(confirm.slice(check, hand).includes('return'), 'and an invalid date stops it')
-    assert.ok(confirm.includes('dates ?? undefined, needsAcknowledgement && acknowledged)'),
-      'the entered dates, and the tick, travel with the confirmation')
-    // The dates live in the dialog's own state, which a failed submission does
-    // not unmount — so what was typed survives the error.
-    assert.ok(modal.includes('const [dates, setDates] = useState<SubmissionDates | null>(internalDetails ? submissionDatesFrom(internalDetails) : null)'))
+    assert.ok(check > -1 && check < confirm.indexOf('onConfirm('), 'an incomplete record hands nothing up')
+    assert.ok(confirm.includes('dates ?? undefined, needsAcknowledgement && acknowledged)'))
+  })
+
+  test('the page hands the dialog the section\'s own review', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('detailsReview={orderDetailsReview(detailsRow, salespeople)}'))
   })
 })
 
@@ -543,13 +524,13 @@ describe('the Submit dialog never confirms the internal details silently', () =>
     order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }
 
   test('the CURRENT middleman answer is shown with the dates, with where to change it', () => {
-    const html = render({ internalDetails: unconfirmed })
+    const html = render({ internalDetails: unconfirmed, detailsReview: orderDetailsReview(unconfirmed, []) })
     const fieldset = html.slice(html.indexOf('<fieldset'), html.indexOf('</fieldset>'))
     assert.ok(fieldset.includes('Middleman commission'))
     assert.ok(fieldset.includes('Yes — Site agent, ₹25,000.00'), 'the answer as the reviewer will read it')
-    assert.ok(fieldset.includes('To change it, Cancel and use Edit'))
-    const noAnswer = render({ internalDetails: { status: 'draft' } })
-    assert.ok(noAnswer.includes('Not answered'), 'an unanswered question is said, not hidden')
+    assert.ok(fieldset.includes('To change any of them, Cancel and use Internal order details on the PI.'))
+    const noAnswer = render({ internalDetails: { status: 'draft' }, detailsReview: orderDetailsReview({ status: 'draft' }, []) })
+    assert.ok(noAnswer.includes('Not added yet'), 'an unanswered question is said, not hidden')
   })
 
   test('when Submit would write them, a confirmation is asked for — UNTICKED, and saying what it confirms', () => {

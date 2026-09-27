@@ -676,6 +676,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // The PI draft's optional internal order highlight (20270210000000) —
       // held by src/lib/orders/highlightRemark.test.tsx.
       if (f === 'supabase/migrations/20270210000000_order_submission_highlight_remark.sql') continue
+      // The PI's salesperson and lead source, entered by Sales (20270211000000) —
+      // held by src/lib/orders/salesOrderDetails.test.tsx.
+      if (f === 'supabase/migrations/20270211000000_order_submission_sales_order_details.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1873,7 +1876,23 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // renamed summary-figure key.
   const ALLOWED_PI_DRAFT_TOP_LAYOUT = new Set([
     'supabase/migrations/20270210000000_order_submission_highlight_remark.sql',
+    'supabase/migrations/20270211000000_order_submission_sales_order_details.sql',
     'src/app/globals.css',
+    'src/components/orders/PiOrderDetailsSection.tsx',
+    'src/components/orders/PiInternalDetails.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/components/orders/piSubmitModal.render.test.tsx',
+    'src/components/orders/piApprovalModals.render.test.tsx',
+    'src/lib/orders/salesOrderDetails.ts',
+    'src/lib/orders/salesOrderDetails.test.tsx',
+    'src/lib/orders/productValueConsistency.test.ts',
+    'src/lib/orders/piInternalDetails.test.ts',
+    'src/lib/orders/orderWorkspace.ts',
+    'src/lib/orders/orderWorkspace.test.ts',
+    'src/lib/orders/orderCommercial.ts',
+    'src/lib/orders/orderCommercial.test.ts',
+    'src/app/orders/[id]/orderWorkspace.render.test.tsx',
+    'src/app/orders/[id]/orderDetailArchitecture.test.ts',
     'src/app/orders/[id]/page.tsx',
     'src/app/orders/drafts/[submissionId]/page.tsx',
     'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',

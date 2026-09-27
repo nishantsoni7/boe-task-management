@@ -743,7 +743,7 @@ export const APPROVE_PAYMENT_LABEL = {
 
 export function buildApprovalSummary(input: {
   client: string
-  /** summaryCommercialFigures' `gross` value — the page's "Product value". */
+  /** summaryCommercialFigures' `productValue` — the page's "Product value", after the discount. */
   productValue: string
   /** formatMoney(payments.verified_amount), or null before the read lands. */
   advanceConfirmed: string | null
