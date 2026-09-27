@@ -12,6 +12,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { ProductPicturesState } from '@/lib/orders/productPictures'
 import { OrderDocumentsPanel } from './OrderStatusWorkspace'
 import { SubmissionHistoryList, uploadAvailability } from './OrderDocumentSubmissions'
 import { designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
@@ -52,7 +53,7 @@ const V1: PersistedPiVersion = {
 }
 
 /** The whole card, as the page composes it, for one viewer and one set of rows. */
-const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence?: string | null; updateMenu?: React.ReactNode } = {}) =>
+const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence?: string | null; updateMenu?: React.ReactNode; pictures?: ProductPicturesState | null } = {}) =>
   renderToStaticMarkup(
     <OrderDocumentsPanel
       mainPi={mainPiCard(describePiVersionHistory([V1], NAMES, when))}
@@ -67,7 +68,11 @@ const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence
         formatWhen: when,
       }}
       changes={documentChanges(rows, v, nameOf, when)}
-      onReviewChange={noop} onResubmitChange={noop} onOpenFile={noop}
+      onReviewChange={noop} onResubmitChange={noop} onOpenFile={noop} onDownloadFile={noop}
+      pictures={over.pictures === null ? undefined : {
+        state: over.pictures ?? { kind: 'ready', available: 2, unavailable: 0 },
+        onView: noop, onDownloadAll: noop, downloading: false, message: null,
+      }}
     />,
   )
 /** Only the rows of CURRENT documents, below the changes panel. */
@@ -96,7 +101,7 @@ describe('the Documents card', () => {
     assert.equal(/order-docs-grid/.test(html), false)
   })
 
-  test('PI history and Edit PI sit on the Main PI row; Document history stays in the header', () => {
+  test('PI history sits on the Main PI row; Edit PI is the Order header\'s, never a document button', () => {
     const withVersions = (edit: { onEdit: () => void; blockedNote: string | null } | null, notice: string | null = null) =>
       renderToStaticMarkup(
         <OrderDocumentsPanel
@@ -110,19 +115,17 @@ describe('the Documents card', () => {
     const html = withVersions({ onEdit: noop, blockedNote: null })
     const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
     assert.ok(main.includes('PI history (2)'))
-    assert.ok(main.includes('Edit PI'))
+    // EDIT PI LEFT THIS CARD: it is the Order page's header action, which
+    // opens the full-page editor. Even a reader allowed to edit sees none here.
+    assert.equal(main.includes('Edit PI'), false)
     const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
     assert.ok(head.includes('Document history') && !head.includes('PI history'),
       'the two histories are named apart, each in its own place')
 
-    // Nobody allowed to propose: the history, never the editor.
-    assert.equal(text(withVersions(null)).includes('Edit PI'), false)
     assert.ok(text(withVersions(null)).includes('PI history'))
-
-    // A revision waiting for a decision: Edit PI is shown, disabled, with the reason.
-    const blocked = withVersions({ onEdit: noop, blockedNote: 'A revised PI is waiting for a decision.' })
-    assert.match(blocked, /<button type="button" class="boe-btn boe-btn-ghost order-doc-action" disabled=""[^>]*title="A revised PI is waiting for a decision\."/)
-    assert.ok(text(blocked).includes('A revised PI is waiting for a decision.'))
+    const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+    assert.ok(page.includes('onClick={() => router.push(editPiPageHref(order.id))}'), 'the header opens the Edit PI page')
+    assert.ok(page.includes('title={piRevisionOpen ? EDIT_PI_BLOCKED_NOTE'), 'and says why it is held while a revision is open')
 
     // The outcome of the last proposal is said on the row.
     assert.ok(text(withVersions({ onEdit: noop, blockedNote: null }, 'PI V2 sent to an Admin.')).includes('PI V2 sent to an Admin.'))
@@ -138,7 +141,8 @@ describe('the Documents card', () => {
     // Each action says what it opens (20270116000000): the PI itself is the
     // PDF generated from V1's details; the .xlsx is the file Sales uploaded.
     assert.ok(t.includes('View PI V1 (PDF)'))
-    assert.ok(t.includes('Uploaded workbook'))
+    // THE ORIGINAL EXCEL: the workbook Sales uploaded, downloaded as a file.
+    assert.ok(t.includes('Download original Excel'))
     // ONE vocabulary: the current file is never labelled three ways at once.
     assert.equal(/Accepted for production|Approved by Admin/.test(t), false)
   })
@@ -147,7 +151,9 @@ describe('the Documents card', () => {
     const html = card([accepted])
     const t = rowsOf(html)
     assert.ok(t.includes('PO-771.pdf'))
-    assert.match(html, /<button type="button" class="order-doc-file"[^>]*title="Open PO-771.pdf"/)
+    assert.match(html, /<button type="button" class="order-doc-file"[^>]*title="View PO-771.pdf"/)
+    // …and saves under its own name from the icon beside it.
+    assert.match(html, /<button type="button" class="order-doc-file-download" aria-label="Download PO-771.pdf"/)
     assert.equal(/<a |href=|order-documents\//.test(html), false, 'no URL or storage key reaches the markup')
   })
 
@@ -164,9 +170,21 @@ describe('the Documents card', () => {
     assert.ok(t.includes('Not provided — Asha confirmed'))
   })
 
-  test('the PI product pictures are a quiet secondary link on the Design Files row', () => {
-    const t = rowsOf(card([accepted]))
-    assert.ok(t.includes('PI product pictures (2)'))
+  test('the PI\'s product pictures sit with the Main PI — never among Design Files', () => {
+    const html = card([accepted])
+    const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
+    const side = text(html.slice(html.indexOf('class="order-docs-side"')))
+    assert.ok(main.includes('Product pictures') && main.includes('2 pictures'))
+    assert.ok(main.includes('View') && main.includes('Download all (ZIP)'))
+    assert.equal(/picture/i.test(side), false, 'Design Files holds production references only')
+  })
+
+  test('pictures whose files are gone are said plainly, with nothing to download', () => {
+    const html = card([accepted], viewer(), { pictures: { kind: 'missing', recorded: 16 } })
+    const t = rowsOf(html)
+    assert.ok(t.includes('16 pictures recorded, but the files are no longer in storage.'))
+    assert.equal(t.includes('Download all (ZIP)'), false, 'no download that would produce an empty archive')
+    assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('Download all'), false)
   })
 
   test('one Update documents control, supplied by the page; none for a reader who may not submit', () => {
@@ -176,12 +194,14 @@ describe('the Documents card', () => {
     assert.equal(/Upload Design Files|Upload Client PO|Upload New PI/.test(text(card([accepted]))), false)
   })
 
-  test('stacked by default; ~60/40 once the CARD is wide; one column on a phone', () => {
+  test('stacked by default; Main PI across, Design Files beside Client PO once the CARD is wide', () => {
     assert.match(css, /\.order-docs-row \{\n  display: grid;\n  grid-template-columns: minmax\(0, 1fr\);/)
     assert.match(css, /\.order-docs \{[^}]*container-type: inline-size;/)
-    assert.match(css, /@container \(min-width: 760px\) \{\s*\.order-docs-rows \{\s*display: grid;\s*grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\);/)
-    // Inside a column, a row stacks rather than squeezing three columns of its own.
-    assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-rows \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)
+    // The Main PI row: what it is | its dates | how to open it.
+    assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-main \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 300px\) auto; \}/)
+    // The two supporting categories side by side, each stacking what, when and its files.
+    assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-side \{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/)
+    assert.match(css, /\.order-docs-side \.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)
     assert.match(css, /\.order-doc-section \{\n  display: grid;\n  grid-template-columns: minmax\(0, 1fr\) minmax\(0, 330px\) minmax\(170px, auto\);/)
     assert.match(css, /@media \(max-width: 560px\) \{[\s\S]*?\.order-doc-section \{ grid-template-columns: minmax\(0, 1fr\);/)
   })

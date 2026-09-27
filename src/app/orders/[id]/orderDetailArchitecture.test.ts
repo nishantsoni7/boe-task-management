@@ -143,9 +143,11 @@ describe('the redundant surfaces are gone', () => {
     const panel = body.slice(body.indexOf('<OrderDocumentsPanel'), body.indexOf('</OrderDocumentsRow>'))
     // The box is handed all three kinds of paperwork, and every control the
     // Main PI card used to own.
-    for (const kept of ['mainPi', 'design', 'clientPo',
-                        'onView', 'onDownload', 'onHistory', 'onManageDesign',
-                        'viewing', 'downloading']) {
+    // The product pictures are the Main PI's (`pictures`), never Design Files',
+    // and the original Excel is one download (`onDownload`).
+    for (const kept of ['mainPi', 'clientPo', 'pictures', 'supporting',
+                        'onDownload', 'onDownloadFile', 'onHistory', 'onOpenPdf',
+                        'downloading']) {
       assert.ok(panel.includes(kept + '='), kept + ' was dropped from the Documents box')
     }
   })

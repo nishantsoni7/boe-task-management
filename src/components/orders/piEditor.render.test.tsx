@@ -103,7 +103,10 @@ describe('what the editor promises', () => {
     assert.ok(page.includes('canEditBilling={false}') && page.includes('canEditDetails={false}'))
     assert.ok(page.includes('onEditTerms={null}'))
     assert.ok(page.includes('const canEditProducts = false'))
-    assert.ok(page.includes('<PiEditor supabase={supabase} mode="apply"'))
+    // The one editor is a page: every entry navigates to it.
+    assert.ok(page.includes('router.push(draftEditPiPageHref(submissionId))'))
+    const route = readFileSync('src/app/orders/drafts/[submissionId]/edit-pi/page.tsx', 'utf8')
+    assert.ok(route.includes('mode="apply"'))
   })
 })
 

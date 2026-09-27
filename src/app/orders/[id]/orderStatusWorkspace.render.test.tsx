@@ -15,6 +15,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { ProductPicturesState } from '@/lib/orders/productPictures'
+import { MAIN_PI_ORIGINAL_EXCEL_LABEL } from '@/lib/orders/orderMainPi'
 import {
   OrderDesignFilesDialog,
   OrderFabricFinishCard,
@@ -109,6 +111,7 @@ const docs = (over: {
   rows?: PersistedPiVersion[]
   design?: DesignFilesDocument
   clientPo?: ClientPoDocument
+  pictures?: ProductPicturesState
 } = {}) => renderToStaticMarkup(
   <OrderDocumentsPanel
     mainPi={mainPiCard(history(over.rows ?? [row()]))}
@@ -118,6 +121,7 @@ const docs = (over: {
     clientPo={over.clientPo ?? clientPoDocument()}
     onView={noop} onDownload={noop} onHistory={noop} onManageDesign={noop}
     viewing={false} downloading={false}
+    pictures={over.pictures ? { state: over.pictures, onView: noop, onDownloadAll: noop, downloading: false, message: null } : undefined}
   />,
 )
 
@@ -142,10 +146,12 @@ describe('the Main PI card', () => {
     assert.equal((card().match(/order-status-chip/g) ?? []).length, 1)
   })
 
-  test('View PI is the main action; Download stays reachable; History is in the card header', () => {
+  test('the original Excel is one labelled download; History is in the card header', () => {
     const html = card()
-    assert.ok(text(html).includes(DOC_VIEW_PI_LABEL))
-    assert.match(html, /aria-label="Download"/)
+    // The workbook Sales uploaded is DOWNLOADED as the file it is — a browser
+    // cannot "view" an .xlsx, so the old View / icon-only Download pair is one button.
+    assert.ok(text(html).includes(MAIN_PI_ORIGINAL_EXCEL_LABEL))
+    assert.equal(text(html).includes(DOC_VIEW_PI_LABEL), false)
     assert.ok(text(docs()).includes(DOCUMENTS_HISTORY_LABEL))
   })
 
@@ -169,10 +175,11 @@ describe('the Main PI card', () => {
     assertNoFileReference(card(), 'the Main PI card')
   })
 
-  test('a version with no stored file cannot be opened', () => {
+  test('a version with no stored file cannot be downloaded', () => {
     const html = card([row({ workbook_path: null })])
-    // Both file actions are disabled; View history is not.
-    assert.equal((html.match(/disabled/g) ?? []).length, 2)
+    // The one file action is disabled; nothing else is.
+    assert.equal((html.match(/disabled/g) ?? []).length, 1)
+    assert.match(html, /disabled=""[^>]*>[\s\S]*?Download original Excel/)
   })
 
   test('while a file is being signed, both file actions say so and are held', () => {
@@ -185,9 +192,8 @@ describe('the Main PI card', () => {
         viewing downloading
       />,
     )
-    assert.ok(text(html).includes('Opening…'))
     assert.ok(text(html).includes('Preparing…'))
-    assert.equal((html.match(/disabled/g) ?? []).length, 2, 'no double submission')
+    assert.equal((html.match(/disabled/g) ?? []).length, 1, 'no double submission')
   })
 
   test('A PENDING REVISION IS A CHANGE, NEVER THE CURRENT ROW', () => {
@@ -289,22 +295,25 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/screenshot on file/i.test(body), false)
   })
 
-  test('THE PI PICTURES CONTROL IS NAMED FOR WHAT IT OPENS', () => {
-    // The dialog previews the approved PI's own pictures and manages nothing,
-    // so the link says whose pictures they are and how many.
-    const html = docs()
+  test('THE PI PICTURES ARE NOT DESIGN FILES', () => {
+    // Design Files are production references (drawings, plans, site files).
+    // The PI's own product pictures live under the Main PI, never here.
+    const html = docs({ pictures: { kind: 'ready', available: 9, unavailable: 0 } })
     const design = text(html.slice(
       html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'),
       html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"')))
-    assert.ok(design.includes(DOC_PI_PICTURES_LABEL(9)))
+    assert.equal(/picture/i.test(design), false)
     assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
       'the row must not promise an action the Order cannot perform')
+    const main = text(html.slice(0, html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"')))
+    assert.ok(main.includes('Product pictures') && main.includes('9 pictures'))
   })
 
-  test('Design Files (no submission read) says how many pictures the PI holds', () => {
+  test('Design Files with no supporting-document read says only that nothing is attached', () => {
     const body = text(docs())
-    assert.ok(body.includes('9 files'))
-    assert.ok(body.includes('6 representative · 3 customization · 6 product lines'))
+    const design = body.slice(body.indexOf(DOC_DESIGN_FILES_TITLE), body.indexOf(DOC_CLIENT_PO_TITLE))
+    assert.ok(design.includes(DOC_NOT_ATTACHED))
+    assert.equal(/\d+ files|representative/.test(design), false)
   })
 
   test('an EMPTY design record says so quietly, and offers no action', () => {
@@ -320,37 +329,27 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/order-doc-unavailable/.test(design), false)
   })
 
-  test('the four document states cannot be confused with one another', () => {
-    const state = (d: DesignFilesDocument) => text(docs({ design: d }))
-    const loading = state({ kind: 'loading' })
-    const unavailable = state(designFilesDocument({ kind: 'unavailable' }, 4))
-    const empty = state(designFilesDocument({ kind: 'ready', counts: { representative: 0, customization: 0 } }, 4))
-    const ready = state(designFilesDocument({ kind: 'ready', counts: { representative: 2, customization: 0 } }, 2))
-
-    // LOADING IS NOT NONE, and a refused read is not none either.
-    assert.ok(loading.includes('Loading'))
-    assert.equal(loading.includes('None recorded'), false)
-    assert.ok(unavailable.includes('Unavailable'))
-    assert.equal(unavailable.includes('None recorded'), false)
-    assert.ok(empty.includes('None recorded'))
-    assert.ok(ready.includes('2 files'))
-    // Only the refused read is drawn as a problem.
-    assert.ok(docs({ design: designFilesDocument({ kind: 'unavailable' }, 4) }).includes('order-doc-unavailable'))
-    assert.equal(docs({ design: { kind: 'loading' } }).includes('order-doc-unavailable'), false)
-  })
-
-  test('an Order with NO SOURCE PI says so, in its own words', () => {
-    // Not `None recorded`: nothing was expected, so nothing is missing.
-    const body = text(docs({ design: designFilesDocument({ kind: 'no_source' }, 0) }))
-    assert.ok(body.includes('No source PI'))
-    assert.equal(body.includes('None recorded'), false)
+  test('the picture states cannot be confused with one another', () => {
+    const state = (p: ProductPicturesState) => text(docs({ pictures: p }))
+    assert.ok(state({ kind: 'loading' }).includes('Loading pictures'))
+    assert.ok(state({ kind: 'unreadable' }).includes('could not be read'))
+    assert.ok(state({ kind: 'none' }).includes('No product pictures on this PI.'))
+    assert.ok(state({ kind: 'missing', recorded: 16 }).includes('16 pictures recorded, but the files are no longer in storage.'))
+    assert.ok(state({ kind: 'ready', available: 12, unavailable: 4 }).includes('12 of 16 pictures available'))
+    // Only a usable set offers View and the ZIP.
+    for (const p of [{ kind: 'loading' }, { kind: 'unreadable' }, { kind: 'none' }, { kind: 'missing', recorded: 3 }] as ProductPicturesState[]) {
+      assert.equal(state(p).includes('Download all (ZIP)'), false, p.kind)
+    }
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Download all (ZIP)'))
+    // Only the problems are drawn as problems.
+    assert.ok(docs({ pictures: { kind: 'missing', recorded: 3 } }).includes('order-doc-pictures-line--warn'))
+    assert.equal(docs({ pictures: { kind: 'none' } }).includes('order-doc-pictures-line--warn'), false)
   })
 
   test('Client PO states its absence and offers no control it cannot honour', () => {
     const html = docs()
     const po = html.slice(html.indexOf('aria-label="' + DOC_CLIENT_PO_TITLE + '"'))
     assert.ok(text(po).includes(DOC_NOT_ATTACHED))
-    assert.ok(text(po).includes(CLIENT_PO_UNSUPPORTED_NOTE))
     // NO UPLOAD BUTTON. There is nowhere to keep a file, and a control that
     // could not keep what it took would be worse than none.
     assert.equal(/<button|<input|<form/.test(po), false)

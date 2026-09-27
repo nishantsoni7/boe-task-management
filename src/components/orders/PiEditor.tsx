@@ -1,29 +1,32 @@
 'use client'
 
-// ── EDIT PI (20270115000000) ──────────────────────────────────────────────────
+// ── EDIT PI (20270115000000) — the full-page editor ─────────────────────────
 //
 // One editor for the whole PI: client, bill-to and ship-to, dates, commercial
 // terms, fabric, and every product — name, code, description, quantity, price
-// and photo — added, changed or removed.
+// and photo — added, changed or removed. It is a PAGE (/orders/[id]/edit-pi and
+// /orders/drafts/[submissionId]/edit-pi), not a modal: the PI is long, and a
+// reader needs to see it whole, section by section, with one action bar.
 //
 //   mode 'propose'  the PI is approved and in force. Saving keeps unsent work
 //                   (private to its author); submitting records a PENDING
-//                   version. The current PI and Order do not change until the
-//                   new version is authorized by an Admin and accepted by
-//                   Operations.
+//                   version. The current PI and Order do not change until an
+//                   Admin approves the new version; Operations then reviews it
+//                   for production.
 //   mode 'apply'    the PI is not yet an Order: saving writes it.
 //
 // THE FIGURES SHOWN HERE ARE A PREVIEW. The server re-reads the PI, re-applies
 // the edit and prices it with the same functions; what it stores is what
-// counts.
+// counts. Every rule (validateEdit, the sequence numbers, the version diff) is
+// the one the modal used; only the layout changed.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { ImagePlus, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, ImagePlus, Paperclip, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
-import { useScrollLock } from '@/hooks/useScrollLock'
 import { formatInr } from '@/lib/pi/previewView'
-import { FABRIC_RESPONSIBILITY_OPTIONS } from '@/lib/orders/piTerms'
+import { FABRIC_RESPONSIBILITY_OPTIONS, fabricResponsibilityLabel } from '@/lib/orders/piTerms'
 import {
   PI_EDIT_HEADER_FIELDS,
   PI_EDIT_IMAGE_COLUMNS,
@@ -45,22 +48,18 @@ import {
   type PiEditItem,
   type PiEditState,
 } from '@/lib/orders/piEdit'
+import type { EditPiOutcome } from '@/lib/orders/editPiPage'
 
 export const EDIT_PI_LABEL = 'Edit PI'
 export const EDIT_PI_PROPOSE_NOTE =
   'This PI is approved and in force. Your changes become a new version: the current PI stays in force until an Admin approves the new one. Approval puts it in force and amends the Order to its values; Operations is then sent it for review.'
 export const EDIT_PI_WORKBOOK_NOTE =
   "The uploaded workbook stays V1's file and is never changed. An edited version has no workbook of its own: it is these details, and its PDF is generated from them."
+export const EDIT_PI_UNSAVED_PROMPT = 'You have changes that are not saved. Leave this page and lose them?'
 
 type Mode = 'propose' | 'apply'
 
-const FIELD: React.CSSProperties = {
-  padding: '7px 9px', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.base,
-  color: colors.primary, fontSize: '13px', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit',
-}
-const LABEL: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11.5px', color: colors.secondary, fontWeight: 600 }
-const H: React.CSSProperties = { fontSize: '12px', fontWeight: 700, color: colors.primary, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '6px 0 2px' }
-const GRID: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }
+const DATE_KEYS = ['creation_date', 'order_confirmation_date', 'due_date', 'dispatch_commitment']
 
 /** Reads the PI as it stands, under the viewer's own access. */
 export async function loadPiContentAsViewer(supabase: SupabaseClient, submissionId: string): Promise<PiContent | null> {
@@ -77,19 +76,66 @@ export async function loadPiContentAsViewer(supabase: SupabaseClient, submission
   }
 }
 
+/** A date as the section summary says it: "30 Sept 2026", or null. */
+const shortDay = (iso: string): string | null => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim())
+  if (!m) return null
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+    .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+function Section({ id, title, summary, children, aside }: {
+  id: string
+  title: string
+  summary?: string | null
+  aside?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <section className="pi-edit-card" id={id} aria-labelledby={`${id}-title`}>
+      <header className="pi-edit-card-head">
+        <div className="pi-edit-card-heading">
+          <h2 className="pi-edit-card-title" id={`${id}-title`}>{title}</h2>
+          {summary && <p className="pi-edit-card-summary">{summary}</p>}
+        </div>
+        {aside}
+      </header>
+      <div className="pi-edit-card-body">{children}</div>
+    </section>
+  )
+}
+
 export function PiEditor({
-  supabase, mode, submissionId, orderId, onClose, onDone,
+  supabase, mode, submissionId, orderId, backHref, context, onDone, attachments,
 }: {
   supabase: SupabaseClient
   mode: Mode
   submissionId: string
   /** The Order, in propose mode. */
   orderId: string | null
-  onClose: () => void
-  /** After a successful save or submission. */
-  onDone: (message: string) => void
+  /** Where Back and Cancel return: the Order or the PI draft. */
+  backHref: string
+  /** "Order 0526 · Rivoli" — who and what is being edited. */
+  context: string
+  /** After a successful save or submission; the page navigates back. */
+  onDone: (outcome: EditPiOutcome) => void
+  /**
+   * The Attachments section's two doors, owned by the record page: Design
+   * Files / Client PO (reviewed by Admin, then accepted by Operations) and, on
+   * an Order, a revised PI workbook (a proposed version). Each is reached after
+   * this edit is saved, so nothing typed here is lost.
+   */
+  attachments: {
+    /** What is on file now, in one line per category. */
+    designFiles: string
+    clientPo: string
+    /** The record page, opened on its upload step. */
+    uploadDocumentsHref: string | null
+    uploadWorkbookHref: string | null
+    /** Why the upload doors are closed, when they are. */
+    note: string | null
+  }
 }) {
-  useScrollLock(true)
   const [current, setCurrent] = useState<PiContent | null>(null)
   const [state, setState] = useState<PiEditState | null>(null)
   const [reason, setReason] = useState('')
@@ -100,6 +146,8 @@ export function PiEditor({
   const [resumable, setResumable] = useState<{ edit: PiEditState; reason: string; at: string } | null>(null)
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [reviewing, setReviewing] = useState(false)
+  // What was last saved (or loaded), to tell unsaved edits from saved ones.
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -107,8 +155,10 @@ export function PiEditor({
       const content = await loadPiContentAsViewer(supabase, submissionId)
       if (!live) return
       if (!content) { setLoadError('This PI could not be opened for editing. Reload the page and try again.'); return }
+      const initial = initialEditState(content)
       setCurrent(content)
-      setState(initialEditState(content))
+      setState(initial)
+      setSavedSnapshot(JSON.stringify({ edit: initial, reason: '' }))
       if (mode === 'propose' && orderId) {
         const { data } = await supabase.from('order_pi_edit_drafts')
           .select('edit, reason, updated_at').eq('order_id', orderId).maybeSingle()
@@ -155,6 +205,26 @@ export function PiEditor({
   const setItem = (key: string, patch: Partial<PiEditItem>) =>
     set(s => ({ ...s, items: s.items.map(i => (i.key === key ? { ...i, ...patch } : i)) }))
 
+  // ── UNSAVED WORK IS NOT LOST TO A NAVIGATION ──
+  // Dirty = what is on screen differs from what was last saved or loaded. The
+  // browser's own prompt guards a reload or a closed tab; Back and Cancel ask
+  // first (the app's existing pattern: permissions pages, DiscardGuard).
+  const dirty = !!state && savedSnapshot !== null && JSON.stringify({ edit: state, reason }) !== savedSnapshot
+  const dirtyRef = useRef(false)
+  useEffect(() => { dirtyRef.current = dirty && busy !== 'submit' }, [dirty, busy])
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+  const confirmLeave = (e: React.MouseEvent) => {
+    if (dirtyRef.current && !window.confirm(EDIT_PI_UNSAVED_PROMPT)) e.preventDefault()
+  }
+
   const uploadPhoto = async (item: PiEditItem, file: File | undefined) => {
     if (!file) return
     setBusy('photo'); setFailure(null)
@@ -172,15 +242,18 @@ export function PiEditor({
     } finally { setBusy(null) }
   }
 
-  const saveDraft = async () => {
-    if (!state || !orderId) return
+  /** Saves the unsent edit (propose mode). Resolves true when it is safe to leave. */
+  const saveDraft = async (): Promise<boolean> => {
+    if (!state || !orderId) return false
     setBusy('save'); setFailure(null)
     const { error } = await supabase.from('order_pi_edit_drafts').upsert(
       { order_id: orderId, submission_id: submissionId, edit: state, reason: reason.trim() || null, updated_at: new Date().toISOString() },
       { onConflict: 'order_id,author_id' })
     setBusy(null)
-    if (error) { setFailure('Your changes could not be saved just now. Nothing was lost on screen — try again.'); return }
+    if (error) { setFailure('Your changes could not be saved just now. Nothing was lost on screen — try again.'); return false }
+    setSavedSnapshot(JSON.stringify({ edit: state, reason }))
     setSavedAt(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }))
+    return true
   }
 
   const submit = async () => {
@@ -193,244 +266,331 @@ export function PiEditor({
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setFailure(body.message ?? 'The PI could not be saved just now.'); setReviewing(false); return }
-      onDone(mode === 'propose'
-        ? (body.dates_amended
-          // 20270122000000: a dates-only edit is not a new PI version.
-          ? 'The dates were updated on the PI and the Order. No new PI version was needed; production alignment and the Order documents are unchanged.'
-          : `PI V${body.version_number ?? ''} sent for approval. The current PI stays in force until it is approved.`)
-        : 'The PI was saved.')
+      dirtyRef.current = false
+      // 20270122000000: a dates-only edit is not a new PI version.
+      onDone(mode === 'propose' ? (body.dates_amended ? 'dates' : 'proposed') : 'applied')
     } finally { setBusy(null) }
+  }
+
+  /** Leaves for an upload door, saving the edit first so nothing is lost. */
+  const leaveFor = async (href: string) => {
+    if (dirty && mode === 'propose') {
+      const ok = await saveDraft()
+      if (!ok) return
+    } else if (dirty && !window.confirm(EDIT_PI_UNSAVED_PROMPT)) {
+      return
+    }
+    dirtyRef.current = false
+    window.location.assign(href)
   }
 
   const reasonRequired = mode === 'propose'
   const changed = diff ? editChangesSomething(diff) : false
   const canSubmit = !!state && problems.length === 0 && changed && (!reasonRequired || reason.trim() !== '') && busy === null
 
+  // ── One-line summaries, so each section says what it holds before it is read ──
+  const live = state?.items.filter(i => !i.removed) ?? []
+  const added = state?.items.filter(i => i.id === null).length ?? 0
+  const removed = state?.items.filter(i => i.removed).length ?? 0
+  const summaries = state ? {
+    client: [state.header.client_name, state.header.client_city].map(s => s.trim()).filter(Boolean).join(' · ') || 'Client not named',
+    dates: [
+      shortDay(state.header.due_date) ? `Due ${shortDay(state.header.due_date)}` : null,
+      state.terms.fabric_responsibility ? `Fabric: ${fabricResponsibilityLabel(state.terms.fabric_responsibility)}` : null,
+    ].filter(Boolean).join(' · ') || null,
+    products: [`${live.length} line${live.length === 1 ? '' : 's'}`, added ? `${added} new` : null, removed ? `${removed} to remove` : null]
+      .filter(Boolean).join(' · '),
+    commercial: priced?.commercial.grand_total != null ? `Grand total ${formatInr(priced.commercial.grand_total)}` : null,
+  } : null
+
+  const nav = [
+    ['pi-edit-client', 'Client'],
+    ['pi-edit-terms', 'Dates & terms'],
+    ['pi-edit-products', 'Products'],
+    ['pi-edit-commercial', 'Figures'],
+    ['pi-edit-attachments', 'Attachments'],
+    ['pi-edit-review', 'Review'],
+  ] as const
+
   return (
-    <div className="boe-modal-overlay" role="dialog" aria-modal="true" aria-label={EDIT_PI_LABEL}>
-      <div className="boe-modal-sheet" style={{ maxWidth: '980px', maxHeight: '94vh' }}>
-        <div className="boe-modal-header" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>{EDIT_PI_LABEL}</div>
-            <div style={{ fontSize: '11.5px', color: colors.muted }}>
-              {mode === 'propose' ? EDIT_PI_PROPOSE_NOTE : 'Changes are saved to this draft PI.'}
-            </div>
-          </div>
-          <button type="button" className="boe-btn boe-btn-ghost" aria-label="Close" onClick={onClose} disabled={busy === 'submit'}>
-            <X size={16} />
-          </button>
+    <div className="pi-edit-page">
+      <div className="pi-edit-intro">
+        <Link href={backHref} className="pi-edit-back" onClick={confirmLeave}>
+          <ArrowLeft size={14} strokeWidth={2} aria-hidden="true" /> Back
+        </Link>
+        <div className="pi-edit-intro-text">
+          <p className="pi-edit-context">{context}</p>
+          <p className="pi-edit-note">{mode === 'propose' ? EDIT_PI_PROPOSE_NOTE : 'Changes are saved to this PI draft.'}</p>
         </div>
-
-        <div className="boe-modal-body">
-          {loadError && <div role="alert" style={{ color: colors.red, fontSize: '12.5px' }}>{loadError}</div>}
-          {!state && !loadError && <div style={{ fontSize: '12.5px', color: colors.muted }}>Opening the PI…</div>}
-
-          {state && resumable && (
-            <div style={{ border: `1px solid ${colors.blue}`, background: colors.blueTint, borderRadius: '7px', padding: '9px 11px', fontSize: '12.5px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ flex: 1 }}>You have unsent changes saved {new Date(resumable.at).toLocaleString('en-IN')}.</span>
-              <button type="button" className="boe-btn boe-btn-primary" onClick={() => { setState(resumable.edit); setReason(resumable.reason); setResumable(null) }}>Continue them</button>
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setResumable(null)}>Start from the current PI</button>
-            </div>
-          )}
-
-          {state && (
-            <>
-              <div style={H}>Client and addresses</div>
-              <div style={GRID}>
-                {PI_EDIT_HEADER_FIELDS.filter(f => !['creation_date', 'order_confirmation_date', 'due_date', 'dispatch_commitment'].includes(f.key)).map(f => (
-                  <label key={f.key} style={{ ...LABEL, gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined }}>
-                    {f.label}{'required' in f && f.required ? ' *' : ''}
-                    {f.kind === 'textarea'
-                      ? <textarea rows={2} value={state.header[f.key]} maxLength={f.max} style={FIELD}
-                          onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />
-                      : <input value={state.header[f.key]} maxLength={'max' in f ? f.max : undefined} style={FIELD}
-                          onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />}
-                  </label>
-                ))}
-              </div>
-
-              <div style={H}>Dates and commercial terms</div>
-              <div style={GRID}>
-                {PI_EDIT_HEADER_FIELDS.filter(f => ['creation_date', 'order_confirmation_date', 'due_date', 'dispatch_commitment'].includes(f.key)).map(f => (
-                  <label key={f.key} style={LABEL}>
-                    {f.label}
-                    <input type={f.kind === 'date' ? 'date' : 'text'} value={state.header[f.key]} style={FIELD}
-                      onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />
-                  </label>
-                ))}
-                <label style={LABEL}>
-                  Fabric *
-                  <select value={state.terms.fabric_responsibility} style={FIELD}
-                    onChange={e => { const v = e.target.value as PiEditState['terms']['fabric_responsibility']; set(s => ({ ...s, terms: { ...s.terms, fabric_responsibility: v } })) }}>
-                    <option value="">Choose…</option>
-                    {FABRIC_RESPONSIBILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </label>
-                <label style={LABEL}>
-                  Billing % (optional)
-                  <input inputMode="decimal" value={state.terms.billing_percentage} style={FIELD}
-                    onChange={e => { const v = e.target.value; set(s => ({ ...s, terms: { ...s.terms, billing_percentage: v } })) }} />
-                </label>
-                {PI_EDIT_TERMS_FIELDS.map(f => (
-                  <label key={f.key} style={{ ...LABEL, gridColumn: '1 / -1' }}>
-                    {f.label}
-                    <textarea rows={2} value={state.terms[f.key]} maxLength={f.max} style={FIELD}
-                      onChange={e => { const v = e.target.value; set(s => ({ ...s, terms: { ...s.terms, [f.key]: v } })) }} />
-                  </label>
-                ))}
-              </div>
-
-              <div style={H}>Products</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {state.items.map((item, n) => {
-                  const repPath = item.photo.kind === 'new' ? item.photo.storage_path
-                    : item.photo.kind === 'remove' ? null
-                    : current?.images.find(m => m.item_id === item.id && m.role === 'representative')?.storage_path ?? null
-                  const line = priced?.lines.find(l => l.item.key === item.key)
-                  return (
-                    <div key={item.key} role="group" aria-label={`Product ${n + 1}`} style={{
-                      border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px', opacity: item.removed ? 0.55 : 1,
-                      background: item.id === null ? colors.greenTint : colors.base,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <strong style={{ fontSize: '12.5px', flex: 1 }}>
-                          {item.removed ? `Product ${n + 1} — will be removed` : item.id === null ? `New product` : `Product ${n + 1}`}
-                        </strong>
-                        {line && !item.removed && <span style={{ fontSize: '12.5px', fontWeight: 700 }}>{formatInr(line.total_amount)}</span>}
-                        <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '3px 8px' }}
-                          aria-label={item.removed ? `Keep product ${n + 1}` : `Remove product ${n + 1}`}
-                          onClick={() => (item.id === null
-                            ? set(s => ({ ...s, items: s.items.filter(i => i.key !== item.key) }))
-                            : setItem(item.key, { removed: !item.removed }))}>
-                          {item.removed ? <><RotateCcw size={13} /> Keep</> : <><Trash2 size={13} /> Remove</>}
-                        </button>
-                      </div>
-                      {!item.removed && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(84px, 110px) 1fr', gap: '10px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'stretch' }}>
-                            <div style={{ width: '100%', aspectRatio: '1', borderRadius: '6px', border: `1px solid ${colors.border}`, background: colors.raised, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: colors.muted }}>
-                              {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL from a private bucket */}
-                              {repPath && photoUrls[repPath] ? <img src={photoUrls[repPath]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 'No photo'}
-                            </div>
-                            <label className="boe-btn boe-btn-ghost" style={{ padding: '3px 6px', fontSize: '11.5px', justifyContent: 'center', cursor: 'pointer' }}>
-                              <ImagePlus size={12} /> {repPath ? 'Replace' : 'Add'} photo
-                              <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} disabled={busy !== null}
-                                aria-label={`Photo for product ${n + 1}`}
-                                onChange={e => { void uploadPhoto(item, e.target.files?.[0]); e.target.value = '' }} />
-                            </label>
-                            {repPath && (
-                              <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '3px 6px', fontSize: '11.5px' }}
-                                onClick={() => setItem(item.key, { photo: { kind: 'remove' } })}>Remove photo</button>
-                            )}
-                          </div>
-                          <div style={{ ...GRID, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                            <label style={{ ...LABEL, gridColumn: '1 / -1' }}>Name *
-                              <input value={item.product_name} maxLength={300} style={FIELD} onChange={e => setItem(item.key, { product_name: e.target.value })} /></label>
-                            <label style={LABEL}>Code
-                              <input value={item.source_product_code} maxLength={100} style={FIELD} onChange={e => setItem(item.key, { source_product_code: e.target.value })} /></label>
-                            <label style={LABEL}>Quantity *
-                              <input inputMode="decimal" value={item.quantity} style={FIELD} onChange={e => setItem(item.key, { quantity: e.target.value })} /></label>
-                            <label style={LABEL}>Price per piece (₹) *
-                              <input inputMode="decimal" value={item.cost_per_piece} style={FIELD} onChange={e => setItem(item.key, { cost_per_piece: e.target.value })} /></label>
-                            <label style={LABEL}>Dimensions
-                              <input value={item.dimensions} maxLength={500} style={FIELD} onChange={e => setItem(item.key, { dimensions: e.target.value })} /></label>
-                            <label style={{ ...LABEL, gridColumn: '1 / -1' }}>Material
-                              <textarea rows={2} value={item.material} maxLength={1000} style={FIELD} onChange={e => setItem(item.key, { material: e.target.value })} /></label>
-                            <label style={{ ...LABEL, gridColumn: '1 / -1' }}>Customization / description
-                              <textarea rows={2} value={item.customization} maxLength={2000} style={FIELD} onChange={e => setItem(item.key, { customization: e.target.value })} /></label>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-                <button type="button" className="boe-btn boe-btn-ghost" style={{ alignSelf: 'flex-start' }}
-                  onClick={() => set(s => ({ ...s, items: [...s.items, newEditItem(crypto.randomUUID())] }))}>
-                  <Plus size={14} /> Add product
-                </button>
-              </div>
-
-              <div style={H}>Commercial figures</div>
-              <div style={GRID}>
-                {([['discount_amount', 'Discount (₹)'], ['fabric_cost', 'Fabric cost (₹)'], ['packing_cost', 'Packing cost (₹)'],
-                   ['transportation_amount', 'Transportation (₹)'], ['gst_percent', 'GST %']] as const).map(([key, label]) => (
-                  <label key={key} style={LABEL}>{label}
-                    <input inputMode="decimal" value={state.commercial[key]} style={FIELD}
-                      placeholder={key !== 'gst_percent' && key !== 'discount_amount' ? 'Blank keeps what the PI states' : undefined}
-                      onChange={e => { const v = e.target.value; set(s => ({ ...s, commercial: { ...s.commercial, [key]: v } })) }} />
-                  </label>
-                ))}
-              </div>
-              {priced && (
-                <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px 12px', background: colors.raised, fontSize: '12.5px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px' }}>
-                  {editProductFigures(priced.commercial).map(figure => (
-                    <span key={figure.key}>{figure.label} <strong>{figure.amount === null ? 'Not stated' : formatInr(figure.amount)}</strong></span>
-                  ))}
-                  <span>Total before GST <strong>{priced.commercial.total_before_gst === null ? 'Not stated' : formatInr(priced.commercial.total_before_gst)}</strong></span>
-                  <span>GST <strong>{priced.commercial.gst_amount === null ? 'Not stated' : formatInr(priced.commercial.gst_amount)}</strong></span>
-                  <span>Grand total <strong>{priced.commercial.grand_total === null ? 'Not stated' : formatInr(priced.commercial.grand_total)}</strong></span>
-                  <span style={{ gridColumn: '1 / -1', color: colors.muted, fontSize: '11.5px' }}>
-                    {priced.moneyChanged
-                      ? 'Re-priced: line total = quantity × price; GST on the total before GST. The server prices it again when you save.'
-                      : 'No quantity, price or cost changed, so every figure is exactly as the approved PI states it.'}
-                  </span>
-                </div>
-              )}
-
-              <div style={H}>Client PO and Design Files</div>
-              <div style={{ fontSize: '12px', color: colors.secondary }}>
-                {mode === 'propose'
-                  ? 'Managed under Documents on this Order (Update documents), where each change is reviewed by an Admin and accepted by Operations.'
-                  : 'Attach them in the Client PO and Design Files section of this PI; they are sent with it for approval.'}
-              </div>
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>{EDIT_PI_WORKBOOK_NOTE}</div>
-
-              <label style={LABEL}>
-                {reasonRequired ? 'Why is the PI being revised? *' : 'Reason (needed only once the PI is under review)'}
-                <textarea rows={2} maxLength={500} value={reason} style={FIELD} onChange={e => setReason(e.target.value)} />
-              </label>
-
-              {problems.length > 0 && (
-                <ul role="alert" style={{ margin: 0, paddingLeft: '18px', color: colors.red, fontSize: '12px' }}>
-                  {problems.slice(0, 6).map(p => <li key={p.message}>{p.message}</li>)}
-                </ul>
-              )}
-
-              {reviewing && diff && (
-                <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '12.5px', marginBottom: '6px' }}>What will change</div>
-                  <PiDiffView diff={diff} />
-                </div>
-              )}
-              {failure && <div role="alert" style={{ color: colors.red, fontSize: '12.5px' }}>{failure}</div>}
-            </>
-          )}
-        </div>
-
-        {state && (
-          <div style={{ position: 'sticky', bottom: 0, background: colors.base, borderTop: `1px solid ${colors.border}`, padding: '10px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ flex: 1, fontSize: '11.5px', color: colors.muted }}>
-              {diff ? summarizeChanges(diff, n => formatInr(n)).join(' · ') : ''}
-              {savedAt ? ` · Saved ${savedAt}` : ''}
-            </span>
-            <button type="button" className="boe-btn boe-btn-ghost" onClick={onClose} disabled={busy === 'submit'}>Cancel</button>
-            {mode === 'propose' && (
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => void saveDraft()} disabled={busy !== null}>
-                {busy === 'save' ? 'Saving…' : 'Save and continue later'}
-              </button>
-            )}
-            {!reviewing ? (
-              <button type="button" className="boe-btn boe-btn-primary" disabled={!canSubmit} onClick={() => setReviewing(true)}>
-                Review changes
-              </button>
-            ) : (
-              <button type="button" className="boe-btn boe-btn-primary" disabled={!canSubmit} onClick={() => void submit()}>
-                {busy === 'submit' ? 'Sending…' : mode === 'propose' ? 'Submit for approval' : 'Save PI'}
-              </button>
-            )}
-          </div>
-        )}
       </div>
+
+      {state && (
+        <nav className="pi-edit-nav" aria-label="Sections">
+          {nav.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>)}
+        </nav>
+      )}
+
+      {loadError && <div role="alert" className="pi-edit-alert">{loadError}</div>}
+      {!state && !loadError && <div className="pi-edit-loading" role="status">Opening the PI…</div>}
+
+      {state && resumable && (
+        <div className="pi-edit-resume" role="status">
+          <span>You have unsent changes saved {new Date(resumable.at).toLocaleString('en-IN')}.</span>
+          <button type="button" className="boe-btn boe-btn-primary" onClick={() => {
+            setState(resumable.edit); setReason(resumable.reason); setResumable(null)
+            setSavedSnapshot(JSON.stringify({ edit: resumable.edit, reason: resumable.reason }))
+          }}>Continue them</button>
+          <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setResumable(null)}>Start from the current PI</button>
+        </div>
+      )}
+
+      {state && summaries && (
+        <>
+          <Section id="pi-edit-client" title="Client and addresses" summary={summaries.client}>
+            <div className="pi-edit-grid">
+              {PI_EDIT_HEADER_FIELDS.filter(f => !DATE_KEYS.includes(f.key)).map(f => (
+                <label key={f.key} className={f.kind === 'textarea' ? 'pi-edit-field pi-edit-field--wide' : 'pi-edit-field'}>
+                  <span>{f.label}{'required' in f && f.required ? ' *' : ''}</span>
+                  {f.kind === 'textarea'
+                    ? <textarea rows={2} value={state.header[f.key]} maxLength={f.max} className="boe-input"
+                        onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />
+                    : <input value={state.header[f.key]} maxLength={'max' in f ? f.max : undefined} className="boe-input"
+                        onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />}
+                </label>
+              ))}
+            </div>
+          </Section>
+
+          <Section id="pi-edit-terms" title="Dates and commercial terms" summary={summaries.dates}>
+            <div className="pi-edit-grid">
+              {PI_EDIT_HEADER_FIELDS.filter(f => DATE_KEYS.includes(f.key)).map(f => (
+                <label key={f.key} className="pi-edit-field">
+                  <span>{f.label}</span>
+                  <input type={f.kind === 'date' ? 'date' : 'text'} value={state.header[f.key]} className="boe-input"
+                    onChange={e => { const v = e.target.value; set(s => ({ ...s, header: { ...s.header, [f.key]: v } })) }} />
+                </label>
+              ))}
+              <label className="pi-edit-field">
+                <span>Fabric *</span>
+                <select value={state.terms.fabric_responsibility} className="boe-input"
+                  onChange={e => { const v = e.target.value as PiEditState['terms']['fabric_responsibility']; set(s => ({ ...s, terms: { ...s.terms, fabric_responsibility: v } })) }}>
+                  <option value="">Choose…</option>
+                  {FABRIC_RESPONSIBILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="pi-edit-field">
+                <span>Billing % (optional)</span>
+                <input inputMode="decimal" value={state.terms.billing_percentage} className="boe-input"
+                  onChange={e => { const v = e.target.value; set(s => ({ ...s, terms: { ...s.terms, billing_percentage: v } })) }} />
+              </label>
+              {PI_EDIT_TERMS_FIELDS.map(f => (
+                <label key={f.key} className="pi-edit-field pi-edit-field--wide">
+                  <span>{f.label}</span>
+                  <textarea rows={2} value={state.terms[f.key]} maxLength={f.max} className="boe-input"
+                    onChange={e => { const v = e.target.value; set(s => ({ ...s, terms: { ...s.terms, [f.key]: v } })) }} />
+                </label>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            id="pi-edit-products"
+            title="Products and customization"
+            summary={summaries.products}
+            aside={
+              <button type="button" className="boe-btn boe-btn-ghost pi-edit-add"
+                onClick={() => set(s => ({ ...s, items: [...s.items, newEditItem(crypto.randomUUID())] }))}>
+                <Plus size={14} aria-hidden="true" /> Add product
+              </button>
+            }
+          >
+            <ol className="pi-edit-products">
+              {state.items.map((item, n) => {
+                const repPath = item.photo.kind === 'new' ? item.photo.storage_path
+                  : item.photo.kind === 'remove' ? null
+                  : current?.images.find(m => m.item_id === item.id && m.role === 'representative')?.storage_path ?? null
+                const line = priced?.lines.find(l => l.item.key === item.key)
+                const label = item.removed ? `Product ${n + 1} — will be removed`
+                  : item.id === null ? 'New product'
+                  : [item.item_sequence, item.product_name].map(s => (s ?? '').trim()).filter(Boolean).join(' · ') || `Product ${n + 1}`
+                return (
+                  <li key={item.key} aria-label={`Product ${n + 1}`}
+                      className={item.removed ? 'pi-edit-product pi-edit-product--removed' : item.id === null ? 'pi-edit-product pi-edit-product--new' : 'pi-edit-product'}>
+                    <div className="pi-edit-product-head">
+                      <strong className="pi-edit-product-title">{label}</strong>
+                      {line && !item.removed && <span className="pi-edit-product-total">{formatInr(line.total_amount)}</span>}
+                      <button type="button" className="boe-btn boe-btn-ghost pi-edit-product-toggle"
+                        aria-label={item.removed ? `Keep product ${n + 1}` : `Remove product ${n + 1}`}
+                        onClick={() => (item.id === null
+                          ? set(s => ({ ...s, items: s.items.filter(i => i.key !== item.key) }))
+                          : setItem(item.key, { removed: !item.removed }))}>
+                        {item.removed ? <><RotateCcw size={13} aria-hidden="true" /> Keep</> : <><Trash2 size={13} aria-hidden="true" /> Remove</>}
+                      </button>
+                    </div>
+                    {!item.removed && (
+                      <div className="pi-edit-product-body">
+                        <div className="pi-edit-photo">
+                          <div className="pi-edit-photo-frame">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL from a private bucket */}
+                            {repPath && photoUrls[repPath] ? <img src={photoUrls[repPath]} alt="" /> : <span>No photo</span>}
+                          </div>
+                          <label className="boe-btn boe-btn-ghost pi-edit-photo-btn">
+                            <ImagePlus size={12} aria-hidden="true" /> {repPath ? 'Replace' : 'Add'} photo
+                            <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={busy !== null}
+                              aria-label={`Photo for product ${n + 1}`}
+                              onChange={e => { void uploadPhoto(item, e.target.files?.[0]); e.target.value = '' }} />
+                          </label>
+                          {repPath && (
+                            <button type="button" className="boe-btn boe-btn-ghost pi-edit-photo-btn"
+                              onClick={() => setItem(item.key, { photo: { kind: 'remove' } })}>Remove photo</button>
+                          )}
+                        </div>
+                        <div className="pi-edit-grid pi-edit-grid--product">
+                          <label className="pi-edit-field pi-edit-field--wide"><span>Name *</span>
+                            <input value={item.product_name} maxLength={300} className="boe-input" onChange={e => setItem(item.key, { product_name: e.target.value })} /></label>
+                          <label className="pi-edit-field"><span>Code</span>
+                            <input value={item.source_product_code} maxLength={100} className="boe-input" onChange={e => setItem(item.key, { source_product_code: e.target.value })} /></label>
+                          <label className="pi-edit-field"><span>Quantity *</span>
+                            <input inputMode="decimal" value={item.quantity} className="boe-input" onChange={e => setItem(item.key, { quantity: e.target.value })} /></label>
+                          <label className="pi-edit-field"><span>Price per piece (₹) *</span>
+                            <input inputMode="decimal" value={item.cost_per_piece} className="boe-input" onChange={e => setItem(item.key, { cost_per_piece: e.target.value })} /></label>
+                          <label className="pi-edit-field"><span>Dimensions</span>
+                            <input value={item.dimensions} maxLength={500} className="boe-input" onChange={e => setItem(item.key, { dimensions: e.target.value })} /></label>
+                          <label className="pi-edit-field pi-edit-field--wide"><span>Material</span>
+                            <textarea rows={2} value={item.material} maxLength={1000} className="boe-input" onChange={e => setItem(item.key, { material: e.target.value })} /></label>
+                          <label className="pi-edit-field pi-edit-field--wide"><span>Customization / description</span>
+                            <textarea rows={2} value={item.customization} maxLength={2000} className="boe-input" onChange={e => setItem(item.key, { customization: e.target.value })} /></label>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+            <p className="pi-edit-hint">A new product gets the next free item number when the PI is saved; numbers already used on this Order are never reused.</p>
+          </Section>
+
+          <Section id="pi-edit-commercial" title="Commercial figures" summary={summaries.commercial}>
+            <div className="pi-edit-grid">
+              {([['discount_amount', 'Discount (₹)'], ['fabric_cost', 'Fabric cost (₹)'], ['packing_cost', 'Packing cost (₹)'],
+                 ['transportation_amount', 'Transportation (₹)'], ['gst_percent', 'GST %']] as const).map(([key, label]) => (
+                <label key={key} className="pi-edit-field">
+                  <span>{label}</span>
+                  <input inputMode="decimal" value={state.commercial[key]} className="boe-input"
+                    placeholder={key !== 'gst_percent' && key !== 'discount_amount' ? 'Blank keeps what the PI states' : undefined}
+                    onChange={e => { const v = e.target.value; set(s => ({ ...s, commercial: { ...s.commercial, [key]: v } })) }} />
+                </label>
+              ))}
+            </div>
+            {priced && (
+              <dl className="pi-edit-figures">
+                {editProductFigures(priced.commercial).map(figure => (
+                  <div key={figure.key}><dt>{figure.label}</dt><dd>{figure.amount === null ? 'Not stated' : formatInr(figure.amount)}</dd></div>
+                ))}
+                <div><dt>Total before GST</dt><dd>{priced.commercial.total_before_gst === null ? 'Not stated' : formatInr(priced.commercial.total_before_gst)}</dd></div>
+                <div><dt>GST</dt><dd>{priced.commercial.gst_amount === null ? 'Not stated' : formatInr(priced.commercial.gst_amount)}</dd></div>
+                <div className="pi-edit-figures-total"><dt>Grand total</dt><dd>{priced.commercial.grand_total === null ? 'Not stated' : formatInr(priced.commercial.grand_total)}</dd></div>
+              </dl>
+            )}
+            {priced && (
+              <p className="pi-edit-hint">
+                {priced.moneyChanged
+                  ? 'Re-priced: line total = quantity × price; GST on the total before GST. The server prices it again when you save.'
+                  : 'No quantity, price or cost changed, so every figure is exactly as the approved PI states it.'}
+              </p>
+            )}
+          </Section>
+
+          <Section id="pi-edit-attachments" title="Attachments" summary="Design Files, Client PO and the PI workbook">
+            <div className="pi-edit-attach">
+              <div className="pi-edit-attach-item">
+                <Paperclip size={15} aria-hidden="true" />
+                <div className="pi-edit-attach-text">
+                  <p className="pi-edit-attach-title">Design Files and Client PO</p>
+                  <p className="pi-edit-attach-line">Design Files: {attachments.designFiles}</p>
+                  <p className="pi-edit-attach-line">Client PO: {attachments.clientPo}</p>
+                  <p className="pi-edit-hint">
+                    {mode === 'propose'
+                      ? 'New or replacement files are reviewed by an Admin and then accepted by Operations. Product pictures stay with each product above.'
+                      : 'Attached to this PI draft and sent with it for approval. Product pictures stay with each product above.'}
+                  </p>
+                </div>
+                {attachments.uploadDocumentsHref && (
+                  <button type="button" className="boe-btn boe-btn-ghost" disabled={busy !== null}
+                    onClick={() => void leaveFor(attachments.uploadDocumentsHref as string)}>
+                    Upload files
+                  </button>
+                )}
+              </div>
+              {attachments.uploadWorkbookHref && (
+                <div className="pi-edit-attach-item">
+                  <FileSpreadsheet size={15} aria-hidden="true" />
+                  <div className="pi-edit-attach-text">
+                    <p className="pi-edit-attach-title">Replace with a revised PI workbook</p>
+                    <p className="pi-edit-hint">
+                      Use this instead of editing here when Sales has a corrected .xlsx. It becomes a proposed version: the
+                      current PI stays in force until an Admin approves it, and the original workbook of every version is kept.
+                    </p>
+                  </div>
+                  <button type="button" className="boe-btn boe-btn-ghost" disabled={busy !== null}
+                    onClick={() => void leaveFor(attachments.uploadWorkbookHref as string)}>
+                    Upload revised workbook
+                  </button>
+                </div>
+              )}
+              {attachments.note && <p className="pi-edit-hint">{attachments.note}</p>}
+              {mode === 'propose' && <p className="pi-edit-hint">{EDIT_PI_WORKBOOK_NOTE}</p>}
+            </div>
+          </Section>
+
+          <Section id="pi-edit-review" title="Review changes"
+            summary={diff && changed ? summarizeChanges(diff, v => formatInr(v)).join(' · ') : 'No changes yet'}>
+            <label className="pi-edit-field pi-edit-field--wide">
+              <span>{reasonRequired ? 'Why is the PI being revised? *' : 'Reason (needed only once the PI is under review)'}</span>
+              <textarea rows={2} maxLength={500} value={reason} className="boe-input" onChange={e => setReason(e.target.value)} />
+            </label>
+            {problems.length > 0 && (
+              <ul role="alert" className="pi-edit-problems">
+                {problems.slice(0, 6).map(p => <li key={p.message}>{p.message}</li>)}
+              </ul>
+            )}
+            {diff && changed && (
+              <div className="pi-edit-diff">
+                <PiDiffView diff={diff} />
+              </div>
+            )}
+          </Section>
+        </>
+      )}
+
+      {state && (
+        <div className="pi-edit-bar" role="region" aria-label="Save">
+          <span className="pi-edit-bar-status" role="status">
+            {failure
+              ? <span className="pi-edit-bar-failure">{failure}</span>
+              : busy === 'photo' ? 'Uploading photo…'
+              : dirty ? 'Unsaved changes'
+              : savedAt ? `Saved ${savedAt}`
+              : changed ? 'Changes ready to review' : 'No changes'}
+          </span>
+          <Link href={backHref} className="boe-btn boe-btn-ghost" onClick={confirmLeave} aria-disabled={busy === 'submit'}>Cancel</Link>
+          {mode === 'propose' && (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => void saveDraft()} disabled={busy !== null || !dirty}>
+              {busy === 'save' ? 'Saving…' : 'Save and continue later'}
+            </button>
+          )}
+          {!reviewing ? (
+            <button type="button" className="boe-btn boe-btn-primary" disabled={!canSubmit}
+              onClick={() => { setReviewing(true); document.getElementById('pi-edit-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}>
+              Review changes
+            </button>
+          ) : (
+            <button type="button" className="boe-btn boe-btn-primary" disabled={!canSubmit} onClick={() => void submit()}>
+              {busy === 'submit' ? 'Sending…' : mode === 'propose' ? 'Submit for approval' : 'Save PI'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
