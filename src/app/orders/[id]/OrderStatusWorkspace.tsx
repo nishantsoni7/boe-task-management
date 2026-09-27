@@ -16,8 +16,9 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Layers, Pencil, Upload, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { MultilineText } from '@/components/ui/MultilineText'
 import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
@@ -62,8 +63,10 @@ import {
   DOC_PI_PICTURES_LABEL,
   DOC_VIEW_PI_LABEL,
   DOCUMENTS_HISTORY_LABEL,
+  DOCUMENTS_HISTORY_PI_FILES_TITLE,
   DOCUMENTS_HISTORY_TITLE,
   DOC_NOT_ATTACHED,
+  PI_VERSIONS_HISTORY_LABEL,
   type ClientPoDocument,
   type DesignFilesDocument,
 } from '@/lib/orders/orderDocumentsPanel'
@@ -231,7 +234,7 @@ export function OrderDocumentsPanel({
   mainPiOperations, mainPiMenu, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf,
+  onOpenPdf, piVersions,
 }: {
   mainPi: MainPiCard
   /** The approved PI's own product pictures (read-only; opened in a dialog). */
@@ -284,8 +287,44 @@ export function OrderDocumentsPanel({
    * offers only the uploaded workbook.
    */
   onOpenPdf?: (versionId: string, download: boolean) => void
+  /**
+   * THE PI'S VERSIONS AND EDIT PI (20270115000000), on the Main PI row: a
+   * "PI history" link that opens the versions popup, and — for somebody the
+   * page resolved as allowed to propose — Edit PI. Absent: neither is drawn
+   * (an Order with no source PI, or one still loading).
+   */
+  piVersions?: {
+    count: number
+    onOpen: () => void
+    edit: { onEdit: () => void; blockedNote: string | null } | null
+    notice: string | null
+  }
 }) {
   const open = (f: PersistedDocumentFile) => onOpenFile?.(f)
+  const piHistoryLink = piVersions ? (
+    <button type="button" className="order-docs-link order-doc-pi-history" onClick={piVersions.onOpen} aria-haspopup="dialog">
+      <Layers size={13} strokeWidth={2} aria-hidden="true" />
+      {PI_VERSIONS_HISTORY_LABEL}{piVersions.count > 0 ? ` (${piVersions.count})` : ''}
+    </button>
+  ) : null
+  const editPiButton = piVersions?.edit ? (
+    <button
+      type="button"
+      className="boe-btn boe-btn-ghost order-doc-action"
+      onClick={piVersions.edit.onEdit}
+      disabled={!!piVersions.edit.blockedNote}
+      title={piVersions.edit.blockedNote ?? undefined}
+    >
+      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
+      {EDIT_PI_LABEL}
+    </button>
+  ) : null
+  const piVersionNotes = piVersions ? (
+    <>
+      {piVersions.edit?.blockedNote && <p className="order-doc-note">{piVersions.edit.blockedNote}</p>}
+      {piVersions.notice && <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>}
+    </>
+  ) : null
   const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
     ? { proposal: mainPi.proposal, stage: revisionStage(mainPi.proposal, revisionApproverInactive) }
     : null
@@ -352,7 +391,7 @@ export function OrderDocumentsPanel({
                     </p>
                     {p.editedInApp && (
                       <p className="order-doc-change-line order-doc-change-muted">
-                        Edited in the app — compare it with the current PI under PI versions.
+                        Edited in the app — compare it with the current PI in PI history.
                       </p>
                     )}
                     {onOpenProposal && p.workbookPath && (
@@ -444,18 +483,22 @@ export function OrderDocumentsPanel({
         </div>
       )}
 
-      {/* ── WHAT IS CURRENT ── */}
+      {/* ── WHAT IS CURRENT ──
+          Main PI on the left (about 60%), Design Files above Client PO on the
+          right, once the card is wide enough; stacked in that order below it. */}
       <div className="order-docs-rows">
+        <div className="order-docs-main">
         {mainPi.kind !== 'ready' ? (
-          <DocRow title={DOC_MAIN_PI_TITLE}>
+          <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink} actions={editPiButton}>
             <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
             <p className="order-doc-note">{mainPi.message}</p>
+            {piVersionNotes}
           </DocRow>
         ) : (
           <DocRow
             title={`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}
             primary
-            status={piStatus}
+            status={<>{piStatus}{piHistoryLink}</>}
             meta={<DocMeta items={[
               { label: MAIN_PI_UPLOADED_LABEL, value: mainPi.uploadedAt },
               // Absent rather than guessed: see MainPiCard.approvedAt.
@@ -480,15 +523,18 @@ export function OrderDocumentsPanel({
                   /* EDITED IN THE APP (20270115000000): this version has no
                      workbook of its own, and the original upload is V1's file,
                      never this one's. Its details are the PI; show them there. */
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
-                    onClick={() => document.querySelector('section[aria-label="PI versions"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    title={PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}
-                  >
-                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                    View in PI versions
-                  </button>
+                  piVersions && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
+                      onClick={piVersions.onOpen}
+                      aria-haspopup="dialog"
+                      title={PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}
+                    >
+                      <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                      View in PI history
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"
@@ -501,6 +547,7 @@ export function OrderDocumentsPanel({
                     {viewing ? 'Opening…' : DOC_VIEW_PI_LABEL}
                   </button>
                 )}
+                {editPiButton}
                 {mainPiMenu ?? (
                   <button
                     type="button"
@@ -519,8 +566,12 @@ export function OrderDocumentsPanel({
           >
             {mainPi.fileName && <p className="order-doc-note order-doc-row-file">{mainPi.fileName}</p>}
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
+            {piVersionNotes}
           </DocRow>
         )}
+        </div>
+
+        <div className="order-docs-side">
 
         {/* ── Design Files: the Order's accepted files, then the PI's own
             product pictures as a quiet secondary link. ── */}
@@ -577,8 +628,9 @@ export function OrderDocumentsPanel({
             )}
           </DocRow>
         )}
+        </div>
       </div>
-      {fileError && <p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
+      {fileError &&<p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
     </section>
   )
 }
@@ -1024,7 +1076,7 @@ export function PiHistoryModal({
 }) {
   return (
     <Modal title={supporting ? DOCUMENTS_HISTORY_TITLE : PI_HISTORY_MODAL_TITLE} onClose={onClose} wide>
-      {supporting && <h3 className="order-history-section-title">PI versions</h3>}
+      {supporting && <h3 className="order-history-section-title">{DOCUMENTS_HISTORY_PI_FILES_TITLE}</h3>}
       {canPropose && (
         <div className="order-history-toolbar">
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onPropose}>

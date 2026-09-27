@@ -94,10 +94,10 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
-import { PiDiscountWordingNotice, PiInternalDetailsCard, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
+import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from '@/components/orders/PiInternalDetails'
 import {
   PI_COMMISSION_COLUMNS,
-  describeMiddleman, formatIsoDay, internalDetailsSubmitBlock, withCommission,
+  describeMiddleman, formatIsoDay, internalDetailsSubmitBlock, withCommission, workbookDateNotes,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -2233,18 +2233,22 @@ function PiDraftDetailPageInner() {
           workbookName={workbookName}
           dates={summaryDates}
           figures={summaryFigures}
+          /* THE INTERNAL DETAILS (20270122000000). The dates above ARE the
+             confirmed app dates (order_confirmation_date, due_date), so only
+             the workbook disagreement and the middleman answer are added.
+             Read by the reviewer here; never printed on a client document. */
+          dateNotes={workbookDateNotes(submission)}
+          internal={
+            <PiCommissionSummary
+              row={submission}
+              canEdit={canEditInternalDetails}
+              onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
+            />
+          }
         />
 
-        {/* ── 2b. The deduction row's wording, where it would mislead a client,
-            and the INTERNAL details (20270122000000): the dates Sales confirms
-            and the middleman answer. Read by the reviewer here; never printed
-            on a client document. */}
+        {/* ── 2b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
-        <PiInternalDetailsCard
-          row={submission}
-          canEdit={canEditInternalDetails}
-          onEdit={() => { setInternalFailure(null); setInternalOpen(true) }}
-        />
 
         {/* ── 2a + 3. Payment status beside Management review ──
             One row on a wide column — payment ~70%, the review decisions ~30% —

@@ -324,9 +324,11 @@ const CONTEXT_DOT: Record<PiDetailTone, string> = {
  * now the context row's second cell, beside the status badge. Not one column is
  * read differently; they are said where they are true.
  *
- * RIGHT — three figures and nothing else: Product value, Total before GST, and
- * the billing declaration as a clear state. They fill their column; there is no
- * payment here, because payment has its own card below.
+ * RIGHT — three figures: Product value, Total before GST, and the billing
+ * declaration as a clear state. They fill their column; there is no payment
+ * here, because payment has its own card below. Under them, when the page
+ * passes it, the INTERNAL middleman answer (PiCommissionSummary) — the one
+ * internal detail the date band does not already print.
  *
  * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
  * own strings; billing is buildBillingSummary's. Every edit control is drawn from
@@ -336,6 +338,7 @@ export function PiSummaryCard({
   client, onOpenClient, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
   canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
+  dateNotes = [], internal = null,
 }: {
   client: ClientDetails
   /** Opens the client dialog. The card states who the client is; the dialog
@@ -363,6 +366,10 @@ export function PiSummaryCard({
   onRequestCorrection: (() => void) | null
   /** What this PI still needs before it can take a payment, or null. */
   missingSummary: string | null
+  /** Where the app's dates and the uploaded workbook's disagree, said under the dates. */
+  dateNotes?: readonly string[]
+  /** The internal middleman answer, drawn under the three figures. BOE-only. */
+  internal?: React.ReactNode
 }) {
   // SELECTION, NOT RESOLUTION: buildClientDetails already decided which stored
   // number is the client's and whether it can be dialled.
@@ -485,6 +492,9 @@ export function PiSummaryCard({
                 </div>
               ))}
             </div>
+            {dateNotes.map(note => (
+              <p key={note} className="pi-detail-dates-workbook">{note}</p>
+            ))}
             {canEditDetails && (
               <button
                 type="button"
@@ -547,6 +557,7 @@ export function PiSummaryCard({
               )}
             </div>
           </div>
+          {internal}
         </div>
       </div>
     </PiCard>

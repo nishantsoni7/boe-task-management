@@ -568,6 +568,8 @@ const summaryHtml = (over: {
   onRequestCorrection?: (() => void) | null
   missingSummary?: string | null
   workbookName?: string | null
+  dateNotes?: readonly string[]
+  internal?: React.ReactNode
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
     canEditDetails={over.canEditDetails ?? false}
@@ -592,6 +594,8 @@ const summaryHtml = (over: {
     billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
     canEditBilling={over.canEditBilling ?? false}
     onEditBilling={() => {}}
+    dateNotes={over.dateNotes}
+    internal={over.internal}
   />,
 )
 
@@ -725,6 +729,22 @@ describe('the overview repeats two commercial figures, and only two', () => {
     const html = summaryHtml()
     const grid = html.slice(html.indexOf('class="pi-detail-figures-grid"'))
     assert.equal((grid.match(/class="pi-detail-figure"/g) ?? []).length, 3)
+  })
+
+  test('the internal middleman answer sits UNDER the three figures, never as a fourth cell', () => {
+    const html = summaryHtml({ internal: <section className="pi-detail-internal">Middleman commission</section> })
+    const figures = html.slice(html.indexOf('class="pi-detail-figures"'))
+    assert.ok(figures.indexOf('pi-detail-figures-grid') < figures.indexOf('pi-detail-internal'))
+    assert.equal((figures.match(/class="pi-detail-figure"/g) ?? []).length, 3)
+    assert.equal(summaryHtml().includes('pi-detail-internal'), false, 'nothing is drawn when the page passes nothing')
+  })
+
+  test('a workbook date the app disagrees with is said under the date band', () => {
+    const note = 'The workbook’s due date is 20 Nov 2026; the app says 22 Nov 2026.'
+    const html = summaryHtml({ dateNotes: [note] })
+    const band = html.slice(html.indexOf('class="pi-detail-dates"'), html.indexOf('class="pi-detail-figures"'))
+    assert.ok(band.includes('class="pi-detail-dates-workbook"') && text(band).includes(note))
+    assert.equal(summaryHtml().includes('pi-detail-dates-workbook'), false)
   })
 })
 

@@ -235,7 +235,7 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // One payment, its allocations and every gate belong to
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
-import { PiVersionsPanel } from '@/components/orders/PiVersionsPanel'
+import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, isOpenRevision } from '@/components/orders/PiVersionsPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -854,6 +854,11 @@ export default function OrderDetailPage() {
   const [revOpsError, setRevOpsError] = useState<string | null>(null)
   const [revisionError, setRevisionError] = useState<string | null>(null)
   const [historyOpen,   setHistoryOpen]   = useState(false)
+  // The PI history popup and the Edit PI editor (PiVersionHistory), and the
+  // last thing either did — said on the Main PI row and in the popup.
+  const [piVersionsOpen, setPiVersionsOpen] = useState(false)
+  const [piEditing,      setPiEditing]      = useState(false)
+  const [piNotice,       setPiNotice]       = useState<string | null>(null)
   const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
   const [approvalOpen,  setApprovalOpen]  = useState(false)
   const [approvalBusy,  setApprovalBusy]  = useState(false)
@@ -2336,6 +2341,17 @@ export default function OrderDetailPage() {
   const piTimeline = piVersionTimeline(piHistory)
 
   /**
+   * PI HISTORY AND EDIT PI (20270115000000) — the rule the standalone PI
+   * versions strip used, unchanged: offered once the PI's own read is in, Edit
+   * PI to the PI's owner holding orders.create or an admin, never under View
+   * As and never on a cancelled Order. The database re-checks every write.
+   */
+  const piVersionsSource = handoffReady ? (order.source_order_submission_id ?? null) : null
+  const mayEditPi = !viewAsUserId && order.status !== 'cancelled'
+    && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))
+  const piRevisionOpen = piVersions.some(v => isOpenRevision(v.status))
+
+  /**
    * WHAT THE ADVANCE COMES TO, and whether it reads Risky or Safe.
    *
    * `finance` is buildOrderFinancePosition's, unchanged, and its
@@ -2860,7 +2876,7 @@ export default function OrderDetailPage() {
             viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
             mainPiMenu={mainPi.kind === 'ready' ? (
-              <MoreActionsMenu<'pdf' | 'download' | 'history'>
+              <MoreActionsMenu<'pdf' | 'download'>
                 ariaLabel="More PI actions"
                 triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
                 items={[
@@ -2870,16 +2886,25 @@ export default function OrderDetailPage() {
                     label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
                     disabled: !mainPi.hasFile || piFileBusy !== null,
                   },
-                  { key: 'history', label: 'PI history' },
                 ]}
                 onSelect={key => {
                   if (key === 'pdf') { openVersionPdf(mainPi.version.id, true); return }
-                  if (key === 'download') { void openVersionFile(mainPi.version, 'download'); return }
-                  setRevisionError(null)
-                  setHistoryOpen(true)
+                  void openVersionFile(mainPi.version, 'download')
                 }}
               />
             ) : undefined}
+            /* PI HISTORY AND EDIT PI (20270115000000), on the Main PI row. The
+               versions popup and the editor are PiVersionHistory's, below;
+               the same gate the standalone PI versions strip used. */
+            piVersions={piVersionsSource ? {
+              count: piVersions.length,
+              onOpen: () => setPiVersionsOpen(true),
+              edit: mayEditPi ? {
+                onEdit: () => { setPiNotice(null); setPiEditing(true) },
+                blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null,
+              } : null,
+              notice: piNotice,
+            } : undefined}
             updateMenu={docUpdateItems.length > 0 ? (
               <MoreActionsMenu<DocUpdateKey>
                 label={UPDATE_DOCUMENTS_LABEL}
@@ -2911,18 +2936,26 @@ export default function OrderDetailPage() {
           />
         </OrderDocumentsRow>
 
-        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270115000000) ══
-            V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
-            An edit becomes a pending version; an Admin's approval puts it in
-            force and amends the Order (20270116000000). */}
-        {order.source_order_submission_id && handoffReady && (
-          <PiVersionsPanel
+        {/* ══ 3b. PI HISTORY AND EDIT PI (20270115000000) ══
+            No longer a standalone strip: the Main PI row above opens the
+            versions popup and the editor, which live here. An edit becomes a
+            pending version; an Admin's approval puts it in force and amends
+            the Order (20270116000000). */}
+        {piVersionsSource && (
+          <PiVersionHistory
             supabase={supabase}
             orderId={order.id}
-            submissionId={order.source_order_submission_id}
-            mayEdit={!viewAsUserId && order.status !== 'cancelled'
-              && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
+            submissionId={piVersionsSource}
+            mayEdit={mayEditPi}
             isAdmin={mayDecidePiAsAdmin}
+            hasOpenRevision={piRevisionOpen}
+            open={piVersionsOpen}
+            onClose={() => setPiVersionsOpen(false)}
+            editing={piEditing}
+            onEdit={() => { setPiNotice(null); setPiVersionsOpen(false); setPiEditing(true) }}
+            onEditClose={() => setPiEditing(false)}
+            notice={piNotice}
+            onNotice={setPiNotice}
             onChanged={() => { void loadOrder() }}
             refreshKey={piVersions.map(v => `${v.id}:${v.status}`).join(',')}
           />
