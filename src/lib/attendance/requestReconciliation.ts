@@ -7,17 +7,17 @@
 // attendance event of the month in one place: actual late arrivals and
 // minutes late, whether the employee informed on time, early departures, time
 // out, half days and leave, missing punches, absences, and what the reviewer
-// has decided about each.
+// has decided about each — and whether the payroll DRAFT agrees.
 //
 // WHAT THIS IS NOT
 // ----------------
 // A calculation. Nothing here produces a rupee figure. The payroll engine
-// (src/lib/payroll/engine.ts) remains the only thing that turns attendance into
+// (src/lib/payroll/engine.ts) is the only thing that turns attendance into
 // money, and the only path that changes what it charges for a day is the
-// existing attendance correction (waivers / day treatment). This module reads
-// what the stored DRAFT already charges (payroll_deduction_lines) and says
-// whether that agrees with the reviewer's decision. Because it never charges
-// anything itself, it cannot deduct the same minutes twice.
+// attendance correction (src/lib/payroll/attendanceCorrectionService.ts).
+// `planReviewApplication` below turns a reviewed decision into the correction
+// that path should apply; the reviewer's decision is RESOLVED only once the
+// stored draft actually matches it — never because a decision row was saved.
 //
 // The monthly late-arrival flag (the fourth and later uninformed, unexcused
 // late arrival) is a REVIEW FLAG ONLY. It does not deduct anything.
@@ -25,6 +25,7 @@
 import type { AttendanceRequestRow, RequestType, ReasonCode } from './requests'
 import { REQUEST_TYPE_LABEL, REASON_LABEL, requestSummary, clockMinutes } from './requests'
 import { istDateRange, istMinutesOfDay } from '../istDate'
+import type { ValidatedCorrection } from '../payroll/correctionRules'
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 
@@ -58,12 +59,20 @@ export type ReconCorrection = {
   remark: string | null
 }
 
-export const PAY_DECISIONS = ['paid_waived', 'use_paid_leave', 'unpaid_actual', 'needs_correction'] as const
+/**
+ * The salary treatments a reviewer can record.
+ *
+ * There is deliberately NO "use paid leave": the engine allocates the month's
+ * earned paid leave itself, to the earliest eligible item, and has no way to
+ * be told to spend it on a particular day. Offering the choice would record a
+ * decision payroll cannot honour. What the automatic rule actually did is
+ * described on each event instead.
+ */
+export const PAY_DECISIONS = ['paid_waived', 'unpaid_actual', 'needs_correction'] as const
 export type PayDecision = (typeof PAY_DECISIONS)[number]
 
 export const PAY_DECISION_LABEL: Record<PayDecision, string> = {
   paid_waived:      'Paid / waived',
-  use_paid_leave:   'Use paid leave',
   unpaid_actual:    'Unpaid actual time',
   needs_correction: 'Needs correction',
 }
@@ -80,6 +89,7 @@ export type ReconReview = {
   attendance_fingerprint: string
   reviewed_by: string
   reviewed_at: string
+  applied_correction_id?: string | null
 }
 
 /** A stored deduction line from the generated draft for this month. */
@@ -136,7 +146,7 @@ export type ReconRequestInfo = {
   type_label: string
   status: AttendanceRequestRow['status']
   summary: string
-  reason_code: ReasonCode
+  reason_code: ReconRequestReason
   reason_label: string
   reason_note: string | null
   submitted_at: string
@@ -144,6 +154,33 @@ export type ReconRequestInfo = {
   decided_by: string | null
   decided_at: string | null
   decision_note: string | null
+  /** Requested clock times, as the employee stated them. Never measured. */
+  requested_departure: string | null
+  requested_return: string | null
+}
+type ReconRequestReason = ReasonCode
+
+/**
+ * Where an event stands against payroll.
+ *
+ *   upcoming         the date has not happened yet
+ *   needs_decision   no reviewer decision yet
+ *   stale            decided, but the attendance, correction, request or
+ *                    schedule changed since — review again
+ *   needs_correction the reviewer asked for a correction
+ *   no_draft         decided, but no payroll draft exists to reflect it
+ *   action_required  the draft does not match the decision; it must be
+ *                    changed in payroll (automatically on save where the
+ *                    correction path supports it, otherwise on the payslip)
+ *   resolved         the draft matches the decision
+ */
+export type SalaryStatus =
+  | 'upcoming' | 'needs_decision' | 'stale' | 'needs_correction'
+  | 'no_draft' | 'action_required' | 'resolved'
+
+export type DayState = {
+  raw: { check_in_at: string | null; check_out_at: string | null; direction_confirmed: boolean } | null
+  correction: ReconCorrection | null
 }
 
 export type ReconEvent = {
@@ -172,6 +209,8 @@ export type ReconEvent = {
   /** What the stored draft charges for this date and event, stated plainly. */
   payroll_state: string
   draft_amount: number | null
+  /** An attendance correction currently waives this event's charge. */
+  waived_by_correction: boolean
   credits_redeemed: number
   /** Mismatches the reviewer must look at (approved vs actual, pending, …). */
   flags: string[]
@@ -180,14 +219,24 @@ export type ReconEvent = {
     decision_reason: string | null
     reviewed_by: string
     reviewed_at: string
+    applied_correction_id: string | null
   } | null
   /** Attendance or the request changed after the decision was recorded. */
   stale: boolean
-  /** Reviewer decision disagrees with the draft (needs a correction to apply). */
-  decision_notes: string[]
+  stale_reasons: string[]
+  salary_status: SalaryStatus
+  /** Why payroll does not yet reflect the decision, and what to do. */
+  action_note: string | null
+  /** Saving Paid / waived or Unpaid actual on this event applies it through the correction path. */
+  applies_in_one_step: boolean
+  /** Why not, when it cannot. */
+  one_step_blocker: string | null
+  /** Decisions this event accepts (time out has no measured duration to charge). */
+  allowed_decisions: PayDecision[]
   fingerprint: string
   upcoming: boolean
   resolved: boolean
+  day_state: DayState
 }
 
 export type ReconEmployeeResult = {
@@ -196,11 +245,13 @@ export type ReconEmployeeResult = {
   uninformed_late_count: number
   policy_flag_dates: string[]
   unresolved_count: number
+  /** Decided events whose draft disagrees (action_required). */
+  conflict_count: number
 }
 
 export type ReconResult = {
   employees: ReconEmployeeResult[]
-  totals: { events: number; unresolved: number; policy_flagged_employees: number }
+  totals: { events: number; unresolved: number; conflicts: number; policy_flagged_employees: number }
 }
 
 /** Monthly flag threshold: MORE THAN this many uninformed, unexcused lates. */
@@ -250,6 +301,8 @@ function requestInfo(r: AttendanceRequestRow): ReconRequestInfo {
     decided_by: r.decided_by,
     decided_at: r.decided_at,
     decision_note: r.decision_note,
+    requested_departure: r.departure_time ? r.departure_time.slice(0, 5) : null,
+    requested_return: r.return_time ? r.return_time.slice(0, 5) : null,
   }
 }
 
@@ -258,7 +311,10 @@ function isCompanyReason(r: AttendanceRequestRow): boolean {
     (r.request_type === 'time_out' && r.work_kind === 'company')
 }
 
-/** Draft deduction types that belong to each event kind. */
+/**
+ * Draft deduction types that belong to each event kind. Each draft line is
+ * attributed to at most ONE event per day, so a figure is never counted twice.
+ */
 const DRAFT_TYPES: Record<Exclude<EventKind, 'request'>, string[]> = {
   late_arrival:    ['late_arrival'],
   early_departure: ['early_checkout'],
@@ -270,10 +326,44 @@ function draftTypesForRequest(t: RequestType): string[] {
   switch (t) {
     case 'late_arrival':    return ['late_arrival']
     case 'early_departure': return ['early_checkout']
-    case 'time_out':        return ['early_checkout', 'short_hours', 'half_day']
-    case 'half_day':        return ['half_day', 'absent', 'late_arrival', 'early_checkout']
+    // Time out has no line of its own: the engine sees only first-in/last-out.
+    // An actual early departure on that day is its own event.
+    case 'time_out':        return []
+    case 'half_day':        return ['half_day', 'absent']
     case 'full_day_leave':  return ['absent', 'half_day']
   }
+}
+
+/** The correction waiver that settles each event key, where one exists. */
+export const WAIVER_FIELD: Partial<Record<string, 'waive_late_arrival' | 'waive_early_checkout' | 'waive_missing_punch'>> = {
+  late_arrival:    'waive_late_arrival',
+  early_departure: 'waive_early_checkout',
+  missing_punch:   'waive_missing_punch',
+}
+
+/**
+ * The fingerprint is a small JSON object, so a stale decision can say WHY it
+ * is stale. Only what bears on THIS event is included: a waiver applied to the
+ * same day's early departure must not make the late-arrival decision stale.
+ */
+type Fingerprint = {
+  punches: [string | null, string | null]
+  correction: { treatment: string; waived: boolean } | null
+  requests: [string, string, string | null][]
+  schedule: [number, number, number]
+}
+
+function staleReasons(stored: string, current: Fingerprint): string[] {
+  let old: Partial<Fingerprint>
+  try { old = JSON.parse(stored) } catch { return ['The review predates this check — review again.'] }
+  if (!old || Array.isArray(old)) return ['The review predates this check — review again.']
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+  const out: string[] = []
+  if (!same(old.punches, current.punches)) out.push('The punches changed.')
+  if (!same(old.correction, current.correction)) out.push('The attendance correction for this day changed.')
+  if (!same(old.requests, current.requests)) out.push('The request changed (edited, decided or cancelled).')
+  if (!same(old.schedule, current.schedule)) out.push('The payroll schedule settings changed.')
+  return out
 }
 
 // ─── The builder ─────────────────────────────────────────────────────────────
@@ -324,6 +414,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       const source: ReconEvent['actual']['source'] = corr ? 'corrected' : raw ? 'machine' : 'none'
       // A lone machine punch whose direction was only guessed from the clock is
       // not a measured arrival or departure (see src/lib/attendance/punchDirection.ts).
+      const rawDirectionConfirmed = !!raw && ((raw.check_in_at != null && raw.check_out_at != null) || raw.punch_direction_source === 'confirmed')
       const directionKnown = !!corr || (checkIn != null && checkOut != null) || raw?.punch_direction_source === 'confirmed'
       const inMin  = checkIn  && directionKnown ? istMinutesOfDay(checkIn)  : null
       const outMin = checkOut && directionKnown ? istMinutesOfDay(checkOut) : null
@@ -334,6 +425,10 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       const actual = { check_in: checkIn, check_out: checkOut, source, minutes_late: minutesLate, minutes_early: minutesEarly }
       const draft = draftBy.get(k) ?? []
       const redeemed = redemptionBy.get(k) ?? []
+      const dayState: DayState = {
+        raw: raw ? { check_in_at: raw.check_in_at, check_out_at: raw.check_out_at, direction_confirmed: rawDirectionConfirmed } : null,
+        correction: corr ?? null,
+      }
 
       const makeEvent = (
         eventKey: string,
@@ -341,38 +436,45 @@ export function buildReconciliation(input: ReconInput): ReconResult {
         title: string,
         req: AttendanceRequestRow | null,
         draftTypes: string[],
-        waived: boolean,
-        extra: Partial<ReconEvent> = {},
       ): ReconEvent => {
+        const waiverField = WAIVER_FIELD[eventKey]
+        const waived = !!(corr && waiverField && corr.day_treatment === 'auto' && corr[waiverField])
         const lines = draft.filter(l => draftTypes.includes(l.deduction_type))
         const amount = lines.reduce((t, l) => t + Number(l.amount_deducted || 0), 0)
         const credits = redeemed.filter(r => draftTypes.includes(r.deduction_type)).reduce((t, r) => t + Number(r.credits || 0), 0)
-        const payrollState = !input.draftGenerated
-          ? 'No payroll draft generated for this month yet.'
-          : waived
-            ? 'Waived in the draft by an attendance correction.'
-            : lines.length === 0
-              ? 'The draft charges nothing for this.'
-              : amount === 0
-                ? 'Charged in the draft, then absorbed (paid leave or BOE Credits): ₹0.'
-                : `The draft deducts ${rupees(amount)} (${lines.map(l => `${Number(l.hours_deducted)} h ${l.deduction_type.replace(/_/g, ' ')}`).join(', ')}).`
 
-        const fingerprint = JSON.stringify([
-          checkIn, checkOut, corr?.id ?? null,
-          reqs.map(r => [r.id, r.status, r.decided_at]).sort(),
-        ])
-        const review = reviewBy.get(`${k}|${eventKey}`) ?? null
-        const stale = !!review && review.attendance_fingerprint !== fingerprint
+        let payrollState: string
+        if (!input.draftGenerated) payrollState = 'No payroll draft generated for this month yet.'
+        else if (waived) payrollState = 'Waived in the draft by an attendance correction: ₹0.'
+        else if (corr && corr.day_treatment !== 'auto') payrollState = `The day is set to "${corr.day_treatment.replace('_', ' ')}" by an attendance correction; the draft charges ${rupees(amount)} for this.`
+        else if (lines.length === 0) payrollState = draftTypes.length === 0
+          ? 'Payroll has no charge of its own for this: it sees only the first and last punch.'
+          : 'The draft charges nothing for this.'
+        else if (amount === 0 && credits > 0) payrollState = `Charged, then covered by the employee's BOE Credits (${credits}): ₹0.`
+        else if (amount === 0) payrollState = 'Charged, then absorbed by the month\'s automatic paid leave (payroll\'s rule: the earliest eligible item). ₹0 — not a manual choice.'
+        else payrollState = `The draft deducts ${rupees(amount)} (${lines.map(l => `${Number(l.hours_deducted)} h ${l.deduction_type.replace(/_/g, ' ')}`).join(', ')}).`
 
-        const decisionNotes: string[] = []
-        if (review && !stale && input.draftGenerated) {
-          if (review.pay_decision === 'paid_waived' && amount > 0 && !waived)
-            decisionNotes.push(`Decision is Paid / waived, but the draft still deducts ${rupees(amount)}. Apply a waiver through the attendance correction to change pay.`)
-          if (review.pay_decision === 'unpaid_actual' && waived)
-            decisionNotes.push('Decision is Unpaid actual time, but an attendance correction waives this day.')
-          if (review.pay_decision === 'use_paid_leave')
-            decisionNotes.push('Payroll applies earned paid leave automatically to the earliest eligible item of the month; check the payslip to confirm it covered this.')
+        const fp: Fingerprint = {
+          punches: [checkIn, checkOut],
+          correction: corr ? { treatment: corr.day_treatment, waived: waiverField ? !!corr[waiverField] : false } : null,
+          requests: reqs.map(r => [r.id, r.status, r.decided_at] as [string, string, string | null]).sort(),
+          schedule: [s.scheduled_in_minutes, s.grace_end_minutes, s.scheduled_out_minutes],
         }
+        const fingerprint = JSON.stringify(fp)
+        const review = reviewBy.get(`${k}|${eventKey}`) ?? null
+        const reasons = review ? staleReasons(review.attendance_fingerprint, fp) : []
+
+        const isTimeOut = req?.request_type === 'time_out' && kind === 'request'
+        const allowed: PayDecision[] = isTimeOut ? ['paid_waived', 'needs_correction'] : [...PAY_DECISIONS]
+
+        // Can a Paid / waived or Unpaid decision be applied in one step?
+        let blocker: string | null = null
+        if (!waiverField) blocker = kind === 'request' && isTimeOut
+          ? 'Actual time away unavailable: a salary effect needs a supported attendance source or an explicit correction on the payslip.'
+          : 'This kind of event is settled by the day treatment on the payslip (full day, half day, absent), which is a separate judgement.'
+        else if (corr && corr.day_treatment !== 'auto') blocker = 'This day has a manual day treatment; waivers do not apply to it. Change it on the payslip.'
+        else if (!corr && raw && !rawDirectionConfirmed) blocker = 'The only punch on this day had its direction guessed from the clock; confirm the punches on the payslip first.'
+        else if (!corr && !raw) blocker = 'There is no attendance record to correct.'
 
         return {
           event_key: eventKey,
@@ -389,6 +491,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           policy_flag: false,
           payroll_state: payrollState,
           draft_amount: input.draftGenerated ? amount : null,
+          waived_by_correction: waived,
           credits_redeemed: credits,
           flags: [],
           decision: review ? {
@@ -396,13 +499,19 @@ export function buildReconciliation(input: ReconInput): ReconResult {
             decision_reason: review.decision_reason,
             reviewed_by: review.reviewed_by,
             reviewed_at: review.reviewed_at,
+            applied_correction_id: review.applied_correction_id ?? null,
           } : null,
-          stale,
-          decision_notes: decisionNotes,
+          stale: reasons.length > 0,
+          stale_reasons: reasons,
+          salary_status: 'needs_decision',
+          action_note: null,
+          applies_in_one_step: blocker == null,
+          one_step_blocker: blocker,
+          allowed_decisions: allowed,
           fingerprint,
           upcoming,
           resolved: false,
-          ...extra,
+          day_state: dayState,
         }
       }
 
@@ -421,11 +530,12 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           r.informed_before_shift)
         const related = lateReq ?? informedBy ?? null
         if (related) consumed.add(related.id)
-        const ev = makeEvent('late_arrival', 'late_arrival', `Late arrival · ${minutesLate} min`, related,
-          DRAFT_TYPES.late_arrival, !!corr?.waive_late_arrival)
+        const ev = makeEvent('late_arrival', 'late_arrival', `Late arrival · ${minutesLate} min`, related, DRAFT_TYPES.late_arrival)
         ev.informed = !!informedBy
         ev.counts_toward_policy = !ev.informed && !ev.excused
         if (!related) ev.flags.push('No request was submitted.')
+        if (related?.status === 'approved')
+          ev.flags.push('Approved = permission recorded. Whether the late minutes are paid is the salary treatment below.')
         if (lateReq?.status === 'approved' && lateReq.expected_arrival_time && inMin != null) {
           const expected = clockMinutes(lateReq.expected_arrival_time)!
           if (inMin > expected + (s.grace_end_minutes - s.scheduled_in_minutes))
@@ -442,8 +552,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           ?? reqs.find(r => r.request_type === 'half_day' && r.half_session === 'second_half')
           ?? reqOf('full_day_leave')
         if (earlyReq) consumed.add(earlyReq.id)
-        const ev = makeEvent('early_departure', 'early_departure', `Early departure · ${minutesEarly} min`, earlyReq,
-          DRAFT_TYPES.early_departure, !!corr?.waive_early_checkout)
+        const ev = makeEvent('early_departure', 'early_departure', `Early departure · ${minutesEarly} min`, earlyReq, DRAFT_TYPES.early_departure)
         if (!earlyReq) ev.flags.push('No request was submitted.')
         if (earlyReq?.request_type === 'early_departure' && earlyReq.status === 'approved' && earlyReq.departure_time && outMin != null) {
           if (outMin < clockMinutes(earlyReq.departure_time)! - 15)
@@ -457,8 +566,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       // ── Missing punch ──────────────────────────────────────────────────────
       if ((checkIn == null) !== (checkOut == null) && workingDay) {
         const ev = makeEvent('missing_punch', 'missing_punch',
-          checkIn == null ? 'Missing punch-in' : 'Missing punch-out', null,
-          DRAFT_TYPES.missing_punch, !!corr?.waive_missing_punch)
+          checkIn == null ? 'Missing punch-in' : 'Missing punch-out', null, DRAFT_TYPES.missing_punch)
         const timeOut = reqs.find(r => r.request_type === 'time_out')
         if (timeOut) ev.flags.push('A time-out request exists for this day — the return punch may be missing.')
         events.push(ev)
@@ -468,11 +576,10 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       for (const r of reqs) {
         if (consumed.has(r.id)) continue
         if (r.request_type === 'full_day_leave' && !workingDay) continue
-        const ev = makeEvent(`request:${r.id}`, 'request', REQUEST_TYPE_LABEL[r.request_type], r,
-          draftTypesForRequest(r.request_type),
-          r.request_type === 'late_arrival' ? !!corr?.waive_late_arrival
-            : r.request_type === 'early_departure' ? !!corr?.waive_early_checkout
-            : false)
+        const title = r.request_type === 'time_out'
+          ? `Time out (requested ${r.departure_time?.slice(0, 5)}–${r.return_time?.slice(0, 5)}) · actual time away unavailable`
+          : REQUEST_TYPE_LABEL[r.request_type]
+        const ev = makeEvent(`request:${r.id}`, 'request', title, r, draftTypesForRequest(r.request_type))
         const hasPunch = checkIn != null || checkOut != null
         if (r.status === 'pending') ev.flags.push('The request is still pending.')
         if (r.status === 'rejected') ev.flags.push('The request was rejected.')
@@ -486,7 +593,7 @@ export function buildReconciliation(input: ReconInput): ReconResult {
           if (r.request_type === 'early_departure' && hasPunch && checkOut != null)
             ev.flags.push('Left at or after the scheduled time — no early departure on the record.')
           if (r.request_type === 'time_out')
-            ev.flags.push('Actual time away is not recorded: attendance stores only the first and last punch.')
+            ev.flags.push('Actual time away unavailable: attendance stores only the first and last punch. The requested times are not measured and are never charged.')
         }
         events.push(ev)
       }
@@ -495,13 +602,12 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       const covered = reqs.some(r => r.request_type === 'full_day_leave' || r.request_type === 'half_day')
       if (workingDay && !upcoming && !raw && !corr && !covered &&
           reviewableThrough != null && date <= reviewableThrough) {
-        const ev = makeEvent('absent', 'absent', 'Absent · no request', null, DRAFT_TYPES.absent, false)
+        const ev = makeEvent('absent', 'absent', 'Absent · no request', null, DRAFT_TYPES.absent)
         ev.flags.push('No punches and no request for this working day.')
         events.push(ev)
       }
       if (corr && corr.day_treatment === 'absent' && workingDay && !events.some(e => e.date === date && e.kind === 'absent')) {
-        const ev = makeEvent('absent', 'absent', 'Absent · by correction', null, DRAFT_TYPES.absent, false)
-        events.push(ev)
+        events.push(makeEvent('absent', 'absent', 'Absent · by correction', null, DRAFT_TYPES.absent))
       }
     }
 
@@ -517,36 +623,149 @@ export function buildReconciliation(input: ReconInput): ReconResult {
       }
     }
 
-    for (const ev of events) {
-      ev.resolved = !ev.upcoming && !!ev.decision && !ev.stale &&
-        ev.decision.pay_decision != null && ev.decision.pay_decision !== 'needs_correction'
-    }
-    const unresolved = events.filter(e => !e.upcoming && !e.resolved).length
+    for (const ev of events) settleSalaryStatus(ev, input.draftGenerated)
 
-    if (events.length > 0 || !emp.is_active) {
-      employees.push({
-        employee: emp,
-        events,
-        uninformed_late_count: count,
-        policy_flag_dates: flagged,
-        unresolved_count: unresolved,
-      })
-    }
+    employees.push({
+      employee: emp,
+      events,
+      uninformed_late_count: count,
+      policy_flag_dates: flagged,
+      unresolved_count: events.filter(e => !e.upcoming && !e.resolved).length,
+      conflict_count: events.filter(e => e.salary_status === 'action_required').length,
+    })
   }
 
-  employees.sort((a, b) =>
+  const withEvents = employees.filter(e => e.events.length > 0 || !e.employee.is_active)
+  withEvents.sort((a, b) =>
+    b.conflict_count - a.conflict_count ||
     b.unresolved_count - a.unresolved_count ||
     (a.employee.full_name ?? '').localeCompare(b.employee.full_name ?? ''))
 
   return {
-    employees,
+    employees: withEvents,
     totals: {
-      events: employees.reduce((t, e) => t + e.events.length, 0),
-      unresolved: employees.reduce((t, e) => t + e.unresolved_count, 0),
-      policy_flagged_employees: employees.filter(e => e.policy_flag_dates.length > 0).length,
+      events: withEvents.reduce((t, e) => t + e.events.length, 0),
+      unresolved: withEvents.reduce((t, e) => t + e.unresolved_count, 0),
+      conflicts: withEvents.reduce((t, e) => t + e.conflict_count, 0),
+      policy_flagged_employees: withEvents.filter(e => e.policy_flag_dates.length > 0).length,
     },
   }
 }
+
+/**
+ * Does the stored draft reflect this decision?
+ *
+ *   Paid / waived       the draft charges ₹0 for the event (a waiver, or no
+ *                       charge at all). ₹0 because automatic paid leave or
+ *                       BOE Credits absorbed it also counts as not deducted —
+ *                       and the event says which it was.
+ *   Unpaid actual time  no correction waives it; the engine's normal charge
+ *                       (which its automatic paid-leave rule may still absorb)
+ *                       stands.
+ */
+export function draftMatchesDecision(ev: Pick<ReconEvent, 'draft_amount' | 'waived_by_correction'>, decision: PayDecision): boolean {
+  if (ev.draft_amount == null) return false
+  if (decision === 'paid_waived') return ev.waived_by_correction || ev.draft_amount === 0
+  if (decision === 'unpaid_actual') return !ev.waived_by_correction
+  return false
+}
+
+function settleSalaryStatus(ev: ReconEvent, draftGenerated: boolean): void {
+  const d = ev.decision?.pay_decision ?? null
+  let status: SalaryStatus
+  let note: string | null = null
+  if (ev.upcoming) status = 'upcoming'
+  else if (!ev.decision || d == null) status = 'needs_decision'
+  else if (ev.stale) { status = 'stale'; note = `Review again: ${ev.stale_reasons.join(' ')}` }
+  else if (d === 'needs_correction') status = 'needs_correction'
+  else if (!draftGenerated) { status = 'no_draft'; note = 'Generate the payroll draft; the decision is then checked against it.' }
+  else if (draftMatchesDecision(ev, d)) status = 'resolved'
+  else {
+    status = 'action_required'
+    note = d === 'paid_waived'
+      ? `Action required in payroll: the draft still deducts ₹${Math.round(ev.draft_amount ?? 0)}.`
+      : 'Action required in payroll: an attendance correction still waives this charge.'
+    note += ev.applies_in_one_step
+      ? ' Save the decision again to apply it through the attendance correction.'
+      : ` ${ev.one_step_blocker ?? ''} Open the payslip to correct the day.`
+  }
+  ev.salary_status = status
+  ev.action_note = note
+  ev.resolved = status === 'resolved'
+}
+
+// ─── Review → correction ─────────────────────────────────────────────────────
+
+export type ReviewApplication =
+  /** The draft already reflects the decision; nothing to write. */
+  | { kind: 'none' }
+  /** Apply this correction through the attendance-correction path. */
+  | { kind: 'apply'; correction: ValidatedCorrection }
+  /** Cannot be applied in one step; the reviewer must act on the payslip. */
+  | { kind: 'action_required'; reason: string }
+
+/**
+ * The correction that makes payroll honour a Paid / waived or Unpaid actual
+ * decision, built on the day's CURRENT state so nothing else changes:
+ *
+ *   - the current correction's punches, day treatment and other waivers are
+ *     carried over (a new version supersedes it; history is kept);
+ *   - with no correction, the raw punches are copied verbatim — only when both
+ *     are present or the direction was confirmed, because a correction makes
+ *     the direction 'confirmed', and confirming a GUESSED lone punch could
+ *     create a late-arrival charge that did not exist before;
+ *   - only the one waiver flag that settles this event changes.
+ *
+ * Returns `none` when the day already carries the requested waiver state, so
+ * saving twice never writes a second correction or a second waiver.
+ */
+export function planReviewApplication(
+  ev: Pick<ReconEvent, 'event_key' | 'date' | 'day_state' | 'one_step_blocker'> &
+    Partial<Pick<ReconEvent, 'draft_amount' | 'waived_by_correction'>>,
+  decision: PayDecision | null,
+  remark: string,
+): ReviewApplication {
+  if (decision !== 'paid_waived' && decision !== 'unpaid_actual') return { kind: 'none' }
+  const field = WAIVER_FIELD[ev.event_key]
+  const corr = ev.day_state.correction
+  const want = decision === 'paid_waived'
+
+  // Events without a waiver of their own (absence, half day, leave, time out)
+  // need nothing when the draft already agrees — e.g. "no deduction" for a
+  // time out the draft never charged. Otherwise they are settled on the payslip.
+  const alreadyMatches = ev.draft_amount != null &&
+    draftMatchesDecision({ draft_amount: ev.draft_amount, waived_by_correction: !!ev.waived_by_correction }, decision)
+  if (!field || (corr && corr.day_treatment !== 'auto')) {
+    return alreadyMatches
+      ? { kind: 'none' }
+      : { kind: 'action_required', reason: ev.one_step_blocker ?? 'This event is settled on the payslip.' }
+  }
+
+  const current = corr ? !!corr[field] : false
+  if (current === want) return { kind: 'none' }
+
+  const raw = ev.day_state.raw
+  if (!corr) {
+    if (!raw) return { kind: 'action_required', reason: 'There is no attendance record to correct.' }
+    if (!raw.direction_confirmed) return { kind: 'action_required', reason: ev.one_step_blocker ?? 'Punch direction was guessed.' }
+  }
+
+  return {
+    kind: 'apply',
+    correction: {
+      attendance_date: ev.date,
+      corrected_check_in_at:  corr ? corr.corrected_check_in_at  : raw!.check_in_at,
+      corrected_check_out_at: corr ? corr.corrected_check_out_at : raw!.check_out_at,
+      day_treatment: 'auto',
+      waive_late_arrival:   field === 'waive_late_arrival'   ? want : !!corr?.waive_late_arrival,
+      waive_early_checkout: field === 'waive_early_checkout' ? want : !!corr?.waive_early_checkout,
+      waive_missing_punch:  field === 'waive_missing_punch'  ? want : !!corr?.waive_missing_punch,
+      remark,
+    },
+  }
+}
+
+// ─── Review input ────────────────────────────────────────────────────────────
 
 /** A review decision body, validated. */
 export type ReviewInput = {

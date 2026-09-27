@@ -336,9 +336,17 @@ create table if not exists public.attendance_day_reviews (
   excused                boolean     not null default false,
   excuse_reason          text,
 
+  -- No "use paid leave": the engine allocates earned paid leave itself, to the
+  -- earliest eligible item, and cannot be told to spend it on a given day.
   pay_decision           text        check (pay_decision is null or pay_decision in (
-                                       'paid_waived', 'use_paid_leave', 'unpaid_actual', 'needs_correction')),
+                                       'paid_waived', 'unpaid_actual', 'needs_correction')),
   decision_reason        text,
+
+  -- The attendance correction this decision applied through the existing
+  -- correction path (/api/payroll/attendance-correction's service), if any.
+  -- Null when the draft already matched, or the event must be settled on the
+  -- payslip. The correction row carries its own before/after audit.
+  applied_correction_id  uuid        references public.attendance_day_corrections(id),
 
   attendance_fingerprint text        not null,
 

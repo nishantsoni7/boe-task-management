@@ -23,6 +23,7 @@ import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollMo
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
+import { fetchLockWarning } from '@/lib/attendance/lockWarning'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -283,10 +284,14 @@ function PayrollPeriodsPage() {
   const handleLock = async (period: PayrollPeriodRow) => {
     if (busy[period.id]) return
     const label = periodLabel(period.payroll_month, period.payroll_year)
+    // Unresolved attendance-review items are named here and must be accepted
+    // explicitly; the lock itself is unchanged (src/lib/attendance/lockWarning.ts).
+    const attendanceWarning = await fetchLockWarning(token, period.payroll_year, period.payroll_month)
     // Deliberately no longer says "this cannot be undone": an admin can reopen
     // the month through Unlock Payroll, and the confirmation must not claim
     // otherwise.
     if (!confirm(
+      attendanceWarning +
       `Lock payroll for ${label}?\n\n` +
       'Regeneration, attendance correction and employee review are disabled while a period is locked. ' +
       'An admin can reopen it later with a stated reason.',

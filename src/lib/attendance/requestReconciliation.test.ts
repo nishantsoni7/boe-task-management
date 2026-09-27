@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildReconciliation, validateReviewInput, type ReconInput, type ReconReview } from './requestReconciliation'
+import { buildReconciliation, validateReviewInput, planReviewApplication, PAY_DECISIONS, type ReconInput, type ReconReview } from './requestReconciliation'
 import type { AttendanceRequestRow } from './requests'
 import { istClockToUtc } from '../istDate'
 
@@ -157,7 +157,7 @@ describe('matching requests to attendance', () => {
     assert.ok(missing.flags.some(f => f.includes('time-out request')))
     const timeOut = evs.find(e => e.kind === 'request')!
     assert.equal(timeOut.company_exception, true)
-    assert.ok(timeOut.flags.some(f => f.includes('not recorded')))
+    assert.ok(timeOut.flags.some(f => f.includes('Actual time away unavailable')))
   })
 
   test('leave approved but punches exist is flagged; leave on a Sunday is not an event', () => {
@@ -213,36 +213,160 @@ describe('no duplicate deductions', () => {
     assert.equal(total, 236, 'the day totals exactly the draft — each line is attributed to one event')
   })
 
-  test('a Paid/waived decision that the draft still charges is called out, not silently applied', () => {
-    const base = input({
-      draftGenerated: true,
-      attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }),
-      draftLines: [{ employee_id: EMP, line_date: '2026-10-05', deduction_type: 'late_arrival', hours_deducted: 1, amount_deducted: 118 }],
-    })
-    const fp = eventsOf(buildReconciliation(base))[0].fingerprint
-    const r = buildReconciliation({ ...base, reviews: [{
-      id: 'r', employee_id: EMP, attendance_date: '2026-10-05', event_key: 'late_arrival', excused: false,
-      excuse_reason: null, pay_decision: 'paid_waived', decision_reason: 'Vehicle', attendance_fingerprint: fp,
-      reviewed_by: 'admin', reviewed_at: '2026-10-06T00:00:00Z',
-    }] })
-    const ev = eventsOf(r)[0]
-    assert.equal(ev.resolved, true)
-    assert.equal(ev.draft_amount, 118, 'the review never changes the figure')
-    assert.ok(ev.decision_notes[0].includes('still deducts'))
+  const review = (o: Partial<ReconReview>): ReconReview => ({
+    id: 'r', employee_id: EMP, attendance_date: '2026-10-05', event_key: 'late_arrival', excused: false,
+    excuse_reason: null, pay_decision: 'paid_waived', decision_reason: 'Vehicle', attendance_fingerprint: '',
+    reviewed_by: 'admin', reviewed_at: '2026-10-06T00:00:00Z', ...o,
+  })
+  const lateLine = { employee_id: EMP, line_date: '2026-10-05', deduction_type: 'late_arrival', hours_deducted: 1, amount_deducted: 118 }
+  const waiverOn = (waiveLate: boolean, waiveEarly = false, out = '18:35') => ({
+    id: 'c1', employee_id: EMP, attendance_date: '2026-10-05',
+    corrected_check_in_at: istClockToUtc('2026-10-05', '10:40'), corrected_check_out_at: istClockToUtc('2026-10-05', out),
+    day_treatment: 'auto', waive_late_arrival: waiveLate, waive_early_checkout: waiveEarly, waive_missing_punch: false, remark: 'x',
   })
 
-  test('a decision goes stale when the attendance changes after it', () => {
+  test('a Paid/waived decision the draft still charges is "Action required in payroll", never resolved', () => {
+    const base = input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), draftLines: [lateLine] })
+    const fp = eventsOf(buildReconciliation(base))[0].fingerprint
+    const r = buildReconciliation({ ...base, reviews: [review({ attendance_fingerprint: fp })] })
+    const ev = eventsOf(r)[0]
+    assert.equal(ev.salary_status, 'action_required')
+    assert.equal(ev.resolved, false, 'a saved decision alone is not a resolution')
+    assert.equal(ev.draft_amount, 118, 'the review never changes the figure itself')
+    assert.match(ev.action_note!, /still deducts ₹118/)
+    assert.equal(ev.applies_in_one_step, true)
+    assert.equal(r.employees[0].conflict_count, 1)
+    assert.equal(r.totals.conflicts, 1)
+  })
+
+  test('once the correction waives it and the draft charges ₹0, the same decision is resolved', () => {
+    const base = input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), corrections: [waiverOn(true)] })
+    const fp = eventsOf(buildReconciliation(base))[0].fingerprint
+    const ev = eventsOf(buildReconciliation({ ...base, reviews: [review({ attendance_fingerprint: fp })] }))[0]
+    assert.equal(ev.waived_by_correction, true)
+    assert.equal(ev.salary_status, 'resolved')
+    assert.match(ev.payroll_state, /Waived in the draft by an attendance correction/)
+  })
+
+  test('Unpaid actual time conflicts with a waiver that is still in place', () => {
+    const base = input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), corrections: [waiverOn(true)] })
+    const fp = eventsOf(buildReconciliation(base))[0].fingerprint
+    const ev = eventsOf(buildReconciliation({ ...base, reviews: [review({ pay_decision: 'unpaid_actual', attendance_fingerprint: fp })] }))[0]
+    assert.equal(ev.salary_status, 'action_required')
+    assert.match(ev.action_note!, /still waives/)
+  })
+
+  test('with no draft generated, a decision waits for one instead of reading as done', () => {
     const base = input({ attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }) })
     const fp = eventsOf(buildReconciliation(base))[0].fingerprint
-    const review: ReconReview = {
-      id: 'r', employee_id: EMP, attendance_date: '2026-10-05', event_key: 'late_arrival', excused: false,
-      excuse_reason: null, pay_decision: 'unpaid_actual', decision_reason: 'No notice', attendance_fingerprint: fp,
-      reviewed_by: 'admin', reviewed_at: '2026-10-06T00:00:00Z',
-    }
-    assert.equal(eventsOf(buildReconciliation({ ...base, reviews: [review] }))[0].resolved, true)
-    const changed = buildReconciliation({ ...base, reviews: [review], attendance: fullMonth({ '2026-10-05': ['10:55', '18:35'] }) })
-    assert.equal(eventsOf(changed)[0].stale, true)
-    assert.equal(eventsOf(changed)[0].resolved, false)
+    const ev = eventsOf(buildReconciliation({ ...base, reviews: [review({ pay_decision: 'unpaid_actual', attendance_fingerprint: fp })] }))[0]
+    assert.equal(ev.salary_status, 'no_draft')
+    assert.equal(ev.resolved, false)
+  })
+
+  test('a decision goes stale, and says why, when the punches or the schedule change', () => {
+    const base = input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '18:35'] }), draftLines: [lateLine] })
+    const fp = eventsOf(buildReconciliation(base))[0].fingerprint
+    const rv = review({ pay_decision: 'unpaid_actual', decision_reason: 'No notice', attendance_fingerprint: fp })
+    assert.equal(eventsOf(buildReconciliation({ ...base, reviews: [rv] }))[0].resolved, true)
+
+    const punches = eventsOf(buildReconciliation({ ...base, reviews: [rv], attendance: fullMonth({ '2026-10-05': ['10:55', '18:35'] }) }))[0]
+    assert.equal(punches.salary_status, 'stale')
+    assert.equal(punches.resolved, false)
+    assert.deepEqual(punches.stale_reasons, ['The punches changed.'])
+
+    const schedule = eventsOf(buildReconciliation({ ...base, reviews: [rv], schedule: { ...SCHEDULE, grace_end_minutes: 620 } }))[0]
+    assert.deepEqual(schedule.stale_reasons, ['The payroll schedule settings changed.'])
+  })
+
+  test('changing the same day\'s EARLY waiver does not make the late-arrival decision stale', () => {
+    const base = input({ draftGenerated: true, attendance: fullMonth({ '2026-10-05': ['10:40', '17:30'] }),
+      corrections: [waiverOn(false, false, '17:30')], draftLines: [lateLine] })
+    const fp = eventsOf(buildReconciliation(base)).find(e => e.kind === 'late_arrival')!.fingerprint
+    const rv = review({ pay_decision: 'unpaid_actual', attendance_fingerprint: fp })
+    const late = eventsOf(buildReconciliation({ ...base, reviews: [rv], corrections: [waiverOn(false, true, '17:30')] }))
+      .find(e => e.kind === 'late_arrival')!
+    assert.equal(late.stale, false)
+    assert.equal(late.resolved, true)
+  })
+})
+
+describe('case 4 — time out with no mid-day punches', () => {
+  test('requested 14:00–15:30 is shown, never measured, never charged, and cannot be decided as unpaid', () => {
+    const req = request({ request_type: 'time_out', departure_time: '14:00:00', return_time: '15:30:00', work_kind: 'personal', reason_code: 'personal' })
+    const r = buildReconciliation(input({ draftGenerated: true, attendance: fullMonth(), requests: [req] }))
+    const ev = eventsOf(r).find(e => e.request?.id === req.id)!
+    assert.match(ev.title, /requested 14:00–15:30/)
+    assert.match(ev.title, /actual time away unavailable/)
+    assert.equal(ev.request!.requested_departure, '14:00')
+    assert.equal(ev.draft_amount, 0, 'no line is attributed to a time out')
+    assert.deepEqual(ev.allowed_decisions, ['paid_waived', 'needs_correction'])
+    assert.equal(ev.applies_in_one_step, false)
+    assert.match(ev.one_step_blocker!, /Actual time away unavailable/)
+    assert.equal(eventsOf(r).length, 1, 'no invented early-departure or 90-minute event')
+  })
+})
+
+describe('case 5 — automatic paid leave is described, not claimed as chosen', () => {
+  test('a ₹0 absent line with no credits is described as the automatic paid-leave rule', () => {
+    const r = buildReconciliation(input({
+      draftGenerated: true, attendance: fullMonth({ '2026-10-05': null }),
+      draftLines: [{ employee_id: EMP, line_date: '2026-10-05', deduction_type: 'absent', hours_deducted: 0, amount_deducted: 0 }],
+    }))
+    const ev = eventsOf(r).find(e => e.kind === 'absent')!
+    assert.match(ev.payroll_state, /automatic paid leave/)
+    assert.match(ev.payroll_state, /not a manual choice/)
+    assert.equal((PAY_DECISIONS as readonly string[]).includes('use_paid_leave'), false)
+  })
+
+  test('the same ₹0 covered by BOE Credits says so instead', () => {
+    const r = buildReconciliation(input({
+      draftGenerated: true, attendance: fullMonth({ '2026-10-05': null }),
+      draftLines: [{ employee_id: EMP, line_date: '2026-10-05', deduction_type: 'absent', hours_deducted: 0, amount_deducted: 0 }],
+      redemptions: [{ employee_id: EMP, attendance_date: '2026-10-05', deduction_type: 'absent', credits: 4 }],
+    }))
+    assert.match(eventsOf(r).find(e => e.kind === 'absent')!.payroll_state, /BOE Credits \(4\)/)
+  })
+})
+
+describe('planReviewApplication — decision → correction', () => {
+  type PlanEvent = Parameters<typeof planReviewApplication>[0]
+  const ev = (o: Partial<PlanEvent> = {}): PlanEvent => ({
+    event_key: 'late_arrival', date: '2026-10-05', one_step_blocker: null,
+    day_state: { raw: { check_in_at: 'IN', check_out_at: 'OUT', direction_confirmed: true }, correction: null },
+    ...o,
+  })
+  const corr = (o: Record<string, unknown>) => ({
+    id: 'c', employee_id: EMP, attendance_date: '2026-10-05', corrected_check_in_at: 'CIN', corrected_check_out_at: 'COUT',
+    day_treatment: 'auto', waive_late_arrival: false, waive_early_checkout: false, waive_missing_punch: false, remark: 'old', ...o,
+  })
+
+  test('Paid / waived with no correction copies the raw punches and sets only the late waiver', () => {
+    const plan = planReviewApplication(ev(), 'paid_waived', 'Payroll review: Paid / waived — Vehicle')
+    assert.deepEqual(plan, { kind: 'apply', correction: {
+      attendance_date: '2026-10-05', corrected_check_in_at: 'IN', corrected_check_out_at: 'OUT',
+      day_treatment: 'auto', waive_late_arrival: true, waive_early_checkout: false, waive_missing_punch: false,
+      remark: 'Payroll review: Paid / waived — Vehicle',
+    } })
+  })
+
+  test('an existing correction is carried over: its punches and other waivers are kept', () => {
+    const plan = planReviewApplication(ev({ day_state: { raw: null, correction: corr({ waive_early_checkout: true }) } }), 'paid_waived', 'r')
+    assert.ok(plan.kind === 'apply' && plan.correction.waive_early_checkout && plan.correction.corrected_check_in_at === 'CIN')
+  })
+
+  test('saving the same decision twice writes nothing the second time — no double waiver', () => {
+    assert.deepEqual(planReviewApplication(ev({ day_state: { raw: null, correction: corr({ waive_late_arrival: true }) } }), 'paid_waived', 'r'), { kind: 'none' })
+    assert.deepEqual(planReviewApplication(ev(), 'unpaid_actual', 'r'), { kind: 'none' }, 'unpaid with no waiver already matches')
+  })
+
+  test('a guessed lone punch, a manual day treatment, or an absence goes to the payslip instead', () => {
+    const guessed = ev({ event_key: 'missing_punch', one_step_blocker: 'guessed',
+      day_state: { raw: { check_in_at: 'IN', check_out_at: null, direction_confirmed: false }, correction: null } })
+    assert.equal(planReviewApplication(guessed, 'paid_waived', 'r').kind, 'action_required')
+    assert.equal(planReviewApplication(ev({ day_state: { raw: null, correction: corr({ day_treatment: 'full_day' }) } }), 'paid_waived', 'r').kind, 'action_required')
+    assert.equal(planReviewApplication(ev({ event_key: 'absent' }), 'paid_waived', 'r').kind, 'action_required')
+    assert.deepEqual(planReviewApplication(ev(), 'needs_correction', 'r'), { kind: 'none' })
   })
 })
 

@@ -12,6 +12,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
+import { fetchLockWarning } from '@/lib/attendance/lockWarning'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,12 @@ export default function PayrollResultsPage() {
       : 'this period'
     // No longer claims the lock is permanent: an admin can reopen a locked
     // period from the Payroll dashboard, with a recorded reason.
-    if (!confirm(`Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)) return
+    // Unresolved attendance-review items are named here and must be accepted
+    // explicitly; the lock itself is unchanged (src/lib/attendance/lockWarning.ts).
+    const attendanceWarning = period
+      ? await fetchLockWarning(token, period.payroll_year, period.payroll_month)
+      : ''
+    if (!confirm(`${attendanceWarning}Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)) return
 
     setLocking(true)
     setLockError(null)

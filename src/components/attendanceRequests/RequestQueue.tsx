@@ -40,6 +40,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
   const [rows, setRows] = useState<QueueRow[]>([])
   const [punches, setPunches] = useState<Record<string, Punch>>({})
   const [shift, setShift] = useState<Shift | null>(null)
+  const [viewerId, setViewerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deciding, setDeciding] = useState<{ row: QueueRow; status: 'approved' | 'rejected' } | null>(null)
@@ -55,6 +56,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
       setRows(json.requests ?? [])
       setPunches(json.punches ?? {})
       setShift(json.shift ?? null)
+      setViewerId(json.viewer_id ?? null)
       setError(null)
     }
     setLoading(false)
@@ -105,6 +107,8 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
         {rows.map(r => {
           const tone = statusTone(r.status)
           const p = punches[`${r.employee_id}|${r.start_date}`]
+          // Nobody decides their own request; another admin must.
+          const own = r.employee_id === viewerId
           return (
             <li key={r.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 12, background: colors.base }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -141,13 +145,16 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                {r.status !== 'cancelled' && r.status !== 'approved' && (
+                {own && r.status !== 'cancelled' && (
+                  <span style={{ fontSize: 12, color: '#B45309', alignSelf: 'center' }}>Your own request — another admin must decide it.</span>
+                )}
+                {!own && r.status !== 'cancelled' && r.status !== 'approved' && (
                   <button type="button" className="boe-btn boe-btn-primary" style={{ padding: '7px 14px', fontSize: 13 }}
                     onClick={() => setDeciding({ row: r, status: 'approved' })}>
                     {r.status === 'rejected' ? 'Change to approved' : 'Approve'}
                   </button>
                 )}
-                {r.status !== 'cancelled' && r.status !== 'rejected' && (
+                {!own && r.status !== 'cancelled' && r.status !== 'rejected' && (
                   <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '7px 14px', fontSize: 13 }}
                     onClick={() => setDeciding({ row: r, status: 'rejected' })}>
                     {r.status === 'approved' ? 'Change to rejected' : 'Reject'}
