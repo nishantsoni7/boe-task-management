@@ -14,7 +14,7 @@
 // NOT ONE FIGURE IS COMPUTED HERE.
 // ---------------------------------
 // Every amount comes through buildCommercialRows / persistedCommercial /
-// billingValue — the same helpers the Order screen and both PI screens use, and
+// formatInr — the same helpers the Order screen and both PI screens use, and
 // the same STRINGS. There is no second formatting path and no second
 // arithmetic, so the PDF cannot round differently from the screen a person
 // approved on. What this module does with a figure is choose where it goes.
@@ -37,7 +37,6 @@
 // changes no figure, and it is a one-line fix the day a licensed font lands in
 // the repository — see toPdfText.
 
-import { formatBillingPercentage, readBillingPercentage, billingValue } from './billingPercentage'
 import { persistedCommercial, persistedProducts } from './draftsView'
 import type { PersistedItem, PersistedProduct } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
@@ -151,7 +150,7 @@ export type ConfirmedPdfModel = {
   billTo: PdfField[]
   /** Who to ship to, and where. */
   shipTo: PdfField[]
-  /** Contact number, PI creator, confirm date, due date, billing percentage. */
+  /** The salesperson and their contact number. Never a date, never billing. */
   meta: PdfField[]
   products: PdfProductRow[]
   commercial: PdfCommercialRow[]
@@ -263,10 +262,6 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
 
   const products = persistedProducts(input.items)
 
-  const percent = readBillingPercentage(sub.billing_percentage ?? null)
-  const beforeGst = numericOf(sub.total_before_gst)
-  const billed = billingValue({ totalBeforeGst: beforeGst, percentage: percent })
-
   const meta: PdfField[] = []
   // NOT the client’s phone, and no longer falling back to it. contact_number
   // is the BOE-side number at workbook G22; the client’s numbers are printed
@@ -281,15 +276,11 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   const author = clean(sub.source_created_by)
   if (author) meta.push({ label: 'Salesperson', value: toPdfText(author) })
   if (contact) meta.push({ label: 'Salesperson contact', value: toPdfText(contact) })
-  // UNDECLARED IS SAID IN WORDS, never as 0%.
-  meta.push({ label: 'Billing percentage', value: toPdfText(formatBillingPercentage(percent)) })
-  if (percent !== null) {
-    meta.push({
-      label: 'Billing value',
-      // MISSING IS NOT ZERO: formatInr renders an absent figure as an em dash.
-      value: pdfAmount(formatInr(billed)),
-    })
-  }
+  // NO BILLING PERCENTAGE AND NO BILLING VALUE ON A CLIENT PDF (#248, owner's
+  // decision 2026-09-27). billing_percentage is BOE's internal billing
+  // arrangement, kept in the PI's Internal order details; neither it nor the
+  // value derived from it is printed here, declared or not. The fabric
+  // responsibility sentence below stays: it tells the client who supplies fabric.
 
   return {
     orderNumber: toPdfText(input.orderNumber),
@@ -370,12 +361,6 @@ function commercialRow(row: PiAmountRow): PdfCommercialRow {
     groupStart: row.groupStart === true,
     missing: row.kind === 'missing',
   }
-}
-
-function numericOf(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const n = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(n) ? n : null
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────

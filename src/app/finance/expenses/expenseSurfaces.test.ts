@@ -1923,6 +1923,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/confirmedPdf.ts',
     'src/lib/orders/pdfProductValueLabel.test.ts',
     'src/lib/orders/piTerms.test.ts',
+    // Round 5: no billing percentage or billing value on a client PDF.
+    'src/lib/orders/confirmedPdf.test.ts',
+    'src/lib/orders/clientPdfNoBilling.test.ts',
     // The migration-sequence pins.
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',

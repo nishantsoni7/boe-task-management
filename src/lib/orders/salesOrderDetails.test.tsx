@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
+  ORDER_DETAILS_FIELD,
   ORDER_DETAILS_FIELDS,
+  ORDER_DETAILS_NOTE,
   ORDER_DETAILS_REQUIREMENT_PREFIX,
   SALES_DETAILS_UNAVAILABLE,
   orderDetailsErrors,
@@ -350,6 +352,19 @@ describe('the migration', () => {
     for (const doc of ['src/lib/orders/confirmedPdf.ts', 'src/lib/orders/confirmedWorkbook.ts', 'src/lib/pi/previewView.ts']) {
       const src = read(doc)
       assert.ok(!src.includes('salesperson_id') && !src.includes('lead_source'), doc)
+    }
+  })
+})
+
+describe('the section says exactly what the client PDF prints (#248)', () => {
+  test('only fabric responsibility is printed; billing is internal', () => {
+    assert.equal(ORDER_DETAILS_NOTE,
+      'For BOE. Kept off the client workbook. Only fabric responsibility appears on the generated client PDF, as one sentence; nothing else here, including the billing percentage, is printed.')
+    assert.match(ORDER_DETAILS_FIELD.billing_percentage.hint ?? '', /Internal; not printed on the client PDF\./)
+    assert.equal(ORDER_DETAILS_FIELD.fabric_responsibility.hint, 'Printed on the client PDF as one sentence.')
+    for (const field of ORDER_DETAILS_FIELDS) {
+      if (field.key === 'fabric_responsibility') continue
+      assert.ok(!/printed on the (generated|client)/i.test(field.hint ?? '') || /not printed/i.test(field.hint ?? ''), field.key)
     }
   })
 })

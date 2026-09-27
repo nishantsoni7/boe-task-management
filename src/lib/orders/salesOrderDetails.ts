@@ -54,12 +54,13 @@ import {
 export const ORDER_DETAILS_TITLE = 'Internal order details'
 export const ORDER_DETAILS_ANCHOR = 'pi-internal-order-details'
 /**
- * What the section is, honestly. Billing percentage and fabric responsibility
- * are printed on the generated PI PDF and have been since before this section
- * existed; everything else here is never printed on any client document.
+ * What the section is, honestly. Of everything here, only fabric responsibility
+ * is printed on a client document: the generated client PDF (Confirmed Order and
+ * PI versions) states it as a sentence. Billing percentage and its value stopped
+ * being printed in #248; nothing else here ever was.
  */
 export const ORDER_DETAILS_NOTE =
-  'For BOE. Kept off the client workbook. The billing percentage and fabric responsibility also appear on the generated PI PDF, as they always have; nothing else here is printed.'
+  'For BOE. Kept off the client workbook. Only fabric responsibility appears on the generated client PDF, as one sentence; nothing else here, including the billing percentage, is printed.'
 
 /** How much a field is needed, in the words the section shows beside it. */
 export type OrderDetailsNeed = 'submission' | 'approval' | 'optional' | 'conditional'
@@ -86,9 +87,9 @@ export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
   { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it.' },
   { key: 'lead_source',             label: 'Lead source',                                 need: 'approval' },
-  { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `From ${BILLING_MIN}% to ${BILLING_MAX}%. Printed on the generated PI PDF.` },
+  { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `From ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },
-  { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                   need: 'submission', hint: 'Printed on the PI.' },
+  { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                   need: 'submission', hint: 'Printed on the client PDF as one sentence.' },
   { key: 'middleman_commission',    label: MIDDLEMAN_QUESTION,                            need: 'submission' },
   { key: 'middleman_structure',     label: 'Who receives it, and the amount or percentage', need: 'conditional' },
 ]

@@ -190,24 +190,22 @@ describe('the document identifies itself and its client', () => {
 
 // ── Billing ───────────────────────────────────────────────────────────────────
 
-describe('the billing declaration', () => {
-  test('a declared percentage prints with its derived value', () => {
-    const meta = Object.fromEntries(model().meta.map(f => [f.label, f.value]))
-    assert.equal(meta['Billing percentage'], '65%')
-    // 65% of the PRE-GST total, never of the grand total.
-    assert.equal(meta['Billing value'], 'Rs. 7,60,500')
+describe('no billing on a client PDF (#248)', () => {
+  // billing_percentage is BOE's internal arrangement; neither it nor its value is printed.
+  test('a declared percentage prints neither the percentage nor its value', () => {
+    const m = model()
+    assert.ok(!m.meta.some(f => /billing/i.test(f.label)), m.meta.map(f => f.label).join(', '))
+    assert.ok(!m.meta.some(f => f.value.includes('65%') || f.value.includes('7,60,500')))
   })
 
-  test('an undeclared percentage says so in words, and prints NO value row', () => {
-    const meta = Object.fromEntries(model(1, { billing_percentage: null }).meta.map(f => [f.label, f.value]))
-    assert.equal(meta['Billing percentage'], 'Undeclared')
-    assert.equal(meta['Billing value'], undefined)
+  test('an undeclared percentage prints nothing either  not even "Undeclared"', () => {
+    const m = model(1, { billing_percentage: null })
+    assert.ok(!m.meta.some(f => /billing/i.test(f.label) || f.value === 'Undeclared'))
   })
 
-  test('a declared percentage against a MISSING pre-GST total is never Rs. 0', () => {
-    const meta = Object.fromEntries(model(1, { total_before_gst: null }).meta.map(f => [f.label, f.value]))
-    assert.equal(meta['Billing percentage'], '65%')
-    assert.equal(meta['Billing value'], '—', 'the missing treatment, not a zero')
+  test('the commercial rows are the same with and without a billing percentage', () => {
+    assert.deepEqual(model().commercial, model(1, { billing_percentage: null }).commercial)
+    assert.deepEqual(model().commercial, model(1, { billing_percentage: '35' }).commercial)
   })
 })
 
@@ -699,7 +697,7 @@ describe('the rendered PDF', () => {
     const text = pdfText(await renderConfirmedPdf({ model: m, metadata: METADATA }))
     assert.ok(text.includes('Not provided'), 'an absent block says so once')
     assert.ok(!/DUE DATE/i.test(text), 'and no due date line at all')
-    assert.ok(text.includes('Undeclared'))
+    assert.ok(!text.includes('Undeclared'), 'no billing line at all')
     assert.ok(!text.includes('null'))
     assert.ok(!text.includes('undefined'))
   })
