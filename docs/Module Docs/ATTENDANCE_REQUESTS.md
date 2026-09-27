@@ -222,6 +222,9 @@ failure is logged and never fails the submission or decision.
   leave with punches, leave crossing months, coverage, upcoming events, no
   duplicate attribution of draft lines, decisions that disagree with the draft,
   and stale decisions.
+- `src/components/attendanceRequests/attendanceRequests.render.test.tsx`: the
+  form renders for a phone user (late arrival first, no attachment field), and a
+  correction pre-fills from the original.
 - `src/lib/attendancePayrollNotifications.test.ts`: extended to the two new
   notification types.
 - The migration was applied twice to a disposable Postgres 17 with a stub

@@ -1818,6 +1818,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/attendanceRequests/RequestHistoryModal.tsx',
     'src/components/attendanceRequests/RequestQueue.tsx',
     'src/components/attendanceRequests/format.ts',
+    'src/components/attendanceRequests/attendanceRequests.render.test.tsx',
     'src/components/layout/attendancePayrollNav.tsx',
     'src/lib/attendance/requests.ts',
     'src/lib/attendance/requests.test.ts',

@@ -41,7 +41,8 @@ const chip = (active: boolean): React.CSSProperties => ({
   minHeight: 40,
 })
 
-const input: React.CSSProperties = { padding: '10px 11px', fontSize: 15, width: '100%', minHeight: 42 }
+// 16px: iOS zooms the page when a focused input is smaller.
+const input: React.CSSProperties = { padding: '10px 11px', fontSize: 16, width: '100%', minHeight: 44 }
 
 export function AttendanceRequestModal({
   original, onClose, onSubmit,

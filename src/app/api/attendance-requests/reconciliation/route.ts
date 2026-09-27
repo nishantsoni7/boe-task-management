@@ -61,8 +61,10 @@ async function loadReconciliation(svc: ServiceClient, year: number, month: numbe
     fetchActiveSettings(svc),
     fetchHolidaysForPeriod(svc, month, year),
     fetchActiveAttendanceRedemptionsByEmployee(svc, month, year),
+    // Same population payroll generation reads (fetchAllPayrollActiveEmployees).
     scope(onlyParticipating(svc.from('users')
-      .select('id, full_name, employee_code, is_active, payroll_active, joining_date')), 'id'),
+      .select('id, full_name, employee_code, is_active, payroll_active, joining_date'))
+      .or('is_deleted.eq.false,is_deleted.is.null'), 'id'),
     // Requests touching the month, including ones that cross into it.
     scope(svc.from('attendance_requests').select(REQUEST_COLUMNS)
       .lte('start_date', end).gte('end_date', start), 'employee_id'),
