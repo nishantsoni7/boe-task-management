@@ -665,6 +665,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // supabase/tests/order_submission_internal_details_assertions.sql.
       if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
       if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
+      // The managed asset catalogue (20270130000000), held by
+      // src/lib/permissions/manageAssetCatalogue.test.ts and
+      // supabase/tests/asset_catalogue_assertions.sql.
+      if (f === 'supabase/migrations/20270130000000_asset_catalogue.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1794,6 +1798,53 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
   ])
 
+  // Assets & Access: the managed asset catalogue and the owner overview
+  // (20270130000000). Asset screens, asset helpers and the one new protected
+  // action; the Orders / Finance / Tasks entries are the migration-sequence
+  // pins and nothing else.
+  const ALLOWED_ASSET_CATALOGUE = new Set([
+    'src/app/assets-access/page.tsx',
+    'src/app/assets-access/[id]/page.tsx',
+    'src/components/assets/AssetChangeModals.tsx',
+    'src/components/assets/AssetCatalogueManager.tsx',
+    'src/components/assets/AssetOverviewParts.tsx',
+    'src/components/layout/AssetsLayout.tsx',
+    'src/hooks/useAssetCatalogue.ts',
+    'src/lib/assets/assetFilters.ts',
+    'src/lib/assets/assetFilters.test.ts',
+    'src/lib/assets/catalogue.ts',
+    'src/lib/assets/catalogue.test.ts',
+    'src/lib/assets/detail.ts',
+    'src/lib/assets/errors.ts',
+    'src/lib/assets/overview.ts',
+    'src/lib/assets/overview.test.ts',
+    'src/lib/assets/types.ts',
+    'src/lib/assets/viewRouting.ts',
+    'src/lib/assets/viewRouting.test.ts',
+    'src/lib/permissions/accessControlChanges.ts',
+    'src/lib/permissions/assetsAccess.ts',
+    'src/lib/permissions/assetsAccess.test.ts',
+    'src/lib/permissions/enforcement.ts',
+    'src/lib/permissions/levels.ts',
+    'src/lib/permissions/levels.test.ts',
+    'src/lib/permissions/manageAssetCatalogue.test.ts',
+    'src/lib/permissions/modules.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'supabase/migrations/20270130000000_asset_catalogue.sql',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1838,6 +1889,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
+    !ALLOWED_ASSET_CATALOGUE.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2163,7 +2215,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_LAYOUT.has(file)
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
-        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file),
+        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
+        || ALLOWED_ASSET_CATALOGUE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
