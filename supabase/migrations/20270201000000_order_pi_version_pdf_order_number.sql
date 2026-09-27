@@ -22,10 +22,19 @@
 -- written: its PDF prints an empty number today, and inventing one is not this
 -- file's decision.
 --
--- NEW VERSIONS take the stored display_number, "0526", when the row is
--- CREATED — V1 inside approve_order_submission(), in the same transaction that
--- gives the Order its number, and a revision when it is proposed — so a
--- revision's PDF reads the same before and after the Admin's decision.
+-- NEW VERSIONS are numbered when the row is CREATED — V1 inside
+-- approve_order_submission(), in the same transaction that gives the Order its
+-- number, and a revision when it is proposed — so a revision's PDF reads the
+-- same before and after the Admin's decision.
+--
+-- STAGED: THIS FILE STILL STAMPS THE OLD FORM ("526") ON NEW VERSIONS. It is
+-- applied while the route that formats the Order's number is live, so every
+-- version created from here on is stored as exactly what that route prints —
+-- and what the new route (which prints the stored value) prints too, through
+-- the deploy and any window where both are serving. The stored "0526" form is
+-- a separate, deliberate step, 20270202000000, applied only once the new route
+-- is the only one live; it changes what FUTURE versions are stamped with and
+-- nothing already stored.
 --
 -- ONE TRIGGER, NOT EVERY DOOR. V1 and revisions are inserted by several
 -- functions (approve_order_submission, propose_order_pi_revision,
@@ -68,7 +77,7 @@ end $$;
 alter table public.order_pi_versions add column if not exists pdf_order_number text;
 
 comment on column public.order_pi_versions.pdf_order_number is
-  'The Order reference exactly as this version''s PDF prints it (header, title, filename). Set once when the version is created — the stored display_number, e.g. "0526" — and never changed. Versions created before 20270201000000 keep the form their PDF has always printed, e.g. "526".';
+  'The Order reference exactly as this version''s PDF prints it (header, title, filename). Set once when the version is created and never changed. Versions created before 20270202000000 carry the form the PDF printed then, e.g. "526"; later versions carry the stored display_number, e.g. "0526".';
 
 
 -- ═══ 1. BACKFILL: WHAT EACH EXISTING PDF PRINTS TODAY ══════════════════════
@@ -110,8 +119,9 @@ begin
       raise exception 'ORDER_PI_VERSION_ORDER_NUMBER_MISSING: the Order of this PI version has no Order number'
         using errcode = 'P0001';
     end if;
-    -- Whatever the caller passed, the version prints the Order's stored number.
-    new.pdf_order_number := v_number;
+    -- Whatever the caller passed, the version prints what the live route
+    -- prints for this Order today (staged; 20270202000000 switches to v_number).
+    new.pdf_order_number := coalesce(public.order_operational_number(v_number), v_number);
     return new;
   end if;
 
@@ -125,7 +135,7 @@ $$;
 revoke execute on function public.order_pi_versions_pdf_order_number() from public, anon, authenticated, service_role;
 
 comment on function public.order_pi_versions_pdf_order_number() is
-  'BEFORE INSERT: sets pdf_order_number to the Order''s stored display_number ("0526"), refusing an Order with none. BEFORE UPDATE: refuses any change to it. Covers every door that creates or decides a PI version. 20270201000000.';
+  'BEFORE INSERT: sets pdf_order_number to what the live PDF route prints for the Order — order_operational_number(display_number), "526" (staged; 20270202000000 switches new versions to the stored "0526") — refusing an Order with no number. BEFORE UPDATE: refuses any change to it. Covers every door that creates or decides a PI version. 20270201000000.';
 
 drop trigger if exists order_pi_versions_pdf_order_number on public.order_pi_versions;
 create trigger order_pi_versions_pdf_order_number

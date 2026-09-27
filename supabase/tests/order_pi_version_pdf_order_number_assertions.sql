@@ -7,8 +7,11 @@
 --                 pending — keeps what its PDF printed: "1", not "0001"
 --   2. earlier    an earlier PENDING version keeps it through approval, and
 --      pending    another through rejection
---   3. V1         a new Order's V1 takes the stored "0004" in the transaction
---                 that numbers the Order
+--   3. V1         a new Order's V1 is numbered in the transaction that numbers
+--                 the Order — with what the live route prints at this stage:
+--                 stage 'old' (20270201000000 alone) "4", which the route
+--                 being replaced prints too; stage 'stored' (after
+--                 20270202000000) the stored "0004"
 --   4. Edit PI    pending → approved: numbered at the proposal, unchanged by
 --                 the approval and by V1 being superseded
 --   5. Edit PI    pending → rejected: unchanged by the rejection
@@ -18,6 +21,9 @@
 --                 Order with no number cannot get a version
 --   8. reading    the select policy is unchanged: whoever sees the Order sees
 --                 the value, and nobody else does
+--
+-- Sections 3-8 expect pg_temp.expected_stamp(display_number) for new versions,
+-- by the session setting test.stage (default 'old').
 --
 -- Runs inside ONE transaction that ends in ROLLBACK, after
 -- _order_pi_version_pdf_order_number_helpers.sql in the same session.
@@ -102,14 +108,19 @@ begin
 
   assert o.display_number ~ '^0[0-9]{3}$', 'the new Order has a zero-led number, so the two forms differ: ' || o.display_number;
   assert v1.status = 'approved', 'V1 is in force';
-  assert v1.pdf_order_number = o.display_number,
-    format('V1 prints the stored number %s, found %s', o.display_number, v1.pdf_order_number);
-  assert v1.pdf_order_number <> pg_temp.route_number(o.display_number), 'not the old form';
+  assert v1.pdf_order_number = pg_temp.expected_stamp(o.display_number),
+    format('V1 prints %s at stage %s, found %s', pg_temp.expected_stamp(o.display_number), pg_temp.stage(), v1.pdf_order_number);
+  if pg_temp.stage() = 'old' then
+    assert v1.pdf_order_number = pg_temp.route_number(o.display_number), 'exactly what the route being replaced prints';
+  else
+    assert v1.pdf_order_number = o.display_number and v1.pdf_order_number <> pg_temp.route_number(o.display_number),
+      'the stored four-digit form, not the old one';
+  end if;
   -- One transaction: the Order row and V1 share its timestamp.
   assert v1.created_at = o.created_at, 'V1 was written in the transaction that created and numbered the Order';
 
   perform set_config('test.order_d', d::text, true);
-  raise notice '3. V1 of a new Order prints % in the transaction that numbered it OK', o.display_number;
+  raise notice '3. V1 of a new Order prints % (stage %) in the transaction that numbered it OK', v1.pdf_order_number, pg_temp.stage();
 end $$;
 
 
@@ -118,7 +129,7 @@ end $$;
 do $$
 declare
   d   uuid := current_setting('test.order_d')::uuid;
-  dn  text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
+  dn  text := pg_temp.expected_stamp((select display_number from public.orders where id = current_setting('test.order_d')::uuid));
   v1  uuid := (select id from public.order_pi_versions where order_id = current_setting('test.order_d')::uuid and version_number = 1);
   v2  uuid;
 begin
@@ -141,7 +152,7 @@ end $$;
 do $$
 declare
   d   uuid := current_setting('test.order_d')::uuid;
-  dn  text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
+  dn  text := pg_temp.expected_stamp((select display_number from public.orders where id = current_setting('test.order_d')::uuid));
   v3  uuid;
 begin
   v3 := pg_temp.propose_edit(d, 12000, 'ASSERT new D: V3 rate');
@@ -158,7 +169,7 @@ end $$;
 do $$
 declare
   d   uuid := current_setting('test.order_d')::uuid;
-  dn  text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
+  dn  text := pg_temp.expected_stamp((select display_number from public.orders where id = current_setting('test.order_d')::uuid));
   v4  uuid;
 begin
   v4 := pg_temp.propose_workbook(d, 'ASSERT new D: V4 workbook');
@@ -175,7 +186,8 @@ end $$;
 do $$
 declare
   d    uuid := current_setting('test.order_d')::uuid;
-  dn   text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
+  dn   text := pg_temp.expected_stamp((select display_number from public.orders where id = current_setting('test.order_d')::uuid));
+  real_dn text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
   sub  uuid := (select source_order_submission_id from public.orders where id = current_setting('test.order_d')::uuid);
   v1   uuid := (select id from public.order_pi_versions where order_id = current_setting('test.order_d')::uuid and version_number = 1);
   old1 uuid := (select v.id from public.order_pi_versions v join public.orders o on o.id = v.order_id
@@ -192,7 +204,7 @@ begin
     'the caller''s value is replaced by the Order''s number';
 
   -- No change, by anyone, to anything.
-  e := pg_temp.fails_with(format('update public.order_pi_versions set pdf_order_number = %L where id = %L', '4', v1));
+  e := pg_temp.fails_with(format('update public.order_pi_versions set pdf_order_number = %L where id = %L', 'X-1', v1));
   assert e like 'PI_PDF_ORDER_NUMBER_IMMUTABLE:%', 'the owner cannot change it: ' || e;
   e := pg_temp.fails_with(format('update public.order_pi_versions set pdf_order_number = null where id = %L', v1));
   assert e like 'PI_PDF_ORDER_NUMBER_IMMUTABLE:%', 'nor clear it: ' || e;
@@ -202,12 +214,12 @@ begin
   e := pg_temp.fails_with(format('update public.order_pi_versions set pdf_order_number = %L where id = %L', '9', vx));
   assert e like 'PI_PDF_ORDER_NUMBER_IMMUTABLE:%', 'nor can a pending one: ' || e;
   e := pg_temp.fails_with(format(
-    'do $b$ begin set local role service_role; update public.order_pi_versions set pdf_order_number = %L where id = %L; end $b$', '4', v1));
+    'do $b$ begin set local role service_role; update public.order_pi_versions set pdf_order_number = %L where id = %L; end $b$', 'X-1', v1));
   assert e like 'PI_PDF_ORDER_NUMBER_IMMUTABLE:%', 'service_role cannot change it: ' || e;
   execute 'reset role';
   e := pg_temp.fails_with(format(
     'do $b$ begin perform pg_temp.become(%L); update public.order_pi_versions set pdf_order_number = %L where id = %L; end $b$',
-    current_setting('test.admin_id'), '4', v1));
+    current_setting('test.admin_id'), 'X-1', v1));
   assert e like 'permission denied%', 'a signed-in user has no UPDATE at all: ' || e;
   perform pg_temp.restore();
 
@@ -231,7 +243,7 @@ begin
     'insert into public.order_pi_versions (order_id, submission_id, version_number, status, revision_reason) values (%L, %L, 99, %L, %L)',
     d, sub, 'pending', 'ASSERT blank number'));
   assert e like 'ORDER_PI_VERSION_ORDER_NUMBER_MISSING:%', 'an Order with a blank number: ' || e;
-  update public.orders set display_number = dn where id = d;
+  update public.orders set display_number = real_dn where id = d;
   alter table public.orders alter column display_number set not null;
   alter table public.orders add constraint orders_display_number_four_digit
     check (display_number ~ '^[0-9]{4}$' and display_number <> '0000');
@@ -250,7 +262,7 @@ end $$;
 do $$
 declare
   d    uuid := current_setting('test.order_d')::uuid;
-  dn   text := (select display_number from public.orders where id = current_setting('test.order_d')::uuid);
+  dn   text := pg_temp.expected_stamp((select display_number from public.orders where id = current_setting('test.order_d')::uuid));
   n    int;
   vals text[];
 begin

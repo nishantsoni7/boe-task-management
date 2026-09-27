@@ -44,6 +44,19 @@ create function pg_temp.route_number(p_display text) returns text language sql i
   select coalesce(public.order_operational_number(btrim(p_display)), btrim(p_display))
 $$;
 
+-- The release stage the database is at, from the session setting test.stage:
+--   'old'    20270201000000 alone: new versions are stamped with what the
+--            route being replaced prints ("4") — the default;
+--   'stored' after 20270202000000: new versions carry the stored "0004".
+create function pg_temp.stage() returns text language sql stable as $$
+  select coalesce(nullif(current_setting('test.stage', true), ''), 'old')
+$$;
+
+-- What a version created now must be stamped with, at this stage.
+create function pg_temp.expected_stamp(p_display text) returns text language sql stable as $$
+  select case pg_temp.stage() when 'stored' then btrim(p_display) else pg_temp.route_number(p_display) end
+$$;
+
 -- A new PI, sent, reviewed and approved into an Order with V1. Returns the Order id.
 create function pg_temp.new_order(p_label text) returns uuid language plpgsql as $$
 declare
