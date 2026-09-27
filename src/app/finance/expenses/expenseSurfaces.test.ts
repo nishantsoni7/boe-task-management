@@ -2212,7 +2212,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_LAYOUT.has(file)
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
-        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file),
+        || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
+        || ALLOWED_ATTENDANCE_REQUESTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
