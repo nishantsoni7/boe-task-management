@@ -130,6 +130,10 @@ export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
   'payroll_issue_raised',
   'attendance_issue_reviewed',
   'payroll_issue_reviewed',
+  // Attendance requests (20270130000100): a request waiting for an admin, and
+  // the admin's decision back to the employee. Same two-ended shape.
+  'attendance_request_submitted',
+  'attendance_request_decided',
 ] as const
 
 // PostgREST `type.in.(...)` fragment for an enum column — the safe equivalent
