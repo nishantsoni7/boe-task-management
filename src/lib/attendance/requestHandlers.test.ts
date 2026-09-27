@@ -459,6 +459,42 @@ describe('the shared correction service', () => {
     // 1 h at 26,000 / 30 / 8.5 = ₹102, not the default divisor's ₹118.
     assert.equal(out.ok && out.after.deduction_amount, 102)
   })
+
+  const correct7th = () => applyAttendanceCorrection(db, {
+    periodId: PERIOD, employeeId: EMP, actorId: ADMIN_B,
+    correction: {
+      attendance_date: '2026-10-07', corrected_check_in_at: istClockToUtc('2026-10-07', '10:35'),
+      corrected_check_out_at: istClockToUtc('2026-10-07', '18:35'), day_treatment: 'auto',
+      waive_late_arrival: true, waive_early_checkout: false, waive_missing_punch: false, remark: 'waive',
+    },
+  })
+  const fullGeneration = async (settings: typeof DEFAULT_PAYROLL_SETTINGS) => {
+    const svc = db as never
+    const out = generatePayrollForEmployee(
+      (await fetchEmployee(svc, EMP))!, await fetchPeriod(svc, PERIOD),
+      await fetchAttendanceForPeriod(svc, EMP, 10, 2026), await fetchHolidaysForPeriod(svc, 10, 2026),
+      await fetchPendingAdjustments(svc, EMP, PERIOD, 10, 2026), await fetchCurrentCorrections(svc, EMP, 10, 2026), settings,
+    )
+    assert.ok(!isSkip(out))
+    return out
+  }
+
+  test('a correction recalculates to exactly what full generation of the period produces (non-default snapshot)', async () => {
+    const snapshot = { ...DEFAULT_PAYROLL_SETTINGS, per_day_divisor: 30 }
+    db.rows('payroll_periods')[0].settings_snapshot = snapshot
+    const out = await correct7th()
+    assert.ok(out.ok)
+    const regenerated = await fullGeneration(snapshot)
+    assert.equal(out.ok && out.net_salary, regenerated.net_salary, 'the next regeneration will not move the figure')
+  })
+
+  test('production today (2026-09-27, read-only check): every unlocked period\'s snapshot equals the defaults, so old and new behaviour agree', async () => {
+    db.rows('payroll_periods')[0].settings_snapshot = { ...DEFAULT_PAYROLL_SETTINGS }
+    const out = await correct7th()
+    assert.ok(out.ok)
+    // The old route recalculated with DEFAULT_PAYROLL_SETTINGS.
+    assert.equal(out.ok && out.net_salary, (await fullGeneration(DEFAULT_PAYROLL_SETTINGS)).net_salary)
+  })
 })
 
 // ─── Item 2: locking with open attendance items ─────────────────────────────
