@@ -665,6 +665,11 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // supabase/tests/order_submission_internal_details_assertions.sql.
       if (f === 'supabase/migrations/20270122000000_order_submission_internal_details.sql') continue
       if (f === 'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql') continue
+      // Attendance requests → approval → payroll review (20270130000000) and its
+      // two notification types (20270130000100): additive tables of their own,
+      // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
+      if (f === 'supabase/migrations/20270130000000_attendance_requests.sql') continue
+      if (f === 'supabase/migrations/20270130000100_attendance_request_notification_types.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1794,6 +1799,49 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
   ])
 
+  /**
+   * Attendance requests → approval → payroll review. An Attendance & Payroll
+   * feature: no Finance or Orders screen, figure or table. The Orders/Finance
+   * test files listed are migration-sequence pins gaining two lines each.
+   */
+  const ALLOWED_ATTENDANCE_REQUESTS = new Set([
+    'src/app/my-attendance/page.tsx',
+    'src/app/attendance/requests/page.tsx',
+    'src/app/api/attendance-requests/route.ts',
+    'src/app/api/attendance-requests/[id]/cancel/route.ts',
+    'src/app/api/attendance-requests/[id]/decision/route.ts',
+    'src/app/api/attendance-requests/[id]/history/route.ts',
+    'src/app/api/attendance-requests/reconciliation/route.ts',
+    'src/components/attendanceRequests/AttendanceRequestModal.tsx',
+    'src/components/attendanceRequests/MyAttendanceRequests.tsx',
+    'src/components/attendanceRequests/PayrollAttendanceReview.tsx',
+    'src/components/attendanceRequests/RequestHistoryModal.tsx',
+    'src/components/attendanceRequests/RequestQueue.tsx',
+    'src/components/attendanceRequests/format.ts',
+    'src/components/layout/attendancePayrollNav.tsx',
+    'src/lib/attendance/requests.ts',
+    'src/lib/attendance/requests.test.ts',
+    'src/lib/attendance/requestReconciliation.ts',
+    'src/lib/attendance/requestReconciliation.test.ts',
+    'src/lib/attendance/requestsServer.ts',
+    'src/lib/notifications.ts',
+    'src/lib/notificationMeta.ts',
+    'src/lib/attendancePayrollNotifications.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'supabase/migrations/20270130000000_attendance_requests.sql',
+    'supabase/migrations/20270130000100_attendance_request_notification_types.sql',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1838,6 +1886,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
+    !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {

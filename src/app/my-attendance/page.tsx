@@ -24,6 +24,7 @@ import { colors } from '@/lib/tokens'
 import { RefreshCw } from 'lucide-react'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
+import { MyAttendanceRequests } from '@/components/attendanceRequests/MyAttendanceRequests'
 import {
   employeeStatusLabel,
   statusTone as objectionTone,
@@ -187,6 +188,12 @@ export default function MyAttendancePage() {
     setBusy(false)
   }, [supabase, router])
 
+  /** The caller's own access token, for the attendance-request section. */
+  const getToken = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? null
+  }, [supabase])
+
   /** The newest objection per date — what the row badge reflects. */
   const objectionByDate = useMemo(() => objectionsByAttendanceDate(objections), [objections])
 
@@ -336,6 +343,9 @@ export default function MyAttendancePage() {
           {error}
         </div>
       )}
+
+      {/* Late, early, time out, half day, leave — the one entry point. */}
+      <MyAttendanceRequests getToken={getToken} />
 
       <div style={{ fontSize: 13, color: colors.tertiary, marginBottom: 12 }}>
         {MONTHS[month - 1]} {year}

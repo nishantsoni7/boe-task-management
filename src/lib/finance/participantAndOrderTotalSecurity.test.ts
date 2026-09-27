@@ -1041,6 +1041,8 @@ describe('the applied migrations are frozen', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      '20270130000000_attendance_requests.sql',
+      '20270130000100_attendance_request_notification_types.sql',
     ])
   })
 
@@ -1333,6 +1335,8 @@ describe('the applied migrations are frozen', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      '20270130000000_attendance_requests.sql',
+      '20270130000100_attendance_request_notification_types.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

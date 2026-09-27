@@ -156,15 +156,17 @@ create table if not exists public.attendance_request_events (
   id           uuid        not null default gen_random_uuid() primary key,
   request_id   uuid        not null references public.attendance_requests(id) on delete cascade,
   employee_id  uuid        not null references public.users(id) on delete cascade,
-  action       text        not null check (action in (
-                 'submitted', 'corrected', 'replaced', 'cancelled',
-                 'approved', 'rejected', 'decision_revised')),
+  action       text        not null,
   actor_id     uuid        references public.users(id),
   status_from  text,
   status_to    text        not null,
   note         text,
   snapshot     jsonb       not null,
-  created_at   timestamptz not null default now()
+  created_at   timestamptz not null default now(),
+
+  constraint attendance_request_events_action_known check (action in (
+    'submitted', 'corrected', 'replaced', 'cancelled',
+    'approved', 'rejected', 'decision_revised'))
 );
 
 create index if not exists attendance_request_events_request
