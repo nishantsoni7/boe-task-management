@@ -152,8 +152,13 @@ describe('who may do what — the courtesy mirrors the database', () => {
     assert.equal(mayAddBillAsPayer(row({ paid_from: 'company', paid_by: null }), 'u2'), false)
     assert.equal(mayAddBillAsPayer(row({ paid_by: 'u2', deleted_at: '2026-09-27' }), 'u2'), false)
     assert.ok(/create or replace function public\.can_add_expense_bill[\s\S]{0,900}e\.paid_by = u\.id/.test(MIGRATION))
-    assert.ok(/for update to authenticated\s*using \(public\.can_attach_expense_bill\(expense_id\)\)/.test(MIGRATION),
-      'removing a bill still takes can_attach_expense_bill (author or finance.manage)')
+    assert.ok(/for update to authenticated\s*using \(\s*public\.can_attach_expense_bill\(expense_id\)\s*or \(uploaded_by = auth\.uid\(\) and public\.can_add_expense_bill\(expense_id\)\)/.test(MIGRATION),
+      'removing a bill: author / finance.manage, or the payer for a bill THEY uploaded')
+    assert.ok(/if exists \(select 1 from public\.expenses e where e\.id = old\.expense_id and e\.reimbursement_id is not null\)/.test(MIGRATION),
+      'and nobody once the expense is reimbursed (the guard trigger)')
+    const BILLS_SRC = read('src/app/finance/expenses/ExpenseBills.tsx')
+    assert.ok(BILLS_SRC.includes('(mayRemove || (mayRemoveOwn && bill.uploaded_by === userId)) && !reimbursed'),
+      'the screen offers the payer Remove only on their own upload, only before reimbursement')
   })
 
   test('naming somebody else as the payer takes finance.manage', () => {

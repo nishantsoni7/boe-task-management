@@ -165,9 +165,10 @@ export function mayRecordReimbursement(caps: { canManageFinance: boolean; canVie
 }
 
 /**
- * The named payer of a live personal expense may ADD a bill to it (never remove
- * one) — can_add_expense_bill() in the database. Everything else about the
- * expense stays read only for them.
+ * The named payer of a live personal expense may ADD a bill to it, and remove
+ * only a bill they uploaded, before it is reimbursed — can_add_expense_bill()
+ * and expense_bill_attachments_remove in the database. Everything else about
+ * the expense stays read only for them.
  */
 export function mayAddBillAsPayer(
   row: Pick<ExpenseRow, 'paid_from' | 'paid_by' | 'deleted_at'>,

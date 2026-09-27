@@ -375,6 +375,7 @@ export function ExpenseDetailModal({
   personName,
   mayAttach,
   mayRemoveBills,
+  mayRemoveOwnBills,
   onClose,
   onOpenReimbursement,
   onBillsChanged,
@@ -388,8 +389,10 @@ export function ExpenseDetailModal({
   personName: (id: string | null | undefined) => string
   /** May add a bill (author, finance.manage, or the named payer). */
   mayAttach: boolean
-  /** May remove one (author or finance.manage only). */
+  /** May remove any bill (author or finance.manage). */
   mayRemoveBills: boolean
+  /** May remove a bill they uploaded themselves (the named payer). */
+  mayRemoveOwnBills: boolean
   onClose: () => void
   /** Finance only: open the whole batch. Absent for everybody else. */
   onOpenReimbursement?: (id: string) => void
@@ -464,6 +467,7 @@ export function ExpenseDetailModal({
             userId={userId}
             mayAttach={mayAttach}
             mayRemove={mayRemoveBills}
+            mayRemoveOwn={mayRemoveOwnBills}
             reimbursed={state === 'reimbursed'}
             personName={id => personName(id)}
             onChanged={onBillsChanged}

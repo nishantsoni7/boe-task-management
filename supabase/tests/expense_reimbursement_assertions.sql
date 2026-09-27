@@ -629,8 +629,11 @@ begin
   values (col, v_payer_path, 'payer-receipt.jpg', 'image/jpeg', 512, auth.uid());
   perform pg_temp.ok((select count(*) from public.expense_bill_attachments where expense_id = col and removed_at is null) = 2,
     'the payer adds a bill to the expense Finance entered for them');
-  update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = v_payer_path;
-  perform pg_temp.ok(not found, 'but cannot remove it again (adding only)');
+  -- This expense is already reimbursed (it is in the 16-expense batch of §12),
+  -- so not even the payer's own upload can be removed now.
+  perform pg_temp.refused(format(
+    $q$update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = %L$q$, v_payer_path),
+    'reimbursed expense cannot be removed', 'after reimbursement the payer cannot remove even their own upload');
   perform pg_temp.refused(format(
     $q$insert into storage.objects (bucket_id, name, owner_id) values ('expense-bills', %L, auth.uid()::text)$q$,
     (select id from public.test_ids where k = 'p3') || '/' || gen_random_uuid() || '.pdf'),
@@ -658,6 +661,85 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
   perform pg_temp.ok((select count(*) from public.expenses) = 0, 'no Finance entry, no expenses at all');
+  reset role;
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 14. THE PAYER REMOVES ONLY THEIR OWN UPLOAD, ONLY BEFORE REIMBURSEMENT
+-- ═══════════════════════════════════════════════════════════════════════════
+
+do $$
+declare
+  v_cat uuid := (select id from public.expense_categories limit 1);
+  v_exp uuid;
+  v_fin_path text;
+  v_own_path text;
+  v_late_path text;
+begin
+  -- Finance enters a pending personal expense for the Colleague and attaches a bill.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  insert into public.expenses (expense_date, amount, payment_mode, paid_to, category_id, created_by, paid_from, paid_by)
+  values (current_date, 75.00, 'cash', 'Stationery', v_cat, auth.uid(), 'personal', '55555555-5555-5555-5555-555555555555')
+  returning id into v_exp;
+  v_fin_path := v_exp || '/' || gen_random_uuid() || '.pdf';
+  insert into storage.objects (bucket_id, name, owner_id) values ('expense-bills', v_fin_path, auth.uid()::text);
+  insert into public.expense_bill_attachments (expense_id, storage_path, file_name, mime_type, size_bytes, uploaded_by)
+  values (v_exp, v_fin_path, 'finance-copy.pdf', 'application/pdf', 100, auth.uid());
+  reset role;
+
+  -- The payer uploads their own bill, then removes it: allowed while pending.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  v_own_path := v_exp || '/' || gen_random_uuid() || '.jpg';
+  insert into storage.objects (bucket_id, name, owner_id) values ('expense-bills', v_own_path, auth.uid()::text);
+  insert into public.expense_bill_attachments (expense_id, storage_path, file_name, mime_type, size_bytes, uploaded_by)
+  values (v_exp, v_own_path, 'wrong-photo.jpg', 'image/jpeg', 100, auth.uid());
+  update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = v_own_path;
+  perform pg_temp.ok(found, 'the payer removes a bill they uploaded, while the expense is pending');
+  perform pg_temp.ok((select removed_by = auth.uid() and removed_at is not null and file_name = 'wrong-photo.jpg'
+                      from public.expense_bill_attachments where storage_path = v_own_path)
+    and (select count(*) from storage.objects where name = v_own_path) = 1,
+    'the removal is kept as history: the row names who removed it, and the file stays');
+
+  -- …but not Finance's bill on the same expense.
+  update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = v_fin_path;
+  perform pg_temp.ok(not found, 'the payer cannot remove a bill somebody else uploaded');
+  perform pg_temp.ok((select removed_at is null from public.expense_bill_attachments where storage_path = v_fin_path),
+    'and it is still live');
+
+  -- A third bill, uploaded before reimbursement, to try removing after it.
+  v_late_path := v_exp || '/' || gen_random_uuid() || '.png';
+  insert into storage.objects (bucket_id, name, owner_id) values ('expense-bills', v_late_path, auth.uid()::text);
+  insert into public.expense_bill_attachments (expense_id, storage_path, file_name, mime_type, size_bytes, uploaded_by)
+  values (v_exp, v_late_path, 'receipt.png', 'image/png', 100, auth.uid());
+  reset role;
+
+  -- An unrelated employee cannot remove the payer's bill (or see it).
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = v_late_path;
+  perform pg_temp.ok(not found, 'an unrelated employee cannot remove the payer''s bill');
+  reset role;
+
+  -- Finance reimburses the expense.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  perform public.record_expense_reimbursement(array[v_exp], current_date, 'UTR-STATIONERY', 75.00);
+  reset role;
+
+  -- After reimbursement nobody removes any bill: not the payer's own, not Finance's.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', true);
+  perform pg_temp.refused(format(
+    $q$update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = %L$q$, v_late_path),
+    'reimbursed expense cannot be removed', 'after reimbursement the payer cannot remove their own upload');
+  reset role;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  perform pg_temp.refused(format(
+    $q$update public.expense_bill_attachments set removed_by = auth.uid(), removed_at = now() where storage_path = %L$q$, v_fin_path),
+    'reimbursed expense cannot be removed', 'nor can Finance remove any bill after reimbursement');
   reset role;
 end $$;
 

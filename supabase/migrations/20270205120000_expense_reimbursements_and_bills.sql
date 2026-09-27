@@ -48,8 +48,11 @@
 --   say somebody ELSE paid it          finance.manage (as correcting their row)
 --   read an expense                    as today (author, finance.view_all, admin)
 --                                      PLUS its recorded payer, read only
---   add a bill (never remove one)      also the recorded payer of a personal
+--   add a bill                         also the recorded payer of a personal
 --                                      expense entered on their behalf
+--   remove a bill                      its author or finance.manage; the payer
+--                                      only a bill THEY uploaded; nobody once
+--                                      the expense is reimbursed
 --   read a reimbursement batch         finance.view_all / admin (and its recorder);
 --                                      others see only their own expense's
 --                                      date, reference and amount
@@ -758,9 +761,10 @@ revoke all on function public.can_attach_expense_bill(uuid) from public, anon;
 grant execute on function public.can_attach_expense_bill(uuid) to authenticated;
 
 -- WHO MAY ADD A BILL: everybody above, PLUS the named payer of a personal expense
--- Finance entered on their behalf — they are the one holding the bill. ADDING
--- ONLY: removal stays with can_attach_expense_bill(), and the payer's access to
--- the expense itself stays read only (no UPDATE policy names paid_by).
+-- Finance entered on their behalf — they are the one holding the bill. The
+-- payer may remove only a bill THEY uploaded (expense_bill_attachments_remove);
+-- their access to the expense itself stays read only (no UPDATE policy names
+-- paid_by).
 create or replace function public.can_add_expense_bill(p_expense_id uuid)
 returns boolean
 language sql
@@ -935,11 +939,23 @@ create policy expense_bill_attachments_insert
   );
 
 drop policy if exists expense_bill_attachments_remove on public.expense_bill_attachments;
+-- WHO MAY REMOVE A BILL: whoever may correct the expense (its author or
+-- finance.manage), or the named payer for a bill THEY uploaded. Never once the
+-- expense is reimbursed — expense_bill_attachments_guard refuses that for every
+-- caller. Removal is a tombstone (removed_by / removed_at); the row and the file
+-- stay, so the history is kept.
 create policy expense_bill_attachments_remove
   on public.expense_bill_attachments
   for update to authenticated
-  using (public.can_attach_expense_bill(expense_id))
-  with check (public.can_attach_expense_bill(expense_id) and removed_by = auth.uid());
+  using (
+    public.can_attach_expense_bill(expense_id)
+    or (uploaded_by = auth.uid() and public.can_add_expense_bill(expense_id))
+  )
+  with check (
+    (public.can_attach_expense_bill(expense_id)
+     or (uploaded_by = auth.uid() and public.can_add_expense_bill(expense_id)))
+    and removed_by = auth.uid()
+  );
 
 
 -- ═══ §6. Completing a capture records the payment source too ════════════════

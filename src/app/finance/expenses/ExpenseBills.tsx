@@ -83,6 +83,7 @@ export function ExpenseBills({
   userId,
   mayAttach,
   mayRemove = mayAttach,
+  mayRemoveOwn = false,
   reimbursed,
   personName,
   onChanged,
@@ -92,8 +93,10 @@ export function ExpenseBills({
   userId: string
   /** May ADD a bill — can_add_expense_bill(): the author, finance.manage, or the named payer. */
   mayAttach: boolean
-  /** May REMOVE one — can_attach_expense_bill(): the author or finance.manage only. */
+  /** May REMOVE any bill — can_attach_expense_bill(): the author or finance.manage. */
   mayRemove?: boolean
+  /** May remove a bill THEY uploaded — the named payer (expense_bill_attachments_remove). */
+  mayRemoveOwn?: boolean
   /** A reimbursed expense's bills cannot be removed (the database refuses it too). */
   reimbursed: boolean
   personName: (id: string) => string
@@ -203,7 +206,7 @@ export function ExpenseBills({
                   onClick={() => void act(bill, false)} aria-label={`View ${bill.file_name}`}>View</button>
                 <button type="button" className="boe-btn boe-btn-ghost" style={{ minHeight: '36px', padding: '4px 10px', fontSize: '12px' }}
                   onClick={() => void act(bill, true)} aria-label={`Download ${bill.file_name}`}>Download</button>
-                {mayRemove && !reimbursed && (
+                {(mayRemove || (mayRemoveOwn && bill.uploaded_by === userId)) && !reimbursed && (
                   <button type="button" className="boe-btn boe-btn-ghost" disabled={busy}
                     style={{ minHeight: '36px', padding: '4px 8px', fontSize: '12px', color: '#C13030' }}
                     onClick={() => void remove(bill)} aria-label={`Remove ${bill.file_name}`} title="Remove">

@@ -914,10 +914,11 @@ export function ExpensesView() {
           categoryName={categoryName(detail.category_id)}
           personName={personName}
           // THE PAYER MAY ADD THE MISSING BILL to a personal expense Finance
-          // entered for them — can_add_expense_bill() in the database. Removing
-          // one stays with whoever may correct the expense.
+          // entered for them (can_add_expense_bill), and remove only a bill
+          // they uploaded themselves; nobody removes one once it is reimbursed.
           mayAttach={mayEdit(detail) || mayAddBillAsPayer(detail, userId)}
           mayRemoveBills={mayEdit(detail)}
+          mayRemoveOwnBills={mayAddBillAsPayer(detail, userId)}
           onClose={() => setDetail(null)}
           // The whole batch is Finance's to open; everybody else sees their own
           // expense's receipt in the details and no link to the batch.
