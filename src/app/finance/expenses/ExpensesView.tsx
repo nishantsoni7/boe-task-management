@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2 } from 'lucide-react'
+import { Paperclip, Plus, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -67,11 +67,33 @@ import {
   pendingDraftCount,
   type ExpenseDraftRow,
 } from '@/lib/finance/expenseDrafts'
-import { ExpenseForm, type ExpenseSaveOutcome } from './ExpenseForm'
+import { ExpenseForm, type ExpensePayer, type ExpenseSaveOutcome } from './ExpenseForm'
 import { ExpenseErrorBoundary } from './ExpenseErrorBoundary'
 import { DeleteExpenseModal } from './DeleteExpenseModal'
 import { NeedsDetailsList } from './NeedsDetailsList'
 import { QuickCapture } from './QuickCapture'
+import {
+  REIMBURSEMENT_BATCH_MAX,
+  REIMBURSEMENT_FILTER_OPTIONS,
+  REIMBURSEMENT_STATE_LABEL,
+  REIMBURSEMENT_STATE_SHORT,
+  isReimbursable,
+  mayAddBillAsPayer,
+  maySelectWith,
+  mayRecordForOthers,
+  mayRecordReimbursement,
+  reimbursementState,
+  selectionPayer,
+  selectionTotal,
+  type ExpenseReimbursementReceipt,
+  type ReimbursementFilter,
+} from '@/lib/finance/expenseReimbursements'
+import {
+  ExpenseDetailModal,
+  RecordReimbursementModal,
+  ReimbursementBatchModal,
+  STATE_TONE,
+} from './ExpenseReimbursementModals'
 
 /**
  * How many rows one read returns.
@@ -96,7 +118,24 @@ export const EXPENSE_LIST_LIMIT = 500
 export const EXPENSE_HISTORY_LIMIT = 400
 
 const LIST_COLUMNS =
-  'id, expense_date, amount, payment_mode, paid_to, category_id, remark, created_by, created_at, updated_at, updated_by, deleted_at, deleted_by'
+  'id, expense_date, amount, payment_mode, paid_to, category_id, remark, created_by, created_at, updated_at, updated_by, deleted_at, deleted_by, paid_from, paid_by, reimbursement_id'
+
+/**
+ * THE ONE EMBED THE LIST NEEDS: only the ids of LIVE bills — enough for the
+ * list's paperclip and for the "missing bill" filter, which is an anti-join on it.
+ *
+ * THE REIMBURSEMENT IS NOT EMBEDDED. The batch row carries the whole payment's
+ * total, count and note and is readable by Finance only; everybody reads their
+ * own expense's reimbursement through expense_reimbursement_receipts(), one row
+ * per expense with that expense's own amount. See loadExpenses.
+ */
+const LIST_EMBEDS = 'bills:expense_bill_attachments(id)'
+
+/** A list row, with the bill embed and its own reimbursement receipt. */
+type ExpenseViewRow = ExpenseListRow & {
+  reimbursement?: ExpenseReimbursementReceipt | null
+  bills?: { id: string }[]
+}
 
 /**
  * THE TABLE'S COLUMNS, AND THE WIDTHS THE THRESHOLD IS COMPUTED FROM.
@@ -194,7 +233,7 @@ export function ExpensesView() {
   const [tab, setTab] = useState<ExpenseTab>('expenses')
 
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
-  const [rows, setRows] = useState<ExpenseListRow[]>([])
+  const [rows, setRows] = useState<ExpenseViewRow[]>([])
   const [total, setTotal] = useState(0)
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
@@ -213,6 +252,14 @@ export function ExpensesView() {
   const [editing, setEditing] = useState<ExpenseRow | null>(null)
   const [deleting, setDeleting] = useState<ExpenseRow | null>(null)
   const [completing, setCompleting] = useState<ExpenseDraftRow | null>(null)
+
+  // ── Reimbursement ──
+  const [payers, setPayers] = useState<ExpensePayer[]>([])
+  const [detail, setDetail] = useState<ExpenseViewRow | null>(null)
+  const [batchId, setBatchId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [recording, setRecording] = useState(false)
+  const [pendingSummary, setPendingSummary] = useState<{ count: number; total: string; capped: boolean } | null>(null)
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -291,7 +338,7 @@ export function ExpensesView() {
     const range = orderedDateRange(filters)
     let query = supabase
       .from('expenses')
-      .select(LIST_COLUMNS, { count: 'exact' })
+      .select(`${LIST_COLUMNS}, ${LIST_EMBEDS}`, { count: 'exact' })
       // ── DELETED EXPENSES ARE NOT IN THE LIST, THE FILTERS OR THE TOTAL ──
       // Asked of the database rather than filtered in the browser, so the
       // `count` beside the rows is a count of LIVE expenses and the total under
@@ -309,6 +356,22 @@ export function ExpensesView() {
     const searchClause = expenseSearchClause(filters.search)
     if (searchClause) query = query.or(searchClause)
 
+    // ── WHO PAID, AND WHETHER IT HAS BEEN PAID BACK ──
+    // Company-paid is never pending: pending is `personal` AND not linked to a
+    // reimbursement, and the database refuses to link a company-paid expense.
+    // "Not recorded" is its own filter — an older expense is never counted as
+    // either source.
+    switch (filters.reimbursement) {
+      case 'company': query = query.eq('paid_from', 'company'); break
+      case 'pending': query = query.eq('paid_from', 'personal').is('reimbursement_id', null); break
+      case 'reimbursed': query = query.not('reimbursement_id', 'is', null); break
+      case 'unknown': query = query.is('paid_from', null); break
+    }
+    if (filters.paidBy) query = query.eq('paid_by', filters.paidBy)
+    // Only LIVE bills are embedded; "missing bill" is the anti-join on them.
+    query = query.is('bills.removed_at', null)
+    if (filters.missingBill) query = query.is('bills', null)
+
     const { data, error, count } = await query
     if (token !== loadToken.current) return
 
@@ -322,10 +385,23 @@ export function ExpensesView() {
       return
     }
 
-    const loaded = (data ?? []) as ExpenseRow[]
+    const loaded = (data ?? []) as unknown as ExpenseViewRow[]
     setTotal(count ?? loaded.length)
 
-    const ids = [...new Set(loaded.map(r => r.created_by))]
+    // EACH REIMBURSED EXPENSE'S OWN RECEIPT — date, reference, its own amount,
+    // who recorded it. Never the batch's total or its other expenses.
+    const reimbursedIds = loaded.filter(r => r.reimbursement_id).map(r => r.id)
+    if (reimbursedIds.length > 0) {
+      const { data: receipts } = await supabase
+        .rpc('expense_reimbursement_receipts', { p_expense_ids: reimbursedIds })
+      if (token !== loadToken.current) return
+      const byExpense = new Map(((receipts ?? []) as ExpenseReimbursementReceipt[]).map(r => [r.expense_id, r]))
+      for (const row of loaded) row.reimbursement = byExpense.get(row.id) ?? null
+    }
+
+    // The payer and whoever recorded the reimbursement are named too.
+    const ids = [...new Set(loaded.flatMap(r =>
+      [r.created_by, r.paid_by, r.reimbursement?.recorded_by].filter((x): x is string => !!x)))]
     if (ids.length > 0) {
       const { data: users } = await supabase
         .from('users')
@@ -337,8 +413,38 @@ export function ExpensesView() {
     }
 
     setRows(loaded.map(r => ({ ...r, category_name: null, created_by_name: null })))
+    // A selection only ever holds rows that are on screen AND still pending.
+    setSelected(prev => new Set(loaded.filter(r => prev.has(r.id) && isReimbursable(r)).map(r => r.id)))
     setListLoading(false)
   }, [supabase, filters])
+
+  /**
+   * PENDING REIMBURSEMENT, IN ONE FIGURE — independent of the filters, so Finance
+   * always sees what is owed. Amounts only; the exact sum is taken here. Capped
+   * like the list, and says so when the cap bites.
+   */
+  const loadPendingSummary = useCallback(async () => {
+    const { data, error, count } = await supabase
+      .from('expenses')
+      .select('amount', { count: 'exact' })
+      .is('deleted_at', null)
+      .eq('paid_from', 'personal')
+      .is('reimbursement_id', null)
+      .limit(2000)
+    if (error) { setPendingSummary(null); return }
+    const list = (data ?? []) as { amount: string | number }[]
+    setPendingSummary({ count: count ?? list.length, total: selectionTotal(list), capped: (count ?? 0) > list.length })
+  }, [supabase])
+
+  const loadPayers = useCallback(async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('id, full_name')
+      .eq('is_active', true)
+      .order('full_name')
+    setPayers(((data ?? []) as { id: string; full_name: string | null }[])
+      .map(u => ({ id: u.id, name: u.full_name || '—' })))
+  }, [supabase])
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
@@ -357,6 +463,8 @@ export function ExpensesView() {
         loadExpenses(),
         loadDrafts(),
         loadHistory(),
+        loadPayers(),
+        loadPendingSummary(),
       ])
       if (!active) return
       setProfile(me as UserProfile)
@@ -397,16 +505,54 @@ export function ExpensesView() {
   const capped = total > rows.length
   const pendingCount = pendingDraftCount(drafts)
 
+  // Names from the rows in hand first, then from the payer list.
+  const personName = useCallback((id: string | null | undefined): string => {
+    if (!id) return '—'
+    if (id === userId) return 'You'
+    return people.get(id) || payers.find(p => p.id === id)?.name || '—'
+  }, [people, payers, userId])
+
+  // ── Selecting pending expenses to reimburse ──
+  // Offered only on the Pending filter and only to Finance users who may record
+  // a reimbursement (finance.manage + company-wide sight) — exactly who
+  // record_expense_reimbursement() admits.
+  const mayRecord = mayRecordReimbursement(caps)
+  const selecting = mayRecord && filters.reimbursement === 'pending'
+  const selectedRows = rows.filter(r => selected.has(r.id))
+  // ONE PAYER AT A TIME. Once one expense is ticked, only that payer's pending
+  // expenses can join it; the others' boxes are disabled. The database refuses a
+  // mixed selection too (EXPENSE_REIMBURSEMENT_MIXED_PAYERS).
+  const maySelect = (row: ExpenseRow) => selected.has(row.id) || maySelectWith(row, selectedRows)
+  const toggleSelected = (row: ExpenseRow) => setSelected(prev => {
+    const next = new Set(prev)
+    const current = rows.filter(r => prev.has(r.id))
+    if (next.has(row.id)) next.delete(row.id)
+    else if (maySelectWith(row, current) && next.size < REIMBURSEMENT_BATCH_MAX) next.add(row.id)
+    return next
+  })
+  const selectablePending = rows.filter(isReimbursable)
+  // "Select all" only when everything shown is one payer's — narrow by "Paid by" first.
+  const onePayerShown = selectablePending.length > 0 && selectionPayer(selectablePending) !== null
+  const selectAllShown = () => {
+    if (!onePayerShown) return
+    setSelected(new Set(selectablePending.slice(0, REIMBURSEMENT_BATCH_MAX).map(r => r.id)))
+  }
+  const selectedPayer = selectionPayer(selectedRows)
+
   const clearFilters = () => {
     setSearchTerm('')
     setFilters(EMPTY_EXPENSE_FILTERS)
   }
 
   const afterSave = (outcome: ExpenseSaveOutcome, andAnother: boolean) => {
+    const billNote = outcome.billsFailed
+      ? ` — ${outcome.billsFailed} bill${outcome.billsFailed === 1 ? '' : 's'} could not be uploaded; add from the expense's details`
+      : ''
     show(outcome.mode === 'edit'
       ? `Expense corrected — ${formatMoney(outcome.amount)} to ${outcome.paidTo}`
-      : `Expense saved — ${formatMoney(outcome.amount)} to ${outcome.paidTo}`)
+      : `Expense saved — ${formatMoney(outcome.amount)} to ${outcome.paidTo}${billNote}`)
     void loadExpenses()
+    void loadPendingSummary()
     // THE SUGGESTION LEARNS FROM WHAT WAS JUST FILED, on the next form that
     // opens. This is the whole of "it gets better as more expenses are
     // finalized" — one more row in the training set, no model, no retraining.
@@ -427,7 +573,9 @@ export function ExpensesView() {
   // so a button drawn here matches what the database will accept.
   const actor = { userId, canManageFinance: caps.canManageFinance }
   const mayEdit = (row: ExpenseRow) => mayEditExpense(row, actor)
-  const mayDelete = (row: ExpenseRow) => mayDeleteExpense(row, actor)
+  // A reimbursed expense is not deletable: the database's guard refuses it until
+  // the reimbursement is reversed, so no button is drawn for it.
+  const mayDelete = (row: ExpenseRow) => mayDeleteExpense(row, actor) && !row.reimbursement_id
 
   if (pageLoading) return <FinanceRouteFallback />
 
@@ -442,6 +590,7 @@ export function ExpensesView() {
         await loadExpenses()
         await loadDrafts()
         await loadHistory()
+        await loadPendingSummary()
       }}
       actions={caps.canCreatePaymentRecord && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -559,6 +708,43 @@ export function ExpensesView() {
               ))}
             </select>
 
+            <select
+              className="boe-input expense-filter-select"
+              aria-label="Filter by payment source and reimbursement"
+              data-testid="expense-reimbursement-filter"
+              value={filters.reimbursement ?? ''}
+              onChange={e => setFilters(prev => ({ ...prev, reimbursement: e.target.value as ReimbursementFilter }))}
+            >
+              {REIMBURSEMENT_FILTER_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+
+            {/* Only for company-wide Finance sight: anybody else sees their own
+                expenses only, and a list of every colleague would be clutter. */}
+            {caps.canViewAllFinance && (
+              <select
+                className="boe-input expense-filter-select"
+                aria-label="Filter by who paid"
+                value={filters.paidBy ?? ''}
+                onChange={e => setFilters(prev => ({ ...prev, paidBy: e.target.value }))}
+              >
+                <option value="">Anyone paid</option>
+                {payers.map(p => (
+                  <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
+                ))}
+              </select>
+            )}
+
+            <label className="expense-filter-check">
+              <input
+                type="checkbox"
+                checked={!!filters.missingBill}
+                onChange={e => setFilters(prev => ({ ...prev, missingBill: e.target.checked }))}
+              />
+              Missing bill
+            </label>
+
             {narrowed && (
               <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
                 Clear filters
@@ -597,6 +783,31 @@ export function ExpensesView() {
             </span>
           </div>
 
+          {/* ── WHAT IS OWED ── Independent of the filters. One tap narrows the
+              list to exactly these, which is where they are selected. */}
+          {pendingSummary && pendingSummary.count > 0 && filters.reimbursement !== 'pending' && (
+            <button
+              type="button"
+              data-testid="pending-reimbursement-summary"
+              onClick={() => setFilters(prev => ({ ...prev, reimbursement: 'pending' }))}
+              className="boe-btn"
+              style={{
+                width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                gap: '10px', flexWrap: 'wrap', marginBottom: '10px', padding: '9px 12px', minHeight: '44px',
+                borderRadius: '10px', textAlign: 'left',
+                border: `1px solid ${STATE_TONE.pending.border}`, background: STATE_TONE.pending.bg,
+              }}
+            >
+              <span style={{ fontSize: '12px', color: STATE_TONE.pending.fg, fontWeight: 600 }}>
+                Pending reimbursement · {pendingSummary.count} {pendingSummary.count === 1 ? 'expense' : 'expenses'}
+                {pendingSummary.capped ? ' (total of the first 2000)' : ''}
+              </span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: STATE_TONE.pending.fg, fontVariantNumeric: 'tabular-nums' }}>
+                {formatMoney(pendingSummary.total)} <span aria-hidden="true">›</span>
+              </span>
+            </button>
+          )}
+
           {capped && !listLoading && !listError && (
             <div role="status" style={{
               marginBottom: '10px', padding: '9px 12px', borderRadius: '8px',
@@ -624,10 +835,111 @@ export function ExpensesView() {
               onEdit={setEditing}
               onDelete={setDeleting}
               onClearFilters={clearFilters}
+              onOpen={row => setDetail(row as ExpenseViewRow)}
+              payerName={personName}
+              selectable={selecting}
+              selected={selected}
+              onToggleSelected={toggleSelected}
+              maySelect={maySelect}
             />
             </ExpenseErrorBoundary>
           </div>
+
+          {/* ── THE SELECTION ── Only on the Pending filter, only for Finance. */}
+          {selecting && !listLoading && !listError && rows.length > 0 && (
+            <div className="expense-selection-bar" data-testid="expense-selection-bar" role="region" aria-label="Selected for reimbursement">
+              <span style={{ fontSize: '12.5px', color: colors.secondary, minWidth: 0 }}>
+                <strong style={{ color: colors.primary }}>{selectedRows.length}</strong> selected ·{' '}
+                <strong style={{ color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(selectionTotal(selectedRows))}</strong>
+                {selectedRows.length > 0
+                  ? <> · to <strong style={{ color: colors.primary }}>{personName(selectedPayer)}</strong></>
+                  : <span style={{ color: colors.muted }}> · one payer per reimbursement</span>}
+              </span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {selectedRows.length === 0 ? (
+                  onePayerShown ? (
+                    <button type="button" className="boe-btn boe-btn-ghost" onClick={selectAllShown} style={{ minHeight: '40px', fontSize: '12.5px' }}>
+                      Select all shown
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: colors.muted, alignSelf: 'center' }}>
+                      Choose a payer in “Anyone paid” to select all
+                    </span>
+                  )
+                ) : (
+                  <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setSelected(new Set())} style={{ minHeight: '40px', fontSize: '12.5px' }}>
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-primary"
+                  disabled={selectedRows.length === 0}
+                  onClick={() => setRecording(true)}
+                  style={{ minHeight: '40px', fontSize: '12.5px' }}
+                >
+                  Record reimbursement
+                </button>
+              </div>
+            </div>
+          )}
+          {selecting && !listLoading && !listError && rows.length > 0 && (
+            <div className="expense-selection-spacer" aria-hidden="true" />
+          )}
         </>
+      )}
+
+      {recording && (
+        <RecordReimbursementModal
+          supabase={supabase}
+          rows={selectedRows}
+          personName={personName}
+          onClose={() => setRecording(false)}
+          onRecorded={result => {
+            setRecording(false)
+            setSelected(new Set())
+            show(`Reimbursement recorded — ${result.count} ${result.count === 1 ? 'expense' : 'expenses'}, ${formatMoney(result.total)}`)
+            void loadExpenses()
+            void loadPendingSummary()
+          }}
+        />
+      )}
+
+      {detail && userId && (
+        <ExpenseDetailModal
+          supabase={supabase}
+          expense={detail}
+          reimbursement={detail.reimbursement ?? null}
+          userId={userId}
+          categoryName={categoryName(detail.category_id)}
+          personName={personName}
+          // THE PAYER MAY ADD THE MISSING BILL to a personal expense Finance
+          // entered for them — can_add_expense_bill() in the database. Removing
+          // one stays with whoever may correct the expense.
+          mayAttach={mayEdit(detail) || mayAddBillAsPayer(detail, userId)}
+          mayRemoveBills={mayEdit(detail)}
+          onClose={() => setDetail(null)}
+          // The whole batch is Finance's to open; everybody else sees their own
+          // expense's receipt in the details and no link to the batch.
+          onOpenReimbursement={caps.canViewAllFinance ? (id => { setDetail(null); setBatchId(id) }) : undefined}
+          onBillsChanged={() => void loadExpenses()}
+        />
+      )}
+
+      {batchId && (
+        <ReimbursementBatchModal
+          supabase={supabase}
+          reimbursementId={batchId}
+          personName={personName}
+          mayReverse={mayRecord}
+          onClose={() => setBatchId(null)}
+          onReversed={() => {
+            show('Reimbursement reversed — its expenses are pending again')
+            setDetail(null)
+            void loadExpenses()
+            void loadPendingSummary()
+          }}
+        />
       )}
 
       {adding && userId && (
@@ -639,6 +951,8 @@ export function ExpensesView() {
             categories={categories}
             history={history}
             onCategoryCreated={c => setCategories(prev => [...prev, c])}
+            payers={payers}
+            canRecordForOthers={mayRecordForOthers(caps)}
             onSaved={afterSave}
             onCancel={() => setAdding(false)}
             showSaveAndAddAnother
@@ -682,6 +996,8 @@ export function ExpensesView() {
               categories={categories}
               history={history}
               onCategoryCreated={c => setCategories(prev => [...prev, c])}
+              payers={payers}
+              canRecordForOthers={mayRecordForOthers(caps)}
               onSaved={afterSave}
               onCancel={() => setEditing(null)}
             />
@@ -708,6 +1024,8 @@ export function ExpensesView() {
             categories={categories}
             history={history}
             onCategoryCreated={c => setCategories(prev => [...prev, c])}
+            payers={payers}
+            canRecordForOthers={mayRecordForOthers(caps)}
             onSaved={afterSave}
             onCancel={() => setCompleting(null)}
           />
@@ -731,6 +1049,7 @@ export function ExpensesView() {
             setRows(prev => prev.filter(r => r.id !== row.id))
             setTotal(prev => Math.max(0, prev - 1))
             void loadExpenses()
+            void loadPendingSummary()
             // AND IT STOPS TEACHING THE MATCHER. Re-read, so the next
             // suggestion is computed without it.
             void loadHistory()
@@ -803,6 +1122,48 @@ type ListProps = {
   onEdit: (row: ExpenseRow) => void
   onDelete: (row: ExpenseRow) => void
   onClearFilters: () => void
+  /** Open the expense's details — payment source, reimbursement and bills. */
+  onOpen?: (row: ExpenseListRow) => void
+  /** Names the payer; falls back to personName. */
+  payerName?: (id: string | null | undefined) => string
+  /** Checkboxes, for selecting pending expenses to reimburse. */
+  selectable?: boolean
+  selected?: ReadonlySet<string>
+  onToggleSelected?: (row: ExpenseRow) => void
+  /** Whether this row may join the selection (pending, and the same payer). */
+  maySelect?: (row: ExpenseRow) => boolean
+}
+
+/**
+ * THE COMPACT INDICATOR: one short word and a paperclip when a bill is attached.
+ * Nothing at all for an older expense whose source was never recorded — the
+ * details say so in full, and the list stays quiet.
+ */
+function ReimbursementChip({ row }: { row: ExpenseListRow & { bills?: { id: string }[] } }) {
+  const state = reimbursementState(row)
+  const short = REIMBURSEMENT_STATE_SHORT[state]
+  const hasBill = (row.bills?.length ?? 0) > 0
+  if (!short && !hasBill) return null
+  const tone = STATE_TONE[state]
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+      {short && (
+        <span
+          data-reimbursement-state={state}
+          title={REIMBURSEMENT_STATE_LABEL[state]}
+          style={{
+            fontSize: '10.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
+            color: tone.fg, background: tone.bg, border: `1px solid ${tone.border}`, lineHeight: 1.5,
+          }}
+        >
+          {short}
+        </span>
+      )}
+      {hasBill && (
+        <Paperclip size={12} strokeWidth={2} color={colors.muted} aria-label="Bill attached" role="img" />
+      )}
+    </span>
+  )
 }
 
 export function ExpenseList(props: ListProps) {
@@ -876,7 +1237,29 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
 
-export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete }: ListProps) {
+function SelectBox({ row, selected, onToggle, maySelect }: {
+  row: ExpenseListRow
+  selected: boolean
+  onToggle?: (row: ExpenseRow) => void
+  maySelect?: (row: ExpenseRow) => boolean
+}) {
+  const enabled = selected || (maySelect ? maySelect(row) : isReimbursable(row))
+  return (
+    <input
+      type="checkbox"
+      checked={selected}
+      disabled={!enabled}
+      onChange={() => onToggle?.(row)}
+      aria-label={`Select ${formatMoney(row.amount)} paid to ${row.paid_to} for reimbursement`}
+      style={{ width: '18px', height: '18px', margin: 0, cursor: enabled ? 'pointer' : 'default' }}
+    />
+  )
+}
+
+export function ExpenseTable({
+  rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete,
+  onOpen, payerName, selectable, selected, onToggleSelected, maySelect,
+}: ListProps) {
   return (
     // FIXED LAYOUT, so the columns sit where the header says they are whatever
     // the rows contain, and a long payee truncates instead of widening the table
@@ -884,6 +1267,7 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelet
     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
       <thead>
         <tr>
+          {selectable && <th style={{ ...TH, width: '40px' }}><span className="expense-sr-only">Select</span></th>}
           {EXPENSE_TABLE_COLUMNS.map(column => (
             <th
               key={column.key}
@@ -901,6 +1285,11 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelet
       <tbody>
         {rows.map(row => (
           <tr key={row.id}>
+            {selectable && (
+              <td style={{ ...TD, textAlign: 'center', padding: '9px 8px' }}>
+                <SelectBox row={row} selected={!!selected?.has(row.id)} onToggle={onToggleSelected} maySelect={maySelect} />
+              </td>
+            )}
             <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>{fmtDate(row.expense_date)}</td>
             <td style={{
               ...TD, fontSize: '13.5px', fontWeight: 700, color: colors.primary,
@@ -908,8 +1297,25 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelet
             }}>
               {formatMoney(row.amount)}
             </td>
-            <td style={{ ...TD, fontSize: '13px', color: colors.primary }} title={row.paid_to}>
-              {row.paid_to}
+            <td
+              style={{ ...TD, fontSize: '13px', color: colors.primary }}
+              title={row.paid_from === 'personal' ? `${row.paid_to} · paid by ${(payerName ?? personName)(row.paid_by ?? '')}` : row.paid_to}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                {onOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(row)}
+                    className="expense-open-link"
+                    aria-label={`Open the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                  >
+                    {row.paid_to}
+                  </button>
+                ) : (
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.paid_to}</span>
+                )}
+                <ReimbursementChip row={row} />
+              </span>
             </td>
             <td style={{ ...TD, fontSize: '12px', color: colors.secondary }} title={categoryName(row.category_id)}>
               {categoryName(row.category_id)}
@@ -969,7 +1375,10 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelet
 // is on its own line, and Edit and Delete are full-height tap targets rather
 // than squeezed links.
 
-export function ExpenseCards({ rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete }: ListProps) {
+export function ExpenseCards({
+  rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete,
+  onOpen, payerName, selectable, selected, onToggleSelected, maySelect,
+}: ListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(row => (
@@ -978,15 +1387,33 @@ export function ExpenseCards({ rows, categoryName, personName, mayEdit, mayDelet
           style={{
             padding: '12px 14px', borderBottom: `1px solid ${colors.border}`,
             display: 'flex', flexDirection: 'column', gap: '6px',
+            background: selected?.has(row.id) ? colors.raised : undefined,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-            <span style={{
-              fontSize: '13.5px', fontWeight: 600, color: colors.primary,
-              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {row.paid_to}
-            </span>
+            {selectable && (
+              <span style={{ alignSelf: 'center', flexShrink: 0, display: 'flex' }}>
+                <SelectBox row={row} selected={!!selected?.has(row.id)} onToggle={onToggleSelected} maySelect={maySelect} />
+              </span>
+            )}
+            {onOpen ? (
+              <button
+                type="button"
+                onClick={() => onOpen(row)}
+                className="expense-open-link"
+                style={{ flex: 1, fontSize: '13.5px', fontWeight: 600 }}
+                aria-label={`Open the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+              >
+                {row.paid_to}
+              </button>
+            ) : (
+              <span style={{
+                fontSize: '13.5px', fontWeight: 600, color: colors.primary,
+                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {row.paid_to}
+              </span>
+            )}
             <span style={{
               fontSize: '14.5px', fontWeight: 700, color: colors.primary,
               flexShrink: 0, fontVariantNumeric: 'tabular-nums',
@@ -998,6 +1425,17 @@ export function ExpenseCards({ rows, categoryName, personName, mayEdit, mayDelet
           <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
             {fmtDate(row.expense_date)} · {categoryName(row.category_id)} · {expensePaymentModeLabel(row.payment_mode)}
           </div>
+
+          {(reimbursementState(row) !== 'unknown' || ((row as ExpenseViewRow).bills?.length ?? 0) > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: colors.muted, minWidth: 0 }}>
+              <ReimbursementChip row={row} />
+              {row.paid_from === 'personal' && (
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  paid by {(payerName ?? personName)(row.paid_by ?? '')}
+                </span>
+              )}
+            </div>
+          )}
 
           {row.remark && (
             <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
