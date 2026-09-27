@@ -73,7 +73,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   // The Order number THIS version prints, as stored on it (20270201000000) —
-  // "526" on versions issued before, "0526" since — never re-derived from the
+  // "526" until 20270202000000 switches new versions to "0526" — never re-derived from the
   // Order, so a PDF already sent reads the same every time it is opened. The
   // column is NOT NULL; if it ever reads empty, refuse rather than guess.
   const orderNumber = piVersionPdfOrderNumber(version.pdf_order_number)

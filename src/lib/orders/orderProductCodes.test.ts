@@ -99,7 +99,7 @@ describe('Orders screens show 0526; product codes keep 526-BE001', () => {
     // Issued exports are never rewritten: each generation writes new keys.
     assert.ok(docs.includes('upsert: false'))
   })
-  test('the PI version PDF prints the number stored on each version: issued PDFs keep 526, new versions print 0526 (20270201000000)', () => {
+  test('the PI version PDF prints the number stored on each version: issued PDFs keep 526, versions created after the switch print 0526 (20270201000000, 20270202000000)', () => {
     // It re-renders on every open, so it never re-derives the number from the
     // Order: that would alter PDFs already issued.
     const pdf = read('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts')
