@@ -1,4 +1,4 @@
--- ── 20270127000000 — PRODUCTION ROLE CHECK, READ ONLY ───────────────────────
+-- ── 20270205120000 — PRODUCTION ROLE CHECK, READ ONLY ───────────────────────
 --
 -- Run AFTER the migration is applied and BEFORE the merge, ONCE PER PERSON
 -- (`db query` returns only the last result set):

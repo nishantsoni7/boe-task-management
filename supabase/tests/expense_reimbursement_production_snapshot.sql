@@ -1,4 +1,4 @@
--- ── 20270127000000 — PRODUCTION SNAPSHOT, READ ONLY ─────────────────────────
+-- ── 20270205120000 — PRODUCTION SNAPSHOT, READ ONLY ─────────────────────────
 --
 -- Run BEFORE the migration is applied, and again AFTER it (before the merge):
 --
@@ -22,8 +22,8 @@ select json_build_object(
   'expenses_fingerprint', (select md5(string_agg(concat_ws('|', id, expense_date, amount, payment_mode, paid_to,
                                category_id, remark, created_by, updated_by, deleted_at, deleted_by), ',' order by id))
                             from public.expenses),
-  'migration_20270127_applied', exists (select 1 from supabase_migrations.schema_migrations
-                                         where version = '20270127000000')
+  'migration_20270205120000_applied', exists (select 1 from supabase_migrations.schema_migrations
+                                         where version = '20270205120000')
 );
 
 rollback;
