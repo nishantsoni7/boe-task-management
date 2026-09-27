@@ -310,7 +310,7 @@ function PiVersionDialog({ supabase, version, orderId, submissionId, isAdmin, on
       if (!live) return
       setCurrent(cur)
       if (version.status === 'approved') { setContent(cur); return }
-      const { data, error } = await supabase.rpc('order_pi_version_detail', { p_version_id: version.id })
+      const { data, error } = await supabase.rpc('order_pi_version_pdf_detail', { p_version_id: version.id })
       if (!live) return
       const n = error ? null : normalizeVersionContent(data as { source: string; content: Record<string, unknown> | null })
       if (n) { setContent(n); return }

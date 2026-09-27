@@ -29,8 +29,10 @@ import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 // V1 is always V1, and an edited V2 never borrows V1's workbook.
 //
 // ACCESS is the caller's: the Order is read under their own row security, and
-// the version's content through order_pi_version_detail(), which asks for the
-// signed-in person. The service role only reads rows and pictures after that.
+// the version's content through order_pi_version_pdf_detail() (20270203000000,
+// a copy of order_pi_version_detail() kept for builds that print the stored
+// number), which asks for the signed-in person. The service role only reads
+// rows and pictures after that.
 
 export const runtime = 'nodejs'
 
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return fail(500, 'PI_PDF_ORDER_NUMBER_MISSING', 'This PI version has no Order number, so its PDF cannot be produced. Please report it.')
   }
 
-  const detail = await authClient.rpc('order_pi_version_detail', { p_version_id: versionId })
+  const detail = await authClient.rpc('order_pi_version_pdf_detail', { p_version_id: versionId })
   if (detail.error || !detail.data) return fail(404, 'NOT_FOUND', 'This PI version could not be found.')
   const d = detail.data as PiVersionDetail
 

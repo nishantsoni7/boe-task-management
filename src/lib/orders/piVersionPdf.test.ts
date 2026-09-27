@@ -10,7 +10,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import {
   PI_VERSION_PDF_VIEW_LABEL,
   VERSION_CONTENT_NOT_RECORDED,
@@ -157,7 +157,7 @@ describe('the route prints the stored number, and refuses without one', () => {
 describe('the route asks as the reader, and renders from rows', () => {
   const route = readFileSync('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts', 'utf8')
   test('the Order and the version are read as the caller before the service role reads anything', () => {
-    const asCaller = route.indexOf("authClient.rpc('order_pi_version_detail'")
+    const asCaller = route.indexOf("authClient.rpc('order_pi_version_pdf_detail'")
     const orderRead = route.search(/authClient\s*\.from\('orders'\)/)
     assert.ok(asCaller > 0 && orderRead > 0 && orderRead < asCaller)
     assert.ok(route.indexOf('adminClient()') > asCaller)
@@ -177,5 +177,32 @@ describe('a product code is never clipped (found in the walkthrough)', () => {
     const row = { code: '5-BE004', hasImage: false, name: 'Bar stool', dimensions: '', material: '', customization: '' }
     const oneLine = measureRowHeight({ ...row, code: 'B001' } as never, 9)
     assert.ok(measureRowHeight(row as never, 9) > oneLine, '"5-BE004" wraps to two lines, and the row makes room')
+  })
+})
+
+describe('the PDF and the versions panel read a version through their own door (20270203000000)', () => {
+  // Builds before this call order_pi_version_detail() and print the Order number
+  // they format themselves; a later migration may refuse them the versions they
+  // would misprint. Current code must therefore never call that function.
+  const route = readFileSync('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts', 'utf8')
+  const panel = readFileSync('src/components/orders/PiVersionsPanel.tsx', 'utf8')
+  test('the route and the panel call order_pi_version_pdf_detail', () => {
+    assert.ok(route.includes("authClient.rpc('order_pi_version_pdf_detail', { p_version_id: versionId })"))
+    assert.ok(panel.includes("supabase.rpc('order_pi_version_pdf_detail', { p_version_id: version.id })"))
+  })
+  test('nothing in src/ calls order_pi_version_detail any more', () => {
+    const callers = (readdirSync('src', { recursive: true }) as string[])
+      .map((p) => p.replace(/\\/g, '/'))
+      .filter((p) => /\.(ts|tsx)$/.test(p) && !/\.test\.tsx?$/.test(p))
+      .filter((p) => /rpc\(\s*['"]order_pi_version_detail['"]/.test(readFileSync(`src/${p}`, 'utf8')))
+    assert.deepEqual(callers, [])
+  })
+  test('the copy keeps the original\'s grants, is checked against it, and leaves it untouched', () => {
+    const sql = readFileSync('supabase/migrations/20270203000000_order_pi_version_pdf_detail.sql', 'utf8').replace(/\r/g, '')
+    assert.match(sql, /revoke execute on function public\.order_pi_version_pdf_detail\(uuid\) from public, anon;/)
+    assert.match(sql, /grant {2}execute on function public\.order_pi_version_pdf_detail\(uuid\) to authenticated;/)
+    assert.match(sql, /body differs from order_pi_version_detail/)
+    assert.match(sql, /grants differ/)
+    assert.equal(/create or replace function public\.order_pi_version_detail\(/.test(sql), false)
   })
 })
