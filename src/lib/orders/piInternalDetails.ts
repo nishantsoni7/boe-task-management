@@ -517,7 +517,9 @@ export type InternalDatesSubmitResult =
  *   - a refused save sends nothing, and says so;
  *   - a send that fails AFTER the save says the dates are saved and the PI was
  *     not sent, and reports `saved` so a retry with the same dates skips the
- *     save (no second write, no stale-version refusal) and only sends.
+ *     save (no second write, no stale-version refusal) and only sends. It says
+ *     "Submit again", not a button label: when files were missing, the dialog
+ *     is still on its "Submit without these files" step.
  */
 export async function submitWithInternalDates(input: {
   row: PiInternalDetailsRow
@@ -552,7 +554,7 @@ export async function submitWithInternalDates(input: {
   return {
     ok: false,
     error,
-    message: `The dates were saved and the internal details confirmed, but the PI was not sent. ${input.describeSendFailure(error)} Press Submit for Approval again to retry — the dates are kept and will not be saved twice.`,
+    message: `The dates were saved and the internal details confirmed, but the PI was not sent. ${input.describeSendFailure(error)} Submit again to retry — the dates are kept and will not be saved twice.`,
     saved,
   }
 }

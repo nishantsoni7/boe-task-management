@@ -491,7 +491,10 @@ describe('submitWithInternalDates — the sequence behind Submit', () => {
     assert.deepEqual(r.saved, dates)
     assert.match(r.message ?? '', /^The dates were saved and the internal details confirmed, but the PI was not sent\./)
     assert.match(r.message ?? '', /Try again in a moment\./, 'with the send failure in its own words')
-    assert.match(r.message ?? '', /will not be saved twice/)
+    assert.match(r.message ?? '', /Submit again to retry — the dates are kept and will not be saved twice\.$/)
+    // No button label: after the supporting-files question the dialog's button
+    // reads "Submit without these files", not "Submit for Approval".
+    assert.ok(!/Press Submit for Approval/.test(r.message ?? ''))
   })
 
   test('the retry after that only sends — even before the page has re-read the record', async () => {
