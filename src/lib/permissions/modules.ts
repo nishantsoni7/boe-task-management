@@ -86,6 +86,12 @@ registerModule({
     // pile. Custom action (is_system = false), PROTECTED (see levels.ts), and
     // denied by default. Registered by 20261028000000.
     { actionKey: 'manage_access_records', displayName: 'Manage Access Records' },
+    // The asset CATALOGUE — add, rename, retire and reactivate categories and
+    // the products within them. Its own key: it decides what KINDS of asset
+    // exist, which is not the same decision as creating, editing or handing
+    // out an individual asset, and it carries none of those. Custom action,
+    // PROTECTED, denied by default. Registered by 20270130000000.
+    { actionKey: 'manage_asset_catalogue', displayName: 'Manage Asset Catalogue' },
   ],
 })
 

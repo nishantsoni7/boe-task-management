@@ -19,6 +19,11 @@ import type { EffectivePermission } from './types'
 //   manage_access_records
 //           → the ACCESS REGISTER: read, add and edit the login records of
 //             every employee. Governs access_records and nothing else.
+//   manage_asset_catalogue
+//           → the CATALOGUE: add, rename, retire and reactivate asset
+//             categories and products (20270130000000). Governs
+//             asset_categories / asset_products and nothing else — it neither
+//             opens the inventory nor edits a single asset.
 //
 // THE RULE THIS FILE EXISTS TO STATE: 'view' is NOT inventory access.
 //
@@ -104,6 +109,13 @@ export type AssetsAccessCapabilities = {
    * the reviewer could not perform directly.
    */
   canReviewAssetRequests: boolean
+  /**
+   * Add, rename, retire and reactivate categories and products. Admin, or an
+   * explicit `manage_asset_catalogue` grant — never implied by any asset
+   * action, and implying none. Mirrors can_manage_asset_catalogue()
+   * (20270130000000).
+   */
+  canManageCatalogue: boolean
 }
 
 export const NO_ASSETS_ACCESS_CAPABILITIES: AssetsAccessCapabilities = {
@@ -118,6 +130,7 @@ export const NO_ASSETS_ACCESS_CAPABILITIES: AssetsAccessCapabilities = {
   canManageAccess: false,
   canRequestAssetChanges: false,
   canReviewAssetRequests: false,
+  canManageCatalogue: false,
 }
 
 export function deriveAssetsAccessCapabilities(
@@ -138,6 +151,7 @@ export function deriveAssetsAccessCapabilities(
       // An admin edits and deletes directly, so there is nothing to request.
       canRequestAssetChanges: false,
       canReviewAssetRequests: true,
+      canManageCatalogue: true,
     }
   }
 
@@ -152,6 +166,9 @@ export function deriveAssetsAccessCapabilities(
   // Deliberately absent from every asset boolean below. Administering employee
   // credentials is not an asset operation and must not imply one.
   const canManageAccess       = allowed('manage_access_records')
+  // Same rule, same reason: defining categories and products is not an asset
+  // operation, and holding it must not open the inventory or edit an asset.
+  const canManageCatalogue    = allowed('manage_asset_catalogue')
 
   // Every one of these five is an operation performed FROM the inventory
   // screen, so holding one without being able to open it would be a
@@ -165,7 +182,8 @@ export function deriveAssetsAccessCapabilities(
   // implies it, so a grant can never leave someone authorized to act on a
   // module they cannot open. `manage_access_records` is included for that same
   // reason and no other: it opens the module, not the inventory.
-  const canAccessAssetsModule = allowed('view') || canViewAssetInventory || canManageAccess
+  const canAccessAssetsModule =
+    allowed('view') || canViewAssetInventory || canManageAccess || canManageCatalogue
 
   return {
     canAccessAssetsModule,
@@ -185,5 +203,6 @@ export function deriveAssetsAccessCapabilities(
     // you can see the whole inventory.
     canRequestAssetChanges: canAccessAssetsModule,
     canReviewAssetRequests: canManageAssetCustody,
+    canManageCatalogue,
   }
 }

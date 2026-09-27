@@ -173,6 +173,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // person at a time, and never something acquired by picking "Manager" from a
   // dropdown. Registered by 20261028000000.
   'manage_access_records',
+  // Defining the ASSET CATALOGUE — the categories and products every asset is
+  // filed under, for the whole company. Protected so that it is handed to a
+  // named person on purpose rather than arriving with a "Manager" preset.
+  // Registered by 20270130000000.
+  'manage_asset_catalogue',
   // Opening Team Performance: every employee's score, ranking, EOD discipline
   // and attention briefing. Protected because it is sight of other people's
   // measured work — the authority an administrator must hand over on purpose
@@ -241,6 +246,10 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // nowhere to act, which is the exact failure needsViewNormalization exists
   // to prevent.
   manage_access_records: 'view',
+  // Same reason: the catalogue tables carry the same RESTRICTIVE entry gate
+  // (20270130000000 §8), so a catalogue grant without module entry would be
+  // stored and never honoured.
+  manage_asset_catalogue: 'view',
 }
 
 /** Every action `actionKey` depends on, nearest first. Cycle-safe. */

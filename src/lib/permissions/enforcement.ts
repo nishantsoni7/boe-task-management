@@ -53,6 +53,11 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // can_manage_access_records(), the RESTRICTIVE module entry gate still stands
   // in front of them, and the screen reads the same answer through
   // deriveAssetsAccessCapabilities().canManageAccess.
+  //
+  // `manage_asset_catalogue` (20270130000000) likewise: catalogue rows have no
+  // client write privilege at all, the four write RPCs check
+  // can_manage_asset_catalogue() first, and the screen reads
+  // deriveAssetsAccessCapabilities().canManageCatalogue.
   assets_access: {
     state: 'enforced',
     detail: 'Every action is enforced — in the database and in the screen.',
