@@ -13,13 +13,21 @@
 --   public.attendance_day_reviews     the payroll reviewer's excuse and
 --                                     salary-treatment decision for one
 --                                     attendance event, versioned
+--   public.payroll_lock_attendance_acknowledgements
+--                                     the record of a month locked while
+--                                     attendance items were still open
+--   public.lock_payroll_period_with_attendance_ack()
+--                                     locks a period AND writes that record in
+--                                     one transaction (service role only)
 --
 -- WHAT THIS DOES NOT DO
 -- ---------------------
 -- Nothing here changes a punch, a classification, a deduction, a salary or an
--- adjustment. attendance_records (the raw machine data) and
--- attendance_day_corrections (the one admin path that changes pay) are not
--- referenced. A request, an approval and a review decision are all RECORDS;
+-- adjustment, and no existing table is altered. attendance_records (the raw
+-- machine data) is not referenced; attendance_day_corrections (the one admin
+-- path that changes pay) is only referenced by a review's applied_correction_id.
+-- The lock function sets payroll_periods.status/locked_at/locked_by exactly as
+-- /api/payroll/lock always has, plus the acknowledgement row. A request, an approval and a review decision are all RECORDS;
 -- the payroll engine does not read any of these tables. Applying a pay
 -- decision still happens through the existing attendance-correction waiver,
 -- so the same minutes can never be deducted, or waived, by two paths.

@@ -2,7 +2,7 @@
 
 **Status:** Draft PR #239, branch `feat/attendance-requests`. Migrations
 prepared, **not applied** to any Supabase project.
-**Last updated:** 2026-09-27 (second pass: review decisions now reach the draft)
+**Last updated:** 2026-09-27 (third pass: charge explanation, server-checked lock acknowledgement, release checks)
 
 Employees used to tell Nishant about late arrivals, early departures, half days,
 leave and time away through WhatsApp, calls or email, and those decisions were
@@ -48,7 +48,8 @@ This document records what the code does. Where it says "not built", it is not.
   decision can be revised, with a reason.
 - **Informed on time** means submitted strictly before 10:00 IST (the
   payroll-settings office start) on the request's first date. The database
-  sets the submission time.
+  sets the submission time. **A request submitted on time stays "informed"
+  even if it is later rejected**; see §9.
 - **Correction** creates a new row linked to the original, and the original
   becomes *Replaced by a correction* in the same statement. If the date is
   unchanged, the first submission time still counts for "informed on time".
@@ -122,6 +123,27 @@ BOE Credits covered it, the event says that instead.
    A full regeneration reads the current correction, so the waiver survives and
    is applied once.
 
+### How each charge is stated
+
+Late arrivals and early departures show one line, for example:
+
+> 40 minutes late · payroll rule charges 1 hour · ₹118 proposed in the draft
+
+- **Minutes:** measured from the scheduled start or end.
+- **Hours:** from the engine's own `roundDeductionHours`, with the period's
+  settings. It is exported, not changed. Up to 15 minutes costs nothing;
+  beyond that, the time is rounded **up** to the next 30 minutes at ½ hour per
+  block, so 16–30 → ½ h, 31–60 → 1 h, 61–90 → 1½ h.
+- **Rupees:** always the stored draft line; never recalculated here.
+
+If the draft charges different hours (a day the engine classifies another
+way), both are shown. A waived event says "waived by attendance correction —
+₹0"; an absorbed one says "absorbed by automatic paid leave". The same rule
+sentence appears in the decision modal, built from the period's settings. The
+rule itself was already stated in *How Payroll Works*
+(`src/app/payroll/how-it-works/guideContent.ts`) and in `PAYROLL_RULES_V1.md`
+(Late Coming Rules). This PR does not change it.
+
 ### Staleness
 
 A decision records what the event looked like:
@@ -142,199 +164,234 @@ Upcoming · Needs decision · Review again · Needs correction · Waiting for dr
 Each employee shows **N unresolved** and **M disagree with draft**. The month
 header totals both.
 
-### Locking
+### Locking (server-checked, recorded)
 
-`/api/payroll/lock` has never checked attendance corrections, objections or
-anything else, and that is unchanged here. Changing it would alter lock
-behaviour for existing periods and users. Instead, both lock buttons (Payroll
-Runs and Payroll Results) fetch the month's summary and put it at the top of the
-existing confirmation:
+`POST /api/payroll/lock` now goes through `lockPayrollPeriod`
+(`src/lib/payroll/lockPeriod.ts`):
 
-> ATTENDANCE REVIEW NOT FINISHED — 3 unresolved salary items, of which 1
-> disagree with this draft: … Press OK only if you accept locking with these open.
+- **Nothing open** (no unresolved items and no draft conflicts): the lock is the
+  same single update and status event as before.
+- **Open items:** the lock is refused with `409 attendance_unresolved`, returning
+  the counts, the employees affected and a **server-computed fingerprint**. The
+  fingerprint is a sha-256 over each open event's employee, date, event and
+  status. A lock with open items needs
+  `attendance_acknowledgement: { fingerprint, reason }`:
+  - If anything changed since (a decision saved, a punch corrected, a new
+    event), the fingerprint no longer matches, and the request gets
+    `409 attendance_ack_stale` with the fresh state.
+  - Otherwise, **one SECURITY DEFINER function**
+    (`lock_payroll_period_with_attendance_ack`, service role only) locks the
+    period **and** writes `payroll_lock_attendance_acknowledgements` in one
+    transaction. The row records the actor, time, counts, fingerprint,
+    per-employee counts (no names, no amounts) and reason. It is append-only;
+    only admins can read it.
+- **Review unreadable** (e.g. migrations missing): `409 attendance_check_failed`.
+  An admin can still lock with `{ unverified: true, reason }`, recorded with
+  `check_failed = true`. Payroll is never blocked forever.
+- **Both Lock buttons** follow the server's answer. They show the open items,
+  ask for a reason (a blank reason cancels), resend with the server's
+  fingerprint, and show the new state if it went stale. A direct API call can
+  no longer skip any of this.
+- Once locked, the review and the correction service refuse every write for
+  that month.
 
-If the check itself fails, the confirmation says it could not be checked. The
-acknowledgement is **not recorded server-side**; the period's lock event is.
-Once locked, the review and the correction service both refuse writes for that
-month, and changes follow the existing Unlock or adjustment path.
+**Behaviour change to note:** before this, any generated month could be locked
+with one click. Now, a month with any unresolved attendance item needs the
+acknowledgement step. The rule is working as intended, but most months will
+show open items until the review is used.
 
-**Unresolved items can therefore still pass through a lock**, with the admin
-told and required to accept.
-
-## 4. Behaviour change in the existing correction route
+## 4. The correction route's settings
 
 `POST /api/payroll/attendance-correction` used to recalculate a corrected
-employee with **DEFAULT** settings: it passed `undefined` where full generation
-passes the period's pinned snapshot. It now uses `settingsForPeriod`, the same
-rule generation uses.
+employee with **DEFAULT** settings. It passed `undefined`, whereas full
+generation uses the period's pinned snapshot. It now uses `settingsForPeriod`,
+the same rule generation uses. A test proves the correction's figure equals a
+full regeneration of the period, even under a non-default snapshot.
 
-- **When settings equal the defaults**, the figures are identical.
-- **When a period was generated under different settings**, a correction now
-  produces the figure that period's own generation would produce, instead of
-  one the next regeneration would move.
+**Production check (2026-09-27, read-only, SELECT only)** via
+`npx supabase db query --linked`. This path may create a temporary login role;
+it is the repo's accepted precheck path. The zero-write psql path needs
+`PROD_DB_URL`, which was not available. Findings:
+- 2 payroll periods, both `generated` (unlocked), both with a saved snapshot.
+- **No settings key differs from the code defaults** in either snapshot, and the
+  active settings row equals the defaults too.
+- Correcting a day in either period therefore gives **the same draft under the
+  old and new behaviour**.
 
-This needs review before release; see §7.
+No values, amounts or employee data were read out. Recheck before release if
+settings change.
 
-## 5. Checked cases (tests in `src/lib/attendance/requestHandlers.test.ts`)
+## 5. Checked cases
 
-1. **Informed 10:40, approved.** The draft still deducts ₹118 (1 h at
-   ₹26,000 / 26 / 8.5) until a salary treatment is saved. Paid / waived gives
-   the draft ₹0 for the day and net +₹118, with one correction (waiver on,
-   punches unchanged). Saving it again writes nothing. Regeneration keeps it.
-   Unpaid restores ₹118 through a second correction version, and the first is
-   kept as history.
-2. **Company vehicle reported 10:30 IST.** The request is uninformed and a
-   company exception. Excuse + Paid / waived gives the draft ₹0, the event reads
-   Matches payroll, and it no longer counts toward the flag.
-3. **Lates on 5, 6, 7, 8, 9 and 10 Oct, none informed.** The flag lands on the
-   8th, 9th and 10th (the 4th and later). Excusing three earlier ones clears it.
-   Pay is unchanged, and no correction is written.
-4. **Personal time out 14:00–15:30, no mid-day punches.** The event shows
-   "actual time away unavailable" with a ₹0 draft. Unpaid is refused. "No
-   deduction" writes no correction, and no minutes are invented.
-5. **1 Oct absent.** The engine's paid leave absorbs it at ₹0, and the review
-   says so. A second absence decided Paid / waived stays **Action required in
-   payroll** and is counted in the lock summary.
-6. **Locked month.** The review (salary treatment or excuse) and the correction
-   service both refuse, and nothing is written.
-7. **Admin's own request or attendance** is refused, and the refusal says so.
-   With another active admin available, it names them as the route. With no
-   other active admin, it names the limitation ("Add a second admin …"); there
-   is no bypass. The queue and the review hide the actions on one's own items.
+Route-level tests in `src/lib/attendance/requestHandlers.test.ts` run the real
+handlers, correction service, lock logic and payroll engine against an in-memory
+database:
+
+1. **Informed 10:40, approved.** The draft still deducts ₹118 (1 h) until a
+   salary treatment is saved. The review states "40 minutes late · payroll rule
+   charges 1 hour · ₹118 proposed in the draft", and those hours and rupees
+   equal the engine's stored line. Paid / waived gives ₹0 through one
+   correction. Saving again writes nothing. Regeneration keeps it. Unpaid
+   restores ₹118 as a new version.
+2. **Company vehicle reported late.** Excuse + Paid / waived gives ₹0, the
+   event matches payroll, and it is not counted toward the flag.
+3. **Four or more uninformed lates.** Only the 4th and later are flagged.
+   Excusing earlier ones clears the flag. Pay is unchanged.
+4. **Time out 14:00–15:30, no mid-day punches.** Nothing is measured or
+   charged, and Unpaid is refused.
+5. **Automatic paid leave** is described as the engine's rule, not a choice.
+6. **Locked month.** Review and correction writes are refused.
+7. **Self-decision** is refused. With a single admin, the limitation is named.
+
+Lock cases:
+- nothing open → the simple lock;
+- a direct call without an acknowledgement → 409, nothing locked;
+- an acknowledgement → locked and recorded;
+- the state changes in between → stale refusal, then a fresh acknowledgement works;
+- a blank reason → 400;
+- the review is unreadable → only the recorded override locks.
 
 ## 6. Data, access and notifications
 
 Migration `20270130000000_attendance_requests.sql`:
 
-| Table | Purpose |
+| Object | Purpose |
 |---|---|
-| `attendance_requests` | Request and decision. Content is immutable (trigger); transitions are enforced. |
-| `attendance_request_events` | Append-only audit, written by trigger in the same statement as each change. |
-| `attendance_day_reviews` | Excuse and salary treatment per (employee, date, event), versioned, with `applied_correction_id`. The check excludes `use_paid_leave`. |
+| `attendance_requests` | Request and decision. Content is immutable; transitions are enforced. |
+| `attendance_request_events` | Append-only audit, written by trigger. |
+| `attendance_day_reviews` | Excuse and salary treatment per event, versioned, with `applied_correction_id`. No `use_paid_leave`. |
+| `payroll_lock_attendance_acknowledgements` | Durable record of every lock made past open items (or a failed check). Append-only; admin read. Cascades with its period on deletion, like the period's lock history. |
+| `lock_payroll_period_with_attendance_ack()` | Locks the period and writes the record in one transaction. Callable by the service role only; checks the actor is an active admin. `search_path = public, pg_temp`. |
 
-- **RLS:** an employee reads their own requests and events; an active admin
-  reads all; reviews are admin-only.
-- **Grants:** `authenticated` gets SELECT only, and `anon` gets nothing. Every
-  write goes through the service-role routes, whose handlers
-  (`src/lib/attendance/requestHandlers.ts`) take the caller from the bearer
-  token.
+- **RLS:** an employee reads their own requests and events; admins read all;
+  reviews and acknowledgements are admin-only.
+- **Grants:** `authenticated` gets SELECT only; `anon` gets nothing.
 
 Migration `20270130000100_attendance_request_notification_types.sql` adds
 `attendance_request_submitted` and `attendance_request_decided`.
 
-### Verified failure mode if code ships before `20270130000100`
+### ⚠ Notification enum dependency: apply before deploying code
 
-This was run on a clone of a full local Supabase schema with only
-`20270130000000` applied:
+If the code ships before `20270130000100`, the Attendance & Payroll feed's
+filter (`type=in.(…)`, which PostgREST runs as `type = ANY('{…}')`) fails with
+**22P02 invalid input value for enum notification_type**:
+- the list, unread-count, mark-all-read and delete-all requests all return
+  **500** for every user of that feed (`/attendance/notifications`,
+  `/payroll/notifications`, `/my-issues/notifications`, and the module bell),
+  including existing issue notifications;
+- writing these notifications also fails; the failure is logged, and the
+  business action still succeeds.
 
-- **Reading the feed fails.** `ATTENDANCE_PAYROLL_NOTIFICATION_TYPES` names both
-  new values, and `GET /api/notifications?category=attendance_payroll` filters
-  with `type=in.(…)`, which PostgREST runs as `type = ANY('{…}')`. That fails
-  with **22P02 `invalid input value for enum notification_type:
-  "attendance_request_submitted"`**. As a result:
-  - the list request and the unread-count request both return **500**
-    (`src/app/api/notifications/route.ts` returns the error in both paths);
-  - mark-all-read and delete-all for the category also fail;
-  - this hits every user of the Attendance & Payroll notification feed, meaning
-    `/attendance/notifications`, `/payroll/notifications`,
-    `/my-issues/notifications` and the bell in the Attendance & Payroll shell,
-    including the existing issue notifications.
-- **Other categories are unaffected**, because their filters do not name these
-  types.
-- **Writing a notification fails too** (same 22P02). It is logged, and the
-  submission or decision itself still succeeds.
-
-Applying `20270130000100` makes the same query succeed.
+Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 
 ## 7. Release
 
+### Ordering against current main and other branches (checked 2026-09-27)
+
+- **Production:** the newest applied migration is `20270123000000`. This PR's
+  `20270130000000` and `20270130000100` are above it. `main` has no newer
+  migration.
+- **Open PRs with migrations:**
+  - #214 (`20270124000000`), #212 (`20270125000000`), #213
+    (`20270126000000`) and #241 (`20270127000000`) are numbered **below**
+    this PR. If this PR ships first, they must be renumbered above
+    `20270130000100` before `db push`, or it refuses them without
+    `--include-all`.
+  - #240 (`20270131000000`) is above; no conflict.
+  - No number collides.
+- **No open PR touches** the lock route, the correction route, the engine or
+  the notification code.
+  - The overlap is the shared migration-sequence pin tests (one-line merge
+    conflicts expected).
+  - #223 edits `/api/payroll/periods` (not used here).
+  - #132 renames payroll live-DB suites.
+  - #212's forward guard requires `SECURITY DEFINER` functions to pin
+    `pg_temp` last; the new function does.
+- **Old build + new migrations are safe:**
+  - old code reads none of the new objects;
+  - the lock and period tables are not altered;
+  - period deletion still works with an acknowledgement present (verified);
+  - the enum values are unused.
+
 ### Deployment order
 
-1. Confirm the production migration history (`npx supabase migration list
-   --linked`, read-only) still has nothing numbered above `20270123000000`.
-   Renumber these two if it has.
-2. Apply `20270130000000_attendance_requests.sql`. It is additive: three tables,
-   triggers and policies, re-runnable.
-3. Apply `20270130000100_attendance_request_notification_types.sql`. It adds two
-   enum values and is idempotent. **This must happen before step 4.**
+1. Recheck `npx supabase migration list --linked`. Renumber if anything above
+   `20270123000000` has been applied.
+2. Apply `20270130000000_attendance_requests.sql`.
+3. Apply `20270130000100_attendance_request_notification_types.sql`. **This must
+   happen before step 4** (see §6).
 4. Merge and deploy the application.
-5. Smoke test (§8) with two admin accounts.
+5. Smoke test with two admins and one employee (§8).
 
-Old code with the migrations applied is safe: nothing selects the new tables,
-and the enum values are unused.
+New code on an unmigrated database would refuse locks of any month (the check
+fails) until the recorded override is used. This is another reason
+migrations must go first.
 
 ### Rollback
 
-- **Application only:** redeploy the previous build. The tables and enum values
-  are harmless to old code.
-- **Schema:** run the `drop … if exists` block in the header of
-  `20270130000000` (tested on the local clone: it drops cleanly and re-applies
-  cleanly). Enum values cannot be dropped in place; leaving them is harmless.
-- **Pay effects are not undone by either rollback.** Decisions applied through
-  the review are ordinary `attendance_day_corrections` rows (remark "Payroll
-  review: …"). To reverse one, correct the day again on the payslip (a new
-  version; history is kept), or leave it. Dropping the review tables loses the
-  decision history but not the corrections' own audit.
+- **Application:** redeploy the previous build. The new objects are unused by
+  old code.
+- **Schema:** run the drop block in `20270130000000`'s header, after exporting
+  `payroll_lock_attendance_acknowledgements` if it has rows. Enum values stay;
+  they are harmless.
+- **Pay:** review-applied waivers are ordinary attendance corrections. Neither
+  rollback undoes them; correct the day again on the payslip if needed.
+  Locked months stay locked; use Unlock with a reason.
 
-### Release blockers
+### Remaining release blockers
 
-1. **The settings behaviour change** (§4) needs sign-off. Before release, check
-   whether any unlocked period's snapshot differs from the defaults, because
-   corrections in that period will now produce different figures from before.
-2. **UI click-through is unverified.** No safe signed-in environment was
-   available. See the manual plan in §8.
-3. **Policy:** confirm that a rejected but on-time request counts as "informed"
-   (§9).
-4. **A second active admin** is needed for any admin's own requests, and must
-   exist before rollout if admins will file requests.
+1. **Confirm the new lock step with the payroll owner.** Every month with open
+   attendance items now needs a recorded acknowledgement to lock.
+2. **Coordinate migration numbering** with #212, #213, #214 and #241 (see
+   above) at release time.
+3. **Deploy migrations before the code** (§6); this is an ordering requirement,
+   not a code gap.
 
-## 8. Manual test plan (local stack or staging; never production data)
+## 8. Click-through (done 2026-09-27, isolated local stack)
 
-**Accounts:**
-- Admin A ("Nishant", `role = admin`)
-- Admin B (`role = admin`)
-- Employee E (`role = member`, `payroll_active`, monthly salary ₹26,000)
+This ran on a stack started for this worktree only, with the `public` schema
+copied from a local dev stack plus configuration rows (no business records, no
+production data), both migrations applied, and three local accounts: Admin A,
+Admin B and Employee E. September 2026 attendance was seeded for E.
 
-**Records:** October attendance for E, with 1 Oct absent, a 10:40 arrival on
-5 Oct, 10:50 on 6 Oct, 10:35 on 7–10 Oct, and every other day 09:55–18:35.
-Generate the October draft.
+1. **Employee E, phone (375 px):** Attendance request → Late arrival, 28 Sep,
+   Company vehicle delay → Submit. The request shows *Pending · submitted 27
+   Sep 10:16 · before shift start*.
+2. **Admin A, desktop:** the notification arrived. Queue → Approve with a note.
+   The database shows approved by Admin A, audit `submitted → approved`,
+   notifications to both admins and to E.
+3. **Admin B:** Payroll Runs → Generate. The draft has 5 Sep late 1 h ₹118.
+   Payroll review shows "40 minutes late · payroll rule charges 1 hour · ₹118
+   proposed in the draft". Paid / waived with a reason gives "₹118 to ₹0" and
+   **Matches payroll**. The database has one correction (10:40 kept, waiver
+   on, ₹118 → ₹0, by Admin B) and no 5 Sep line.
+4. **Lock, desktop:** a direct API call without an acknowledgement → 409
+   (5 open). The Lock button shows the open items, a reason is given, and the
+   month locks. The database has an acknowledgement row with Admin B, 5 open,
+   the same fingerprint, the reason, and a status event.
+5. **After lock:** a review write → 422. At phone width, the review has no
+   Decide actions, shows the "locked" note, and has no horizontal overflow.
 
-1. As E, before 10:00 IST on a test day: request a late arrival, reason
-   Personal. It shows *before shift start*. As A, check the queue: approve works.
-   As E, file one more request, and as A confirm A cannot decide A's own
-   request.
-2. As B: Payroll review for October, 5 Oct late arrival → **Paid / waived**,
-   with a reason. The notice shows ₹118 → ₹0. The event reads **Matches
-   payroll**. Open the payslip: the 5 Oct correction is there with remark
-   "Payroll review: …", and net is +₹118.
-3. 6 Oct: Excuse (company vehicle) + Paid / waived. The event matches and is no
-   longer counted.
-4. With no other decisions, the header shows the review flag on the 4th and
-   later uninformed late arrival. Excuse earlier ones and the flag moves or
-   clears. Net pay does not change from excuses.
-5. As E: time out 14:00–15:30 on a test day. In the review, the event shows
-   "actual time away unavailable", Unpaid is not offered, and "No deduction"
-   leaves the draft unchanged.
-6. 13 Oct absence → Paid / waived: it shows **Action required in payroll** and a
-   payslip link, and stays unresolved.
-7. Press **Lock Payroll**: the confirmation lists the unresolved and conflicting
-   items. Cancel it. Lock for real, then try a decision: it is refused.
+Native `confirm` and `prompt` were stubbed in the pane to answer them; their
+texts were captured and are shown in the PR. To repeat this on staging, use the
+same three roles and records.
 
-## 9. Open policy questions (not decided in code)
+## 9. Policy decisions
 
-1. Does a rejected request that was submitted on time count as "informed"? Today
-   it does.
-2. The extra half-day deduction after the flag is not implemented; it is pending
-   BOE's payroll/legal adviser (Code on Wages).
-3. Time out has no measured duration. A salary effect needs a mid-day punch
-   source (e.g. Minop break punches) or a manual correction.
+1. **Informed stays informed.** A request submitted before the scheduled shift
+   start remains "informed" even if later rejected. Rejection decides whether
+   the reason is accepted and whether time is paid, not whether notice was
+   given. The submission time and the informed label are never rewritten. The
+   admin can still choose *Unpaid actual time* for that day. (Tested.)
+2. The extra half-day deduction after the flag is **not implemented**; it stays
+   a review flag pending BOE's payroll/legal adviser.
+3. Time out has no measured duration; no mid-day punch assumptions are made.
 4. The shift is company-wide; there are no per-employee or overnight shifts.
 
 ## 10. Not built
 
-- Server-side lock blocking, or recording the acknowledgement.
 - One-step application for absences, half days and leave (these are day
-  treatments; the payroll admin sets them on the payslip).
+  treatments on the payslip).
 - Leave types, balances, per-day paid-leave allocation, and mid-day punch
   collection.
 - An admin editing a request's content.
@@ -344,13 +401,12 @@ Generate the October draft.
 
 | File | Covers |
 |---|---|
-| `src/lib/attendance/requests.test.ts` | Validation, informed-on-time in IST, overlaps, cancel window, decision rules |
-| `src/lib/attendance/requestReconciliation.test.ts` | Flag, informed/excused, draft matching, stale reasons, time out, paid-leave wording, the decision → correction planner |
-| `src/lib/attendance/requestHandlers.test.ts` | **Route-level:** authorisation (401 / 403 / own-only / no body-supplied id), self-decision, review → correction → payroll draft with the real engine, failure leaves no decision, lock refusal, pinned settings |
-| `src/lib/attendance/lockWarning.test.ts` | Lock confirmation text; the lock API is untouched |
+| `src/lib/attendance/requests.test.ts` | Validation, informed-on-time in IST, overlaps, cancel window, decisions |
+| `src/lib/attendance/requestReconciliation.test.ts` | Flag, informed/excused (incl. rejected-but-on-time), draft matching, stale reasons, time out, paid-leave wording, planner, **charge explanation and rounding** |
+| `src/lib/attendance/requestHandlers.test.ts` | **Route-level:** authorisation, self-decision, review → correction → draft with the real engine, charge text = stored line, lock acknowledgement (simple, refused, recorded, stale, blank reason, override), correction = full generation |
+| `src/lib/attendance/lockWarning.test.ts` | The Lock button's conversation with the server |
 | `src/components/attendanceRequests/attendanceRequests.render.test.tsx` | The phone form and the correction pre-fill |
 
-The route-level tests use `src/lib/attendance/testing/memorySupabase.ts`, an
-in-memory stand-in, and never reach the linked project. SQL behaviour (triggers,
-RLS, grants, the enum failure, rollback) was verified separately on a private
-clone of a full local Supabase schema, which was dropped afterwards.
+SQL behaviour was verified on private clones of a full local Supabase schema,
+which were dropped afterwards. It covered triggers, RLS, grants, the lock
+function and its refusals, the enum failure, period deletion and rollback.
