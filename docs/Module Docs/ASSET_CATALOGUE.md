@@ -137,10 +137,35 @@ locally: on a freshly migrated database it removes every table, column, function
 row it added. Roll the **frontend back first**, because the new frontend cannot run on the old
 schema.
 
-**The limit:** once any asset names a product, the script refuses. That link exists only in
-`assets.product_id`, so rolling back would destroy it. Clear or record those assignments first,
-as a deliberate decision.
+**Hard limit.** Once any asset names a product, the script refuses, and there is no override.
+That link exists only in `assets.product_id`, so rolling back would destroy it. Clear or record
+those assignments first, as a deliberate decision.
 
-Categories created after the release do not block a rollback. Assets keep that key as plain
-text, and the old app shows it in words but cannot offer it for new assets.
-`assets.asset_type` itself is never modified, so no other asset data needs restoring.
+**Even when no asset has a product, a rollback permanently deletes the catalogue itself.** It
+drops the three catalogue tables, so everything created or changed after release is deleted, not
+archived:
+
+| After-release catalogue data | What happens on rollback |
+|---|---|
+| Categories added after release | The rows and display names are deleted. Assets and pending change requests filed under one **keep its key as plain text** (e.g. `workshop_equipment`). The old app shows it in words derived from the key. A category renamed after creation shows its **original** words, because the key came from its first name. The old app can no longer offer it for new assets, but editing such an asset keeps it. |
+| Renames of the six original categories | Lost. They read as before the release ("Laptop Desktop", "Mouse Keyboard"). |
+| Products, assigned or not | Deleted. An assigned product blocks the rollback (hard limit above). |
+| Retired flags | Lost. The old app offers exactly its fixed six again. |
+| Catalogue change history (who / what / when) | Deleted. Per-asset history in `asset_activity_log` is untouched, including "Updated product" entries, which store names rather than ids. |
+| "Manage Asset Catalogue" grants | Deleted: employee, role and department. |
+
+Because that is irreversible, the script **prints these counts and refuses** whenever any of them
+is non-zero, until the operator runs, in the same session,
+`set boe.asset_catalogue_rollback_discard = 'yes';`. **Export first:** the file's header contains
+a read-only query that returns the categories, products, history and grants as one JSON value.
+Keep that JSON as the record.
+
+A rollback straight after release, before anyone has used the catalogue, discards nothing and
+needs no acknowledgement. `assets.asset_type` is never modified, so no other asset data needs
+restoring.
+
+Verified locally for each case:
+- straight after release: rolls back without an acknowledgement;
+- catalogue used, no acknowledgement: refuses and lists the counts;
+- with the acknowledgement: rolls back, and assets keep the key text;
+- a product assigned: refuses even with the acknowledgement.
