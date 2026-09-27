@@ -54,13 +54,17 @@ import {
 export const ORDER_DETAILS_TITLE = 'Internal order details'
 export const ORDER_DETAILS_ANCHOR = 'pi-internal-order-details'
 /**
- * What the section is, honestly. Of everything here, only fabric responsibility
- * is printed on a client document: the generated client PDF (Confirmed Order and
- * PI versions) states it as a sentence. Billing percentage and its value stopped
- * being printed in #248; nothing else here ever was.
+ * What the section is, honestly, checked against the rendered client PDF
+ * (Confirmed Order and PI versions, one builder). Of the fields here, only
+ * fabric responsibility is printed, as one sentence. Billing percentage and its
+ * value stopped being printed in #248; the dates, lead source, billing terms and
+ * middleman commission never were. The PDF DOES print a Salesperson and a
+ * Salesperson contact — but from the workbook (source_created_by,
+ * contact_number), never the salesperson_id chosen here, which the PDF does
+ * not even read. The note says so, so nobody expects a change here to reach it.
  */
 export const ORDER_DETAILS_NOTE =
-  'For BOE. Kept off the client workbook. Only fabric responsibility appears on the generated client PDF, as one sentence; nothing else here, including the billing percentage, is printed.'
+  'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the Salesperson chosen here.'
 
 /** How much a field is needed, in the words the section shows beside it. */
 export type OrderDetailsNeed = 'submission' | 'approval' | 'optional' | 'conditional'
@@ -85,7 +89,7 @@ export type OrderDetailsField = { key: OrderDetailsFieldKey; label: string; need
 export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'order_confirmation_date', label: SUBMISSION_DATE_LABEL.order_confirmation_date, need: 'submission' },
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
-  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it.' },
+  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson the workbook names.' },
   { key: 'lead_source',             label: 'Lead source',                                 need: 'approval' },
   { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `From ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },

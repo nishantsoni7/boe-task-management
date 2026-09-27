@@ -101,3 +101,31 @@ describe('a client PDF prints no billing, with or without a billing percentage',
     })
   }
 })
+
+describe('of Internal order details, the client PDF prints only fabric responsibility', () => {
+  // Every field in the section, filled with a marker. The Salesperson lines the
+  // PDF prints come from the WORKBOOK (source_created_by, contact_number), never
+  // from the salesperson chosen in the section.
+  const SECTION = {
+    order_confirmation_date: '2031-03-17', due_date: '2031-04-19',
+    salesperson_id: 'SALESPERSONIDMARK', lead_source: 'instagram',
+    billing_percentage: '65', billing_terms: 'BILLTERMSMARK',
+    middleman_commission: true, middleman_name: 'MIDDLEMANMARK', middleman_commission_type: 'amount', middleman_commission_value: 43217,
+    order_highlight_remark: 'HIGHLIGHTMARK',
+  }
+
+  test('the rendered text carries none of them, and the workbook salesperson as before', async () => {
+    const m = model({ ...DISCOUNTED, ...SECTION, source_created_by: 'Workbook Author', contact_number: '+91 90000 00000' })
+    assert.deepEqual(m.meta, [
+      { label: 'Salesperson', value: 'Workbook Author' },
+      { label: 'Salesperson contact', value: '+91 90000 00000' },
+    ])
+    const text = pdfText(await renderConfirmedPdf({ model: m, metadata: { title: 't' } }))
+    for (const absent of ['SALESPERSONIDMARK', 'instagram', 'Instagram', 'BILLTERMSMARK', 'MIDDLEMANMARK', '43,217',
+      'HIGHLIGHTMARK', '2031', 'Billing', 'BILLING', 'Lead source', 'LEAD SOURCE', 'Middleman', 'MIDDLEMAN']) {
+      assert.ok(!text.includes(absent), `${absent} is not printed`)
+    }
+    assert.ok(text.includes(FABRIC_SENTENCE), 'fabric responsibility is')
+    assert.ok(text.includes('Workbook Author'))
+  })
+})

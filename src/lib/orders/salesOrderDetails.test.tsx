@@ -359,7 +359,8 @@ describe('the migration', () => {
 describe('the section says exactly what the client PDF prints (#248)', () => {
   test('only fabric responsibility is printed; billing is internal', () => {
     assert.equal(ORDER_DETAILS_NOTE,
-      'For BOE. Kept off the client workbook. Only fabric responsibility appears on the generated client PDF, as one sentence; nothing else here, including the billing percentage, is printed.')
+      'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the Salesperson chosen here.')
+    assert.match(ORDER_DETAILS_FIELD.salesperson_id.hint ?? '', /Not printed on the client PDF, which shows the salesperson the workbook names\./)
     assert.match(ORDER_DETAILS_FIELD.billing_percentage.hint ?? '', /Internal; not printed on the client PDF\./)
     assert.equal(ORDER_DETAILS_FIELD.fabric_responsibility.hint, 'Printed on the client PDF as one sentence.')
     for (const field of ORDER_DETAILS_FIELDS) {
