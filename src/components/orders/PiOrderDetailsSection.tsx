@@ -19,7 +19,9 @@ import {
   orderDetailsErrors,
   orderDetailsForm,
   orderDetailsReview,
+  orderDetailsSaveFailureText,
   orderDetailsSavePlan,
+  runOrderDetailsSave,
   orderDetailsSubmissionGaps,
   type OrderDetailsFieldKey,
   type OrderDetailsForm,
@@ -100,7 +102,8 @@ export function PiOrderDetailsSection({
   fabricCost: number | null
   /** Set by the readiness checklist: open the form and focus this field. */
   focus: { field: OrderDetailsFieldKey; nonce: number } | null
-  onSaved: () => void
+  /** Re-reads the PI; awaited before Save is offered again. */
+  onSaved: () => void | Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<OrderDetailsForm>(() => orderDetailsForm(row))
@@ -143,34 +146,28 @@ export function PiOrderDetailsSection({
     if (plan.length === 0) { setEditing(false); return }
     setSaving(true)
     setFailure(null)
-    const saved: string[] = []
-    let version = rowVersion
+    let result: Awaited<ReturnType<typeof runOrderDetailsSave>> | null = null
     try {
-      for (const step of plan) {
-        const args: Record<string, unknown> = { p_submission_id: submissionId, ...step.args }
-        if (step.versioned) args.p_expected_version = version
-        const { data, error } = await supabase.rpc(step.rpc, args)
-        if (error) {
-          const said = String(error.message ?? '').replace(/^[A-Z_]+:\s*/, '') || 'It could not be saved.'
-          setFailure(`${step.label}: ${said}${saved.length ? ` Saved already: ${saved.join(', ')}.` : ''}`)
-          return
-        }
-        saved.push(step.label)
-        const next = (data as { row_version?: unknown } | null)?.row_version
-        if (typeof next === 'number') version = next
-        else {
+      result = await runOrderDetailsSave({
+        plan,
+        version: rowVersion,
+        call: async (rpc, args) => { const { data, error } = await supabase.rpc(rpc, { p_submission_id: submissionId, ...args }); return { data, error } },
+        readVersion: async () => {
           // set_order_submission_billing_percentage returns no version; read it.
-          const { data: fresh } = await supabase.from('order_submissions').select('row_version').eq('id', submissionId).maybeSingle()
-          const v = (fresh as { row_version?: unknown } | null)?.row_version
-          if (typeof v === 'number') version = v
-        }
-      }
-      setEditing(false)
-    } catch (error) {
-      setFailure(String((error as { message?: string })?.message ?? 'The details could not be saved.'))
+          const { data } = await supabase.from('order_submissions').select('row_version').eq('id', submissionId).maybeSingle()
+          const v = (data as { row_version?: unknown } | null)?.row_version
+          return typeof v === 'number' ? v : null
+        },
+      })
+      // WHATEVER COMMITTED IS RE-READ BEFORE SAVE IS OFFERED AGAIN, so a retry
+      // plans against the saved record and its current version: it sends only
+      // the groups that still differ, and cannot trip its own staleness check.
+      if (result.saved.length > 0) await onSaved()
+      if (result.ok) setEditing(false)
+      // The form is NOT reset on a refusal: every edit stays where it was typed.
+      else setFailure(orderDetailsSaveFailureText(result))
     } finally {
       setSaving(false)
-      if (saved.length > 0) onSaved()
     }
   }
 

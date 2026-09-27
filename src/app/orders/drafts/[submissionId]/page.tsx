@@ -2385,7 +2385,7 @@ function PiDraftDetailPageInner() {
                 grandTotal={grandTotalValue}
                 fabricCost={toNumber(submission.fabric_cost)}
                 focus={detailsFocus}
-                onSaved={() => { void loadDraft({ quiet: true }) }}
+                onSaved={() => loadDraft({ quiet: true })}
               />
               {submission.status === 'submitted' && (
                 <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />

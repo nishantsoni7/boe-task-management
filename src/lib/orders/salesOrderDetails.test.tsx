@@ -14,6 +14,8 @@ import {
   orderDetailsSavePlan,
   orderDetailsSubmissionGaps,
   readSalesDetails,
+  orderDetailsSaveFailureText,
+  runOrderDetailsSave,
   withOrderDetailsRequirements,
   type OrderDetailsRow,
 } from './salesOrderDetails'
@@ -144,11 +146,102 @@ describe('saving reuses the existing doors, and only the ones whose values chang
     assert.ok(PAGE.includes("billingTerms: submission.billing_terms ?? payments?.billing_terms ?? '',"))
   })
 
-  test('the section runs the plan with the row version each RPC hands back', () => {
+})
+
+// ── ONE SAVE, SEVERAL TRANSACTIONS: the part-way failure ─────────────────────
+//
+// Each owning RPC is its own transaction, so a refusal at step 3 leaves steps 1
+// and 2 committed. The reader must be told which, keep every edit, and be able
+// to retry safely: the retry plans against the re-read record and sends only
+// what is still unsaved, with the current row version.
+describe('a save refused part-way', () => {
+  const BLANK: OrderDetailsRow = { status: 'draft', row_version: 7 } as OrderDetailsRow
+  const FORM = { ...orderDetailsForm(BLANK),
+    salesperson_id: 'u-dhruv', lead_source: 'website', fabric_responsibility: 'client',
+    billing_terms: 'Net 15', billing_percentage: '65',
+    order_confirmation_date: '2026-09-27', due_date: '2026-11-20', middleman_commission: 'no' as const }
+  const PLAN = orderDetailsSavePlan(BLANK, FORM)
+
+  /** A fake database: versions advance per write; the named RPC refuses. */
+  const fake = (refuse: string | null) => {
+    let version = 7
+    const calls: { rpc: string; args: Record<string, unknown> }[] = []
+    return {
+      calls,
+      call: async (rpc: string, args: Record<string, unknown>) => {
+        calls.push({ rpc, args })
+        if ('p_expected_version' in args && args.p_expected_version !== version) {
+          return { data: null, error: { message: 'ORDER_SUBMISSION_STALE: this PI changed while you were editing it.' } }
+        }
+        if (rpc === refuse) return { data: null, error: { message: 'ORDER_SUBMISSION_NOT_EDITABLE: refused for the test' } }
+        version += 1
+        return { data: rpc === 'set_order_submission_billing_percentage' ? { changed: true } : { row_version: version }, error: null }
+      },
+      readVersion: async () => version,
+    }
+  }
+
+  test('the third of five refused: the first two are named as saved, the rest as not saved', async () => {
+    assert.equal(PLAN[2].rpc, 'update_order_submission_schedule_terms', 'billing terms is the third write')
+    const db = fake('update_order_submission_schedule_terms')
+    const r = await runOrderDetailsSave({ plan: PLAN, version: 7, call: db.call, readVersion: db.readVersion })
+    assert.equal(r.ok, false)
+    if (r.ok) return
+    assert.deepEqual(r.saved, ['Salesperson and lead source', 'Fabric responsibility'])
+    assert.equal(r.failed, 'Billing terms')
+    assert.deepEqual(r.pending, ['Billing percentage', 'Order dates and middleman commission'])
+    assert.equal(db.calls.length, 3, 'nothing after the refusal is attempted')
+    assert.deepEqual(db.calls.map(c => c.args.p_expected_version), [7, 8, 9], 'each write carries the version the last one returned')
+    const text = orderDetailsSaveFailureText(r)
+    assert.match(text, /^Billing terms was not saved: refused for the test./)
+    assert.match(text, /Already saved: Salesperson and lead source, Fabric responsibility./)
+    assert.match(text, /Not saved yet: Billing percentage, Order dates and middleman commission./)
+    assert.match(text, /remaining edits are still in the form/)
+    // A database sentence without a full stop does not run into the next one.
+    const bare = orderDetailsSaveFailureText({ ...r, message: 'permission denied for function x' })
+    assert.match(bare, /permission denied for function x\. Already saved:/)
+  })
+
+  test('the retry, planned against the re-read record, sends only what is still unsaved — and succeeds', async () => {
+    // What the page re-reads after the partial save: the first two groups stored.
+    const reread: OrderDetailsRow = { ...BLANK, salesperson_id: 'u-dhruv', lead_source: 'website', fabric_responsibility: 'client' }
+    const retry = orderDetailsSavePlan(reread, FORM)
+    assert.deepEqual(retry.map(s => s.label), ['Billing terms', 'Billing percentage', 'Order dates and middleman commission'])
+    const db = fake(null)
+    // The database is at version 9 after the first attempt's two writes.
+    await db.call('set_order_submission_sales_details', { p_expected_version: 7 })
+    await db.call('update_order_submission_pi_terms', { p_expected_version: 8 })
+    db.calls.length = 0
+    const r = await runOrderDetailsSave({ plan: retry, version: 9, call: db.call, readVersion: db.readVersion })
+    assert.equal(r.ok, true)
+    assert.deepEqual(db.calls.map(c => c.rpc), ['update_order_submission_schedule_terms', 'set_order_submission_billing_percentage', 'save_order_submission_internal_details'])
+    assert.equal(db.calls[2].args.p_expected_version, 11, 'the version read after the billing RPC is used')
+  })
+
+  test('a retry with a stale version is refused by the database, never applied', async () => {
+    const db = fake(null)
+    await db.call('set_order_submission_sales_details', { p_expected_version: 7 })
+    const r = await runOrderDetailsSave({ plan: PLAN.slice(1), version: 7, call: db.call, readVersion: db.readVersion })
+    assert.equal(r.ok, false)
+    if (!r.ok) assert.match(r.message, /changed while you were editing/)
+  })
+
+  test('a network error mid-way is a refusal like any other, with what saved said', async () => {
+    const db = fake(null)
+    let n = 0
+    const r = await runOrderDetailsSave({ plan: PLAN, version: 7, readVersion: db.readVersion,
+      call: async (rpc, args) => { if (++n === 3) throw new Error('Failed to fetch'); return db.call(rpc, args) } })
+    assert.equal(r.ok, false)
+    if (!r.ok) { assert.equal(r.saved.length, 2); assert.equal(r.message, 'Failed to fetch') }
+  })
+
+  test('the form keeps every edit and re-reads the record BEFORE Save is offered again', () => {
     const section = read('src/components/orders/PiOrderDetailsSection.tsx')
-    assert.ok(section.includes('if (step.versioned) args.p_expected_version = version'))
-    assert.ok(section.includes(".select('row_version')"), 'and re-reads it after the one RPC that returns none')
-    assert.ok(section.includes('Saved already:'), 'a part-way failure says what was saved')
+    const body = section.slice(section.indexOf('const save = async () => {'), section.indexOf('const field = (key'))
+    assert.ok(body.includes('if (result.saved.length > 0) await onSaved()'), 'the re-read is awaited')
+    assert.ok(body.indexOf('await onSaved()') < body.indexOf('setSaving(false)'), 'before Save is re-enabled')
+    assert.ok(!/setForm\(/.test(body), 'the form is not reset on a refusal')
+    assert.ok(PAGE.includes('onSaved={() => loadDraft({ quiet: true })}'), 'the page hands back the re-read itself, to be awaited')
   })
 })
 

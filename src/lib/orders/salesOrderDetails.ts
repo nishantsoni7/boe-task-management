@@ -243,6 +243,67 @@ export function orderDetailsSavePlan(row: OrderDetailsRow, form: OrderDetailsFor
   return steps
 }
 
+export type OrderDetailsSaveResult =
+  | { ok: true; saved: string[]; version: number | null }
+  /**
+   * A step was refused. `saved` names what ALREADY committed (each step is its
+   * own transaction), `failed` the one refused, `pending` what was not tried.
+   */
+  | { ok: false; saved: string[]; failed: string; pending: string[]; message: string; version: number | null }
+
+/**
+ * RUN A SAVE PLAN, one RPC at a time, stopping at the first refusal.
+ *
+ * Each step carries the row version the previous one handed back (or, for the
+ * one RPC that returns none, the version read after it), so the chain never
+ * trips its own staleness check. The steps are separate transactions and
+ * nothing is rolled back: a refusal part-way leaves the earlier groups saved,
+ * and the result says exactly which. A RETRY is safe by construction — the
+ * caller re-reads the record and recomputes orderDetailsSavePlan, which then
+ * holds only the groups that still differ.
+ */
+export async function runOrderDetailsSave(input: {
+  plan: readonly OrderDetailsSaveStep[]
+  version: number | null
+  call: (rpc: OrderDetailsRpc, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string } | null }>
+  readVersion: () => Promise<number | null>
+}): Promise<OrderDetailsSaveResult> {
+  const saved: string[] = []
+  let version = input.version
+  for (const [index, step] of input.plan.entries()) {
+    const args: Record<string, unknown> = { ...step.args }
+    if (step.versioned) args.p_expected_version = version
+    let error: { message?: string } | null = null
+    let data: unknown = null
+    try {
+      ({ data, error } = await input.call(step.rpc, args))
+    } catch (thrown) {
+      error = { message: String((thrown as { message?: string })?.message ?? '') }
+    }
+    if (error) {
+      return {
+        ok: false, saved, failed: step.label, pending: input.plan.slice(index + 1).map(s => s.label),
+        message: String(error.message ?? '').replace(/^[A-Z_]+:\s*/, '') || 'It could not be saved.',
+        version,
+      }
+    }
+    saved.push(step.label)
+    const next = (data as { row_version?: unknown } | null)?.row_version
+    version = typeof next === 'number' ? next : await input.readVersion()
+  }
+  return { ok: true, saved, version }
+}
+
+/** What the reader is told after a refusal part-way through a save. */
+export function orderDetailsSaveFailureText(result: Extract<OrderDetailsSaveResult, { ok: false }>): string {
+  const said = /[.!?]$/.test(result.message) ? result.message : `${result.message}.`
+  const parts = [`${result.failed} was not saved: ${said}`]
+  if (result.saved.length) parts.push(`Already saved: ${result.saved.join(', ')}.`)
+  if (result.pending.length) parts.push(`Not saved yet: ${result.pending.join(', ')}.`)
+  parts.push('Your remaining edits are still in the form — correct them if needed and press Save details again; only what is still unsaved is sent.')
+  return parts.join(' ')
+}
+
 // ── What is still missing, for the readiness checklist ───────────────────────
 
 export type OrderDetailsGap = { key: OrderDetailsFieldKey; label: string }
