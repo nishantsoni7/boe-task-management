@@ -14,11 +14,15 @@
 import type { Asset, EmployeeAsset } from './types'
 import { warrantyStatus, type WarrantyStatus } from './warranty'
 import { findOpenAssignment, describeCustody } from './transfers'
+import { categoryLabel, productLabel, EMPTY_ASSET_CATALOGUE, type AssetCatalogue } from './catalogue'
 
 export type AssetFilters = {
-  /** Free text, matched across name, code, serial, brand, model, holder. */
+  /** Free text, matched across name, code, serial, brand, model, holder, category and product. */
   search: string
+  /** A category KEY (assets.asset_type). */
   category: string
+  /** A product id. */
+  productId: string
   status: string
   /** A user id, or '' for any. */
   employeeId: string
@@ -34,6 +38,7 @@ export type AssetFilters = {
 export const EMPTY_ASSET_FILTERS: AssetFilters = {
   search: '',
   category: '',
+  productId: '',
   status: '',
   employeeId: '',
   department: '',
@@ -67,7 +72,11 @@ function norm(value: string | null | undefined): string {
  * so the searchable holder is exactly the name shown in the table — searching
  * for what you can see is the only behaviour that does not surprise anyone.
  */
-export function assetSearchHaystack(asset: Asset, holderName: string | null): string {
+export function assetSearchHaystack(
+  asset: Asset,
+  holderName: string | null,
+  names: { categoryName?: string | null; productName?: string | null } = {},
+): string {
   return [
     asset.asset_name,
     asset.asset_code,
@@ -75,6 +84,10 @@ export function assetSearchHaystack(asset: Asset, holderName: string | null): st
     asset.brand,
     asset.model,
     asset.asset_type,
+    // The names on screen, so "workshop" finds what the list calls Workshop
+    // Equipment even though the stored key is something else after a rename.
+    names.categoryName,
+    names.productName,
     asset.location,
     asset.department,
     holderName,
@@ -107,6 +120,12 @@ export type AssetRow = {
   holderLabel: string
   holderName: string | null
   warranty: WarrantyStatus
+  /** The category's CURRENT display name (catalogue), never the raw key. */
+  categoryName: string
+  /** The product's current name, or null when the asset names none. */
+  productName: string | null
+  /** Status and custody records disagree — see describeCustody. */
+  custodyInconsistent: boolean
 }
 
 /**
@@ -121,6 +140,7 @@ export function buildAssetRows(
   assignments: readonly EmployeeAsset[],
   employeeName: (id: string) => string | null,
   now: Date | string = new Date(),
+  catalogue: AssetCatalogue = EMPTY_ASSET_CATALOGUE,
 ): AssetRow[] {
   return assets.map(asset => {
     const assignment = findOpenAssignment(assignments, asset.id)
@@ -132,6 +152,9 @@ export function buildAssetRows(
       holderLabel: custody.label,
       holderName: custody.employeeId ? employeeName(custody.employeeId) : custody.location,
       warranty: warrantyStatus(asset.warranty_expiry_date, now),
+      categoryName: categoryLabel(catalogue, asset.asset_type),
+      productName: productLabel(catalogue, asset.product_id),
+      custodyInconsistent: custody.inconsistent,
     }
   })
 }
@@ -144,6 +167,7 @@ export function buildAssetRows(
 export function filterAssetRows(rows: readonly AssetRow[], filters: AssetFilters): AssetRow[] {
   const search        = filters.search.trim()
   const category      = filters.category.trim()
+  const productId     = filters.productId.trim()
   const status        = filters.status.trim()
   const employeeId    = filters.employeeId.trim()
   const department    = norm(filters.department)
@@ -156,8 +180,12 @@ export function filterAssetRows(rows: readonly AssetRow[], filters: AssetFilters
   return rows.filter(row => {
     const a = row.asset
 
-    if (search && !matchesSearch(assetSearchHaystack(a, row.holderName), search)) return false
+    if (search && !matchesSearch(
+      assetSearchHaystack(a, row.holderName, { categoryName: row.categoryName, productName: row.productName }),
+      search,
+    )) return false
     if (category && a.asset_type !== category) return false
+    if (productId && a.product_id !== productId) return false
     if (status && a.status !== status) return false
     if (employeeId && row.holderId !== employeeId) return false
 

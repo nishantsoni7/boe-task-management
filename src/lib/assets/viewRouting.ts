@@ -15,7 +15,7 @@ import type { AssetsAccessCapabilities } from '@/lib/permissions/assetsAccess'
 // on it comes back empty.
 
 const ALL_VIEWS: readonly AssetsView[] = [
-  'my-assets', 'my-access', 'asset-inventory', 'access-register', 'asset-requests',
+  'my-assets', 'my-access', 'asset-inventory', 'access-register', 'asset-requests', 'asset-catalogue',
 ]
 
 export function isAssetsView(value: unknown): value is AssetsView {
@@ -40,6 +40,10 @@ export function canOpenView(view: AssetsView, caps: AssetsAccessCapabilities): b
       return caps.canManageAccess
     case 'asset-requests':
       return caps.canReviewAssetRequests || caps.canRequestAssetChanges
+    // Managing categories and products. Its own grant, and nothing else opens
+    // it — not the inventory, not asset editing (20270130000000).
+    case 'asset-catalogue':
+      return caps.canManageCatalogue
   }
 }
 
@@ -63,6 +67,8 @@ export function resolveInitialView(
   // asset screen they hold nothing on. Deliberately checked AFTER the
   // inventory: a person holding both is here to manage assets.
   if (caps.canManageAccess) return 'access-register'
+  // Likewise someone who only manages the catalogue.
+  if (caps.canManageCatalogue) return 'asset-catalogue'
   return 'my-assets'
 }
 
@@ -108,5 +114,7 @@ export function defaultViewForArea(
     // everybody, which is not what View As is for.
     return !inViewMode && caps.canManageAccess ? 'access-register' : 'my-access'
   }
-  return !inViewMode && caps.canViewAssetInventory ? 'asset-inventory' : 'my-assets'
+  if (!inViewMode && caps.canViewAssetInventory) return 'asset-inventory'
+  if (!inViewMode && caps.canManageCatalogue) return 'asset-catalogue'
+  return 'my-assets'
 }

@@ -6,12 +6,17 @@ import { colors } from '@/lib/tokens'
 import { AssetModal, AssetField, AssetModalActions, AssetModalError } from './AssetModal'
 import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
 import {
-  ASSET_CATEGORY_OPTIONS,
   ASSET_CONDITION_LABEL,
   ASSET_CONDITION_OPTIONS,
-  humanizeToken,
   type Asset,
 } from '@/lib/assets/types'
+import {
+  categoryOptions,
+  productAfterCategoryChange,
+  productOptions,
+  type AssetCatalogue,
+} from '@/lib/assets/catalogue'
+import { useAssetCatalogue } from '@/hooks/useAssetCatalogue'
 import {
   buildProposedFields,
   validateChangeRequest,
@@ -34,15 +39,50 @@ import {
 
 const inputStyle = { width: '100%' } as const
 
-function CategorySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  // An asset whose stored category is not in the standard list still shows its
-  // own value rather than silently snapping to "laptop_desktop" on save.
-  const options = ASSET_CATEGORY_OPTIONS.includes(value) || value === ''
-    ? ASSET_CATEGORY_OPTIONS
-    : [value, ...ASSET_CATEGORY_OPTIONS]
+// Categories and products come from the managed catalogue (20270130000000),
+// never from a list compiled into the app. A new asset is offered ACTIVE
+// entries only; an asset already resting on a retired one keeps it, labelled
+// "(inactive)", so an edit of some other field never re-categorises it. That
+// is exactly what the database accepts (enforce_asset_catalogue_links).
+
+function CategorySelect({ value, onChange, catalogue, originalKey }: {
+  value: string
+  onChange: (v: string) => void
+  catalogue: AssetCatalogue
+  /** The asset's category before this form opened, kept offerable even if retired. */
+  originalKey?: string | null
+}) {
+  const options = categoryOptions(catalogue.categories, originalKey ?? null)
   return (
     <select className="boe-input" value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
-      {options.map(t => <option key={t} value={t}>{humanizeToken(t)}</option>)}
+      {!value && <option value="" disabled>Choose a category</option>}
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+}
+
+function ProductSelect({ value, onChange, catalogue, categoryKey, originalId }: {
+  value: string
+  onChange: (v: string) => void
+  catalogue: AssetCatalogue
+  categoryKey: string
+  /** The asset's product before this form opened, kept offerable even if retired. */
+  originalId?: string | null
+}) {
+  const options = productOptions(catalogue.products, categoryKey, originalId ?? null)
+  const none = !categoryKey
+    ? 'Choose a category first'
+    : options.length === 0 ? 'No products in this category' : 'No specific product'
+  return (
+    <select
+      className="boe-input"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={inputStyle}
+      disabled={options.length === 0 && !value}
+    >
+      <option value="">{none}</option>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   )
 }
@@ -58,6 +98,8 @@ function ConditionSelect({ value, onChange }: { value: string; onChange: (v: str
 
 type AssetFormState = {
   assetType: string
+  /** A product id, or '' for none. */
+  productId: string
   assetName: string
   serialNo: string
   specifications: string
@@ -70,7 +112,10 @@ type AssetFormState = {
 
 function useAssetForm(initial: Partial<AssetFormState>) {
   const [form, setForm] = useState<AssetFormState>({
-    assetType:      initial.assetType      ?? ASSET_CATEGORY_OPTIONS[0],
+    // A new asset starts with NO category chosen: defaulting to the first entry
+    // in the list is how an asset ends up filed as a laptop by accident.
+    assetType:      initial.assetType      ?? '',
+    productId:      initial.productId      ?? '',
     assetName:      initial.assetName      ?? '',
     serialNo:       initial.serialNo       ?? '',
     specifications: initial.specifications ?? '',
@@ -86,17 +131,49 @@ function useAssetForm(initial: Partial<AssetFormState>) {
 }
 
 function AssetFormFields({
-  form, set, showLocation = true,
+  form, set, catalogue, original, showLocation = true,
 }: {
   form: AssetFormState
   set: <K extends keyof AssetFormState>(key: K) => (value: AssetFormState[K]) => void
+  catalogue: AssetCatalogue
+  /** The asset as it was when the form opened — absent when creating. */
+  original?: { assetType: string; productId: string }
   showLocation?: boolean
 }) {
+  // Changing the category drops a product that belongs to the old one, so the
+  // form can never submit a pairing the database would refuse.
+  const changeCategory = (key: string) => {
+    set('assetType')(key)
+    set('productId')(productAfterCategoryChange(catalogue.products, form.productId, key))
+  }
+  // Picking a product names a new asset after it when nothing has been typed
+  // yet. The individual item can still be named anything.
+  const changeProduct = (id: string) => {
+    set('productId')(id)
+    const product = catalogue.products.find(p => p.id === id)
+    if (product && !form.assetName.trim()) set('assetName')(product.name)
+  }
   return (
     <>
-      <AssetField label="Category">
-        <CategorySelect value={form.assetType} onChange={set('assetType')} />
-      </AssetField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+        <AssetField label="Category">
+          <CategorySelect
+            value={form.assetType}
+            onChange={changeCategory}
+            catalogue={catalogue}
+            originalKey={original?.assetType ?? null}
+          />
+        </AssetField>
+        <AssetField label="Product (optional)">
+          <ProductSelect
+            value={form.productId}
+            onChange={changeProduct}
+            catalogue={catalogue}
+            categoryKey={form.assetType}
+            originalId={original && original.assetType === form.assetType ? original.productId : null}
+          />
+        </AssetField>
+      </div>
       <AssetField label="Asset Name">
         <input className="boe-input" value={form.assetName} onChange={e => set('assetName')(e.target.value)} placeholder="e.g. Dell XPS 15" style={inputStyle} />
       </AssetField>
@@ -142,10 +219,12 @@ export function CreateAssetModal({
   supabase, onClose, onSaved,
 }: { supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
   const { form, set } = useAssetForm({})
+  const { catalogue } = useAssetCatalogue(supabase)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
+    if (!form.assetType) { setError('Choose a category.'); return }
     if (!form.assetName.trim()) { setError('Asset Name is required.'); return }
     if (saving) return
     setSaving(true)
@@ -154,6 +233,7 @@ export function CreateAssetModal({
     // (20260726000000) and any value a client supplied would be discarded.
     const { error: dbError } = await supabase.from('assets').insert({
       asset_type:     form.assetType,
+      product_id:     form.productId || null,
       asset_name:     form.assetName.trim(),
       serial_no:      form.serialNo.trim() || null,
       specifications: form.specifications.trim() || null,
@@ -172,7 +252,7 @@ export function CreateAssetModal({
 
   return (
     <AssetModal title="Create Asset" onClose={onClose} width={520}>
-      <AssetFormFields form={form} set={set} />
+      <AssetFormFields form={form} set={set} catalogue={catalogue} />
       {error && <AssetModalError message={error} />}
       <AssetModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Create Asset" />
     </AssetModal>
@@ -208,6 +288,7 @@ export function EditAssetModal({
 }) {
   const { form, set } = useAssetForm({
     assetType:      asset.asset_type,
+    productId:      asset.product_id ?? '',
     assetName:      asset.asset_name,
     serialNo:       asset.serial_no ?? '',
     specifications: asset.specifications ?? '',
@@ -217,6 +298,7 @@ export function EditAssetModal({
     condition:      asset.condition ?? '',
     location:       asset.location ?? '',
   })
+  const { catalogue } = useAssetCatalogue(supabase)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -229,6 +311,7 @@ export function EditAssetModal({
       .from('assets')
       .update({
         asset_type:     form.assetType,
+        product_id:     form.productId || null,
         asset_name:     form.assetName.trim(),
         serial_no:      form.serialNo.trim() || null,
         specifications: form.specifications.trim() || null,
@@ -263,7 +346,12 @@ export function EditAssetModal({
 
   return (
     <AssetModal title="Edit Asset" onClose={onClose} width={520}>
-      <AssetFormFields form={form} set={set} />
+      <AssetFormFields
+        form={form}
+        set={set}
+        catalogue={catalogue}
+        original={{ assetType: asset.asset_type, productId: asset.product_id ?? '' }}
+      />
       {error && <AssetModalError message={error} />}
       <AssetModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
     </AssetModal>
@@ -277,6 +365,7 @@ export function EditAssetModal({
 export function RequestEditModal({
   asset, supabase, onClose, onSubmitted,
 }: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSubmitted: () => void }) {
+  const { catalogue } = useAssetCatalogue(supabase)
   const [assetType, setAssetType] = useState(asset.asset_type)
   const [assetName, setAssetName] = useState(asset.asset_name)
   const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
@@ -326,7 +415,7 @@ export function RequestEditModal({
         can be proposed this way.
       </div>
       <AssetField label="Category">
-        <CategorySelect value={assetType} onChange={setAssetType} />
+        <CategorySelect value={assetType} onChange={setAssetType} catalogue={catalogue} originalKey={asset.asset_type} />
       </AssetField>
       <AssetField label="Asset Name">
         <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} style={inputStyle} />

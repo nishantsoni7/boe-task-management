@@ -79,6 +79,7 @@ export type AssetAction =
   | 'restore'
   | 'upload-document'
   | 'remove-document'
+  | 'manage-catalogue'
 
 const PERMISSION_MESSAGE: Record<AssetAction, string> = {
   'create':    'You do not have permission to add assets.',
@@ -104,6 +105,7 @@ const PERMISSION_MESSAGE: Record<AssetAction, string> = {
   'restore':          'You do not have permission to restore assets.',
   'upload-document':  'You do not have permission to add documents to assets.',
   'remove-document':  'You do not have permission to remove asset documents.',
+  'manage-catalogue': 'You do not have permission to manage the asset catalogue.',
 }
 
 // A second open request of the same type against the same asset trips the
@@ -151,6 +153,17 @@ const GUARD_PREFIXES = [
   'ASSET_TRANSFER_IMMUTABLE:',
   'ASSET_ACTIVITY_IMMUTABLE:',
   'ASSET_CODE_IMMUTABLE:',
+  // The catalogue (20270130000000). Each sentence after the prefix is written
+  // for the reader — "A category named "Phone" already exists".
+  'ASSET_CATALOGUE_DENIED:',
+  'ASSET_CATALOGUE_INVALID:',
+  'ASSET_CATALOGUE_DUPLICATE:',
+  'ASSET_CATALOGUE_MISSING:',
+  'ASSET_CATALOGUE_IN_USE:',
+  'ASSET_CATALOGUE_IMMUTABLE:',
+  'ASSET_CATEGORY_INACTIVE:',
+  'ASSET_PRODUCT_MISMATCH:',
+  'ASSET_PRODUCT_INACTIVE:',
 ]
 
 function guardMessage(err: AssetErrorLike): string | null {

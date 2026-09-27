@@ -52,7 +52,7 @@ describe('what Assets & Access registers', () => {
     assert.equal(isProtectedAction(ACTION), true)
     assert.deepEqual(actionDependencyChain(ACTION), ['view'])
     for (const level of PRESET_LEVELS) {
-      assert.ok(!standardActionsForLevel(level).includes(ACTION), `${level} preset grants ${ACTION}`)
+      assert.ok(!standardActionsForLevel(level, (assets?.actions ?? []).map(a => a.actionKey)).includes(ACTION), `${level} preset grants ${ACTION}`)
     }
   })
 

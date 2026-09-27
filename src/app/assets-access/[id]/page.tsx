@@ -74,6 +74,8 @@ import {
 import { assetDeleteBlockReason } from '@/lib/assets/lifecycle'
 // The printable handover document, shared with the employee's My Assets list.
 import { HandoverSheetOverlay } from '@/components/assets/AssetHandover'
+import { categoryLabel, productLabel } from '@/lib/assets/catalogue'
+import { useAssetCatalogue } from '@/hooks/useAssetCatalogue'
 import type { AssetDocumentType } from '@/lib/assets/types'
 
 // The single source of truth for one asset: what it is, who holds it, and
@@ -495,6 +497,9 @@ export default function AssetDetailPage() {
   const assetId = typeof params?.id === 'string' ? params.id : ''
   const router = useRouter()
   const { supabase, profile, caps, loading: authLoading, signOut } = useAssetsAccess()
+  // Category and product by their CURRENT names (20270130000000): a rename in
+  // the catalogue shows here without the asset row changing.
+  const { catalogue } = useAssetCatalogue(supabase)
 
   const [asset, setAsset] = useState<Asset | null>(null)
   const [assignments, setAssignments] = useState<EmployeeAsset[]>([])
@@ -872,7 +877,11 @@ export default function AssetDetailPage() {
             display: 'grid', gap: '14px 20px',
             gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
           }}>
-            <DetailField label="Category"   value={humanizeToken(asset.asset_type)} />
+            <DetailField
+              label="Category / Product"
+              value={[categoryLabel(catalogue, asset.asset_type), productLabel(catalogue, asset.product_id)]
+                .filter(Boolean).join(' · ')}
+            />
             <DetailField label="Serial No." value={asset.serial_no} mono />
             <DetailField label="Custodian"  value={custody.label} />
             <DetailField label="Department" value={asset.department} />
@@ -998,6 +1007,7 @@ export default function AssetDetailPage() {
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
       canReviewAssetRequests={caps.canReviewAssetRequests}
+      canManageCatalogue={caps.canManageCatalogue}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Breadcrumb, not a banner. One line back to the list, with the code

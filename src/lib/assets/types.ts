@@ -25,8 +25,19 @@ export type Asset = {
   id: string
   /** BOE-AST-000001. Database-generated, unique and immutable (20260726000000). */
   asset_code: string
-  /** The asset's CATEGORY. Named asset_type in the database since 20260640. */
+  /**
+   * The asset's CATEGORY — the immutable key of an asset_categories row
+   * (20270130000000). Named asset_type in the database since 20260640. Show it
+   * through categoryLabel() in src/lib/assets/catalogue.ts, never raw: a
+   * category's display name can be changed and this key cannot.
+   */
   asset_type: string
+  /**
+   * The catalogue PRODUCT this item is an instance of, or null. Optional on
+   * purpose: every asset that existed before the catalogue has none, and the
+   * product is a type or model — never the item itself.
+   */
+  product_id?: string | null
   asset_name: string
   serial_no: string | null
   specifications: string | null
@@ -219,10 +230,6 @@ export const ASSET_CONDITION_LABEL: Record<string, string> = {
 
 export const ASSET_CONDITION_OPTIONS: readonly AssetCondition[] = [
   'new', 'good', 'fair', 'poor', 'damaged',
-]
-
-export const ASSET_CATEGORY_OPTIONS: readonly string[] = [
-  'laptop_desktop', 'monitor', 'mouse_keyboard', 'storage', 'phone', 'other',
 ]
 
 export const ASSET_SERVICE_TYPE_LABEL: Record<string, string> = {
