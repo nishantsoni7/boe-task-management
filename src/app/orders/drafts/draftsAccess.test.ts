@@ -1524,7 +1524,8 @@ describe('coming back to the tab does not reload anything', () => {
   })
 
   test('the manual refresh control still re-reads, in place', () => {
-    assert.ok(source.includes('onRefresh={() => loadDraft({ quiet: true })}'),
+    // Re-reads the PI quietly and, since 2026-09-27, the payment summary too.
+    assert.ok(source.includes('onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}'),
       'the header control is still wired to a real re-read')
     assert.ok(source.includes('if (!quiet) setLoad({ kind: \'loading\' })'),
       'and a refresh keeps the record on screen instead of blanking it')

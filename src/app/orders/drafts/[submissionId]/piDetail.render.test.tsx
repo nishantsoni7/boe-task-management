@@ -568,6 +568,8 @@ const summaryHtml = (over: {
   onRequestCorrection?: (() => void) | null
   missingSummary?: string | null
   workbookName?: string | null
+  dateNotes?: readonly string[]
+  internal?: React.ReactNode
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
     canEditDetails={over.canEditDetails ?? false}
@@ -592,6 +594,8 @@ const summaryHtml = (over: {
     billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
     canEditBilling={over.canEditBilling ?? false}
     onEditBilling={() => {}}
+    dateNotes={over.dateNotes}
+    internal={over.internal}
   />,
 )
 
@@ -725,6 +729,22 @@ describe('the overview repeats two commercial figures, and only two', () => {
     const html = summaryHtml()
     const grid = html.slice(html.indexOf('class="pi-detail-figures-grid"'))
     assert.equal((grid.match(/class="pi-detail-figure"/g) ?? []).length, 3)
+  })
+
+  test('the internal middleman answer sits UNDER the three figures, never as a fourth cell', () => {
+    const html = summaryHtml({ internal: <section className="pi-detail-internal">Middleman commission</section> })
+    const figures = html.slice(html.indexOf('class="pi-detail-figures"'))
+    assert.ok(figures.indexOf('pi-detail-figures-grid') < figures.indexOf('pi-detail-internal'))
+    assert.equal((figures.match(/class="pi-detail-figure"/g) ?? []).length, 3)
+    assert.equal(summaryHtml().includes('pi-detail-internal'), false, 'nothing is drawn when the page passes nothing')
+  })
+
+  test('a workbook date the app disagrees with is said under the date band', () => {
+    const note = 'The workbook’s due date is 20 Nov 2026; the app says 22 Nov 2026.'
+    const html = summaryHtml({ dateNotes: [note] })
+    const band = html.slice(html.indexOf('class="pi-detail-dates"'), html.indexOf('class="pi-detail-figures"'))
+    assert.ok(band.includes('class="pi-detail-dates-workbook"') && text(band).includes(note))
+    assert.equal(summaryHtml().includes('pi-detail-dates-workbook'), false)
   })
 })
 
@@ -3687,5 +3707,31 @@ describe('the three dialogs stay separate', () => {
     for (const label of ['Edit client details', 'Edit dates and terms', 'Edit product line']) {
       assert.ok(modals.includes(`aria-label="${label}"`), `no dialog named "${label}"`)
     }
+  })
+})
+
+// Found in the 2026-09-27 workflow run: after Edit PI moved the grand total,
+// the Submit dialog still stated the old total and a wrong 40% shortfall,
+// because only the PI was re-read. The payment summary is its own read.
+describe('an edit or a refresh re-reads the payment summary too', () => {
+  test('Edit PI and the header refresh both call loadPayments', () => {
+    const page = read(PAGE).replace(/\r\n/g, '\n')
+    assert.match(page, /onDone=\{\(\) => \{ setPiEditorOpen\(false\); void loadDraft\(\{ quiet: true \}\); void loadPayments\(\) \}\}/)
+    assert.match(page, /onRefresh=\{async \(\) => \{ await Promise\.all\(\[loadDraft\(\{ quiet: true \}\), loadPayments\(\)\]\) \}\}/)
+  })
+})
+
+// 2026-09-27: Operations were offered 'Edit PI on the Order' on an approved PI,
+// and the Order then gave them no Edit PI. Same rule as the Order page now.
+describe('Edit PI on the Order is offered only to somebody who can edit there', () => {
+  test('an admin, or the PI owner holding orders.create', () => {
+    const page = read(PAGE)
+    assert.ok(page.includes("const mayEditOnOrder = canAdminAmend || (canCreate && ownsSubmission)"))
+    assert.ok(page.includes("{(mayEditPi || (piIsOrder && submission.status === 'approved' && mayEditOnOrder)) && ("))
+  })
+  test('the reviewer sees what changed since the return beside the reply', () => {
+    const page = read(PAGE)
+    assert.ok(page.includes("resubmission={submission.status === 'submitted' ? draft.resubmission : null}"))
+    assert.ok(page.includes('resubmission: changesSinceReturn(history),'))
   })
 })

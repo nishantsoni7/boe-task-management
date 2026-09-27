@@ -3,6 +3,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  INTERNAL_DETAILS_REQUIREMENT_KEY,
+  withInternalDetailsRequirement,
+  INTERNAL_DETAILS_NETWORK_FAILURE,
+  internalDetailsSaveFailure,
   COMMISSION_RESTRICTED_TEXT,
   PI_COMMISSION_COLUMNS,
   PI_INTERNAL_DETAIL_COLUMNS,
@@ -229,5 +233,46 @@ describe('the commission, laid over the PI row only for a reader', () => {
     const row = withCommission(pi, null, true)
     assert.equal(describeMiddleman(row), 'Not answered')
     assert.equal(internalDetailsMissing(row), 'answer "Is there a middleman commission?"')
+  })
+})
+
+// Found in the 2026-09-27 workflow run: a dropped connection showed Sales the
+// browser's bare 'TypeError: Failed to fetch'.
+describe('internalDetailsSaveFailure', () => {
+  test('a request that never arrived is said in plain language', () => {
+    for (const message of ['TypeError: Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed']) {
+      assert.equal(internalDetailsSaveFailure({ message, code: '' }), INTERNAL_DETAILS_NETWORK_FAILURE, message)
+    }
+  })
+  test('a database refusal keeps its own words', () => {
+    const refusal = 'ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION: the due date cannot be before the order confirmation date'
+    assert.equal(internalDetailsSaveFailure({ message: refusal, code: 'P0001' }), refusal)
+    assert.equal(internalDetailsSaveFailure(null), 'The internal details could not be saved.')
+  })
+})
+
+// The owner's checklist used to read 'ready' while the database refused the submission.
+describe('withInternalDetailsRequirement', () => {
+  const ready = { ready: true, missing: [], summary: null } as const
+  test('an unanswered middleman question makes the checklist say so, and blocks Submit', () => {
+    const r = withInternalDetailsRequirement(ready, { status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20' })
+    assert.equal(r.ready, false)
+    assert.deepEqual(r.missing.map(m => [m.key, m.label, m.section]), [[INTERNAL_DETAILS_REQUIREMENT_KEY, 'Middleman commission answer', 'internal']])
+    assert.equal(r.summary, 'Before this PI can be submitted, middleman commission answer is needed.')
+  })
+  test('joins the shared list and recounts it', () => {
+    const base = { ready: false, missing: [{ key: 'client_city', label: 'Client city', section: 'client' as const }], summary: 'x' }
+    const r = withInternalDetailsRequirement(base, { status: 'needs_changes', order_confirmation_date: '2026-09-20', due_date: '2026-11-20', middleman_commission: 'no' })
+    assert.deepEqual(r.missing.map(m => m.label), ['Client city', 'Confirmation of the internal details'])
+    assert.equal(r.summary, 'Before this PI can be submitted, 2 things are needed.')
+  })
+  test('complete and confirmed, or past draft, adds nothing', () => {
+    assert.equal(withInternalDetailsRequirement(ready, { status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20', middleman_commission: 'no', internal_details_confirmed_at: '2026-09-26T00:00:00Z' }), ready)
+    assert.equal(withInternalDetailsRequirement(ready, { status: 'submitted' }), ready)
+  })
+  test('the page feeds the checklist with it and its Add opens the internal details editor', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('readiness={actions.canSubmit ? withInternalDetailsRequirement(submissionReadiness, submission) : null}'))
+    assert.ok(page.includes("if (section === 'internal') { setInternalFailure(null); setInternalOpen(true); return }"))
   })
 })
