@@ -21,6 +21,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { piReadiness } from './piReadiness'
+import { INTERNAL_DETAILS_REQUIREMENT_KEY, withInternalDetailsRequirement } from './piInternalDetails'
 import {
   describeApprovalReadiness,
   approvalBlockedIncomplete,
@@ -122,12 +123,31 @@ describe('the two surfaces read one computation, not two', () => {
   })
 
   test('both surfaces are handed that one value', () => {
-    // The submit control.
-    assert.ok(page.includes('readiness={actions.canSubmit ? submissionReadiness : null}'),
+    // The submit control: the same value, plus the internal details the
+    // database also requires before a submission (20270123000000) — added
+    // only while the PI can still be submitted (see the next test).
+    assert.ok(page.includes('readiness={actions.canSubmit ? withInternalDetailsRequirement(submissionReadiness, submission) : null}'),
       'missing wiring: the submit control')
     // The approval control, through describeApprovalReadiness.
     assert.match(page,
       /incompleteSummary: submissionReadiness\.ready \? null : submissionReadiness\.summary/)
+  })
+
+  test('the internal-details addition never makes the two surfaces disagree on a PI under review', () => {
+    // It adds ONE requirement, and only while the PI is draft or needs_changes
+    // — the only states the database's submission check applies to. For every
+    // state the approval control acts on, the submit control would read the
+    // very same object.
+    const ready = piReadiness('submission', COMPLETE, LINES)
+    const noDetails = { order_confirmation_date: null, due_date: null }
+    for (const status of ['submitted', 'approved', 'rejected']) {
+      assert.equal(withInternalDetailsRequirement(ready, { status, ...noDetails }), ready, status)
+    }
+    for (const status of ['draft', 'needs_changes']) {
+      const r = withInternalDetailsRequirement(ready, { status, ...noDetails })
+      assert.equal(r.ready, false, status)
+      assert.deepEqual(r.missing.map(m => m.key), [INTERNAL_DETAILS_REQUIREMENT_KEY], `${status}: only the internal details are added`)
+    }
   })
 
   test('no surface re-derives a requirement of its own', () => {

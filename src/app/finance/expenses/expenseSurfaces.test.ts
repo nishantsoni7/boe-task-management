@@ -1810,6 +1810,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270123000000_order_submission_internal_details_required_on_submit.sql',
   ])
 
+  // The readiness wiring pin, brought up to date with #242's submit control
+  // (which adds the internal details only while a PI can still be submitted).
+  const ALLOWED_PI_READINESS_WIRING_PIN = new Set([
+    'src/lib/orders/piReadinessWiring.test.tsx',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -1855,6 +1861,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
+    !ALLOWED_PI_READINESS_WIRING_PIN.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2181,7 +2188,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
-        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
+        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
+        || ALLOWED_PI_READINESS_WIRING_PIN.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
