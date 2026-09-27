@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import {
   categoryLabel,
   categoryNameProblem,
+  cataloguePickerState,
   categoryOptions,
   findDuplicateCategory,
   findDuplicateProduct,
@@ -160,5 +161,26 @@ describe('usage counts', () => {
     assert.equal(usage.byCategory.phone, 5)
     assert.equal(usage.byProduct['p-latitude'], 3)
     assert.equal(usage.byCategory.workshop_equipment, undefined)
+  })
+})
+
+// ─── What a picker may show (review finding 1 on #240) ──────────────────────
+
+describe('cataloguePickerState never lets a failure pass for "no categories"', () => {
+  test('not loaded and no error: loading', () => {
+    assert.equal(cataloguePickerState({ loaded: false, error: null }, { categories: [], products: [] }), 'loading')
+  })
+  test('not loaded with an error: error — even though the list is empty', () => {
+    assert.equal(cataloguePickerState({ loaded: false, error: 'Failed to fetch' }, { categories: [], products: [] }), 'error')
+  })
+  test('a Retry in flight after a failure reads as loading, not as the old error', () => {
+    assert.equal(cataloguePickerState({ loaded: false, error: 'Failed to fetch', loading: true }, { categories: [], products: [] }), 'loading')
+  })
+  test('loaded with only retired categories: empty, a different state', () => {
+    assert.equal(cataloguePickerState({ loaded: true, error: null }, { categories: [cat('tablet', 'Tablet', false)], products: [] }), 'empty')
+  })
+  test('loaded with an active category: ready — and a later refresh error does not take it away', () => {
+    assert.equal(cataloguePickerState({ loaded: true, error: null }, catalogue), 'ready')
+    assert.equal(cataloguePickerState({ loaded: true, error: 'Failed to fetch' }, catalogue), 'ready')
   })
 })

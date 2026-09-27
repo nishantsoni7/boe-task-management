@@ -16,6 +16,21 @@ import { warrantyStatus, type WarrantyStatus } from './warranty'
 import { findOpenAssignment, describeCustody } from './transfers'
 import { categoryLabel, productLabel, EMPTY_ASSET_CATALOGUE, type AssetCatalogue } from './catalogue'
 
+/**
+ * Statuses an asset leaves the working fleet by. The ONE definition of
+ * "active" — the overview's Active assets count and the list's `active`
+ * status filter both read it, so the tile and the list it opens can never
+ * disagree.
+ */
+export const OUT_OF_SERVICE_STATUSES: ReadonlySet<string> = new Set(['retired', 'disposed'])
+
+/** The status-filter value meaning "every status except retired and disposed". */
+export const ACTIVE_STATUS_FILTER = 'active'
+
+export function isActiveAsset(status: string): boolean {
+  return !OUT_OF_SERVICE_STATUSES.has(status)
+}
+
 export type AssetFilters = {
   /** Free text, matched across name, code, serial, brand, model, holder, category and product. */
   search: string
@@ -186,7 +201,9 @@ export function filterAssetRows(rows: readonly AssetRow[], filters: AssetFilters
     )) return false
     if (category && a.asset_type !== category) return false
     if (productId && a.product_id !== productId) return false
-    if (status && a.status !== status) return false
+    if (status === ACTIVE_STATUS_FILTER) {
+      if (!isActiveAsset(a.status)) return false
+    } else if (status && a.status !== status) return false
     if (employeeId && row.holderId !== employeeId) return false
 
     // Department and location are free text on the asset, so they are matched

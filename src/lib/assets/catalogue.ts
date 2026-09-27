@@ -236,6 +236,27 @@ export function productAfterCategoryChange(
   return product && product.category_key === nextCategoryKey ? productId : ''
 }
 
+// ─── What a picker may show ──────────────────────────────────────────────────
+
+export type CataloguePickerState = 'loading' | 'error' | 'empty' | 'ready'
+
+/**
+ * Whether a form may offer the category picker yet.
+ *
+ * An empty option list means three different things, and a form must never
+ * let one pass for another: still loading, the read FAILED, or the catalogue
+ * genuinely has no active category. Only 'ready' lets the reader choose and
+ * save. The store sets `loaded` only on a successful read, so a failed first
+ * read is 'error' — never 'empty'.
+ */
+export function cataloguePickerState(
+  store: { loaded: boolean; error: string | null; loading?: boolean },
+  catalogue: AssetCatalogue,
+): CataloguePickerState {
+  if (!store.loaded) return store.error && !store.loading ? 'error' : 'loading'
+  return catalogue.categories.some(c => c.is_active) ? 'ready' : 'empty'
+}
+
 // ─── Usage (asset_catalogue_usage) ───────────────────────────────────────────
 
 export type CatalogueUsageRow = {

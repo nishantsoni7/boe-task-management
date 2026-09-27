@@ -152,9 +152,29 @@ describe('describeProposedChanges', () => {
     assert.deepEqual(lines, ['Serial No. → SN-2'])
   })
 
-  test('renders the asset type readably', () => {
+  test('without a catalogue, a proposed category key reads as words, never raw', () => {
     const lines = describeProposedChanges(request({ proposed_asset_type: 'laptop_desktop' }))
-    assert.deepEqual(lines, ['Type → laptop desktop'])
+    assert.deepEqual(lines, ['Category → Laptop Desktop'])
+  })
+
+  // Review finding 5 on #240: the reviewer must read the category the asset
+  // would actually move to, by its CURRENT catalogue name.
+  test('with the catalogue, a proposed category shows its current name, including after a rename', () => {
+    const names: Record<string, string> = { laptop_desktop: 'Laptops & Desktops', workshop_equipment: 'Tools' }
+    const byName = (key: string) => names[key] ?? `?${key}`
+    assert.deepEqual(describeProposedChanges(request({ proposed_asset_type: 'laptop_desktop' }), byName),
+      ['Category → Laptops & Desktops'])
+    // Created as "Workshop Equipment", since renamed to "Tools": the key no longer says what it is called.
+    assert.deepEqual(describeProposedChanges(request({ proposed_asset_type: 'workshop_equipment' }), byName),
+      ['Category → Tools'])
+  })
+
+  test('a legacy key the catalogue resolver does not know still reads as words', async () => {
+    const { categoryLabel } = await import('./catalogue')
+    const catalogue = { categories: [], products: [] }
+    assert.deepEqual(
+      describeProposedChanges(request({ proposed_asset_type: 'old_scanner_kit' }), k => categoryLabel(catalogue, k)),
+      ['Category → Old Scanner Kit'])
   })
 
   test('a removal request describes no field changes', () => {

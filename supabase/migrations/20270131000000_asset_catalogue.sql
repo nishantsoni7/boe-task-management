@@ -287,6 +287,24 @@ CREATE INDEX IF NOT EXISTS assets_product_id_idx ON public.assets (product_id);
 --
 -- SECURITY DEFINER so an invoker without SELECT on a retired row still gets
 -- the right answer (see 20270117000000 for what an invoker guard costs).
+--
+-- ROW LOCKS, AND WHY. The rows this trigger validates against are read FOR
+-- SHARE, so the check and the catalogue change it depends on cannot interleave:
+--   * update_asset_product holds the product FOR UPDATE while it counts the
+--     assets using it and moves it. An asset write naming that product now
+--     WAITS for the move; on commit Postgres re-reads the locked row, the
+--     trigger sees the NEW category, and refuses the mismatch. The other way
+--     round, a write that locked first makes the move wait, and the in-use
+--     count of the move then sees the new asset and refuses it
+--     (ASSET_CATALOGUE_IN_USE).
+--   * update_asset_category holds the category FOR UPDATE; retiring it and
+--     filing a new asset under it are serialised the same way.
+-- Without these locks a move and an insert could both commit, leaving an asset
+-- whose product belongs to another category. The foreign key check on
+-- product_id does wait for the move (its KEY SHARE lock conflicts with the
+-- FOR UPDATE), but it runs AFTER this trigger has already validated against
+-- the pre-move row, so the wait comes too late to help. Proved in both orders,
+-- with a negative control, by supabase/tests/run_asset_catalogue_race_local.sh.
 
 CREATE OR REPLACE FUNCTION public.enforce_asset_catalogue_links()
 RETURNS trigger
@@ -305,7 +323,8 @@ DECLARE
 BEGIN
   IF v_type_changed THEN
     SELECT name, is_active INTO v_cat_name, v_cat_active
-      FROM public.asset_categories WHERE key = new.asset_type;
+      FROM public.asset_categories WHERE key = new.asset_type
+       FOR SHARE;
     -- A missing key is left to the foreign key, which names the constraint.
     IF FOUND AND NOT v_cat_active THEN
       RAISE EXCEPTION 'ASSET_CATEGORY_INACTIVE: The category "%" is no longer in use. Choose an active category', v_cat_name
@@ -315,7 +334,8 @@ BEGIN
 
   IF new.product_id IS NOT NULL THEN
     SELECT category_key, name, is_active INTO v_prod_cat, v_prod_name, v_prod_active
-      FROM public.asset_products WHERE id = new.product_id;
+      FROM public.asset_products WHERE id = new.product_id
+       FOR SHARE;
 
     IF FOUND AND v_prod_cat IS DISTINCT FROM new.asset_type THEN
       IF TG_OP = 'UPDATE' AND v_type_changed AND NOT v_prod_changed THEN

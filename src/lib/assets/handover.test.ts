@@ -493,3 +493,40 @@ describe('the printed Handover Sheet', () => {
     )
   })
 })
+
+// ─── Category by catalogue name (review finding 4 on #240) ─────────────────
+
+describe('the sheet names the category the way the catalogue does now', () => {
+  const category = (input: Parameters<typeof buildHandoverSheet>[0]) =>
+    buildHandoverSheet(input).assetLines.find(l => l.label === 'Category')?.value
+
+  test('a sheet generated after a rename prints the CURRENT name, not the stored key', () => {
+    assert.equal(category({ ...FULL, assetType: 'laptop_desktop', categoryName: 'Laptops & Desktops' }), 'Laptops & Desktops')
+    // Created as Workshop Equipment, renamed to Tools: the key no longer says it.
+    assert.equal(category({ ...FULL, assetType: 'workshop_equipment', categoryName: 'Tools' }), 'Tools')
+  })
+
+  test('with no name available, the key is printed in words, never raw', () => {
+    assert.equal(category({ ...FULL, assetType: 'laptop_desktop' }), 'Laptop Desktop')
+    assert.equal(category({ ...FULL, assetType: 'laptop_desktop', categoryName: '   ' }), 'Laptop Desktop')
+    assert.doesNotMatch(sheetText(buildHandoverSheet({ ...FULL, assetType: 'laptop_desktop' })), /laptop_desktop/)
+  })
+
+  test('only the Category line changes: the signed acceptance prints exactly as stored', () => {
+    const before = buildHandoverSheet({ ...FULL, assetType: 'laptop_desktop' })
+    const after  = buildHandoverSheet({ ...FULL, assetType: 'laptop_desktop', categoryName: 'Laptops & Desktops' })
+    assert.deepEqual(after.acceptanceLines, before.acceptanceLines)
+    assert.deepEqual(after.terms, before.terms)
+    assert.equal(after.acceptanceStatement, before.acceptanceStatement)
+    assert.deepEqual(after.handoverLines, before.handoverLines)
+    assert.deepEqual(after.assetLines.filter(l => l.label !== 'Category'), before.assetLines.filter(l => l.label !== 'Category'))
+  })
+
+  test('both screens that print a sheet pass the catalogue name', () => {
+    for (const file of ['src/app/assets-access/page.tsx', 'src/app/assets-access/[id]/page.tsx']) {
+      const src = readFileSync(join(process.cwd(), file), 'utf8')
+      const overlay = src.slice(src.indexOf('<HandoverSheetOverlay'), src.indexOf('/>', src.indexOf('<HandoverSheetOverlay')))
+      assert.match(overlay, /categoryName=\{categoryLabel\(catalogue,/, `${file} must pass categoryName`)
+    }
+  })
+})

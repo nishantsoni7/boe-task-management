@@ -16,10 +16,11 @@
 // inventory already builds, so the counts, the attention list and the table
 // can never disagree about who holds what.
 
-import type { AssetRow } from './assetFilters'
+import { OUT_OF_SERVICE_STATUSES, type AssetRow } from './assetFilters'
 
 /** Statuses an asset leaves the working fleet by. Counted apart, never as "active". */
-export const OUT_OF_SERVICE_STATUSES: ReadonlySet<string> = new Set(['retired', 'disposed'])
+// Defined once, beside the list filter that must agree with it.
+export { OUT_OF_SERVICE_STATUSES }
 
 export type AssetSummary = {
   /** Everything not retired or disposed. */

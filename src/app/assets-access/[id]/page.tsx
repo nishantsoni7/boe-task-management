@@ -1146,6 +1146,7 @@ export default function AssetDetailPage() {
           prints from My Assets, so both sides print one document. */}
       {asset && printingHandover && openAssignment && (
         <HandoverSheetOverlay
+          categoryName={categoryLabel(catalogue, asset?.asset_type)}
           assignment={openAssignment}
           asset={asset}
           employeeName={employeeName(openAssignment.employee_id)}

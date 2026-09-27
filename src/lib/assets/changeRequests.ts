@@ -7,6 +7,8 @@
 // of it, and the definer functions are the only thing that can actually move
 // an asset.
 
+import { humanizeToken } from './types'
+
 export type AssetChangeRequestType = 'edit' | 'remove'
 export type AssetChangeRequestStatus = 'pending' | 'approved' | 'rejected'
 
@@ -132,11 +134,22 @@ export function validateChangeRequest(input: {
   return null
 }
 
-/** Human summary of what an edit request would change, for the review list. */
-export function describeProposedChanges(request: AssetChangeRequest): string[] {
+/**
+ * Human summary of what an edit request would change, for the review list.
+ *
+ * `categoryName` resolves a proposed category KEY to its CURRENT catalogue
+ * name (pass categoryLabel bound to the catalogue), so a reviewer reads the
+ * category the asset would actually move to, even after a rename. Without
+ * one, or for a legacy key the catalogue does not know, the key is shown in
+ * words ("laptop_desktop" → "Laptop Desktop").
+ */
+export function describeProposedChanges(
+  request: AssetChangeRequest,
+  categoryName: (key: string) => string = humanizeToken,
+): string[] {
   const lines: string[] = []
   if (request.proposed_asset_name)     lines.push(`Name → ${request.proposed_asset_name}`)
-  if (request.proposed_asset_type)     lines.push(`Type → ${request.proposed_asset_type.replace(/_/g, ' ')}`)
+  if (request.proposed_asset_type)     lines.push(`Category → ${categoryName(request.proposed_asset_type)}`)
   if (request.proposed_serial_no)      lines.push(`Serial No. → ${request.proposed_serial_no}`)
   if (request.proposed_specifications) lines.push(`Specifications → ${request.proposed_specifications}`)
   return lines

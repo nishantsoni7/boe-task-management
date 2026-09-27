@@ -12,7 +12,9 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildAssetRows } from './assetFilters'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { ACTIVE_STATUS_FILTER, EMPTY_ASSET_FILTERS, OUT_OF_SERVICE_STATUSES, buildAssetRows, filterAssetRows } from './assetFilters'
 import {
   attentionByAsset,
   attentionItems,
@@ -185,5 +187,35 @@ describe('by category', () => {
     assert.equal(laptops.other, 1)
     const other = byCat.find(c => c.categoryKey === 'other')!
     assert.equal(other.outOfService, 1)
+  })
+})
+
+// ─── The Active tile and its list agree (review finding 2 on #240) ──────────
+
+describe('the Active assets tile opens exactly the rows it counts', () => {
+  test('filtering the list by the tile status returns the tile count, and no retired row', () => {
+    const s = summariseAssets(rows, attention)
+    const opened = filterAssetRows(rows, { ...EMPTY_ASSET_FILTERS, status: ACTIVE_STATUS_FILTER })
+    assert.equal(opened.length, s.active)
+    assert.ok(!opened.some(r => OUT_OF_SERVICE_STATUSES.has(r.asset.status)))
+    // …whereas the unfiltered list (what the tile used to open) is longer.
+    assert.equal(filterAssetRows(rows, EMPTY_ASSET_FILTERS).length, s.active + s.outOfService)
+  })
+
+  test('Assigned and Available open their own counts too', () => {
+    const s = summariseAssets(rows, attention)
+    assert.equal(filterAssetRows(rows, { ...EMPTY_ASSET_FILTERS, status: 'assigned' }).length, s.assigned)
+    assert.equal(filterAssetRows(rows, { ...EMPTY_ASSET_FILTERS, status: 'available' }).length, s.available)
+  })
+
+  test('"active" combines with the other filters like any status', () => {
+    const phones = filterAssetRows(rows, { ...EMPTY_ASSET_FILTERS, status: ACTIVE_STATUS_FILTER, category: 'phone' })
+    assert.deepEqual(phones.map(r => r.asset.id).sort(), ['p1', 'p2'])
+  })
+
+  test('the page wires the tile to that filter, and offers it in the Status dropdown', () => {
+    const src = readFileSync(join(process.cwd(), 'src/app/assets-access/page.tsx'), 'utf8')
+    assert.match(src, /showList\(\{ status: target === 'active' \? ACTIVE_STATUS_FILTER : target \}\)/)
+    assert.match(src, /value: ACTIVE_STATUS_FILTER, label: 'Active \(not retired \/ disposed\)'/)
   })
 })

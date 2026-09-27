@@ -46,6 +46,7 @@ import {
   hasActiveFilters,
   sortAssetRows,
   EMPTY_ASSET_FILTERS,
+  ACTIVE_STATUS_FILTER,
   type AssetFilters,
   type AssetRow,
 } from '@/lib/assets/assetFilters'
@@ -443,6 +444,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
         <HandoverSheetOverlay
           assignment={printing}
           asset={singleAsset(printing.assets)}
+          categoryName={categoryLabel(catalogue, singleAsset(printing.assets)?.asset_type)}
           employeeName={acceptedByName}
           issuedByName={assignerNames[printing.assigned_by] ?? null}
           formatDateTime={fmtDateTime}
@@ -749,7 +751,12 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
         }}>
           {filterSelect('Category', 'category', categoryChoices, 'All categories')}
           {filterSelect('Product', 'productId', productChoices, productChoices.length ? 'All products' : 'None recorded')}
-          {filterSelect('Status', 'status', ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })), 'Any status')}
+          {filterSelect('Status', 'status', [
+            // What the Active assets tile counts, so its click-through is a
+            // visible, clearable choice rather than an invisible narrowing.
+            { value: ACTIVE_STATUS_FILTER, label: 'Active (not retired / disposed)' },
+            ...ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })),
+          ], 'Any status')}
           {filterSelect('Held by', 'employeeId', personChoices, 'Anyone')}
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -938,7 +945,9 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
           isMobile={isMobile}
           onOpen={target => {
             if (target === 'attention') { setLens('attention'); return }
-            showList(target === 'active' ? {} : { status: target })
+            // Each tile opens exactly the rows it counts: Active uses the same
+            // definition as its number (assetFilters.isActiveAsset).
+            showList({ status: target === 'active' ? ACTIVE_STATUS_FILTER : target })
           }}
         />
       )}
@@ -1035,6 +1044,8 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Proposed categories are shown by their CURRENT catalogue name.
+  const { catalogue } = useAssetCatalogue(supabase)
   const [rejecting, setRejecting] = useState<AssetChangeRequest | null>(null)
 
   const load = async () => {
@@ -1085,7 +1096,7 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
   const reviewed = rows.filter(r => r.status !== 'pending')
 
   const RequestCard = ({ row }: { row: AssetChangeRequest }) => {
-    const changes = describeProposedChanges(row)
+    const changes = describeProposedChanges(row, key => categoryLabel(catalogue, key))
     return (
       <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>

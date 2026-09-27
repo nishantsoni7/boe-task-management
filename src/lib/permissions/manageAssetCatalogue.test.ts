@@ -119,6 +119,20 @@ describe('the migration', () => {
     }
   })
 
+  test('the consistency trigger locks what it validates against (review finding 3 on #240)', () => {
+    // Without these, a concurrent product move and asset write can both
+    // commit a mismatch. Behaviour is proved by
+    // supabase/tests/run_asset_catalogue_race_local.sh (both orders + a
+    // negative control); this pins that the locks stay in the file.
+    const body = SQL.split('FUNCTION public.enforce_asset_catalogue_links()')[1].split('$$;')[0]
+    assert.match(body, /FROM public\.asset_categories WHERE key = new\.asset_type\s+FOR SHARE;/)
+    assert.match(body, /FROM public\.asset_products WHERE id = new\.product_id\s+FOR SHARE;/)
+    // The mover still holds the product FOR UPDATE while it counts assets.
+    const mover = SQL.split('FUNCTION public.update_asset_product(')[1].split('$$;')[0]
+    assert.match(mover, /FROM public\.asset_products WHERE id = p_id FOR UPDATE;/)
+    assert.match(mover, /ASSET_CATALOGUE_IN_USE/)
+  })
+
   test('catalogue history is append-only', () => {
     assert.match(SQL, /BEFORE UPDATE OR DELETE ON public\.asset_catalogue_activity/)
   })
