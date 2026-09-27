@@ -32,8 +32,10 @@ import {
   internalDetailsShapeErrors,
   internalDetailsStatusLine,
   workbookDateNotes,
+  SUBMISSION_CONFIRM_LABEL,
   SUBMISSION_DATE_LABEL,
   SUBMISSION_DATES_NOTE,
+  SUBMISSION_MIDDLEMAN_HINT,
   type PiInternalDetailsForm,
   type PiInternalDetailsRow,
   type SubmissionDates,
@@ -266,6 +268,22 @@ export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
 }
 
 /**
+ * What the Submit dialog says about confirming. `needed` is true exactly when
+ * pressing Submit will write the internal details (submissionNeedsConfirmation);
+ * then the tick is required and starts UNTICKED. When nothing will be written,
+ * the line says the details are already confirmed.
+ */
+export type SubmissionConfirmation = {
+  needed: boolean
+  checked: boolean
+  onToggle: (checked: boolean) => void
+  /** Shown only after Submit was pressed without the tick. */
+  error?: string | null
+  /** "26 Sep 2026" when the record is confirmed and nothing will change. */
+  confirmedOn?: string | null
+}
+
+/**
  * THE TWO DATES, INSIDE SUBMIT FOR APPROVAL (2026-09-27).
  *
  * The same columns the editor above writes, labelled in the workbook's own
@@ -274,18 +292,25 @@ export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
  * Errors are handed in already filtered to "shown" — the dialog says nothing
  * until Submit has been pressed once.
  */
-export function PiSubmissionDatesFields({ dates, errors, disabled, onChange, inputRef }: {
+export function PiSubmissionDatesFields({ dates, errors, disabled, onChange, inputRef, middleman, confirmation, confirmRef }: {
   dates: SubmissionDates
   errors: Partial<Record<keyof SubmissionDates, string>>
   disabled: boolean
   onChange: (key: keyof SubmissionDates, value: string) => void
   inputRef?: (key: keyof SubmissionDates, el: HTMLInputElement | null) => void
+  /**
+   * The CURRENT middleman commission answer, as describeMiddleman() words it.
+   * Shown beside the dates because Submit confirms both together.
+   */
+  middleman?: string
+  confirmation?: SubmissionConfirmation
+  confirmRef?: (el: HTMLInputElement | null) => void
 }) {
   const keys: (keyof SubmissionDates)[] = ['order_confirmation_date', 'due_date']
   return (
     <fieldset style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '12px 14px', margin: 0, minWidth: 0 }}>
       <legend style={{ ...label, padding: '0 4px', color: colors.primary }}>
-        Order dates <span style={{ fontWeight: 400, color: colors.tertiary }}>· BOE only</span>
+        Internal details <span style={{ fontWeight: 400, color: colors.tertiary }}>· BOE only</span>
       </legend>
       <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45 }}>
         {SUBMISSION_DATES_NOTE}
@@ -317,6 +342,39 @@ export function PiSubmissionDatesFields({ dates, errors, disabled, onChange, inp
           )
         })}
       </div>
+      {middleman !== undefined && (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={label}>{MIDDLEMAN_LABEL}</span>
+          <span data-testid="pi-submit-middleman" style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{middleman}</span>
+          <span style={{ fontSize: '11px', color: colors.tertiary }}>{SUBMISSION_MIDDLEMAN_HINT}</span>
+        </div>
+      )}
+      {confirmation && (confirmation.needed ? (
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, cursor: disabled ? 'default' : 'pointer' }}>
+            <input
+              id="pi-submit-confirm-internal"
+              ref={confirmRef}
+              type="checkbox"
+              checked={confirmation.checked}
+              disabled={disabled}
+              aria-invalid={confirmation.error ? true : undefined}
+              aria-describedby={confirmation.error ? 'pi-submit-confirm-internal-error' : undefined}
+              onChange={e => confirmation.onToggle(e.target.checked)}
+              style={{ marginTop: '2px', flexShrink: 0 }}
+            />
+            <span>{SUBMISSION_CONFIRM_LABEL}</span>
+          </label>
+          {confirmation.error && (
+            <span id="pi-submit-confirm-internal-error" role="alert" style={fieldError}>{confirmation.error}</span>
+          )}
+        </div>
+      ) : (
+        <p style={{ margin: '12px 0 0', fontSize: '11.5px', color: colors.secondary, display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0, color: colors.green }} />
+          <span>Confirmed{confirmation.confirmedOn ? ` ${confirmation.confirmedOn}` : ''} — nothing here will change.</span>
+        </p>
+      ))}
     </fieldset>
   )
 }

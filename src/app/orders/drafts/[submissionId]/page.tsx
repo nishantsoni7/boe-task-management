@@ -98,8 +98,8 @@ import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } 
 import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
-  describeMiddleman, internalDetailsSaveFailure, internalDetailsStillOpen, submissionCommissionBlock, submissionDatesFrom,
-  submissionDetailsSave, withCommission, withInternalDetailsRequirement, workbookDateNotes, type SubmissionDates,
+  internalDetailsSaveFailure, internalDetailsStillOpen, submissionCommissionBlock,
+  submitWithInternalDates, withCommission, withInternalDetailsRequirement, workbookDateNotes, type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -1136,53 +1136,72 @@ function PiDraftDetailPageInner() {
    * percentage from the amount and the persisted grand total, so a browser
    * cannot send two figures that disagree — and cannot send a percentage at all.
    */
+  // The dates this Submit dialog has already saved and confirmed, so a retry
+  // after a failed send only sends — it never saves twice. Cleared on open.
+  const savedDatesRef = useRef<SubmissionDates | null>(null)
+
   const submitForApproval = useCallback((
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
     acknowledgedMissing: string[] = [],
     dates?: SubmissionDates,
+    acknowledged = false,
   ) => runAction('submit', async () => {
-    // THE TWO INTERNAL DATES FIRST (2026-09-27). Entered in the dialog, they are
-    // saved — and confirmed — through the Internal details RPC before the PI is
-    // sent, because the submission trigger (20270123000000) checks the saved
-    // row. A refusal here stops the submission; the dialog keeps what was typed.
-    if (dates && draftRow) {
-      const plan = submissionDetailsSave(draftRow, dates)
-      if (plan.kind === 'refused') return { error: { message: plan.message, [OWN_MESSAGE]: true } }
-      if (plan.kind === 'save') {
-        const { error: saveError } = await supabase.rpc('save_order_submission_internal_details', {
-          p_submission_id: submissionId,
-          p_details: plan.payload,
-          p_expected_version: rowVersion,
-          p_confirm: plan.confirm,
-        })
-        if (saveError) return { error: { message: internalDetailsSaveFailure(saveError), [OWN_MESSAGE]: true } }
-      }
-    }
     // ONE CALL: submit_pi_for_review_with_documents() sends the PI through
     // submit_pi_for_review() unchanged and records the attached Design Files /
     // Client PO (and any confirmed absence) in the same transaction.
-    const { data, error } = await supporting.send({ note, terms, acknowledgedMissing })
-    if (!error) {
-      // WHO IS TOLD FOLLOWS THE ROUTE THE DATABASE CHOSE, never the one the
-      // browser guessed: `exception_requested` comes back from the RPC and is
-      // true only when a fresh decision is actually waiting on somebody.
-      const requested =
-        (data as { exception_requested?: boolean } | null)?.exception_requested === true
-      // The card's figures move with the submission (the exception state is part
-      // of the position), so the payment section is re-read alongside the record.
-      await loadPayments()
-      // Fire-and-forget: the submission has already committed, and a
-      // notification problem must never undo it.
-      if (requested) {
-        void notifyPiSubmission({ event: 'pi_exception_requested', submissionId })
+    const send = () => supporting.send({ note, terms, acknowledgedMissing })
+
+    // THE TWO INTERNAL DATES FIRST (2026-09-27). Saved — and, only with the
+    // submitter's tick, confirmed — through the Internal details RPC before the
+    // PI is sent, because the submission trigger (20270123000000) checks the
+    // saved row. submitWithInternalDates owns the order and the wording: a
+    // refused save sends nothing; a send that fails after the save says the
+    // dates are kept, and a retry does not save them again.
+    let data: unknown = null
+    if (dates && draftRow) {
+      const result = await submitWithInternalDates({
+        row: draftRow,
+        dates,
+        acknowledged,
+        savedEarlier: savedDatesRef.current,
+        saveDetails: (payload, confirm) => supabase.rpc('save_order_submission_internal_details', {
+          p_submission_id: submissionId,
+          p_details: payload,
+          p_expected_version: rowVersion,
+          p_confirm: confirm,
+        }),
+        send,
+        describeSendFailure: failure => describeSubmissionFailure(failure, 'submit').message,
+      })
+      savedDatesRef.current = result.saved
+      if (!result.ok) {
+        // The save may have committed: re-read so the page, the dialog's
+        // confirmation state and the row version match what is stored.
+        if (result.saved) await loadDraft({ quiet: true })
+        return { error: result.message ? { message: result.message, [OWN_MESSAGE]: true } : result.error }
       }
-    } else if (dates) {
-      // The dates may have been saved before the send was refused; re-read the
-      // record so the page (and its row version) match what is stored.
-      await loadDraft({ quiet: true })
+      data = result.data
+    } else {
+      const sent = await send()
+      if (sent.error) return { error: sent.error }
+      data = sent.data
     }
-    return { error }
+
+    // WHO IS TOLD FOLLOWS THE ROUTE THE DATABASE CHOSE, never the one the
+    // browser guessed: `exception_requested` comes back from the RPC and is
+    // true only when a fresh decision is actually waiting on somebody.
+    const requested =
+      (data as { exception_requested?: boolean } | null)?.exception_requested === true
+    // The card's figures move with the submission (the exception state is part
+    // of the position), so the payment section is re-read alongside the record.
+    await loadPayments()
+    // Fire-and-forget: the submission has already committed, and a
+    // notification problem must never undo it.
+    if (requested) {
+      void notifyPiSubmission({ event: 'pi_exception_requested', submissionId })
+    }
+    return { error: null }
   }, ownMessage), [runAction, submissionId, loadPayments, supporting, supabase, rowVersion, draftRow, loadDraft])
 
   /**
@@ -2365,7 +2384,7 @@ function PiDraftDetailPageInner() {
               }
               acting={acting}
               onChangePi={() => router.push(changePiHref(submissionId))}
-              onSubmit={() => { setActionFailure(null); setDialog('submit') }}
+              onSubmit={() => { setActionFailure(null); savedDatesRef.current = null; setDialog('submit') }}
               onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
               onReject={() => { setActionFailure(null); setDialog('reject') }}
               approvalBlocker={readiness.blocker}
@@ -2884,13 +2903,9 @@ function PiDraftDetailPageInner() {
           onCancel={closeDialog}
           onConfirm={submitForApproval}
           supporting={<>
-            {/* What the reviewer will read as internal details, restated
-                where Sales presses Submit — the dates are the fields above.
-                Never on the client PI. */}
-            <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.5 }}>
-              <strong style={{ color: colors.primary }}>Middleman commission</strong>{' — '}
-              {describeMiddleman(submission)}
-            </div>
+            {/* The internal details — dates, the middleman answer and the
+                confirmation — are the dialog's own fieldset (internalDetails
+                below). Never on the client PI. */}
             {internalSubmitBlock && (
               // supportingBlocked only disables Submit; the reason is said here.
               <div role="alert" style={{
@@ -2908,7 +2923,7 @@ function PiDraftDetailPageInner() {
           supportingBlocked={internalSubmitBlock ?? supporting.error}
           // Asked for while the PI is still being prepared — the only stages at
           // which the internal details can be saved.
-          submissionDates={internalDetailsStillOpen(submission) ? submissionDatesFrom(submission) : null}
+          internalDetails={internalDetailsStillOpen(submission) ? submission : null}
         />
       )}
 

@@ -9,6 +9,9 @@ import {
   submissionDateErrors,
   submissionDatesFrom,
   submissionDetailsSave,
+  submissionNeedsConfirmation,
+  submitWithInternalDates,
+  SUBMISSION_CONFIRM_REQUIRED,
   INTERNAL_DETAILS_REQUIREMENT_KEY,
   withInternalDetailsRequirement,
   INTERNAL_DETAILS_NETWORK_FAILURE,
@@ -405,18 +408,19 @@ describe('what still waits outside the Submit dialog', () => {
 
 describe('the Submit dialog is wired to the one RPC and the one gate', () => {
   const page = () => read('src/app/orders/drafts/[submissionId]/page.tsx')
-  test('the dates are saved through save_order_submission_internal_details before the PI is sent', () => {
+  test('the page submits through submitWithInternalDates, with the one RPC and the tick', () => {
     const src = page()
-    const handler = src.slice(src.indexOf('const submitForApproval = useCallback('), src.indexOf('const submitForApproval = useCallback(') + 4000)
-    const saveAt = handler.indexOf("supabase.rpc('save_order_submission_internal_details'")
-    const sendAt = handler.indexOf('supporting.send(')
-    assert.ok(saveAt > -1 && sendAt > saveAt, 'saved first, then sent')
-    assert.ok(handler.includes('submissionDetailsSave(draftRow, dates)'))
-    assert.ok(handler.includes('if (saveError) return'), 'a refused save stops the submission')
+    const handler = src.slice(src.indexOf('const submitForApproval = useCallback('), src.indexOf('const submitForApproval = useCallback(') + 4500)
+    assert.ok(handler.includes('await submitWithInternalDates({'))
+    assert.ok(handler.includes("saveDetails: (payload, confirm) => supabase.rpc('save_order_submission_internal_details', {"))
+    assert.ok(handler.includes('acknowledged,'), 'the tick is passed through, never assumed')
+    assert.ok(handler.includes('savedEarlier: savedDatesRef.current,'), 'a retry knows what was already saved')
+    assert.ok(handler.includes('if (result.saved) await loadDraft({ quiet: true })'), 'and the page re-reads after a partial success')
+    assert.ok(src.includes("savedDatesRef.current = null; setDialog('submit')"), 'a fresh dialog starts clean')
   })
-  test('the dialog is given the dates while the PI is being prepared, and the middleman block only', () => {
+  test('the dialog is given the PI\'s internal details while it is being prepared, and the middleman block only', () => {
     const src = page()
-    assert.ok(src.includes('submissionDates={internalDetailsStillOpen(submission) ? submissionDatesFrom(submission) : null}'))
+    assert.ok(src.includes('internalDetails={internalDetailsStillOpen(submission) ? submission : null}'))
     assert.ok(src.includes('const internalSubmitBlock = submissionCommissionBlock(submission)'))
   })
   test('the server gate is still the trigger that checks both dates', () => {
@@ -424,5 +428,115 @@ describe('the Submit dialog is wired to the one RPC and the one gate', () => {
     assert.ok(sql.includes("raise exception 'ORDER_SUBMISSION_INCOMPLETE: % before sending this PI for review'"))
     const problem = read('supabase/migrations/20270122000000_order_submission_internal_details.sql')
     assert.ok(problem.includes('enter the order confirmation date') && problem.includes('enter the due date'))
+  })
+})
+
+// ── Save, then send: two transactions, and what the submitter is told ──────
+describe('submitWithInternalDates — the sequence behind Submit', () => {
+  const row = { status: 'draft', middleman_commission: 'no' }
+  const dates = { order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }
+  const describe_ = () => 'This PI could not be submitted just now. Try again in a moment.'
+
+  function fakes(sendResults: { data: unknown; error: unknown }[], saveError: { message: string; code?: string } | null = null) {
+    const calls: string[] = []
+    const saved: { payload: Record<string, string | null>; confirm: boolean }[] = []
+    return {
+      calls, saved,
+      saveDetails: async (payload: Record<string, string | null>, confirm: true) => {
+        calls.push('save'); saved.push({ payload, confirm }); return { error: saveError }
+      },
+      send: async () => { calls.push('send'); return sendResults.shift() ?? { data: null, error: null } },
+    }
+  }
+
+  test('without the tick nothing is written and nothing is sent', async () => {
+    const f = fakes([{ data: {}, error: null }])
+    const r = await submitWithInternalDates({ row, dates, acknowledged: false, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, [])
+    assert.equal(r.ok, false)
+    if (!r.ok) assert.equal(r.message, SUBMISSION_CONFIRM_REQUIRED)
+  })
+
+  test('with the tick: saved with the confirmation, then sent — both dates present succeeds', async () => {
+    const f = fakes([{ data: { exception_requested: false }, error: null }])
+    const r = await submitWithInternalDates({ row, dates, acknowledged: true, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['save', 'send'])
+    assert.equal(f.saved[0].confirm, true)
+    assert.equal(f.saved[0].payload.order_confirmation_date, '2026-09-20')
+    assert.equal(r.ok, true)
+  })
+
+  test('a refused save sends nothing and says the PI was not sent', async () => {
+    const f = fakes([], { message: 'ORDER_SUBMISSION_STALE: this PI changed while you were editing it.', code: 'P0001' })
+    const r = await submitWithInternalDates({ row, dates, acknowledged: true, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['save'])
+    assert.equal(r.ok, false)
+    if (!r.ok) {
+      assert.match(r.message ?? '', /ORDER_SUBMISSION_STALE/)
+      assert.match(r.message ?? '', /The PI was not sent\.$/)
+      assert.equal(r.saved, null)
+    }
+  })
+
+  test('saved, then the send fails: the message says exactly that, and the dates are reported as saved', async () => {
+    const f = fakes([{ data: null, error: { message: 'TypeError: Failed to fetch' } }])
+    const r = await submitWithInternalDates({ row, dates, acknowledged: true, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['save', 'send'])
+    assert.equal(r.ok, false)
+    if (r.ok) return
+    assert.deepEqual(r.saved, dates)
+    assert.match(r.message ?? '', /^The dates were saved and the internal details confirmed, but the PI was not sent\./)
+    assert.match(r.message ?? '', /Try again in a moment\./, 'with the send failure in its own words')
+    assert.match(r.message ?? '', /will not be saved twice/)
+  })
+
+  test('the retry after that only sends — even before the page has re-read the record', async () => {
+    // The worst case: the re-read after the failure did not land, so `row` is
+    // still the unconfirmed one. The dates this dialog saved are remembered.
+    const f = fakes([{ data: {}, error: null }])
+    const r = await submitWithInternalDates({ row, dates, acknowledged: true, savedEarlier: dates,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['send'], 'no second save, so no stale-version refusal')
+    assert.equal(r.ok, true)
+  })
+
+  test('the retry after the re-read also only sends: the record is now confirmed with those dates', async () => {
+    const reread = { ...row, ...dates, internal_details_confirmed_at: '2026-09-27T12:00:00Z' }
+    assert.equal(submissionNeedsConfirmation(reread, dates), false, 'nothing left to tick')
+    const f = fakes([{ data: {}, error: null }])
+    await submitWithInternalDates({ row: reread, dates, acknowledged: false, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['send'])
+  })
+
+  test('changing a date after a failed send saves the new dates (and asks for the tick again)', async () => {
+    const changed = { ...dates, due_date: '2026-12-01' }
+    const reread = { ...row, ...dates, internal_details_confirmed_at: '2026-09-27T12:00:00Z' }
+    assert.equal(submissionNeedsConfirmation(reread, changed), true)
+    const f = fakes([{ data: {}, error: null }])
+    await submitWithInternalDates({ row: reread, dates: changed, acknowledged: true, savedEarlier: dates,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, ['save', 'send'])
+  })
+
+  test('nothing to save: a send failure is left for the usual wording', async () => {
+    const confirmed = { ...row, ...dates, internal_details_confirmed_at: '2026-09-27T12:00:00Z' }
+    const f = fakes([{ data: null, error: { message: 'ORDER_SUBMISSION_INCOMPLETE: x' } }])
+    const r = await submitWithInternalDates({ row: confirmed, dates, acknowledged: false, savedEarlier: null,
+      saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.equal(r.ok, false)
+    if (!r.ok) { assert.equal(r.message, null); assert.equal(r.saved, null) }
+  })
+
+  test('a restricted viewer is refused before anything is written', async () => {
+    const f = fakes([])
+    const r = await submitWithInternalDates({ row: { status: 'draft', commission_restricted: true }, dates,
+      acknowledged: true, savedEarlier: null, saveDetails: f.saveDetails, send: f.send, describeSendFailure: describe_ })
+    assert.deepEqual(f.calls, [])
+    assert.equal(r.ok, false)
   })
 })

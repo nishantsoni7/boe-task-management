@@ -480,3 +480,79 @@ export function submissionDetailsSave(row: PiInternalDetailsRow, dates: Submissi
   })
   return { kind: 'save', payload, confirm: true }
 }
+
+// ── Confirming at Submit, never silently (2026-09-27, #247 review) ──────────
+//
+// Saving the dates from the Submit dialog also CONFIRMS the internal details —
+// the dates AND the middleman commission answer — because the submission
+// trigger requires the confirmation stamp. So the dialog states the answer
+// beside the dates and asks for an explicit tick whenever a confirmation will
+// be written. No tick, nothing is written.
+
+export const SUBMISSION_CONFIRM_LABEL =
+  'I have checked these dates and the middleman commission answer. Submitting confirms them as this PI’s internal details.'
+export const SUBMISSION_CONFIRM_REQUIRED =
+  'Tick the box to confirm the internal details, or Cancel and correct them first.'
+export const SUBMISSION_MIDDLEMAN_HINT =
+  'To change it, Cancel and use Edit beside Middleman commission.'
+
+/** Whether pressing Submit with these dates will write (and so confirm) the internal details. */
+export function submissionNeedsConfirmation(row: PiInternalDetailsRow, dates: SubmissionDates): boolean {
+  return submissionDetailsSave(row, dates).kind === 'save'
+}
+
+const sameDates = (a: SubmissionDates | null, b: SubmissionDates) =>
+  !!a && a.order_confirmation_date.trim() === b.order_confirmation_date.trim() && a.due_date.trim() === b.due_date.trim()
+
+export type InternalDatesSubmitResult =
+  | { ok: true; data: unknown; saved: SubmissionDates | null }
+  /** `message` is a sentence written for the reader; null means "describe `error` as usual". */
+  | { ok: false; error: unknown; message: string | null; saved: SubmissionDates | null }
+
+/**
+ * SAVE THE DATES (AND CONFIRM), THEN SEND — two transactions, so the second
+ * can fail after the first has committed. What this guarantees:
+ *
+ *   - nothing is written without `acknowledged` when a confirmation is due;
+ *   - a refused save sends nothing, and says so;
+ *   - a send that fails AFTER the save says the dates are saved and the PI was
+ *     not sent, and reports `saved` so a retry with the same dates skips the
+ *     save (no second write, no stale-version refusal) and only sends.
+ */
+export async function submitWithInternalDates(input: {
+  row: PiInternalDetailsRow
+  dates: SubmissionDates
+  acknowledged: boolean
+  /** Dates this dialog already saved and confirmed in an earlier attempt. */
+  savedEarlier: SubmissionDates | null
+  saveDetails: (payload: Record<string, string | null>, confirm: true) =>
+    PromiseLike<{ error: { message?: string; code?: string } | null }>
+  send: () => PromiseLike<{ data: unknown; error: unknown }>
+  describeSendFailure: (error: unknown) => string
+}): Promise<InternalDatesSubmitResult> {
+  const { row, dates, acknowledged, savedEarlier } = input
+  let saved: SubmissionDates | null = sameDates(savedEarlier, dates) ? savedEarlier : null
+
+  if (!saved) {
+    const plan = submissionDetailsSave(row, dates)
+    if (plan.kind === 'refused') return { ok: false, error: null, message: plan.message, saved: null }
+    if (plan.kind === 'save') {
+      if (!acknowledged) return { ok: false, error: null, message: SUBMISSION_CONFIRM_REQUIRED, saved: null }
+      const { error } = await input.saveDetails(plan.payload, plan.confirm)
+      if (error) {
+        return { ok: false, error, message: `${internalDetailsSaveFailure(error)} The PI was not sent.`, saved: null }
+      }
+      saved = { order_confirmation_date: dates.order_confirmation_date.trim(), due_date: dates.due_date.trim() }
+    }
+  }
+
+  const { data, error } = await input.send()
+  if (!error) return { ok: true, data, saved }
+  if (!saved) return { ok: false, error, message: null, saved: null }
+  return {
+    ok: false,
+    error,
+    message: `The dates were saved and the internal details confirmed, but the PI was not sent. ${input.describeSendFailure(error)} Press Submit for Approval again to retry — the dates are kept and will not be saved twice.`,
+    saved,
+  }
+}

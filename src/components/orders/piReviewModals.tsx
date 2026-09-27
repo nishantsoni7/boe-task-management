@@ -40,7 +40,16 @@ import {
 } from '@/lib/orders/orderDocumentSubmissions'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { PiSubmissionDatesFields } from '@/components/orders/PiInternalDetails'
-import { submissionDateErrors, type SubmissionDates } from '@/lib/orders/piInternalDetails'
+import {
+  SUBMISSION_CONFIRM_REQUIRED,
+  describeMiddleman,
+  formatIsoDay,
+  submissionDateErrors,
+  submissionDatesFrom,
+  submissionNeedsConfirmation,
+  type PiInternalDetailsRow,
+  type SubmissionDates,
+} from '@/lib/orders/piInternalDetails'
 import {
   BOE_STANDARD_COMMERCIAL_TERMS,
   COMMERCIAL_TERMS_LABEL,
@@ -535,7 +544,7 @@ export function PiSubmitConfirmModal({
   supporting,
   missingSupporting,
   supportingBlocked,
-  submissionDates,
+  internalDetails,
 }: {
   client: string
   grandTotal: string
@@ -572,6 +581,8 @@ export function PiSubmitConfirmModal({
     acknowledgedMissing?: string[],
     /** The two internal dates as entered here — present only when asked for. */
     dates?: SubmissionDates,
+    /** True only when the submitter ticked the confirmation of the internal details. */
+    acknowledged?: boolean,
   ) => void
   /**
    * DESIGN FILES AND CLIENT PO (20270112000000), drawn inside this dialog by the
@@ -584,11 +595,14 @@ export function PiSubmitConfirmModal({
   /** Why Submit must wait on the attachments (e.g. an invalid file). */
   supportingBlocked?: string | null
   /**
-   * DATE OF ORDER CONFIRMATION AND DISPATCH DATE FINALIZED (2026-09-27), opened
-   * on what the record holds. When given, both are REQUIRED before this dialog
-   * hands anything up; absent, the dialog is exactly what it was.
+   * THE PI'S INTERNAL DETAILS (2026-09-27), while it can still be submitted.
+   * The dialog opens its Date of Order Confirmation / Dispatch Date Finalized
+   * fields on this row's dates (both REQUIRED), states its CURRENT middleman
+   * answer, and asks for an explicit, unticked confirmation whenever Submit
+   * would write them. It follows the row as the page re-reads it. Absent, the
+   * dialog is exactly what it was.
    */
-  submissionDates?: SubmissionDates | null
+  internalDetails?: PiInternalDetailsRow | null
 }) {
   /**
    * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
@@ -602,7 +616,11 @@ export function PiSubmitConfirmModal({
   const [terms, setTerms] = useState<PiSubmissionTerms>(initialTerms ?? EMPTY_SUBMISSION_TERMS)
   // The dates live here for the same reason as the reply: a refused or failed
   // submission keeps the dialog mounted, so what was typed is still on screen.
-  const [dates, setDates] = useState<SubmissionDates | null>(submissionDates ?? null)
+  const [dates, setDates] = useState<SubmissionDates | null>(internalDetails ? submissionDatesFrom(internalDetails) : null)
+  // NEVER PRE-TICKED: confirming is the submitter's act, not a default.
+  const [acknowledged, setAcknowledged] = useState(false)
+  const confirmInput = useRef<HTMLInputElement | null>(null)
+  const needsAcknowledgement = !!internalDetails && !!dates && submissionNeedsConfirmation(internalDetails, dates)
   // Nothing is said about a date until Submit has been pressed once; from then
   // on each message follows the field as it is corrected.
   const [datesAttempted, setDatesAttempted] = useState(false)
@@ -672,11 +690,18 @@ export function PiSubmitConfirmModal({
       if (first) dateInputs.current[first]?.focus()
       return
     }
+    // Nothing is confirmed on the submitter's behalf: when Submit would write
+    // the internal details, the tick is required first.
+    if (needsAcknowledgement && !acknowledged) {
+      setDatesAttempted(true)
+      confirmInput.current?.focus()
+      return
+    }
     // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
     // reaches the database is what it stores — no leading spaces, and nothing at
     // all where the field was only whitespace.
     if (missing.length > 0 && !confirmingMissing) { setConfirmingMissing(true); return }
-    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing], dates ?? undefined)
+    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing], dates ?? undefined, needsAcknowledgement && acknowledged)
   }
 
   return (
@@ -711,6 +736,15 @@ export function PiSubmitConfirmModal({
               disabled={submitting}
               onChange={(key, value) => setDates(current => current && ({ ...current, [key]: value }))}
               inputRef={(key, el) => { dateInputs.current[key] = el }}
+              middleman={internalDetails ? describeMiddleman(internalDetails) : undefined}
+              confirmation={internalDetails ? {
+                needed: needsAcknowledgement,
+                checked: acknowledged,
+                onToggle: setAcknowledged,
+                error: datesAttempted && needsAcknowledgement && !acknowledged ? SUBMISSION_CONFIRM_REQUIRED : null,
+                confirmedOn: formatIsoDay(internalDetails.internal_details_confirmed_at),
+              } : undefined}
+              confirmRef={el => { confirmInput.current = el }}
             />
           )}
 
