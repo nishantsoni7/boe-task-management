@@ -2535,8 +2535,10 @@ describe('unsupported image formats', () => {
 // the STORED columns — assert_order_submission_finalizable (20261225000000) —
 // so a draft corrected by hand passes on its own merits.
 //
-// The assertions below are otherwise the ones that landed with the rule: the
-// same cells, the same rows and the same refusals, read off `warnings`.
+// The salesperson assertions are the ones that landed with the rule, read off
+// `warnings`. The two dates were dropped from the rule on 2026-09-27 — they are
+// internal details asked for at Submit for Approval — and the date tests below
+// now hold that a blank or worded date cell raises nothing.
 
 describe('the PI header requirements', () => {
   const headerCodes = async (extraCells: Record<string, CellSpec | null>) => {
@@ -2565,44 +2567,43 @@ describe('the PI header requirements', () => {
     }
   })
 
-  test('a missing or non-date confirmation date is refused at A113', async () => {
-    const empty = await headerCodes({ A113: null })
-    assert.ok(empty.some(i => i.code === 'PI_CONFIRMATION_DATE_MISSING' && i.cell === 'A113' && /is empty/.test(i.message)))
-    const words = await headerCodes({ A113: text('on receipt of advance') })
-    const issue = words.find(i => i.code === 'PI_CONFIRMATION_DATE_MISSING')
-    assert.ok(issue)
-    assert.match(issue.message, /reads "on receipt of advance", which is not a date/)
+  // ── THE TWO DATES ARE NO LONGER ASKED OF THE WORKBOOK (2026-09-27) ──
+  //
+  // Date of Order Confirmation (A113) and Dispatch Date Finalized (E113) sit on
+  // the client-facing PI, and Sales normally leaves them out. They are internal
+  // details entered at Submit for Approval, and the database refuses a PI for
+  // review without them. So a blank, worded, lead-time or out-of-order date
+  // raises nothing here — the preview must not send Sales back into Excel.
+
+  test('blank date cells raise no warning at all', async () => {
+    assert.deepEqual(await headerCodes({ A113: null, E113: null }), [])
+    assert.deepEqual(await headerCodes({ A113: null }), [])
+    assert.deepEqual(await headerCodes({ E113: null }), [])
   })
 
-  test('a lead time in E113 is refused — words, or a bare number Excel turned into 1900', async () => {
-    for (const e113 of [text('6 weeks from date of confirmation'), text('45 days'), num(90)]) {
-      const issues = await headerCodes({ E113: e113 })
-      const issue = issues.find(i => i.code === 'PI_DISPATCH_DATE_MISSING')
-      assert.ok(issue, JSON.stringify(e113))
-      assert.equal(issue.cell, 'E113')
-      assert.match(issue.message, /not a date|not a lead time/)
+  test('worded dates, lead times and an out-of-order pair raise nothing either', async () => {
+    for (const cells of [
+      { A113: text('on receipt of advance') } as Record<string, CellSpec | null>,
+      { E113: text('6 weeks from date of confirmation') },
+      { E113: text('45 days') },
+      { E113: num(90) },
+      { E113: num(45000) },
+    ]) {
+      assert.deepEqual(await headerCodes(cells), [], JSON.stringify(cells))
     }
   })
 
-  test('an empty dispatch date is refused', async () => {
-    const issues = await headerCodes({ E113: null })
-    assert.ok(issues.some(i => i.code === 'PI_DISPATCH_DATE_MISSING' && /is empty/.test(i.message)))
-  })
-
-  test('a dispatch date before the confirmation date is refused and says why', async () => {
-    const issues = await headerCodes({ E113: num(45000) })
-    const issue = issues.find(i => i.code === 'PI_DISPATCH_DATE_MISSING')
-    assert.ok(issue)
-    assert.match(issue.message, /before the order confirmation date/)
-  })
-
-  test('a dispatch date on the confirmation date itself is accepted', async () => {
-    assert.deepEqual(await headerCodes({ E113: num(45010) }), [])
-  })
-
-  test('all three missing: three issues, one per cell', async () => {
+  test('with every header cell blank, only the salesperson is asked for', async () => {
     const issues = await headerCodes({ G21: null, A113: null, E113: null })
-    assert.deepEqual(issues.map(i => i.cell).sort(), ['A113', 'E113', 'G21'])
+    assert.deepEqual(issues.map(i => [i.code, i.cell]), [['PI_SALESPERSON_MISSING', 'G21']])
+  })
+
+  test('a workbook that does carry the dates still has them read', async () => {
+    // Prefill, not a requirement: the app dates start from these when present.
+    const wb = buildPiWorkbook({ products: inventProducts(1), anchors: anchorsFor(1), extraCells: {} })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    assert.ok(result.data.header.orderConfirmationDate?.iso, 'the confirmation date is read')
+    assert.ok(result.data.header.dispatchCommitment?.iso, 'and the dispatch date')
   })
 
   test('the upload still refuses a PI with a genuine blocking issue', () => {
@@ -2622,17 +2623,21 @@ describe('the PI header requirements', () => {
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
     // The route would save this PI: the preview is complete, the products
-    // are sound, and what is missing is asked for on the draft instead.
+    // are sound, and the salesperson is asked for on the draft instead. The
+    // two blank dates are not reported at all (2026-09-27).
     assert.deepEqual(result.blockingIssues, [], 'nothing blocks the upload')
-    assert.equal(result.warnings.filter(w => w.code.startsWith('PI_')).length, 3,
-      'and all three are still reported')
+    assert.deepEqual(result.warnings.filter(w => w.code.startsWith('PI_')).map(w => w.code),
+      ['PI_SALESPERSON_MISSING'], 'and only the salesperson is reported')
   })
 
-  test('the dispatch rule is the save path’s own due-date rule, not a second copy', () => {
+  test('the parser no longer carries a date rule of its own', () => {
+    // The dispatch rule used to be plausibleDueDate, shared with the save path.
+    // With the warnings gone, the parser must not keep a copy of any date
+    // requirement — the only one is the database's (20270123000000).
     const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
-    assert.ok(parser.includes("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'"))
-    const fn = parser.slice(parser.indexOf('export function headerRequirementWarnings('))
-    assert.ok(fn.includes('plausibleDueDate({'))
+    assert.ok(!parser.includes('plausibleDueDate('))
+    assert.ok(!/code: 'PI_(CONFIRMATION|DISPATCH)_DATE_MISSING'/.test(parser),
+      'neither retired code is raised')
   })
 })
 
