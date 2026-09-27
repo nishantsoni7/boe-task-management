@@ -1,3 +1,5 @@
+import { summarizePiReadiness, type PiReadiness, type PiRequirement } from '@/lib/orders/piReadiness'
+
 /**
  * A PI'S INTERNAL DETAILS (20270122000000) — the confirmation and due dates
  * Sales confirms in the app, and the answer to "Is there a middleman
@@ -317,4 +319,53 @@ export function workbookDateNotes(row: PiInternalDetailsRow): string[] {
     if (a && b && a !== b) notes.push(`The workbook's ${label} is ${formatIsoDay(b)}; the app says ${formatIsoDay(a)}.`)
   }
   return notes
+}
+
+/** Said when the save never reached the database. Nothing typed is lost: the dialog stays open. */
+export const INTERNAL_DETAILS_NETWORK_FAILURE =
+  'The internal details could not be saved because BOE could not be reached. Check your connection and press the button again — what you entered is still here.'
+
+/**
+ * What the editor says when a save fails. A refusal from the database is shown
+ * in its own words (it names the rule); a request that never arrived — the
+ * browser's bare "TypeError: Failed to fetch" — is said in plain language.
+ */
+export function internalDetailsSaveFailure(error: { message?: string; code?: string } | null | undefined): string {
+  const message = (error?.message ?? '').trim()
+  if (!error?.code && /failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(message)) {
+    return INTERNAL_DETAILS_NETWORK_FAILURE
+  }
+  return message || 'The internal details could not be saved.'
+}
+
+/**
+ * THE SUBMISSION CHECKLIST, WITH THE INTERNAL DETAILS IN IT.
+ *
+ * The database refuses a submission until the internal details are complete and
+ * confirmed (20270123000000), so the owner's "Ready for management?" list says so
+ * too — otherwise it reads "ready" while Submit is refused. Display only: the
+ * shared piReadiness() (which the payment surface also reads) is not changed.
+ */
+export const INTERNAL_DETAILS_REQUIREMENT_KEY = 'internal_details'
+
+export function internalDetailsRequirementLabel(problem: string): string {
+  if (problem === 'enter the order confirmation date') return 'Order confirmation date (internal details)'
+  if (problem === 'enter the due date') return 'Due date (internal details)'
+  if (problem.startsWith('the due date is before')) return 'A due date on or after the confirmation date'
+  if (problem.includes(MIDDLEMAN_QUESTION)) return 'Middleman commission answer'
+  if (problem === 'confirm the internal details') return 'Confirmation of the internal details'
+  return 'Middleman commission details'
+}
+
+export function withInternalDetailsRequirement(readiness: PiReadiness, row: PiInternalDetailsRow): PiReadiness {
+  if (!internalDetailsStillOpen(row)) return readiness
+  const internal = internalDetailsReadiness(row)
+  if (internal.ready) return readiness
+  const requirement: PiRequirement = {
+    key: INTERNAL_DETAILS_REQUIREMENT_KEY,
+    label: internalDetailsRequirementLabel(internal.problem),
+    section: 'internal',
+  }
+  const missing = [...readiness.missing, requirement]
+  return { ready: false, missing, summary: summarizePiReadiness('submission', missing) }
 }

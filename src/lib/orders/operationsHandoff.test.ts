@@ -399,3 +399,13 @@ describe('the attention strip and the dashboard', () => {
     assert.match(flagged?.sub ?? '', /flagged: clarification needed/)
   })
 })
+
+// 2026-09-27: the reason was only in Activity; the Main PI row said 'Clarification needed' alone.
+describe('clarificationLine', () => {
+  test('names who, quotes why, and says how it moves on', async () => {
+    const { clarificationLine } = await import('./operationsHandoff')
+    const line = clarificationLine('PI V2', { label: 'Clarification needed', by: 'Kavya Iyer', at: null, note: ' Sofa fabric not stocked. ' })
+    assert.equal(line, 'Kavya Iyer cannot accept PI V2 yet. Reason: Sofa fabric not stocked. It can be accepted once this is settled, or a revised PI brings a new version.')
+    assert.match(clarificationLine('PI V2', { label: 'x', by: null, at: null, note: null }), /^Operations cannot accept PI V2 yet. Reason: No reason recorded./)
+  })
+})

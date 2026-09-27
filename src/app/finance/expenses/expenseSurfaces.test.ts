@@ -1753,6 +1753,22 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/globals.css',
   ])
 
+  /**
+   * Orders summary, PI history and review clarity (2026-09-27, feat/orders-summary-pi-history):
+   * the Orders guard denies in place instead of sending a reader to the Attendance
+   * placeholder, and a resubmitted PI states what changed since its return (read
+   * from the activity trail). Orders UI only — no Finance file, no migration.
+   */
+  const ALLOWED_ORDERS_SUMMARY_PI_HISTORY = new Set([
+    'src/app/orders/layout.tsx',
+    'src/lib/orders/resubmissionChanges.ts',
+    'src/lib/orders/resubmissionChanges.test.ts',
+    // The Order number shown as 0526 on every Orders screen (list, header).
+    'src/lib/orders/orderProductCodes.test.ts',
+    'src/app/api/orders/[id]/documents/route.ts',
+    'src/app/api/orders/[id]/notify/route.ts',
+  ])
+
   const ALLOWED_PI_INTERNAL_DETAILS = new Set([
     'src/app/orders/drafts/[submissionId]/page.tsx',
     'src/lib/orders/draftsView.ts',
@@ -1804,6 +1820,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts',
     'src/lib/orders/piVersionPdf.ts',
     'src/lib/orders/piVersionPdf.test.ts',
+    // #242's pin that the PDF still formatted the Order's number, replaced by
+    // one for the number stored on each version.
+    'src/lib/orders/orderProductCodes.test.ts',
     'supabase/migrations/20270201000000_order_pi_version_pdf_order_number.sql',
     'supabase/tests/_order_pi_version_pdf_order_number_helpers.sql',
     'supabase/tests/_order_pi_version_pdf_order_number_prior_versions.sql',
@@ -1866,6 +1885,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
+    !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2192,7 +2212,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_DRAWER_TAB_ORDER.has(file)
         || ALLOWED_PI_INTERNAL_DETAILS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
-        || ALLOWED_PI_PDF_ORDER_NUMBER.has(file),
+        || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
+        || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

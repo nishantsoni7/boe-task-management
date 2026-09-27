@@ -52,6 +52,7 @@ import {
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import {
   NUMBER_LABEL,
+  ORDER_CREATED_HEADLINE,
   type ReservationView,
 } from '@/lib/orders/orderNumberReservation'
 import { NUMBER_NOT_ALLOTTED } from '@/lib/orders/draftsView'
@@ -65,6 +66,12 @@ import {
   fabricResponsibilityStatement,
 } from '@/lib/orders/piTerms'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
+import {
+  RESUBMISSION_CHANGES_TITLE,
+  RESUBMISSION_LINE_DETAIL_NOTE,
+  resubmissionEditLine,
+  type ResubmissionChanges,
+} from '@/lib/orders/resubmissionChanges'
 import {
   ADVANCE_BAND_TITLE,
   BILLING_LABEL,
@@ -206,7 +213,9 @@ export function PiContextRow({
             // Numbering at conversion (20270114000000): a draft has no reserved
             // number, so once the Order exists its number (below) is the answer
             // — "not allotted" would contradict it.
-            <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
+            reservation.state === 'used'
+              ? <div className="pi-detail-context-number">{ORDER_CREATED_HEADLINE}</div>
+              : <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
           )}
           {number && reservation.state !== 'used' && !confirmedNumber && (
             <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
@@ -324,9 +333,11 @@ const CONTEXT_DOT: Record<PiDetailTone, string> = {
  * now the context row's second cell, beside the status badge. Not one column is
  * read differently; they are said where they are true.
  *
- * RIGHT — three figures and nothing else: Product value, Total before GST, and
- * the billing declaration as a clear state. They fill their column; there is no
- * payment here, because payment has its own card below.
+ * RIGHT — three figures: Product value, Total before GST, and the billing
+ * declaration as a clear state. They fill their column; there is no payment
+ * here, because payment has its own card below. Under them, when the page
+ * passes it, the INTERNAL middleman answer (PiCommissionSummary) — the one
+ * internal detail the date band does not already print.
  *
  * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
  * own strings; billing is buildBillingSummary's. Every edit control is drawn from
@@ -336,6 +347,7 @@ export function PiSummaryCard({
   client, onOpenClient, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
   canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
+  dateNotes = [], internal = null,
 }: {
   client: ClientDetails
   /** Opens the client dialog. The card states who the client is; the dialog
@@ -363,6 +375,10 @@ export function PiSummaryCard({
   onRequestCorrection: (() => void) | null
   /** What this PI still needs before it can take a payment, or null. */
   missingSummary: string | null
+  /** Where the app's dates and the uploaded workbook's disagree, said under the dates. */
+  dateNotes?: readonly string[]
+  /** The internal middleman answer, drawn under the three figures. BOE-only. */
+  internal?: React.ReactNode
 }) {
   // SELECTION, NOT RESOLUTION: buildClientDetails already decided which stored
   // number is the client's and whether it can be dialled.
@@ -485,6 +501,9 @@ export function PiSummaryCard({
                 </div>
               ))}
             </div>
+            {dateNotes.map(note => (
+              <p key={note} className="pi-detail-dates-workbook">{note}</p>
+            ))}
             {canEditDetails && (
               <button
                 type="button"
@@ -547,6 +566,7 @@ export function PiSummaryCard({
               )}
             </div>
           </div>
+          {internal}
         </div>
       </div>
     </PiCard>
@@ -916,6 +936,34 @@ export function PiCommercialBreakdown({ view, fabricResponsibility, commercialTe
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
 
 /** Somebody's own words, verbatim, on a tinted ground. */
+/**
+ * WHAT SALES CHANGED SINCE THE RETURN, beside their reply — so the reply is
+ * never the only account of a changed PI. Every figure is the trail's own
+ * before/after; see resubmissionChanges.ts for what it cannot say.
+ */
+function ResubmissionChangesNote({ changes }: { changes: ResubmissionChanges }) {
+  return (
+    <section className="pi-detail-resubmission" aria-label={RESUBMISSION_CHANGES_TITLE}>
+      <div className="pi-detail-resubmission-title">{RESUBMISSION_CHANGES_TITLE}</div>
+      <p className="pi-detail-resubmission-line">{resubmissionEditLine(changes)}</p>
+      {changes.figures.length > 0 && (
+        <dl className="pi-detail-resubmission-figures">
+          {changes.figures.map(f => (
+            <div key={f.key} className="pi-detail-resubmission-figure">
+              <dt>{f.label}</dt>
+              <dd><span className="pi-detail-resubmission-before">{f.before}</span> → <strong>{f.after}</strong></dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {changes.otherChanges.length > 0 && (
+        <p className="pi-detail-resubmission-line">Also: {changes.otherChanges.join(', ')}.</p>
+      )}
+      {changes.editCount > 0 && <p className="pi-detail-resubmission-note">{RESUBMISSION_LINE_DETAIL_NOTE}</p>}
+    </section>
+  )
+}
+
 function QuotedNote({ heading, body, tone }: {
   heading: string
   body: string
@@ -992,6 +1040,7 @@ export function PiWorkflowPanel({
   status,
   reviewNote,
   employeeReply,
+  resubmission = null,
   advanceRefusal,
   blockingCount,
   readiness,
@@ -1019,6 +1068,8 @@ export function PiWorkflowPanel({
   reviewNote: string | null
   /** The employee's reply on the current submission, off the trail. */
   employeeReply: string | null
+  /** What changed since the last return for changes, while the PI is with the reviewer. */
+  resubmission?: ResubmissionChanges | null
   /**
    * Why a proposed advance was refused, and what to do about it — for the
    * employee holding the returned PI, and for nobody else. Everyone else reads
@@ -1110,7 +1161,7 @@ export function PiWorkflowPanel({
   const showPiApproved = piApprovedLine !== null && !statusShownAbove
 
   const hasBody = Boolean(
-    panel.instruction || reviewNote || employeeReply || advanceRefusal
+    panel.instruction || reviewNote || employeeReply || resubmission || advanceRefusal
     || approvedOrder || showPiApproved || (isReviewer && primaryNote),
   )
 
@@ -1310,6 +1361,7 @@ export function PiWorkflowPanel({
           {employeeReply && (
             <QuotedNote heading="The employee&rsquo;s reply" body={employeeReply} tone="neutral" />
           )}
+          {resubmission && <ResubmissionChangesNote changes={resubmission} />}
           {/* A refused advance, on the desk of the person who must now correct
               it. Both halves are real content: management's reason, and the
               choice the employee has. */}

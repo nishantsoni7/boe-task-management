@@ -1477,3 +1477,15 @@ describe('a product row is red only where a blocking error is mapped to it', () 
     assert.equal(blocked.has(32), false)
   })
 })
+
+// 2026-09-27: the module guard itself no longer sends a denied reader to the
+// hard-coded ATTENDANCE placeholder; it says Orders is not enabled, in place.
+describe('the Orders guard denies in place', () => {
+  test('no redirect to /coming-soon; its own message and a way back', () => {
+    const guard = readFileSync(join(process.cwd(), 'src/app/orders/layout.tsx'), 'utf8')
+    assert.ok(!guard.includes("router.replace('/coming-soon')"))
+    assert.ok(guard.includes('if (denied) return <OrdersAccessDenied'))
+    assert.ok(guard.includes('Order Management is not enabled for your account'))
+    assert.ok(!/Attendance/.test(guard.replace(/\/\/.*$/gm, '')), 'no other module is named')
+  })
+})

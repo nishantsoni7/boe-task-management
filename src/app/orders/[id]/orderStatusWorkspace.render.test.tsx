@@ -787,7 +787,8 @@ describe('/orders/[id] wires the workspace the way the module intends', () => {
   const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
 
   test('the Main PI card is fed by mainPiCard, and the modal by the timeline', () => {
-    assert.ok(page.includes('const mainPi = mainPiCard(piHistory)'))
+    // Loading until the first version read answers — never 'this Order has no PI'.
+    assert.ok(page.includes("const mainPi: MainPiCard = piVersionsRead ? mainPiCard(piHistory) : { kind: 'loading', message: MAIN_PI_LOADING }"))
     assert.ok(page.includes('const piTimeline = piVersionTimeline(piHistory)'))
     assert.ok(page.includes('mainPi={mainPi}'))
     assert.ok(page.includes('entries={piTimeline}'))
