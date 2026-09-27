@@ -330,19 +330,20 @@ Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 
 ## 7. Release
 
-### Ordering against current main and other branches (checked 2026-09-27)
+### Ordering against current main and other branches (rechecked 2026-09-28)
 
-- **Production:** the newest applied migration is `20270123000000`. This PR's
-  `20270215000000` and `20270215000100` are above it. `main` has no newer
-  migration.
-- **Open PRs with migrations:**
-  - #214 (`20270124000000`), #212 (`20270125000000`), #213
-    (`20270126000000`) and #241 (`20270127000000`) are numbered **below**
-    this PR. If this PR ships first, they must be renumbered above
-    `20270215000100` before `db push`, or it refuses them without
-    `--include-all`.
-  - #240 (`20270131000000`) is above; no conflict.
-  - No number collides.
+- **Production:** the newest applied migration is `20270205120000` (#241).
+  `main` was merged into this branch; its `20270201000000`, `20270205000000`
+  and `20270205120000` touch no payroll, attendance, users or notification
+  objects.
+- **Renumbered:** this PR's migrations moved from `20270130000000`/`…000100`
+  (now below applied history) to **`20270215000000`** and
+  **`20270215000100`**, above everything applied and above #248's pending
+  `20270210000000`/`20270211000000`.
+- **Other open PRs:** #214 (`20270124000000`), #212 (`20270125000000`),
+  #213 (`20270126000000`) and #240 (`20270131000000`) are already below
+  applied history and must be renumbered by their owners whatever this PR
+  does. No number collides.
 - **No open PR touches** the lock route, the correction route, the engine or
   the notification code.
   - The overlap is the shared migration-sequence pin tests (one-line merge
@@ -360,7 +361,7 @@ Other feeds are unaffected. Verified on a clone of a full local Supabase schema.
 ### Deployment order
 
 1. Recheck `npx supabase migration list --linked`. Renumber if anything above
-   `20270123000000` has been applied.
+   `20270205120000` has been applied (or #248 has shipped a higher number).
 2. Apply `20270215000000_attendance_requests.sql`.
 3. Apply `20270215000100_attendance_request_notification_types.sql`. **This must
    happen before step 4** (see §6).
