@@ -186,8 +186,12 @@ export class MemorySupabase {
 
   from(table: string) { return new Query(this, table) }
 
-  rpc(name: string) {
-    return Promise.resolve({ data: null, error: { message: `memorySupabase: rpc ${name} is not available` } })
+  /** Emulations of database functions, registered by the test that needs them. */
+  rpcHandlers: Record<string, (args: Row, db: MemorySupabase) => { data: unknown; error: PgError | null }> = {}
+
+  rpc(name: string, args: Row = {}) {
+    const h = this.rpcHandlers[name]
+    return Promise.resolve(h ? h(args, this) : { data: null, error: { message: `memorySupabase: rpc ${name} is not available` } })
   }
 
   rows(table: string): Row[] { return this.tables[table] ?? [] }

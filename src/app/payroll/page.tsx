@@ -23,7 +23,7 @@ import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollMo
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
-import { fetchLockWarning } from '@/lib/attendance/lockWarning'
+import { runLockFlow } from '@/lib/attendance/lockWarning'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -284,33 +284,20 @@ function PayrollPeriodsPage() {
   const handleLock = async (period: PayrollPeriodRow) => {
     if (busy[period.id]) return
     const label = periodLabel(period.payroll_month, period.payroll_year)
-    // Unresolved attendance-review items are named here and must be accepted
-    // explicitly; the lock itself is unchanged (src/lib/attendance/lockWarning.ts).
-    const attendanceWarning = await fetchLockWarning(token, period.payroll_year, period.payroll_month)
-    // Deliberately no longer says "this cannot be undone": an admin can reopen
-    // the month through Unlock Payroll, and the confirmation must not claim
-    // otherwise.
-    if (!confirm(
-      attendanceWarning +
-      `Lock payroll for ${label}?\n\n` +
-      'Regeneration, attendance correction and employee review are disabled while a period is locked. ' +
-      'An admin can reopen it later with a stated reason.',
-    )) return
-
     setBusy(b => ({ ...b, [period.id]: true }))
     setError(null)
     setSuccess(null)
     try {
-      const res = await fetch('/api/payroll/lock', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ payroll_period_id: period.id }),
-      })
-      const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Lock failed'); return }
+      // The server checks the month's attendance review; open items need a
+      // stated acknowledgement it records (src/lib/attendance/lockWarning.ts,
+      // src/lib/payroll/lockPeriod.ts). Deliberately no longer says "this
+      // cannot be undone": an admin can reopen the month through Unlock Payroll.
+      const outcome = await runLockFlow(token, period.id,
+        `Lock payroll for ${label}?\n\n` +
+        'Regeneration, attendance correction and employee review are disabled while a period is locked. ' +
+        'An admin can reopen it later with a stated reason.')
+      if (outcome.status === 'cancelled') return
+      if (outcome.status === 'error') { setError(outcome.error ?? 'Lock failed'); return }
       await loadPeriods(token)
       setSuccess(`${label} payroll is locked.`)
     } finally {

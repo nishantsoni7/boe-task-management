@@ -22,6 +22,7 @@ import {
 } from '@/lib/payroll/store'
 import { isSkip } from '@/lib/payroll/types'
 import { applyAttendanceCorrection } from '@/lib/payroll/attendanceCorrectionService'
+import { lockPayrollPeriod } from '@/lib/payroll/lockPeriod'
 import { istClockToUtc } from '@/lib/istDate'
 import type { ReconEvent, ReconResult } from './requestReconciliation'
 
@@ -457,5 +458,121 @@ describe('the shared correction service', () => {
     assert.ok(out.ok)
     // 1 h at 26,000 / 30 / 8.5 = ₹102, not the default divisor's ₹118.
     assert.equal(out.ok && out.after.deduction_amount, 102)
+  })
+})
+
+// ─── Item 2: locking with open attendance items ─────────────────────────────
+
+describe('item 2 — the lock checks open attendance items on the server and records the acknowledgement', () => {
+  const lock = (body: Record<string, unknown>) =>
+    lockPayrollPeriod(db, { id: ADMIN_B, name: 'Second Admin' }, { payroll_period_id: PERIOD, ...body }, TODAY)
+
+  // What 20270130000000's lock_payroll_period_with_attendance_ack() does, in one step.
+  const emulateLockFunction = () => {
+    db.rpcHandlers.lock_payroll_period_with_attendance_ack = (a, d) => {
+      const p = d.rows('payroll_periods').find(r => r.id === a.p_period_id)!
+      if (p.status === 'locked') return { data: null, error: { message: 'PAYROLL_LOCK_ALREADY' } }
+      const ack = {
+        id: `ack-${d.rows('payroll_lock_attendance_acknowledgements').length + 1}`,
+        payroll_period_id: a.p_period_id, actor_id: a.p_actor_id, acknowledged_at: new Date().toISOString(),
+        unresolved_count: a.p_unresolved, conflict_count: a.p_conflicts, fingerprint: a.p_fingerprint,
+        summary: a.p_summary, reason: a.p_reason, check_failed: a.p_check_failed,
+      }
+      ;(d.tables.payroll_lock_attendance_acknowledgements ??= []).push(ack)
+      Object.assign(p, { status: 'locked', locked_by: a.p_actor_id, locked_at: new Date().toISOString() })
+      return { data: ack.id, error: null }
+    }
+    db.tables.payroll_lock_attendance_acknowledgements = []
+    db.tables.payroll_period_status_events = []
+  }
+  const period = () => db.rows('payroll_periods')[0]
+
+  test('a month with nothing open keeps the simple lock: no acknowledgement asked, none recorded', async () => {
+    emulateLockFunction()
+    for (const u of db.rows('users')) if (u.id !== OTHER) u.payroll_active = false   // only Bala, always on time
+    await generateDraft(OTHER)
+    const r = await lock({})
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(period().status, 'locked')
+    assert.equal(db.rows('payroll_lock_attendance_acknowledgements').length, 0)
+    assert.equal(db.rows('payroll_period_status_events').length, 1)
+  })
+
+  test('open items: a direct lock call without an acknowledgement is refused and nothing is locked', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const r = await lock({})
+    assert.equal(r.status, 409)
+    assert.equal(r.body.code, 'attendance_unresolved')
+    assert.ok((r.body.unresolved as number) > 0)
+    assert.match(String(r.body.fingerprint), /^[0-9a-f]{64}$/)
+    assert.equal(period().status, 'generated')
+  })
+
+  test('acknowledging the current state with a reason locks and records actor, time, counts, fingerprint and summary', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const first = await lock({})
+    const r = await lock({ attendance_acknowledgement: { fingerprint: first.body.fingerprint, reason: 'Reviewed with accounts; late days settled next month' } })
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(r.body.locked_with_open_items, true)
+    assert.equal(period().status, 'locked')
+    const [ack] = db.rows('payroll_lock_attendance_acknowledgements')
+    assert.equal(ack.actor_id, ADMIN_B)
+    assert.equal(ack.unresolved_count, first.body.unresolved)
+    assert.equal(ack.conflict_count, first.body.conflicts)
+    assert.equal(ack.fingerprint, first.body.fingerprint)
+    assert.equal(ack.check_failed, false)
+    assert.match(String(ack.reason), /Reviewed with accounts/)
+    const summary = ack.summary as Record<string, unknown>[]
+    assert.ok(summary.length > 0)
+    for (const e of summary) assert.deepEqual(Object.keys(e).sort(), ['conflicts', 'employee_id', 'unresolved'], 'counts only — no names or amounts')
+    assert.equal(db.rows('payroll_period_status_events').length, 1)
+  })
+
+  test('if the review changes between looking and locking, the stale acknowledgement is refused', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const first = await lock({})
+    // Another admin settles one item in the meantime.
+    await saveReview(secondAdmin(), { employee_id: EMP, attendance_date: '2026-10-07', event_key: 'late_arrival', pay_decision: 'unpaid_actual', decision_reason: 'Policy' }, TODAY)
+    const r = await lock({ attendance_acknowledgement: { fingerprint: first.body.fingerprint, reason: 'ok' } })
+    assert.equal(r.status, 409)
+    assert.equal(r.body.code, 'attendance_ack_stale')
+    assert.notEqual(r.body.fingerprint, first.body.fingerprint)
+    assert.equal(period().status, 'generated')
+    assert.equal(db.rows('payroll_lock_attendance_acknowledgements').length, 0)
+    // …and the fresh acknowledgement then works.
+    const again = await lock({ attendance_acknowledgement: { fingerprint: r.body.fingerprint, reason: 'Re-reviewed' } })
+    assert.equal(again.status, 200)
+  })
+
+  test('an acknowledgement without a reason is refused', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    const first = await lock({})
+    const r = await lock({ attendance_acknowledgement: { fingerprint: first.body.fingerprint, reason: '  ' } })
+    assert.equal(r.status, 400)
+    assert.equal(period().status, 'generated')
+  })
+
+  test('if the review cannot be read, only a deliberate, recorded override locks — payroll is never blocked forever', async () => {
+    emulateLockFunction()
+    await generateDraft(EMP)
+    db.failOn.set('attendance_day_reviews:select', 'relation "attendance_day_reviews" does not exist')
+    const refused = await lock({})
+    assert.equal(refused.status, 409)
+    assert.equal(refused.body.code, 'attendance_check_failed')
+    const r = await lock({ attendance_acknowledgement: { unverified: true, reason: 'Review table unavailable; month agreed offline' } })
+    assert.equal(r.status, 200)
+    const [ack] = db.rows('payroll_lock_attendance_acknowledgements')
+    assert.equal(ack.check_failed, true)
+    assert.equal(ack.fingerprint, null)
+  })
+
+  test('an already locked month is refused as before', async () => {
+    emulateLockFunction()
+    period().status = 'locked'
+    assert.equal((await lock({})).status, 422)
   })
 })

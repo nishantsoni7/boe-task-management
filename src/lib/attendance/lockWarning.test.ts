@@ -1,35 +1,83 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { lockWarningText } from './lockWarning'
+import { lockWarningText, runLockFlow } from './lockWarning'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 
-describe('the lock confirmation names unresolved attendance salary items', () => {
-  test('nothing open → nothing added; the existing confirmation is unchanged', () => {
-    assert.equal(lockWarningText({ totals: { unresolved: 0, conflicts: 0 }, employees: [] }, false), '')
-  })
+const open = {
+  code: 'attendance_unresolved', requires_acknowledgement: true, unresolved: 3, conflicts: 1, fingerprint: 'fp-1',
+  employees: [{ full_name: 'Asha', unresolved: 2, conflicts: 1 }, { full_name: 'Bala', unresolved: 1, conflicts: 0 }],
+}
 
-  test('open items and draft conflicts are counted, named and must be accepted', () => {
-    const text = lockWarningText({
-      totals: { unresolved: 3, conflicts: 1 },
-      employees: [{ full_name: 'Asha', unresolved: 2, conflicts: 1 }, { full_name: 'Bala', unresolved: 1, conflicts: 0 }],
-    }, false)
+describe('lock confirmation text', () => {
+  test('open items and draft conflicts are counted and named; a reason is asked for', () => {
+    const text = lockWarningText(open, false)
     assert.match(text, /3 unresolved salary items, of which 1 disagree with this draft/)
     assert.match(text, /Asha: 2 unresolved, 1 disagree with the draft/)
-    assert.match(text, /Press OK only if you accept locking with these open/)
+    assert.match(text, /type the reason below\. It is recorded with your name/)
+  })
+  test('a stale acknowledgement says the review changed', () => {
+    assert.match(lockWarningText(open, false, true), /THE REVIEW CHANGED SINCE YOU LOOKED/)
+  })
+  test('a failed server check is an explicit override, never read as "nothing open"', () => {
+    assert.match(lockWarningText(null, true), /could not be checked on the server[\s\S]*reason for this override/)
+  })
+})
+
+describe('the lock button follows the server', () => {
+  const ui = (answers: (string | null)[], confirmed = true) => {
+    const seen: string[] = []
+    return {
+      seen,
+      ui: { confirm: (m: string) => { seen.push(m); return confirmed }, prompt: (m: string) => { seen.push(m); return answers.shift() ?? null } },
+    }
+  }
+
+  test('nothing open: one confirmation, one request — the existing flow', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const { ui: u, seen } = ui([])
+    const out = await runLockFlow('t', 'p', 'Lock payroll for October?', u, async b => { bodies.push(b); return { ok: true, status: 200, json: { success: true } } })
+    assert.equal(out.status, 'locked')
+    assert.deepEqual(bodies, [{ payroll_period_id: 'p' }])
+    assert.equal(seen.length, 1)
   })
 
-  test('a failed check is said out loud, never read as "nothing open"', () => {
-    assert.match(lockWarningText(null, true), /could not be checked/)
+  test('open items: the reason and the SERVER\'S fingerprint are sent back', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const replies = [{ ok: false, status: 409, json: open }, { ok: true, status: 200, json: { success: true } }]
+    const out = await runLockFlow('t', 'p', 'Lock?', ui(['Agreed with accounts']).ui, async b => { bodies.push(b); return replies.shift()! })
+    assert.equal(out.status, 'locked')
+    assert.deepEqual(bodies[1], { payroll_period_id: 'p', attendance_acknowledgement: { fingerprint: 'fp-1', reason: 'Agreed with accounts' } })
   })
 
-  test('both lock buttons prepend it; the lock API itself is unchanged', () => {
+  test('no reason → nothing is locked', async () => {
+    let calls = 0
+    const out = await runLockFlow('t', 'p', 'Lock?', ui(['  ']).ui, async () => { calls++; return { ok: false, status: 409, json: open } })
+    assert.equal(out.status, 'cancelled')
+    assert.equal(calls, 1)
+  })
+
+  test('stale acknowledgement: the fresh state is shown and re-acknowledged with the NEW fingerprint', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const replies = [
+      { ok: false, status: 409, json: open },
+      { ok: false, status: 409, json: { ...open, code: 'attendance_ack_stale', fingerprint: 'fp-2', unresolved: 4 } },
+      { ok: true, status: 200, json: { success: true } },
+    ]
+    const { ui: u, seen } = ui(['first', 'second'])
+    const out = await runLockFlow('t', 'p', 'Lock?', u, async b => { bodies.push(b); return replies.shift()! })
+    assert.equal(out.status, 'locked')
+    assert.match(seen[2], /THE REVIEW CHANGED/)
+    assert.deepEqual((bodies[2].attendance_acknowledgement as { fingerprint: string }).fingerprint, 'fp-2')
+  })
+
+  test('both Lock buttons use the server-checked flow', () => {
     for (const p of ['src/app/payroll/page.tsx', 'src/app/payroll/results/[periodId]/page.tsx']) {
       const src = read(p)
-      assert.ok(src.includes('fetchLockWarning('), p)
-      assert.ok(/confirm\(\s*(attendanceWarning \+|`\$\{attendanceWarning\})/.test(src), `${p} puts the warning in the confirmation`)
+      assert.ok(src.includes('runLockFlow('), p)
+      assert.equal(src.includes("fetch('/api/payroll/lock'"), false, `${p} must not call the lock API around the acknowledgement`)
     }
-    assert.equal(/attendance_requests|attendance_day_reviews|lockWarning/.test(read('src/app/api/payroll/lock/route.ts')), false)
+    assert.ok(read('src/app/api/payroll/lock/route.ts').includes('lockPayrollPeriod('))
   })
 })

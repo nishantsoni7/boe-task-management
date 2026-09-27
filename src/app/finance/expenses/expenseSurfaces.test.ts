@@ -1830,6 +1830,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/api/boe-credits/routesAuthority.test.ts',
     'src/app/payroll/page.tsx',
     'src/app/payroll/results/[periodId]/page.tsx',
+    // Pass 3: server-checked lock acknowledgement; the engine's rounding rule exported unchanged.
+    'src/lib/payroll/lockPeriod.ts',
+    'src/app/api/payroll/lock/route.ts',
+    'src/lib/payroll/engine.ts',
     'src/components/layout/attendancePayrollNav.tsx',
     'src/lib/attendance/requests.ts',
     'src/lib/attendance/requests.test.ts',

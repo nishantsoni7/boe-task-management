@@ -49,6 +49,11 @@
 --   drop function if exists public.attendance_request_events_guard();
 --   drop function if exists public.attendance_day_reviews_supersede();
 --   drop function if exists public.attendance_day_reviews_guard();
+--   drop function if exists public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean);
+--   drop table if exists public.payroll_lock_attendance_acknowledgements;
+--   drop function if exists public.payroll_lock_attendance_acknowledgements_guard();
+-- (Dropping the acknowledgement table loses the record of months locked with
+-- open items; export it first if any exist.)
 -- Lossless for payroll: nothing that calculates pay reads these tables.
 
 -- ─── 1. Requests ─────────────────────────────────────────────────────────────
@@ -418,6 +423,108 @@ create trigger attendance_day_reviews_guard
   before update on public.attendance_day_reviews
   for each row execute function public.attendance_day_reviews_guard();
 
+-- ─── 5b. Locking a month with open attendance items ──────────────────────────
+--
+-- /api/payroll/lock keeps its simple path for a month with nothing open. When
+-- the attendance review still has unresolved salary items or decisions the
+-- draft disagrees with, the lock request must carry an acknowledgement of the
+-- exact state the admin saw (a fingerprint computed by the server). The lock
+-- and the record of that acknowledgement are written by ONE function, in one
+-- transaction, so a month can never be locked "with acknowledgement" without
+-- the record, nor recorded without being locked.
+--
+-- check_failed = true records the deliberate override: the review could not be
+-- read at all and the admin locked anyway, with a reason. Payroll is never
+-- blocked forever.
+
+create table if not exists public.payroll_lock_attendance_acknowledgements (
+  id                 uuid        not null default gen_random_uuid() primary key,
+  payroll_period_id  uuid        not null references public.payroll_periods(id) on delete cascade,
+  actor_id           uuid        not null references public.users(id),
+  acknowledged_at    timestamptz not null default now(),
+  unresolved_count   integer     not null check (unresolved_count >= 0),
+  conflict_count     integer     not null check (conflict_count >= 0),
+  -- sha-256 over the open items (employee, date, event, status) as the server
+  -- saw them when it validated the acknowledgement. Null only when check_failed.
+  fingerprint        text,
+  -- Per-employee counts only; no amounts, no names.
+  summary            jsonb       not null default '[]'::jsonb,
+  reason             text        not null check (btrim(reason) <> ''),
+  check_failed       boolean     not null default false,
+  constraint payroll_lock_attendance_ack_fingerprint check (check_failed or fingerprint is not null)
+);
+
+create index if not exists payroll_lock_attendance_acknowledgements_period
+  on public.payroll_lock_attendance_acknowledgements (payroll_period_id, acknowledged_at desc);
+
+create or replace function public.payroll_lock_attendance_acknowledgements_guard()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  raise exception 'PAYROLL_LOCK_ACK_APPEND_ONLY: a lock acknowledgement cannot be changed';
+end;
+$$;
+
+drop trigger if exists payroll_lock_attendance_acknowledgements_guard on public.payroll_lock_attendance_acknowledgements;
+create trigger payroll_lock_attendance_acknowledgements_guard
+  before update on public.payroll_lock_attendance_acknowledgements
+  for each row execute function public.payroll_lock_attendance_acknowledgements_guard();
+
+create or replace function public.lock_payroll_period_with_attendance_ack(
+  p_period_id    uuid,
+  p_actor_id     uuid,
+  p_unresolved   integer,
+  p_conflicts    integer,
+  p_fingerprint  text,
+  p_summary      jsonb,
+  p_reason       text,
+  p_check_failed boolean
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+  v_ack    uuid;
+begin
+  if not exists (select 1 from public.users where id = p_actor_id and role = 'admin' and is_active) then
+    raise exception 'PAYROLL_LOCK_FORBIDDEN: only an active admin can lock payroll';
+  end if;
+
+  select status into v_status from public.payroll_periods where id = p_period_id for update;
+  if not found then
+    raise exception 'PAYROLL_LOCK_NOT_FOUND: no such payroll period';
+  end if;
+  if v_status = 'locked' then
+    raise exception 'PAYROLL_LOCK_ALREADY: period is already locked';
+  end if;
+  if v_status <> 'generated' then
+    raise exception 'PAYROLL_LOCK_NOT_GENERATED: only generated periods can be locked';
+  end if;
+
+  insert into public.payroll_lock_attendance_acknowledgements
+    (payroll_period_id, actor_id, unresolved_count, conflict_count, fingerprint, summary, reason, check_failed)
+  values
+    (p_period_id, p_actor_id, p_unresolved, p_conflicts, p_fingerprint, coalesce(p_summary, '[]'::jsonb), p_reason, coalesce(p_check_failed, false))
+  returning id into v_ack;
+
+  update public.payroll_periods
+     set status = 'locked', locked_at = now(), locked_by = p_actor_id
+   where id = p_period_id;
+
+  return v_ack;
+end;
+$$;
+
+-- Called only by the service-role lock route, which resolves the actor from
+-- the bearer token. No client may call it.
+revoke all on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean) from public, anon, authenticated;
+grant execute on function public.lock_payroll_period_with_attendance_ack(uuid, uuid, integer, integer, text, jsonb, text, boolean) to service_role;
+
 -- ─── 6. Row level security ───────────────────────────────────────────────────
 
 alter table public.attendance_requests       enable row level security;
@@ -460,3 +567,14 @@ revoke all on public.attendance_day_reviews    from anon, authenticated;
 grant select on public.attendance_requests       to authenticated;
 grant select on public.attendance_request_events to authenticated;
 grant select on public.attendance_day_reviews    to authenticated;
+
+alter table public.payroll_lock_attendance_acknowledgements enable row level security;
+drop policy if exists "payroll_lock_attendance_ack_admin_select" on public.payroll_lock_attendance_acknowledgements;
+create policy "payroll_lock_attendance_ack_admin_select" on public.payroll_lock_attendance_acknowledgements
+  for select to authenticated
+  using (
+    exists (select 1 from public.users
+             where users.id = auth.uid() and users.is_active and users.role = 'admin')
+  );
+revoke all on public.payroll_lock_attendance_acknowledgements from anon, authenticated;
+grant select on public.payroll_lock_attendance_acknowledgements to authenticated;
