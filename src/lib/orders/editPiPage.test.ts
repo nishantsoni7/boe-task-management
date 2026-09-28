@@ -56,5 +56,9 @@ describe('the original Excel', () => {
   test('the Order page signs the stored workbook itself, under that name', () => {
     const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
     assert.ok(page.includes("mode === 'download' ? { download: originalWorkbookFileName(version, order?.display_number ?? null) } : undefined"))
+    assert.ok(page.includes("if (mode === 'download') window.location.assign(data.signedUrl)"),
+      'an async download must not open a popup that the browser can block')
+    assert.ok(page.includes('fileError={piDownloadError ?? docError}'),
+      'a failed download must be reported beside the button')
   })
 })
