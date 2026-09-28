@@ -1932,6 +1932,21 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // Round 5: no billing percentage or billing value on a client PDF.
     'src/lib/orders/confirmedPdf.test.ts',
     'src/lib/orders/clientPdfNoBilling.test.ts',
+    // Confirmed Order Documents (view / download, product-picture ZIP) and the
+    // full-page Edit PI (stacked on this branch; no Finance file).
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/app/orders/[id]/orderDocumentSubmissions.render.test.tsx',
+    'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
+    'src/app/orders/[id]/edit-pi/page.tsx',
+    'src/app/orders/drafts/[submissionId]/edit-pi/page.tsx',
+    'src/components/orders/PiEditor.tsx',
+    'src/components/orders/PiVersionsPanel.tsx',
+    'src/components/orders/piEditor.render.test.tsx',
+    'src/lib/orders/orderMainPi.ts',
+    'src/lib/orders/editPiPage.ts',
+    'src/lib/orders/editPiPage.test.ts',
+    'src/lib/orders/productPictures.ts',
+    'src/lib/orders/productPictures.test.ts',
     // The migration-sequence pins.
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',

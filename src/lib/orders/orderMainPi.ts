@@ -30,6 +30,8 @@ import {
 export const MAIN_PI_TITLE = 'Main PI'
 export const MAIN_PI_VIEW_LABEL = 'View'
 export const MAIN_PI_DOWNLOAD_LABEL = 'Download'
+/** The workbook Sales uploaded for this version, as the original file. */
+export const MAIN_PI_ORIGINAL_EXCEL_LABEL = 'Download original Excel'
 export const MAIN_PI_HISTORY_LABEL = 'View history'
 
 export const MAIN_PI_UPLOADED_LABEL = 'Uploaded'

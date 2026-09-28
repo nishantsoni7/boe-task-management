@@ -35,7 +35,7 @@ import {
   type PiContentImage,
   type PiContentItem,
 } from '@/lib/orders/piEdit'
-import { EDIT_PI_LABEL, PiDiffView, PiEditor, loadPiContentAsViewer } from './PiEditor'
+import { EDIT_PI_LABEL, PiDiffView, loadPiContentAsViewer } from './PiEditor'
 import { PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from './PiLineReview'
 import { percentText, rupees, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import {
@@ -140,7 +140,7 @@ export const isOpenRevision = (status: string) => status === 'pending' || status
  */
 export function PiVersionHistory({
   supabase, orderId, submissionId, mayEdit, isAdmin, hasOpenRevision = false,
-  open, onClose, editing, onEdit, onEditClose, notice, onNotice, onChanged, refreshKey,
+  open, onClose, onEdit, notice, onNotice, onChanged, refreshKey,
 }: {
   supabase: SupabaseClient
   orderId: string
@@ -266,15 +266,7 @@ export function PiVersionHistory({
           onDecided={message => { setViewing(null); onNotice(message); refresh() }} />
       )}
 
-      {editing && (
-        <PiEditor supabase={supabase} mode="propose" submissionId={submissionId} orderId={orderId}
-          onClose={onEditClose}
-          onDone={message => {
-            onEditClose(); onNotice(message)
-            void notifyPiSubmission({ event: 'pi_revision_proposed', submissionId })
-            refresh()
-          }} />
-      )}
+      {/* Edit PI is a page now (/orders/[id]/edit-pi); onEdit navigates there. */}
     </>
   )
 }
