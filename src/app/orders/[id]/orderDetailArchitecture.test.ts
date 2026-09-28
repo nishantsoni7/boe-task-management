@@ -478,13 +478,16 @@ describe('no Order fact is stated twice', () => {
   })
 
   test('the summary panel states the product value and no other figure', () => {
-    // Its Total Product Value is the product subtotal BEFORE any commercial
-    // adjustment; the Order value belongs to the breakdown alone.
+    // Its Total Product Value means what it means on the PI: the products after
+    // the discount, taken from the PI's own stored subtotal while the Order
+    // still carries its PI's gross (orderProductValue). The Order value belongs
+    // to the breakdown alone.
     const summary = body.slice(body.indexOf('<OrderSummaryPanel'), body.indexOf('<OrderAttentionBar'))
     for (const forbidden of ['total_value', 'OrderCommercialBreakdown', 'finance.']) {
       assert.equal(summary.includes(forbidden), false, forbidden)
     }
-    assert.ok(page.includes('totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value)'))
+    assert.ok(page.includes('totalProductValue: productValue.amount === null ? null : fmtAmount(productValue.amount)'))
+    assert.ok(page.includes('const productValue = orderProductValue({'))
   })
 
   test('the breakdown recomputes NOTHING — and now derives nothing either', () => {

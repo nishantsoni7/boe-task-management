@@ -300,14 +300,14 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     '20270122000000_order_submission_internal_details.sql',
     '20270123000000_order_submission_internal_details_required_on_submit.sql',
-    // Every SECURITY DEFINER in public pins pg_temp last. THIS ONE DOES
-    // REACH the completion trigger, deliberately and only this far: it ALTERs
-    // cleanup_top_tasks_on_completion()'s search_path from `pg_catalog,
-    // public` to `pg_catalog, public, pg_temp`. The body, the trigger, the
-    // revoke and user_top_tasks are unchanged, so what the trigger does is
-    // unchanged.
-    '20270125000000_security_definer_search_path_pins_pg_temp.sql',
-  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which changes what user_top_tasks or the completion trigger do')
+    '20270201000000_order_pi_version_pdf_order_number.sql',
+    '20270205000000_order_production_needs_order_level_exception.sql',
+    '20270205120000_expense_reimbursements_and_bills.sql',
+    '20270210000000_order_submission_highlight_remark.sql',
+    '20270211000000_order_submission_sales_order_details.sql',
+    '20270211120000_expense_payment_source_required.sql',
+    '20270213000000_security_definer_search_path_pins_pg_temp.sql',
+  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
 test('a one-time cleanup reaches the rows the trigger never could', () => {

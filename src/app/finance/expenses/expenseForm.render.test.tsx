@@ -92,15 +92,19 @@ describe('the Add form renders every required field, and nothing more', () => {
   })
 
   test('and no field beyond them', () => {
-    // Phase 1 asks for exactly these. A receipt upload, a GST field, an approver
-    // or a vendor picker appearing here would be scope, not a detail.
+    // Phase 1 asks for exactly these. A GST field, an approver or a vendor
+    // picker appearing here would be scope, not a detail.
     const ids = [...html.matchAll(/id="(expense-[a-z-]+)"/g)].map(m => m[1]).sort()
     assert.deepEqual(ids, [
       'expense-category', 'expense-date',
       'expense-mode', 'expense-paid-to', 'expense-remark',
     ])
     assert.equal((html.match(/inputMode="decimal"/g) ?? []).length, 1, 'exactly one amount')
-    assert.equal(/type="file"/.test(html), false, 'no receipt upload in Phase 1')
+    // Phase 3 (20270205120000) adds exactly two things: the payment-source
+    // choice — two radios, NOTHING preselected — and an OPTIONAL bill picker.
+    assert.equal((html.match(/type="radio"/g) ?? []).length, 2, 'company account or personally')
+    assert.equal(/type="radio"[^>]*checked=""/.test(html), false, 'no payment source is preselected')
+    assert.equal((html.match(/type="file"/g) ?? []).length, 1, 'one optional bill picker')
   })
 
   test('every field is announced — five by id, the amount by containment', () => {
@@ -163,8 +167,8 @@ describe('the Add form renders every required field, and nothing more', () => {
   })
 
   test('the required fields are marked, and the optional one says so', () => {
-    assert.equal((html.match(/aria-hidden="true">\*<\/span>/g) ?? []).length, 5,
-      'date, amount, paid to, category and mode — the remark is not required')
+    assert.equal((html.match(/aria-hidden="true">\*<\/span>/g) ?? []).length, 6,
+      'date, amount, paid to, category, mode and how it was paid — the remark and the bill are not required')
     assert.ok(html.includes('Optional'))
   })
 

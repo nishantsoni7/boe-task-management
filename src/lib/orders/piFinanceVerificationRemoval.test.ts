@@ -530,11 +530,13 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
-      // Every SECURITY DEFINER in public pins pg_temp last: ALTER FUNCTION
-      // ... SET search_path on ninety-five existing functions, and
-      // get_or_create_quotation_no is revoked from client roles. Bodies are not
-      // redefined; no table, policy, grant on a table or row is touched.
-      '20270125000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270201000000_order_pi_version_pdf_order_number.sql',
+      '20270205000000_order_production_needs_order_level_exception.sql',
+      '20270205120000_expense_reimbursements_and_bills.sql',
+      '20270210000000_order_submission_highlight_remark.sql',
+      '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
+      '20270213000000_security_definer_search_path_pins_pg_temp.sql',
     ])
 
     const previous = lf(readFileSync(

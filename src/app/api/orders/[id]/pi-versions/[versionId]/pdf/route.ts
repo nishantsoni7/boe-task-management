@@ -9,12 +9,13 @@ import { buildConfirmedPdfModel } from '@/lib/orders/confirmedPdf'
 import { renderConfirmedPdf } from '@/lib/orders/confirmedPdfRender'
 import { ORDER_FILES_BUCKET, PI_DRAFT_ITEM_COLUMNS, type PersistedItem } from '@/lib/orders/draftsView'
 import { ORDER_PI_HANDOFF_COLUMNS, type OrderPiRow } from '@/lib/orders/orderPiHandoff'
+import { orderProductCodesByItemId, type OrderProductCodeRecord } from '@/lib/orders/orderProductCodes'
 import {
-  formatOrderOperationalNumber,
-  orderProductCodesByItemId,
-  type OrderProductCodeRecord,
-} from '@/lib/orders/orderProductCodes'
-import { piVersionPdfFilename, piVersionPdfSource, type PiVersionDetail } from '@/lib/orders/piVersionPdf'
+  piVersionPdfFilename,
+  piVersionPdfOrderNumber,
+  piVersionPdfSource,
+  type PiVersionDetail,
+} from '@/lib/orders/piVersionPdf'
 import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 
 // ── ONE PI VERSION AS A PDF (20270116000000) ─────────────────────────────────
@@ -60,12 +61,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const submissionId = order.source_order_submission_id
 
   const { data: versionRow } = await authClient
-    .from('order_pi_versions').select('id, order_id, submission_id, version_number, status').eq('id', versionId).maybeSingle()
-  const version = versionRow as { order_id: string; submission_id: string; version_number: number; status: string } | null
+    .from('order_pi_versions').select('id, order_id, submission_id, version_number, status, pdf_order_number')
+    .eq('id', versionId).maybeSingle()
+  const version = versionRow as {
+    order_id: string; submission_id: string; version_number: number; status: string; pdf_order_number: string | null
+  } | null
   // THIS Order's version of THIS Order's PI — pictures are then read only
   // from that PI's own image folder.
   if (!version || version.order_id !== orderId || version.submission_id !== submissionId) {
     return fail(404, 'NOT_FOUND', 'This PI version could not be found.')
+  }
+
+  // The Order number THIS version prints, as stored on it (20270201000000) —
+  // "526" until 20270202000000 switches new versions to "0526" — never re-derived from the
+  // Order, so a PDF already sent reads the same every time it is opened. The
+  // column is NOT NULL; if it ever reads empty, refuse rather than guess.
+  const orderNumber = piVersionPdfOrderNumber(version.pdf_order_number)
+  if (!orderNumber) {
+    return fail(500, 'PI_PDF_ORDER_NUMBER_MISSING', 'This PI version has no Order number, so its PDF cannot be produced. Please report it.')
   }
 
   const detail = await authClient.rpc('order_pi_version_detail', { p_version_id: versionId })
@@ -76,8 +89,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!admin.ok) return fail(500, 'SERVER_NOT_CONFIGURED', 'PDFs are not configured on this deployment. Please report it.')
   const service = admin.client
 
+  // Product codes (526-BE001) still come from the Order's own number.
   const displayNumber = String(order.display_number ?? '').trim()
-  const orderNumber = formatOrderOperationalNumber(displayNumber) ?? displayNumber
 
   const { data: codeRows } = await service.from('order_product_codes')
     .select('submission_item_id, boe_sequence, source_product_code, source_item_sequence').eq('order_id', orderId)

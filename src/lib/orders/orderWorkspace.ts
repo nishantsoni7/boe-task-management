@@ -277,6 +277,8 @@ export type OrderSummaryInput = {
    * adjustments and the final Order value; this states only the starting one.
    */
   totalProductValue: string | null
+  /** Said beside it — PRODUCT_VALUE_BEFORE_DISCOUNT_DETAIL when it is the pre-discount figure. */
+  totalProductValueDetail?: string | null
 }
 
 /** What a field says when the record genuinely has no value for it. */
@@ -318,6 +320,39 @@ function field(
  * "this Order has no due date" from "this screen does not show due dates", and
  * the first of those is something somebody can go and fix.
  */
+/** Beside an Order's product value that is still the figure BEFORE its PI's discount. */
+export const PRODUCT_VALUE_BEFORE_DISCOUNT_DETAIL = 'Before discount'
+
+/**
+ * THE ORDER'S "TOTAL PRODUCT VALUE", ON THE SAME MEANING AS THE PI'S.
+ *
+ * On the PI Draft and in the Create Confirmed Order dialog, Product value is the
+ * products AFTER the discount (subtotal_after_discount). orders.total_product_value
+ * is the PI's GROSS by construction — approve_order_submission copies
+ * gross_product_amount into it, a revised PI compares against the gross, and an
+ * amendment edits it as a gross — so printing it as-is under the same caption
+ * put ₹5,00,000 on the Order beside ₹4,75,000 on its PI.
+ *
+ * NOTHING IS COMPUTED AND NOTHING STORED CHANGES:
+ *   - the Order still carries its PI's gross and the PI states a subtotal: the
+ *     PI's own stored subtotal is the Order's product value;
+ *   - the Order's figure was amended away from its PI's gross while the PI has a
+ *     discount: the Order's own figure, said to be before the discount;
+ *   - no discount, no PI, or a PI figure missing: the Order's own figure, as it was.
+ */
+export function orderProductValue(input: {
+  /** orders.total_product_value. */
+  stored: number | null
+  /** The approved PI's stored figures, or null when there is no PI read. */
+  pi: { gross: number | null; discount: number | null; subtotal: number | null } | null
+}): { amount: number | null; detail: string | null } {
+  const { stored, pi } = input
+  const discounted = !!pi && pi.discount !== null && Number.isFinite(pi.discount) && pi.discount !== 0
+  if (!discounted || stored === null) return { amount: stored, detail: null }
+  if (pi!.gross !== null && stored === pi!.gross && pi!.subtotal !== null) return { amount: pi!.subtotal, detail: null }
+  return { amount: stored, detail: PRODUCT_VALUE_BEFORE_DISCOUNT_DETAIL }
+}
+
 export function orderSummaryFields(input: OrderSummaryInput): OrderSummaryField[] {
   return [
     field('client', input.clientName),
@@ -330,7 +365,7 @@ export function orderSummaryFields(input: OrderSummaryInput): OrderSummaryField[
       detail: input.isOverdue ? 'Overdue' : null,
       tone: input.isOverdue ? 'red' : 'neutral',
     }),
-    field('product_value', input.totalProductValue),
+    field('product_value', input.totalProductValue, { detail: input.totalProductValueDetail ?? null, tone: 'neutral' }),
   ]
 }
 

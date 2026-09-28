@@ -31,8 +31,9 @@ import {
 import {
   ORDER_CONFIRMATION_LABEL,
   ORDER_CONFIRMATION_MESSAGE,
-  resolveSavedSalesperson,
+  salespersonSelectorNote,
   validateOrderConfirmation,
+  workbookSalespersonHint,
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
@@ -96,6 +97,8 @@ const approveModal = (over: {
   confirmation?: OrderConfirmationDraft
   salespeople?: readonly { id: string; name: string }[]
   confirmationField?: OrderConfirmationField | null
+  provided?: { salesperson: { id: string; name: string } | null; leadSource: string | null; confirmDate: string | null; dueDate: string | null }
+  workbookSalesperson?: string | null
 } = {}): string =>
   renderToStaticMarkup(
     <PiApproveOrderModal
@@ -117,6 +120,8 @@ const approveModal = (over: {
       }}
       onConfirmationChange={() => {}}
       confirmationField={over.confirmationField ?? null}
+      provided={over.provided}
+      workbookSalesperson={over.workbookSalesperson}
     />,
   )
 
@@ -308,76 +313,67 @@ describe('the final approval dialog', () => {
 
 // ── The salesperson the PI already names ──────────────────────────────────────
 
-describe('the salesperson is preselected from the PI, or not at all', () => {
-  test('1 · the PI\u2019s saved salesperson is preselected', () => {
-    const saved = resolveSavedSalesperson({ savedName: 'Dhruv Mehta', options: SALESPEOPLE })
-    assert.equal(saved, 'u-dhruv')
-    const html = approveModal({ confirmation: {
-      salesperson: saved, confirmDate: null, dueDate: null, leadSource: null,
-    } })
+describe('the salesperson is the one saved on the PI, or chosen by management', () => {
+  const complete = (salesperson: string | null): OrderConfirmationDraft =>
+    ({ salesperson, confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: 'reference' })
+
+  test('1 · a SAVED salesperson id is reviewed as the PI\u2019s, and is what is submitted', () => {
+    const html = approveModal({
+      provided: { ...{ salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' } },
+      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
+    })
+    assert.match(html, /data-review="salesperson"/)
+    assert.ok(text(html).includes('Dhruv Mehta') && text(html).includes('From the PI'))
+    assert.ok(!text(html).includes('Select a salesperson…'), 'a review value, not a control')
+    const check = validateOrderConfirmation(complete('u-dhruv'))
+    assert.equal(check.ok, true)
+    assert.equal(check.ok && check.values.salesperson, 'u-dhruv')
+  })
+
+  test('1b · changing a saved salesperson: the selector opens on it and says whom Sales saved', () => {
+    const html = approveModal({
+      provided: { ...{ salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' } },
+      confirmation: { salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null },
+      confirmationField: 'salesperson',
+      workbookSalesperson: 'Somebody Else',
+    })
     assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), 'u-dhruv')
+    assert.ok(text(html).includes('Sales saved Dhruv Mehta on this PI. Choose someone else only if that is wrong.'))
+    assert.ok(!text(html).includes('no saved salesperson'), 'the legacy wording is not shown for a newer PI')
+    assert.ok(!text(html).includes('Somebody Else'), 'nor the workbook hint')
   })
 
-  test('2 · the SUBMITTER is never used as the salesperson', () => {
-    // The PI names Dhruv; Nishant submitted it. Two different people, and the
-    // dropdown must carry the first.
-    const saved = resolveSavedSalesperson({ savedName: 'Dhruv Mehta', options: SALESPEOPLE })
-    assert.equal(saved, 'u-dhruv')
-    assert.notEqual(saved, 'u-nishant')
-    // And a PI naming nobody does not borrow the submitter to fill the gap.
-    assert.equal(resolveSavedSalesperson({ savedName: null, options: SALESPEOPLE }), null)
-  })
-
-  test('3 · the logged-in user is never an automatic fallback', () => {
-    // IT CANNOT REACH FOR ONE. The resolver takes a saved name and a list of
-    // options, and its body names no identity of any other kind.
-    const source = resolveSavedSalesperson.toString()
-    for (const leak of [/\bviewer\b/i, /\bsession\b/i, /\bauth\b/i,
-                        /\bcurrentUser\b/i, /\bviewerId\b/i, /\bprofile\b/i]) {
-      assert.ok(!leak.test(source), `${leak} is not an input to preselection`)
-    }
-    // And the page hands it exactly two things: the PI's name and the options.
-    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
-    const call = page.slice(page.indexOf('resolveSavedSalesperson({'))
-      .slice(0, page.slice(page.indexOf('resolveSavedSalesperson({')).indexOf('})') + 2)
-    assert.ok(call.includes('savedName: documentAuthor'), 'the PI document\u2019s own name')
-    assert.ok(call.includes('options: salespeople'))
-    assert.ok(!/viewerId|session|profile|submitterName/.test(call),
-      'no identity of the reader or the submitter is in reach of it')
-
-    // Nor does it fall back to the only option, or the first one.
-    assert.equal(resolveSavedSalesperson({ savedName: '', options: [SALESPEOPLE[0]] }), null)
-    assert.equal(resolveSavedSalesperson({ savedName: 'Somebody Else', options: SALESPEOPLE }), null)
-  })
-
-  test('4 · a name that cannot be matched EXACTLY leaves the field unselected', () => {
-    for (const unmatched of ['D. Mehta', 'Dhruv', 'Mehta', 'Dhruv M', 'Dhruvv Mehta', '—']) {
-      assert.equal(resolveSavedSalesperson({ savedName: unmatched, options: SALESPEOPLE }), null,
-        `"${unmatched}" must not be guessed into a person`)
-    }
-    // Case and stray whitespace are normalised — same person, not a guess.
-    assert.equal(resolveSavedSalesperson({ savedName: '  dhruv   mehta ', options: SALESPEOPLE }), 'u-dhruv')
-    // Two people of the same name is an ambiguity a machine must not resolve.
-    assert.equal(resolveSavedSalesperson({
-      savedName: 'Dhruv Mehta',
-      options: [...SALESPEOPLE, { id: 'u-other', name: 'Dhruv Mehta' }],
-    }), null)
-  })
-
-  test('4b · an unmatched salesperson keeps the existing required validation', () => {
-    const draft: OrderConfirmationDraft = {
-      salesperson: resolveSavedSalesperson({ savedName: 'D. Mehta', options: SALESPEOPLE }),
-      confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: 'reference',
-    }
-    assert.equal(draft.salesperson, null)
-    const check = validateOrderConfirmation(draft)
+  test('2 · a LEGACY PI whose workbook name EXACTLY matches one person: nobody is selected', () => {
+    // "Dhruv Mehta" is exactly, uniquely in the list — the case the old
+    // name-matching preselected. It is now a hint, and management must choose.
+    assert.equal(SALESPEOPLE.filter(p => p.name === 'Dhruv Mehta').length, 1)
+    const html = approveModal({ provided: { salesperson: null, leadSource: null, confirmDate: null, dueDate: null }, workbookSalesperson: workbookSalespersonHint('  Dhruv   Mehta ') })
+    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '', 'the selector opens unselected')
+    assert.ok(text(html).includes('This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.'))
+    assert.ok(text(html).includes('The workbook names “Dhruv Mehta” — a hint only.'))
+    for (const person of SALESPEOPLE) assert.ok(html.includes(`value="${person.id}"`), `${person.name} is choosable`)
+    // And Create Confirmed Order is refused until someone is chosen.
+    const check = validateOrderConfirmation(complete(null))
     assert.equal(check.ok, false)
     assert.equal(check.ok === false && check.field, 'salesperson')
     assert.equal(check.ok === false && check.message, ORDER_CONFIRMATION_MESSAGE.salesperson)
-    // And the dialog draws it as an empty, still-required control.
-    const html = approveModal({ confirmation: draft })
-    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '')
-    assert.ok(text(html).includes('Select a salesperson…'))
+  })
+
+  test('3 · the page selects only the saved id — never a name match, the viewer or the submitter', () => {
+    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    assert.ok(page.includes('salesperson: salesDetails.salesperson_id ?? null,'))
+    assert.ok(page.includes('workbookSalesperson={workbookSalespersonHint(documentAuthor)}'), 'the name reaches the dialog only as a hint')
+    assert.ok(!page.includes('resolveSavedSalesperson'), 'the name matcher is gone')
+    assert.ok(!/salesperson:\s*(viewerId|profile|submitter)/.test(page))
+    const lib = readFileSync('src/lib/orders/orderConfirmation.ts', 'utf8')
+    assert.ok(!/export function resolveSavedSalesperson/.test(lib))
+  })
+
+  test('4 · the hint is the workbook\u2019s name, tidied, and nothing for a blank or a dash', () => {
+    assert.equal(workbookSalespersonHint('  Dhruv   Mehta '), 'Dhruv Mehta')
+    for (const blank of [null, undefined, '', '   ', '—']) assert.equal(workbookSalespersonHint(blank), null)
+    assert.equal(salespersonSelectorNote({ savedName: null, workbookName: null }),
+      'This PI has no saved salesperson. Choose the person responsible; nobody is selected for you.')
   })
 
   test('5 · the dropdown stays editable, with every option still offered', () => {

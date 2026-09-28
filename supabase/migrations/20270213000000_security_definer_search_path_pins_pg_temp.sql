@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270125000000 — every SECURITY DEFINER in public pins pg_temp last
+-- 20270213000000 — every SECURITY DEFINER in public pins pg_temp last
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- AN AUDIT, AND ITS MECHANICAL RESULT. A SELECT-only read of production on

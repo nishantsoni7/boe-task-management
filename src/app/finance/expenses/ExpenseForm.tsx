@@ -29,8 +29,8 @@ import type { createClient } from '@/lib/supabase/client'
 import {
   EXPENSE_PAYMENT_MODES,
   categoryNameProblem,
-  emptyExpenseForm,
-  expenseFormFromRow,
+  emptyExpenseFormWithSource,
+  expenseFormFromRowWithSource,
   expenseWritePayload,
   findCategoryByName,
   normalizeCategoryName,
@@ -52,6 +52,8 @@ import {
   resolveVoiceParse,
 } from '@/lib/finance/expenseVoice'
 import { useExpenseSpeech } from './useExpenseSpeech'
+import { EXPENSE_PAID_FROM_OPTIONS, billFileProblem } from '@/lib/finance/expenseReimbursements'
+import { ExpenseBills, PendingBillPicker, UploadStatusList, uploadExpenseBill } from './ExpenseBills'
 
 type Supabase = ReturnType<typeof createClient>
 
@@ -75,7 +77,12 @@ export type ExpenseSaveOutcome = {
   paidTo: string
   /** Set by 'complete': the draft that has just left the Needs Details inbox. */
   draftId?: string
+  /** Bills chosen on the form that could not be uploaded after the save. */
+  billsFailed?: number
 }
+
+/** A person who can be named as the payer. */
+export type ExpensePayer = { id: string; name: string }
 
 export function ExpenseForm({
   supabase,
@@ -91,6 +98,8 @@ export function ExpenseForm({
   /** Offered on the list modal, where "add another" is the natural next act. */
   showSaveAndAddAnother = false,
   autoFocus = false,
+  payers = [],
+  canRecordForOthers = false,
 }: {
   supabase: Supabase
   userId: string
@@ -114,6 +123,13 @@ export function ExpenseForm({
   onCancel: () => void
   showSaveAndAddAnother?: boolean
   autoFocus?: boolean
+  /** Who may be named as the payer. Only offered when canRecordForOthers. */
+  payers?: readonly ExpensePayer[]
+  /**
+   * finance.manage: may record an expense as paid by somebody else. The
+   * database's expenses_guard_reimbursement refuses it for anybody else.
+   */
+  canRecordForOthers?: boolean
 }) {
   // The reader's OWN date, not UTC's — between midnight and 05:30 IST the two
   // differ, and a form that opened on yesterday every morning would be worse
@@ -126,9 +142,20 @@ export function ExpenseForm({
   // or not — remains editable, because a parse that got the payee wrong must be
   // as easy to fix as an empty box is to fill.
   const [form, setForm] = useState<ExpenseFormState>(() =>
-    expense ? expenseFormFromRow(expense)
-      : draft ? expenseFormFromDraft(draft, todayIso)
-        : emptyExpenseForm(todayIso))
+    expense ? expenseFormFromRowWithSource(expense, userId)
+      : draft ? { ...expenseFormFromDraft(draft, todayIso), paidFrom: '', paidBy: userId }
+        : emptyExpenseFormWithSource(todayIso, userId))
+
+  // ── HOW IT WAS PAID ──
+  // Required on every NEW expense. An older expense whose source was never
+  // recorded may be corrected without choosing one — the form does not force a
+  // guess — but once a source is recorded it stays recorded.
+  const requirePaidFrom = mode !== 'edit' || !!expense?.paid_from
+  // A REIMBURSED EXPENSE keeps what was paid back: amount, source and payer are
+  // locked here, and the database's guard refuses them whatever reaches it.
+  const reimbursed = mode === 'edit' && !!expense?.reimbursement_id
+  const [pendingBills, setPendingBills] = useState<File[]>([])
+  const [billUploads, setBillUploads] = useState<{ key: string; name: string; state: 'uploading' | 'done' | 'failed'; message?: string }[]>([])
 
   // Validation appears on the first Save attempt, not while somebody is still
   // typing the first character of a field they have just reached.
@@ -138,7 +165,7 @@ export function ExpenseForm({
   const [addingCategory, setAddingCategory] = useState(false)
   const [categoryPrefill, setCategoryPrefill] = useState('')
 
-  const errors: ExpenseFormErrors = validateExpenseForm(form, todayIso)
+  const errors: ExpenseFormErrors = validateExpenseForm(form, todayIso, { requirePaidFrom })
   const shown: ExpenseFormErrors = submitted ? errors : {}
   const valid = Object.keys(errors).length === 0
 
@@ -212,7 +239,8 @@ export function ExpenseForm({
   const submit = async (andAnother: boolean) => {
     setSubmitted(true)
     if (inFlight.current) return
-    if (Object.keys(validateExpenseForm(form, todayIso)).length > 0) return
+    if (Object.keys(validateExpenseForm(form, todayIso, { requirePaidFrom })).length > 0) return
+    if (pendingBills.some(f => billFileProblem(f) !== null)) return
 
     inFlight.current = true
     setSaving(true)
@@ -225,6 +253,9 @@ export function ExpenseForm({
 
     try {
       let error: WriteError | null = null
+      // The id of the expense just created, so the bills chosen on the form can
+      // be uploaded under it. Unknown for a correction.
+      let savedExpenseId: string | null = null
 
       if (mode === 'complete') {
         // ── ONE SAFE TRANSACTION ──
@@ -238,7 +269,7 @@ export function ExpenseForm({
         // finds it finalized and returns the FIRST call's expense id, writing
         // nothing. Neither a double tap nor a resent request can produce two
         // expenses for one payment.
-        const { error: rpcError } = await supabase.rpc('finalize_expense_draft', {
+        const { data: finalized, error: rpcError } = await supabase.rpc('finalize_expense_draft', {
           p_draft_id: draft!.id,
           p_expense_date: payload.expense_date,
           p_amount: payload.amount,
@@ -246,12 +277,18 @@ export function ExpenseForm({
           p_paid_to: payload.paid_to,
           p_category_id: payload.category_id,
           p_remark: payload.remark,
+          p_paid_from: payload.paid_from ?? null,
+          p_paid_by: payload.paid_by ?? null,
         })
         error = rpcError
+        savedExpenseId = (finalized as { expense_id?: string } | null)?.expense_id ?? null
       } else if (mode === 'add') {
-        const { error: insertError } = await supabase
+        const { data: inserted, error: insertError } = await supabase
           .from('expenses').insert({ ...payload, created_by: userId })
+          .select('id')
+          .single()
         error = insertError
+        savedExpenseId = (inserted as { id?: string } | null)?.id ?? null
       } else {
         // updated_by is sent on EVERY correction because the database's WITH
         // CHECK requires it to be the caller — a correction always names its
@@ -287,9 +324,30 @@ export function ExpenseForm({
         setSaveError(friendlyWriteError(error))
         return
       }
+
+      // ── THE BILLS CHOSEN ON THE FORM, now that the expense exists ──
+      // The expense is already saved; a bill that fails to upload does not undo
+      // it. The person is told how many failed and can add them from the
+      // expense's details.
+      if (savedExpenseId && pendingBills.length > 0) {
+        const statuses = pendingBills.map(f => ({ key: crypto.randomUUID(), name: f.name, state: 'uploading' as const }))
+        setBillUploads(statuses)
+        let failed = 0
+        for (let i = 0; i < pendingBills.length; i++) {
+          const message = await uploadExpenseBill(supabase, savedExpenseId, pendingBills[i], userId)
+          if (message) failed++
+          setBillUploads(prev => prev.map(u => u.key === statuses[i].key
+            ? { ...u, state: message ? 'failed' : 'done', message: message ?? undefined }
+            : u))
+        }
+        outcome.billsFailed = failed
+      }
+
       onSaved(outcome, andAnother)
       if (andAnother) {
-        setForm(emptyExpenseForm(todayIso))
+        setForm(emptyExpenseFormWithSource(todayIso, userId))
+        setPendingBills([])
+        setBillUploads([])
         setSubmitted(false)
         setTranscript(null)
         setVoiceNotes([])
@@ -468,7 +526,12 @@ export function ExpenseForm({
           {/* The SHARED Finance amount input: Indian grouping on blur, a numeric
               keypad on a phone, and an over-precise figure kept exactly as typed
               and refused rather than rounded. */}
-          <AmountInput value={form.amount} onChange={set('amount')} />
+          {reimbursed ? (
+            <input className="boe-input" type="text" value={form.amount} readOnly disabled
+              aria-describedby="expense-reimbursed-lock" style={{ width: '100%' }} />
+          ) : (
+            <AmountInput value={form.amount} onChange={set('amount')} />
+          )}
         </FormField>
       </div>
 
@@ -573,6 +636,118 @@ export function ExpenseForm({
             ))}
           </select>
         </FormField>
+      </div>
+
+      {/* ── HOW IT WAS PAID ──
+          Nothing is preselected on a new expense: a wrong default would
+          silently create, or silently hide, a reimbursement. */}
+      <fieldset
+        data-testid="paid-from-choice"
+        style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}
+        aria-describedby={reimbursed ? 'expense-reimbursed-lock' : undefined}
+      >
+        <legend style={{
+          fontSize: '11px', fontWeight: 600, color: colors.muted,
+          textTransform: 'uppercase', letterSpacing: '0.05em', padding: 0, marginBottom: '4px',
+        }}>
+          How was it paid?
+          {requirePaidFrom && <span style={{ color: colors.red, marginLeft: '2px' }} aria-hidden="true">*</span>}
+        </legend>
+        <div className="expense-form-row">
+          {EXPENSE_PAID_FROM_OPTIONS.map(option => {
+            const checked = form.paidFrom === option.value
+            return (
+              <label
+                key={option.value}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '8px', minHeight: '44px',
+                  padding: '9px 11px', borderRadius: '10px', cursor: saving || reimbursed ? 'default' : 'pointer',
+                  border: `1px solid ${checked ? colors.primary : colors.borderSoft}`,
+                  background: checked ? colors.raised : colors.base,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="expense-paid-from"
+                  value={option.value}
+                  checked={checked}
+                  disabled={saving || reimbursed}
+                  onChange={() => setForm(prev => ({ ...prev, paidFrom: option.value, paidBy: prev.paidBy || userId }))}
+                  style={{ marginTop: '2px' }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{option.label}</span>
+                  <span style={{ fontSize: '11.5px', color: colors.muted }}>{option.hint}</span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+        {mode === 'edit' && !expense?.paid_from && !form.paidFrom && (
+          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            Not recorded for this older expense. Leave it, or choose one if you know.
+          </div>
+        )}
+        {shown.paidFrom && <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>{shown.paidFrom}</div>}
+      </fieldset>
+
+      {form.paidFrom === 'personal' && (
+        <FormField label="Paid by" htmlFor="expense-paid-by" required error={shown.paidBy}>
+          {canRecordForOthers && !reimbursed ? (
+            <select
+              id="expense-paid-by"
+              className="boe-input"
+              value={form.paidBy ?? ''}
+              disabled={saving}
+              onChange={e => set('paidBy')(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              {!payers.some(p => p.id === form.paidBy) && form.paidBy && (
+                <option value={form.paidBy}>{form.paidBy === userId ? 'Me' : 'Current payer'}</option>
+              )}
+              {payers.map(p => (
+                <option key={p.id} value={p.id}>{p.id === userId ? `${p.name} (me)` : p.name}</option>
+              ))}
+            </select>
+          ) : (
+            <div id="expense-paid-by" style={{ fontSize: '13px', color: colors.primary, padding: '6px 0' }}>
+              {form.paidBy === userId ? 'Me' : (payers.find(p => p.id === form.paidBy)?.name ?? 'Another person')}
+            </div>
+          )}
+        </FormField>
+      )}
+
+      {reimbursed && (
+        <div id="expense-reimbursed-lock" role="note" style={{
+          padding: '9px 12px', borderRadius: '8px', border: `1px solid ${colors.border}`,
+          background: colors.raised, fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+        }}>
+          This expense has been reimbursed, so its amount and who paid it are locked. Finance can reverse the
+          reimbursement if it was recorded wrongly.
+        </div>
+      )}
+
+      {/* ── BILLS ── Optional. On a new expense they are uploaded right after it
+          is saved; on a correction they are managed in place. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Bill / invoice <span style={{ textTransform: 'none', letterSpacing: 0, marginLeft: '6px', fontWeight: 500 }}>Optional — PDF or photo, up to 10 MB each</span>
+        </span>
+        {mode === 'edit' && expense ? (
+          <ExpenseBills
+            supabase={supabase}
+            expenseId={expense.id}
+            userId={userId}
+            mayAttach
+            reimbursed={reimbursed}
+            personName={id => id === userId ? 'You' : (payers.find(p => p.id === id)?.name ?? '—')}
+          />
+        ) : (
+          <>
+            <PendingBillPicker files={pendingBills} onChange={setPendingBills} disabled={saving} />
+            <UploadStatusList uploads={billUploads} />
+          </>
+        )}
       </div>
 
       {saveError && (
@@ -825,6 +1000,11 @@ type WriteError = { code?: string; message?: string }
  * reported as itself rather than paraphrased into a guess.
  */
 export function friendlyWriteError(error: WriteError): string {
+  // The database requires a payment source on every new expense
+  // (20270211120000). The form asks first; this is the answer if it is bypassed.
+  if (error.message?.includes('EXPENSE_PAYMENT_SOURCE_REQUIRED')) {
+    return 'Choose whether this was paid from a company account or personally.'
+  }
   if (error.code === '42501') {
     return 'You do not have permission to record or correct an expense. Ask an administrator for Finance access.'
   }

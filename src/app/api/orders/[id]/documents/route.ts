@@ -28,7 +28,6 @@ import { ORDER_FILES_BUCKET, PI_DRAFT_ITEM_COLUMNS, type PersistedItem } from '@
 import { ORDER_PI_HANDOFF_COLUMNS, type OrderPiRow } from '@/lib/orders/orderPiHandoff'
 import { isCanonicalPiImageKey } from '@/lib/orders/piImageKey'
 import {
-  formatOrderOperationalNumber,
   orderProductCodesByItemId,
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
@@ -344,10 +343,11 @@ async function generate(input: {
 
   if (!order?.source_order_submission_id) return { ok: false, code: 'NO_SOURCE_PI' }
   const submissionId = order.source_order_submission_id
-  // The stored display_number keeps its four-digit, zero-padded shape; the
-  // documents BOE hands to a client show the operational number (20261124000000).
-  const orderNumber = formatOrderOperationalNumber(String(order.display_number ?? '').trim())
-    ?? String(order.display_number ?? '').trim()
+  // THE ORDER REFERENCE IS THE STORED FOUR-DIGIT NUMBER (0526), as on every
+  // Orders screen (2026-09-27). Product codes keep 526-BE001. Each generation
+  // writes new, never-occupied keys (upsert:false), so documents already issued
+  // under the earlier 526 form are never rewritten.
+  const orderNumber = String(order.display_number ?? '').trim()
   if (orderNumber === '') return { ok: false, code: 'NO_SOURCE_PI' }
 
   const [{ data: piRow }, { data: workbookRow }, { data: itemRows }, { data: imageRows }, { data: codeRows }] =
