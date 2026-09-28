@@ -1046,6 +1046,7 @@ describe('the applied migrations are frozen', () => {
       '20270205120000_expense_reimbursements_and_bills.sql',
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
     ])
   })
 
@@ -1343,6 +1344,7 @@ describe('the applied migrations are frozen', () => {
       '20270205120000_expense_reimbursements_and_bills.sql',
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

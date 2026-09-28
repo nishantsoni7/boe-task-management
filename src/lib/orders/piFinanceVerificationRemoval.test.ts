@@ -535,6 +535,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       '20270205120000_expense_reimbursements_and_bills.sql',
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
     ])
 
     const previous = lf(readFileSync(

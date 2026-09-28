@@ -1000,6 +1000,11 @@ type WriteError = { code?: string; message?: string }
  * reported as itself rather than paraphrased into a guess.
  */
 export function friendlyWriteError(error: WriteError): string {
+  // The database requires a payment source on every new expense
+  // (20270211120000). The form asks first; this is the answer if it is bypassed.
+  if (error.message?.includes('EXPENSE_PAYMENT_SOURCE_REQUIRED')) {
+    return 'Choose whether this was paid from a company account or personally.'
+  }
   if (error.code === '42501') {
     return 'You do not have permission to record or correct an expense. Ask an administrator for Finance access.'
   }
