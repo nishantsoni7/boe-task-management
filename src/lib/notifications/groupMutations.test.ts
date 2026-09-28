@@ -537,6 +537,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
       '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
     ],'the activity-link column and the three modules added by later work')
