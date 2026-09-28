@@ -268,14 +268,14 @@ describe('a pending payment can be verified', () => {
   })
 })
 
-describe('nobody decides a payment they recorded, unless an admin', () => {
-  test('a non-admin who recorded the payment is barred', () => {
+describe('nobody decides a payment they recorded, unless they may verify their own (Control Center)', () => {
+  test('someone without finance.verify_own_payment who recorded the payment is barred', () => {
     assert.equal(isOwnPaymentDecision('u-1', 'u-1', false), true)
     assert.equal(isOwnPaymentDecision('u-1', 'u-1', null), true)
     assert.equal(isOwnPaymentDecision('u-1', 'u-1', undefined), true)
   })
 
-  test('an admin keeps the established override', () => {
+  test('a holder of finance.verify_own_payment (an admin holds it) is not barred', () => {
     assert.equal(isOwnPaymentDecision('u-1', 'u-1', true), false)
   })
 
@@ -288,11 +288,11 @@ describe('nobody decides a payment they recorded, unless an admin', () => {
 
   test('every Finance entry point into a decision asks it', () => {
     const SOURCE = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
-    assert.ok(SOURCE.includes('&& !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)'),
+    assert.ok(SOURCE.includes('&& !isOwnPaymentDecision(r.submitted_by, userId, mayDecideOwnPayments)'),
       'the details modal Verify Payment control')
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin))"),
+    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment))"),
       'the row click into the review dialog')
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, isAdmin))"),
+    assert.ok(SOURCE.includes("if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, caps.canDecideOwnPayment))"),
       'a deep link into the review dialog')
     assert.equal((SOURCE.match(/setReviewRequest\((r|match)\)/g) ?? []).length, 2,
       'and there is no third way into the review dialog')

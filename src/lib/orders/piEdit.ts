@@ -413,6 +413,24 @@ export function priceEdit(current: PiContent, state: PiEditState): PricedEdit {
   }
 }
 
+/**
+ * The product figures Edit PI shows under its commercial fields. "Product value"
+ * is the goods AFTER the discount — the subtotal — as on the PI Draft, the
+ * approval dialog and the Order page; with a discount the gross is shown too,
+ * named as the figure before it. Reads priceEdit's figures and computes nothing:
+ * unchanged money is the PI's stored subtotal, re-priced money is priceEdit's.
+ */
+export function editProductFigures(commercial: Pick<PricedEdit['commercial'], 'gross_product_amount' | 'discount_amount' | 'subtotal_after_discount'>):
+  { key: 'productValue' | 'beforeDiscount'; label: string; amount: number | null }[] {
+  const figures: { key: 'productValue' | 'beforeDiscount'; label: string; amount: number | null }[] = [
+    { key: 'productValue', label: 'Product value', amount: commercial.subtotal_after_discount },
+  ]
+  if (commercial.discount_amount !== 0) {
+    figures.push({ key: 'beforeDiscount', label: DIFF_FIELD_LABELS.gross_product_amount, amount: commercial.gross_product_amount })
+  }
+  return figures
+}
+
 // ── The proposal the server stores ────────────────────────────────────────────
 
 export type PiEditProposal = {
@@ -592,7 +610,8 @@ export const DIFF_FIELD_LABELS: Record<string, string> = {
   fabric_responsibility: 'Fabric',
   billing_percentage: 'Billing %',
   discount_amount: 'Discount',
-  gross_product_amount: 'Product value',
+  // The gross. "Product value" alone means the amount after the discount.
+  gross_product_amount: 'Product value before discount',
   total_before_gst: 'Total before GST',
   gst_amount: 'GST',
   grand_total: 'Grand total',
@@ -726,4 +745,18 @@ export function summarizeChanges(diff: PiDiff, formatMoney: (n: number) => strin
 /** Whether an edit changes anything at all — an empty proposal is refused. */
 export function editChangesSomething(diff: PiDiff): boolean {
   return diff.fields.length + diff.added.length + diff.removed.length + diff.changed.length > 0
+}
+
+/**
+ * THE TWO DATES NO CLIENT DOCUMENT PRINTS (20270122000000). On a confirmed
+ * Order, an edit that changes ONLY these is not a new PI version: the route
+ * amends them through update_order_submission_schedule_terms — no Operations
+ * re-acceptance, no alignment reset, no superseded documents.
+ */
+export const UNPRINTED_DATE_KEYS: readonly string[] = ['order_confirmation_date', 'due_date']
+
+export function isDatesOnlyEdit(diff: PiDiff): boolean {
+  return diff.fields.length > 0
+    && diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0
+    && diff.fields.every(f => UNPRINTED_DATE_KEYS.includes(f.key))
 }

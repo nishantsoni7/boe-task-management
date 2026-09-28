@@ -15,7 +15,8 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { diffPi, normalizePi, type PiContent } from '@/lib/orders/piEdit'
 import { EDIT_PI_PROPOSE_NOTE, EDIT_PI_WORKBOOK_NOTE, PiDiffView } from './PiEditor'
-import { VERSION_STATUS_LABEL, normalizeVersionContent, versionSummary, type PiVersionRow } from './PiVersionsPanel'
+import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, VERSION_STATUS_LABEL, isOpenRevision, normalizeVersionContent, versionSummary, type PiVersionRow } from './PiVersionsPanel'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const content = (over: { name?: string; qty?: number; rate?: number; city?: string; extra?: boolean } = {}): PiContent => ({
   submission: { client_name: 'Meridian Hotels', client_city: over.city ?? 'Coimbatore', grand_total: (over.qty ?? 10) * (over.rate ?? 1000) + (over.extra ? 5000 : 0) },
@@ -102,6 +103,42 @@ describe('what the editor promises', () => {
     assert.ok(page.includes('canEditBilling={false}') && page.includes('canEditDetails={false}'))
     assert.ok(page.includes('onEditTerms={null}'))
     assert.ok(page.includes('const canEditProducts = false'))
-    assert.ok(page.includes('<PiEditor supabase={supabase} mode="apply"'))
+    // The one editor is a page: every entry navigates to it.
+    assert.ok(page.includes('router.push(draftEditPiPageHref(submissionId))'))
+    const route = readFileSync('src/app/orders/drafts/[submissionId]/edit-pi/page.tsx', 'utf8')
+    assert.ok(route.includes('mode="apply"'))
+  })
+})
+
+describe('PI history — the versions popup that replaced the standalone strip', () => {
+  const base = {
+    supabase: {} as SupabaseClient, orderId: 'o1', submissionId: 's1', isAdmin: false,
+    onClose: () => {}, editing: false, onEdit: () => {}, onEditClose: () => {},
+    notice: null, onNotice: () => {}, onChanged: () => {},
+  }
+  test('closed: nothing on the page — no strip, no request', () => {
+    assert.equal(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open={false} />), '')
+  })
+  test('open: a labelled dialog with its close control, and Edit PI only for somebody allowed to propose', () => {
+    const html = renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open />)
+    assert.match(html, /role="dialog" aria-modal="true" aria-label="PI history"/)
+    assert.match(html, /aria-label="Close"/)
+    assert.match(html, /Edit PI/)
+    assert.doesNotMatch(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit={false} open />), /Edit PI/)
+  })
+  test('a revision waiting for a decision disables Edit PI and says why', () => {
+    const html = renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open hasOpenRevision />)
+    assert.match(html, /<button type="button" class="boe-btn boe-btn-ghost order-status-action" disabled=""/)
+    assert.ok(html.includes(EDIT_PI_BLOCKED_NOTE))
+    assert.ok(isOpenRevision('pending') && isOpenRevision('admin_approved'))
+    assert.ok(!isOpenRevision('approved') && !isOpenRevision('rejected') && !isOpenRevision('superseded'))
+  })
+  test('the Order page opens it from Documents; the standalone PI versions strip is gone', () => {
+    const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+    assert.ok(!page.includes('<PiVersionsPanel'))
+    assert.ok(page.includes('<PiVersionHistory'))
+    assert.ok(page.includes('piVersions={piVersionsSource ? {'))
+    const workspace = readFileSync('src/app/orders/[id]/OrderStatusWorkspace.tsx', 'utf8')
+    assert.ok(!workspace.includes('section[aria-label="PI versions"]'), 'nothing scrolls to a section that no longer exists')
   })
 })

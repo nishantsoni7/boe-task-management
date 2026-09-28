@@ -69,8 +69,9 @@ describe('Finance controls ask the capability helper', () => {
       'the review router must not be role-gated',
     )
     // isOwnPaymentDecision is not a role gate: it bars only the person who
-    // recorded the payment, and exempts admins exactly as the database does.
-    assert.ok(source.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin))"))
+    // recorded the payment, and exempts holders of finance.verify_own_payment
+    // exactly as the database does (20270120000000).
+    assert.ok(source.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, caps.canDecideOwnPayment))"))
     // And the modal the router opens is still gated on the same capability.
     assert.ok(source.includes('mayApprovePayments={caps.canApprovePayment}'))
   })

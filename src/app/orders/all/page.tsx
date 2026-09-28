@@ -10,7 +10,6 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { formatOrderOperationalNumber } from '@/lib/orders/orderProductCodes'
 import {
   ORDER_UNREAD_TYPES,
   unreadUpdateCounts,
@@ -748,7 +747,8 @@ export default function AllOrdersPage() {
             {visible.map(o => {
               const overdue = isOverdue(o.due_date, o.status)
               const updateLabel = unreadUpdateLabel(unread.get(o.id) ?? 0)
-              const number = formatOrderOperationalNumber(o.display_number) ?? o.display_number
+              // The stored four-digit number (0526), as every Orders screen shows it.
+              const number = o.display_number
               return (
                 <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
                   <div className="orders-list-card-top">
@@ -850,7 +850,7 @@ export default function AllOrdersPage() {
                           onClick={e => e.stopPropagation()}
                           onFocus={() => router.prefetch(`/orders/${o.id}`)}
                         >
-                          {formatOrderOperationalNumber(o.display_number) ?? o.display_number}
+                          {o.display_number}
                         </Link>
                         {updateLabel && (
                           <span className="order-update-badge">

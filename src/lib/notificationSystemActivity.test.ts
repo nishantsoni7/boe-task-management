@@ -343,6 +343,13 @@ describe('the read side excludes system types too', () => {
     // reviewer's decision notice. It installs no trigger on notifications and
     // schedules nothing.
     const REVISION_IN_FORCE = '20270116000000_order_pi_revision_in_force_at_admin_approval.sql'
+    // An eleventh, 20270120000000, makes the flow's Admin decisions ask Control
+    // Center permissions. Its restated Orders functions keep their existing
+    // writes (only who may act, and which holders are told, changed), and
+    // complete_payment_entry tells the other verify_own_payment holders, for
+    // information, that a payment was recorded and verified — a Finance type,
+    // inside that person's own Record Payment action. No trigger, nothing scheduled.
+    const ADMIN_DECISIONS = '20270120000000_order_submission_admin_decisions_ask_permissions.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -354,7 +361,19 @@ describe('the read side excludes system types too', () => {
       DOCUMENT_SUBMISSIONS,
       REVISED_PI_PROMOTION,
       REVISION_IN_FORCE,
+      ADMIN_DECISIONS,
     ])
+    {
+      const sql = read(join(dir, ADMIN_DECISIONS))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(t => t.replace(/'|::notification_type/g, ''))
+      assert.ok(types.length >= 4, `${ADMIN_DECISIONS}: the restated Orders writes are all found`)
+      for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false, `${ADMIN_DECISIONS} writes ${t}`)
+      assert.match(sql, /\(case when v_status = 'approved_linked' then 'finance_approved_linked'\s+else 'finance_approved_suspense' end\)::notification_type/)
+      assert.equal(isSystemGeneratedNotificationType('finance_approved_linked'), false)
+      assert.equal(isSystemGeneratedNotificationType('finance_approved_suspense'), false)
+      assert.equal(/create\s+trigger\s+\w+[\s\S]{0,80}on\s+public\.notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${ADMIN_DECISIONS}: nothing is scheduled`)
+    }
     {
       const sql = read(join(dir, REVISION_IN_FORCE))
       const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
@@ -447,7 +466,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

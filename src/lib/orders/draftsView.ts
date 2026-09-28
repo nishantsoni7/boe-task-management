@@ -45,6 +45,7 @@ import {
   type PersistedFinanceVerification,
   type PersistedPiDecision,
 } from './finalApproval'
+import { PI_INTERNAL_DETAIL_COLUMNS, type PiInternalDetailsRow } from './piInternalDetails'
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -165,7 +166,10 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PersistedPiDecision & PiReservationFields & {
+export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PersistedPiDecision & PiReservationFields
+  // The app dates Sales confirms and the middleman answer (20270122000000).
+  // INTERNAL: see piInternalDetails.ts. Optional, so older fixtures still type.
+  & PiInternalDetailsRow & {
   id: string
   status: string
   client_name: string | null
@@ -257,6 +261,12 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
 
   gross_product_amount: number | string | null
   discount_amount: number | string | null
+  /**
+   * The workbook's wording beside the deduction ("Design Fee", "Discount", …),
+   * recorded from 20270122000000. Display provenance only — see discountWording.ts.
+   * Undefined on a row read before that migration; null when the row was blank.
+   */
+  discount_label?: string | null
   subtotal_after_discount: number | string | null
   fabric_cost: number | string | null
   fabric_cost_meaning: string | null
@@ -346,11 +356,12 @@ export type PersistedItemImage = {
 export const PI_DRAFT_LIST_COLUMNS = [
   'id', 'status', 'client_name', 'bill_to_name',
   // WHAT THE ORDER IS WORTH, BOTH WAYS, because they answer different questions
-  // and the gap between them is itself information. gross_product_amount is the
-  // goods; grand_total is what the client is billed once discount, fabric,
-  // packing, transport and GST are applied. A row showing only one of them
-  // leaves a reader to guess which.
-  'gross_product_amount', 'grand_total',
+  // and the gap between them is itself information. subtotal_after_discount is
+  // the goods after the discount — "Product value", as the PI Draft, the approval
+  // dialog and the Order page state it; grand_total is what the client is billed
+  // once fabric, packing, transport and GST are added. A row showing only one of
+  // them leaves a reader to guess which.
+  'subtotal_after_discount', 'grand_total',
   // WHO AUTHORED THE PI, AND WHEN — read out of the workbook itself, not from
   // any app user. A PI is usually written by one person and uploaded by another,
   // and a list that names only the uploader cannot answer "whose order is this?"
@@ -454,6 +465,12 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // record. The same deployment ordering `billing_percentage` needed from
   // 20260923000000, for the same reason.
   ...PI_RESERVATION_COLUMNS,
+  // The workbook's wording for the deduction row, and the INTERNAL details
+  // (20270122000000) — read here, and ONLY here and on no client-facing
+  // select. 20270122000000 MUST BE APPLIED BEFORE THIS SHIPS, for the reason
+  // given above for PI_RESERVATION_COLUMNS.
+  'discount_label',
+  ...PI_INTERNAL_DETAIL_COLUMNS,
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [
@@ -523,8 +540,8 @@ export type PiDraftListEntry = {
   uploader: string
   /** When it was uploaded, in Indian business time. */
   uploadedAt: string
-  /** The goods, before discount, other costs and GST. "—" when the workbook
-   *  printed no product figure. */
+  /** "Product value": the goods after the discount, before other costs and GST —
+   *  the stored subtotal_after_discount, never recomputed. "—" when none is stored. */
   productValue: string
   /**
    * What the client is billed, or GRAND_TOTAL_UNAVAILABLE when no total is
@@ -669,7 +686,7 @@ export function describeDraftListEntry(
     authoredOn: formatDateOnly(row.creation_date),
     uploader: text(names?.uploader ?? null) ?? '—',
     uploadedAt: formatSavedAt(row.created_at),
-    productValue: formatMoney(toNumber(row.gross_product_amount)),
+    productValue: formatMoney(toNumber(row.subtotal_after_discount)),
     grandTotal: toNumber(row.grand_total) === null ? GRAND_TOTAL_UNAVAILABLE : formatMoney(toNumber(row.grand_total)),
     grandTotalMissing: toNumber(row.grand_total) === null,
     reference: text(row.draft_reference ?? null) ?? '—',

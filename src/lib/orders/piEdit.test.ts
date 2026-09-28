@@ -11,10 +11,13 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   buildEditProposal,
+  DIFF_FIELD_LABELS,
   diffPi,
   editChangesSomething,
+  editProductFigures,
   initialEditState,
   newEditItem,
   normalizePi,
@@ -271,5 +274,58 @@ describe('an item number once used on an Order is never handed out again (202701
     s.items[1].removed = true
     s.items.push({ ...newEditItem('new-1'), product_name: 'Lamp', quantity: '1', cost_per_piece: '4000' })
     assert.deepEqual(retiredSequenceProblems(s, current(), everUsed), [])
+  })
+})
+describe('Edit PI states Product value as the PI Draft does — after the discount', () => {
+  const discounted = (): PiContent => {
+    const c = current()
+    // Gross 3,00,000 less 20,000; the stored figures are the workbook's own.
+    Object.assign(c.submission, { discount_amount: 20000, subtotal_after_discount: 280000, total_before_gst: 285000, gst_amount: 51300, grand_total: 336300 })
+    return c
+  }
+
+  test('no discount: one figure, Product value, the stored subtotal', () => {
+    const priced = priceEdit(current(), initialEditState(current()))
+    assert.deepEqual(editProductFigures(priced.commercial), [{ key: 'productValue', label: 'Product value', amount: 300000 }])
+    assert.equal(priced.commercial.total_before_gst, 305000, 'Total before GST is untouched')
+  })
+
+  test('a discount, money unchanged: the stored subtotal, then the gross named as before the discount', () => {
+    const priced = priceEdit(discounted(), initialEditState(discounted()))
+    assert.equal(priced.moneyChanged, false)
+    assert.deepEqual(editProductFigures(priced.commercial), [
+      { key: 'productValue', label: 'Product value', amount: 280000 },
+      { key: 'beforeDiscount', label: 'Product value before discount', amount: 300000 },
+    ])
+    assert.equal(priced.commercial.total_before_gst, 285000, 'the stored Total before GST, not recomputed')
+    assert.equal(priced.commercial.grand_total, 336300)
+  })
+
+  test('a discount, re-priced: priceEdit’s own subtotal, and its Total before GST as before', () => {
+    const s = initialEditState(discounted())
+    s.items[0].quantity = '12'
+    const priced = priceEdit(discounted(), s)
+    assert.equal(priced.moneyChanged, true)
+    assert.deepEqual(editProductFigures(priced.commercial).map(f => [f.label, f.amount]), [
+      ['Product value', 320000], ['Product value before discount', 340000],
+    ])
+    assert.equal(priced.commercial.total_before_gst, 325000, 'subtotal + packing, the same formula as before')
+  })
+
+  test('a PI with no stored subtotal says so rather than showing the gross', () => {
+    const c = current()
+    c.submission.subtotal_after_discount = null
+    const priced = priceEdit(c, initialEditState(c))
+    assert.deepEqual(editProductFigures(priced.commercial), [{ key: 'productValue', label: 'Product value', amount: null }])
+  })
+
+  test('the comparison names the gross as the figure before the discount', () => {
+    assert.equal(DIFF_FIELD_LABELS.gross_product_amount, 'Product value before discount')
+  })
+
+  test('the Edit PI dialog prints these figures, and no gross under "Product value"', () => {
+    const editor = readFileSync('src/components/orders/PiEditor.tsx', 'utf8')
+    assert.ok(editor.includes('editProductFigures(priced.commercial).map('))
+    assert.ok(!/Product value <strong>\{formatInr\(priced\.commercial\.gross_product_amount\)/.test(editor))
   })
 })

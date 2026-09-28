@@ -323,10 +323,13 @@ describe('the detail page renders only what it fetched', () => {
     // Phase C, read ONCE and only when the record actually names an Order, so
     // the approved PI can show the official number and link to it — under the
     // caller's own RLS, so a viewer who may not see the Order gets no row rather
-    // than a number they were not entitled to. Nothing else.
+    // than a number they were not entitled to. The middleman commission
+    // (20270122000000 §1b) is its own table, whose RLS admits only its
+    // readers. Nothing else.
     assert.deepEqual([...targets].sort(), [
       'order_submission_activity',
-      'order_submission_item_images', 'order_submission_items', 'order_submissions',
+      'order_submission_item_images', 'order_submission_items',
+      'order_submission_middleman_commissions', 'order_submissions',
       'orders', 'users',
     ])
     // And it is a read of ONE named column, never a select('*') or a write.
@@ -393,7 +396,11 @@ describe('the detail page renders only what it fetched', () => {
     // read-shaped names would stop being a write allowlist.
     // Both are `stable`, take a submission id, and return a boolean; they are
     // the authorities this page asks instead of restating.
-    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission']
+    // can_read_order_submission_commission (20270122000000 §1b) answers only
+    // whether THIS caller may read the commission, so the card can say
+    // "Restricted" rather than "Not answered".
+    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission',
+      'can_read_order_submission_commission']
     const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     for (const probe of READ_ONLY_RPCS) {
       assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)
@@ -420,6 +427,12 @@ describe('the detail page renders only what it fetched', () => {
       // data — the migration asserts that of its own definition at apply time —
       // and is the owner's channel for a record that has left their hands.
       'request_order_submission_correction',
+      // The INTERNAL details (20270122000000): the app confirmation and due
+      // dates and the middleman commission answer. Eight named columns plus
+      // the confirmation stamp; unknown keys — any figure, any status — are
+      // refused by name. Owner or active admin, draft or returned only, with
+      // optimistic concurrency. Never printed on a client document.
+      'save_order_submission_internal_details',
       'set_order_submission_billing_percentage',
       // submit_pi_for_review is reached through the supporting-documents
       // sender (submit_pi_for_review_with_documents, 20270112000000 §11),
@@ -505,6 +518,12 @@ describe('the detail page renders only what it fetched', () => {
       // and reject_finance_payment_request, both requiring finance.approve. Drawn
       // only for finance.approve; pinned call-for-call in paymentDecision.test.ts.
       'decidePayment',
+      // src/lib/finance/paymentEntryCompletion.ts — complete_payment_entry, the
+      // last call of Record Payment, after the proof (20270120000000). It
+      // verifies only the caller's own pending payment, only for a holder of
+      // finance.verify_own_payment, through approve_finance_payment_request;
+      // for everybody else it writes nothing.
+      'completePaymentEntry',
     ] as const
 
     const READ_ONLY_HELPERS = [
@@ -687,7 +706,7 @@ describe('the drafts list', () => {
     assert.ok(entry.authoredOn.includes('2026'), 'and the date the document carries')
     assert.equal(entry.uploader, 'Priya Nair', 'the app user who uploaded it')
     assert.ok(entry.uploadedAt.includes('2026'), 'and when they did')
-    assert.equal(entry.productValue, '₹2,50,000', 'the goods, before costs and GST')
+    assert.equal(entry.productValue, '₹2,50,000', 'the goods after the discount, before costs and GST')
     assert.equal(entry.grandTotal, '₹2,95,000', 'and what the client is billed')
     assert.equal(entry.statusLabel, 'Draft')
     assert.equal(entry.href, '/orders/drafts/11111111-1111-4111-8111-111111111111')
@@ -716,7 +735,8 @@ describe('the drafts list', () => {
     assert.ok(listColumns.length > 0, 'the list column set must be readable')
     assert.ok(!listColumns.includes("'source_workbook_name'"),
       'the file name is not selected by the list any more')
-    assert.ok(listColumns.includes("'gross_product_amount'"))
+    assert.ok(listColumns.includes("'subtotal_after_discount'"), 'Product value is the stored subtotal')
+    assert.ok(!listColumns.includes("'gross_product_amount'"), 'the gross is no longer shown, so not read')
     assert.ok(listColumns.includes("'grand_total'"), 'both money figures are read')
     assert.ok(listColumns.includes("'source_created_by'"))
     assert.ok(listColumns.includes("'creation_date'"))
@@ -775,7 +795,7 @@ describe('the drafts list', () => {
   test('a missing money figure is never a zero, and a missing grand total says so', () => {
     // ₹0 would be a figure nobody wrote, and the two are independent: a workbook
     // can print one and not the other.
-    const noProduct = describeDraftListEntry(submission({ gross_product_amount: null }), formatInr)
+    const noProduct = describeDraftListEntry(submission({ subtotal_after_discount: null }), formatInr)
     assert.equal(noProduct.productValue, '—')
     assert.equal(noProduct.grandTotal, '₹2,95,000', 'and the other figure is unaffected')
     assert.equal(noProduct.grandTotalMissing, false)
@@ -801,6 +821,31 @@ describe('the drafts list', () => {
     assert.equal(copied.numberLine, NUMBER_NOT_ALLOTTED)
     assert.ok(PI_DRAFT_LIST_COLUMNS.includes('draft_reference') && PI_DRAFT_LIST_COLUMNS.includes('reserved_order_number'))
     assert.ok(read(LIST_PAGE).includes('{entry.reference} · {entry.numberLine}'))
+  })
+
+  test('Product value is the stored subtotal after the discount, with or without one', () => {
+    // Discounted: gross 10,00,000 less 50,000. The list says what the PI Draft,
+    // the approval dialog and the Order page say — the subtotal, as stored.
+    const discounted = describeDraftListEntry(submission({
+      gross_product_amount: 1000000, discount_amount: 50000, subtotal_after_discount: 950000,
+      total_before_gst: 1010000, grand_total: 1191800,
+    }), formatInr)
+    assert.equal(discounted.productValue, '₹9,50,000', 'after the discount, not the ₹10,00,000 gross')
+    assert.equal(discounted.grandTotal, '₹11,91,800', 'the bill is unchanged')
+    // Nothing is recomputed: a stored subtotal that disagrees with gross − discount is shown as stored.
+    const stored = describeDraftListEntry(submission({
+      gross_product_amount: 1000000, discount_amount: 50000, subtotal_after_discount: 949999,
+    }), formatInr)
+    assert.equal(stored.productValue, '₹9,49,999')
+    // Undiscounted: the subtotal equals the gross, so the figure is the same one it always was.
+    const plain = describeDraftListEntry(submission({
+      gross_product_amount: 250000, discount_amount: 0, subtotal_after_discount: 250000,
+    }), formatInr)
+    assert.equal(plain.productValue, '₹2,50,000')
+    // Both layouts — the table and the phone card — print this one field under "Product value".
+    const page = read(LIST_PAGE)
+    assert.equal((page.match(/\{entry\.productValue\}/g) ?? []).length, 2)
+    assert.ok(page.includes('>Product value</span>'), 'the phone card labels it the same way')
   })
 
   test('the row states both money figures, and never one as the other', () => {
@@ -1215,23 +1260,24 @@ describe('the top summary answers four questions and repeats none of them', () =
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('two columns, and every group in them names itself without a heading', () => {
-    // Who and when on the left, what it is worth on the right. The figures and
-    // the metadata are labelled by the view model, not by the component.
+  test('three groups and a figures card, and every group in them names itself without a heading', () => {
+    // Order | Client | Sales and dates in the top card; what it is worth in its
+    // own card beside Payment status. The figures and the metadata are labelled
+    // by the view model, not by the component.
     assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
     assert.ok(view.includes("BILLING_NOT_DECLARED_LABEL = 'Not declared'"),
       'billing without a declaration is said as a state')
     for (const heading of ['<GroupLabel>', 'Financial summary', 'Payment received']) {
       assert.ok(!sections.includes(heading), `${heading} is a label for something already obvious`)
     }
-    assert.ok(sections.includes('pi-detail-overview-main'),
-      'the order — who, when, whose — is one column')
+    assert.ok(sections.includes('pi-detail-top-grid'),
+      'the order, the client and the sale are one card of three groups')
     assert.ok(sections.includes('pi-detail-dates'),
       'the two dates share one band rather than one carrying a box of its own')
     assert.ok(sections.includes('pi-detail-figures'),
-      'and the three figures fill the other column')
-    // The client's own two facts sit ABOVE the dates in the left column, in the
-    // strip the BOE metadata used to occupy.
+      'and the three figures fill their own card')
+    // The client's own two facts sit ABOVE the dates, in the Client group, and
+    // the dates in the Sales and dates group after it.
     assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') > 0)
     assert.ok(sections.indexOf('{CLIENT_CONTACT_LABEL}') < sections.indexOf('dates.map'),
       'the client’s contact and location read before the dates')
@@ -1317,8 +1363,12 @@ describe('the top summary answers four questions and repeats none of them', () =
     // header field. What this pins is that it costs NO EXTRA REQUEST: the page
     // reads the submission once, and the due date comes with it.
     assert.ok(PI_DRAFT_DETAIL_COLUMNS.includes('due_date'))
-    assert.equal((page.match(/\.from\('order_submissions'\)/g) ?? []).length, 1,
-      'exactly one read of order_submissions on this page')
+    // ONE READ OF THE RECORD, plus exactly one deliberate, failure-tolerant
+    // read of the two 20270211000000 columns (salesperson, lead source), kept
+    // apart so a database without them cannot fail the page.
+    assert.equal((page.match(/\.from\('order_submissions'\)/g) ?? []).length, 2,
+      'the record, and the separate sales-details read')
+    assert.ok(page.includes('.select(SALES_DETAILS_COLUMNS)'), 'the second read is that one and nothing else')
     assert.ok(page.includes('due: submission.due_date'), 'straight off the row')
   })
 
@@ -1505,7 +1555,8 @@ describe('coming back to the tab does not reload anything', () => {
   })
 
   test('the manual refresh control still re-reads, in place', () => {
-    assert.ok(source.includes('onRefresh={() => loadDraft({ quiet: true })}'),
+    // Re-reads the PI quietly and, since 2026-09-27, the payment summary too.
+    assert.ok(source.includes('onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}'),
       'the header control is still wired to a real re-read')
     assert.ok(source.includes('if (!quiet) setLoad({ kind: \'loading\' })'),
       'and a refresh keeps the record on screen instead of blanking it')
@@ -1872,7 +1923,9 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // Since 20270112000000 that one call is submit_pi_for_review_with_documents,
     // made by the supporting-documents sender: it runs submit_pi_for_review()
     // unchanged and records the attached files in the same transaction.
-    assert.ok(source.includes('await supporting.send({ note, terms, acknowledgedMissing })'))
+    // (Since 2026-09-27 the call is named once and made either directly or
+    // after the internal dates are saved — still one call, with all three.)
+    assert.ok(source.includes('const send = () => supporting.send({ note, terms, acknowledgedMissing })'))
     assert.ok(supportingSource.includes("await supabase.rpc('submit_pi_for_review_with_documents', {"))
     assert.ok(supportingSource.includes('p_note: input.note,'))
     assert.ok(supportingSource.includes('p_reason: input.terms.reason,'))
@@ -2000,7 +2053,7 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // It used to be answered twice — a block in the top overview and a full
     // card below the product table. One compact summary now, with the records
     // behind it.
-    assert.equal((source.match(/<PiSummaryCard/g) ?? []).length, 1)
+    assert.equal((source.match(/<PiPaymentStatusCard/g) ?? []).length, 1)
     assert.ok(!source.includes('<PiPaymentCard'), 'the standalone payments section is gone')
     // WHERE it sits is checked in src/app/orders/piSectionOrder.test.ts, against
     // the parsed JSX tree. The string comparison that used to be here said
@@ -2198,12 +2251,25 @@ describe('the draft loads in two waves, not six', () => {
 
   test('the history rides in the first wave, with the reads that share its key', () => {
     assert.ok(body.includes(
-      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await detailReads'),
+      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows, commissionResult, commissionReadable, salesResult] = await detailReads'),
       'the history needs only the submission id, so it must not wait for the items')
     const group = body.indexOf('const detailReads = Promise.all([')
     const second = body.indexOf('await Promise.all([')
     assert.ok(body.indexOf('fetchAllRows<PersistedActivity>') > group && body.indexOf('fetchAllRows<PersistedActivity>') < second,
       'the paged history read belongs to the first group')
+  })
+
+  // 20270122000000 §1b: the commission is its own table with its own reader
+  // rule, read by id alone — so it rides in the first wave too, beside the rule.
+  test('the commission and its reader rule ride in the first wave, and fail closed', () => {
+    const group = body.indexOf('const detailReads = Promise.all([')
+    const second = body.indexOf('await Promise.all([')
+    for (const read of [".from('order_submission_middleman_commissions')", "supabase.rpc('can_read_order_submission_commission'"]) {
+      const at = body.indexOf(read)
+      assert.ok(at > group && at < second, `${read} belongs to the first group`)
+    }
+    assert.ok(body.includes('!commissionResult.error && !commissionReadable.error && commissionReadable.data === true'),
+      'an errored read or rule is "Restricted", never an answer')
   })
 
   test('the pictures, the names and the Order number ride in the second', () => {

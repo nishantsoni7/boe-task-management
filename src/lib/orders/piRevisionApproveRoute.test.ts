@@ -51,18 +51,20 @@ describe('the approve route', () => {
     assert.ok(route.includes('actorId: user.id'))
   })
 
-  test('an active ADMIN, and nobody else — re-derived before a byte is downloaded', () => {
+  test('an active holder of orders.approve_order, and nobody else — re-derived before a byte is downloaded', () => {
+    // Since 20270120000000 the authority is the Control Center permission
+    // "Approve PI / Confirm Order", not users.role: approving a revised PI is
+    // approving a PI, and approve_order_pi_revision() asks the same grant again
+    // under its locks with this actor's id.
     assert.ok(route.includes('me.is_active !== true || me.is_deleted === true'))
-    assert.ok(route.includes("if (me.role !== 'admin') {"))
+    assert.ok(!route.includes("me.role !== 'admin'"), 'users.role is no longer asked')
+    assert.match(route, /service\.rpc\('user_holds_permission', \{\s+p_user_id: me\.id, p_module_key: 'orders', p_action_key: 'approve_order',/)
     assert.ok(route.includes("fail(403, 'FORBIDDEN'"))
-    // The permission KEY, exactly: since 20270115000000 the route also calls
-    // the approve_order_pi_revision RPC by name for an edit revision.
-    assert.ok(!/['"]approve_order['"]/.test(route), 'holding orders.approve_order is not this authority')
-    assert.ok(route.indexOf("me.role !== 'admin'") < route.indexOf("service.rpc('approve_order_pi_revision'"),
-      'and the admin check comes before an edit revision is staged')
-    const adminAt = route.indexOf("me.role !== 'admin'")
+    const permAt = route.indexOf("service.rpc('user_holds_permission'")
+    assert.ok(permAt < route.indexOf("service.rpc('approve_order_pi_revision'"),
+      'and the permission check comes before an edit revision is staged')
     const leaseAt = route.indexOf("service.rpc('begin_order_submission_processing'")
-    assert.ok(adminAt > 0 && adminAt < leaseAt)
+    assert.ok(permAt > 0 && permAt < leaseAt)
   })
 
   test('the version must be pending and name an approved PI linked to its Order', () => {

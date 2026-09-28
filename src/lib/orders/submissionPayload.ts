@@ -612,6 +612,10 @@ export function buildSubmissionPlan(input: {
     commercial: {
       gross_product_amount: commercial.grossProductAmount,
       discount_amount: commercial.discount,
+      // The row's printed wording ("Design Fee" / "Discount"), recorded for
+      // display provenance only (20270122000000). The figure above is a
+      // deduction whatever this says.
+      discount_label: textOrNull(commercial.discountLabel),
       subtotal_after_discount: commercial.subtotalAfterDiscount.amount,
 
       fabric_cost: fabric.amount,

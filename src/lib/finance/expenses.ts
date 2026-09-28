@@ -129,6 +129,18 @@ export type ExpenseRow = {
    */
   deleted_at: string | null
   deleted_by: string | null
+  /**
+   * HOW IT WAS PAID (20270205120000). 'company' is never reimbursed; 'personal'
+   * is paid back to paid_by; NULL is "not recorded" — every expense entered
+   * before the question was asked. NULL is never read as either.
+   *
+   * Optional in this type because rows built before the migration (and test
+   * fixtures) do not carry them; a missing value reads exactly like NULL.
+   */
+  paid_from?: string | null
+  paid_by?: string | null
+  /** The reimbursement covering it, NULL while pending. See expenseReimbursements.ts. */
+  reimbursement_id?: string | null
 }
 
 /** A row joined to the two names a list row prints. */
@@ -203,6 +215,14 @@ export type ExpenseFormState = {
   paidTo: string
   categoryId: string
   remark: string
+  /**
+   * 'company' | 'personal', or '' when not chosen. UNDEFINED means the caller's
+   * form does not carry the question at all, and the write leaves the columns
+   * alone.
+   */
+  paidFrom?: '' | 'company' | 'personal'
+  /** Who paid, when paidFrom is 'personal'. A user id. */
+  paidBy?: string
 }
 
 export type ExpenseFormField = keyof ExpenseFormState
@@ -221,6 +241,15 @@ export function emptyExpenseForm(todayIso: string): ExpenseFormState {
     categoryId: '',
     remark: '',
   }
+}
+
+/**
+ * A fresh form that ASKS how it was paid. No source is preselected: a wrong
+ * default would silently create — or silently hide — a reimbursement. The payer
+ * is preselected as the person entering it, which is who usually paid.
+ */
+export function emptyExpenseFormWithSource(todayIso: string, userId: string): ExpenseFormState {
+  return { ...emptyExpenseForm(todayIso), paidFrom: '', paidBy: userId }
 }
 
 /**
@@ -283,6 +312,19 @@ export function expenseFormFromRow(row: ExpenseRow): ExpenseFormState {
 }
 
 /**
+ * The same, carrying the payment source. An older expense with no source opens
+ * with NOTHING chosen — it stays "not recorded" unless the person chooses.
+ */
+export function expenseFormFromRowWithSource(row: ExpenseRow, userId: string): ExpenseFormState {
+  const paidFrom = row.paid_from === 'company' || row.paid_from === 'personal' ? row.paid_from : ''
+  return {
+    ...expenseFormFromRow(row),
+    paidFrom,
+    paidBy: paidFrom === 'personal' ? (row.paid_by ?? userId) : userId,
+  }
+}
+
+/**
  * Everything wrong with the form, field by field.
  *
  * ONE PASS, EVERY FIELD. Not "the first problem": somebody filling this in on a
@@ -296,6 +338,12 @@ export function expenseFormFromRow(row: ExpenseRow): ExpenseFormState {
 export function validateExpenseForm(
   form: ExpenseFormState,
   todayIso: string,
+  /**
+   * requirePaidFrom: the payment source must be chosen. True for a new expense;
+   * false when correcting an older one whose source was never recorded, so a
+   * correction does not force a guess.
+   */
+  options: { requirePaidFrom?: boolean } = {},
 ): ExpenseFormErrors {
   const errors: ExpenseFormErrors = {}
 
@@ -334,6 +382,13 @@ export function validateExpenseForm(
     errors.remark = `Keep the remark to ${REMARK_MAX} characters or fewer.`
   }
 
+  if (options.requirePaidFrom && !form.paidFrom) {
+    errors.paidFrom = 'Choose whether this was paid from a company account or personally.'
+  }
+  if (form.paidFrom === 'personal' && !form.paidBy) {
+    errors.paidBy = 'Choose who paid.'
+  }
+
   return errors
 }
 
@@ -359,15 +414,26 @@ export function expenseWritePayload(form: ExpenseFormState): {
   paid_to: string
   category_id: string
   remark: string | null
+  paid_from?: 'company' | 'personal' | null
+  paid_by?: string | null
 } {
   const remark = form.remark.trim()
-  return {
+  const payload = {
     expense_date: form.expenseDate,
     amount: form.amount.trim(),
     payment_mode: form.paymentMode,
     paid_to: form.paidTo.trim(),
     category_id: form.categoryId,
     remark: remark === '' ? null : remark,
+  }
+  // A form without the question leaves the two columns out entirely.
+  if (form.paidFrom === undefined) return payload
+  const paidFrom = form.paidFrom === '' ? null : form.paidFrom
+  return {
+    ...payload,
+    paid_from: paidFrom,
+    // A payer exactly when paid personally — the table's CHECK says the same.
+    paid_by: paidFrom === 'personal' ? (form.paidBy || null) : null,
   }
 }
 
@@ -379,10 +445,17 @@ export type ExpenseFilters = {
   categoryId: string
   paymentMode: string
   search: string
+  /** '' | 'company' | 'pending' | 'reimbursed' | 'unknown' — see expenseReimbursements.ts. */
+  reimbursement?: '' | 'company' | 'pending' | 'reimbursed' | 'unknown'
+  /** A payer's user id, or ''. */
+  paidBy?: string
+  /** Only expenses with no bill attached. */
+  missingBill?: boolean
 }
 
 export const EMPTY_EXPENSE_FILTERS: ExpenseFilters = {
   dateFrom: '', dateTo: '', categoryId: '', paymentMode: '', search: '',
+  reimbursement: '', paidBy: '', missingBill: false,
 }
 
 /** Is anything narrowing the list? Decides whether "Clear filters" is offered. */
@@ -390,6 +463,7 @@ export function expenseFiltersActive(filters: ExpenseFilters): boolean {
   return filters.dateFrom !== '' || filters.dateTo !== ''
     || filters.categoryId !== '' || filters.paymentMode !== ''
     || filters.search.trim() !== ''
+    || !!filters.reimbursement || !!filters.paidBy || !!filters.missingBill
 }
 
 /**

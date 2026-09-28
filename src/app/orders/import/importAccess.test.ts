@@ -925,7 +925,10 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // The detail page's breakdown is a card of its own now — the preview's
     // component is untouched — and it is handed a SELECTION of exactly those
     // rows: nothing rebuilt, nothing recomputed.
-    assert.ok(detail.includes('const breakdown = buildBreakdownView(commercialRows)'),
+    // 20270122000000: the same rows, with only the deduction row's WORD set
+    // (Discount / Design Fee) — clientDeductionRows changes labels and drops a
+    // zero deduction; it never touches a value.
+    assert.ok(detail.includes('const breakdown = buildBreakdownView(clientDeductionRows(commercialRows, '),
       'the breakdown selects from exactly those rows')
     assert.ok(detail.includes('<PiCommercialBreakdown'),
       'the breakdown card is still the thing that renders it')
@@ -1215,7 +1218,7 @@ describe('the Order information block', () => {
   })
 
   test('Product value is the commercial summary’s own figure, not a second sum', () => {
-    assert.ok(source.includes('grossProductAmount: preview.data.commercial.grossProductAmount'),
+    assert.ok(source.includes('productSubtotal: preview.data.commercial.subtotalAfterDiscount'),
       'the parsed cell, passed straight through')
     // The page states the figure; it never derives one. Any arithmetic here
     // would be a second path to a number the client has already been sent.
@@ -1279,6 +1282,9 @@ describe('the Order information block', () => {
     }
     assert.ok(source.includes("? '1fr 1fr'"),
       'and every group collapses to two columns on a phone')
+    // A workbook with both dates blank draws no date line (2026-09-27).
+    assert.ok(source.includes('const group = (keys: readonly string[], columns: number) => !keys.some(byKey) ? null : ('),
+      'an empty group is not drawn')
   })
 })
 
@@ -1315,6 +1321,18 @@ describe('the product code outranks the product name', () => {
     })
   }
 
+  test('the code is set in the interface sans, not the heavy monospace (2026-09-27)', () => {
+    for (const i of [0, 1]) {
+      let at = -1
+      for (let n = 0; n <= i; n++) at = source.indexOf('{orDash(p.itemSequence)}', at + 1)
+      const block = source.slice(source.lastIndexOf('style={{', at), at)
+      assert.ok(!block.includes('font-mono'), 'no monospace on B001')
+      assert.ok(block.includes("fontFamily: 'inherit'"), 'the page font')
+      assert.ok(block.includes("fontVariantNumeric: 'tabular-nums'"), 'even digits down the column')
+      assert.ok(/fontWeight: 600/.test(block) && !/fontWeight: [7-9]00/.test(block), 'semibold, never heavy')
+    }
+  })
+
   test('neither value, nor the ordering, nor any other column moved', () => {
     assert.ok(source.includes('{orDash(p.itemSequence)}'), 'the code is the workbook’s J column')
     assert.ok(source.includes('{orDash(p.productName)}'), 'the name is the workbook’s B column')
@@ -1339,13 +1357,19 @@ describe('the Upload PI preview renders its sections in the approved order', () 
     return i
   }
 
-  test('Order information, blocking errors, products, commercial summary, then the action', () => {
+  // THE VERDICT AND THE ACTION FIRST (2026-09-27). Sales should not scroll a
+  // twenty-line product table to learn whether a PI can be saved, or to reach
+  // the one button that saves it. So directly under the heading: what blocks
+  // it (or, when nothing does, the Save Draft card), then what is worth
+  // checking, and only then Order information, the products and the money.
+  test('blocking errors or Save Draft, then warnings, then the document', () => {
     const order = [
-      at('buildOrderInformationRows({'),
       at('{BLOCKING_PANEL_TITLE}'),
+      at('READY_TITLE'),
+      at('{WARNING_PANEL_TITLE}'),
+      at('buildOrderInformationRows({'),
       at('<PiProductTableHead'),
       at('<PiCommercialSummary'),
-      at('READY_TITLE'),
     ]
     assert.deepEqual([...order].sort((a, b) => a - b), order)
   })
@@ -1355,8 +1379,11 @@ describe('the Upload PI preview renders its sections in the approved order', () 
       'a blocked PI says so above the lines somebody would otherwise scroll past')
   })
 
-  test('the Save Draft control comes after the money it commits', () => {
-    assert.ok(at('<PiCommercialSummary') < at('SAVE_BUTTON_LABEL'))
+  test('Save Draft is above Order information and the products', () => {
+    assert.ok(at('SAVE_BUTTON_LABEL') < at('buildOrderInformationRows({'))
+    assert.ok(at('SAVE_BUTTON_LABEL') < at('<PiProductTableHead'))
+    assert.ok(at('SAVE_BUTTON_LABEL') < at('{WARNING_PANEL_TITLE}'),
+      'a long list of notes cannot push the button down the page')
   })
 
   test('a clean PI renders no empty error section', () => {
@@ -1368,15 +1395,19 @@ describe('the Upload PI preview renders its sections in the approved order', () 
       'and it is drawn once, never twice')
   })
 
-  test('the warnings panel keeps its own gate and does not split the required order', () => {
-    // "Worth checking" does not block a submission, and it is read just before
-    // the decision to save — so it sits between the commercial summary and the
-    // ready card. Both of those still hold their approved positions relative to
-    // everything above them; the warnings interrupt nothing.
-    assert.ok(at('<PiCommercialSummary') < at('{WARNING_PANEL_TITLE}'))
-    assert.ok(at('{WARNING_PANEL_TITLE}') < at('READY_TITLE'))
+  test('the warnings panel keeps its own gate', () => {
     assert.ok(block.includes('preview.groups.warnings.length > 0 && ('),
-      'and it is still shown only when there is something to check')
+      'it is still shown only when there is something to check')
+    assert.ok(block.includes('these do not stop a save'),
+      'and it says plainly that they do not stop the save')
+  })
+
+  test('the Save Draft card keeps its gate, its loading state and its failure note', () => {
+    assert.ok(block.includes('preview.groups.readyToSubmit && ('))
+    assert.ok(block.includes('disabled={replaceBlocked || !canSaveDraft({'))
+    assert.ok(block.includes("{saving ? 'Saving…' : SAVE_BUTTON_LABEL}"))
+    assert.ok(block.includes('{saveFailure.message}'))
+    assert.ok(block.includes('{READY_NOTE}'))
   })
 })
 
@@ -1472,5 +1503,17 @@ describe('a product row is red only where a blocking error is mapped to it', () 
     assert.equal(blocked.has(34), true, 'the row the blocking issue names is marked')
     assert.equal(blocked.has(33), false, 'and its neighbours are not')
     assert.equal(blocked.has(32), false)
+  })
+})
+
+// 2026-09-27: the module guard itself no longer sends a denied reader to the
+// hard-coded ATTENDANCE placeholder; it says Orders is not enabled, in place.
+describe('the Orders guard denies in place', () => {
+  test('no redirect to /coming-soon; its own message and a way back', () => {
+    const guard = readFileSync(join(process.cwd(), 'src/app/orders/layout.tsx'), 'utf8')
+    assert.ok(!guard.includes("router.replace('/coming-soon')"))
+    assert.ok(guard.includes('if (denied) return <OrdersAccessDenied'))
+    assert.ok(guard.includes('Order Management is not enabled for your account'))
+    assert.ok(!/Attendance/.test(guard.replace(/\/\/.*$/gm, '')), 'no other module is named')
   })
 })

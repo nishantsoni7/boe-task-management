@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { OrderHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -43,6 +44,7 @@ import {
   orderAttentionItems,
   orderRecordFacts,
   orderSummaryView,
+  orderProductValue,
   orderSummaryFields,
   type OrderHeaderActionKey,
   type WorkspaceTone,
@@ -75,7 +77,7 @@ import {
 import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Pencil } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
@@ -154,9 +156,9 @@ import {
   documentChanges,
   supportingRow,
 } from '@/lib/orders/orderDocumentSubmissions'
-import { mainPiCard, piVersionTimeline } from '@/lib/orders/orderMainPi'
+import { MAIN_PI_LOADING, mainPiCard, piVersionTimeline, type MainPiCard } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
 import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
@@ -180,6 +182,7 @@ import {
   RejectRevisionModal,
 } from './OrderRevisionModals'
 import {
+  clarificationLine,
   OPERATIONS_REVIEW_ANCHOR,
   ORDER_OPERATIONS_HANDOFF_COLUMNS,
   WITHDRAW_ACCEPTANCE_LABEL,
@@ -214,7 +217,6 @@ import {
 } from '@/lib/orders/submissionActivity'
 import { mergeOrderHistory } from '@/lib/orders/orderHistory'
 import {
-  formatOrderOperationalNumber,
   orderProductCodesByItemId,
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
@@ -235,7 +237,21 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // One payment, its allocations and every gate belong to
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
-import { PiVersionsPanel } from '@/components/orders/PiVersionsPanel'
+import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, isOpenRevision } from '@/components/orders/PiVersionsPanel'
+import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
+import {
+  EDIT_PI_OUTCOME_NOTICE,
+  EDIT_PI_OUTCOME_PARAM,
+  editPiPageHref,
+  originalWorkbookFileName,
+  readEditPiOutcome,
+} from '@/lib/orders/editPiPage'
+import {
+  buildProductPicturesZip,
+  productPictureZipEntries,
+  productPicturesState,
+  productPicturesZipName,
+} from '@/lib/orders/productPictures'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -725,6 +741,9 @@ export default function OrderDetailPage() {
   // The approved PI's grand total as a NUMBER, to tell an amended Order's own
   // value apart from it in the Commercial breakdown (walkthrough O-1).
   const [piGrandTotal, setPiGrandTotal] = useState<number | null>(null)
+  // The approved PI's stored product figures, so the summary's Total product
+  // value can say the same thing the PI and the approval dialog say.
+  const [piProduct, setPiProduct] = useState<{ gross: number | null; discount: number | null; subtotal: number | null } | null>(null)
   const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
   // Lazily, so the two empty Maps are built once rather than on every render.
   const [piImages,    setPiImages]    = useState<PiImagesState>(() => noPiImages({ kind: 'loading' }))
@@ -832,6 +851,9 @@ export default function OrderDetailPage() {
   // decides the versions, can_view_order_submission_via_order the trail. The
   // names are one batched users read for every actor either mentions.
   const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
+  // False until the first version read answers, so the Main PI row says it is
+  // loading rather than that this Order has no PI.
+  const [piVersionsRead, setPiVersionsRead] = useState(false)
   const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
   const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
   const [advance,      setAdvance]      = useState<AdvanceReadiness | null>(null)
@@ -854,6 +876,31 @@ export default function OrderDetailPage() {
   const [revOpsError, setRevOpsError] = useState<string | null>(null)
   const [revisionError, setRevisionError] = useState<string | null>(null)
   const [historyOpen,   setHistoryOpen]   = useState(false)
+  // The PI history popup and the Edit PI editor (PiVersionHistory), and the
+  // last thing either did — said on the Main PI row and in the popup.
+  const [piVersionsOpen, setPiVersionsOpen] = useState(false)
+  const [piEditing,      setPiEditing]      = useState(false)
+  const [piNotice,       setPiNotice]       = useState<string | null>(null)
+  // WHAT THE FULL-PAGE EDIT PI HANDED BACK (?edit_pi=…), and an upload step it
+  // asked this page to open (?upload=documents|pi). Read once on arrival and
+  // removed from the address, so a reload does not repeat either.
+  const [pendingUpload, setPendingUpload] = useState<'documents' | 'pi' | null>(null)
+  useEffect(() => {
+    const readHandBack = () => {
+      const params = new URLSearchParams(window.location.search)
+      const outcome = readEditPiOutcome(params.get(EDIT_PI_OUTCOME_PARAM))
+      const upload = params.get('upload')
+      if (!outcome && !upload) return
+      if (outcome) setPiNotice(EDIT_PI_OUTCOME_NOTICE[outcome])
+      if (upload === 'documents' || upload === 'pi') setPendingUpload(upload)
+      params.delete(EDIT_PI_OUTCOME_PARAM)
+      params.delete('upload')
+      const rest = params.toString()
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
+    }
+    const timer = window.setTimeout(readHandBack, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
   const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
   const [approvalOpen,  setApprovalOpen]  = useState(false)
   const [approvalBusy,  setApprovalBusy]  = useState(false)
@@ -937,6 +984,7 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
       setPiVersions([])
+      setPiVersionsRead(true)
       setPiActivity([])
       setHandoffs([])
       // No PI behind this Order, so there is nothing to count and nothing
@@ -1046,6 +1094,9 @@ export default function OrderDetailPage() {
       if (person?.id && person.is_active === false) inactive.add(person.id)
     }
     setPiNames(names)
+    // THE MAIN PI CARD WAITS FOR THE NAMES TOO: it states who uploaded and who
+    // decided, and drawn before this batch it said "Unknown user".
+    setPiVersionsRead(true)
     setPiInactive(inactive)
 
     const signedByPath = new Map<string, string>()
@@ -1092,6 +1143,8 @@ export default function OrderDetailPage() {
         : { kind: 'ready', counts: countDesignImages(images) },
     })
     setPiGrandTotal(row.grand_total === null || row.grand_total === undefined || String(row.grand_total).trim() === '' ? null : Number(row.grand_total))
+    const figure = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : Number(v))
+    setPiProduct({ gross: figure(row.gross_product_amount), discount: figure(row.discount_amount), subtotal: figure(row.subtotal_after_discount) })
     setPiHandoff(buildOrderPiHandoff(row, {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
@@ -1651,6 +1704,8 @@ export default function OrderDetailPage() {
       }
       setLineReview(null)
       setRevisionDialog(null)
+      // A decided revision retires the last proposal's notice.
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
@@ -1669,6 +1724,7 @@ export default function OrderDetailPage() {
       })
       if (error) { setRevisionError(describePiRevisionFailure(error, 'reject')); return }
       setRevisionDialog(null)
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_rejected', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
@@ -1779,7 +1835,7 @@ export default function OrderDetailPage() {
       .storage
       .from(ORDER_FILES_BUCKET)
       .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
-        mode === 'download' ? { download: true } : undefined)
+        mode === 'download' ? { download: originalWorkbookFileName(version, order?.display_number ?? null) } : undefined)
     setPiFileBusy(null)
     if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
@@ -1849,6 +1905,43 @@ export default function OrderDetailPage() {
   // never another module's page.
   const openVersionPdf = (versionId: string, download: boolean) => {
     window.open(piVersionPdfHref(id, versionId, download), '_blank', 'noopener,noreferrer')
+  }
+
+  // ALL THE PI'S PRODUCT PICTURES AS ONE ZIP, built in the browser from the
+  // pictures already signed for this reader — nothing new is signed, and a
+  // picture storage no longer holds is left out and counted, never faked.
+  const [picturesZipBusy, setPicturesZipBusy] = useState(false)
+  const [picturesZipMessage, setPicturesZipMessage] = useState<string | null>(null)
+  const downloadAllPictures = async () => {
+    if (picturesZipBusy) return
+    const entries = productPictureZipEntries(piImages.viewerItems)
+    if (entries.length === 0) return
+    setPicturesZipBusy(true)
+    setPicturesZipMessage(null)
+    try {
+      const result = await buildProductPicturesZip(entries, async url => {
+        const res = await fetch(url)
+        return res.ok ? new Uint8Array(await res.arrayBuffer()) : null
+      })
+      if (!result.bytes) {
+        setPicturesZipMessage('None of the pictures could be downloaded. Refresh the page and try again.')
+        return
+      }
+      const blob = new Blob([result.bytes as BlobPart], { type: 'application/zip' })
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = productPicturesZipName(order?.display_number ?? null, order?.client_name ?? null)
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 10_000)
+      setPicturesZipMessage(result.failed > 0
+        ? `Downloaded ${result.included} pictures; ${result.failed} could not be retrieved.`
+        : null)
+    } finally {
+      setPicturesZipBusy(false)
+    }
   }
 
   const viewEvidence = async (path: string) => {
@@ -2007,6 +2100,13 @@ export default function OrderDetailPage() {
   // user and suppressed under View As for exactly the reason above: viewing
   // as someone else must not lend them your authority.
   const mayManageOrders = ordersCaps.canManageOrders && !viewAsUserId
+  // THE FLOW'S ADMIN DECISIONS FOLLOW CONTROL CENTER, NOT users.role
+  // (20270120000000). Approving, rejecting or re-approving a revised PI and the
+  // admin decision on documents ask orders.approve_order; production below the
+  // 40% advance asks orders.approve_advance_exception — the same actions the
+  // RPCs now require. Never under View As.
+  const mayDecidePiAsAdmin = ordersCaps.canApproveOrderSubmission && !viewAsUserId
+  const mayApproveBelowAdvance = ordersCaps.canApproveAdvanceException && !viewAsUserId
   const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
   const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
 
@@ -2043,7 +2143,7 @@ export default function OrderDetailPage() {
       hasPendingRevision: piHistory.pending !== null,
     },
   )
-  const mayDecideRevision = canDecidePiRevision({ isAdmin: actingAsAdmin })
+  const mayDecideRevision = canDecidePiRevision({ isAdmin: mayDecidePiAsAdmin })
   // THE REVIEWER'S CONTROL, for the one person a staged revision is addressed
   // to (never under View As). decide_order_pi_revision_operations() re-derives
   // it under row locks — and refuses an acceptance the Order is not amended for.
@@ -2083,7 +2183,7 @@ export default function OrderDetailPage() {
   const revisionApproverInactive = !!piHistory.pending?.decidedById
     && piHistory.pending.status === 'admin_approved' && piInactive.has(piHistory.pending.decidedById)
   const mayReapproveRevision = canReapproveRevision(piHistory.pending, {
-    isAdmin: actingAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
+    isAdmin: mayDecidePiAsAdmin, viewingAs: !!viewAsUserId, inactiveUserIds: piInactive,
   })
   const reapproveRevision = async () => {
     const v = piHistory.pending
@@ -2241,9 +2341,9 @@ export default function OrderDetailPage() {
     !['dispatched', 'cancelled'].includes(order.status) &&
     new Date(order.due_date) < new Date()
 
-  // The stored, permanent display_number keeps its four-digit, zero-padded
-  // shape; what BOE shows and refers to drops the leading zeros (20261124000000).
-  const operationalNumber = formatOrderOperationalNumber(order.display_number) ?? order.display_number
+  // THE ORDER NUMBER AS EVERY ORDERS SCREEN SHOWS IT: the stored four-digit
+  // display_number (0526). Product codes (526-BE001) keep their own format.
+  const shownOrderNumber = order.display_number
 
   // ── What this screen says, decided once ──
   //
@@ -2276,6 +2376,13 @@ export default function OrderDetailPage() {
    */
   const clientLocation = piHandoff.kind === 'ready' ? piHandoff.client.city : null
 
+  // THE PI'S MEANING OF "PRODUCT VALUE" — after the discount — wherever the
+  // Order still carries its PI's figure. Nothing stored is changed or computed.
+  const productValue = orderProductValue({
+    stored: order.total_product_value === null ? null : Number(order.total_product_value),
+    pi: piHandoff.kind === 'ready' ? piProduct : null,
+  })
+
   const summaryFields = orderSummaryFields({
     clientName: order.client_name,
     location: clientLocation,
@@ -2283,7 +2390,8 @@ export default function OrderDetailPage() {
     uploadDate: piUploadedAt,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     isOverdue: !!isOverdue,
-    totalProductValue: order.total_product_value === null ? null : fmtAmount(order.total_product_value),
+    totalProductValue: productValue.amount === null ? null : fmtAmount(productValue.amount),
+    totalProductValueDetail: productValue.detail,
   })
 
   // ── THE ONE COMMERCIAL PRESENTATION ──
@@ -2325,8 +2433,21 @@ export default function OrderDetailPage() {
    * card states the APPROVED version and the modal states every one; neither
    * re-derives which is current, so they cannot disagree.
    */
-  const mainPi = mainPiCard(piHistory)
+  const mainPi: MainPiCard = piVersionsRead ? mainPiCard(piHistory) : { kind: 'loading', message: MAIN_PI_LOADING }
   const piTimeline = piVersionTimeline(piHistory)
+
+  /**
+   * PI HISTORY AND EDIT PI (20270115000000) — the rule the standalone PI
+   * versions strip used, unchanged: offered once the PI's own read is in, Edit
+   * PI to the PI's owner holding orders.create or an admin, never under View
+   * As and never on a cancelled Order. The database re-checks every write.
+   */
+  // Not gated on handoffReady (products and pictures): the versions and the
+  // edit rule need neither, and the link should arrive with the Main PI row.
+  const piVersionsSource = order.source_order_submission_id ?? null
+  const mayEditPi = !viewAsUserId && order.status !== 'cancelled'
+    && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))
+  const piRevisionOpen = piVersions.some(v => isOpenRevision(v.status))
 
   /**
    * WHAT THE ADVANCE COMES TO, and whether it reads Risky or Safe.
@@ -2369,7 +2490,6 @@ export default function OrderDetailPage() {
    * IT NO LONGER RESTATES THE APPROVALS. Fabric and finish are drawn once, by
    * the card beside this box, with everything this summary had to leave out.
    */
-  const designFiles = designFilesDocument(piImages.summary, piProducts.length)
 
   /**
    * THE CLIENT'S OWN PURCHASE ORDER.
@@ -2389,7 +2509,7 @@ export default function OrderDetailPage() {
   const docMe = viewAsUserId ? null : (profile?.id ?? null)
   const docViewer: DocumentViewer = {
     viewerId: docMe,
-    isAdmin: actingAsAdmin,
+    isAdmin: mayDecidePiAsAdmin,
     canSubmit: !!docMe && order.status !== 'cancelled'
       && (actingAsAdmin || (ordersCaps.canCreateOrder && (order.requested_by === docMe || order.assigned_to === docMe))),
     viewingAs: !!viewAsUserId,
@@ -2398,6 +2518,10 @@ export default function OrderDetailPage() {
   const openDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
     setDocError(null)
     void docSubs.openFile(f).then(e => { if (e) setDocError(e) })
+  }
+  const downloadDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
+    setDocError(null)
+    void docSubs.openFile(f, true).then(e => { if (e) setDocError(e) })
   }
   const docNameOf = (uid: string | null) => (uid ? docSubs.names.get(uid) ?? null : null)
   // WHAT IS CURRENT, per category — accepted submissions only — and WHAT IS
@@ -2433,6 +2557,12 @@ export default function OrderDetailPage() {
     if (key === 'pi') { setRevisionError(null); setRevisionDialog({ kind: 'propose' }); return }
     setDocUpload({ category: key, resubmission: null })
   }
+  const pendingUploadKey: DocUpdateKey | null = pendingUpload === 'pi'
+    ? (docUpdateItems.some(i => i.key === 'pi') ? 'pi' : null)
+    : pendingUpload === 'documents'
+      ? (docUpdateItems.find(i => i.key !== 'pi' && !i.disabled)?.key ?? null)
+      : null
+  const pendingUploadSettled = pendingUpload !== null && docSubs.state !== 'loading'
   // The files sent with the PI that the operations decision will accept too.
   const initialDocumentsAwaiting = (() => {
     const names = docSubs.rows
@@ -2446,7 +2576,12 @@ export default function OrderDetailPage() {
         tone: operationsView.tone,
         line: operationsView.status === 'awaiting'
           ? `${operationsView.versionLabel} is approved by Admin and in force; Operations has not accepted it yet. ${operationsView.reviewerLine}`
-          : null,
+          // WHY OPERATIONS COULD NOT ACCEPT, where the status is — not only in
+          // Activity at the foot of the page (clarification_reason, required by
+          // decide_order_operations_handoff).
+          : operationsView.status === 'clarification_needed' && operationsView.decision
+            ? clarificationLine(operationsView.versionLabel, operationsView.decision)
+            : null,
       }
     : null
   /**
@@ -2692,7 +2827,7 @@ export default function OrderDetailPage() {
             below; every date in Important Dates under it. */}
         <header className="order-command-header">
           <div className="order-command-identity">
-            <h1 className="order-command-title">Order {operationalNumber}</h1>
+            <h1 className="order-command-title">Order {shownOrderNumber}</h1>
             <OrderStatusPill label={STATUS_META[order.status]?.label ?? order.status} tone={statusTone} />
           </div>
 
@@ -2724,6 +2859,21 @@ export default function OrderDetailPage() {
                 onOutOfDate={() => { loadOrder() }}
               />
             )}
+            {/* EDIT PI: the page's main action on the PI, opening the
+                full-page editor. Disabled, with the reason, while a proposed
+                version is still open. */}
+            {mayEditPi && piVersionsSource && (
+              <button
+                type="button"
+                className="boe-record-action boe-record-action--primary"
+                onClick={() => router.push(editPiPageHref(order.id))}
+                disabled={piRevisionOpen}
+                title={piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : 'Change this PI and send it for approval'}
+              >
+                <Pencil size={14} strokeWidth={2} aria-hidden="true" />
+                {EDIT_PI_LABEL}
+              </button>
+            )}
             {actions.secondary.map(key => (
               <button
                 key={key}
@@ -2748,6 +2898,17 @@ export default function OrderDetailPage() {
             <MoreActionsMenu items={overflowItems} onSelect={runAction} />
           </div>
         </header>
+
+        {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══
+            The internal remark Sales wrote on the PI before approval, read from
+            that PI row under this viewer's own RLS, in its own failure-tolerant
+            query. Labelled internal; never on a client document. Nothing is
+            drawn when there is none. */}
+        <OrderHighlightRemark
+          supabase={supabase}
+          submissionId={order.source_order_submission_id ?? null}
+          refreshKey={order.updated_at}
+        />
 
         {/* ══ 2. THE SUMMARY PANEL ══
             THREE GROUPS, ONE SURFACE, in the order a reader asks them: who the
@@ -2843,36 +3004,46 @@ export default function OrderDetailPage() {
           />
           <OrderDocumentsPanel
             mainPi={mainPi}
-            design={designFiles}
             clientPo={clientPo}
-            onView={v => { void openVersionFile(v, 'view') }}
             onDownload={v => { void openVersionFile(v, 'download') }}
             onOpenPdf={openVersionPdf}
             onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            onManageDesign={() => setDesignOpen(true)}
-            viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
+            pictures={{
+              state: productPicturesState({
+                loading: piImages.summary.kind === 'loading',
+                recorded: piImages.summary.kind === 'ready'
+                  ? piImages.summary.counts.representative + piImages.summary.counts.customization
+                  : piImages.summary.kind === 'no_source' ? 0 : null,
+                available: piImages.viewerItems.length,
+                unavailable: piImages.unresolved,
+              }),
+              onView: () => setDesignOpen(true),
+              onDownloadAll: () => { void downloadAllPictures() },
+              downloading: picturesZipBusy,
+              message: picturesZipMessage,
+            }}
+            onDownloadFile={downloadDocFile}
             mainPiMenu={mainPi.kind === 'ready' ? (
-              <MoreActionsMenu<'pdf' | 'download' | 'history'>
+              <MoreActionsMenu<'pdf'>
                 ariaLabel="More PI actions"
                 triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
-                items={[
-                  { key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` },
-                  {
-                    key: 'download',
-                    label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
-                    disabled: !mainPi.hasFile || piFileBusy !== null,
-                  },
-                  { key: 'history', label: 'PI history' },
-                ]}
-                onSelect={key => {
-                  if (key === 'pdf') { openVersionPdf(mainPi.version.id, true); return }
-                  if (key === 'download') { void openVersionFile(mainPi.version, 'download'); return }
-                  setRevisionError(null)
-                  setHistoryOpen(true)
-                }}
+                items={[{ key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` }]}
+                onSelect={() => openVersionPdf(mainPi.version.id, true)}
               />
             ) : undefined}
+            /* PI HISTORY AND EDIT PI (20270115000000), on the Main PI row. The
+               versions popup and the editor are PiVersionHistory's, below;
+               the same gate the standalone PI versions strip used. */
+            piVersions={piVersionsSource ? {
+              count: piVersions.length,
+              onOpen: () => setPiVersionsOpen(true),
+              edit: mayEditPi ? {
+                onEdit: () => { setPiNotice(null); setPiEditing(true) },
+                blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null,
+              } : null,
+              notice: piNotice,
+            } : undefined}
             updateMenu={docUpdateItems.length > 0 ? (
               <MoreActionsMenu<DocUpdateKey>
                 label={UPDATE_DOCUMENTS_LABEL}
@@ -2903,19 +3074,34 @@ export default function OrderDetailPage() {
             } : undefined}
           />
         </OrderDocumentsRow>
+        {pendingUploadSettled && (
+          <RunOnce run={() => {
+            setPendingUpload(null)
+            if (pendingUploadKey) runDocUpdate(pendingUploadKey)
+            document.getElementById('documents')?.scrollIntoView({ block: 'start' })
+          }} />
+        )}
 
-        {/* ══ 3b. PI VERSIONS AND EDIT PI (20270115000000) ══
-            V1 → V2 → V3 in one swipeable strip, and the one Edit PI action.
-            An edit becomes a pending version; an Admin's approval puts it in
-            force and amends the Order (20270116000000). */}
-        {order.source_order_submission_id && handoffReady && (
-          <PiVersionsPanel
+        {/* ══ 3b. PI HISTORY AND EDIT PI (20270115000000) ══
+            No longer a standalone strip: the Main PI row above opens the
+            versions popup and the editor, which live here. An edit becomes a
+            pending version; an Admin's approval puts it in force and amends
+            the Order (20270116000000). */}
+        {piVersionsSource && (
+          <PiVersionHistory
             supabase={supabase}
             orderId={order.id}
-            submissionId={order.source_order_submission_id}
-            mayEdit={!viewAsUserId && order.status !== 'cancelled'
-              && (actingAsAdmin || (ordersCaps.canCreateOrder && !!profile?.id && order.requested_by === profile.id))}
-            isAdmin={actingAsAdmin && !viewAsUserId}
+            submissionId={piVersionsSource}
+            mayEdit={mayEditPi}
+            isAdmin={mayDecidePiAsAdmin}
+            hasOpenRevision={piRevisionOpen}
+            open={piVersionsOpen}
+            onClose={() => setPiVersionsOpen(false)}
+            editing={piEditing}
+            onEdit={() => { setPiNotice(null); setPiVersionsOpen(false); router.push(editPiPageHref(order.id)) }}
+            onEditClose={() => setPiEditing(false)}
+            notice={piNotice}
+            onNotice={setPiNotice}
             onChanged={() => { void loadOrder() }}
             refreshKey={piVersions.map(v => `${v.id}:${v.status}`).join(',')}
           />
@@ -3028,7 +3214,7 @@ export default function OrderDetailPage() {
             <AdvanceGatePanel
               readiness={advance}
               versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
-              isAdmin={actingAsAdmin}
+              isAdmin={mayApproveBelowAdvance}
               approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
               formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
               onApprove={async reason => {
@@ -3508,4 +3694,15 @@ export default function OrderDetailPage() {
 
     </OrdersLayout>
   )
+}
+
+/** Runs `run` once, after it mounts — for a step that needs the page fully read. */
+function RunOnce({ run }: { run: () => void }) {
+  const ran = useRef(false)
+  useEffect(() => {
+    if (ran.current) return
+    ran.current = true
+    run()
+  }, [run])
+  return null
 }

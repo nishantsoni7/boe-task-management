@@ -615,7 +615,7 @@ export const PI_PAYMENT_PROOF_FAILED =
  * the SAME payment (its idempotency key is kept) and retries only the proof.
  */
 export const PI_PAYMENT_PROOF_RETRY =
-  'The payment was recorded, but the proof file did not upload. Press Record payment again to retry the proof — the payment will not be recorded twice.'
+  'The payment was recorded and is awaiting verification, but the proof file did not upload. Press Record payment again to retry the proof — the payment will not be recorded twice.'
 
 export function piPaymentErrorMessage(raw: string | null | undefined): string {
   const message = (raw ?? '').trim()

@@ -229,6 +229,9 @@ describe('every payment form sends a key', () => {
     const request = read('src/app/finance/page.tsx')
     const failed = request.slice(request.indexOf('const proofErr = await persistProof'), request.indexOf('attempt.settle()\n    setSaving(false)'))
     assert.ok(failed.length > 0 && !failed.includes('attempt.settle()'))
+    // …and the payment is kept, pending, and the screen says so (20270117000000).
+    assert.equal(/\.delete\(/.test(failed), false, 'a failed proof never deletes the recorded payment')
+    assert.ok(failed.includes('is recorded and awaiting verification, but its proof did not upload'))
     const pi = read('src/app/orders/drafts/[submissionId]/page.tsx')
     const piFailed = pi.slice(pi.indexOf('if (proofError) {', pi.indexOf('const recordPayment = useCallback')), pi.indexOf('attempt.settle()\n      setPaymentNotice'))
     assert.ok(piFailed.includes('return PI_PAYMENT_PROOF_RETRY') && !piFailed.includes('attempt.settle()'))

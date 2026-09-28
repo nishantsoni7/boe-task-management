@@ -5,16 +5,29 @@
 // embedded product photographs, plus an honest list of everything a reviewer
 // should look at before the submission is approved.
 //
-// THE TEMPLATE IS A CONTRACT, NOT A GUESS
-// ---------------------------------------
-// Every address below is FIXED by the BOE PI template: the header block sits at
-// rows 20–28, the column headers at row 31, products from row 32, the commercial
-// footer at rows 115–122. A parser that "found" these by searching for labels
-// would quietly succeed on the wrong workbook and produce plausible, wrong
-// numbers. So the addresses are constants, and row 31 is fingerprinted against
-// the expected column headers BEFORE a single value is read. A template that
-// does not match is a BLOCKING error — never a silent re-map onto whatever
-// columns happen to be there.
+// THE TEMPLATE IS THE REFERENCE; THE LABELS SAY WHERE; THE NUMBERS PROVE IT
+// -------------------------------------------------------------------------
+// The template puts the header block at rows 20–28, the column headers at row
+// 31, products from row 32, the dates under row 112 and the footer at rows
+// 115–122, amounts in column I. People edit the sheet — a row deleted or added,
+// a column inserted — and a fixed address then reads the NEXT cell along. A
+// production draft (2026-09-24) lost its Grand Total exactly that way.
+//
+// So every block is found by ITS OWN labels (see layout.ts): the product columns
+// by their names, the header values beside their labels, the dates below theirs,
+// the footer's figures beside Sub Total … Grand Total. An unedited workbook is
+// found exactly where the template puts it, so it reads exactly as before.
+//
+// And every location is PROVED by the data, never trusted on labels alone. The
+// footer counts as found only where Total + GST = Grand Total; failing its
+// labels, it is looked for by that arithmetic; failing both, the workbook is
+// refused — a figure is never read from a template cell that may now hold
+// something else. The product columns are proved by quantity × cost = line
+// total. A Grand Total that cannot be read at all is BLOCKING: an order must
+// never be saved without one.
+//
+// Nothing is guessed: every column name must be found exactly once on one row,
+// labels are compared whole, and an ambiguous candidate is never chosen.
 //
 // WHERE THE BUSINESS MEANING BEATS THE LABEL
 // ------------------------------------------
@@ -54,8 +67,17 @@ import {
   type PiSheet,
 } from './workbookReader'
 import { harvestProductImages, resolveDrawingPart, type PiImageHarvest } from './drawingAnchors'
+import {
+  locateLayout,
+  PRODUCT_COLUMN_NAMES,
+  TEMPLATE_FOOTER_LABEL_COL,
+  TEMPLATE_GRAND_TOTAL_ROW,
+  TEMPLATE_HEADER_CELLS,
+  type PiLayout,
+  type ProductColumns,
+} from './layout'
 import { describeImageFormat, isStorableImageFormat, PI_ACCEPTED_IMAGE_LABEL } from './imageFormats'
-import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'
+import { isCalendarDate } from '@/lib/orders/dueDate'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -319,37 +341,80 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
 
   const sheet = readSheet(sheetXml, readSharedStrings(entries))
 
-  // ── The gate. Nothing below runs against an unrecognised template. ──
-  const fingerprint = checkFingerprint(sheet)
-  const failed = fingerprint.filter(f => !f.ok)
-  if (failed.length > 0) {
+  // ── The gate. Nothing below runs until every column is found by its name. ──
+  const located = locateLayout(sheet)
+  if (!located.ok) {
+    // Say what the template's own cell holds instead, so a renamed heading is
+    // obvious ("Material" was not found; G31 holds "Fabric").
+    const inTemplateCell = (name: string) => {
+      const column = PRODUCT_COLUMN_NAMES.find(c => c.label === name)
+      if (!column) return ''
+      const address = cellRef(column.templateCol, located.bestRow)
+      const found = textOf(sheet.cells.get(address))
+      return ` (${address} holds ${found === null ? 'nothing' : `"${found}"`})`
+    }
+    const problems = [
+      ...located.missing.map(name => `"${name}" was not found${inTemplateCell(name)}`),
+      ...located.duplicated.map(name => `"${name}" appears more than once`),
+    ]
     return {
       ok: false,
       warnings,
       errors: [{
         code: 'TEMPLATE_FINGERPRINT_MISMATCH',
         message:
-          `Row ${HEADER_ROW} does not match the BOE PI template. `
-          + failed.map(f => `${f.cell} expected "${f.expected}", found ${f.found === null ? 'nothing' : `"${f.found}"`}`).join('; ')
-          + '.',
+          `No row of this sheet carries the BOE PI column names (Code, Name, Quantity, … Customization). `
+          + `The closest is row ${located.bestRow}: ${problems.join('; ')}.`,
       }],
     }
   }
+  const layout = located.layout
+  const { cols } = layout
+  const fingerprint = checkFingerprint(sheet, layout)
+  const lastProductRow = layout.lastProductRow
+  const footerOffset = layout.footer.rows.grandTotal - TEMPLATE_GRAND_TOTAL_ROW
 
-  // ── Where the footer sits. Everything below the product band moves with it. ──
-  const footer = locateFooter(sheet)
-  const footerOffset = footer.offset
-  const lastProductRow = LAST_PRODUCT_ROW + footerOffset
-  if (!footer.verified) {
+  // ── Say what moved, so a reviewer knows the sheet was edited ──
+  if (layout.headerRowOffset !== 0 || layout.movedColumns.length > 0) {
+    const parts: string[] = []
+    if (layout.headerRowOffset !== 0) {
+      parts.push(`the column names are on row ${layout.headerRow} instead of row ${HEADER_ROW}`)
+    }
+    for (const m of layout.movedColumns) {
+      parts.push(`${columnWord(m.key)} is in column ${indexToColumnLetter(m.to)} instead of ${indexToColumnLetter(m.from)}`)
+    }
     warnings.push({
-      code: 'FOOTER_NOT_VERIFIED',
-      message: `The commercial footer's labels (Sub Total … Grand Total in column G) were not found where the template puts them, rows 116–122, or anywhere near. The footer figures were read from their template cells and may not be what the workbook shows — check them against the PI.`,
+      code: 'LAYOUT_MOVED',
+      row: layout.headerRow,
+      message: `This sheet was edited away from the template: ${parts.join('; ')}. Every column was read by its name and checked against the figures.`,
     })
-  } else if (footerOffset !== 0) {
+  }
+
+  // ── The footer: found by its labels and proved by its own arithmetic ──
+  const footer = layout.footer
+  const grandCell = cellRef(footer.valueCol, footer.rows.grandTotal)
+  if (footer.how === 'none') {
+    blockingIssues.push({
+      code: 'FOOTER_NOT_FOUND',
+      row: footer.rows.grandTotal,
+      message: `The footer (Sub Total … Grand Total) could not be found by its labels, and no rows below the products add up as Total + GST = Grand Total. Nothing was read from the template cells, because they may hold something else. Restore the footer's labels, or check its figures, and upload the PI again.`,
+    })
+  } else if (footer.how === 'arithmetic') {
+    warnings.push({
+      code: 'FOOTER_LOCATED_BY_ARITHMETIC',
+      row: footer.rows.grandTotal,
+      cell: grandCell,
+      message: `The footer's labels (Sub Total … Grand Total) were not found, so the footer was located where its figures add up: Grand Total in ${grandCell}. Check the footer against the PI.`,
+    })
+  } else if (footerOffset !== 0 || footer.labelCol !== TEMPLATE_FOOTER_LABEL_COL) {
+    const where: string[] = []
+    if (footerOffset !== 0) where.push(`sits ${Math.abs(footerOffset)} row${Math.abs(footerOffset) === 1 ? '' : 's'} ${footerOffset < 0 ? 'higher' : 'lower'} than the template's`)
+    if (footer.labelCol !== TEMPLATE_FOOTER_LABEL_COL) where.push(`has its labels in column ${indexToColumnLetter(footer.labelCol)} instead of ${indexToColumnLetter(TEMPLATE_FOOTER_LABEL_COL)}`)
     warnings.push({
       code: 'FOOTER_SHIFTED',
-      row: 122 + footerOffset,
-      message: `The commercial footer sits ${Math.abs(footerOffset)} row${Math.abs(footerOffset) === 1 ? '' : 's'} ${footerOffset < 0 ? 'higher' : 'lower'} than the template's (Grand Total is on row ${122 + footerOffset}), so a product row was ${footerOffset < 0 ? 'removed from' : 'added to'} the sheet. The footer, the confirmation and dispatch dates, the terms and the fabric choice were all read ${Math.abs(footerOffset)} row${Math.abs(footerOffset) === 1 ? '' : 's'} ${footerOffset < 0 ? 'up' : 'down'}.`,
+      row: footer.rows.grandTotal,
+      cell: grandCell,
+      message: `The commercial footer ${where.join(' and ')} (Grand Total is in ${grandCell}), so rows or columns were added to or removed from the sheet. It was found by its labels, its figures add up, and it was read there.`,
     })
   }
 
@@ -359,9 +424,9 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     ? harvestProductImages({
         entries,
         drawingPart,
-        representativeColumn: COL.image,
-        customizationColumn: COL.customization,
-        firstRow: FIRST_PRODUCT_ROW,
+        representativeColumn: cols.image,
+        customizationColumn: cols.customization,
+        firstRow: layout.firstProductRow,
         lastRow: lastProductRow,
       })
     : {
@@ -396,9 +461,9 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
   const representativeImages: PiProductImage[] = []
   const customizationImages: PiProductImage[] = []
 
-  for (let row = FIRST_PRODUCT_ROW; row <= lastProductRow; row++) {
+  for (let row = layout.firstProductRow; row <= lastProductRow; row++) {
     const hidden = sheet.hiddenRows.has(row)
-    const hasContent = rowHasProductContent(sheet, row)
+    const hasContent = rowHasProductContent(sheet, row, cols)
     if (hidden) hiddenProductRows.push(row)
 
     if (hidden) {
@@ -420,6 +485,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     products.push(buildProduct({
       sheet,
       row,
+      cols,
       rowImages: harvest.representativeByRow.get(row) ?? [],
       rowCustomizationImages: harvest.customizationByRow.get(row) ?? [],
       warnings,
@@ -435,7 +501,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       warnings,
       errors: [{
         code: 'NO_PRODUCT_ROWS',
-        message: `The template matched but no genuine product rows were found between rows ${FIRST_PRODUCT_ROW} and ${lastProductRow}.`,
+        message: `The template matched but no genuine product rows were found between rows ${layout.firstProductRow} and ${lastProductRow}.`,
       }],
     }
   }
@@ -447,9 +513,26 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     })
   }
 
-  const header = readHeader(sheet, warnings, footerOffset)
-  warnings.push(...headerRequirementWarnings(header))
-  const commercial = readCommercial(sheet, products, warnings, footerOffset)
+  // ── The product columns, proved by their own arithmetic ──
+  //
+  // Found by name, and then checked: quantity × cost per piece must equal the
+  // line total. One line that disagrees is a line to look at (a warning, below
+  // in buildProduct). EVERY line disagreeing, across two or more, means the
+  // columns themselves are not what their names say — nothing is saved.
+  const checkable = products.filter(p => p.quantity !== null && p.costPerPiece !== null && p.lineTotal !== null)
+  const agreeing = checkable.filter(p => Math.abs(p.quantity! * p.costPerPiece! - p.lineTotal!) <= MONEY_EPSILON)
+  if (checkable.length >= 2 && agreeing.length === 0) {
+    blockingIssues.push({
+      code: 'PRODUCT_COLUMNS_UNVERIFIED',
+      row: layout.headerRow,
+      cell: cellRef(cols.lineTotal, layout.headerRow),
+      message: `On every product line, Quantity × Cost per piece differs from Total Cost, so the columns named on row ${layout.headerRow} cannot be trusted to hold what their names say. Check the column headings and upload the PI again.`,
+    })
+  }
+
+  const header = readHeader(sheet, warnings, layout)
+  warnings.push(...headerRequirementWarnings(header, { createdBy: layout.headerCells.createdBy }))
+  const commercial = readCommercial(sheet, products, warnings, blockingIssues, layout)
 
   return {
     ok: true,
@@ -461,8 +544,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
         sheetPart: resolution.part,
         workbookSheetNames: resolution.sheetNames,
         drawingPart,
-        headerRow: HEADER_ROW,
-        firstProductRow: FIRST_PRODUCT_ROW,
+        headerRow: layout.headerRow,
+        firstProductRow: layout.firstProductRow,
         lastProductRow,
         footerOffset,
         fingerprint,
@@ -477,8 +560,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       // it said anything this parser recognises. Prefill only — neither is
       // required here, and neither produces a diagnostic.
       piTerms: {
-        fabricResponsibility: readFabricResponsibility(sheet, footerOffset),
-        commercialTermsNote: readCommercialTermsNote(sheet, footerOffset),
+        fabricResponsibility: readFabricResponsibilityAt(sheet, layout.fabricChoiceCells),
+        commercialTermsNote: readCommercialTermsNoteAt(sheet, layout.termsNoteCells),
       },
       representativeImages,
       customizationImages,
@@ -501,8 +584,15 @@ function archiveError(reason: PiArchiveFailure): PiError {
 
 // ── Template fingerprint ──────────────────────────────────────────────────────
 
-function checkFingerprint(sheet: PiSheet): PiTemplateCellCheck[] {
-  return TEMPLATE_HEADERS.map(({ cell, expected }) => {
+/**
+ * The column names, at the cells where they were actually found. Every one is
+ * a match by construction — locateLayout() refuses a sheet otherwise — and the
+ * list is kept so the preview can show where each name was read.
+ */
+function checkFingerprint(sheet: PiSheet, layout: PiLayout): PiTemplateCellCheck[] {
+  return PRODUCT_COLUMN_NAMES.map(({ key, label }) => {
+    const cell = cellRef(layout.cols[key], layout.headerRow)
+    const expected = label
     const found = textOf(sheet.cells.get(cell))
     return {
       cell,
@@ -769,8 +859,13 @@ const normalizeChoice = (value: string): string =>
  * nobody has answered, and the person working on the draft is asked.
  */
 export function readFabricResponsibility(sheet: PiSheet, footerOffset = 0): 'boe' | 'client' | 'not_selected' | null {
-  for (const address of FABRIC_CHOICE_CELLS) {
-    const text = textOf(sheet.cells.get(shiftAddress(address, footerOffset)))
+  return readFabricResponsibilityAt(sheet, FABRIC_CHOICE_CELLS.map(a => shiftAddress(a, footerOffset)))
+}
+
+/** The same, at the cells the layout found (the fabric row, beside its amount). */
+export function readFabricResponsibilityAt(sheet: PiSheet, cells: readonly string[]): 'boe' | 'client' | 'not_selected' | null {
+  for (const address of cells) {
+    const text = textOf(sheet.cells.get(address))
     if (text === null) continue
     const match = FABRIC_CHOICE_WORDS[normalizeChoice(text)]
     if (match !== undefined) return match
@@ -794,8 +889,13 @@ const TERMS_NOTE_MARKER = 'ex-factory'
  * quoted.
  */
 export function readCommercialTermsNote(sheet: PiSheet, footerOffset = 0): string | null {
-  for (const address of TERMS_NOTE_CELLS) {
-    const text = textOf(sheet.cells.get(shiftAddress(address, footerOffset)))
+  return readCommercialTermsNoteAt(sheet, TERMS_NOTE_CELLS.map(a => shiftAddress(a, footerOffset)))
+}
+
+/** The same, at the cells the layout found (the note block beside the discount). */
+export function readCommercialTermsNoteAt(sheet: PiSheet, cells: readonly string[]): string | null {
+  for (const address of cells) {
+    const text = textOf(sheet.cells.get(address))
     if (text === null) continue
     if (!text.toLowerCase().includes(TERMS_NOTE_MARKER)) continue
     const withoutHeading = text.replace(/^\s*note\s*:?\s*/i, '').trim()
@@ -806,7 +906,8 @@ export function readCommercialTermsNote(sheet: PiSheet, footerOffset = 0): strin
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-function readHeader(sheet: PiSheet, warnings: PiWarning[], footerOffset = 0): PiHeader {
+function readHeader(sheet: PiSheet, warnings: PiWarning[], layout: PiLayout): PiHeader {
+  const cells = layout.headerCells
   const at = (address: string) => sheet.cells.get(address)
   const text = (address: string, what: string) => {
     const cell = at(address)
@@ -820,90 +921,60 @@ function readHeader(sheet: PiSheet, warnings: PiWarning[], footerOffset = 0): Pi
   }
 
   return {
-    sourceOrderNumber:     text(HEADER_CELLS.sourceOrderNumber, 'The order number on the sheet'),
-    creationDate:          date(HEADER_CELLS.creationDate, 'Date of creation'),
-    createdBy:             text(HEADER_CELLS.createdBy, 'Created by'),
-    boeGst:                text(HEADER_CELLS.boeGst, 'BOE GST'),
-    contactNumber:         text(HEADER_CELLS.contactNumber, 'Contact number'),
-    billToName:            text(HEADER_CELLS.billToName, 'Bill-to name'),
-    billToPhone:           text(HEADER_CELLS.billToPhone, 'Bill-to phone'),
-    billToGst:             text(HEADER_CELLS.billToGst, 'Bill-to GST'),
-    billingAddress:        text(HEADER_CELLS.billingAddress, 'Billing address'),
-    shipToName:            text(HEADER_CELLS.shipToName, 'Ship-to name'),
-    shipToPhone:           text(HEADER_CELLS.shipToPhone, 'Ship-to phone'),
-    shipToGst:             text(HEADER_CELLS.shipToGst, 'Ship-to GST'),
-    shippingAddress:       text(HEADER_CELLS.shippingAddress, 'Shipping address'),
-    orderConfirmationDate: date(shiftAddress(HEADER_CELLS.orderConfirmationDate, footerOffset), 'Order confirmation date'),
-    dispatchCommitment:    date(shiftAddress(HEADER_CELLS.dispatchCommitment, footerOffset), 'Dispatch commitment'),
+    sourceOrderNumber:     text(cells.sourceOrderNumber, 'The order number on the sheet'),
+    creationDate:          date(cells.creationDate, 'Date of creation'),
+    createdBy:             text(cells.createdBy, 'Created by'),
+    boeGst:                text(cells.boeGst, 'BOE GST'),
+    contactNumber:         text(cells.contactNumber, 'Contact number'),
+    billToName:            text(cells.billToName, 'Bill-to name'),
+    billToPhone:           text(cells.billToPhone, 'Bill-to phone'),
+    billToGst:             text(cells.billToGst, 'Bill-to GST'),
+    billingAddress:        text(cells.billingAddress, 'Billing address'),
+    shipToName:            text(cells.shipToName, 'Ship-to name'),
+    shipToPhone:           text(cells.shipToPhone, 'Ship-to phone'),
+    shipToGst:             text(cells.shipToGst, 'Ship-to GST'),
+    shippingAddress:       text(cells.shippingAddress, 'Shipping address'),
+    // Each date is the cell BELOW its own label, found independently of the
+    // footer: a spacer row removed between them moves one and not the other.
+    orderConfirmationDate: date(layout.confirmationDateCell, 'Order confirmation date'),
+    dispatchCommitment:    date(layout.dispatchDateCell, 'Dispatch commitment'),
   }
 }
 
 /**
- * The three header cells a PI is expected to fill (owner decision 2026-09-18,
- * revised 2026-09-21).
+ * The header cell a PI is expected to fill (owner decision 2026-09-18, revised
+ * 2026-09-21 and 2026-09-27).
  *
  * Sales Person: any real text — blank or a bare dash is not a name.
- * Confirmation date: a real calendar date (an Excel date, 2020 or later) —
- *   the Order stores order_confirmation_date only from one.
- * Dispatch date: exactly what the save path will keep as the due date —
- *   plausibleDueDate() (lib/orders/dueDate.ts), the SAME rule, so the reading
- *   here and the saved record can never disagree. A lead time ("6 weeks from
- *   date of confirmation", or a bare "90" that Excel turned into a 1900 date)
- *   is not a due date and does not become one.
  *
- * WARNINGS, NOT BLOCKING ISSUES, and the whole point of the distinction is the
- * door each one closes. A blocking issue refuses the UPLOAD, which said to
- * somebody holding an otherwise complete PI that the only way forward was back
- * into Excel — untrue, because all three land in ordinary editable draft
- * columns. So the upload takes the workbook, the preview says what is missing,
- * and FINALIZATION is what refuses: submit_pi_for_review checks the stored
- * columns, which a person may have since corrected by hand. See PiWarningCode.
+ * THE TWO DATES ARE NOT ASKED OF THE WORKBOOK (2026-09-27). Date of Order
+ * Confirmation and Dispatch Date Finalized sit on the client-facing PI, and
+ * Sales normally leaves them out of it. They are INTERNAL order details: Sales
+ * enters them in the app — the Submit for Approval dialog or the Internal
+ * details editor — and the database refuses to send a PI for review without
+ * them (order_submissions_require_internal_details, 20270123000000). A warning
+ * about a blank cell told Sales to edit a client document for a fact the app
+ * collects, so the upload no longer raises one. The cells are still READ
+ * (readHeader) and prefill the app dates when a workbook does carry them.
+ * PI_CONFIRMATION_DATE_MISSING and PI_DISPATCH_DATE_MISSING stay in
+ * PiWarningCode only because older drafts have them on record; see
+ * RETIRED_WARNING_CODES in src/lib/pi/previewView.ts.
  *
- * The messages name the cell and say the draft can carry the correction, so a
- * reader is never left thinking a re-import is the only route.
+ * A WARNING, NOT A BLOCKING ISSUE: a blocking issue refuses the UPLOAD, and a
+ * missing salesperson lands in an ordinary editable draft column. The message
+ * names the cell and says the draft can carry the correction.
  */
-export function headerRequirementWarnings(header: Pick<PiHeader,
-  'createdBy' | 'creationDate' | 'orderConfirmationDate' | 'dispatchCommitment'>): PiWarning[] {
+export function headerRequirementWarnings(header: Pick<PiHeader, 'createdBy'>,
+  /** Where it was actually read — the template's cell unless the layout moved it. */
+  at: { createdBy: string } = { createdBy: HEADER_CELLS.createdBy }): PiWarning[] {
   const issues: PiWarning[] = []
+  const rowOf = (address: string) => Number(address.replace(/^[A-Z]+/, ''))
   if (isNotApplicableMarker(header.createdBy)) {
     issues.push({
       code: 'PI_SALESPERSON_MISSING',
-      message: 'Sales Person (cell G21) is empty. Name the salesperson on the draft, or enter it in the workbook and upload the PI again.',
-      row: 21,
-      cell: HEADER_CELLS.createdBy,
-    })
-  }
-
-  const confirmed = header.orderConfirmationDate?.iso ?? null
-  const confirmedOk = isCalendarDate(confirmed) && confirmed >= DUE_DATE_FLOOR
-  if (!confirmedOk) {
-    const read = header.orderConfirmationDate
-    issues.push({
-      code: 'PI_CONFIRMATION_DATE_MISSING',
-      message: read
-        ? `Date of Order Confirmation (cell A113) reads "${read.text}", which is not a date. Set the confirm date on the draft, or enter it as a date (for example 25/10/2026) and upload the PI again.`
-        : 'Date of Order Confirmation (cell A113) is empty. Set the confirm date on the draft, or enter it in the workbook and upload the PI again.',
-      row: 113,
-      cell: HEADER_CELLS.orderConfirmationDate,
-    })
-  }
-
-  const dispatch = header.dispatchCommitment
-  const due = plausibleDueDate({
-    candidate: dispatch?.iso ?? dispatch?.text ?? null,
-    orderConfirmationDate: confirmed,
-    creationDate: header.creationDate?.iso ?? null,
-  })
-  if (due === null) {
-    issues.push({
-      code: 'PI_DISPATCH_DATE_MISSING',
-      message: !dispatch
-        ? 'Dispatch Date Finalized (cell E113) is empty. Set the due date on the draft, or enter the dispatch date in the workbook and upload the PI again.'
-        : confirmedOk && isCalendarDate(dispatch.iso) && dispatch.iso >= DUE_DATE_FLOOR
-          ? `Dispatch Date Finalized (cell E113) is ${dispatch.text}, which is before the order confirmation date. Set the correct due date on the draft, or correct the workbook and upload the PI again.`
-          : `Dispatch Date Finalized (cell E113) reads "${dispatch.text}", which is not a date. Set the due date on the draft, or enter the actual dispatch date (for example 25/12/2026) — not a lead time — in the workbook and upload the PI again.`,
-      row: 113,
-      cell: HEADER_CELLS.dispatchCommitment,
+      message: `Sales Person (cell ${at.createdBy}) is empty. Name the salesperson on the draft, or enter it in the workbook and upload the PI again.`,
+      row: rowOf(at.createdBy),
+      cell: at.createdBy,
     })
   }
   return issues
@@ -922,14 +993,16 @@ export function headerRequirementWarnings(header: Pick<PiHeader,
  * distinguishes a product is that somebody typed something about it: a name, a
  * quantity, dimensions, a material, or a price.
  */
-function rowHasProductContent(sheet: PiSheet, row: number): boolean {
-  const cols = [COL.name, COL.quantity, COL.dimensions, COL.material, COL.costPerPiece]
+function rowHasProductContent(sheet: PiSheet, row: number, columns: ProductColumns = COL): boolean {
+  const cols = [columns.name, columns.quantity, columns.dimensions, columns.material, columns.costPerPiece]
   return cols.some(col => hasAnyValue(sheet.cells.get(cellRef(col, row))))
 }
 
 type BuildProductInput = {
   sheet: PiSheet
   row: number
+  /** Where each product column was found, by its name. */
+  cols: ProductColumns
   /** Column-E pictures anchored to this row. Exactly one is required. */
   rowImages: readonly PiProductImage[]
   /** Column-K pictures anchored to this row. Any number, including none. */
@@ -946,6 +1019,7 @@ function buildProduct(input: BuildProductInput): PiProduct {
     sheet, row, rowImages, rowCustomizationImages,
     warnings, blockingIssues, representativeImages, customizationImages,
   } = input
+  const COL = input.cols
   const at = (col: number) => sheet.cells.get(cellRef(col, row))
 
   const codeCell = at(COL.code)
@@ -1158,18 +1232,36 @@ function indexToColumnLetter(col: number): string {
   return cellRef(col, 1).replace(/\d+$/, '')
 }
 
+/** A product column, in the words its heading uses. */
+function columnWord(key: keyof ProductColumns): string {
+  if (key === 'itemSequence') return 'the item sequence column'
+  const named = PRODUCT_COLUMN_NAMES.find(c => c.key === key)
+  return named ? `"${named.label}"` : key
+}
+
 // ── Commercial footer ─────────────────────────────────────────────────────────
 
 function readCommercial(
   sheet: PiSheet,
   products: readonly PiProduct[],
   warnings: PiWarning[],
-  footerOffset = 0,
+  blockingIssues: PiBlockingIssue[],
+  layout: PiLayout,
 ): PiCommercialSummary {
-  // The template cells, moved as one block to where the footer was proven to be.
-  const CELLS = Object.fromEntries(
-    Object.entries(COMMERCIAL_CELLS).map(([k, a]) => [k, shiftAddress(a, footerOffset)]),
-  ) as Record<keyof typeof COMMERCIAL_CELLS, string>
+  // Where the footer was found (by its labels, proved by its figures), and the
+  // column its amounts are in.
+  const { rows, valueCol, labelCol } = layout.footer
+  const CELLS: Record<keyof typeof COMMERCIAL_CELLS, string> = {
+    discount:              cellRef(valueCol, rows.discount),
+    discountLabel:         cellRef(labelCol, rows.discount),
+    subtotalAfterDiscount: cellRef(valueCol, rows.subtotal),
+    fabricCost:            cellRef(valueCol, rows.fabric),
+    packingCost:           cellRef(valueCol, rows.packing),
+    transportation:        cellRef(valueCol, rows.transport),
+    totalBeforeGst:        cellRef(valueCol, rows.total),
+    gst:                   cellRef(valueCol, rows.gst),
+    grandTotal:            cellRef(valueCol, rows.grandTotal),
+  }
   const amountOrText = (
     address: string,
     what: string,
@@ -1265,6 +1357,56 @@ function readCommercial(
       computed: expectedSubtotal,
       message: `The sum of the product lines less the discount does not equal the stored sub total. The workbook's figure has been kept.`,
     })
+  }
+
+  // ── The Grand Total is required. An order is never saved without one. ──
+  //
+  // BLOCKING, and checked here whether or not the footer was proven: a missing
+  // Grand Total is exactly how the 2026-09-24 draft reached the database with
+  // nothing to measure its 40% advance against.
+  if (layout.footer.how !== 'none' && grandTotal.amount === null) {
+    blockingIssues.push({
+      code: 'GRAND_TOTAL_MISSING',
+      row: rows.grandTotal,
+      cell: CELLS.grandTotal,
+      message: `The Grand Total (${CELLS.grandTotal}) is ${grandTotal.text === null ? 'empty' : `"${grandTotal.text}", not a number`}. A PI cannot be saved without its Grand Total — correct the workbook and upload it again.`,
+    })
+  }
+
+  // ── The footer's own arithmetic, each step reported, never repaired ──
+  //
+  // Sub Total + fabric + packing + transport = Total. Transportation written in
+  // words ("as applicable") is not charged here and counts as nothing; a
+  // fabric/packing dash or "Inclusive" is already a zero above.
+  const chargeable = [subtotalAfterDiscount.amount, fabricCost.amount, packingCost.amount]
+  if (totalBeforeGst.amount !== null && chargeable.every(v => v !== null)) {
+    const transport = transportation.amount ?? 0
+    const computed = (chargeable as number[]).reduce((a, b) => a + b, 0) + transport
+    if (Math.abs(computed - totalBeforeGst.amount) > MONEY_EPSILON) {
+      warnings.push({
+        code: 'TOTAL_BEFORE_GST_MISMATCH',
+        cell: CELLS.totalBeforeGst,
+        stored: totalBeforeGst.amount,
+        computed,
+        message: `Sub Total plus fabric, packing and transport does not equal the stored Total (${CELLS.totalBeforeGst}). The workbook's figure has been kept.`,
+      })
+    }
+  }
+
+  // GST = Total × the rate printed on its label ("GST @ 18%"). Rounded to the
+  // rupee in many workbooks, so a rupee either way is the same figure.
+  const gstRate = layout.footer.gstRate
+  if (gstRate !== null && totalBeforeGst.amount !== null && gst.amount !== null) {
+    const computed = totalBeforeGst.amount * gstRate
+    if (Math.abs(computed - gst.amount) > 1) {
+      warnings.push({
+        code: 'GST_MISMATCH',
+        cell: CELLS.gst,
+        stored: gst.amount,
+        computed,
+        message: `GST (${CELLS.gst}) is not ${Math.round(gstRate * 1000) / 10}% of the Total, as its label says. The workbook's figure has been kept.`,
+      })
+    }
   }
 
   // The last line of the footer must be the two above it added up. Reported,

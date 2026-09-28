@@ -249,6 +249,10 @@ export function reservationBlockedReason(input: {
   return null
 }
 
+export const ORDER_CREATED_HEADLINE = 'Confirmed Order created'
+export const ORDER_CREATED_NUMBER_NOT_SHOWN =
+  'Its Order number and details are shown to people with access to Confirmed Orders.'
+
 /** Everything the panel renders, resolved once. */
 export function describeReservation(input: {
   reserved: string | null | undefined
@@ -303,6 +307,15 @@ export function describeReservation(input: {
       blockedReason: null,
       canCopy: true,
     }
+  }
+
+  // THE ORDER EXISTS, BUT THIS READER CANNOT SEE IT. A PI is readable more
+  // widely than its Order (Finance verifies payments on the PI through
+  // can_view_order_submission; the Order row needs orders.view_all, the Order's
+  // own people, Operations or an admin). "Not allotted" would be false, so the
+  // page says an Order was created — without widening who may read it.
+  if (input.hasOrder && !input.confirmedNumber) {
+    return { state: 'used', number: null, standing: ORDER_CREATED_NUMBER_NOT_SHOWN, blockedReason: null, canCopy: false }
   }
 
   // NO RESERVATION, AND NOTHING TO RESERVE (20270114000000). A PI Draft no

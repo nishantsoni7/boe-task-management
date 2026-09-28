@@ -93,6 +93,8 @@ export const PI_ACTIVITY_LABEL: Record<string, string> = {
   client_details_amended_by_admin: 'Client details amended by admin',
   schedule_terms_updated: 'Schedule and terms updated',
   schedule_terms_amended_by_admin: 'Schedule and terms amended by admin',
+  // 20270122000000: the app dates and the middleman answer, saved or confirmed.
+  internal_details_updated: 'Internal details updated',
   correction_requested: 'Correction requested',
   correction_resolved: 'Correction resolved',
   correction_rejected: 'Correction refused',
@@ -166,6 +168,7 @@ export const PI_ACTIVITY_TONE: Record<string, PiActivityTone> = {
   client_details_amended_by_admin: 'amber',
   schedule_terms_updated: 'neutral',
   schedule_terms_amended_by_admin: 'amber',
+  internal_details_updated: 'neutral',
   correction_requested: 'amber',
   correction_resolved: 'green',
   correction_rejected: 'red',

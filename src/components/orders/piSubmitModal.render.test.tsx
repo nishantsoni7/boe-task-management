@@ -51,6 +51,8 @@ import {
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { SUBMIT_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import { formatInr } from '@/lib/pi/previewView'
+import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsReview } from '@/lib/orders/salesOrderDetails'
+import { SUBMISSION_CONFIRM_LABEL, type PiInternalDetailsRow } from '@/lib/orders/piInternalDetails'
 
 const GRAND_TOTAL = 118000
 
@@ -96,6 +98,8 @@ function render(over: {
   submitting?: boolean
   failure?: string | null
   offerReply?: boolean
+  internalDetails?: PiInternalDetailsRow | null
+  detailsReview?: ReturnType<typeof orderDetailsReview>
 } = {}): string {
   return renderToStaticMarkup(
     <PiSubmitConfirmModal
@@ -108,6 +112,8 @@ function render(over: {
       offerReply={over.offerReply ?? false}
       onCancel={() => {}}
       onConfirm={() => {}}
+      internalDetails={over.internalDetails}
+      detailsReview={over.detailsReview}
     />,
   )
 }
@@ -454,3 +460,105 @@ describe('the submission rule reads attached payment', () => {
     assert.equal(submitDisabled(render({ payment: below() })), true)
   })
 })
+
+// ── The two internal dates, asked for at Submit (2026-09-27) ─────────────────
+//
+// Sales leaves Date of Order Confirmation and Dispatch Date Finalized off the
+// client-facing workbook; this dialog is where they are required. Static
+// markup cannot press a button, so the press itself is held by reading the
+// dialog's own source below — the same way the page wiring is held above.
+describe('the Submit dialog REVIEWS the internal order details — it never asks for them again', () => {
+  const blank: PiInternalDetailsRow = { status: 'draft', middleman_commission: 'no' }
+  const dated: PiInternalDetailsRow = { status: 'draft', middleman_commission: 'no',
+    order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }
+  const reviewOf = (row: PiInternalDetailsRow) => orderDetailsReview({ ...row, lead_source: 'website', billing_terms: '50% on dispatch' }, [])
+
+  test('the values Sales entered are stated, and there is no date input left to type in', () => {
+    const html = render({ internalDetails: dated, detailsReview: reviewOf(dated) })
+    const review = html.slice(html.indexOf('data-testid="pi-submit-details-review"'), html.indexOf('</dl>'))
+    for (const expected of ['Date of Order Confirmation', '20 Sep 2026', 'Dispatch Date Finalized', '20 Nov 2026',
+      'Lead source', 'Website', 'Billing terms', '50% on dispatch', 'Fabric responsibility', 'Middleman commission', 'No']) {
+      assert.ok(review.includes(expected), `${expected} is reviewed`)
+    }
+    assert.ok(!html.includes('type="date"'), 'no second place to type a date')
+    assert.ok(html.includes('Internal order details on the PI'), 'and it says where to change them')
+  })
+
+  test('missing dates are said, and Submit waits — the fix is the section, not this dialog', () => {
+    const html = render({ internalDetails: blank, detailsReview: reviewOf(blank) })
+    assert.ok(html.includes(SUBMISSION_DETAILS_INCOMPLETE))
+    assert.equal(submitDisabled(html), true)
+    assert.ok(!html.includes('type="checkbox"'), 'nothing to confirm until they are complete')
+  })
+
+  test('without the prop the dialog is exactly what it was', () => {
+    const html = render({})
+    assert.ok(!html.includes('Dispatch Date Finalized'))
+    assert.ok(!html.includes('type="date"'))
+    assert.ok(!html.includes('type="checkbox"'))
+  })
+
+  test('the dates handed up are the record\'s own, never typed here', () => {
+    const modal = readFileSync(join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8').replace(/\r/g, '')
+    assert.ok(modal.includes('const dates: SubmissionDates | null = internalDetails ? submissionDatesFrom(internalDetails) : null'))
+    const confirm = modal.slice(modal.indexOf('  const confirm = () => {'), modal.indexOf('  return (', modal.indexOf('  const confirm = () => {')))
+    // An incomplete record blocks Submit, and a blocked confirm returns before anything is handed up.
+    assert.ok(modal.includes('|| (!!dates && datesInvalid)'), 'missing or out-of-order dates block the button')
+    const check = confirm.indexOf('if (blocked || !checked.ok) return')
+    assert.ok(check > -1 && check < confirm.indexOf('onConfirm('), 'an incomplete record hands nothing up')
+    assert.ok(confirm.includes('dates ?? undefined, needsAcknowledgement && acknowledged)'))
+  })
+
+  test('the page hands the dialog the section\'s own review', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('detailsReview={orderDetailsReview(detailsRow, salespeople)}'))
+  })
+})
+
+// ── Confirming the internal details is the submitter's act (#247 review) ──────
+//
+// Saving the dates from this dialog also confirms the middleman answer, so the
+// dialog shows that answer beside the dates and asks for an unticked, required
+// confirmation whenever Submit would write them.
+describe('the Submit dialog never confirms the internal details silently', () => {
+  const unconfirmed: PiInternalDetailsRow = { status: 'draft', middleman_commission: 'yes',
+    middleman_recipient: 'Site agent', middleman_commission_basis: 'amount', middleman_commission_amount: '25000',
+    order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }
+
+  test('the CURRENT middleman answer is shown with the dates, with where to change it', () => {
+    const html = render({ internalDetails: unconfirmed, detailsReview: orderDetailsReview(unconfirmed, []) })
+    const fieldset = html.slice(html.indexOf('<fieldset'), html.indexOf('</fieldset>'))
+    assert.ok(fieldset.includes('Middleman commission'))
+    assert.ok(fieldset.includes('Yes — Site agent, ₹25,000.00'), 'the answer as the reviewer will read it')
+    assert.ok(fieldset.includes('To change any of them, Cancel and use Internal order details on the PI.'))
+    const noAnswer = render({ internalDetails: { status: 'draft' }, detailsReview: orderDetailsReview({ status: 'draft' }, []) })
+    assert.ok(noAnswer.includes('Not added yet'), 'an unanswered question is said, not hidden')
+  })
+
+  test('when Submit would write them, a confirmation is asked for — UNTICKED, and saying what it confirms', () => {
+    const html = render({ internalDetails: unconfirmed })
+    assert.ok(html.includes(SUBMISSION_CONFIRM_LABEL.replace('\u2019', '’')) || html.includes('Submitting confirms them as this PI'))
+    const box = html.slice(html.indexOf('id="pi-submit-confirm-internal"') - 20, html.indexOf('id="pi-submit-confirm-internal"') + 200)
+    assert.ok(box.includes('type="checkbox"'))
+    assert.ok(!/checked=""/.test(box), 'never pre-ticked')
+    assert.ok(!html.includes(SUBMISSION_CONFIRM_REQUIRED_TEXT), 'and not scolded before Submit is pressed')
+  })
+
+  test('already confirmed with the same dates: nothing to tick, and the dialog says nothing will change', () => {
+    const html = render({ internalDetails: { ...unconfirmed, internal_details_confirmed_at: '2026-09-26T10:00:00Z' } })
+    assert.ok(!html.includes('type="checkbox"'))
+    assert.ok(html.includes('Confirmed 26 Sep 2026 — nothing here will change.'))
+  })
+
+  test('pressing Submit without the tick hands nothing up and says why', () => {
+    const modal = readFileSync(join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8').replace(/\r/g, '')
+    const confirm = modal.slice(modal.indexOf('  const confirm = () => {'), modal.indexOf('  return (', modal.indexOf('  const confirm = () => {')))
+    const gate = confirm.indexOf('if (needsAcknowledgement && !acknowledged) {')
+    assert.ok(gate > -1 && gate < confirm.indexOf('onConfirm('), 'the tick is checked before anything is handed up')
+    assert.ok(confirm.slice(gate, confirm.indexOf('onConfirm(')).includes('return'))
+    assert.ok(modal.includes('const [acknowledged, setAcknowledged] = useState(false)'), 'it starts unticked')
+    assert.ok(modal.includes('error: datesAttempted && needsAcknowledgement && !acknowledged ? SUBMISSION_CONFIRM_REQUIRED : null'))
+  })
+})
+
+const SUBMISSION_CONFIRM_REQUIRED_TEXT = 'Tick the box to confirm the internal details'

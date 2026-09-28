@@ -14,7 +14,7 @@
 // NOT ONE FIGURE IS COMPUTED HERE.
 // ---------------------------------
 // Every amount comes through buildCommercialRows / persistedCommercial /
-// billingValue — the same helpers the Order screen and both PI screens use, and
+// formatInr — the same helpers the Order screen and both PI screens use, and
 // the same STRINGS. There is no second formatting path and no second
 // arithmetic, so the PDF cannot round differently from the screen a person
 // approved on. What this module does with a figure is choose where it goes.
@@ -37,8 +37,7 @@
 // changes no figure, and it is a one-line fix the day a licensed font lands in
 // the repository — see toPdfText.
 
-import { formatBillingPercentage, readBillingPercentage, billingValue } from './billingPercentage'
-import { persistedCommercial, persistedHeader, persistedProducts } from './draftsView'
+import { persistedCommercial, persistedProducts } from './draftsView'
 import type { PersistedItem, PersistedProduct } from './draftsView'
 import type { OrderPiRow } from './orderPiHandoff'
 import {
@@ -48,13 +47,13 @@ import {
 } from './piTerms'
 import {
   buildCommercialRows,
-  buildHeaderRows,
   formatInr,
-  formatPiDate,
   orDash,
   type PiAmountRow,
 } from '@/lib/pi/previewView'
 import { commercialBreakdownRows } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { clientDeductionRows, hasDeduction } from './discountWording'
+import { PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL } from './orderCommercial'
 
 // ── Text ──────────────────────────────────────────────────────────────────────
 
@@ -151,7 +150,7 @@ export type ConfirmedPdfModel = {
   billTo: PdfField[]
   /** Who to ship to, and where. */
   shipTo: PdfField[]
-  /** Contact number, PI creator, confirm date, due date, billing percentage. */
+  /** The salesperson and their contact number. Never a date, never billing. */
   meta: PdfField[]
   products: PdfProductRow[]
   commercial: PdfCommercialRow[]
@@ -236,18 +235,32 @@ const clean = (v: string | null | undefined): string => {
 export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfModel {
   const sub = input.submission
 
-  const headerRows = buildHeaderRows(persistedHeader(sub))
-  const confirmed = headerRows.find(r => r.key === 'confirmed')?.value ?? ''
+  // NO CONFIRMATION DATE AND NO DUE DATE ON A CLIENT PDF (20270122000000).
+  //
+  // Neither is printed, from any source: not the app-entered dates (Sales'
+  // internal answers) and not the dates the uploaded workbook stated. Nothing
+  // here reads order_confirmation_date, due_date or a workbook date;
+  // clientDocumentPrivacy.test.ts proves it on the rendered bytes with every
+  // one of them populated.
 
   // THE SAME ROWS THE SCREEN SHOWS, minus the advance — a pre-approval condition
-  // that no longer applies to an Order that already exists.
-  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(sub)))
+  // that no longer applies to an Order that already exists. The deduction is
+  // printed as "Discount" when non-zero and LEFT OFF when zero or blank,
+  // whatever the workbook called it. Figures untouched.
+  //
+  // WITH A DISCOUNT, THE GROSS IS NAMED AS THE FIGURE BEFORE IT. "Product value"
+  // on every BOE screen is the amount after the discount, so the opening line —
+  // the gross, followed here by a separate Discount line — reads "Product value
+  // before discount". Only the caption changes: the same stored figures, the
+  // discount printed once, and the Grand Total exactly as stored. With no
+  // discount the line keeps its "Gross product amount" caption.
+  const discounted = hasDeduction(sub.discount_amount)
+  const rows = clientDeductionRows(
+    commercialBreakdownRows(buildCommercialRows(persistedCommercial(sub))),
+    { amount: sub.discount_amount },
+  ).map(row => (discounted && row.key === 'gross' ? { ...row, label: PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL } : row))
 
   const products = persistedProducts(input.items)
-
-  const percent = readBillingPercentage(sub.billing_percentage ?? null)
-  const beforeGst = numericOf(sub.total_before_gst)
-  const billed = billingValue({ totalBeforeGst: beforeGst, percentage: percent })
 
   const meta: PdfField[] = []
   // NOT the client’s phone, and no longer falling back to it. contact_number
@@ -263,24 +276,11 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
   const author = clean(sub.source_created_by)
   if (author) meta.push({ label: 'Salesperson', value: toPdfText(author) })
   if (contact) meta.push({ label: 'Salesperson contact', value: toPdfText(contact) })
-  if (clean(confirmed)) meta.push({ label: 'Confirm date', value: toPdfText(confirmed) })
-  meta.push({
-    label: 'Due date',
-    // formatPiDate re-spells the ISO string WITHOUT constructing a Date — the
-    // timezone-safe path every other date in this system uses.
-    value: sub.due_date
-      ? toPdfText(formatPiDate({ iso: sub.due_date, text: sub.due_date, source: 'serial' }))
-      : 'Not set',
-  })
-  // UNDECLARED IS SAID IN WORDS, never as 0%.
-  meta.push({ label: 'Billing percentage', value: toPdfText(formatBillingPercentage(percent)) })
-  if (percent !== null) {
-    meta.push({
-      label: 'Billing value',
-      // MISSING IS NOT ZERO: formatInr renders an absent figure as an em dash.
-      value: pdfAmount(formatInr(billed)),
-    })
-  }
+  // NO BILLING PERCENTAGE AND NO BILLING VALUE ON A CLIENT PDF (#248, owner's
+  // decision 2026-09-27). billing_percentage is BOE's internal billing
+  // arrangement, kept in the PI's Internal order details; neither it nor the
+  // value derived from it is printed here, declared or not. The fabric
+  // responsibility sentence below stays: it tells the client who supplies fabric.
 
   return {
     orderNumber: toPdfText(input.orderNumber),
@@ -361,12 +361,6 @@ function commercialRow(row: PiAmountRow): PdfCommercialRow {
     groupStart: row.groupStart === true,
     missing: row.kind === 'missing',
   }
-}
-
-function numericOf(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const n = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(n) ? n : null
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────

@@ -100,11 +100,12 @@ export type FinanceCapabilities = {
    */
   canManageFinance: boolean
   /**
-   * May approve, reject or send back a payment they recorded themselves — the
-   * administrator override on the separation of payment entry and decision.
-   * No grant confers it: finance_payment_requests_guard_decision_status and
-   * reject_finance_payment_request (20261211000000) exempt admins only, so this
-   * is true for an admin and false for everybody else, whatever they hold.
+   * May approve, reject or send back a payment they recorded themselves, and
+   * has their own payments verified in the same action they are recorded —
+   * the Admins' exemption from the separation of payment entry and decision.
+   * Backed by the protected `verify_own_payment` action (20270120000000),
+   * granted per person in Control Center; an admin holds it through the admin
+   * branch, exactly as actor_has_module_permission does in the database.
    */
   canDecideOwnPayment: boolean
 }
@@ -177,7 +178,6 @@ export function deriveFinanceCapabilities(
     canAllocatePayment: withEntry('allocate'),
     canCorrectPaymentAllocation: withEntry('allocate_correct'),
     canManageFinance: withEntry('manage'),
-    // The database exempts admins only; no action key reaches it.
-    canDecideOwnPayment: false,
+    canDecideOwnPayment: withEntry('verify_own_payment'),
   }
 }

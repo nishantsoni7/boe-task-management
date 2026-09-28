@@ -109,6 +109,53 @@ function withoutEditingBlocks(source: string): string {
   return lines.filter((_, i) => !drop.has(i)).join('\n')
 }
 
+/**
+ * THE ISSUES-FIRST UPLOAD PASS (2026-09-27), set aside and only that. It moved
+ * the Upload PI verdict, warnings and Save Draft above the document, reworded
+ * the ready card (saving is not submitting), widened Save Draft on a phone,
+ * set the product code in the interface sans rather than the monospace on both
+ * PI screens, and retired the two workbook-date warnings. Each edit is undone
+ * here by its exact text, so any OTHER drift in these regions still fails.
+ */
+function undoAll(src: string, undo: [string, string][], label: string): string {
+  let out = src
+  for (const [is, was] of undo) {
+    assert.ok(out.includes(is), `${label}: the issues-first edit is where it was left: ${is.slice(0, 60)}`)
+    out = out.replace(is, () => was)
+  }
+  return out
+}
+
+function withoutIssuesFirstDetail(src: string): string {
+  return undoAll(src, [
+    [[
+      "                      {/* The code in the interface's sans, as on the upload",
+      '                          preview — the monospace set B001 as a heavy block. */}',
+      '                      <div style={{',
+      "                        fontSize: '12px', fontWeight: 600, color: colors.secondary,",
+      "                        fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',",
+      '                      }}>',
+    ].join('\n'),
+    "                      <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>"],
+    ["<td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary, fontSize: '12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em' }}>",
+     "<td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>"],
+  ], 'PI detail')
+}
+
+function withoutIssuesFirstReadyCard(card: string): string {
+  const noteStart = card.indexOf('                    {READY_NOTE}\n')
+  const noteEnd = card.indexOf('                    )}\n', noteStart) + '                    )}\n'.length
+  assert.ok(noteStart !== -1 && noteEnd > noteStart, 'ready card: the note is where it was left')
+  return undoAll(card, [
+    [card.slice(noteStart, noteEnd),
+     '                    Nothing blocks this PI. Saving stores it as a private draft — the server reads the\n'
+     + '                    workbook again and saves its own verified copy. Submitting for approval comes later.\n'],
+    ['                      // A full-width target on a phone, where this card is the\n'
+     + '                      // first thing under the heading.\n'
+     + "                      style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}\n", ''],
+  ], 'ready card')
+}
+
 // ── The product table ─────────────────────────────────────────────────────────
 
 describe('the PI product table is byte-for-byte what it was', () => {
@@ -129,7 +176,7 @@ describe('the PI product table is byte-for-byte what it was', () => {
     // mobile card or a figure rendered differently all survive the undo and
     // show up here.
     const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
-    const undone = withoutEditingBlocks(region(now(DETAIL_PAGE), ...MARKERS, 'current'))
+    const undone = withoutEditingBlocks(region(withoutIssuesFirstDetail(now(DETAIL_PAGE)), ...MARKERS, 'current'))
 
     assert.equal(undone, region(base, ...MARKERS, 'base'),
       'the mobile cards, the desktop table, every column and every style are unchanged')
@@ -506,7 +553,7 @@ function readyCard(source: string, label: string): { card: string; rest: string 
   assert.notEqual(start, -1, `${label}: the ready-to-submit card must still be there`)
   // Its next sibling, whichever it now is: the standing-promise note when the
   // card sits last, the products card when it sits above the table.
-  const ends = ['{/* The standing promise of this screen', '{/* Products */}']
+  const ends = ['{/* The standing promise of this screen', '{/* Products */}', '{/* Warnings — shown whether', '{/* Order information.']
     .map(marker => source.indexOf(marker, start))
     .filter(index => index !== -1)
   assert.ok(ends.length > 0, `${label}: the card must be followed by a sibling this guard knows`)
@@ -524,7 +571,7 @@ describe('the import preview and the parser are untouched', () => {
     // The ready card itself — the verdict, the Save Draft button, the saving
     // and failure states — is byte-for-byte the base's, WHEREVER it now sits.
     // The refinement moved it; it did not touch a character inside it.
-    assert.equal(readyCard(current, 'current').card, readyCard(base, 'base').card,
+    assert.equal(withoutIssuesFirstReadyCard(readyCard(current, 'current').card), readyCard(base, 'base').card,
       'the verdict, the Save Draft button, the saving and failure states are unchanged')
 
     // And every region of the screen that DOES something rather than draws
@@ -542,33 +589,33 @@ describe('the import preview and the parser are untouched', () => {
     }
   })
 
-  test('the approved section order: errors above the products, the action last', () => {
-    // WHY THIS REPLACED "the ready card sits above the product table".
-    //
-    // That assertion pinned a layout decision that has since been superseded by
-    // an authorized one. Below the product table a twelve-line PI put the
-    // blocking errors under a screen and a half of scrolling; the approved
-    // order reads order information, what blocks it, the lines, what it comes
-    // to, and only then the control that acts on all four.
+  test('the approved section order: the verdict and Save Draft first, the document after', () => {
+    // SUPERSEDED TWICE, and said so rather than hidden. The ready card once sat
+    // above the products, then last of all; the order approved on 2026-09-27
+    // puts what blocks the PI — or, when nothing does, the Save Draft card —
+    // directly under the heading, then what is worth checking, then Order
+    // information, the lines and the money. Sales no longer scrolls a product
+    // table to learn whether the PI can be saved or to reach the button.
     //
     // What this guard is FOR has not changed: the import screen has exactly one
     // save control, drawn exactly once, and it is the ready card's.
     const source = now(IMPORT_PAGE)
     const order = [
+      '{/* THE VERDICT AND THE ACTION COME FIRST',
+      READY_CARD_START,
+      '{/* Warnings — shown whether',
       '{/* Order information.',
-      '{/* Blocking issues — SECOND ON THE PAGE',
       '{/* Products */}',
       '<PiCommercialSummary',
-      READY_CARD_START,
     ].map(marker => {
       const at = source.indexOf(marker)
       assert.notEqual(at, -1, `the preview must still render ${marker}`)
       return at
     })
     assert.deepEqual([...order].sort((a, b) => a - b), order,
-      'Order information → blocking errors → products → commercial summary → Save Draft')
-    assert.ok(source.indexOf('SAVE_BUTTON_LABEL}') > source.indexOf('<PiProductTableHead'),
-      'the one control of this screen comes after the lines it commits')
+      'blocking errors → Save Draft → warnings → Order information → products → commercial summary')
+    assert.ok(source.indexOf('SAVE_BUTTON_LABEL}') < source.indexOf('<PiProductTableHead'),
+      'the one control of this screen is reached without scrolling the lines')
     assert.equal((source.match(/READY_TITLE/g) ?? []).length, 2,
       'the import and the one rendering of it — the card is drawn once, never twice')
     assert.equal((source.match(/SAVE_BUTTON_LABEL/g) ?? []).length, 2,
@@ -609,7 +656,20 @@ describe('the import preview and the parser are untouched', () => {
     assert.ok(source.includes(RENAMED),
       'the set-aside rename is the one this test admits')
 
-    const undone = (source.slice(0, from) + source.slice(to)).replace(RENAMED, WAS)
+    // 3. THE ISSUES-FIRST PASS (2026-09-27): the ready card's title (saving is
+    //    not submitting) and its note, and the two retired workbook-date
+    //    warnings filtered out of the "Worth checking" list. Set aside by text.
+    const issuesFirst = (src: string) => {
+      const cut = (from: string, to: string) => src.slice(src.indexOf(from), src.indexOf(to, src.indexOf(from)))
+      return undoAll(src, [
+        [cut('/**\n * SAVING IS NOT SUBMITTING.', "export const READY_TITLE = 'Ready to save as a draft'"), ''],
+        ["export const READY_TITLE = 'Ready to save as a draft'\n", "export const READY_TITLE = 'PI ready for submission'\n"],
+        [cut('export const READY_NOTE =', '\nexport type PiDiagnosticEntry'), ''],
+        [cut('/**\n * WARNINGS THE PARSER NO LONGER RAISES', '/**\n * Split what the parser reported'), ''],
+        ['    .filter(warning => !isRetiredWarning(warning.code))\n', ''],
+      ], 'previewView')
+    }
+    const undone = issuesFirst((source.slice(0, from) + source.slice(to)).replace(RENAMED, WAS))
     assert.equal(undone, base, 'nothing else in previewView.ts changed')
   })
 
@@ -684,6 +744,28 @@ describe('the import preview and the parser are untouched', () => {
       .replace("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'\n", '')
 
     const source = now(PARSER)
+
+    //   4. THE LAYOUT BY LABELS (2026-09-26). After a production draft saved a
+    //      blank Grand Total, every fixed address was replaced: each block is
+    //      found by its own labels (src/lib/pi/layout.ts) and proved by its own
+    //      figures, and a missing Grand Total now refuses the upload. That is a
+    //      rewrite of how every cell is addressed, which no regex undo can
+    //      reverse. From that change on, the parser is held by its OWN suites —
+    //      masterSheetParser.test.ts, including "an edited sheet is read by its
+    //      labels and proved by its figures", which proves an unedited sheet
+    //      still reads exactly as the template did. This test keeps the
+    //      properties it existed to protect: the final-approval work added
+    //      nothing to the parser beyond the set-aside blocks.
+    if (source.includes("from './layout'")) {
+      assert.ok(source.includes('export function headerRequirementWarnings('), 'the header-requirement rule is still here')
+      assert.ok(source.includes('export function readFabricResponsibility('), 'the PI terms reader is still here')
+      assert.ok(source.includes('export function readCommercialTermsNote('), 'and the terms note with it')
+      assert.ok(source.includes('export function creationDateIso('), 'and the written date of creation')
+      assert.ok(!/approve|approval|order_submissions|supabase/i.test(source.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')),
+        'the parser still knows nothing about approval or the database')
+      return
+    }
+
     assert.ok(source.includes('export function headerRequirementWarnings('),
       'the first set-aside block is the header-requirement rule')
     assert.ok(source.includes('export function readFabricResponsibility('),
@@ -703,7 +785,9 @@ describe('the import preview and the parser are untouched', () => {
     // "no editor can fix this, correct the workbook and import it again", and
     // all three land in ordinary editable draft columns.
     const source = now(PARSER)
-    assert.ok(source.includes('warnings.push(...headerRequirementWarnings(header))'),
+    // Since 2026-09-26 the call also passes the cells the layout read them
+    // from, so a message names the real cell. The property is unchanged.
+    assert.ok(/warnings\.push\(\.\.\.headerRequirementWarnings\(header[,)]/.test(source),
       'the header requirements must be warnings')
     assert.ok(!source.includes('blockingIssues.push(...headerRequirement'),
       'a missing salesperson or date must not refuse the upload')

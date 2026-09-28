@@ -142,11 +142,22 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // other and from finance.approve. Registered by 20260918000000.
   'allocate',
   'allocate_correct',
+  // Recording a payment and verifying it in the same action, and deciding a
+  // pending payment one recorded oneself — the Admins' exemption from the
+  // separation of payment entry and decision. Protected because it removes the
+  // second pair of eyes on money received; it is granted per person in Control
+  // Center or not at all. Registered by 20270120000000.
+  'verify_own_payment',
   // Aligning a Confirmed Order for production: the Head of Manufacturing's
   // statement that the factory can make it. Protected because it is the gate
   // between a commercial approval and work starting, and a preset must not
   // hand it to everyone who can manage the module. Registered by 20261119000000.
   'align_production',
+  // Seeing a PI's middleman commission — a private commercial arrangement —
+  // on PIs one did not prepare and is not assigned to review. Protected
+  // because the whole point of the separate table (20270122000000) is that no
+  // wider Orders authority reaches it; a preset handing it out would undo that.
+  'view_pi_commission',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -192,6 +203,9 @@ export function isProtectedAction(actionKey: string): boolean {
  */
 export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   manage_quotations: 'view_quotations',
+  // Verifying one's own payment is still verifying: approve_finance_payment_request
+  // requires finance.approve, so the grant would have nowhere to act without it.
+  verify_own_payment: 'approve',
   view_quotations:   'view',
   // Team Performance is inside the Performance module, so it cannot be held by
   // somebody who may not open it.
@@ -212,6 +226,8 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   approve_advance_exception: 'view',
   // Same again: aligning an Order one cannot open is a grant with nowhere to land.
   align_production: 'view',
+  // And again: the commission table is behind the same Orders module gate.
+  view_pi_commission: 'view',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use

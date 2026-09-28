@@ -51,7 +51,8 @@ export type PiErrorCode =
   | 'MASTER_SHEET_MISSING'
   /** Master is declared but its relationship or part cannot be resolved/read. */
   | 'MASTER_SHEET_UNREADABLE'
-  /** Row 31 does not carry the expected BOE column headers. */
+  /** No row of the sheet carries every BOE column name exactly once. (Row 31
+   *  is only where the template puts them; they are looked for wherever they are.) */
   | 'TEMPLATE_FINGERPRINT_MISMATCH'
   /** Template matched but not one genuine product row was found. */
   | 'NO_PRODUCT_ROWS'
@@ -99,6 +100,25 @@ export type PiBlockingIssueCode =
    * to be said out loud. The message names the format and the replacement.
    */
   | 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'
+  /**
+   * The footer (Sub Total … Grand Total) was found neither by its labels nor by
+   * its own arithmetic (Total + GST = Grand Total). BLOCKING: reading the
+   * template's cells anyway is how a moved footer once produced plausible,
+   * wrong figures — and, on 2026-09-24, a blank Grand Total.
+   */
+  | 'FOOTER_NOT_FOUND'
+  /**
+   * The Grand Total cell is empty or not a number. BLOCKING: every order's 40%
+   * advance is measured against it, and the database refuses to submit or
+   * approve a PI without it — so it is refused here, at upload, instead.
+   */
+  | 'GRAND_TOTAL_MISSING'
+  /**
+   * The product columns were found by their names, but on every line (two or
+   * more) Quantity × Cost per piece differs from Total Cost — the columns do not
+   * hold what their names say. BLOCKING: every product figure would be wrong.
+   */
+  | 'PRODUCT_COLUMNS_UNVERIFIED'
 
 /** Things a reviewer should see. None of these stops a submission. */
 export type PiWarningCode =
@@ -195,6 +215,16 @@ export type PiWarningCode =
   | 'FOOTER_NOT_VERIFIED'
   /** Total + GST disagrees with the stored grand total. Nothing is repaired. */
   | 'GRAND_TOTAL_MISMATCH'
+  /** The column names are on a different row, or some columns sit in different
+   *  columns, than the template's. Everything was read by name; this says what moved. */
+  | 'LAYOUT_MOVED'
+  /** The footer's labels were not found, so it was located where its figures add
+   *  up (Total + GST = Grand Total). A reviewer should check it. */
+  | 'FOOTER_LOCATED_BY_ARITHMETIC'
+  /** Sub Total + fabric + packing + transport disagrees with the stored Total. */
+  | 'TOTAL_BEFORE_GST_MISMATCH'
+  /** GST is not the rate its own label prints ("GST @ 18%") of the Total. */
+  | 'GST_MISMATCH'
 
 export type PiError = {
   code: PiErrorCode

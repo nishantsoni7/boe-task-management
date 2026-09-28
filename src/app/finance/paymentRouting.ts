@@ -129,19 +129,21 @@ export function canVerifyPayment(
 
 /**
  * Whether this viewer is barred from deciding a payment because they recorded
- * it — separation of payment entry and decision. A non-admin never approves,
- * rejects or sends back a payment they submitted, whatever permissions they
- * hold; admins keep the established override.
+ * it — separation of payment entry and decision. Nobody approves, rejects or
+ * sends back a payment they submitted unless they may verify their own
+ * payments: the protected finance.verify_own_payment authority granted in
+ * Control Center, which an admin holds through the admin branch
+ * (FinanceCapabilities.canDecideOwnPayment).
  *
  * Like canVerifyPayment this is a DRAWING rule: the database refuses the
  * decision itself (finance_payment_requests_guard_decision_status and
- * reject_finance_payment_request, 20261211000000), so this only keeps the
- * screens from offering a control that would be refused.
+ * reject_finance_payment_request, 20261211000000 / 20270120000000), so this
+ * only keeps the screens from offering a control that would be refused.
  */
 export function isOwnPaymentDecision(
   submittedBy: string | null | undefined,
   viewerId: string | null | undefined,
-  isAdmin: boolean | null | undefined,
+  mayDecideOwn: boolean | null | undefined,
 ): boolean {
-  return !isAdmin && Boolean(submittedBy) && submittedBy === viewerId
+  return !mayDecideOwn && Boolean(submittedBy) && submittedBy === viewerId
 }
