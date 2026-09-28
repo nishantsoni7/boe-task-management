@@ -1049,6 +1049,7 @@ describe('the applied migrations are frozen', () => {
       '20270211120000_expense_payment_source_required.sql',
       '20270212000000_order_submission_legacy_advance_doors_closed.sql',
       '20270213000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270214000000_permission_resolvers_are_not_for_anon.sql',
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
     ])
@@ -1351,6 +1352,7 @@ describe('the applied migrations are frozen', () => {
       '20270211120000_expense_payment_source_required.sql',
       '20270212000000_order_submission_legacy_advance_doors_closed.sql',
       '20270213000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270214000000_permission_resolvers_are_not_for_anon.sql',
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
     ])

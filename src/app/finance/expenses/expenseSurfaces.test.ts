@@ -691,6 +691,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the security-definer search_path audit (20270213000000): ALTER
       // FUNCTION and one revoke, held by its own suite.
       if (f === 'supabase/migrations/20270213000000_security_definer_search_path_pins_pg_temp.sql') continue
+      // And the permission resolvers leaving anon (20270214000000): grants
+      // only, held by its own suite.
+      if (f === 'supabase/migrations/20270214000000_permission_resolvers_are_not_for_anon.sql') continue
       // Attendance requests → approval → payroll review (20270215000000) and its
       // two notification types (20270215000100): additive tables of their own,
       // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
@@ -2047,6 +2050,30 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const DEFINER_SEARCH_PATH_MIGRATION = 'supabase/migrations/20270213000000_security_definer_search_path_pins_pg_temp.sql'
 
   /**
+   * THE PERMISSION RESOLVERS ARE NOT FOR anon (20270214000000).
+   *
+   * One migration of grants and revokes on six functions — no screen, no
+   * rule, no money, no permission-model change — its own suite, and the
+   * one-line inventory pins it moved.
+   */
+  const ALLOWED_RESOLVERS_NOT_FOR_ANON = new Set([
+    'src/lib/permissions/resolversNotForAnon.test.ts',
+    // migration inventories: one line each
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const RESOLVERS_NOT_FOR_ANON_MIGRATION = 'supabase/migrations/20270214000000_permission_resolvers_are_not_for_anon.sql'
+
+  /**
    * Attendance requests → approval → payroll review. An Attendance & Payroll
    * feature: no Finance or Orders screen, figure or table. The Orders/Finance
    * test files listed are migration-sequence pins gaining two lines each.
@@ -2166,7 +2193,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
     f !== LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION &&
-    f !== DEFINER_SEARCH_PATH_MIGRATION
+    !ALLOWED_RESOLVERS_NOT_FOR_ANON.has(f) &&
+    f !== DEFINER_SEARCH_PATH_MIGRATION &&
+    f !== RESOLVERS_NOT_FOR_ANON_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2500,6 +2529,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file)
         || ALLOWED_DEFINER_SEARCH_PATH.has(file)
+        || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file)
         || ALLOWED_ATTENDANCE_REQUESTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
