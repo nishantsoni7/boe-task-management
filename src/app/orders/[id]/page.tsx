@@ -907,6 +907,7 @@ export default function OrderDetailPage() {
   const [approvalError, setApprovalError] = useState<string | null>(null)
   const [proofBusy,     setProofBusy]     = useState<string | null>(null)
   const [piFileBusy,    setPiFileBusy]    = useState<string | null>(null)
+  const [piDownloadError, setPiDownloadError] = useState<string | null>(null)
   const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
   const [alignBusy,     setAlignBusy]     = useState(false)
   const [alignError,    setAlignError]    = useState<string | null>(null)
@@ -1828,17 +1829,30 @@ export default function OrderDetailPage() {
   const openVersionFile = async (version: PiVersionView, mode: 'view' | 'download') => {
     if (piFileBusy) return
     const path = version.workbookPath
-    if (!path) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
+    if (!path) {
+      setRevisionError(WORKBOOK_UNAVAILABLE)
+      if (mode === 'download') setPiDownloadError(WORKBOOK_UNAVAILABLE)
+      return
+    }
     setPiFileBusy(version.id)
     setRevisionError(null)
+    if (mode === 'download') setPiDownloadError(null)
     const { data, error } = await supabase
       .storage
       .from(ORDER_FILES_BUCKET)
       .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
         mode === 'download' ? { download: originalWorkbookFileName(version, order?.display_number ?? null) } : undefined)
     setPiFileBusy(null)
-    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    if (error || !data?.signedUrl) {
+      setRevisionError(WORKBOOK_UNAVAILABLE)
+      if (mode === 'download') setPiDownloadError(WORKBOOK_UNAVAILABLE)
+      return
+    }
+    // A popup opened after the async signer resolves is blocked on some
+    // browsers. The signed URL already carries Content-Disposition: attachment
+    // for downloads, so a same-tab navigation starts the actual file transfer.
+    if (mode === 'download') window.location.assign(data.signedUrl)
+    else window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
   /**
@@ -3058,7 +3072,7 @@ export default function OrderDetailPage() {
             onReviewChange={s => setDocReview(s)}
             onResubmitChange={s => setDocUpload({ category: s.includes_design_files ? 'design_files' : 'client_po', resubmission: s })}
             onOpenFile={openDocFile}
-            fileError={docError}
+            fileError={piDownloadError ?? docError}
             onReviewRevision={mayReviewRevision ? () => { void openRevisionReview() } : undefined}
             onApproveRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) } : undefined}
             onRejectRevision={mayDecideRevision ? version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) } : undefined}

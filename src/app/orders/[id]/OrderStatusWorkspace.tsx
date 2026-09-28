@@ -532,12 +532,12 @@ export function OrderDocumentsPanel({
                 {!mainPi.version.editedInApp && (
                   <button
                     type="button"
-                    className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
+                    className="boe-btn boe-btn-primary order-doc-action order-doc-action--main"
                     onClick={() => onDownload(mainPi.version)}
                     disabled={!mainPi.hasFile || downloading}
                     title={mainPi.fileName ?? mainPi.reference}
                   >
-                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                    <Download size={13} strokeWidth={2} aria-hidden="true" />
                     {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
                   </button>
                 )}
@@ -1203,4 +1203,3 @@ export function PiHistoryModal({
     </Modal>
   )
 }
-
