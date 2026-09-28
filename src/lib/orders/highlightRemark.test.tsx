@@ -187,8 +187,10 @@ describe('the migration', () => {
   test('its file name says it reshapes order_submissions, and it sorts after production’s newest', () => {
     assert.match(MIGRATION, /_order_submission_/)
     // Production's newest applied migration since 2026-09-28 is #241's 20270205120000.
-    const later = readdirSync('supabase/migrations').filter(f => f.slice(0, 14) > '20270205120000')
-    assert.deepEqual(later, [
+    // #248's two come first after it, in this order; later migrations (e.g. #249's
+    // 20270211120000) may follow without breaking this pin.
+    const later = readdirSync('supabase/migrations').filter(f => f.slice(0, 14) > '20270205120000').sort()
+    assert.deepEqual(later.slice(0, 2), [
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
     ])
