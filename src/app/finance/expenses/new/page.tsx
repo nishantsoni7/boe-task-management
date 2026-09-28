@@ -60,6 +60,7 @@ import {
 } from '@/lib/finance/expenseDrafts'
 import { ExpenseForm, type ExpenseSaveOutcome } from '../ExpenseForm'
 import { QuickCapture } from '../QuickCapture'
+import { ExpenseErrorBoundary } from '../ExpenseErrorBoundary'
 
 export const FULL_ENTRY_LABEL = 'Full Expense Entry'
 export const CAPTURE_ANOTHER_LABEL = 'Capture another'
@@ -178,17 +179,20 @@ export default function QuickAddExpensePage() {
         ) : completing && userId ? (
           // ── "Complete now", in place. The ordinary form, prefilled. ──
           <div className="boe-card" style={{ padding: '18px' }}>
-            <ExpenseForm
-              supabase={supabase}
-              userId={userId}
-              mode="complete"
-              draft={completing}
-              categories={categories}
-              history={history}
-              onCategoryCreated={c => setCategories(prev => [...prev, c])}
-              onSaved={outcome => { setCompleting(null); setCaptured(null); setSaved(outcome) }}
-              onCancel={() => setCompleting(null)}
-            />
+            {/* Prefilled from a stored draft, so guarded like the list's Edit. */}
+            <ExpenseErrorBoundary label="complete" onReset={() => setCompleting(null)}>
+              <ExpenseForm
+                supabase={supabase}
+                userId={userId}
+                mode="complete"
+                draft={completing}
+                categories={categories}
+                history={history}
+                onCategoryCreated={c => setCategories(prev => [...prev, c])}
+                onSaved={outcome => { setCompleting(null); setCaptured(null); setSaved(outcome) }}
+                onCancel={() => setCompleting(null)}
+              />
+            </ExpenseErrorBoundary>
           </div>
         ) : captured ? (
           // ── AFTER A CAPTURE: where it went, and both onward moves ──
