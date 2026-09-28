@@ -35,6 +35,7 @@ import {
   initialEditState,
   newEditItem,
   normalizePi,
+  editProductFigures,
   priceEdit,
   summarizeChanges,
   validateEdit,
@@ -362,7 +363,9 @@ export function PiEditor({
               </div>
               {priced && (
                 <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px 12px', background: colors.raised, fontSize: '12.5px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px' }}>
-                  <span>Product value <strong>{formatInr(priced.commercial.gross_product_amount)}</strong></span>
+                  {editProductFigures(priced.commercial).map(figure => (
+                    <span key={figure.key}>{figure.label} <strong>{figure.amount === null ? 'Not stated' : formatInr(figure.amount)}</strong></span>
+                  ))}
                   <span>Total before GST <strong>{priced.commercial.total_before_gst === null ? 'Not stated' : formatInr(priced.commercial.total_before_gst)}</strong></span>
                   <span>GST <strong>{priced.commercial.gst_amount === null ? 'Not stated' : formatInr(priced.commercial.gst_amount)}</strong></span>
                   <span>Grand total <strong>{priced.commercial.grand_total === null ? 'Not stated' : formatInr(priced.commercial.grand_total)}</strong></span>

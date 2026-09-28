@@ -223,7 +223,7 @@ export function handoffFigures(
     order.totalProductValue !== null && Number.isFinite(order.totalProductValue)
 
   return summaryCommercialFigures(rows)
-    .filter(figure => !(figure.key === 'gross' && orderStatesProductValue))
+    .filter(figure => !(figure.key === 'productValue' && orderStatesProductValue))
 }
 
 /**

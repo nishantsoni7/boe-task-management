@@ -857,6 +857,8 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270201000000_order_pi_version_pdf_order_number.sql',
       '20270205000000_order_production_needs_order_level_exception.sql',
       '20270205120000_expense_reimbursements_and_bills.sql',
+      '20270210000000_order_submission_highlight_remark.sql',
+      '20270211000000_order_submission_sales_order_details.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

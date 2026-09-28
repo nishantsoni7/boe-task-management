@@ -87,7 +87,6 @@ import {
   PAYMENT_PANEL_ID,
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUS_TITLE,
-  RESERVED_ORDER_LABEL,
   DRAFT_REFERENCE_LABEL,
   STORED_COPY_NOTE,
   SUBMITTED_BY_LABEL,
@@ -148,23 +147,45 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
   )
 }
 
-// ── 1. The context row ────────────────────────────────────────────────────────
+// ── 1. The top card ───────────────────────────────────────────────────────────
+
+/** The three groups' own labels. */
+export const TOP_ORDER_LABEL = 'Order'
+export const TOP_CLIENT_LABEL = 'Client'
+export const TOP_SALES_LABEL = 'Sales and dates'
 
 /**
- * The two facts a reader looks for first, side by side: the Order number this
- * PI will carry, and where it stands with management and Finance.
+ * THE PI AT A GLANCE, in ONE card of three groups read left to right:
  *
- * ONE CARD, TWO EQUAL COLUMNS from tablet width up, stacked on a phone — the
- * arrangement is the `pi-detail-context` block in globals.css.
+ *   ORDER            the Order number this PI will carry (or, before approval,
+ *                    the draft's own reference and the words "Order number not
+ *                    allotted" — a reserved or future number is never shown as
+ *                    one already allotted), with the status badge and where the
+ *                    PI stands with management;
+ *   CLIENT           the client's name — which opens the contact dialog — then
+ *                    the client's own contact and location, and nothing of BOE's;
+ *   SALES AND DATES  the salesperson, who submitted it and when it was created,
+ *                    and the two internal dates.
  *
- * DRAWING ONLY. describeReservation decides the number's standing and whether a
- * Reserve control is offered at all; buildSubmissionContext words the status.
- * The copy control writes to the clipboard and nothing else. The number is
- * issued by the database and immutable once issued, so there is no input here.
+ * Three columns with a hairline between them on a wide column; stacked in that
+ * same reading order, a rule above each, on a phone — the `pi-detail-top`
+ * block in globals.css, measured on the card itself.
+ *
+ * THE DATES ARE INTERNAL. They are never printed on the client PI, and while the
+ * PI is being prepared a blank one reads "Set at submission" in neutral type:
+ * Submit for Approval asks for both, so a draft is never warned about them.
+ *
+ * DRAWING ONLY. describeReservation decides the number's standing;
+ * buildSubmissionContext words the status; buildClientDetails resolves the
+ * client; buildDateSummary words the dates. Every edit control is drawn from a
+ * capability the page asked the database for, and every write re-derives it.
  */
-export function PiContextRow({
+export function PiTopCard({
   reservation, confirmedNumber, draftReference, onCopy, copied,
   context, statusLabel, tone,
+  client, onOpenClient, workbookName,
+  canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
+  dates, dateNotes = [],
 }: {
   reservation: ReservationView
   /** The Confirmed Order's number, once there is one and this viewer can read it. */
@@ -176,194 +197,12 @@ export function PiContextRow({
   context: SubmissionContext
   statusLabel: string
   tone: ToneStyle
-}) {
-  const number = reservation.number
-  return (
-    <PiCard>
-      <div className="pi-detail-context">
-        <section className="pi-detail-context-cell" aria-label={RESERVED_ORDER_LABEL}>
-          <div className="pi-detail-context-label">
-            <Hash size={12} strokeWidth={2.2} aria-hidden="true" />
-            {RESERVED_ORDER_LABEL}
-          </div>
-
-          {/* 20270114000000: a held reservation reads "Reserved number 0525",
-              and until the Order exists the page also says, in words, that no
-              Order number is allotted — a reserved number is not yet one. */}
-          {number ? (
-            <div className="pi-detail-context-number-row">
-              <span className="pi-detail-context-number">
-                {reservation.state === 'used' ? number : `Reserved number ${number}`}
-              </span>
-              {reservation.canCopy && (
-                <button
-                  type="button"
-                  className="pi-detail-copy"
-                  onClick={() => onCopy(number)}
-                  aria-label={copied ? 'Order number copied' : `Copy Order number ${number}`}
-                >
-                  {copied
-                    ? <Check size={12} strokeWidth={2.4} aria-hidden="true" />
-                    : <Copy size={12} strokeWidth={2.2} aria-hidden="true" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              )}
-            </div>
-          ) : confirmedNumber ? null : (
-            // Numbering at conversion (20270114000000): a draft has no reserved
-            // number, so once the Order exists its number (below) is the answer
-            // — "not allotted" would contradict it.
-            reservation.state === 'used'
-              ? <div className="pi-detail-context-number">{ORDER_CREATED_HEADLINE}</div>
-              : <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
-          )}
-          {number && reservation.state !== 'used' && !confirmedNumber && (
-            <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
-          )}
-          {draftReference && (
-            <div className="pi-detail-context-note">
-              {DRAFT_REFERENCE_LABEL} <strong>{draftReference}</strong>
-            </div>
-          )}
-
-          {/* ONE LINE saying where the number stands. The blocked reason takes
-              its place only where there is no number to stand. */}
-          {/* Once the Order exists without a reservation, the explanation of
-              when a number is allotted is history; the number says it. */}
-          {!(confirmedNumber && !number) && (
-            <div className="pi-detail-context-note">
-              {!number && reservation.blockedReason ? reservation.blockedReason : reservation.standing}
-            </div>
-          )}
-
-          {/* The Confirmed Order's number under its own label, never beside the
-              reserved one without it. Read back from the Order — composed nowhere. */}
-          {confirmedNumber && (
-            <div className="pi-detail-context-note">
-              {NUMBER_LABEL.confirmed}{' '}
-              <strong className="pi-detail-context-confirmed">{confirmedNumber}</strong>
-            </div>
-          )}
-
-        </section>
-
-        <section className="pi-detail-context-cell" aria-label={context.heading}>
-          {/* WHO THIS PI IS FROM leads, because it is the first thing a
-              reviewer checks, and the badge sits on the same line because the
-              next thing they check is whether it is theirs to act on. Both
-              wrap: a long name pushes the badge to its own line rather than
-              squeezing it. */}
-          <div className="pi-detail-context-label">
-            <User size={12} strokeWidth={2.2} aria-hidden="true" />
-            {SALESPERSON_LABEL}
-          </div>
-
-          <div className="pi-detail-context-head">
-            {context.salesperson ? (
-              <span className="pi-detail-context-name">{context.salesperson}</span>
-            ) : (
-              <span className="pi-detail-context-absent">{context.salespersonAbsent}</span>
-            )}
-            <PiStatusBadge label={statusLabel} tone={tone} />
-          </div>
-
-          {/* The submission facts, quietly, under the name they belong to. The
-              submitter is NOT the salesperson above — two labels, two people. */}
-          <div className="pi-detail-context-meta">
-            {context.submittedAt ? (
-              <div className="pi-detail-context-note">
-                {SUBMITTED_BY_LABEL}{' '}
-                <span className="pi-detail-context-meta-name">{context.submittedBy ?? 'A colleague'}</span>
-                <span className="pi-detail-context-when"> · {context.submittedAt}</span>
-              </div>
-            ) : (
-              <div className="pi-detail-context-note">{NOT_SUBMITTED_TEXT}</div>
-            )}
-
-            {context.createdOn && (
-              <div className="pi-detail-context-note">
-                {CREATED_LABEL}{' '}
-                <span className="pi-detail-context-meta-name">{context.createdOn}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Colour is never the only channel: every dot sits beside its words. */}
-          <ul className="pi-detail-context-lines">
-            {context.lines.map(line => (
-              <li key={line.key} className="pi-detail-context-line">
-                <span
-                  className="pi-detail-context-dot"
-                  style={{ background: CONTEXT_DOT[line.tone] }}
-                  aria-hidden="true"
-                />
-                <span className="pi-detail-context-line-label">{line.label}</span>
-                <span className="pi-detail-context-line-text">{line.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-    </PiCard>
-  )
-}
-
-/** The status dots, at the same intensity the activity trail uses. */
-const CONTEXT_DOT: Record<PiDetailTone, string> = {
-  neutral: '#A4ABB9',
-  blue: '#5585E8',
-  amber: '#D9A552',
-  green: '#45A870',
-  red: '#D94F4F',
-}
-
-// ── 2. The PI overview ────────────────────────────────────────────────────────
-
-/**
- * THE PI OVERVIEW: who it is for and when it moves, beside what it is worth.
- *
- * LEFT — the CLIENT, and only the client: the name (which opens the contact
- * dialog), the client's own contact number and the client's location, then the
- * two dates in a band of their own at a size that reads at a glance.
- *
- * THE BOE SIDE IS NOT HERE ANY MORE. Salesperson, salesperson contact,
- * submitter and created date used to sit in a strip under the client's name,
- * where three BOE facts read as the client's — most damagingly the salesperson's
- * number, which a reader pressed "call the client" on. Who the PI is from is
- * now the context row's second cell, beside the status badge. Not one column is
- * read differently; they are said where they are true.
- *
- * RIGHT — three figures: Product value, Total before GST, and the billing
- * declaration as a clear state. They fill their column; there is no payment
- * here, because payment has its own card below. Under them, when the page
- * passes it, the INTERNAL middleman answer (PiCommissionSummary) — the one
- * internal detail the date band does not already print.
- *
- * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
- * own strings; billing is buildBillingSummary's. Every edit control is drawn from
- * a capability the page asked the database for, and every write re-derives it.
- */
-export function PiSummaryCard({
-  client, onOpenClient, workbookName,
-  dates, figures, billing, canEditBilling, onEditBilling,
-  canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
-  dateNotes = [], internal = null,
-}: {
   client: ClientDetails
   /** Opens the client dialog. The card states who the client is; the dialog
       carries the billing and shipping parties in full. */
   onOpenClient: () => void
   /** Provenance, only when the record names a workbook. */
   workbookName: string | null
-  dates: readonly DateSummary[]
-  /** The two commercial figures, picked out of the breakdown's own rows. */
-  figures: readonly SummaryFigure[]
-  /** The billing declaration, and what it comes to. */
-  billing: BillingSummary
-  /** can_edit_order_submission OR can_admin_edit_order_submission, as the page
-      resolved them. set_order_submission_billing_percentage re-derives it. */
-  canEditBilling: boolean
-  onEditBilling: () => void
   /** The owner in draft/needs_changes, or an active admin at any stage. The
       client-details RPC re-derives the whole rule. */
   canEditDetails: boolean
@@ -375,11 +214,12 @@ export function PiSummaryCard({
   onRequestCorrection: (() => void) | null
   /** What this PI still needs before it can take a payment, or null. */
   missingSummary: string | null
+  dates: readonly DateSummary[]
   /** Where the app's dates and the uploaded workbook's disagree, said under the dates. */
   dateNotes?: readonly string[]
-  /** The internal middleman answer, drawn under the three figures. BOE-only. */
-  internal?: React.ReactNode
 }) {
+  const number = reservation.number
+  const headline = orderHeadline({ reservation, confirmedNumber, draftReference })
   // SELECTION, NOT RESOLUTION: buildClientDetails already decided which stored
   // number is the client's and whether it can be dialled.
   const contact = clientContactText(client)
@@ -410,164 +250,327 @@ export function PiSummaryCard({
         </div>
       )}
 
-      <div className="pi-detail-overview">
-        <div className="pi-detail-overview-main">
+      <div className="pi-detail-top">
+        <div className="pi-detail-top-grid">
 
-          {/* THE NAME IS THE CONTROL, and it still looks like the name. The edit
-              control is a sibling, never nested: a button cannot hold a button. */}
-          <div className="pi-detail-summary-party">
-            <button
-              type="button"
-              onClick={onOpenClient}
-              className="pi-detail-summary-client"
-              aria-haspopup="dialog"
-              title="Contact number, billing and shipping details"
-            >
-              <MultilineText style={{
-                fontSize: '18px', fontWeight: 700, color: colors.primary, margin: 0, lineHeight: 1.25,
-              }}>
-                {client.name}
-              </MultilineText>
-              <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
-            </button>
-
-            {canEditDetails && (
-              <button
-                type="button"
-                onClick={onEditDetails}
-                className="pi-detail-summary-inline-action"
-                aria-haspopup="dialog"
-                aria-label="Edit customer details"
-              >
-                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
-                Edit
-              </button>
-            )}
-            {!canEditDetails && onRequestCorrection && (
-              <button
-                type="button"
-                onClick={onRequestCorrection}
-                className="pi-detail-summary-inline-action"
-                aria-haspopup="dialog"
-              >
-                Request correction
-              </button>
-            )}
-          </div>
-
-          {workbookName && (
-            <span className="pi-detail-overview-file" title={workbookName}>
-              <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} aria-hidden="true" />
-              <span className="pi-detail-summary-file-name">{workbookName}</span>
-            </span>
-          )}
-
-          {/* ── The client's own two facts, in the strip the BOE metadata used
-              to occupy: same shape, same weights, the client's answers. Shown
-              as TEXT rather than as a dial link — the dialog behind the name
-              is where a number is offered to press, and one card should not
-              hold two ways to ring the same person. */}
-          <dl className="pi-detail-meta">
-            <div className="pi-detail-meta-item">
-              <Phone size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
-              <dt className="pi-detail-meta-label">{CLIENT_CONTACT_LABEL}</dt>
-              <dd className={contact ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
-                {contact ?? CLIENT_FACT_ABSENT}
-              </dd>
+          {/* ══ ORDER ══ */}
+          <section className="pi-detail-context-cell" aria-label={TOP_ORDER_LABEL}>
+            <div className="pi-detail-context-label">
+              <Hash size={12} strokeWidth={2.2} aria-hidden="true" />
+              {TOP_ORDER_LABEL}
             </div>
-            <div className="pi-detail-meta-item">
-              <MapPin size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
-              <dt className="pi-detail-meta-label">{CLIENT_LOCATION_LABEL}</dt>
-              <dd className={client.city ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
-                {client.city ?? CLIENT_FACT_ABSENT}
-              </dd>
-            </div>
-          </dl>
 
-          {/* ── The dates, at a size that reads at a glance ──
-              The commitment stays secondary: a muted line under an absent due
-              date, clamped, and never a date of its own. */}
-          <section className="pi-detail-dates" aria-label="Order dates">
-            <div className="pi-detail-dates-grid">
-              {dates.map(date => (
-                <div key={date.key} className="pi-detail-date">
-                  <div className="pi-detail-date-label">{date.label}</div>
-                  {date.value ? (
-                    <div className="pi-detail-date-value">{date.value}</div>
-                  ) : (
-                    <div className="pi-detail-date-absent">{date.absent}</div>
-                  )}
-                  {date.note && <div className="pi-detail-date-note">{date.note}</div>}
-                </div>
-              ))}
-            </div>
-            {dateNotes.map(note => (
-              <p key={note} className="pi-detail-dates-workbook">{note}</p>
-            ))}
-            {canEditDetails && (
-              <button
-                type="button"
-                onClick={onEditSchedule}
-                className="pi-detail-summary-inline-action pi-detail-dates-edit"
-                aria-haspopup="dialog"
-                aria-label="Edit dates and terms"
-              >
-                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
-                Edit
-              </button>
-            )}
-          </section>
-        </div>
-
-        {/* ── Three figures, filling their column ── */}
-        {/* The outer element is the CONTAINER the column's width is measured
-            on; the grid inside it is what that width rearranges. A container
-            query cannot restyle the element it measures. */}
-        <div className="pi-detail-figures">
-          <div className="pi-detail-figures-grid">
-            {figures.map(figure => (
-              <div key={figure.key} className="pi-detail-figure">
-                <div className="pi-detail-figure-label">{figure.label}</div>
-                <div className={figure.kind === 'missing' ? 'pi-detail-figure-absent' : 'pi-detail-figure-value'}>
-                  {figure.value}
-                </div>
-              </div>
-            ))}
-
-            <div className="pi-detail-figure">
-              <div className="pi-detail-figure-head">
-                <span className="pi-detail-figure-label">{BILLING_LABEL}</span>
-                {canEditBilling && (
+            {/* WHAT THE HEADLINE IS, said above it. Before approval there is no
+                Order number: the draft's own reference leads, and the line under
+                it says in words that no Order number is allotted (20270114000000).
+                A held reservation reads "Reserved number 0525" — a reserved number
+                is not yet an allotted one. Once the Order exists, its number. */}
+            {headline.caption && <div className="pi-detail-context-note">{headline.caption}</div>}
+            {headline.value ? (
+              <div className="pi-detail-context-number-row">
+                <span className="pi-detail-context-number">{headline.value}</span>
+                {number && headline.copyable && reservation.canCopy && (
                   <button
                     type="button"
-                    onClick={onEditBilling}
-                    className="pi-detail-summary-billing-action"
-                    aria-haspopup="dialog"
-                    aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
+                    className="pi-detail-copy"
+                    onClick={() => onCopy(number)}
+                    aria-label={copied ? 'Order number copied' : `Copy Order number ${number}`}
                   >
-                    {billing.action}
+                    {copied
+                      ? <Check size={12} strokeWidth={2.4} aria-hidden="true" />
+                      : <Copy size={12} strokeWidth={2.2} aria-hidden="true" />}
+                    {copied ? 'Copied' : 'Copy'}
                   </button>
                 )}
               </div>
-              {/* DECLARED IS A FIGURE; UNDECLARED IS A STATE. Never 0%, never a
-                  muted word standing where a number should be. */}
-              {billing.declared ? (
-                <>
-                  <div className="pi-detail-figure-value">{billing.percent}</div>
-                  <div className="pi-detail-figure-sub">
-                    {BILLING_VALUE_LABEL}{' '}
-                    <span className={billing.amountMissing ? 'pi-detail-figure-sub-absent' : 'pi-detail-figure-sub-value'}>
-                      {billing.amount}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <span className="pi-detail-state-chip">{BILLING_NOT_DECLARED_LABEL}</span>
+            ) : null}
+            {!confirmedNumber && reservation.state !== 'used' && (
+              <div className="pi-detail-context-absent">{NUMBER_NOT_ALLOTTED}</div>
+            )}
+
+            <div className="pi-detail-context-head">
+              <PiStatusBadge label={statusLabel} tone={tone} />
+            </div>
+
+            <div className="pi-detail-context-meta">
+              {draftReference && headline.value !== draftReference && (
+                <div className="pi-detail-context-note">
+                  {DRAFT_REFERENCE_LABEL} <strong>{draftReference}</strong>
+                </div>
+              )}
+              {/* ONE LINE saying where the number stands. Once the Order exists
+                  without a reservation, that explanation is history. */}
+              {!(confirmedNumber && !number) && (
+                <div className="pi-detail-context-note">
+                  {!number && reservation.blockedReason ? reservation.blockedReason : reservation.standing}
+                </div>
               )}
             </div>
-          </div>
-          {internal}
+
+            {/* Colour is never the only channel: every dot sits beside its words. */}
+            <ul className="pi-detail-context-lines">
+              {context.lines.map(line => (
+                <li key={line.key} className="pi-detail-context-line">
+                  <span
+                    className="pi-detail-context-dot"
+                    style={{ background: CONTEXT_DOT[line.tone] }}
+                    aria-hidden="true"
+                  />
+                  <span className="pi-detail-context-line-label">{line.label}</span>
+                  <span className="pi-detail-context-line-text">{line.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* ══ CLIENT ══ the client, and only the client. */}
+          <section className="pi-detail-context-cell" aria-label={TOP_CLIENT_LABEL}>
+            <div className="pi-detail-context-label">
+              <User size={12} strokeWidth={2.2} aria-hidden="true" />
+              {TOP_CLIENT_LABEL}
+            </div>
+
+            {/* THE NAME IS THE CONTROL, and it still looks like the name. The
+                edit control is a sibling, never nested. */}
+            <div className="pi-detail-summary-party">
+              <button
+                type="button"
+                onClick={onOpenClient}
+                className="pi-detail-summary-client"
+                aria-haspopup="dialog"
+                title="Contact number, billing and shipping details"
+              >
+                <MultilineText style={{
+                  fontSize: '18px', fontWeight: 700, color: colors.primary, margin: 0, lineHeight: 1.25,
+                }}>
+                  {client.name}
+                </MultilineText>
+                <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
+              </button>
+
+              {canEditDetails && (
+                <button
+                  type="button"
+                  onClick={onEditDetails}
+                  className="pi-detail-summary-inline-action"
+                  aria-haspopup="dialog"
+                  aria-label="Edit customer details"
+                >
+                  <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                  Edit
+                </button>
+              )}
+              {!canEditDetails && onRequestCorrection && (
+                <button
+                  type="button"
+                  onClick={onRequestCorrection}
+                  className="pi-detail-summary-inline-action"
+                  aria-haspopup="dialog"
+                >
+                  Request correction
+                </button>
+              )}
+            </div>
+
+            {/* Shown as TEXT rather than as a dial link — the dialog behind the
+                name is where a number is offered to press. */}
+            <dl className="pi-detail-meta">
+              <div className="pi-detail-meta-item">
+                <Phone size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
+                <dt className="pi-detail-meta-label">{CLIENT_CONTACT_LABEL}</dt>
+                <dd className={contact ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
+                  {contact ?? CLIENT_FACT_ABSENT}
+                </dd>
+              </div>
+              <div className="pi-detail-meta-item">
+                <MapPin size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
+                <dt className="pi-detail-meta-label">{CLIENT_LOCATION_LABEL}</dt>
+                <dd className={client.city ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
+                  {client.city ?? CLIENT_FACT_ABSENT}
+                </dd>
+              </div>
+            </dl>
+
+            {workbookName && (
+              <span className="pi-detail-overview-file" title={workbookName}>
+                <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} aria-hidden="true" />
+                <span className="pi-detail-summary-file-name">{workbookName}</span>
+              </span>
+            )}
+          </section>
+
+          {/* ══ SALES AND DATES ══ who the PI is from, then when it moves. The
+              submitter is NOT the salesperson — two labels, two people. */}
+          <section className="pi-detail-context-cell" aria-label={TOP_SALES_LABEL}>
+            <div className="pi-detail-context-label">
+              <Clock size={12} strokeWidth={2.2} aria-hidden="true" />
+              {TOP_SALES_LABEL}
+            </div>
+
+            <div className="pi-detail-context-who">
+              <span className="pi-detail-context-who-label">{SALESPERSON_LABEL}</span>
+              {context.salesperson ? (
+                <span className="pi-detail-context-name">{context.salesperson}</span>
+              ) : (
+                <span className="pi-detail-context-absent">{context.salespersonAbsent}</span>
+              )}
+            </div>
+
+            <div className="pi-detail-context-meta">
+              {context.submittedAt ? (
+                <div className="pi-detail-context-note">
+                  {SUBMITTED_BY_LABEL}{' '}
+                  <span className="pi-detail-context-meta-name">{context.submittedBy ?? 'A colleague'}</span>
+                  <span className="pi-detail-context-when"> · {context.submittedAt}</span>
+                </div>
+              ) : (
+                <div className="pi-detail-context-note">{NOT_SUBMITTED_TEXT}</div>
+              )}
+              {context.createdOn && (
+                <div className="pi-detail-context-note">
+                  {CREATED_LABEL}{' '}
+                  <span className="pi-detail-context-meta-name">{context.createdOn}</span>
+                </div>
+              )}
+            </div>
+
+            {/* The two internal dates, in a band of their own. Never printed on
+                the client PI. */}
+            <section className="pi-detail-dates" aria-label="Order dates">
+              <div className="pi-detail-dates-grid">
+                {dates.map(date => (
+                  <div key={date.key} className="pi-detail-date">
+                    <div className="pi-detail-date-label">{date.label}</div>
+                    {date.value ? (
+                      <div className="pi-detail-date-value">{date.value}</div>
+                    ) : (
+                      <div className={date.pending ? 'pi-detail-date-pending' : 'pi-detail-date-absent'}>{date.absent}</div>
+                    )}
+                    {date.note && <div className="pi-detail-date-note">{date.note}</div>}
+                  </div>
+                ))}
+              </div>
+              {dateNotes.map(note => (
+                <p key={note} className="pi-detail-dates-workbook">{note}</p>
+              ))}
+              {canEditDetails && (
+                <button
+                  type="button"
+                  onClick={onEditSchedule}
+                  className="pi-detail-summary-inline-action pi-detail-dates-edit"
+                  aria-haspopup="dialog"
+                  aria-label="Edit dates and terms"
+                >
+                  <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                  Edit
+                </button>
+              )}
+            </section>
+          </section>
         </div>
+      </div>
+    </PiCard>
+  )
+}
+
+/**
+ * The Order column's headline and the caption that names it. Selection only:
+ * describeReservation decided the number's standing.
+ */
+function orderHeadline({ reservation, confirmedNumber, draftReference }: {
+  reservation: ReservationView
+  confirmedNumber: string | null
+  draftReference: string | null
+}): { caption: string | null; value: string | null; copyable: boolean } {
+  const number = reservation.number
+  // The Confirmed Order's own number, read back from the Order, always leads.
+  if (confirmedNumber) {
+    return { caption: NUMBER_LABEL.confirmed, value: confirmedNumber, copyable: confirmedNumber === number }
+  }
+  if (number && reservation.state === 'used') return { caption: NUMBER_LABEL.confirmed, value: number, copyable: true }
+  if (number) return { caption: null, value: `Reserved number ${number}`, copyable: true }
+  if (reservation.state === 'used') return { caption: null, value: ORDER_CREATED_HEADLINE, copyable: false }
+  if (draftReference) return { caption: DRAFT_REFERENCE_LABEL, value: draftReference, copyable: false }
+  return { caption: null, value: null, copyable: false }
+}
+
+/** The status dots, at the same intensity the activity trail uses. */
+const CONTEXT_DOT: Record<PiDetailTone, string> = {
+  neutral: '#A4ABB9',
+  blue: '#5585E8',
+  amber: '#D9A552',
+  green: '#45A870',
+  red: '#D94F4F',
+}
+
+// ── 2. The commercial card ────────────────────────────────────────────────────
+
+/**
+ * WHAT THE PI IS WORTH, compact, beside Payment status: Product value (after the
+ * discount), Total before GST, the billing declaration, and — when the page
+ * passes it — the INTERNAL middleman answer (PiCommissionSummary), BOE-only.
+ *
+ * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
+ * own strings (summaryCommercialFigures); billing is buildBillingSummary's.
+ * Product value and Total before GST are always two cells, even when equal.
+ */
+export function PiCommercialCard({ figures, billing, canEditBilling, onEditBilling, internal = null }: {
+  /** The two commercial figures, picked out of the breakdown's own rows. */
+  figures: readonly SummaryFigure[]
+  /** The billing declaration, and what it comes to. */
+  billing: BillingSummary
+  /** can_edit_order_submission OR can_admin_edit_order_submission, as the page
+      resolved them. set_order_submission_billing_percentage re-derives it. */
+  canEditBilling: boolean
+  onEditBilling: () => void
+  /** The internal middleman answer, drawn under the figures. BOE-only. */
+  internal?: React.ReactNode
+}) {
+  return (
+    <PiCard>
+      <div className="pi-detail-figures">
+        <div className="pi-detail-figures-grid">
+          {figures.map(figure => (
+            <div key={figure.key} className="pi-detail-figure">
+              <div className="pi-detail-figure-label">{figure.label}</div>
+              <div className={figure.kind === 'missing' ? 'pi-detail-figure-absent' : 'pi-detail-figure-value'}>
+                {figure.value}
+              </div>
+            </div>
+          ))}
+
+          <div className="pi-detail-figure">
+            <div className="pi-detail-figure-head">
+              <span className="pi-detail-figure-label">{BILLING_LABEL}</span>
+              {canEditBilling && (
+                <button
+                  type="button"
+                  onClick={onEditBilling}
+                  className="pi-detail-summary-billing-action"
+                  aria-haspopup="dialog"
+                  aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
+                >
+                  {billing.action}
+                </button>
+              )}
+            </div>
+            {/* DECLARED IS A FIGURE; UNDECLARED IS A STATE. Never 0%. */}
+            {billing.declared ? (
+              <>
+                <div className="pi-detail-figure-value">{billing.percent}</div>
+                <div className="pi-detail-figure-sub">
+                  {BILLING_VALUE_LABEL}{' '}
+                  <span className={billing.amountMissing ? 'pi-detail-figure-sub-absent' : 'pi-detail-figure-sub-value'}>
+                    {billing.amount}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <span className="pi-detail-state-chip">{BILLING_NOT_DECLARED_LABEL}</span>
+            )}
+          </div>
+        </div>
+        {internal}
       </div>
     </PiCard>
   )
@@ -1091,7 +1094,7 @@ export function PiWorkflowPanel({
    */
   readiness: PiReadiness | null
   /** Opens the editor at the first section a form can actually fix, or null. */
-  onFixReadiness: ((section: PiRequirement['section']) => void) | null
+  onFixReadiness: ((section: PiRequirement['section'], key: string) => void) | null
   acting: boolean
   /**
    * The one sentence explaining why Approve cannot be pressed yet, or null.
@@ -1233,7 +1236,7 @@ export function PiWorkflowPanel({
                       type="button"
                       className="boe-btn boe-btn-ghost"
                       style={{ marginLeft: '8px' }}
-                      onClick={() => onFixReadiness(requirement.section)}
+                      onClick={() => onFixReadiness(requirement.section, requirement.key)}
                       disabled={acting}
                     >
                       Add

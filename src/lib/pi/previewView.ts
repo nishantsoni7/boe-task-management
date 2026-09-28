@@ -317,9 +317,12 @@ export type PiUploadIdentity = {
  *
  *   Product value   the gross figure, restated at the top so the reviewer does
  *                   not have to scroll past a twelve-line product table to
- *                   learn the size of what they are approving. It is the SAME
- *                   number buildCommercialRows puts in its first row, through
- *                   the same formatter; nothing here adds, nets or rounds.
+ *                   learn the size of what they are approving. It is the
+ *                   workbook's own SUBTOTAL AFTER DISCOUNT — the figure saved as
+ *                   subtotal_after_discount, and what "Product value" means on
+ *                   the saved PI Draft, the PI Drafts list and the Order — shown
+ *                   through the same formatter as buildCommercialRows' subtotal
+ *                   row; nothing here adds, nets or rounds.
  *   Location        one destination line instead of the Bill To / Ship To pair,
  *                   which on the overwhelming majority of PIs printed the same
  *                   name twice.
@@ -337,11 +340,11 @@ export type PiUploadIdentity = {
  */
 export function buildOrderInformationRows(input: {
   header: PiHeader
-  /** commercial.grossProductAmount, passed through unchanged. */
-  grossProductAmount: number | null
+  /** commercial.subtotalAfterDiscount, passed through unchanged. */
+  productSubtotal: PiAmountOrText | null
   upload: PiUploadIdentity
 }): PiSummaryRow[] {
-  const { header, grossProductAmount, upload } = input
+  const { header, productSubtotal, upload } = input
   // A BLANK DATE IS NOT SHOWN AT ALL (2026-09-27). Sales normally leaves both
   // out of the client-facing PI and enters them in the app at submission, so
   // two em dashes under "Confirmed date" and "Due date" read as a gap in a
@@ -356,7 +359,7 @@ export function buildOrderInformationRows(input: {
   ]
   return [
     { key: 'client',       label: 'Client name',    value: orDash(header.billToName) },
-    { key: 'productValue', label: 'Product value',  value: formatInr(grossProductAmount) },
+    { key: 'productValue', label: 'Product value',  value: formatPiValue(productSubtotal).display },
     { key: 'location',     label: 'Location',       value: orDash(piLocationName(header)) },
     ...dates,
     { key: 'salesperson',  label: 'Salesperson',    value: orDash(header.createdBy) },

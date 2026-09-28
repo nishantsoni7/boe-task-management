@@ -1198,9 +1198,9 @@ function NewOrderPiImportPageInner() {
           {(() => {
             const rows = buildOrderInformationRows({
               header: preview.data.header,
-              // The commercial summary's own first figure, through the same
-              // formatter. This states it; it does not recompute it.
-              grossProductAmount: preview.data.commercial.grossProductAmount,
+              // The workbook's own subtotal after discount — what Product value
+              // means once the draft is saved. Stated, never recomputed.
+              productSubtotal: preview.data.commercial.subtotalAfterDiscount,
               upload: { by: profile?.full_name ?? null, at: preview.readAt },
             })
             const byKey = (key: string) => rows.find(row => row.key === key)
