@@ -77,7 +77,7 @@ import {
   type ProductColumns,
 } from './layout'
 import { describeImageFormat, isStorableImageFormat, PI_ACCEPTED_IMAGE_LABEL } from './imageFormats'
-import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'
+import { isCalendarDate } from '@/lib/orders/dueDate'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -531,11 +531,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
   }
 
   const header = readHeader(sheet, warnings, layout)
-  warnings.push(...headerRequirementWarnings(header, {
-    createdBy: layout.headerCells.createdBy,
-    orderConfirmationDate: layout.confirmationDateCell,
-    dispatchCommitment: layout.dispatchDateCell,
-  }))
+  warnings.push(...headerRequirementWarnings(header, { createdBy: layout.headerCells.createdBy }))
   const commercial = readCommercial(sheet, products, warnings, blockingIssues, layout)
 
   return {
@@ -946,37 +942,31 @@ function readHeader(sheet: PiSheet, warnings: PiWarning[], layout: PiLayout): Pi
 }
 
 /**
- * The three header cells a PI is expected to fill (owner decision 2026-09-18,
- * revised 2026-09-21).
+ * The header cell a PI is expected to fill (owner decision 2026-09-18, revised
+ * 2026-09-21 and 2026-09-27).
  *
  * Sales Person: any real text — blank or a bare dash is not a name.
- * Confirmation date: a real calendar date (an Excel date, 2020 or later) —
- *   the Order stores order_confirmation_date only from one.
- * Dispatch date: exactly what the save path will keep as the due date —
- *   plausibleDueDate() (lib/orders/dueDate.ts), the SAME rule, so the reading
- *   here and the saved record can never disagree. A lead time ("6 weeks from
- *   date of confirmation", or a bare "90" that Excel turned into a 1900 date)
- *   is not a due date and does not become one.
  *
- * WARNINGS, NOT BLOCKING ISSUES, and the whole point of the distinction is the
- * door each one closes. A blocking issue refuses the UPLOAD, which said to
- * somebody holding an otherwise complete PI that the only way forward was back
- * into Excel — untrue, because all three land in ordinary editable draft
- * columns. So the upload takes the workbook, the preview says what is missing,
- * and FINALIZATION is what refuses: submit_pi_for_review checks the stored
- * columns, which a person may have since corrected by hand. See PiWarningCode.
+ * THE TWO DATES ARE NOT ASKED OF THE WORKBOOK (2026-09-27). Date of Order
+ * Confirmation and Dispatch Date Finalized sit on the client-facing PI, and
+ * Sales normally leaves them out of it. They are INTERNAL order details: Sales
+ * enters them in the app — the Submit for Approval dialog or the Internal
+ * details editor — and the database refuses to send a PI for review without
+ * them (order_submissions_require_internal_details, 20270123000000). A warning
+ * about a blank cell told Sales to edit a client document for a fact the app
+ * collects, so the upload no longer raises one. The cells are still READ
+ * (readHeader) and prefill the app dates when a workbook does carry them.
+ * PI_CONFIRMATION_DATE_MISSING and PI_DISPATCH_DATE_MISSING stay in
+ * PiWarningCode only because older drafts have them on record; see
+ * RETIRED_WARNING_CODES in src/lib/pi/previewView.ts.
  *
- * The messages name the cell and say the draft can carry the correction, so a
- * reader is never left thinking a re-import is the only route.
+ * A WARNING, NOT A BLOCKING ISSUE: a blocking issue refuses the UPLOAD, and a
+ * missing salesperson lands in an ordinary editable draft column. The message
+ * names the cell and says the draft can carry the correction.
  */
-export function headerRequirementWarnings(header: Pick<PiHeader,
-  'createdBy' | 'creationDate' | 'orderConfirmationDate' | 'dispatchCommitment'>,
-  /** Where each was actually read — the template's cells unless the layout moved them. */
-  at: { createdBy: string; orderConfirmationDate: string; dispatchCommitment: string } = {
-    createdBy: HEADER_CELLS.createdBy,
-    orderConfirmationDate: HEADER_CELLS.orderConfirmationDate,
-    dispatchCommitment: HEADER_CELLS.dispatchCommitment,
-  }): PiWarning[] {
+export function headerRequirementWarnings(header: Pick<PiHeader, 'createdBy'>,
+  /** Where it was actually read — the template's cell unless the layout moved it. */
+  at: { createdBy: string } = { createdBy: HEADER_CELLS.createdBy }): PiWarning[] {
   const issues: PiWarning[] = []
   const rowOf = (address: string) => Number(address.replace(/^[A-Z]+/, ''))
   if (isNotApplicableMarker(header.createdBy)) {
@@ -985,39 +975,6 @@ export function headerRequirementWarnings(header: Pick<PiHeader,
       message: `Sales Person (cell ${at.createdBy}) is empty. Name the salesperson on the draft, or enter it in the workbook and upload the PI again.`,
       row: rowOf(at.createdBy),
       cell: at.createdBy,
-    })
-  }
-
-  const confirmed = header.orderConfirmationDate?.iso ?? null
-  const confirmedOk = isCalendarDate(confirmed) && confirmed >= DUE_DATE_FLOOR
-  if (!confirmedOk) {
-    const read = header.orderConfirmationDate
-    issues.push({
-      code: 'PI_CONFIRMATION_DATE_MISSING',
-      message: read
-        ? `Date of Order Confirmation (cell ${at.orderConfirmationDate}) reads "${read.text}", which is not a date. Set the confirm date on the draft, or enter it as a date (for example 25/10/2026) and upload the PI again.`
-        : `Date of Order Confirmation (cell ${at.orderConfirmationDate}) is empty. Set the confirm date on the draft, or enter it in the workbook and upload the PI again.`,
-      row: rowOf(at.orderConfirmationDate),
-      cell: at.orderConfirmationDate,
-    })
-  }
-
-  const dispatch = header.dispatchCommitment
-  const due = plausibleDueDate({
-    candidate: dispatch?.iso ?? dispatch?.text ?? null,
-    orderConfirmationDate: confirmed,
-    creationDate: header.creationDate?.iso ?? null,
-  })
-  if (due === null) {
-    issues.push({
-      code: 'PI_DISPATCH_DATE_MISSING',
-      message: !dispatch
-        ? `Dispatch Date Finalized (cell ${at.dispatchCommitment}) is empty. Set the due date on the draft, or enter the dispatch date in the workbook and upload the PI again.`
-        : confirmedOk && isCalendarDate(dispatch.iso) && dispatch.iso >= DUE_DATE_FLOOR
-          ? `Dispatch Date Finalized (cell ${at.dispatchCommitment}) is ${dispatch.text}, which is before the order confirmation date. Set the correct due date on the draft, or correct the workbook and upload the PI again.`
-          : `Dispatch Date Finalized (cell ${at.dispatchCommitment}) reads "${dispatch.text}", which is not a date. Set the due date on the draft, or enter the actual dispatch date (for example 25/12/2026) — not a lead time — in the workbook and upload the PI again.`,
-      row: rowOf(at.dispatchCommitment),
-      cell: at.dispatchCommitment,
     })
   }
   return issues

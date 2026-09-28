@@ -535,8 +535,8 @@ export default function PiDraftsPage() {
                   </div>
                 </td>
                 {/* THE GOODS, THEN THE BILL. Two figures rather than one,
-                    because the gap between them — discount, fabric, packing,
-                    transport, GST — is itself something a reader judges, and a
+                    because the gap between them — fabric, packing, transport,
+                    GST — is itself something a reader judges, and a
                     row showing only one leaves them guessing which it is. */}
                 <td style={{ padding: '10px 14px', textAlign: 'right', color: colors.secondary, whiteSpace: 'nowrap' }}>
                   {entry.productValue}

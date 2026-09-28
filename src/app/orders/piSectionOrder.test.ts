@@ -111,36 +111,32 @@ describe('the two PI screens put the answer above the product table', () => {
     // Siblings in the page stack: nested into any card, these would not be found.
     // The identity strip is gone: status, creator, timestamp and workbook all
     // live inside the summary card now, so the page opens with the card itself.
-    assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiWorkflowPanel'),
+    assert.ok(at(s, 'PiTopCard') < at(s, 'PiWorkflowPanel'),
       'who, when and how much paid — above the controls that act on them')
-    assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiProductTableHead'),
+    assert.ok(at(s, 'PiTopCard') < at(s, 'PiProductTableHead'),
       'the money received must not sit below the lines it was received against')
     assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiLowerGrid'),
       'the commercial breakdown and Activity stay below the products')
   })
 
-  // ── Upload PI: what stops a submission is read BEFORE the product list ──
+  // ── Upload PI: the verdict and the action come FIRST (2026-09-27) ──
   //
-  // The page order is: order information, what blocks it, the lines, what it
-  // comes to, and only then the control that acts on all four. The blocking
-  // panel used to sit below the commercial summary, where a twelve-line PI put
-  // the one thing a person has to fix underneath a screen and a half of
-  // scrolling — so it was found after the reading rather than before it.
-  //
-  // The ready card moved the other way for the same reason: it is a VERDICT on
-  // the document, and a verdict belongs after what it is a verdict on. It is
-  // still rendered only when nothing blocks, so the two never appear together.
-  test('Upload PI: errors come before the products, and the action comes last', () => {
+  // Directly under the Upload PI heading: what blocks the PI — or, when
+  // nothing does, the Save Draft card (the two are never drawn together) —
+  // then what is worth checking, and only then Order information, the lines
+  // and what they come to. Below a twenty-line product table Sales scrolled
+  // every row to learn whether the PI could be saved and to reach the button
+  // that saves it. (This supersedes the earlier "the action comes last" order.)
+  test('Upload PI: errors or Save Draft first, warnings next, then the document', () => {
     const s = stackOf('src/app/orders/import/page.tsx', byAssignment('previewBlock'))
-    assert.equal(at(s, 'BLOCKING_PANEL_TITLE'), at(s, 'buildOrderInformationRows') + 1,
-      'immediately after the order information, with nothing wedged between them')
-    assert.ok(at(s, 'BLOCKING_PANEL_TITLE') < at(s, 'PiProductTableHead'),
-      'a blocked PI says so before the list it would have to be scrolled past')
-    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiCommercialSummary'))
-    assert.ok(at(s, 'PiCommercialSummary') < at(s, 'READY_TITLE'),
-      'the verdict is read after the document it is a verdict on')
+    assert.equal(at(s, 'BLOCKING_PANEL_TITLE'), 0, 'a blocked PI says so first of all')
+    assert.equal(at(s, 'READY_TITLE'), 1, 'the Save Draft card is next — the first card on a clean PI')
     assert.equal(at(s, 'SAVE_BUTTON_LABEL'), at(s, 'READY_TITLE'),
       'and the one control of this screen belongs to that same card')
+    assert.equal(at(s, 'WARNING_PANEL_TITLE'), 2, 'then what is worth checking')
+    assert.ok(at(s, 'WARNING_PANEL_TITLE') < at(s, 'buildOrderInformationRows'))
+    assert.ok(at(s, 'buildOrderInformationRows') < at(s, 'PiProductTableHead'))
+    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiCommercialSummary'))
   })
 
   test('Upload PI: the blocking panel is rendered once, and only when it has entries', () => {

@@ -1041,11 +1041,13 @@ describe('the applied migrations are frozen', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
-      // The legacy advance submit doors are closed: REVOKE of the two
-      // legacy advance doors from authenticated, and CREATE OR REPLACE of
-      // submit_order_submission_advance_v2_internal (20260917's body plus
-      // clearing the decision basis). No table, policy or row is touched.
-      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270201000000_order_pi_version_pdf_order_number.sql',
+      '20270205000000_order_production_needs_order_level_exception.sql',
+      '20270205120000_expense_reimbursements_and_bills.sql',
+      '20270210000000_order_submission_highlight_remark.sql',
+      '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 
@@ -1338,11 +1340,13 @@ describe('the applied migrations are frozen', () => {
       '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
       '20270122000000_order_submission_internal_details.sql',
       '20270123000000_order_submission_internal_details_required_on_submit.sql',
-      // The legacy advance submit doors are closed: REVOKE of the two
-      // legacy advance doors from authenticated, and CREATE OR REPLACE of
-      // submit_order_submission_advance_v2_internal (20260917's body plus
-      // clearing the decision basis). No table, policy or row is touched.
-      '20270124000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270201000000_order_pi_version_pdf_order_number.sql',
+      '20270205000000_order_production_needs_order_level_exception.sql',
+      '20270205120000_expense_reimbursements_and_bills.sql',
+      '20270210000000_order_submission_highlight_remark.sql',
+      '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

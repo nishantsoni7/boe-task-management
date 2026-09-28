@@ -86,6 +86,7 @@ import {
   BLOCKING_PANEL_TITLE,
   WARNING_PANEL_TITLE,
   READY_TITLE,
+  READY_NOTE,
   PI_FILE_INPUT_ACCEPT,
   type PiFailureDisplay,
   type PiDiagnosticGroups,
@@ -997,6 +998,180 @@ function NewOrderPiImportPageInner() {
   const previewBlock = preview && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+      {/* THE VERDICT AND THE ACTION COME FIRST (2026-09-27), directly under
+          the Upload PI heading and above Order information and the products:
+            1  what blocks the PI, when anything does — or, when nothing does,
+               the Save Draft card (the two are never on screen together);
+            2  what is worth checking, when there is anything.
+          Below a twenty-line product table, Sales scrolled past every row to
+          learn whether the PI could be saved and to reach the one button that
+          saves it. The panels themselves are unchanged — the same titles,
+          counts, entries, row and cell references, and the same Save Draft
+          gate, loading state and failure note. Only where they sit moved. */}
+      {preview.groups.blocking.length > 0 && (
+        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+          <div style={{
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
+            background: colors.redTint,
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}>
+            <AlertTriangle size={15} strokeWidth={2} color={colors.red} />
+            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+              {BLOCKING_PANEL_TITLE}
+            </div>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.red, fontWeight: 600 }}>
+              {preview.groups.blocking.length}
+            </span>
+          </div>
+          <DiagnosticList entries={preview.groups.blocking} tone="red" />
+          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
+            the order must match the document the client was sent.
+          </div>
+        </Card>
+      )}
+
+      {/* Ready state, and the one action this phase performs. Saving stores a
+          PRIVATE DRAFT — it does not submit for approval, take a payment or
+          allocate an order number, and the success state says so. */}
+      {preview.groups.readyToSubmit && (
+        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
+          <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                {saveSuccess ? 'Draft saved' : READY_TITLE}
+              </div>
+
+              {saveSuccess ? (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    {/* The SERVER's counts, from its own re-parse — not the
+                        browser's. If the two ever disagreed, what was saved is
+                        what must be shown. */}
+                    {saveSuccess.summary} were saved to a private draft.
+                  </div>
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
+                    {saveSuccess.note}
+                  </div>
+                  {saveSuccess.warningCodes.length > 0 && (
+                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                      Saved with {saveSuccess.warningCodes.length} warning
+                      {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
+                    Opening the saved draft…
+                  </div>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* The save already navigates to the draft. This is the
+                        fallback for the one case where it cannot — a blocked or
+                        cancelled client-side navigation — so a saved record is
+                        never left with nothing pointing at it. */}
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      onClick={() => router.push(draftDetailHref(saveSuccess.submissionId))}
+                    >
+                      Open saved draft
+                    </button>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+                      All PI Drafts
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    {READY_NOTE}
+                    {preview.groups.warnings.length > 0 && (
+                      <> {preview.groups.warnings.length === 1
+                        ? 'One note below is worth checking; it does not stop the save.'
+                        : `${preview.groups.warnings.length} notes below are worth checking; they do not stop the save.`}</>
+                    )}
+                  </div>
+
+                  {saving && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.raised, border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}>
+                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
+                               style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
+                        {saveStageLabel(saveStage!)}
+                      </span>
+                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
+                        Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
+                      </span>
+                    </div>
+                  )}
+
+                  {saveFailure && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                      borderRadius: '8px',
+                    }}>
+                      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
+                        {saveFailure.message}
+                      </div>
+                      {saveFailure.serverRejectedDocument && (
+                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
+                          The server checked the workbook itself and its result is the one that counts.
+                          This PI is not ready to save.
+                        </div>
+                      )}
+                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                        {saveFailure.code}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      // A full-width target on a phone, where this card is the
+                      // first thing under the heading.
+                      style={isMobile ? { width: '100%', justifyContent: 'center' } : undefined}
+                      onClick={saveDraft}
+                      disabled={replaceBlocked || !canSaveDraft({
+                        hasPreview: true,
+                        blockingCount: preview.groups.blocking.length,
+                        saving,
+                        saved: false,
+                      })}
+                    >
+                      {saving ? 'Saving…' : SAVE_BUTTON_LABEL}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Warnings — shown whether or not anything is blocking. */}
+      {preview.groups.warnings.length > 0 && (
+        <Card>
+          <div style={{
+            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
+            display: 'flex', alignItems: 'center', gap: '8px',
+          }}>
+            <Info size={15} strokeWidth={2} color={colors.amber} />
+            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+              {WARNING_PANEL_TITLE}
+            </div>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
+              {preview.groups.warnings.length} — these do not stop a save
+            </span>
+          </div>
+          <DiagnosticList entries={preview.groups.warnings} tone="amber" />
+        </Card>
+      )}
+
       {/* Order information.
           B20 / sourceOrderNumber is deliberately absent — see the note on
           buildHeaderRows, which buildOrderInformationRows inherits.
@@ -1009,7 +1184,8 @@ function NewOrderPiImportPageInner() {
           grouping, stated once:
 
             1  Client name · Product value · Location
-            2  Confirmed date · Due date
+            2  Confirmed date · Due date — only the dates the workbook
+               carries; a blank one is not shown (2026-09-27)
             3  Salesperson · Uploaded by · Upload date
 
           Each row is its own grid, so a group never borrows a column from the
@@ -1022,13 +1198,16 @@ function NewOrderPiImportPageInner() {
           {(() => {
             const rows = buildOrderInformationRows({
               header: preview.data.header,
-              // The commercial summary's own first figure, through the same
-              // formatter. This states it; it does not recompute it.
-              grossProductAmount: preview.data.commercial.grossProductAmount,
+              // The workbook's own subtotal after discount — what Product value
+              // means once the draft is saved. Stated, never recomputed.
+              productSubtotal: preview.data.commercial.subtotalAfterDiscount,
               upload: { by: profile?.full_name ?? null, at: preview.readAt },
             })
             const byKey = (key: string) => rows.find(row => row.key === key)
-            const group = (keys: readonly string[], columns: number) => (
+            // A group with nothing in it is not drawn: a workbook that leaves
+            // both dates blank (the usual case) has no date line at all,
+            // rather than an empty grid holding a gap open.
+            const group = (keys: readonly string[], columns: number) => !keys.some(byKey) ? null : (
               <div
                 key={keys.join('-')}
                 style={{
@@ -1058,36 +1237,6 @@ function NewOrderPiImportPageInner() {
           })()}
         </div>
       </Card>
-
-      {/* Blocking issues — SECOND ON THE PAGE, before the product table.
-          Below the table a twelve-line PI put the one thing that stops a
-          submission underneath a screen and a half of rows, so it was read
-          after the scroll rather than before it. The panel itself is
-          unchanged: the same title, the same count, the same entries in the
-          same order, the same row and cell references, and the same closing
-          instruction. Only where it sits has moved. */}
-      {preview.groups.blocking.length > 0 && (
-        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
-          <div style={{
-            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-            background: colors.redTint,
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <AlertTriangle size={15} strokeWidth={2} color={colors.red} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-              {BLOCKING_PANEL_TITLE}
-            </div>
-            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.red, fontWeight: 600 }}>
-              {preview.groups.blocking.length}
-            </span>
-          </div>
-          <DiagnosticList entries={preview.groups.blocking} tone="red" />
-          <div style={{ padding: '10px 20px', borderTop: `1px solid ${colors.border}`, fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-            Correct these in the Excel PI and upload it again. Nothing on this screen can be edited —
-            the order must match the document the client was sent.
-          </div>
-        </Card>
-      )}
 
       {/* Products */}
       <Card>
@@ -1153,10 +1302,15 @@ function NewOrderPiImportPageInner() {
                         phone and writes on a correction — and at 10px muted it
                         was the faintest thing on the card while the name it
                         labels was the boldest. The two have swapped weight.
-                        Neither value changed, and neither moved. */}
+                        Neither value changed, and neither moved.
+                        THE TYPEFACE (2026-09-27): the interface's own sans,
+                        not the monospace, which set B001 and B002 in a heavy,
+                        decorative block. Tabular figures keep the digits even
+                        down the column; weight and ink keep it distinct from the
+                        description beside it. */}
                     <div style={{
                       fontSize: '14px', fontWeight: 600, color: colors.primary,
-                      fontFamily: 'var(--font-mono)', letterSpacing: '0.01em',
+                      fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',
                     }}>
                       {orDash(p.itemSequence)}
                     </div>
@@ -1216,8 +1370,8 @@ function NewOrderPiImportPageInner() {
                         the column is sized by its own content. */}
                     <td style={{
                       padding: '10px 14px', whiteSpace: 'nowrap',
-                      color: colors.primary, fontFamily: 'var(--font-mono)',
-                      fontSize: '14px', fontWeight: 600, letterSpacing: '0.01em',
+                      color: colors.primary, fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums',
+                      fontSize: '14px', fontWeight: 600, letterSpacing: '0.02em',
                     }}>
                       {orDash(p.itemSequence)}
                     </td>
@@ -1270,140 +1424,6 @@ function NewOrderPiImportPageInner() {
           enough to read as pairs. The ROWS are unchanged — buildCommercialRows
           decides every label, figure and emphasis, here as on the saved draft. */}
       <PiCommercialSummary rows={buildCommercialRows(preview.data.commercial)} />
-
-      {/* Warnings — shown whether or not anything is blocking. */}
-      {preview.groups.warnings.length > 0 && (
-        <Card>
-          <div style={{
-            padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
-            <Info size={15} strokeWidth={2} color={colors.amber} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-              {WARNING_PANEL_TITLE}
-            </div>
-            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
-              {preview.groups.warnings.length} — these do not stop a submission
-            </span>
-          </div>
-          <DiagnosticList entries={preview.groups.warnings} tone="amber" />
-        </Card>
-      )}
-
-      {/* Ready state, and the one action this phase performs. Saving stores a
-          PRIVATE DRAFT — it does not submit for approval, take a payment or
-          allocate an order number, and the success state says so. */}
-      {preview.groups.readyToSubmit && (
-        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
-          <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
-            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-                {saveSuccess ? 'Draft saved' : READY_TITLE}
-              </div>
-
-              {saveSuccess ? (
-                <>
-                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-                    {/* The SERVER's counts, from its own re-parse — not the
-                        browser's. If the two ever disagreed, what was saved is
-                        what must be shown. */}
-                    {saveSuccess.summary} were saved to a private draft.
-                  </div>
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
-                    {saveSuccess.note}
-                  </div>
-                  {saveSuccess.warningCodes.length > 0 && (
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                      Saved with {saveSuccess.warningCodes.length} warning
-                      {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
-                    </div>
-                  )}
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
-                    Opening the saved draft…
-                  </div>
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* The save already navigates to the draft. This is the
-                        fallback for the one case where it cannot — a blocked or
-                        cancelled client-side navigation — so a saved record is
-                        never left with nothing pointing at it. */}
-                    <button
-                      className="boe-btn boe-btn-primary"
-                      onClick={() => router.push(draftDetailHref(saveSuccess.submissionId))}
-                    >
-                      Open saved draft
-                    </button>
-                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
-                      All PI Drafts
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-                    Nothing blocks this PI. Saving stores it as a private draft — the server reads the
-                    workbook again and saves its own verified copy. Submitting for approval comes later.
-                  </div>
-
-                  {saving && (
-                    <div style={{
-                      marginTop: '8px', padding: '10px 12px',
-                      background: colors.raised, border: `1px solid ${colors.border}`,
-                      borderRadius: '8px',
-                      display: 'flex', alignItems: 'center', gap: '8px',
-                    }}>
-                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
-                               style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
-                      <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
-                        {saveStageLabel(saveStage!)}
-                      </span>
-                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
-                        Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
-                      </span>
-                    </div>
-                  )}
-
-                  {saveFailure && (
-                    <div style={{
-                      marginTop: '8px', padding: '10px 12px',
-                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
-                      borderRadius: '8px',
-                    }}>
-                      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
-                        {saveFailure.message}
-                      </div>
-                      {saveFailure.serverRejectedDocument && (
-                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
-                          The server checked the workbook itself and its result is the one that counts.
-                          This PI is not ready to save.
-                        </div>
-                      )}
-                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
-                        {saveFailure.code}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: '10px' }}>
-                    <button
-                      className="boe-btn boe-btn-primary"
-                      onClick={saveDraft}
-                      disabled={replaceBlocked || !canSaveDraft({
-                        hasPreview: true,
-                        blockingCount: preview.groups.blocking.length,
-                        saving,
-                        saved: false,
-                      })}
-                    >
-                      {saving ? 'Saving…' : SAVE_BUTTON_LABEL}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* The standing promise of this screen, repeated where the eye ends up. */}
       <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>

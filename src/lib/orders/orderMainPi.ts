@@ -48,6 +48,7 @@ export const MAIN_PI_APPROVED_LABEL = 'Approved'
  * card exists to prevent.
  */
 export const MAIN_PI_NONE = 'This Order was not created from a PI, so there is no approved PI to show.'
+export const MAIN_PI_LOADING = 'Loading the PI…'
 export const MAIN_PI_AWAITING =
   'No PI has been approved for this Order yet. A revision is uploaded and waiting for a decision.'
 
@@ -64,6 +65,8 @@ export const PI_HISTORY_CURRENT_BADGE = 'Current'
 // ── The Main PI card ──────────────────────────────────────────────────────────
 
 export type MainPiCard =
+  /** The versions have not been read yet: never claim there is no PI. */
+  | { kind: 'loading'; message: string }
   | { kind: 'none'; message: string }
   | { kind: 'awaiting'; message: string }
   | {
