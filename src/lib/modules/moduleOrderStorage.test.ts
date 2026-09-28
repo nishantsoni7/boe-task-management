@@ -639,6 +639,7 @@ describe('the database half of this verification', () => {
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
       '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
     ], 'every migration after this one is accounted for')
   })
 })

@@ -575,6 +575,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270210000000_order_submission_highlight_remark.sql',
       '20270211000000_order_submission_sales_order_details.sql',
       '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
     ])
   })
 
