@@ -696,6 +696,11 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the permission resolvers leaving anon (20270214000000): grants
       // only, held by its own suite.
       if (f === 'supabase/migrations/20270214000000_permission_resolvers_are_not_for_anon.sql') continue
+      // Attendance requests → approval → payroll review (20270215000000) and its
+      // two notification types (20270215000100): additive tables of their own,
+      // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
+      if (f === 'supabase/migrations/20270215000000_attendance_requests.sql') continue
+      if (f === 'supabase/migrations/20270215000100_attendance_request_notification_types.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2070,6 +2075,72 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const RESOLVERS_NOT_FOR_ANON_MIGRATION = 'supabase/migrations/20270214000000_permission_resolvers_are_not_for_anon.sql'
 
+  /**
+   * Attendance requests → approval → payroll review. An Attendance & Payroll
+   * feature: no Finance or Orders screen, figure or table. The Orders/Finance
+   * test files listed are migration-sequence pins gaining two lines each.
+   */
+  const ALLOWED_ATTENDANCE_REQUESTS = new Set([
+    'src/app/my-attendance/page.tsx',
+    'src/app/attendance/requests/page.tsx',
+    'src/app/api/attendance-requests/route.ts',
+    'src/app/api/attendance-requests/[id]/cancel/route.ts',
+    'src/app/api/attendance-requests/[id]/decision/route.ts',
+    'src/app/api/attendance-requests/[id]/history/route.ts',
+    'src/app/api/attendance-requests/reconciliation/route.ts',
+    'src/components/attendanceRequests/AttendanceRequestModal.tsx',
+    'src/components/attendanceRequests/MyAttendanceRequests.tsx',
+    'src/components/attendanceRequests/PayrollAttendanceReview.tsx',
+    'src/components/attendanceRequests/RequestHistoryModal.tsx',
+    'src/components/attendanceRequests/RequestQueue.tsx',
+    'src/components/attendanceRequests/format.ts',
+    'src/components/attendanceRequests/attendanceRequests.render.test.tsx',
+    // Pass 2: the review applies decisions through the shared correction path.
+    'src/lib/attendance/requestHandlers.ts',
+    'src/lib/attendance/requestHandlers.test.ts',
+    'src/lib/attendance/testing/memorySupabase.ts',
+    'src/lib/attendance/lockWarning.ts',
+    'src/lib/attendance/lockWarning.test.ts',
+    'src/lib/payroll/attendanceCorrectionService.ts',
+    'src/app/api/payroll/attendance-correction/route.ts',
+    'src/app/api/boe-credits/routesAuthority.test.ts',
+    'src/app/payroll/page.tsx',
+    'src/app/payroll/results/[periodId]/page.tsx',
+    // Pass 3: server-checked lock acknowledgement; the engine's rounding rule exported unchanged.
+    'src/lib/payroll/lockPeriod.ts',
+    'src/app/api/payroll/lock/route.ts',
+    'src/lib/payroll/engine.ts',
+    // Pass 4: payroll is written only for a month that has ended; previews trim future days.
+    'src/lib/payroll/periodCompletion.ts',
+    'src/lib/payroll/periodCompletion.test.ts',
+    'src/app/api/payroll/generate/route.ts',
+    'src/app/api/payroll/monthly-review/route.ts',
+    'src/app/api/payroll/monthly-review/detail/route.ts',
+    'src/app/payroll/monthly-review/page.tsx',
+    'src/components/layout/attendancePayrollNav.tsx',
+    'src/lib/attendance/requests.ts',
+    'src/lib/attendance/requests.test.ts',
+    'src/lib/attendance/requestReconciliation.ts',
+    'src/lib/attendance/requestReconciliation.test.ts',
+    'src/lib/attendance/requestsServer.ts',
+    'src/lib/notifications.ts',
+    'src/lib/notificationMeta.ts',
+    'src/lib/attendancePayrollNotifications.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'supabase/migrations/20270215000000_attendance_requests.sql',
+    'supabase/migrations/20270215000100_attendance_request_notification_types.sql',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2119,6 +2190,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
+    !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -2459,7 +2531,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file)
         || ALLOWED_DEFINER_SEARCH_PATH.has(file)
-        || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file),
+        || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file)
+        || ALLOWED_ATTENDANCE_REQUESTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

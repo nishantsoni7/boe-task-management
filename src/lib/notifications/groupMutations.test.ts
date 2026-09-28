@@ -540,6 +540,8 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270212000000_order_submission_legacy_advance_doors_closed.sql',
       '20270213000000_security_definer_search_path_pins_pg_temp.sql',
       '20270214000000_permission_resolvers_are_not_for_anon.sql',
+      '20270215000000_attendance_requests.sql',
+      '20270215000100_attendance_request_notification_types.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

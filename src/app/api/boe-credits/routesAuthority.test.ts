@@ -251,11 +251,18 @@ describe('the redemption is the caller\'s own, decided by the engine, written th
   })
 
   test('the lifecycle: every write-intent engine run reconciles the coverage first, through the shared module', () => {
-    const correction = code(read('src/app/api/payroll/attendance-correction/route.ts'))
+    // The correction route's body moved to a shared service so the Payroll
+    // review applies decisions through the SAME path; the route still passes
+    // the admin from the token as the actor.
+    const correctionRoute = code(read('src/app/api/payroll/attendance-correction/route.ts'))
+    const correction = code(read('src/lib/payroll/attendanceCorrectionService.ts'))
     const generate   = code(read('src/app/api/payroll/generate/route.ts'))
+    assert.match(correctionRoute, /applyAttendanceCorrection\(svc, \{[\s\S]*?actorId:\s+caller\.id/,
+      'attendance-correction: the admin from the token is the actor')
+    assert.match(correction, /actorId:\s+actorId/, 'the service passes its caller-resolved actor on every reversal')
     for (const [name, src] of [['attendance-correction', correction], ['generate', generate]] as const) {
       assert.match(src, /reconcileAttendanceCoverage\(svc, \{/, `${name} reconciles`)
-      assert.match(src, /actorId:\s+caller\.id/, `${name}: the admin from the token is the actor on every reversal`)
+      if (name === 'generate') assert.match(src, /actorId:\s+caller\.id/, `${name}: the admin from the token is the actor on every reversal`)
       assert.ok(src.indexOf('reconcileAttendanceCoverage(') < src.indexOf('writeEngineResult('), `${name}: reconciled BEFORE the result is written`)
     }
     // The read-only previews and the day view never reconcile: nothing there
