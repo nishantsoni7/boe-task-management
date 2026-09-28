@@ -77,7 +77,7 @@ import {
 import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Pencil } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
@@ -158,7 +158,7 @@ import {
 } from '@/lib/orders/orderDocumentSubmissions'
 import { MAIN_PI_LOADING, mainPiCard, piVersionTimeline, type MainPiCard } from '@/lib/orders/orderMainPi'
 import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCurrentStatus'
-import { DOC_DOWNLOAD_PI_LABEL, DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument, designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
+import { DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
 import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
@@ -238,6 +238,20 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
 import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, isOpenRevision } from '@/components/orders/PiVersionsPanel'
+import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
+import {
+  EDIT_PI_OUTCOME_NOTICE,
+  EDIT_PI_OUTCOME_PARAM,
+  editPiPageHref,
+  originalWorkbookFileName,
+  readEditPiOutcome,
+} from '@/lib/orders/editPiPage'
+import {
+  buildProductPicturesZip,
+  productPictureZipEntries,
+  productPicturesState,
+  productPicturesZipName,
+} from '@/lib/orders/productPictures'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -867,6 +881,26 @@ export default function OrderDetailPage() {
   const [piVersionsOpen, setPiVersionsOpen] = useState(false)
   const [piEditing,      setPiEditing]      = useState(false)
   const [piNotice,       setPiNotice]       = useState<string | null>(null)
+  // WHAT THE FULL-PAGE EDIT PI HANDED BACK (?edit_pi=…), and an upload step it
+  // asked this page to open (?upload=documents|pi). Read once on arrival and
+  // removed from the address, so a reload does not repeat either.
+  const [pendingUpload, setPendingUpload] = useState<'documents' | 'pi' | null>(null)
+  useEffect(() => {
+    const readHandBack = () => {
+      const params = new URLSearchParams(window.location.search)
+      const outcome = readEditPiOutcome(params.get(EDIT_PI_OUTCOME_PARAM))
+      const upload = params.get('upload')
+      if (!outcome && !upload) return
+      if (outcome) setPiNotice(EDIT_PI_OUTCOME_NOTICE[outcome])
+      if (upload === 'documents' || upload === 'pi') setPendingUpload(upload)
+      params.delete(EDIT_PI_OUTCOME_PARAM)
+      params.delete('upload')
+      const rest = params.toString()
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
+    }
+    const timer = window.setTimeout(readHandBack, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
   const [approvals,     setApprovals]     = useState<PersistedApprovalEvent[]>([])
   const [approvalOpen,  setApprovalOpen]  = useState(false)
   const [approvalBusy,  setApprovalBusy]  = useState(false)
@@ -1670,6 +1704,8 @@ export default function OrderDetailPage() {
       }
       setLineReview(null)
       setRevisionDialog(null)
+      // A decided revision retires the last proposal's notice.
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
@@ -1688,6 +1724,7 @@ export default function OrderDetailPage() {
       })
       if (error) { setRevisionError(describePiRevisionFailure(error, 'reject')); return }
       setRevisionDialog(null)
+      setPiNotice(null)
       void notifyPiSubmission({ event: 'pi_revision_rejected', submissionId: order.source_order_submission_id })
       await loadOrder()
     } finally {
@@ -1798,7 +1835,7 @@ export default function OrderDetailPage() {
       .storage
       .from(ORDER_FILES_BUCKET)
       .createSignedUrl(path, ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
-        mode === 'download' ? { download: true } : undefined)
+        mode === 'download' ? { download: originalWorkbookFileName(version, order?.display_number ?? null) } : undefined)
     setPiFileBusy(null)
     if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
@@ -1868,6 +1905,43 @@ export default function OrderDetailPage() {
   // never another module's page.
   const openVersionPdf = (versionId: string, download: boolean) => {
     window.open(piVersionPdfHref(id, versionId, download), '_blank', 'noopener,noreferrer')
+  }
+
+  // ALL THE PI'S PRODUCT PICTURES AS ONE ZIP, built in the browser from the
+  // pictures already signed for this reader — nothing new is signed, and a
+  // picture storage no longer holds is left out and counted, never faked.
+  const [picturesZipBusy, setPicturesZipBusy] = useState(false)
+  const [picturesZipMessage, setPicturesZipMessage] = useState<string | null>(null)
+  const downloadAllPictures = async () => {
+    if (picturesZipBusy) return
+    const entries = productPictureZipEntries(piImages.viewerItems)
+    if (entries.length === 0) return
+    setPicturesZipBusy(true)
+    setPicturesZipMessage(null)
+    try {
+      const result = await buildProductPicturesZip(entries, async url => {
+        const res = await fetch(url)
+        return res.ok ? new Uint8Array(await res.arrayBuffer()) : null
+      })
+      if (!result.bytes) {
+        setPicturesZipMessage('None of the pictures could be downloaded. Refresh the page and try again.')
+        return
+      }
+      const blob = new Blob([result.bytes as BlobPart], { type: 'application/zip' })
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = productPicturesZipName(order?.display_number ?? null, order?.client_name ?? null)
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 10_000)
+      setPicturesZipMessage(result.failed > 0
+        ? `Downloaded ${result.included} pictures; ${result.failed} could not be retrieved.`
+        : null)
+    } finally {
+      setPicturesZipBusy(false)
+    }
   }
 
   const viewEvidence = async (path: string) => {
@@ -2416,7 +2490,6 @@ export default function OrderDetailPage() {
    * IT NO LONGER RESTATES THE APPROVALS. Fabric and finish are drawn once, by
    * the card beside this box, with everything this summary had to leave out.
    */
-  const designFiles = designFilesDocument(piImages.summary, piProducts.length)
 
   /**
    * THE CLIENT'S OWN PURCHASE ORDER.
@@ -2445,6 +2518,10 @@ export default function OrderDetailPage() {
   const openDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
     setDocError(null)
     void docSubs.openFile(f).then(e => { if (e) setDocError(e) })
+  }
+  const downloadDocFile = (f: Parameters<typeof docSubs.openFile>[0]) => {
+    setDocError(null)
+    void docSubs.openFile(f, true).then(e => { if (e) setDocError(e) })
   }
   const docNameOf = (uid: string | null) => (uid ? docSubs.names.get(uid) ?? null : null)
   // WHAT IS CURRENT, per category — accepted submissions only — and WHAT IS
@@ -2480,6 +2557,12 @@ export default function OrderDetailPage() {
     if (key === 'pi') { setRevisionError(null); setRevisionDialog({ kind: 'propose' }); return }
     setDocUpload({ category: key, resubmission: null })
   }
+  const pendingUploadKey: DocUpdateKey | null = pendingUpload === 'pi'
+    ? (docUpdateItems.some(i => i.key === 'pi') ? 'pi' : null)
+    : pendingUpload === 'documents'
+      ? (docUpdateItems.find(i => i.key !== 'pi' && !i.disabled)?.key ?? null)
+      : null
+  const pendingUploadSettled = pendingUpload !== null && docSubs.state !== 'loading'
   // The files sent with the PI that the operations decision will accept too.
   const initialDocumentsAwaiting = (() => {
     const names = docSubs.rows
@@ -2776,6 +2859,21 @@ export default function OrderDetailPage() {
                 onOutOfDate={() => { loadOrder() }}
               />
             )}
+            {/* EDIT PI: the page's main action on the PI, opening the
+                full-page editor. Disabled, with the reason, while a proposed
+                version is still open. */}
+            {mayEditPi && piVersionsSource && (
+              <button
+                type="button"
+                className="boe-record-action boe-record-action--primary"
+                onClick={() => router.push(editPiPageHref(order.id))}
+                disabled={piRevisionOpen}
+                title={piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : 'Change this PI and send it for approval'}
+              >
+                <Pencil size={14} strokeWidth={2} aria-hidden="true" />
+                {EDIT_PI_LABEL}
+              </button>
+            )}
             {actions.secondary.map(key => (
               <button
                 key={key}
@@ -2906,31 +3004,32 @@ export default function OrderDetailPage() {
           />
           <OrderDocumentsPanel
             mainPi={mainPi}
-            design={designFiles}
             clientPo={clientPo}
-            onView={v => { void openVersionFile(v, 'view') }}
             onDownload={v => { void openVersionFile(v, 'download') }}
             onOpenPdf={openVersionPdf}
             onHistory={() => { setRevisionError(null); setHistoryOpen(true) }}
-            onManageDesign={() => setDesignOpen(true)}
-            viewing={piFileBusy !== null}
             downloading={piFileBusy !== null}
+            pictures={{
+              state: productPicturesState({
+                loading: piImages.summary.kind === 'loading',
+                recorded: piImages.summary.kind === 'ready'
+                  ? piImages.summary.counts.representative + piImages.summary.counts.customization
+                  : piImages.summary.kind === 'no_source' ? 0 : null,
+                available: piImages.viewerItems.length,
+                unavailable: piImages.unresolved,
+              }),
+              onView: () => setDesignOpen(true),
+              onDownloadAll: () => { void downloadAllPictures() },
+              downloading: picturesZipBusy,
+              message: picturesZipMessage,
+            }}
+            onDownloadFile={downloadDocFile}
             mainPiMenu={mainPi.kind === 'ready' ? (
-              <MoreActionsMenu<'pdf' | 'download'>
+              <MoreActionsMenu<'pdf'>
                 ariaLabel="More PI actions"
                 triggerClassName="boe-btn boe-btn-ghost order-doc-action order-doc-action--icon"
-                items={[
-                  { key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` },
-                  {
-                    key: 'download',
-                    label: piFileBusy !== null ? 'Preparing…' : DOC_DOWNLOAD_PI_LABEL,
-                    disabled: !mainPi.hasFile || piFileBusy !== null,
-                  },
-                ]}
-                onSelect={key => {
-                  if (key === 'pdf') { openVersionPdf(mainPi.version.id, true); return }
-                  void openVersionFile(mainPi.version, 'download')
-                }}
+                items={[{ key: 'pdf', label: `${DOC_DOWNLOAD_PI_PDF_LABEL} (V${mainPi.version.versionNumber})` }]}
+                onSelect={() => openVersionPdf(mainPi.version.id, true)}
               />
             ) : undefined}
             /* PI HISTORY AND EDIT PI (20270115000000), on the Main PI row. The
@@ -2975,6 +3074,13 @@ export default function OrderDetailPage() {
             } : undefined}
           />
         </OrderDocumentsRow>
+        {pendingUploadSettled && (
+          <RunOnce run={() => {
+            setPendingUpload(null)
+            if (pendingUploadKey) runDocUpdate(pendingUploadKey)
+            document.getElementById('documents')?.scrollIntoView({ block: 'start' })
+          }} />
+        )}
 
         {/* ══ 3b. PI HISTORY AND EDIT PI (20270115000000) ══
             No longer a standalone strip: the Main PI row above opens the
@@ -2992,7 +3098,7 @@ export default function OrderDetailPage() {
             open={piVersionsOpen}
             onClose={() => setPiVersionsOpen(false)}
             editing={piEditing}
-            onEdit={() => { setPiNotice(null); setPiVersionsOpen(false); setPiEditing(true) }}
+            onEdit={() => { setPiNotice(null); setPiVersionsOpen(false); router.push(editPiPageHref(order.id)) }}
             onEditClose={() => setPiEditing(false)}
             notice={piNotice}
             onNotice={setPiNotice}
@@ -3588,4 +3694,15 @@ export default function OrderDetailPage() {
 
     </OrdersLayout>
   )
+}
+
+/** Runs `run` once, after it mounts — for a step that needs the page fully read. */
+function RunOnce({ run }: { run: () => void }) {
+  const ran = useRef(false)
+  useEffect(() => {
+    if (ran.current) return
+    ran.current = true
+    run()
+  }, [run])
+  return null
 }

@@ -3005,20 +3005,161 @@ body {
    stacks what it is, when, and its actions, so neither column squeezes three
    columns of its own. Declared after the viewport rules above so it wins in a
    wide card whatever the window width. */
+/* MAIN PI: stacked in a narrow card — what it is, its dates, then its actions. */
+.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.order-docs-main .order-doc-row-meta,
+.order-docs-main .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+.order-docs-main .order-doc-row-actions { justify-content: flex-start; }
 @container (min-width: 760px) {
-  .order-docs-rows {
+  /* MAIN PI across the full width: what it is beside its dates, actions below. */
+  .order-docs-main .order-doc-section { padding: 14px 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .order-docs-main .order-doc-row-actions { grid-column: 1 / -1; }
+  /* DESIGN FILES | CLIENT PO, side by side, each stacking what, when and files. */
+  .order-docs-side {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .order-docs-side { border-top: 0; border-left: 1px solid #F0F2F5; }
-  .order-docs-rows .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
-  .order-docs-rows .order-doc-row-meta,
-  .order-docs-rows .order-doc-row-actions { grid-column: auto; grid-row: auto; }
-  .order-docs-rows .order-doc-row-meta:empty,
-  .order-docs-rows .order-doc-row-actions:empty { display: none; }
-  .order-docs-rows .order-doc-row-actions { justify-content: flex-start; }
-  .order-docs-main .order-doc-section { padding: 13px 16px 14px; }
+  .order-docs-side .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: start; padding: 13px 18px 14px; }
+  .order-docs-side .order-doc-section + .order-doc-section { border-top: 0; border-left: 1px solid #F0F2F5; }
+  .order-docs-side .order-doc-row-meta,
+  .order-docs-side .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+  .order-docs-side .order-doc-row-meta:empty,
+  .order-docs-side .order-doc-row-actions:empty { display: none; }
+  .order-docs-side .order-doc-row-actions { justify-content: flex-start; }
+}
+
+/* THE PI'S PRODUCT PICTURES, a quiet strip under the Main PI they belong to. */
+.order-doc-pictures {
+  display: flex;
+  align-items: center;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+  margin: 0 18px 14px;
+  padding: 9px 12px;
+  border: 1px solid #EEF0F3;
+  border-radius: 8px;
+  background: #FAFBFC;
+}
+.order-doc-pictures-icon { color: #8C94A6; flex: 0 0 auto; }
+.order-doc-pictures-main { flex: 1 1 220px; min-width: 0; }
+.order-doc-pictures-title { margin: 0; font-size: 12.5px; font-weight: 700; color: #111318; }
+.order-doc-pictures-line { margin: 1px 0 0; font-size: 12.5px; color: #3A4150; }
+.order-doc-pictures-line--warn { color: #B42318; }
+.order-doc-pictures-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* A file: its name opens it; the icon beside it saves it. */
+.order-doc-file-row { display: flex; align-items: center; gap: 4px; }
+.order-doc-file-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B7384;
+  cursor: pointer;
+}
+.order-doc-file-download:hover { background: #F2F4F7; color: #111318; }
+.order-doc-file-download:focus-visible { outline: 2px solid #2F6FEB; outline-offset: 1px; }
+
+@container (min-width: 1100px) {
+  /* Wide enough for all three side by side: what | when | how to open it. */
+  .order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr) minmax(0, 320px) auto; }
+  .order-docs-main .order-doc-row-actions { grid-column: auto; justify-content: flex-end; }
+}
+
+@media (max-width: 560px) {
+  .order-doc-pictures { margin: 0 14px 12px; }
+  .order-doc-pictures-actions { flex: 1 1 100%; }
+  .order-doc-pictures-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+}
+
+/* ── EDIT PI — the full page (/orders/[id]/edit-pi, /orders/drafts/[id]/edit-pi) ──
+   One column of section cards, each with a title and a one-line summary, a
+   quiet section index, and one sticky action bar. No nested scrolling: the
+   page scrolls, and the bar stays in reach. */
+.pi-edit-page { display: flex; flex-direction: column; gap: 14px; max-width: 1080px; width: 100%; margin: 0 auto; padding-bottom: 96px; }
+.pi-edit-loading { padding: 24px 0; font-size: 13px; color: #6B7384; }
+.pi-edit-intro { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.pi-edit-back { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: #FFFFFF; color: #111318; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.pi-edit-back:hover { background: #F7F8FA; }
+.pi-edit-intro-text { flex: 1 1 320px; min-width: 0; }
+.pi-edit-context { margin: 0; font-size: 15px; font-weight: 700; color: #111318; letter-spacing: -0.01em; }
+.pi-edit-note { margin: 3px 0 0; font-size: 12.5px; color: #6B7384; line-height: 1.5; max-width: 760px; }
+.pi-edit-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 4px; overflow-x: auto; padding: 6px; border-radius: 10px; background: rgba(247,248,250,0.92); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.06); scrollbar-width: none; }
+.pi-edit-nav::-webkit-scrollbar { display: none; }
+.pi-edit-nav a { flex: 0 0 auto; padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: #3A4150; text-decoration: none; white-space: nowrap; }
+.pi-edit-nav a:hover { background: #FFFFFF; color: #111318; }
+.pi-edit-alert { padding: 10px 12px; border-radius: 8px; background: #FEF3F2; color: #B42318; font-size: 13px; }
+.pi-edit-resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(47,111,235,0.35); background: #F2F6FF; font-size: 13px; }
+.pi-edit-resume > span { flex: 1 1 240px; }
+.pi-edit-card { background: #FFFFFF; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; scroll-margin-top: 64px; min-width: 0; }
+.pi-edit-card-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px 12px; border-bottom: 1px solid #F0F2F5; }
+.pi-edit-card-heading { flex: 1 1 auto; min-width: 0; }
+.pi-edit-card-title { margin: 0; font-size: 14px; font-weight: 700; color: #111318; }
+.pi-edit-card-summary { margin: 2px 0 0; font-size: 12.5px; color: #6B7384; overflow-wrap: anywhere; }
+.pi-edit-card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.pi-edit-denied { margin: 0; font-size: 13.5px; color: #3A4150; }
+.pi-edit-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px 14px; }
+.pi-edit-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pi-edit-field > span { font-size: 12px; font-weight: 600; color: #3A4150; }
+.pi-edit-field--wide { grid-column: 1 / -1; }
+.pi-edit-field .boe-input { width: 100%; box-sizing: border-box; }
+.pi-edit-field textarea.boe-input { resize: vertical; min-height: 58px; }
+.pi-edit-add { padding: 6px 12px; font-size: 12.5px; }
+.pi-edit-products { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pi-edit-product { border: 1px solid #ECEEF2; border-radius: 10px; padding: 12px 14px; background: #FFFFFF; }
+.pi-edit-product--new { border-color: rgba(22,101,52,0.3); background: #F6FBF7; }
+.pi-edit-product--removed { opacity: 0.6; background: #FAFAFB; }
+.pi-edit-product-head { display: flex; align-items: center; gap: 10px; }
+.pi-edit-product-title { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #111318; overflow-wrap: anywhere; }
+.pi-edit-product-total { font-size: 13px; font-weight: 700; color: #111318; white-space: nowrap; }
+.pi-edit-product-toggle { padding: 4px 9px; font-size: 12px; }
+.pi-edit-product-body { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 14px; margin-top: 10px; }
+.pi-edit-photo { display: flex; flex-direction: column; gap: 6px; }
+.pi-edit-photo-frame { aspect-ratio: 1; border-radius: 8px; border: 1px solid #ECEEF2; background: #F7F8FA; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: #8C94A6; }
+.pi-edit-photo-frame img { width: 100%; height: 100%; object-fit: cover; }
+.pi-edit-photo-btn { padding: 4px 6px; font-size: 11.5px; justify-content: center; cursor: pointer; }
+.pi-edit-hint { margin: 0; font-size: 12px; color: #6B7384; line-height: 1.5; }
+.pi-edit-figures { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 14px; border-radius: 10px; background: #F7F8FA; }
+.pi-edit-figures > div { min-width: 0; }
+.pi-edit-figures dt { font-size: 11.5px; color: #6B7384; }
+.pi-edit-figures dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; color: #111318; }
+.pi-edit-figures-total dd { color: #0B5FD6; }
+.pi-edit-attach { display: flex; flex-direction: column; gap: 12px; }
+.pi-edit-attach-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid #ECEEF2; border-radius: 10px; }
+.pi-edit-attach-item > svg { color: #6B7384; margin-top: 2px; flex: 0 0 auto; }
+.pi-edit-attach-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pi-edit-attach-title { margin: 0; font-size: 13px; font-weight: 700; color: #111318; }
+.pi-edit-attach-line { margin: 0; font-size: 12.5px; color: #3A4150; overflow-wrap: anywhere; }
+.pi-edit-problems { margin: 0; padding-left: 18px; color: #B42318; font-size: 12.5px; }
+.pi-edit-diff { border: 1px solid #ECEEF2; border-radius: 10px; padding: 12px 14px; }
+.pi-edit-bar { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.96); backdrop-filter: blur(6px); box-shadow: 0 -6px 18px rgba(16,24,40,0.06); }
+.pi-edit-bar-status { flex: 1 1 200px; min-width: 0; font-size: 12.5px; color: #6B7384; }
+.pi-edit-bar-failure { color: #B42318; }
+@media (min-width: 600px) {
+  .pi-edit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1000px) {
+  .pi-edit-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pi-edit-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Code, quantity, price and dimensions on one line; name and the long text across. */
+  .pi-edit-grid--product { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .pi-edit-card-head { padding: 12px 14px 10px; flex-wrap: wrap; }
+  .pi-edit-card-body { padding: 14px; }
+  .pi-edit-product-body { grid-template-columns: minmax(0, 1fr); }
+  .pi-edit-photo { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; align-items: start; }
+  .pi-edit-photo-frame { grid-row: span 2; }
+  .pi-edit-attach-item { flex-wrap: wrap; }
+  .pi-edit-attach-item > .boe-btn { width: 100%; justify-content: center; }
+  .pi-edit-bar { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .pi-edit-bar > .boe-btn { flex: 1 1 auto; justify-content: center; min-height: 42px; }
+  .pi-edit-bar-status { flex-basis: 100%; }
 }
 
 /* ── The PI history popup (PiVersionHistory) ── */

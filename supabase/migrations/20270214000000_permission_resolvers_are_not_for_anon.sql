@@ -50,10 +50,10 @@
 -- No body, no search_path (20270213000000 does that), no policy, no table and
 -- no DML. Only these six ACLs change.
 --
--- ORDERING. Numbered after 20270213000000 (#212), which is after #214
--- (20270212000000). All three sort after 20270211120000, the newest migration
--- applied to production on 2026-09-28. This file was first 20270107000000,
--- then 20270119000000, 20270123000000 and 20270126000000.
+-- ORDERING. Numbered after 20270213000000 (#212), the newest migration applied
+-- to production on 2026-09-28, which itself follows #214 (20270212000000).
+-- This file was first 20270107000000, then 20270119000000, 20270123000000 and
+-- 20270126000000.
 -- 20270213000000's apply-time assertion requires `authenticated` to keep
 -- EXECUTE on all six, and this file keeps it.
 --

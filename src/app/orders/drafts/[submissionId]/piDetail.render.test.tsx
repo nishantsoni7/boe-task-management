@@ -3851,9 +3851,11 @@ describe('the three dialogs stay separate', () => {
 // the Submit dialog still stated the old total and a wrong 40% shortfall,
 // because only the PI was re-read. The payment summary is its own read.
 describe('an edit or a refresh re-reads the payment summary too', () => {
-  test('Edit PI and the header refresh both call loadPayments', () => {
+  test('Edit PI returns to a fresh page; the header refresh calls loadPayments', () => {
     const page = read(PAGE).replace(/\r\n/g, '\n')
-    assert.match(page, /onDone=\{\(\) => \{ setPiEditorOpen\(false\); void loadDraft\(\{ quiet: true \}\); void loadPayments\(\) \}\}/)
+    // Edit PI is a page now: it returns here, and arriving loads the draft and
+    // the payment summary afresh — the same two reads the refresh makes.
+    assert.ok(page.includes('router.push(draftEditPiPageHref(submissionId))'))
     assert.match(page, /onRefresh=\{async \(\) => \{ await Promise\.all\(\[loadDraft\(\{ quiet: true \}\), loadPayments\(\)\]\) \}\}/)
   })
 })
