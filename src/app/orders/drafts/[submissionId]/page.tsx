@@ -92,7 +92,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
+import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
+import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
 import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiCommissionSummary, PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
 import { PiOrderDetailsSection } from '@/components/orders/PiOrderDetailsSection'
@@ -462,7 +463,6 @@ function PiDraftDetailPageInner() {
   // record. There is no action: since 20270114000000 a PI Draft reserves no
   // number, and the Order's is allotted when the PI is approved.
   const [copiedNumber, setCopiedNumber] = useState(false)
-  const [piEditorOpen, setPiEditorOpen] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
   /**
@@ -2223,7 +2223,7 @@ function PiDraftDetailPageInner() {
    * approved PI that is an Order, the way to propose a new version from it.
    */
   const editPiAction = mayEditPi ? (
-    <button type="button" className="boe-btn boe-btn-primary" onClick={() => setPiEditorOpen(true)}>
+    <button type="button" className="boe-btn boe-btn-primary" onClick={() => router.push(draftEditPiPageHref(submissionId))}>
       <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
       {EDIT_PI_LABEL}
     </button>
@@ -2311,13 +2311,8 @@ function PiDraftDetailPageInner() {
              workbook disagrees, it is said under them. Never on a client document. */
           dateNotes={workbookDateNotes(submission)}
         />
-        {piEditorOpen && (
-          <PiEditor supabase={supabase} mode="apply" submissionId={submissionId} orderId={null}
-            onClose={() => setPiEditorOpen(false)}
-            // An edit can move the grand total, and the payment position (the
-            // 40% shortfall the Submit dialog states) is computed from it.
-            onDone={() => { setPiEditorOpen(false); void loadDraft({ quiet: true }); void loadPayments() }} />
-        )}
+        {/* Edit PI is a page now (/orders/drafts/[submissionId]/edit-pi); it
+            returns here, and this page reads the draft afresh on arrival. */}
 
         {/* ── 1b. The deduction row's wording, where it would mislead a client. */}
         <PiDiscountWordingNotice notice={discountWording.notice} />
@@ -2391,7 +2386,9 @@ function PiDraftDetailPageInner() {
                 <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
               )}
               {(submission.status === 'draft' || submission.status === 'needs_changes') && (
-                <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
+                <div id="pi-draft-attachments">
+                  <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
+                </div>
               )}
               {/* THE ORDER HIGHLIGHT (20270210000000): optional, internal, and
                   shown on the Confirmed Order. Editable exactly where
@@ -2431,7 +2428,7 @@ function PiDraftDetailPageInner() {
                       if (section === 'internal') { focusOrderDetails(orderDetailsFieldOf(key) ?? 'middleman_commission'); return }
                       if (!mayEditPi) return
                       if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                      setPiEditorOpen(true)
+                      router.push(draftEditPiPageHref(submissionId))
                     }
                   : null
               }

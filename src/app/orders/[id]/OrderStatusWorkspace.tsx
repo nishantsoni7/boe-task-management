@@ -16,14 +16,15 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Layers, Pencil, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
-import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { MultilineText } from '@/components/ui/MultilineText'
 import type { PiViewerItem } from '@/lib/pi/previewView'
 import {
   MAIN_PI_APPROVED_LABEL,
   MAIN_PI_DOWNLOAD_LABEL,
+  MAIN_PI_ORIGINAL_EXCEL_LABEL,
   MAIN_PI_UPLOADED_LABEL,
   MAIN_PI_VIEW_LABEL,
   PI_HISTORY_CURRENT_BADGE,
@@ -45,7 +46,6 @@ import {
   revisionStage,
   type PiVersionView,
 } from '@/lib/orders/orderPiVersions'
-import { DESIGN_IMAGES_LOADING } from '@/lib/orders/orderCurrentStatus'
 import { PI_EDITED_VERSION_WORKBOOK_NOTE, PI_VERSION_PDF_VIEW_LABEL } from '@/lib/orders/piVersionPdf'
 import {
   ACCEPT_FOR_PRODUCTION_LABEL,
@@ -54,14 +54,11 @@ import {
   type OperationsHandoffView,
 } from '@/lib/orders/operationsHandoff'
 import {
-  CLIENT_PO_UNSUPPORTED_NOTE,
   DOCUMENTS_TITLE,
   DOC_CLIENT_PO_TITLE,
   DOC_DESIGN_FILES_TITLE,
   DOC_MAIN_PI_TITLE,
   DOC_ACCEPTED_LABEL,
-  DOC_PI_PICTURES_LABEL,
-  DOC_VIEW_PI_LABEL,
   DOCUMENTS_HISTORY_LABEL,
   DOCUMENTS_HISTORY_PI_FILES_TITLE,
   DOCUMENTS_HISTORY_TITLE,
@@ -126,18 +123,26 @@ export function StatusPill({ label, tone, strong = false }: {
 // ── 1. Documents ──────────────────────────────────────────────────────────────
 
 /** One file, opened on the press through the page's signer. Never a URL. */
-function FileLinks({ files, onOpen, limit = 3 }: {
+function FileLinks({ files, onOpen, onDownload, limit = 3 }: {
   files: readonly PersistedDocumentFile[]
   onOpen: (f: PersistedDocumentFile) => void
+  /** Saves the file under its own name. Absent: the name only opens it. */
+  onDownload?: (f: PersistedDocumentFile) => void
   /** How many names to show before the rest fold behind "N more". */
   limit?: number
 }) {
   const link = (f: PersistedDocumentFile) => (
-    <li key={f.id}>
-      <button type="button" className="order-doc-file" onClick={() => onOpen(f)} title={`Open ${f.file_name}`}>
+    <li key={f.id} className="order-doc-file-row">
+      <button type="button" className="order-doc-file" onClick={() => onOpen(f)} title={`View ${f.file_name}`}>
         <FileText size={13} strokeWidth={2} aria-hidden="true" />
         <span className="order-doc-file-name">{f.file_name}</span>
       </button>
+      {onDownload && (
+        <button type="button" className="order-doc-file-download" onClick={() => onDownload(f)}
+                aria-label={`Download ${f.file_name}`} title="Download">
+          <Download size={13} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
     </li>
   )
   const shown = files.slice(0, limit)
@@ -228,25 +233,32 @@ type PiChange = {
  * control is drawn is the page's courtesy — every RPC re-decides it.
  */
 export function OrderDocumentsPanel({
-  mainPi, design, clientPo,
-  onView, onDownload, onHistory, onManageDesign,
-  viewing, downloading,
+  mainPi, clientPo,
+  onDownload, onHistory,
+  downloading,
   mainPiOperations, mainPiMenu, updateMenu,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf, piVersions,
+  onOpenPdf, piVersions, pictures, onDownloadFile,
 }: {
+  /** The approved PI's product pictures: count, view and one-file download. */
+  pictures?: ProductPicturesBlockProps
+  /** Saves a Design Files / Client PO file under its own name. */
+  onDownloadFile?: (f: PersistedDocumentFile) => void
   mainPi: MainPiCard
-  /** The approved PI's own product pictures (read-only; opened in a dialog). */
-  design: DesignFilesDocument
   /** Used only when the Order has no supporting-document read (legacy). */
   clientPo?: ClientPoDocument
-  onView: (version: PiVersionView) => void
+  /**
+   * Retired from this card (the pictures moved to `pictures`, and the workbook
+   * is downloaded rather than "viewed"). Still accepted so older callers type-check.
+   */
+  design?: DesignFilesDocument
+  onView?: (version: PiVersionView) => void
+  onManageDesign?: () => void
+  viewing?: boolean
+  /** Saves the version's original workbook. */
   onDownload: (version: PiVersionView) => void
   onHistory: () => void
-  /** Opens the PI product-picture dialog. */
-  onManageDesign: () => void
-  viewing: boolean
   downloading: boolean
   /** Where the version in force stands with Operations, in words. */
   mainPiOperations?: { label: string; tone: StatusTone; line: string | null } | null
@@ -307,24 +319,12 @@ export function OrderDocumentsPanel({
       {PI_VERSIONS_HISTORY_LABEL}{piVersions.count > 0 ? ` (${piVersions.count})` : ''}
     </button>
   ) : null
-  const editPiButton = piVersions?.edit ? (
-    <button
-      type="button"
-      className="boe-btn boe-btn-ghost order-doc-action"
-      onClick={piVersions.edit.onEdit}
-      disabled={!!piVersions.edit.blockedNote}
-      title={piVersions.edit.blockedNote ?? undefined}
-    >
-      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
-      {EDIT_PI_LABEL}
-    </button>
-  ) : null
-  const piVersionNotes = piVersions ? (
-    <>
-      {piVersions.edit?.blockedNote && <p className="order-doc-note">{piVersions.edit.blockedNote}</p>}
-      {piVersions.notice && <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>}
-    </>
-  ) : null
+  // EDIT PI IS NOT A DOCUMENT ACTION. It is the Order page's own header action
+  // (it opens the full-page editor); this card only views and downloads.
+  const piVersionNotes = piVersions?.notice
+    ? <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>
+    : null
+  const picturesBlock = pictures ? <ProductPicturesBlock {...pictures} /> : null
   const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
     ? { proposal: mainPi.proposal, stage: revisionStage(mainPi.proposal, revisionApproverInactive) }
     : null
@@ -484,12 +484,13 @@ export function OrderDocumentsPanel({
       )}
 
       {/* ── WHAT IS CURRENT ──
-          Main PI on the left (about 60%), Design Files above Client PO on the
-          right, once the card is wide enough; stacked in that order below it. */}
+          The Main PI across the full width — what it is on the left, how to
+          open it on the right, its product pictures underneath. Then Design
+          Files beside Client PO once the card is wide enough; stacked below. */}
       <div className="order-docs-rows">
         <div className="order-docs-main">
         {mainPi.kind !== 'ready' ? (
-          <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink} actions={editPiButton}>
+          <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink}>
             {mainPi.kind === 'loading' ? (
               <p className="order-doc-loading" role="status">{mainPi.message}</p>
             ) : (
@@ -504,7 +505,7 @@ export function OrderDocumentsPanel({
           <DocRow
             title={`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}
             primary
-            status={<>{piStatus}{piHistoryLink}</>}
+            status={piStatus}
             meta={<DocMeta items={[
               { label: MAIN_PI_UPLOADED_LABEL, value: mainPi.uploadedAt },
               // Absent rather than guessed: see MainPiCard.approvedAt.
@@ -525,91 +526,55 @@ export function OrderDocumentsPanel({
                     {PI_VERSION_PDF_VIEW_LABEL(mainPi.version.versionNumber)}
                   </button>
                 )}
-                {mainPi.version.editedInApp ? (
-                  /* EDITED IN THE APP (20270115000000): this version has no
-                     workbook of its own, and the original upload is V1's file,
-                     never this one's. Its details are the PI; show them there. */
-                  piVersions && (
-                    <button
-                      type="button"
-                      className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
-                      onClick={piVersions.onOpen}
-                      aria-haspopup="dialog"
-                      title={PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}
-                    >
-                      <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                      View in PI history
-                    </button>
-                  )
-                ) : (
+                {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
+                    version, byte for byte, under its own name. An edited
+                    version has none of its own, and never borrows V1's. */}
+                {!mainPi.version.editedInApp && (
                   <button
                     type="button"
                     className="boe-btn boe-btn-ghost order-doc-action order-doc-action--main"
-                    onClick={() => onView(mainPi.version)}
-                    disabled={!mainPi.hasFile || viewing}
+                    onClick={() => onDownload(mainPi.version)}
+                    disabled={!mainPi.hasFile || downloading}
                     title={mainPi.fileName ?? mainPi.reference}
                   >
                     <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                    {viewing ? 'Opening…' : DOC_VIEW_PI_LABEL}
+                    {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
                   </button>
                 )}
-                {editPiButton}
-                {mainPiMenu ?? (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-doc-action"
-                    onClick={() => onDownload(mainPi.version)}
-                    disabled={!mainPi.hasFile || downloading}
-                    aria-label={MAIN_PI_DOWNLOAD_LABEL}
-                    title={MAIN_PI_DOWNLOAD_LABEL}
-                  >
-                    <Download size={13} strokeWidth={2} aria-hidden="true" />
-                    {downloading ? 'Preparing…' : null}
-                  </button>
-                )}
+                {piHistoryLink}
+                {mainPiMenu}
               </>
             }
           >
-            {mainPi.fileName && <p className="order-doc-note order-doc-row-file">{mainPi.fileName}</p>}
+            {mainPi.version.editedInApp
+              ? <p className="order-doc-note order-doc-row-file">{PI_EDITED_VERSION_WORKBOOK_NOTE(mainPi.version.versionNumber)}</p>
+              : mainPi.fileName && <p className="order-doc-note order-doc-row-file">{mainPi.fileName}</p>}
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
           </DocRow>
         )}
+        {picturesBlock}
         </div>
 
         <div className="order-docs-side">
 
-        {/* ── Design Files: the Order's accepted files, then the PI's own
-            product pictures as a quiet secondary link. ── */}
-        {(() => {
-          const row = supporting?.design
-          const pictures = design.kind === 'ready' ? (
-            <button type="button" className="order-docs-link order-docs-link--small" onClick={onManageDesign}>
-              {DOC_PI_PICTURES_LABEL(design.total)}
-            </button>
-          ) : null
-          if (!row) {
-            // No supporting-document read (legacy): the PI pictures are the row.
-            return (
-              <DocRow title={DOC_DESIGN_FILES_TITLE} actions={pictures}>
-                {design.kind === 'loading' && <p className="order-doc-loading" role="status">{DESIGN_IMAGES_LOADING}</p>}
-                {design.kind === 'unavailable' && <><p className="order-doc-unavailable">{design.message}</p><p className="order-doc-note">{design.note}</p></>}
-                {design.kind === 'empty' && <><p className="order-doc-empty">{design.message}</p>{design.note && <p className="order-doc-note">{design.note}</p>}</>}
-                {design.kind === 'ready' && <><p className="order-doc-row-value">{design.summary}</p><p className="order-doc-note">{design.detail}</p></>}
-              </DocRow>
-            )
-          }
-          return (
-            <DocRow
-              title={DOC_DESIGN_FILES_TITLE}
-              status={row.kind === 'files' && row.files.length > 1 ? <span className="order-doc-count">{fileCountLabel(row.files.length)}</span> : undefined}
-              meta={row.kind === 'files' && row.acceptedAt ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(row.acceptedAt) }]} /> : undefined}
-              actions={pictures}
-            >
-              <SupportingBody row={row} onOpen={open} />
-            </DocRow>
-          )
-        })()}
+        {/* ── Design Files: production references only (drawings, plans,
+            site files). The PI's product pictures live with the Main PI. ── */}
+        {supporting ? (
+          <DocRow
+            title={DOC_DESIGN_FILES_TITLE}
+            status={supporting.design.kind === 'files' && supporting.design.files.length > 1
+              ? <span className="order-doc-count">{fileCountLabel(supporting.design.files.length)}</span> : undefined}
+            meta={supporting.design.kind === 'files' && supporting.design.acceptedAt
+              ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.design.acceptedAt) }]} /> : undefined}
+          >
+            <SupportingBody row={supporting.design} onOpen={open} onDownload={onDownloadFile} />
+          </DocRow>
+        ) : (
+          <DocRow title={DOC_DESIGN_FILES_TITLE}>
+            <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
+          </DocRow>
+        )}
 
         {/* ── Client PO: the accepted copy, or a plain statement that none is on file. ── */}
         {supporting ? (
@@ -620,17 +585,14 @@ export function OrderDocumentsPanel({
             meta={supporting.clientPo.kind === 'files' && supporting.clientPo.acceptedAt
               ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.clientPo.acceptedAt) }]} /> : undefined}
           >
-            <SupportingBody row={supporting.clientPo} onOpen={open} />
+            <SupportingBody row={supporting.clientPo} onOpen={open} onDownload={onDownloadFile} />
           </DocRow>
         ) : (
           <DocRow title={DOC_CLIENT_PO_TITLE}>
             {clientPo?.kind === 'ready' ? (
               <p className="order-doc-row-value">{clientPo.summary}</p>
             ) : (
-              <>
-                <p className="order-doc-empty">{clientPo?.kind === 'unsupported' ? clientPo.message : DOC_NOT_ATTACHED}</p>
-                <p className="order-doc-note">{clientPo?.kind === 'unsupported' ? clientPo.note : CLIENT_PO_UNSUPPORTED_NOTE}</p>
-              </>
+              <p className="order-doc-empty">{DOC_NOT_ATTACHED}</p>
             )}
           </DocRow>
         )}
@@ -642,7 +604,11 @@ export function OrderDocumentsPanel({
 }
 
 /** What is on file for one supporting category — accepted files only. */
-function SupportingBody({ row, onOpen }: { row: SupportingRowView; onOpen: (f: PersistedDocumentFile) => void }) {
+function SupportingBody({ row, onOpen, onDownload }: {
+  row: SupportingRowView
+  onOpen: (f: PersistedDocumentFile) => void
+  onDownload?: (f: PersistedDocumentFile) => void
+}) {
   if (row.kind === 'loading') return <p className="order-doc-loading" role="status">Loading…</p>
   if (row.kind === 'unavailable') return <p className="order-doc-unavailable">These files could not be read.</p>
   if (row.kind === 'none') {
@@ -653,10 +619,54 @@ function SupportingBody({ row, onOpen }: { row: SupportingRowView; onOpen: (f: P
       </>
     )
   }
-  return <FileLinks files={row.files} onOpen={onOpen} />
+  return <FileLinks files={row.files} onOpen={onOpen} onDownload={onDownload} />
 }
 
 const fileCountLabel = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+
+export type ProductPicturesBlockProps = {
+  state: ProductPicturesState
+  /** Opens the picture viewer grid. */
+  onView: () => void
+  /** Builds and saves the ZIP of every available picture. */
+  onDownloadAll: () => void
+  downloading: boolean
+  /** The outcome of the last download, said once. */
+  message: string | null
+}
+
+/**
+ * THE PI'S PRODUCT PICTURES, under the Main PI they belong to — never among
+ * Design Files. View opens the existing viewer; Download all saves one ZIP of
+ * the pictures this reader can actually retrieve, and is not offered when
+ * there are none.
+ */
+function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, message }: ProductPicturesBlockProps) {
+  const usable = state.kind === 'ready'
+  return (
+    <div className="order-doc-pictures" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
+      <ImageIcon size={14} strokeWidth={2} aria-hidden="true" className="order-doc-pictures-icon" />
+      <div className="order-doc-pictures-main">
+        <p className="order-doc-pictures-title">{PRODUCT_PICTURES_TITLE}</p>
+        <p className={state.kind === 'missing' || state.kind === 'unreadable' ? 'order-doc-pictures-line order-doc-pictures-line--warn' : 'order-doc-pictures-line'}>
+          {productPicturesLine(state)}
+        </p>
+        {message && <p className="order-doc-note" role="status">{message}</p>}
+      </div>
+      {usable && (
+        <div className="order-doc-pictures-actions">
+          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onView} aria-haspopup="dialog">
+            View
+          </button>
+          <button type="button" className="boe-btn boe-btn-ghost order-doc-action" onClick={onDownloadAll} disabled={downloading}>
+            <Download size={13} strokeWidth={2} aria-hidden="true" />
+            {downloading ? 'Preparing ZIP…' : 'Download all (ZIP)'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * WHERE FABRIC AND FINISH STAND — one compact strip above the Documents card.
