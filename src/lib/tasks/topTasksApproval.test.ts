@@ -300,10 +300,13 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
     '20270122000000_order_submission_internal_details.sql',
     '20270123000000_order_submission_internal_details_required_on_submit.sql',
-    // The permission resolvers are not for anon: EXECUTE on six resolver
-    // functions revoked from PUBLIC and anon, restated for authenticated
-    // and service_role. No body, policy, table, search_path or row changes.
-    '20270126000000_permission_resolvers_are_not_for_anon.sql',
+    '20270201000000_order_pi_version_pdf_order_number.sql',
+    '20270205000000_order_production_needs_order_level_exception.sql',
+    '20270205120000_expense_reimbursements_and_bills.sql',
+    '20270210000000_order_submission_highlight_remark.sql',
+    '20270211000000_order_submission_sales_order_details.sql',
+    '20270211120000_expense_payment_source_required.sql',
+    '20270214000000_permission_resolvers_are_not_for_anon.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

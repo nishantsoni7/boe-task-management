@@ -46,9 +46,17 @@ export const DOC_CLIENT_PO_TITLE = 'Client PO'
 export const DOC_VIEW_PI_LABEL = 'Uploaded workbook'
 export const DOC_DOWNLOAD_PI_LABEL = 'Download uploaded workbook (.xlsx)'
 export const DOC_DOWNLOAD_PI_PDF_LABEL = 'Download PI PDF'
-/** The quiet link to the PI versions and every supporting-file submission. */
-export const DOCUMENTS_HISTORY_LABEL = 'History'
+/**
+ * TWO HISTORIES, NAMED APART. "Document history" (the card header) is the file
+ * trail: every uploaded PI workbook and every Design Files / Client PO
+ * submission. "PI history" (the Main PI row) is the PI's versions V1, V2, V3…
+ * with their decisions, each opening that version's own contents and PDF.
+ */
+export const DOCUMENTS_HISTORY_LABEL = 'Document history'
 export const DOCUMENTS_HISTORY_TITLE = 'Document history'
+export const PI_VERSIONS_HISTORY_LABEL = 'PI history'
+/** Document history's first section: the uploaded PI files, not the versions' decisions. */
+export const DOCUMENTS_HISTORY_PI_FILES_TITLE = 'Main PI files'
 /** When a supporting file became current (its Operations acceptance). */
 export const DOC_ACCEPTED_LABEL = 'Accepted'
 /** The approved PI's own product pictures — read-only, opened in a dialog. */

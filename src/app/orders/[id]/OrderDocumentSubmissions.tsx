@@ -351,6 +351,7 @@ export function SubmitDocumentsModal({
           <OrderField label="Design files (PDF, PNG, JPEG or WebP, up to 10 MB each)">
             <input type="file" multiple accept={DOCUMENT_ACCEPT_ATTR} disabled={saving}
                    onChange={e => pick(e.target.files, MAX_DESIGN_FILES, setDesign)} />
+            <ChosenFiles files={design} />
           </OrderField>
           <fieldset className="order-docsub-fieldset">
             <legend>Add or replace?</legend>
@@ -369,6 +370,7 @@ export function SubmitDocumentsModal({
         <OrderField label="Client PO (PDF, PNG, JPEG or WebP, up to 10 MB each)">
           <input type="file" multiple accept={DOCUMENT_ACCEPT_ATTR} disabled={saving}
                  onChange={e => pick(e.target.files, MAX_CLIENT_PO_FILES, setPo)} />
+          <ChosenFiles files={po} />
         </OrderField>
       )}
       <OrderField label="Note for the reviewers (optional)">
@@ -501,5 +503,25 @@ export function ReviewSubmissionModal({
         </div>
       )}
     </OrderModal>
+  )
+}
+
+/**
+ * WHAT WAS CHOSEN, said in the dialog. The browser's own control shows at most
+ * one name ("2 files" for more), so the list is what lets somebody check they
+ * picked the right documents before sending them for review.
+ */
+function ChosenFiles({ files }: { files: readonly File[] }) {
+  if (files.length === 0) return null
+  return (
+    <ul className="order-docsub-chosen" aria-label="Chosen files">
+      {files.map(f => (
+        <li key={`${f.name}:${f.size}`}>
+          <FileText size={12} strokeWidth={2} aria-hidden="true" />
+          <span className="order-docsub-file-name">{f.name}</span>
+          <span className="order-docsub-file-size">{fmtBytes(f.size)}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
