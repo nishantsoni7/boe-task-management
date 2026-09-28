@@ -302,3 +302,23 @@ describe('the list and the reimbursement surfaces', () => {
     assert.ok(VIEW.includes('mayDeleteExpense(row, actor) && !row.reimbursement_id'))
   })
 })
+
+describe('a NEW expense must say how it was paid (20270211120000)', () => {
+  const RULE = read('supabase/migrations/20270211120000_expense_payment_source_required.sql')
+
+  test('the database refuses a new expense with no source — on INSERT only', () => {
+    assert.ok(/before insert on public\.expenses/.test(RULE))
+    assert.equal(/before (insert or )?update on public\.expenses/.test(RULE), false,
+      'an UPDATE rule would force a guess to correct an older expense')
+    assert.ok(/if new\.paid_from is null then\s*raise exception 'EXPENSE_PAYMENT_SOURCE_REQUIRED/.test(RULE))
+    assert.equal(/alter table public\.expenses[\s\S]{0,80}(set not null|add constraint)/.test(RULE), false,
+      'no NOT NULL or CHECK: older expenses keep NULL ("not recorded")')
+  })
+
+  test('the form says it in words if the rule is ever reached', async () => {
+    const { friendlyWriteError } = await import('@/app/finance/expenses/ExpenseForm')
+    assert.equal(
+      friendlyWriteError({ code: '23502', message: 'EXPENSE_PAYMENT_SOURCE_REQUIRED: choose whether this expense was paid from a company account or personally' }),
+      'Choose whether this was paid from a company account or personally.')
+  })
+})

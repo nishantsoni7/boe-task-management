@@ -1,5 +1,3 @@
-import { summarizePiReadiness, type PiReadiness, type PiRequirement } from '@/lib/orders/piReadiness'
-
 /**
  * A PI'S INTERNAL DETAILS (20270122000000) — the confirmation and due dates
  * Sales confirms in the app, and the answer to "Is there a middleman
@@ -94,10 +92,16 @@ export function internalDetailsStillOpen(row: PiInternalDetailsRow): boolean {
   return !row.status || row.status === 'draft' || row.status === 'needs_changes'
 }
 
+/** Said while a prepared PI waits only on what the Submit dialog collects. */
+export const INTERNAL_DETAILS_AT_SUBMISSION =
+  'The order dates are entered in Internal order details and confirmed when this PI is submitted.'
+
 /**
- * The card's status line. While the PI is being prepared, what is missing
- * before review; once it has gone for review (or beyond), a plain statement
- * that it was never confirmed — "Needed before review" is false by then.
+ * The card's status line. While the PI is being prepared, only the middleman
+ * answer is something to act on here: the two dates are asked for, and the
+ * whole set confirmed, in the Submit for Approval dialog (2026-09-27), so a
+ * blank date is not a warning. Once it has gone for review (or beyond), a plain
+ * statement that it was never confirmed — "Needed before review" is false by then.
  */
 export function internalDetailsStatusLine(row: PiInternalDetailsRow):
   { tone: 'ready' | 'needed' | 'neutral'; text: string } {
@@ -105,7 +109,11 @@ export function internalDetailsStatusLine(row: PiInternalDetailsRow):
   if (readiness.ready) {
     return { tone: 'ready', text: `Confirmed ${formatIsoDay(row.internal_details_confirmed_at) ?? ''}`.trim() }
   }
-  if (internalDetailsStillOpen(row)) return { tone: 'needed', text: `Needed before review: ${readiness.problem}.` }
+  if (internalDetailsStillOpen(row)) {
+    const answer = middlemanAnswerMissing(row)
+    if (answer) return { tone: 'needed', text: `Needed before review: ${answer}.` }
+    return { tone: 'neutral', text: INTERNAL_DETAILS_AT_SUBMISSION }
+  }
   return { tone: 'neutral', text: 'Not confirmed in the app before this PI was sent for review.' }
 }
 
@@ -347,45 +355,9 @@ export function internalDetailsSaveFailure(error: { message?: string; code?: str
   return message || 'The internal details could not be saved.'
 }
 
-/**
- * THE SUBMISSION CHECKLIST, WITH THE INTERNAL DETAILS IN IT.
- *
- * The database refuses a submission until the internal details are complete and
- * confirmed (20270123000000), so the owner's "Ready for management?" list says so
- * too — otherwise it reads "ready" while Submit is refused. Display only: the
- * shared piReadiness() (which the payment surface also reads) is not changed.
- */
-export const INTERNAL_DETAILS_REQUIREMENT_KEY = 'internal_details'
-
-export function internalDetailsRequirementLabel(problem: string): string {
-  if (problem === 'enter the order confirmation date') return 'Order confirmation date (internal details)'
-  if (problem === 'enter the due date') return 'Due date (internal details)'
-  if (problem.startsWith('the due date is before')) return 'A due date on or after the confirmation date'
-  if (problem.includes(MIDDLEMAN_QUESTION)) return 'Middleman commission answer'
-  if (problem === 'confirm the internal details') return 'Confirmation of the internal details'
-  return 'Middleman commission details'
-}
-
-/**
- * WHAT STILL DISABLES THE SUBMIT BUTTON (revised 2026-09-27): the middleman
- * answer only. The two dates, and the confirmation of the details, are asked
- * for INSIDE the Submit for Approval dialog (submissionDateErrors /
- * submissionDetailsSave), so a missing date must not disable the button that
- * opens the form that collects it. The database gate is unchanged: a PI without
- * both dates, in order, and confirmed is still refused (20270123000000).
- */
-export function withInternalDetailsRequirement(readiness: PiReadiness, row: PiInternalDetailsRow): PiReadiness {
-  if (!internalDetailsStillOpen(row)) return readiness
-  const problem = middlemanAnswerMissing(row)
-  if (!problem) return readiness
-  const requirement: PiRequirement = {
-    key: INTERNAL_DETAILS_REQUIREMENT_KEY,
-    label: internalDetailsRequirementLabel(problem),
-    section: 'internal',
-  }
-  const missing = [...readiness.missing, requirement]
-  return { ready: false, missing, summary: summarizePiReadiness('submission', missing) }
-}
+// THE SUBMISSION CHECKLIST now takes its internal-details gaps from
+// withOrderDetailsRequirements (salesOrderDetails.ts), which points each one at
+// the field in the PI Draft's Internal order details section.
 
 // ── The two dates, at Submit for Approval (2026-09-27) ───────────────────────
 //
@@ -404,9 +376,6 @@ export const SUBMISSION_DATE_LABEL: Record<keyof SubmissionDates, string> = {
   order_confirmation_date: 'Date of Order Confirmation',
   due_date: 'Dispatch Date Finalized',
 }
-
-export const SUBMISSION_DATES_NOTE =
-  'Internal order details — needed before this PI goes for approval. They are not printed on the client PI, and the workbook does not need to change.'
 
 /** The dialog opens on what the record already holds. */
 export function submissionDatesFrom(row: PiInternalDetailsRow): SubmissionDates {
@@ -490,11 +459,11 @@ export function submissionDetailsSave(row: PiInternalDetailsRow, dates: Submissi
 // be written. No tick, nothing is written.
 
 export const SUBMISSION_CONFIRM_LABEL =
-  'I have checked these dates and the middleman commission answer. Submitting confirms them as this PI’s internal details.'
+  'I have checked these internal order details. Submitting confirms the dates and the middleman commission answer as this PI’s internal details.'
 export const SUBMISSION_CONFIRM_REQUIRED =
   'Tick the box to confirm the internal details, or Cancel and correct them first.'
 export const SUBMISSION_MIDDLEMAN_HINT =
-  'To change it, Cancel and use Edit beside Middleman commission.'
+  'To change any of them, Cancel and use Internal order details on the PI.'
 
 /** Whether pressing Submit with these dates will write (and so confirm) the internal details. */
 export function submissionNeedsConfirmation(row: PiInternalDetailsRow, dates: SubmissionDates): boolean {

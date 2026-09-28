@@ -676,6 +676,15 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Expenses Phase 3 — who paid, reimbursement batches and bills
       // (20270205120000), held by supabase/tests/expense_reimbursement_assertions.sql.
       if (f === 'supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql') continue
+      // The PI draft's optional internal order highlight (20270210000000) —
+      // held by src/lib/orders/highlightRemark.test.tsx.
+      if (f === 'supabase/migrations/20270210000000_order_submission_highlight_remark.sql') continue
+      // The PI's salesperson and lead source, entered by Sales (20270211000000) —
+      // held by src/lib/orders/salesOrderDetails.test.tsx.
+      if (f === 'supabase/migrations/20270211000000_order_submission_sales_order_details.sql') continue
+      // A new expense must say how it was paid (20270211120000), held by
+      // supabase/tests/expense_reimbursement_source_required_assertions.sql.
+      if (f === 'supabase/migrations/20270211120000_expense_payment_source_required.sql') continue
       // Attendance requests → approval → payroll review (20270215000000) and its
       // two notification types (20270215000100): additive tables of their own,
       // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
@@ -868,7 +877,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable) && !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1872,6 +1881,92 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  // The saved PI Draft's top layout, its corrected Product value, and the
+  // optional internal order highlight shown on the Confirmed Order
+  // (20270210000000). No Finance file; orderPiHandoff.ts only follows the
+  // renamed summary-figure key.
+  const ALLOWED_PI_DRAFT_TOP_LAYOUT = new Set([
+    'supabase/migrations/20270210000000_order_submission_highlight_remark.sql',
+    'supabase/migrations/20270211000000_order_submission_sales_order_details.sql',
+    'src/app/globals.css',
+    'src/components/orders/PiOrderDetailsSection.tsx',
+    'src/components/orders/PiInternalDetails.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/components/orders/piSubmitModal.render.test.tsx',
+    'src/components/orders/piApprovalModals.render.test.tsx',
+    'src/lib/orders/salesOrderDetails.ts',
+    'src/lib/orders/salesOrderDetails.test.tsx',
+    'src/lib/orders/productValueConsistency.test.ts',
+    'src/lib/orders/piInternalDetails.test.ts',
+    'src/lib/orders/orderWorkspace.ts',
+    'src/lib/orders/orderWorkspace.test.ts',
+    'src/lib/orders/orderCommercial.ts',
+    'src/lib/orders/orderCommercial.test.ts',
+    'src/app/orders/[id]/orderWorkspace.render.test.tsx',
+    'src/app/orders/[id]/orderDetailArchitecture.test.ts',
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/piSectionOrder.test.ts',
+    'src/components/orders/PiHighlightRemark.tsx',
+    'src/components/orders/PiInternalDetails.render.test.tsx',
+    'src/lib/orders/highlightRemark.ts',
+    'src/lib/orders/highlightRemark.test.tsx',
+    'src/lib/orders/orderPiHandoff.ts',
+    'src/lib/orders/orderPiHandoff.test.ts',
+    'src/lib/orders/piInternalDetails.ts',
+    // Round 4: Product value on the PI Drafts list and Edit PI; no name-matched
+    // salesperson on a legacy PI.
+    'src/lib/orders/draftsView.ts',
+    'src/app/orders/drafts/page.tsx',
+    'src/lib/orders/piEdit.ts',
+    'src/lib/orders/piEdit.test.ts',
+    'src/components/orders/PiEditor.tsx',
+    'src/lib/orders/orderConfirmation.ts',
+    // Round 4b: the Upload PI preview's Product value and the client PDF's gross caption.
+    'src/lib/pi/previewView.ts',
+    'src/lib/pi/previewView.test.ts',
+    'src/app/orders/import/page.tsx',
+    'src/app/orders/import/importAccess.test.ts',
+    'src/lib/orders/confirmedPdf.ts',
+    'src/lib/orders/pdfProductValueLabel.test.ts',
+    'src/lib/orders/piTerms.test.ts',
+    // Round 5: no billing percentage or billing value on a client PDF.
+    'src/lib/orders/confirmedPdf.test.ts',
+    'src/lib/orders/clientPdfNoBilling.test.ts',
+    // Confirmed Order Documents (view / download, product-picture ZIP) and the
+    // full-page Edit PI (stacked on this branch; no Finance file).
+    'src/app/orders/[id]/OrderStatusWorkspace.tsx',
+    'src/app/orders/[id]/orderDocumentSubmissions.render.test.tsx',
+    'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
+    'src/app/orders/[id]/edit-pi/page.tsx',
+    'src/app/orders/drafts/[submissionId]/edit-pi/page.tsx',
+    'src/components/orders/PiEditor.tsx',
+    'src/components/orders/PiVersionsPanel.tsx',
+    'src/components/orders/piEditor.render.test.tsx',
+    'src/lib/orders/orderMainPi.ts',
+    'src/lib/orders/editPiPage.ts',
+    'src/lib/orders/editPiPage.test.ts',
+    'src/lib/orders/productPictures.ts',
+    'src/lib/orders/productPictures.test.ts',
+    // The migration-sequence pins.
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+  ])
+
   /**
    * Expenses Phase 3 (20270205120000): who paid, reimbursement batches, bills.
    * Its screens and rules live under the expense prefixes already admitted
@@ -1881,6 +1976,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    */
   const ALLOWED_EXPENSE_REIMBURSEMENTS = new Set([
     'supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql',
+    'supabase/migrations/20270211120000_expense_payment_source_required.sql',
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
@@ -2007,6 +2103,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(f) &&
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
     !ALLOWED_PRODUCTION_ADVANCE_GATE.has(f) &&
+    !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
@@ -2339,6 +2436,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_PDF_ORDER_NUMBER.has(file)
         || ALLOWED_PRODUCTION_ADVANCE_GATE.has(file)
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
+        || ALLOWED_PI_DRAFT_TOP_LAYOUT.has(file)
         || ALLOWED_EXPENSE_REIMBURSEMENTS.has(file)
         || ALLOWED_ATTENDANCE_REQUESTS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `

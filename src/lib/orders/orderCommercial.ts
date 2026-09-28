@@ -76,6 +76,12 @@ const ROLE: Record<string, { role: CommercialRole; label?: string }> = {
 }
 
 export const PRODUCT_VALUE_LABEL = ROLE.gross.label as string
+/**
+ * With a discount, the opening line is the value BEFORE it: "Product value" on
+ * the PI Draft, the approval dialog and the Order summary is the amount after the
+ * discount, and one caption must not name two figures. Same figure, same place.
+ */
+export const PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL = 'Product value before discount'
 export const ORDER_VALUE_LABEL = ROLE.grandTotal.label as string
 
 // AN AMENDED ORDER HAS TWO FIGURES, SO THEY ARE NAMED APART. amend_order (and an
@@ -118,12 +124,13 @@ export function orderCommercialLines(
   /** The Order's own value, formatted, when it was amended away from the PI's total. */
   amended?: { orderValue: string } | null,
 ): CommercialLine[] {
+  const discounted = rows.some(row => row.key === 'discount' && row.kind === 'amount' && !isNil(row.value))
   const lines = rows.map(row => {
     const known = Object.prototype.hasOwnProperty.call(ROLE, row.key)
     const meta = known ? ROLE[row.key] : { role: 'addition' as CommercialRole }
     return {
       key: row.key,
-      label: meta.label ?? row.label,
+      label: row.key === 'gross' && discounted ? PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL : meta.label ?? row.label,
       value: row.value,
       kind: row.kind,
       role: meta.role,

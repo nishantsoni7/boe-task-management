@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { PiCommissionSummary, PiDiscountWordingNotice, PiInternalDetailsModal } from './PiInternalDetails'
+import { PiCommissionSummary, PiDiscountWordingNotice } from './PiInternalDetails'
 
 const noop = () => {}
 
@@ -13,7 +13,10 @@ describe('PiCommissionSummary — the middleman answer in the PI summary', () =>
     assert.match(html, /Middleman commission/)
     assert.match(html, /class="pi-detail-state-chip">Not answered</)
     assert.match(html, /Never printed on the client PI/)
-    assert.match(html, /Needed before review: enter the order confirmation date\./)
+    // THE DATES ARE ASKED FOR AT SUBMISSION (2026-09-27), so a blank date is
+    // never the warning here; the unanswered middleman question is.
+    assert.match(html, /Needed before review: answer &quot;Is there a middleman commission\?&quot;\./)
+    assert.doesNotMatch(html, /confirmation date\./)
     assert.match(html, />Enter and confirm</)
     // The dates are the summary's own band; this block never repeats them.
     assert.doesNotMatch(html, /Order confirmation date|Due date/)
@@ -24,6 +27,17 @@ describe('PiCommissionSummary — the middleman answer in the PI summary', () =>
       row={{ status: 'draft', order_confirmation_date: '2026-09-20', due_date: '2026-11-20' }} />)
     assert.match(html, /pi-detail-internal-status--needed/)
     assert.match(html, /Needed before review: answer &quot;Is there a middleman commission\?&quot;\./)
+  })
+
+  test('answered, dates still blank: a neutral line, no warning — Submit collects the dates', () => {
+    for (const status of ['draft', 'needs_changes']) {
+      const html = renderToStaticMarkup(<PiCommissionSummary canEdit onEdit={noop}
+        row={{ status, middleman_commission: 'no' }} />)
+      assert.doesNotMatch(html, /pi-detail-internal-status--needed/, status)
+      assert.doesNotMatch(html, /Needed before review/, status)
+      assert.match(html, /pi-detail-internal-status--neutral/, status)
+      assert.match(html, /entered in Internal order details and confirmed when this PI is submitted/, status)
+    }
   })
 
   test('the reviewer reads the confirmed answer, with no edit control and no dates', () => {
@@ -79,28 +93,6 @@ describe('PiCommissionSummary — the middleman answer in the PI summary', () =>
     assert.doesNotMatch(page, /PiInternalDetailsCard/)
     assert.match(page, /internal=\{\s*<PiCommissionSummary/)
     assert.match(page, /dateNotes=\{workbookDateNotes\(submission\)\}/)
-  })
-})
-
-describe('PiInternalDetailsModal', () => {
-  test('opens on the record, shows the workbook value beside each date, and cannot confirm an unanswered question', () => {
-    const html = renderToStaticMarkup(<PiInternalDetailsModal
-      row={{ order_confirmation_date: '2026-09-20', due_date: '2026-11-20', workbook_order_confirmation_date: null, workbook_due_date: '2026-11-20' }}
-      grandTotal={4212670.8} saving={false} failure={null} onCancel={noop} onSave={noop} />)
-    assert.match(html, /value="2026-09-20"/)
-    assert.match(html, /Workbook: blank/)
-    assert.match(html, /Workbook: 20 Nov 2026/)
-    assert.match(html, /Is there a middleman commission\?/)
-    assert.match(html, /To confirm: answer &quot;Is there a middleman commission\?&quot;\./)
-    assert.match(html, /<button type="submit"[^>]*disabled/)
-    assert.match(html, /Save draft/)
-  })
-
-  test('a refusal from the database is shown in its own words', () => {
-    const html = renderToStaticMarkup(<PiInternalDetailsModal row={{}} grandTotal={null} saving={false}
-      failure="ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION: the due date cannot be before the order confirmation date"
-      onCancel={noop} onSave={noop} />)
-    assert.match(html, /role="alert"[^>]*>ORDER_SUBMISSION_DUE_BEFORE_CONFIRMATION/)
   })
 })
 

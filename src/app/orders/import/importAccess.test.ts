@@ -1218,7 +1218,7 @@ describe('the Order information block', () => {
   })
 
   test('Product value is the commercial summary’s own figure, not a second sum', () => {
-    assert.ok(source.includes('grossProductAmount: preview.data.commercial.grossProductAmount'),
+    assert.ok(source.includes('productSubtotal: preview.data.commercial.subtotalAfterDiscount'),
       'the parsed cell, passed straight through')
     // The page states the figure; it never derives one. Any arithmetic here
     // would be a second path to a number the client has already been sent.
