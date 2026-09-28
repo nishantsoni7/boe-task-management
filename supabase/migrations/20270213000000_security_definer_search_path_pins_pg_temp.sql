@@ -71,15 +71,15 @@
 -- Four TRIGGER functions also carry an anon grant. That is harmless, because a
 -- trigger function cannot be called directly.
 --
--- ORDERING. Numbered after 20270122000000, the newest migration applied to
--- production on 2026-09-26, and after 20270123000000 (#236, not merged yet)
--- (first 20270106000000, then 20270118000000, then 20270122000000; each time
--- production moved past it). The Orders release (#202 / #205 / #206 / #209,
--- 20270112000000 .. 20270116000000), the guards run as owner (#230,
--- 20270117000000), 20270111120000, 20270118120000, 20270120000000 and
--- 20270122000000 are all applied; #236 is 20270123000000. None of those drops or redefines any function listed here, and
--- every definer they add already pins pg_temp, so the final schema-wide
--- assertion holds. A LATER CREATE OR REPLACE of any function below must restate
+-- ORDERING. Numbered after 20270212000000 (#214), the newest migration applied
+-- to production on 2026-09-28, and before 20270214000000 (#213), which then
+-- narrows the grants of six functions pinned here. This file was first
+-- 20270106000000, then 20270118000000, 20270122000000 and 20270125000000;
+-- each time production moved past it. Every migration applied since the audit
+-- (through #241, #248, #249 and #214) was checked on 2026-09-28: applied in
+-- order to production's schema, this file's assertions all hold. None drops
+-- any function listed here, and every definer they add or restate already
+-- pins pg_temp. A LATER CREATE OR REPLACE of any function below must restate
 -- `set search_path = public, pg_temp`, or it silently undoes this.
 -- ═══════════════════════════════════════════════════════════════════════════
 
