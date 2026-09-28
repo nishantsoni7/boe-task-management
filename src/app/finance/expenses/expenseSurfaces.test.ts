@@ -682,6 +682,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // The PI's salesperson and lead source, entered by Sales (20270211000000) —
       // held by src/lib/orders/salesOrderDetails.test.tsx.
       if (f === 'supabase/migrations/20270211000000_order_submission_sales_order_details.sql') continue
+      // A new expense must say how it was paid (20270211120000), held by
+      // supabase/tests/expense_reimbursement_source_required_assertions.sql.
+      if (f === 'supabase/migrations/20270211120000_expense_payment_source_required.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1953,6 +1956,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    */
   const ALLOWED_EXPENSE_REIMBURSEMENTS = new Set([
     'supabase/migrations/20270205120000_expense_reimbursements_and_bills.sql',
+    'supabase/migrations/20270211120000_expense_payment_source_required.sql',
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
