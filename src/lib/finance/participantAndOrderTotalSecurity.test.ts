@@ -1053,6 +1053,7 @@ describe('the applied migrations are frozen', () => {
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
+      '20270217000000_order_submission_cleanup_number_choice.sql',
     ])
   })
 
@@ -1357,6 +1358,7 @@ describe('the applied migrations are frozen', () => {
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
+      '20270217000000_order_submission_cleanup_number_choice.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

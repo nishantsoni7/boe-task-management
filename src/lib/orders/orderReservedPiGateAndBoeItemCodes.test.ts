@@ -447,6 +447,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
+      '20270217000000_order_submission_cleanup_number_choice.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

@@ -161,6 +161,7 @@ function TestDataCleanupInner() {
 
   const [reason,   setReason]   = useState('')
   const [typed,    setTyped]    = useState('')
+  const [orderNumberChoice, setOrderNumberChoice] = useState<'keep' | 'reuse' | null>(null)
   const [running,  setRunning]  = useState(false)
   const [runErr,   setRunErr]   = useState('')
   const [result,   setResult]   = useState<CleanupResult | null>(null)
@@ -198,6 +199,7 @@ function TestDataCleanupInner() {
 
   const runPreview = useCallback(async (type: RootType, id: string) => {
     setPreviewErr('')
+    setOrderNumberChoice(null)
     setResult(null)
     setStorageWarning('')
     setRunErr('')
@@ -268,6 +270,7 @@ function TestDataCleanupInner() {
           rootId:       preview.root_id,
           reason,
           confirmation: typed,
+          orderNumberChoice,
         }),
       })
       ok = res.ok
@@ -314,6 +317,7 @@ function TestDataCleanupInner() {
     setResults(null)
     setReason('')
     setTyped('')
+    setOrderNumberChoice(null)
     setQuery('')
     await loadSettings()
   }
@@ -346,7 +350,9 @@ function TestDataCleanupInner() {
     )
   }
 
+  const hasOrder = preview?.to_delete.some(r => r.type === 'order') ?? false
   const canExecute = !running && reason.trim().length > 0 && typed === CLEANUP_PHRASE
+    && (!hasOrder || orderNumberChoice !== null)
   const canDisable = !disabling && disableTyped === DISABLE_PHRASE
   const counts = settings?.test_record_counts
 
@@ -508,6 +514,24 @@ function TestDataCleanupInner() {
                   <div className={cc.divider} />
                   <Step n={3} title="Confirm and clean up" />
 
+                  {hasOrder && (
+                    <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
+                      <legend style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                        What should happen to Order {preview.to_delete.find(r => r.type === 'order')?.number}&apos;s number?
+                      </legend>
+                      <label style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+                        <input type="radio" name="order-number-choice" checked={orderNumberChoice === 'keep'}
+                          onChange={() => setOrderNumberChoice('keep')} />{' '}
+                        Keep the number used. The next Order gets the next number.
+                      </label>
+                      <label style={{ display: 'block', fontSize: 13 }}>
+                        <input type="radio" name="order-number-choice" checked={orderNumberChoice === 'reuse'}
+                          onChange={() => setOrderNumberChoice('reuse')} />{' '}
+                        Reuse this number for the next Order. Available only for the latest unreserved number.
+                      </label>
+                    </fieldset>
+                  )}
+
                   <CcField label="Why is this being removed?">
                     <textarea
                       className={cc.fieldControl}
@@ -534,7 +558,7 @@ function TestDataCleanupInner() {
                   {runErr && <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{runErr}</div>}
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button className="boe-btn boe-btn-ghost" onClick={() => { setPreview(null); setReason(''); setTyped('') }}>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => { setPreview(null); setReason(''); setTyped(''); setOrderNumberChoice(null) }}>
                       Cancel
                     </button>
                     <button className="boe-btn boe-btn-danger" disabled={!canExecute} onClick={execute}>

@@ -121,8 +121,15 @@ describe('the route never gives back a resumed claim', () => {
   })
 
   test('release is still reached only when no remove was attempted', () => {
-    assert.match(route(), /if \(!storageRemovalAttempted\) await release\(\)/)
-    assert.equal(route().match(/await release\(\)/g)?.length, 1)
+    // 20270217000000's keep/reuse choice adds release sites before the sweep;
+    // every one of them keeps the same guard.
+    const code = route()
+    const sites = [...code.matchAll(/await release\(\)/g)]
+    assert.ok(sites.length > 0)
+    for (const site of sites) {
+      const line = code.slice(code.lastIndexOf('\n', site.index!) + 1, site.index! + 15)
+      assert.match(line, /if \(!storageRemovalAttempted\) await release\(\)/)
+    }
   })
 
   test('a finalization refusal keeps the claim and logs the database\'s message', () => {

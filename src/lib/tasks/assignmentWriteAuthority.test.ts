@@ -866,6 +866,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
+      '20270217000000_order_submission_cleanup_number_choice.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

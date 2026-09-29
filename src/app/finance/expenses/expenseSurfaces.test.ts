@@ -704,6 +704,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
+      // And the test Order cleanup's keep/reuse number choice (20270217000000),
+      // held by src/lib/orders/cleanupNumberChoice.test.ts.
+      if (f === 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2182,6 +2185,35 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const ADVANCE_EXCEPTION_CLEANUP_MIGRATION = 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql'
 
+  /**
+   * TEST ORDER CLEANUP: KEEP OR REUSE THE ORDER NUMBER (20270217000000).
+   *
+   * Test Data Cleanup only — the Control Center screen, its one route, the
+   * suites that hold them, and the one-line inventory pins. No real Order,
+   * no payment and no Finance surface.
+   */
+  const ALLOWED_CLEANUP_NUMBER_CHOICE = new Set([
+    'src/app/admin/control-center/test-data-cleanup/page.tsx',
+    'src/app/api/orders/test-data-cleanup/route.ts',
+    'src/lib/orders/cleanupNumberChoice.test.ts',
+    'src/lib/orders/testDataCleanupAdvanceExceptionRetry.test.ts',
+    'src/lib/orders/testDataCleanupPiSchema.test.ts',
+    // migration inventories: one line each
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const CLEANUP_NUMBER_CHOICE_MIGRATION = 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql'
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2241,7 +2273,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== DEFINER_SEARCH_PATH_MIGRATION &&
     f !== RESOLVERS_NOT_FOR_ANON_MIGRATION &&
     !ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(f) &&
-    f !== ADVANCE_EXCEPTION_CLEANUP_MIGRATION
+    f !== ADVANCE_EXCEPTION_CLEANUP_MIGRATION &&
+    !ALLOWED_CLEANUP_NUMBER_CHOICE.has(f) &&
+    f !== CLEANUP_NUMBER_CHOICE_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2578,7 +2612,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_DEFINER_SEARCH_PATH.has(file)
         || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file)
         || ALLOWED_ATTENDANCE_REQUESTS.has(file)
-        || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file),
+        || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file)
+        || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
