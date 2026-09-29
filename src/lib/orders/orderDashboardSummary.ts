@@ -371,36 +371,21 @@ export const DASHBOARD_ERROR_BODY =
 export const DASHBOARD_RETRY_LABEL = 'Try again'
 export const DASHBOARD_LOADING_LABEL = 'Loading the dashboard'
 export const SCOPED_VIEW_NOTE = 'Counts cover the orders you can open.'
-export const COUNT_MEANS_ORDERS_NOTE = 'An order can appear under more than one heading.'
-
-/** The one line above the lists: scope (when narrower than the company) and overlap. */
-export function listsNote(seesAllOrders: boolean): string {
-  return seesAllOrders ? COUNT_MEANS_ORDERS_NOTE : `${SCOPED_VIEW_NOTE} ${COUNT_MEANS_ORDERS_NOTE}`
-}
 
 export type GroupCopy = {
   key: GroupKey
   label: string
-  /** One line under the heading, saying what qualifies. */
-  rule: string
-  emptyText: string
 }
 
 export const GROUP_COPY: Record<GroupKey, GroupCopy> = {
   not_aligned: {
     key: 'not_aligned', label: 'Not aligned for manufacturing',
-    rule: 'Open orders waiting for manufacturing alignment. Each row says whose court it is in, and since when.',
-    emptyText: 'Every open order is aligned for manufacturing.',
   },
   advance_below_40: {
     key: 'advance_below_40', label: 'Advance below 40%',
-    rule: 'Verified payments are under 40% of the current approved order value. An approved exception does not remove an order from this list.',
-    emptyText: 'No open order has a verified advance below 40%.',
   },
   fabric_finish_pending: {
     key: 'fabric_finish_pending', label: 'Fabric or finish pending',
-    rule: 'Fabric or finish not fully approved — or never approved — more than 15 days after the client confirmed the order. Each item is judged on its own, so one approved item never hides the other.',
-    emptyText: 'No open order has fabric or finish pending beyond 15 days.',
   },
 }
 
@@ -562,9 +547,9 @@ export function formatRange(from: string, to: string): string {
 // ── Revenue words ─────────────────────────────────────────────────────────────
 
 export const REVENUE_TITLE = 'Revenue'
-export const REVENUE_BASIS = 'Product value, excluding GST and other charges'
+export const REVENUE_BASIS = 'Product value, excl. GST'
 export const REVENUE_METHOD_NOTE =
-  'By the date the order was confirmed. Each order is counted once, at its current approved product value; cancelled orders are left out.'
+  'Product value excluding GST and other charges, by the date the order was confirmed. Each order is counted once, at its current approved product value; cancelled orders are left out.'
 
 export type RevenueTile = { key: string; label: string; period: RevenuePeriod }
 
@@ -590,8 +575,6 @@ export function revenueGapNotes(r: DashboardRevenue): string[] {
 // ── Factory Focus words ──────────────────────────────────────────────────────
 
 export const FOCUS_TITLE = 'Factory Focus'
-export const FOCUS_INTRO =
-  'Highest factory priority. Each order is recognised for its salesperson.'
 export const FOCUS_ADD_LABEL = 'Select an order'
 export const FOCUS_NOTE_MAX = 200
 export const FOCUS_REMOVAL_REASON_MAX = 300

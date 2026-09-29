@@ -18,7 +18,6 @@ import {
 import {
   NEW_ORDER_ACTION,
   NO_ORDER_DASHBOARD_COUNTS,
-  ORDER_DASHBOARD_SUBTITLE,
   orderDashboardCards,
   type OrderDashboardCounts,
 } from '@/lib/orders/orderDashboard'
@@ -28,14 +27,14 @@ import {
   DASHBOARD_LOADING_LABEL,
   DASHBOARD_RETRY_LABEL,
   FOCUS_ADD_LABEL,
-  listsNote,
+  SCOPED_VIEW_NOTE,
   parseDashboardSummary,
   type DashboardSummary,
 } from '@/lib/orders/orderDashboardSummary'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
 import { DocumentActionQueue } from '@/components/orders/DocumentActionQueue'
 import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/dashboard/FactoryFocusSection'
-import { AdvanceSection, AlignmentSection, FabricFinishSection } from '@/components/orders/dashboard/AttentionSections'
+import { AdvanceSection, AlignmentSection, FabricFinishSection, StatusStrip } from '@/components/orders/dashboard/AttentionSections'
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { useViewAs } from '@/contexts/ViewAsContext'
@@ -181,7 +180,6 @@ export default function OrdersDashboardPage() {
     <OrdersLayout
       profile={profile}
       title="Orders"
-      subtitle={ORDER_DASHBOARD_SUBTITLE}
       onSignOut={handleSignOut}
       onRefresh={reload}
       actions={
@@ -216,6 +214,13 @@ export default function OrdersDashboardPage() {
       }
     >
       <div className="od-stack">
+        {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
+            stepping in. Revenue only when the read returned it: the database sends it to a reader
+            who sees every Order. */}
+        {ready ? <RevenueSection revenue={ready.revenue} /> : null}
+        {ready ? <StatusStrip summary={ready} /> : null}
+        {ready && !ready.viewer.seesAllOrders ? <p className="od-note">{SCOPED_VIEW_NOTE}</p> : null}
+
         {summary.kind === 'ready' ? (
           <>
             {/* ── FACTORY FOCUS ── directly under the title. Draws nothing when there are
@@ -248,13 +253,10 @@ export default function OrdersDashboardPage() {
           </div>
         ) : (
           <>
-            {/* Waiting for manufacturing alignment: prominent, straight after Factory Focus. */}
+            {/* Each list draws only when it has rows; the strip above carries the zeros. */}
             <AlignmentSection summary={summary.summary} />
-            <p className="od-note">{listsNote(summary.summary.viewer.seesAllOrders)}</p>
-            <div className="od-pair">
-              <AdvanceSection summary={summary.summary} />
-              <FabricFinishSection summary={summary.summary} />
-            </div>
+            <AdvanceSection summary={summary.summary} />
+            <FabricFinishSection summary={summary.summary} />
           </>
         )}
 
@@ -283,10 +285,6 @@ export default function OrdersDashboardPage() {
             ))}
           </nav>
         ) : null}
-
-        {/* ── REVENUE ── quieter, below the urgent work. Only when the read
-            returned it: the database sends it to a reader who sees every Order. */}
-        {ready ? <RevenueSection revenue={ready.revenue} /> : null}
       </div>
     </OrdersLayout>
   )

@@ -36,7 +36,6 @@ import {
   formatRupees,
   formatWaiting,
   groupGapNote,
-  listsNote,
   parseDashboardSummary,
   removedNoticeLine,
   revenueGapNotes,
@@ -268,8 +267,6 @@ describe('advance, and fabric/finish, say what the database said', () => {
     assert.equal(groupGapNote('not_aligned', s.gaps), null)
     assert.equal(groupGapNote('advance_below_40', { ...s.gaps, advanceValueUnknown: 0, advanceOutsideScope: 3 }), 'Payment figures are not shown for 3 orders you can see only through your visibility scope.')
     assert.equal(groupGapNote('fabric_finish_pending', { ...s.gaps, noConfirmDate: 1 }), '1 open order with no confirmation date could not be checked.')
-    assert.equal(listsNote(true), 'An order can appear under more than one heading.')
-    assert.equal(listsNote(false), 'Counts cover the orders you can open. An order can appear under more than one heading.')
   })
 })
 
@@ -409,13 +406,14 @@ describe('the page, and what this phase changed', () => {
     }
   })
 
-  test('reading order: Factory Focus, alignment, then advance and fabric/finish, then revenue', () => {
+  test('reading order: revenue, the status strip, Factory Focus, then the lists', () => {
     const at = (s: string) => page.indexOf(s)
-    assert.ok(at('<FactoryFocusSection') > 0)
+    assert.ok(at('<RevenueSection') > 0)
+    assert.ok(at('<RevenueSection') < at('<StatusStrip'), 'revenue is the headline')
+    assert.ok(at('<StatusStrip') < at('<FactoryFocusSection'), 'the strip is one glance, before the detail')
     assert.ok(at('<FactoryFocusSection') < at('<AlignmentSection'), 'Factory Focus is first')
     assert.ok(at('<AlignmentSection') < at('<AdvanceSection'), 'alignment comes straight after it')
     assert.ok(at('<AdvanceSection') < at('<FabricFinishSection'))
-    assert.ok(at('<FabricFinishSection') < at('<RevenueSection'), 'revenue comes last')
     assert.ok(page.includes("summary.kind === 'error'") && page.includes('role="alert"'))
   })
 

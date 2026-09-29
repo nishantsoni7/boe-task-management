@@ -146,12 +146,3 @@ export const NEW_ORDER_ACTION = {
   title: 'Upload the PI to start a new order',
 } as const
 
-/**
- * The page's subtitle.
- *
- * Says what the page is FOR now: the orders that need somebody to step in, and
- * what the confirmed ones are worth. It no longer lists running orders — the
- * Orders list does that.
- */
-export const ORDER_DASHBOARD_SUBTITLE =
-  'Orders that need intervention, and confirmed revenue.'
