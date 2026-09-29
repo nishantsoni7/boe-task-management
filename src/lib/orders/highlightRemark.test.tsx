@@ -68,6 +68,13 @@ describe('the PI draft’s highlight field', () => {
     assert.match(html, /<label for="pi-highlight-remark"/, 'the label names the field')
   })
 
+  test('inside Supporting details it does not repeat the card’s "Optional"', () => {
+    const html = view({ bare: true })
+    assert.doesNotMatch(html, />Optional</)
+    assert.match(html, /Order highlight/)
+    assert.match(html, /Internal/)
+  })
+
   test('Save is offered only for a real change', () => {
     assert.match(view({ remark: 'Rush', draft: 'Rush' }), /<button[^>]*disabled=""[^>]*>Save highlight</)
     assert.doesNotMatch(view({ remark: 'Rush', draft: 'Rush — exhibition stock' }), /disabled=""[^>]*>Save highlight</)
