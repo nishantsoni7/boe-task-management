@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Monitor, Key,
-  Package, ShieldCheck, ClipboardList,
+  Package, ShieldCheck, ClipboardList, Tags,
   Home,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -23,6 +23,7 @@ export type AssetsView =
   | 'access-register'
   // Requesters see their own; an admin sees everyone's, with Approve/Reject
   | 'asset-requests'
+  | 'asset-catalogue'
 
 type AssetsLayoutProps = {
   profile: UserProfile | null
@@ -64,6 +65,12 @@ type AssetsLayoutProps = {
    * employee must not be shown a Management section at all.
    */
   canReviewAssetRequests: boolean
+  /**
+   * Catalogue nav — admin, or an explicit `manage_asset_catalogue` grant
+   * (20270220000000). Optional so the module's sub-pages need not resolve it;
+   * they simply do not show the entry.
+   */
+  canManageCatalogue?: boolean
   children: React.ReactNode
 }
 
@@ -84,6 +91,9 @@ const ACCESS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
 const REQUESTS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
   { view: 'asset-requests', label: 'Asset Requests', icon: <ClipboardList size={15} strokeWidth={1.8} /> }
 
+const CATALOGUE_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
+  { view: 'asset-catalogue', label: 'Catalogue', icon: <Tags size={15} strokeWidth={1.8} /> }
+
 /** The same screen from the requester's side: only the rows they filed. */
 const MY_REQUESTS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
   { view: 'asset-requests', label: 'My Requests', icon: <ClipboardList size={15} strokeWidth={1.8} /> }
@@ -100,6 +110,7 @@ export function AssetsLayout({
   canManageAccess,
   canSeeAssetRequests,
   canReviewAssetRequests,
+  canManageCatalogue = false,
   children,
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -112,6 +123,7 @@ export function AssetsLayout({
   const managementNav = [
     ...(canViewInventory ? [INVENTORY_NAV] : []),
     ...(canReviewAssetRequests ? [REQUESTS_NAV] : []),
+    ...(canManageCatalogue ? [CATALOGUE_NAV] : []),
     ...(canManageAccess ? [ACCESS_NAV] : []),
   ]
 

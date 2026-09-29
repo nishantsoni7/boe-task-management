@@ -220,3 +220,37 @@ describe('defaultViewForArea', () => {
     assert.equal(resolveInitialView('access-register', employee, true), 'my-assets')
   })
 })
+
+// ─── Catalogue (20270220000000) ──────────────────────────────────────────────
+
+describe('the Catalogue view', () => {
+  const base = {
+    canAccessAssetsModule: true, canViewOwnAssets: true, canViewAssetInventory: false,
+    canCreateAsset: false, canAssignAsset: false, canEditAsset: false, canDeleteAsset: false,
+    canManageAssetCustody: false, canManageAccess: false, canRequestAssetChanges: true,
+    canReviewAssetRequests: false, canManageCatalogue: false,
+  }
+  const catalogueOnly = { ...base, canManageCatalogue: true }
+  const inventoryAndCatalogue = { ...base, canViewAssetInventory: true, canCreateAsset: true, canManageCatalogue: true }
+
+  test('opens only for the catalogue grant — never for inventory or employee rights', () => {
+    assert.equal(canOpenView('asset-catalogue', catalogueOnly), true)
+    assert.equal(canOpenView('asset-catalogue', base), false)
+    assert.equal(canOpenView('asset-catalogue', { ...base, canViewAssetInventory: true, canEditAsset: true }), false)
+  })
+
+  test('a deep link from someone without the grant falls back', () => {
+    assert.equal(resolveInitialView('asset-catalogue', base, false), 'my-assets')
+  })
+
+  test('a catalogue-only manager lands on the catalogue, not on an empty inventory', () => {
+    assert.equal(resolveInitialView(null, catalogueOnly, false), 'asset-catalogue')
+    assert.equal(defaultViewForArea('assets', catalogueOnly), 'asset-catalogue')
+    // Holding the inventory as well, they are here to manage assets.
+    assert.equal(resolveInitialView(null, inventoryAndCatalogue, false), 'asset-inventory')
+  })
+
+  test('it lives in the Assets area', () => {
+    assert.equal(areaForView('asset-catalogue'), 'assets')
+  })
+})

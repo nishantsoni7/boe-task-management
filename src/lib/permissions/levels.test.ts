@@ -250,10 +250,15 @@ describe('Manager never receives a protected action', () => {
     // a PI's middleman commission beyond its salesperson, assigned reviewer and
     // active admins. The commission has its own table precisely so that no
     // wider Orders authority reaches it; a preset must not either.
+    //
+    // And by one more in 20270220000000: `assets_access.manage_asset_catalogue`,
+    // which defines the categories and products every company asset is filed
+    // under. It carries no asset authority, and a "Manager" preset must not be
+    // a way to acquire it.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
-      'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
+      'dispatch', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
       'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_pi_commission',
       'view_quotations', 'view_team',
     ])

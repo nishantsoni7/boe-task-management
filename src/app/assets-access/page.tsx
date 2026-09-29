@@ -40,15 +40,37 @@ import {
 } from '@/lib/assets/types'
 // Search and filtering are pure functions, tested without React.
 import {
-  activeFilterCount,
   buildAssetRows,
   distinctValues,
   filterAssetRows,
   hasActiveFilters,
   sortAssetRows,
   EMPTY_ASSET_FILTERS,
+  ACTIVE_STATUS_FILTER,
   type AssetFilters,
+  type AssetRow,
 } from '@/lib/assets/assetFilters'
+// The owner's overview: counts, needs-attention, by person, by category.
+// Pure functions over the same rows the table renders (overview.test.ts).
+import {
+  attentionByAsset,
+  attentionItems,
+  countsByCategory,
+  holdingsByPerson,
+  summariseAssets,
+} from '@/lib/assets/overview'
+import {
+  AttentionList,
+  CategoryCountsTable,
+  LensTabs,
+  OverviewCounts,
+  PeopleList,
+  type OverviewLens,
+} from '@/components/assets/AssetOverviewParts'
+// Category and product names come from the managed catalogue (20270220000000).
+import { categoryLabel } from '@/lib/assets/catalogue'
+import { useAssetCatalogue } from '@/hooks/useAssetCatalogue'
+import { AssetCatalogueManager } from '@/components/assets/AssetCatalogueManager'
 import { WARRANTY_STATUS_LABEL, WARRANTY_STATUS_OPTIONS } from '@/lib/assets/warranty'
 import { notifyAssetEvent, sweepWarrantyExpiries } from '@/lib/assets/notifyClient'
 // Create / edit / request modals are shared components: the inventory and the
@@ -228,6 +250,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
   const [accepting, setAccepting] = useState<EmployeeAsset | null>(null)
   /** The assignment whose Handover Sheet is open for printing. */
   const [printing, setPrinting] = useState<EmployeeAsset | null>(null)
+  const { catalogue } = useAssetCatalogue(supabase)
 
   const load = async () => {
     setLoading(true)
@@ -309,7 +332,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
                     <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>{asset.specifications}</div>
                   )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', fontSize: '12px', color: colors.secondary }}>
-                    <span style={{ textTransform: 'capitalize' }}>{(asset?.asset_type ?? '—').replace(/_/g, ' ')}</span>
+                    <span>{categoryLabel(catalogue, asset?.asset_type)}</span>
                     {asset?.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
                     <span>{fmtDate(row.assigned_at)}</span>
                   </div>
@@ -358,7 +381,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{(asset?.asset_type ?? '—').replace(/_/g, ' ')}</td>
+                        <td style={{ padding: '12px 16px', color: colors.secondary }}>{categoryLabel(catalogue, asset?.asset_type)}</td>
                         <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset?.serial_no ?? '—'}</td>
                         <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.assigned_at)}</td>
                         <td style={{ padding: '12px 16px' }}><Badge status={row.status} map={ASSET_STATUS_BADGE} /></td>
@@ -421,6 +444,7 @@ function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRe
         <HandoverSheetOverlay
           assignment={printing}
           asset={singleAsset(printing.assets)}
+          categoryName={categoryLabel(catalogue, singleAsset(printing.assets)?.asset_type)}
           employeeName={acceptedByName}
           issuedByName={assignerNames[printing.assigned_by] ?? null}
           formatDateTime={fmtDateTime}
@@ -540,7 +564,7 @@ const WARRANTY_BADGE_MAP: Record<string, string> = {
   not_available: 'boe-badge-pending',
 }
 
-function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAssignHandled }: {
+function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAssignHandled, onManageCatalogue }: {
   employees: Employee[]
   supabase: SupabaseClient
   isMobile?: boolean
@@ -555,6 +579,8 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
   openAssign?: boolean
   /** Close it. Called on cancel, on a successful assignment, and on Escape. */
   onAssignHandled?: () => void
+  /** Open Manage Catalogue. Offered only to a catalogue manager. */
+  onManageCatalogue?: () => void
 }) {
   const router = useRouter()
   const [assets, setAssets] = useState<Asset[]>([])
@@ -564,6 +590,12 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
   const [notice, setNotice] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [assigningAsset, setAssigningAsset] = useState<Asset | null>(null)
+  const { catalogue } = useAssetCatalogue(supabase)
+
+  // Which question the screen is answering. The list is the default; the other
+  // three lenses summarise the same rows and drill back into the list with a
+  // filter, so no record is ever shown in two places at once.
+  const [lens, setLens] = useState<OverviewLens>('list')
 
   // Filters live in ONE object so "Clear" is a single assignment that cannot
   // forget a field, and so the whole set can be handed to a pure function that
@@ -571,7 +603,13 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
   const [filters, setFilters] = useState<AssetFilters>(EMPTY_ASSET_FILTERS)
   const [showFilters, setShowFilters] = useState(false)
   const setFilter = (key: keyof AssetFilters) => (value: string) =>
-    setFilters(prev => ({ ...prev, [key]: value }))
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+      // A product belongs to one category; changing the category drops a
+      // product filter that could only ever match nothing.
+      ...(key === 'category' ? { productId: '' } : {}),
+    }))
 
   const load = async () => {
     setLoading(true)
@@ -606,27 +644,68 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
     [employees],
   )
 
-  // Derived ONCE, so the table cell, the search haystack and the employee
-  // filter all agree about who holds what.
+  // Derived ONCE, so the table cell, the search haystack, the employee filter,
+  // the counts and every lens all agree about who holds what.
   const rows = useMemo(
-    () => sortAssetRows(buildAssetRows(assets, assignments, employeeLookup)),
-    [assets, assignments, employeeLookup],
+    () => sortAssetRows(buildAssetRows(assets, assignments, employeeLookup, new Date(), catalogue)),
+    [assets, assignments, employeeLookup, catalogue],
   )
-  const visible = useMemo(() => filterAssetRows(rows, filters), [rows, filters])
+  const visible   = useMemo(() => filterAssetRows(rows, filters), [rows, filters])
+  const attention = useMemo(() => attentionItems(rows), [rows])
+  const attentionGroups = useMemo(() => attentionByAsset(attention), [attention])
+  const summary   = useMemo(() => summariseAssets(rows, attention), [rows, attention])
+  const people    = useMemo(() => holdingsByPerson(rows), [rows])
+  const byCategory = useMemo(() => countsByCategory(rows), [rows])
 
   const departments = useMemo(() => distinctValues(assets, 'department'), [assets])
   const locations   = useMemo(() => distinctValues(assets, 'location'), [assets])
-  const categories  = useMemo(() => distinctValues(assets, 'asset_type'), [assets])
 
-  const filterCount = activeFilterCount(filters)
+  // Filter choices: the categories and products actually in use, by their
+  // current names, plus the chosen category's products. People are everyone
+  // who currently holds something — a filter that can only return nothing is
+  // not offered.
+  const categoryChoices = useMemo(
+    () => byCategory.map(c => ({ value: c.categoryKey, label: c.name })),
+    [byCategory],
+  )
+  const productChoices = useMemo(() => {
+    const used = new Set(assets.filter(a => !filters.category || a.asset_type === filters.category)
+      .map(a => a.product_id).filter((id): id is string => !!id))
+    return catalogue.products
+      .filter(p => used.has(p.id))
+      .map(p => ({
+        value: p.id,
+        label: filters.category ? p.name : `${p.name} (${categoryLabel(catalogue, p.category_key)})`,
+      }))
+      .sort((x, y) => x.label.localeCompare(y.label))
+  }, [assets, catalogue, filters.category])
+  const personChoices = useMemo(
+    () => people.map(p => ({ value: p.employeeId, label: `${p.name} (${p.total})` })),
+    [people],
+  )
+
+  // Warranty is shown only once any asset records one. On a register where
+  // none does, a column of "Not available" is noise that reads like a problem.
+  const anyWarranty = useMemo(() => assets.some(a => !!a.warranty_expiry_date), [assets])
+
+  const moreFilterCount = (['department', 'location', 'condition', 'warranty', 'purchasedFrom', 'purchasedTo'] as const)
+    .filter(k => filters[k].trim() !== '').length
   const anyFilters  = hasActiveFilters(filters)
 
   const openAsset = (asset: Asset) => router.push(`/assets-access/${asset.id}`)
+  const openAssetById = (id: string) => router.push(`/assets-access/${id}`)
+
+  /** Drill from a lens into the list, with exactly this narrowing. */
+  const showList = (next: Partial<AssetFilters>) => {
+    setFilters({ ...EMPTY_ASSET_FILTERS, ...next })
+    setLens('list')
+  }
 
   const filterSelect = (
     label: string,
     key: keyof AssetFilters,
     options: { value: string; label: string }[],
+    anyLabel = 'Any',
   ) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
       <span style={{
@@ -639,50 +718,70 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
         onChange={e => setFilter(key)(e.target.value)}
         style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
       >
-        <option value="">Any</option>
+        <option value="">{anyLabel}</option>
+        {/* A deep-linked value not in the list still shows, rather than the
+            select silently reading "Any" while the list is filtered. */}
+        {filters[key] && !options.some(o => o.value === filters[key]) && (
+          <option value={filters[key]}>{filters[key]}</option>
+        )}
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>
   )
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {error && <ErrorBanner message={error} />}
-      {notice && <SuccessBanner message={notice} />}
+  const catalogueLine = (row: AssetRow) => row.productName ? `${row.categoryName} · ${row.productName}` : row.categoryName
 
-      {/* ── Search + filters ── */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+  const renderList = () => (
+    <>
+      {/* ── Search + the four filters an owner uses ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <input
           className="boe-input"
           type="search"
           value={filters.search}
           onChange={e => setFilter('search')(e.target.value)}
-          placeholder="Search name, code, serial, brand, model, holder or location"
+          placeholder="Search name, code, serial, category, product or holder"
           aria-label="Search assets"
-          style={{ flex: '1 1 260px', minWidth: 0, fontSize: '13px' }}
+          style={{ width: '100%', fontSize: '13px' }}
         />
-        <button
-          className="boe-btn boe-btn-ghost"
-          style={{ padding: '8px 14px', fontSize: '12.5px' }}
-          onClick={() => setShowFilters(v => !v)}
-          aria-expanded={showFilters}
-        >
-          {showFilters ? 'Hide Filters' : 'Filters'}{filterCount > 0 ? ` (${filterCount})` : ''}
-        </button>
-        {anyFilters && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',
+          gap: '10px',
+        }}>
+          {filterSelect('Category', 'category', categoryChoices, 'All categories')}
+          {filterSelect('Product', 'productId', productChoices, productChoices.length ? 'All products' : 'None recorded')}
+          {filterSelect('Status', 'status', [
+            // What the Active assets tile counts, so its click-through is a
+            // visible, clearable choice rather than an invisible narrowing.
+            { value: ACTIVE_STATUS_FILTER, label: 'Active (not retired / disposed)' },
+            ...ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })),
+          ], 'Any status')}
+          {filterSelect('Held by', 'employeeId', personChoices, 'Anyone')}
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
+            {loading ? 'Loading…' : anyFilters ? `Showing ${visible.length} of ${rows.length}` : `${rows.length} assets`}
+          </span>
+          <span style={{ flex: 1 }} />
           <button
             className="boe-btn boe-btn-ghost"
-            style={{ padding: '8px 14px', fontSize: '12.5px' }}
-            onClick={() => setFilters(EMPTY_ASSET_FILTERS)}
+            style={{ padding: '5px 12px', fontSize: '12px' }}
+            onClick={() => setShowFilters(v => !v)}
+            aria-expanded={showFilters}
           >
-            Clear
+            {showFilters ? 'Fewer filters' : 'More filters'}{moreFilterCount > 0 ? ` (${moreFilterCount})` : ''}
           </button>
-        )}
-        {caps.canCreateAsset && (
-          <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
-            + Create Asset
-          </button>
-        )}
+          {anyFilters && (
+            <button
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: '12px' }}
+              onClick={() => setFilters(EMPTY_ASSET_FILTERS)}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {showFilters && (
@@ -692,14 +791,11 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
           gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',
           gap: '12px',
         }}>
-          {filterSelect('Category', 'category', categories.map(c => ({ value: c, label: humanizeToken(c) })))}
-          {filterSelect('Status', 'status', ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })))}
-          {filterSelect('Assigned Employee', 'employeeId', employees.map(e => ({ value: e.id, label: e.full_name })))}
           {filterSelect('Department', 'department', departments.map(d => ({ value: d, label: d })))}
           {filterSelect('Location', 'location', locations.map(l => ({ value: l, label: l })))}
           {filterSelect('Condition', 'condition', ASSET_CONDITION_OPTIONS.map(c => ({ value: c, label: ASSET_CONDITION_LABEL[c] })))}
           {filterSelect('Warranty', 'warranty', WARRANTY_STATUS_OPTIONS.map(w => ({ value: w, label: WARRANTY_STATUS_LABEL[w] })))}
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, gridColumn: isMobile ? '1 / -1' : undefined }}>
             <span style={{
               fontSize: '10.5px', fontWeight: 600, color: colors.muted,
               textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -720,16 +816,15 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
         </div>
       )}
 
-      {loading ? (
-        <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
-      ) : assets.length === 0 ? (
-        <EmptyState message="No assets in inventory yet." />
+      {loading ? null : assets.length === 0 ? (
+        <EmptyState message={caps.canCreateAsset ? 'No assets in inventory yet. Create the first one.' : 'No assets in inventory yet.'} />
       ) : visible.length === 0 ? (
-        <EmptyState message="No assets match this search. Clear the filters to see the full inventory." />
+        <EmptyState message="No assets match these filters. Clear them to see the full inventory." />
       ) : isMobile ? (
         /* ── Mobile: cards ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {visible.map(({ asset, holderLabel, warranty }) => {
+          {visible.map(row => {
+            const { asset, holderLabel, warranty } = row
             const canAssign = caps.canAssignAsset && asset.status === 'available'
             return (
               <div key={asset.id} className="boe-card" style={{ padding: '14px 16px' }}>
@@ -737,19 +832,24 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
                 <div style={{ fontSize: '14px', marginBottom: '2px' }}>
                   <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
                 </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, marginBottom: '4px' }}>{catalogueLine(row)}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', color: colors.secondary, marginBottom: '10px' }}>
-                  <span style={{ textTransform: 'capitalize' }}>{humanizeToken(asset.asset_type)}</span>
-                  {asset.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
                   <span>→ {holderLabel}</span>
+                  {asset.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
                       {assetStatusLabel(asset.status)}
                     </span>
-                    <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-                      {WARRANTY_STATUS_LABEL[warranty]}
-                    </span>
+                    {row.assignment?.status === 'pending_acceptance' && (
+                      <span className="boe-badge boe-badge-pending" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>Not accepted</span>
+                    )}
+                    {anyWarranty && (
+                      <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                        {WARRANTY_STATUS_LABEL[warranty]}
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {canAssign && (
@@ -764,16 +864,20 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
         </div>
       ) : (
         /* ── Desktop: table ──
-           Nine narrow columns and no button strip. Every operation other than
+           Narrow columns and no button strip. Every operation other than
            Assign lives on the asset's own page, which is what keeps this table
            inside a normal desktop width instead of scrolling sideways — and
            what lets someone see who holds an asset before acting on it. */
         <div className="boe-card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-              <TableHead cols={['Asset', 'Asset Code', 'Category', 'Current Holder', 'Status', 'Condition', 'Warranty', 'Last Updated', 'Actions']} />
+              <TableHead cols={[
+                'Asset', 'Asset Code', 'Category / Product', 'Current Holder', 'Status', 'Condition',
+                ...(anyWarranty ? ['Warranty'] : []), 'Last Updated', 'Actions',
+              ]} />
               <tbody>
-                {visible.map(({ asset, holderLabel, warranty }) => {
+                {visible.map(row => {
+                  const { asset, holderLabel, warranty } = row
                   const canAssign = caps.canAssignAsset && asset.status === 'available'
                   return (
                     <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -786,19 +890,29 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
                         )}
                       </td>
                       <td style={{ padding: '10px 12px', color: colors.secondary, fontFamily: 'monospace', fontSize: '11.5px', whiteSpace: 'nowrap' }}>{asset.asset_code}</td>
-                      <td style={{ padding: '10px 12px', color: colors.secondary, textTransform: 'capitalize' }}>{humanizeToken(asset.asset_type)}</td>
-                      <td style={{ padding: '10px 12px', color: colors.secondary }}>{holderLabel}</td>
+                      <td style={{ padding: '10px 12px', color: colors.secondary }}>
+                        <div>{row.categoryName}</div>
+                        {row.productName && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>{row.productName}</div>}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: colors.secondary }}>
+                        {holderLabel}
+                        {row.assignment?.status === 'pending_acceptance' && (
+                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>Not yet accepted</div>
+                        )}
+                      </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
                           {assetStatusLabel(asset.status)}
                         </span>
                       </td>
                       <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>{assetConditionLabel(asset.condition)}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-                          {WARRANTY_STATUS_LABEL[warranty]}
-                        </span>
-                      </td>
+                      {anyWarranty && (
+                        <td style={{ padding: '10px 12px' }}>
+                          <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                            {WARRANTY_STATUS_LABEL[warranty]}
+                          </span>
+                        </td>
+                      )}
                       <td style={{ padding: '10px 12px', color: colors.muted, whiteSpace: 'nowrap' }}>{fmtDate(asset.updated_at)}</td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
@@ -816,6 +930,66 @@ function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAss
           </div>
         </div>
       )}
+    </>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {error && <ErrorBanner message={error} />}
+      {notice && <SuccessBanner message={notice} />}
+
+      {/* ── What BOE owns, at a glance ── */}
+      {!loading && assets.length > 0 && (
+        <OverviewCounts
+          summary={summary}
+          isMobile={isMobile}
+          onOpen={target => {
+            if (target === 'attention') { setLens('attention'); return }
+            // Each tile opens exactly the rows it counts: Active uses the same
+            // definition as its number (assetFilters.isActiveAsset).
+            showList({ status: target === 'active' ? ACTIVE_STATUS_FILTER : target })
+          }}
+        />
+      )}
+
+      {/* The lens switch owns its row, so no tab is ever squeezed off-screen
+          by a button. The two catalogue / create actions sit above it. */}
+      {(caps.canManageCatalogue || caps.canCreateAsset) && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '-6px' }}>
+          {caps.canManageCatalogue && onManageCatalogue && (
+            <button className="boe-btn boe-btn-ghost" style={{ padding: '7px 14px', fontSize: '12.5px' }} onClick={onManageCatalogue}>
+              Manage catalogue
+            </button>
+          )}
+          {caps.canCreateAsset && (
+            <button className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '12.5px' }} onClick={() => setShowCreate(true)}>
+              + Create Asset
+            </button>
+          )}
+        </div>
+      )}
+
+      <LensTabs
+        lens={lens}
+        onChange={setLens}
+        attentionCount={attentionGroups.length}
+        peopleCount={people.length}
+      />
+
+      {lens === 'list' && renderList()}
+      {lens === 'attention' && (loading
+        ? <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+        : <AttentionList groups={attentionGroups} onOpenAsset={openAssetById} catalogueLine={g => catalogueLine(g.row)} />)}
+      {lens === 'people' && (loading
+        ? <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+        : <PeopleList people={people} onSelect={employeeId => showList({ employeeId })} />)}
+      {lens === 'categories' && (loading
+        ? <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+        : <CategoryCountsTable
+            rows={byCategory}
+            isMobile={isMobile}
+            onSelect={(category, status) => showList({ category, status: status ?? '' })}
+          />)}
 
       {showCreate && (
         <CreateAssetModal
@@ -870,6 +1044,8 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Proposed categories are shown by their CURRENT catalogue name.
+  const { catalogue } = useAssetCatalogue(supabase)
   const [rejecting, setRejecting] = useState<AssetChangeRequest | null>(null)
 
   const load = async () => {
@@ -920,7 +1096,7 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
   const reviewed = rows.filter(r => r.status !== 'pending')
 
   const RequestCard = ({ row }: { row: AssetChangeRequest }) => {
-    const changes = describeProposedChanges(row)
+    const changes = describeProposedChanges(row, key => categoryLabel(catalogue, key))
     return (
       <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
@@ -1347,7 +1523,8 @@ const ModalActions = AssetModalActions
 const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
   'my-assets':       { title: 'My Assets',       subtitle: 'Company devices assigned to you.' },
   'my-access':       { title: 'My Access',       subtitle: 'Login and access records assigned to you.' },
-  'asset-inventory': { title: 'Asset Inventory', subtitle: 'All company assets and their assignment status.' },
+  'asset-inventory': { title: 'Asset Inventory', subtitle: 'What BOE owns, who holds it, what is free, and what needs attention.' },
+  'asset-catalogue': { title: 'Asset Catalogue', subtitle: 'The categories and products every asset is filed under.' },
   'access-register': { title: 'Access Register', subtitle: 'All employee login and access records.' },
   'asset-requests':  { title: 'Asset Requests',  subtitle: 'Change and removal requests, and what was decided.' },
 }
@@ -1456,7 +1633,7 @@ function AssetsAccessScreen() {
   useEffect(() => {
     if (!profile) return
     const refresh = () => { refreshCapabilities(profile) }
-    if (view === 'asset-inventory' || view === 'asset-requests') refresh()
+    if (view === 'asset-inventory' || view === 'asset-requests' || view === 'asset-catalogue') refresh()
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1549,8 +1726,11 @@ function AssetsAccessScreen() {
             caps={caps}
             openAssign={primaryRequest === 'assign'}
             onAssignHandled={() => setPrimaryRequest(null)}
+            onManageCatalogue={() => setView('asset-catalogue')}
           />
         )
+      case 'asset-catalogue':
+        return <AssetCatalogueManager supabase={supabase} isMobile={isMobile} />
       case 'access-register':
         return (
           <AccessRegister
@@ -1587,6 +1767,7 @@ function AssetsAccessScreen() {
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
       canReviewAssetRequests={caps.canReviewAssetRequests}
+      canManageCatalogue={caps.canManageCatalogue}
     >
       {/* The module's subject switch, above everything. The sidebar still
           navigates within an area; this says WHICH area you are in, which is

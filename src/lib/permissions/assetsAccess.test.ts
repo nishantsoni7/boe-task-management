@@ -26,6 +26,7 @@ import type { EffectivePermission } from './types'
 // action, allowed true or false, plus the level that decided it.
 const ASSETS_ACTIONS = [
   'view', 'create', 'assign', 'edit', 'delete', 'manage', 'manage_access_records',
+  'manage_asset_catalogue',
 ] as const
 
 function perms(allowedActions: string[]): EffectivePermission[] {
@@ -56,6 +57,7 @@ describe('deriveAssetsAccessCapabilities — admin', () => {
       // An admin acts directly, so they raise no requests and review all.
       canRequestAssetChanges: false,
       canReviewAssetRequests: true,
+      canManageCatalogue: true,
     })
   })
 
@@ -408,5 +410,54 @@ describe('d) Manage Access Records grants no asset authority', () => {
     // action key cannot arrive here unnoticed.
     const caps = deriveAssetsAccessCapabilities('member', perms(['view', 'manage_access_records']))
     assert.deepEqual(Object.keys(caps).sort(), Object.keys(NO_ASSETS_ACCESS_CAPABILITIES).sort())
+  })
+})
+
+// ─── Manage Asset Catalogue (20270220000000) ─────────────────────────────────
+//
+// Mirrors can_manage_asset_catalogue(): admin, or the explicit grant. It opens
+// the module and the catalogue and NOTHING else — and no asset authority, in
+// any combination, reaches it.
+
+describe('Manage Asset Catalogue is its own authority, in both directions', () => {
+  test('an admin manages the catalogue with no permission rows at all', () => {
+    assert.equal(deriveAssetsAccessCapabilities('admin', []).canManageCatalogue, true)
+  })
+
+  test('the grant manages the catalogue, whatever the role title', () => {
+    for (const role of ['member', 'manager', 'employee']) {
+      const caps = deriveAssetsAccessCapabilities(role, perms(['view', 'manage_asset_catalogue']))
+      assert.equal(caps.canManageCatalogue, true, role)
+    }
+  })
+
+  test('the grant alone still opens the module, so it can never be a permission with nowhere to act', () => {
+    const caps = deriveAssetsAccessCapabilities('member', perms(['manage_asset_catalogue']))
+    assert.equal(caps.canAccessAssetsModule, true)
+  })
+
+  test('it grants NO asset authority, no inventory sight, no access records, no review', () => {
+    const caps = deriveAssetsAccessCapabilities('member', perms(['view', 'manage_asset_catalogue']))
+    assert.equal(caps.canViewAssetInventory, false)
+    assert.equal(caps.canCreateAsset, false)
+    assert.equal(caps.canAssignAsset, false)
+    assert.equal(caps.canEditAsset, false)
+    assert.equal(caps.canDeleteAsset, false)
+    assert.equal(caps.canManageAssetCustody, false)
+    assert.equal(caps.canManageAccess, false)
+    assert.equal(caps.canReviewAssetRequests, false)
+  })
+
+  test('no combination of the other actions adds up to it', () => {
+    const everythingElse = ASSETS_ACTIONS.filter(a => a !== 'manage_asset_catalogue')
+    for (const role of ['member', 'manager']) {
+      const caps = deriveAssetsAccessCapabilities(role, perms([...everythingElse]))
+      assert.equal(caps.canManageCatalogue, false, role)
+    }
+  })
+
+  test('an ordinary employee has none of it', () => {
+    assert.equal(deriveAssetsAccessCapabilities('member', perms(['view'])).canManageCatalogue, false)
+    assert.equal(NO_ASSETS_ACCESS_CAPABILITIES.canManageCatalogue, false)
   })
 })

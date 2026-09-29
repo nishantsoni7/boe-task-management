@@ -15,7 +15,7 @@
  * fetch is the classic way to produce a filter that silently matches nothing.
  */
 export const ASSET_COLUMNS = [
-  'id', 'asset_code', 'asset_type', 'asset_name', 'serial_no', 'specifications',
+  'id', 'asset_code', 'asset_type', 'product_id', 'asset_name', 'serial_no', 'specifications',
   'location', 'department', 'status', 'condition',
   'brand', 'model', 'description',
   'purchase_date', 'purchase_price', 'vendor', 'invoice_number',

@@ -166,6 +166,9 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   // does not tell an administrator that they are about to hand over — or take
   // back — every employee's login records.
   manage_access_records: 'Manage access records for all employees',
+  // Named for its reach: the categories and products are shared by every
+  // asset in the company, not by the holder's own.
+  manage_asset_catalogue: 'Manage the asset catalogue (categories and products)',
   // Customer Review Outreach. `use` is not protected — it is that module's
   // entry — so only the sign-off authority needs naming here.
   verify:                'Verify and close customer review requests',

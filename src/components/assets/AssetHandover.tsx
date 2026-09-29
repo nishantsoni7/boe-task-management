@@ -325,10 +325,12 @@ export function HandoverSheetDocument({ sheet }: { sheet: HandoverSheet }) {
  * the same way the page around it does.
  */
 export function HandoverSheetOverlay({
-  assignment, asset, employeeName, issuedByName, acceptedByName, formatDateTime, onClose,
+  assignment, asset, categoryName, employeeName, issuedByName, acceptedByName, formatDateTime, onClose,
 }: {
   assignment: EmployeeAsset
   asset: Asset | null
+  /** The category by its current catalogue name. Falls back to the key in words. */
+  categoryName?: string | null
   employeeName?: string | null
   issuedByName?: string | null
   acceptedByName?: string | null
@@ -351,6 +353,7 @@ export function HandoverSheetOverlay({
     assetCode: asset?.asset_code,
     serialNo: asset?.serial_no,
     assetType: asset?.asset_type,
+    categoryName,
     employeeName,
     issuedByName,
     assignedAt: assignment.assigned_at,

@@ -6,12 +6,20 @@ import { colors } from '@/lib/tokens'
 import { AssetModal, AssetField, AssetModalActions, AssetModalError } from './AssetModal'
 import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
 import {
-  ASSET_CATEGORY_OPTIONS,
   ASSET_CONDITION_LABEL,
   ASSET_CONDITION_OPTIONS,
-  humanizeToken,
   type Asset,
 } from '@/lib/assets/types'
+import {
+  categoryLabel,
+  categoryOptions,
+  cataloguePickerState,
+  productAfterCategoryChange,
+  productOptions,
+  type AssetCatalogue,
+  type CataloguePickerState,
+} from '@/lib/assets/catalogue'
+import { useAssetCatalogue } from '@/hooks/useAssetCatalogue'
 import {
   buildProposedFields,
   validateChangeRequest,
@@ -34,15 +42,123 @@ import {
 
 const inputStyle = { width: '100%' } as const
 
-function CategorySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  // An asset whose stored category is not in the standard list still shows its
-  // own value rather than silently snapping to "laptop_desktop" on save.
-  const options = ASSET_CATEGORY_OPTIONS.includes(value) || value === ''
-    ? ASSET_CATEGORY_OPTIONS
-    : [value, ...ASSET_CATEGORY_OPTIONS]
+// Categories and products come from the managed catalogue (20270220000000),
+// never from a list compiled into the app. A new asset is offered ACTIVE
+// entries only; an asset already resting on a retired one keeps it, labelled
+// "(inactive)", so an edit of some other field never re-categorises it. That
+// is exactly what the database accepts (enforce_asset_catalogue_links).
+
+// What the picker says when it cannot offer a choice. Never an empty list that
+// reads as "there are no categories".
+const PICKER_PLACEHOLDER: Record<Exclude<CataloguePickerState, 'ready'>, string> = {
+  loading: 'Loading categories…',
+  error:   'Categories could not be loaded',
+  empty:   'No active categories',
+}
+
+function CategorySelect({ value, onChange, catalogue, originalKey, pickerState }: {
+  value: string
+  onChange: (v: string) => void
+  catalogue: AssetCatalogue
+  /** The asset's category before this form opened, kept offerable even if retired. */
+  originalKey?: string | null
+  pickerState: CataloguePickerState
+}) {
+  if (pickerState !== 'ready') {
+    // Not loaded (or nothing active): show the asset's own category read-only
+    // when it has one, by its best available name, and offer nothing else.
+    return (
+      <select className="boe-input" value={value} disabled style={inputStyle} aria-busy={pickerState === 'loading'}>
+        {value
+          ? <option value={value}>{categoryLabel(catalogue, value)}</option>
+          : <option value="">{PICKER_PLACEHOLDER[pickerState]}</option>}
+      </select>
+    )
+  }
+  const options = categoryOptions(catalogue.categories, originalKey ?? null)
   return (
     <select className="boe-input" value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
-      {options.map(t => <option key={t} value={t}>{humanizeToken(t)}</option>)}
+      {!value && <option value="" disabled>Choose a category</option>}
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+}
+
+/**
+ * The catalogue's state, said out loud above a form that depends on it: a
+ * failed read gets its reason and a Retry; a catalogue with no active category
+ * says who can fix that. Renders nothing when the picker is ready.
+ */
+export function CatalogueNotice({ pickerState, error, onRetry, retrying }: {
+  pickerState: CataloguePickerState
+  error: string | null
+  onRetry: () => void
+  retrying: boolean
+}) {
+  if (pickerState === 'ready') return null
+  if (pickerState === 'loading') {
+    return <div role="status" style={{ fontSize: '12px', color: colors.muted }}>Loading asset categories…</div>
+  }
+  if (pickerState === 'empty') {
+    return (
+      <div role="status" style={{ padding: '10px 12px', borderRadius: '8px', background: colors.raised, fontSize: '12px', color: colors.secondary }}>
+        There are no active asset categories. Someone with Manage Asset Catalogue must add or reactivate one first.
+      </div>
+    )
+  }
+  return (
+    <div role="alert" style={{
+      padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030',
+      fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap',
+    }}>
+      <span>
+        Asset categories could not be loaded, so this form cannot be saved yet.
+        {error ? <span style={{ display: 'block', color: '#9B2C2C', marginTop: '2px' }}>{error}</span> : null}
+      </span>
+      <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={onRetry} disabled={retrying}>
+        {retrying ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
+  )
+}
+
+/** The sentence a blocked save shows, per picker state. */
+const PICKER_BLOCKS_SAVE: Record<Exclude<CataloguePickerState, 'ready'>, string> = {
+  loading: 'Asset categories are still loading. Try again in a moment.',
+  error:   'Asset categories could not be loaded. Press Retry, then save.',
+  empty:   'There are no active asset categories to choose from.',
+}
+
+function ProductSelect({ value, onChange, catalogue, categoryKey, originalId, pickerState }: {
+  value: string
+  onChange: (v: string) => void
+  catalogue: AssetCatalogue
+  categoryKey: string
+  /** The asset's product before this form opened, kept offerable even if retired. */
+  originalId?: string | null
+  pickerState: CataloguePickerState
+}) {
+  if (pickerState !== 'ready') {
+    return (
+      <select className="boe-input" value={value} disabled style={inputStyle}>
+        <option value={value}>{value ? 'Current product' : '—'}</option>
+      </select>
+    )
+  }
+  const options = productOptions(catalogue.products, categoryKey, originalId ?? null)
+  const none = !categoryKey
+    ? 'Choose a category first'
+    : options.length === 0 ? 'No products in this category' : 'No specific product'
+  return (
+    <select
+      className="boe-input"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={inputStyle}
+      disabled={options.length === 0 && !value}
+    >
+      <option value="">{none}</option>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   )
 }
@@ -58,6 +174,8 @@ function ConditionSelect({ value, onChange }: { value: string; onChange: (v: str
 
 type AssetFormState = {
   assetType: string
+  /** A product id, or '' for none. */
+  productId: string
   assetName: string
   serialNo: string
   specifications: string
@@ -70,7 +188,10 @@ type AssetFormState = {
 
 function useAssetForm(initial: Partial<AssetFormState>) {
   const [form, setForm] = useState<AssetFormState>({
-    assetType:      initial.assetType      ?? ASSET_CATEGORY_OPTIONS[0],
+    // A new asset starts with NO category chosen: defaulting to the first entry
+    // in the list is how an asset ends up filed as a laptop by accident.
+    assetType:      initial.assetType      ?? '',
+    productId:      initial.productId      ?? '',
     assetName:      initial.assetName      ?? '',
     serialNo:       initial.serialNo       ?? '',
     specifications: initial.specifications ?? '',
@@ -86,17 +207,52 @@ function useAssetForm(initial: Partial<AssetFormState>) {
 }
 
 function AssetFormFields({
-  form, set, showLocation = true,
+  form, set, catalogue, pickerState, original, showLocation = true,
 }: {
   form: AssetFormState
   set: <K extends keyof AssetFormState>(key: K) => (value: AssetFormState[K]) => void
+  catalogue: AssetCatalogue
+  pickerState: CataloguePickerState
+  /** The asset as it was when the form opened — absent when creating. */
+  original?: { assetType: string; productId: string }
   showLocation?: boolean
 }) {
+  // Changing the category drops a product that belongs to the old one, so the
+  // form can never submit a pairing the database would refuse.
+  const changeCategory = (key: string) => {
+    set('assetType')(key)
+    set('productId')(productAfterCategoryChange(catalogue.products, form.productId, key))
+  }
+  // Picking a product names a new asset after it when nothing has been typed
+  // yet. The individual item can still be named anything.
+  const changeProduct = (id: string) => {
+    set('productId')(id)
+    const product = catalogue.products.find(p => p.id === id)
+    if (product && !form.assetName.trim()) set('assetName')(product.name)
+  }
   return (
     <>
-      <AssetField label="Category">
-        <CategorySelect value={form.assetType} onChange={set('assetType')} />
-      </AssetField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+        <AssetField label="Category">
+          <CategorySelect
+            value={form.assetType}
+            onChange={changeCategory}
+            catalogue={catalogue}
+            originalKey={original?.assetType ?? null}
+            pickerState={pickerState}
+          />
+        </AssetField>
+        <AssetField label="Product (optional)">
+          <ProductSelect
+            value={form.productId}
+            onChange={changeProduct}
+            catalogue={catalogue}
+            pickerState={pickerState}
+            categoryKey={form.assetType}
+            originalId={original && original.assetType === form.assetType ? original.productId : null}
+          />
+        </AssetField>
+      </div>
       <AssetField label="Asset Name">
         <input className="boe-input" value={form.assetName} onChange={e => set('assetName')(e.target.value)} placeholder="e.g. Dell XPS 15" style={inputStyle} />
       </AssetField>
@@ -138,14 +294,37 @@ function AssetFormFields({
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
+/**
+ * The catalogue as the three forms need it: the data, what the picker may
+ * show, the notice to render above the form, and — when a save must not go
+ * ahead — the one sentence that says why.
+ */
+function useCatalogueForForm(supabase: SupabaseClient) {
+  const store = useAssetCatalogue(supabase)
+  const pickerState = cataloguePickerState(store, store.catalogue)
+  const notice = (
+    <CatalogueNotice
+      pickerState={pickerState}
+      error={store.error}
+      onRetry={() => { store.refresh() }}
+      retrying={store.loading}
+    />
+  )
+  const blocksSave = pickerState === 'ready' ? null : PICKER_BLOCKS_SAVE[pickerState]
+  return { catalogue: store.catalogue, pickerState, notice, blocksSave }
+}
+
 export function CreateAssetModal({
   supabase, onClose, onSaved,
 }: { supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
   const { form, set } = useAssetForm({})
+  const { catalogue, pickerState, notice, blocksSave } = useCatalogueForForm(supabase)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
+    if (blocksSave) { setError(blocksSave); return }
+    if (!form.assetType) { setError('Choose a category.'); return }
     if (!form.assetName.trim()) { setError('Asset Name is required.'); return }
     if (saving) return
     setSaving(true)
@@ -154,6 +333,7 @@ export function CreateAssetModal({
     // (20260726000000) and any value a client supplied would be discarded.
     const { error: dbError } = await supabase.from('assets').insert({
       asset_type:     form.assetType,
+      product_id:     form.productId || null,
       asset_name:     form.assetName.trim(),
       serial_no:      form.serialNo.trim() || null,
       specifications: form.specifications.trim() || null,
@@ -172,7 +352,8 @@ export function CreateAssetModal({
 
   return (
     <AssetModal title="Create Asset" onClose={onClose} width={520}>
-      <AssetFormFields form={form} set={set} />
+      {notice}
+      <AssetFormFields form={form} set={set} catalogue={catalogue} pickerState={pickerState} />
       {error && <AssetModalError message={error} />}
       <AssetModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Create Asset" />
     </AssetModal>
@@ -208,6 +389,7 @@ export function EditAssetModal({
 }) {
   const { form, set } = useAssetForm({
     assetType:      asset.asset_type,
+    productId:      asset.product_id ?? '',
     assetName:      asset.asset_name,
     serialNo:       asset.serial_no ?? '',
     specifications: asset.specifications ?? '',
@@ -217,6 +399,10 @@ export function EditAssetModal({
     condition:      asset.condition ?? '',
     location:       asset.location ?? '',
   })
+  // Editing does not need the catalogue to SAVE: while it is unavailable the
+  // category and product stay read-only at the asset's own values, so an edit
+  // of another field sends them back unchanged.
+  const { catalogue, pickerState, notice } = useCatalogueForForm(supabase)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -229,6 +415,7 @@ export function EditAssetModal({
       .from('assets')
       .update({
         asset_type:     form.assetType,
+        product_id:     form.productId || null,
         asset_name:     form.assetName.trim(),
         serial_no:      form.serialNo.trim() || null,
         specifications: form.specifications.trim() || null,
@@ -263,7 +450,14 @@ export function EditAssetModal({
 
   return (
     <AssetModal title="Edit Asset" onClose={onClose} width={520}>
-      <AssetFormFields form={form} set={set} />
+      {notice}
+      <AssetFormFields
+        form={form}
+        set={set}
+        catalogue={catalogue}
+        pickerState={pickerState}
+        original={{ assetType: asset.asset_type, productId: asset.product_id ?? '' }}
+      />
       {error && <AssetModalError message={error} />}
       <AssetModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
     </AssetModal>
@@ -277,6 +471,7 @@ export function EditAssetModal({
 export function RequestEditModal({
   asset, supabase, onClose, onSubmitted,
 }: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSubmitted: () => void }) {
+  const { catalogue, pickerState, notice } = useCatalogueForForm(supabase)
   const [assetType, setAssetType] = useState(asset.asset_type)
   const [assetName, setAssetName] = useState(asset.asset_name)
   const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
@@ -325,8 +520,9 @@ export function RequestEditModal({
         An administrator reviews this request before anything changes. Only the four fields below
         can be proposed this way.
       </div>
+      {notice}
       <AssetField label="Category">
-        <CategorySelect value={assetType} onChange={setAssetType} />
+        <CategorySelect value={assetType} onChange={setAssetType} catalogue={catalogue} originalKey={asset.asset_type} pickerState={pickerState} />
       </AssetField>
       <AssetField label="Asset Name">
         <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} style={inputStyle} />

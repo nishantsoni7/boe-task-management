@@ -275,3 +275,66 @@ describe('sortAssetRows', () => {
     assert.deepEqual(rows.map(r => r.asset.id), before)
   })
 })
+
+// ─── The catalogue (20270220000000): product filter, names, and combining ────
+
+describe('filtering by the catalogue', () => {
+  const T = '2026-09-27T00:00:00Z'
+  const catalogue = {
+    categories: [
+      { key: 'laptop_desktop', name: 'Computers', is_active: true, created_at: T, created_by: null, updated_at: T, updated_by: null },
+      { key: 'workshop_equipment', name: 'Workshop Equipment', is_active: true, created_at: T, created_by: null, updated_at: T, updated_by: null },
+    ],
+    products: [
+      { id: 'p-lat', category_key: 'laptop_desktop', name: 'Dell Latitude 5420', is_active: true, created_at: T, created_by: null, updated_at: T, updated_by: null },
+    ],
+  }
+  const assets = [
+    asset({ id: 'a1', asset_type: 'laptop_desktop', product_id: 'p-lat', status: 'assigned' }),
+    asset({ id: 'a2', asset_type: 'laptop_desktop', product_id: 'p-lat', status: 'available', asset_name: 'Spare Latitude' }),
+    asset({ id: 'a3', asset_type: 'laptop_desktop', product_id: null, status: 'assigned', asset_name: 'Old HP' }),
+    asset({ id: 'a4', asset_type: 'workshop_equipment', status: 'available', asset_name: 'Drill', brand: null, model: null }),
+  ]
+  const custody = [
+    assignment({ id: 'e1', asset_id: 'a1', employee_id: 'u1' }),
+    assignment({ id: 'e3', asset_id: 'a3', employee_id: 'u2' }),
+  ]
+  const rows = buildAssetRows(assets, custody, lookup, NOW, catalogue)
+  const ids = (f: Partial<AssetFilters>) => filterAssetRows(rows, withFilters(f)).map(r => r.asset.id)
+
+  test('each row carries the CURRENT category and product names', () => {
+    assert.equal(rows[0].categoryName, 'Computers')
+    assert.equal(rows[0].productName, 'Dell Latitude 5420')
+    assert.equal(rows[2].productName, null)
+  })
+
+  test('the product filter narrows to that product only', () => {
+    assert.deepEqual(ids({ productId: 'p-lat' }), ['a1', 'a2'])
+  })
+
+  test('category + status + person combine as AND', () => {
+    assert.deepEqual(ids({ category: 'laptop_desktop' }), ['a1', 'a2', 'a3'])
+    assert.deepEqual(ids({ category: 'laptop_desktop', status: 'available' }), ['a2'])
+    assert.deepEqual(ids({ category: 'laptop_desktop', employeeId: 'u2' }), ['a3'])
+    assert.deepEqual(ids({ category: 'laptop_desktop', productId: 'p-lat', employeeId: 'u1' }), ['a1'])
+    assert.deepEqual(ids({ category: 'workshop_equipment', employeeId: 'u1' }), [])
+  })
+
+  test('search finds a category or product by the name on screen, not only by its key', () => {
+    assert.deepEqual(ids({ search: 'workshop' }), ['a4'])
+    assert.deepEqual(ids({ search: 'latitude priya' }), ['a1'])
+    assert.deepEqual(ids({ search: 'computers' }), ['a1', 'a2', 'a3'])
+  })
+
+  test('the product filter counts as a filter and is cleared with the rest', () => {
+    const f = withFilters({ productId: 'p-lat' })
+    assert.equal(hasActiveFilters(f), true)
+    assert.equal(activeFilterCount(f), 1)
+    assert.deepEqual(filterAssetRows(rows, EMPTY_ASSET_FILTERS).length, 4)
+  })
+
+  test('with no catalogue loaded, a row still names its category in words', () => {
+    const bare = buildAssetRows([asset({ asset_type: 'mouse_keyboard' })], [], lookup, NOW)
+    assert.equal(bare[0].categoryName, 'Mouse Keyboard')
+  })
+})

@@ -25,7 +25,7 @@
 // evidence. An assignment not yet accepted has no snapshot, so it shows the
 // current terms: that is what the employee is about to be asked to accept.
 
-import { assetConditionLabel } from './types'
+import { assetConditionLabel, humanizeToken } from './types'
 
 /** The heading the terms appear under, on screen and on the printed sheet. */
 export const ASSET_HANDOVER_TERMS_HEADING = 'Asset Handover Terms'
@@ -91,7 +91,19 @@ export type HandoverSheetInput = {
   assetName: string | null | undefined
   assetCode: string | null | undefined
   serialNo: string | null | undefined
+  /** The stored category KEY (assets.asset_type). */
   assetType?: string | null
+  /**
+   * The category's CURRENT catalogue name (categoryLabel()). Printed in
+   * preference to the key, so a sheet generated after a rename says what the
+   * category is called now. When absent, the key is printed in words
+   * ("laptop_desktop" → "Laptop Desktop"), never raw.
+   *
+   * Only the printout changes: a sheet is generated from the records each time
+   * it is opened and is never stored, and the signed acceptance itself
+   * (accepted_terms, acceptance_version, accepted_at) is untouched.
+   */
+  categoryName?: string | null
   employeeName: string | null | undefined
   issuedByName?: string | null
   assignedAt: string | null | undefined
@@ -151,7 +163,9 @@ export function buildHandoverSheet(input: HandoverSheetInput): HandoverSheet {
     { label: 'Asset ID',         value: value(input.assetCode) },
     { label: 'Serial Number',    value: value(input.serialNo) },
   ]
-  if (input.assetType) assetLines.push({ label: 'Category', value: value(input.assetType) })
+  if (input.assetType) {
+    assetLines.push({ label: 'Category', value: value(input.categoryName?.trim() || humanizeToken(input.assetType)) })
+  }
   assetLines.push(
     { label: 'Issued To',        value: value(input.employeeName) },
     { label: 'Issued By',        value: value(input.issuedByName) },

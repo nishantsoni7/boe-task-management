@@ -582,6 +582,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270215000100_attendance_request_notification_types.sql',
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
       '20270217000000_order_submission_cleanup_number_choice.sql',
+      '20270220000000_asset_catalogue.sql',
     ])
   })
 

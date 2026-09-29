@@ -701,6 +701,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
       if (f === 'supabase/migrations/20270215000000_attendance_requests.sql') continue
       if (f === 'supabase/migrations/20270215000100_attendance_request_notification_types.sql') continue
+      // The managed asset catalogue (20270220000000), held by
+      // src/lib/permissions/manageAssetCatalogue.test.ts and
+      // supabase/tests/asset_catalogue_assertions.sql.
+      if (f === 'supabase/migrations/20270220000000_asset_catalogue.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2214,6 +2218,59 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   const CLEANUP_NUMBER_CHOICE_MIGRATION = 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql'
 
+  // Assets & Access: the managed asset catalogue and the owner overview
+  // (20270220000000). Asset screens, asset helpers and the one new protected
+  // action; the Orders / Finance / Tasks entries are the migration-sequence
+  // pins and nothing else.
+  const ALLOWED_ASSET_CATALOGUE = new Set([
+    'src/app/assets-access/page.tsx',
+    'src/app/assets-access/[id]/page.tsx',
+    'src/components/assets/AssetChangeModals.tsx',
+    'src/components/assets/AssetCatalogueManager.tsx',
+    'src/components/assets/AssetOverviewParts.tsx',
+    'src/components/assets/AssetHandover.tsx',
+    'src/components/assets/assetCatalogueForms.render.test.tsx',
+    'src/components/layout/AssetsLayout.tsx',
+    'src/hooks/useAssetCatalogue.ts',
+    'src/lib/assets/assetFilters.ts',
+    'src/lib/assets/assetFilters.test.ts',
+    'src/lib/assets/catalogue.ts',
+    'src/lib/assets/catalogue.test.ts',
+    'src/lib/assets/changeRequests.ts',
+    'src/lib/assets/changeRequests.test.ts',
+    'src/lib/assets/detail.ts',
+    'src/lib/assets/errors.ts',
+    'src/lib/assets/handover.ts',
+    'src/lib/assets/handover.test.ts',
+    'src/lib/assets/overview.ts',
+    'src/lib/assets/overview.test.ts',
+    'src/lib/assets/types.ts',
+    'src/lib/assets/viewRouting.ts',
+    'src/lib/assets/viewRouting.test.ts',
+    'src/lib/permissions/accessControlChanges.ts',
+    'src/lib/permissions/assetsAccess.ts',
+    'src/lib/permissions/assetsAccess.test.ts',
+    'src/lib/permissions/enforcement.ts',
+    'src/lib/permissions/levels.ts',
+    'src/lib/permissions/levels.test.ts',
+    'src/lib/permissions/manageAssetCatalogue.test.ts',
+    'src/lib/permissions/modules.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'supabase/migrations/20270220000000_asset_catalogue.sql',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2265,6 +2322,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
+    !ALLOWED_ASSET_CATALOGUE.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -2480,7 +2538,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements/.test(f),
+      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2613,7 +2671,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file)
         || ALLOWED_ATTENDANCE_REQUESTS.has(file)
         || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file)
-        || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file),
+        || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file)
+        || ALLOWED_ASSET_CATALOGUE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
