@@ -701,6 +701,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
       if (f === 'supabase/migrations/20270215000000_attendance_requests.sql') continue
       if (f === 'supabase/migrations/20270215000100_attendance_request_notification_types.sql') continue
+      // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
+      // guard re-emitted, held by its own suite.
+      if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2153,6 +2156,32 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270215000100_attendance_request_notification_types.sql',
   ])
 
+  /**
+   * TEST DATA CLEANUP FINISHES AFTER ITS FILES ARE GONE (20270216000000).
+   *
+   * One guard re-emitted so a cleanup's own ON DELETE SET NULL is not refused
+   * (Order 0526), the cleanup route never releasing a resumed claim, their
+   * suites, and the one-line inventory pins the migration moved.
+   */
+  const ALLOWED_ADVANCE_EXCEPTION_CLEANUP = new Set([
+    'src/app/api/orders/test-data-cleanup/route.ts',
+    'src/lib/orders/testDataCleanupAdvanceExceptionRetry.test.ts',
+    // migration inventories: one line each
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+  const ADVANCE_EXCEPTION_CLEANUP_MIGRATION = 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql'
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2210,7 +2239,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== LEGACY_ADVANCE_DOORS_CLOSED_MIGRATION &&
     !ALLOWED_RESOLVERS_NOT_FOR_ANON.has(f) &&
     f !== DEFINER_SEARCH_PATH_MIGRATION &&
-    f !== RESOLVERS_NOT_FOR_ANON_MIGRATION
+    f !== RESOLVERS_NOT_FOR_ANON_MIGRATION &&
+    !ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(f) &&
+    f !== ADVANCE_EXCEPTION_CLEANUP_MIGRATION
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2415,7 +2446,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|announcements/.test(f),
+      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2546,7 +2577,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file)
         || ALLOWED_DEFINER_SEARCH_PATH.has(file)
         || ALLOWED_RESOLVERS_NOT_FOR_ANON.has(file)
-        || ALLOWED_ATTENDANCE_REQUESTS.has(file),
+        || ALLOWED_ATTENDANCE_REQUESTS.has(file)
+        || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
