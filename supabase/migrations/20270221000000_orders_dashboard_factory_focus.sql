@@ -678,7 +678,10 @@ begin
     end if;
     patched := patched + 1;
   end loop;
-  if patched <> 3 then raise exception 'PATCH: expected the three PI detail functions, found %', patched; end if;
+  -- order_pi_version_pdf_detail (20270203000000) is not in every database: where it is absent there is
+  -- nothing to patch, and a later migration that adds it must ask can_read_order_detail itself. The
+  -- other two must exist.
+  if patched not in (2, 3) then raise exception 'PATCH: expected the PI detail functions, found %', patched; end if;
 end $$;
 
 -- (b) A scope is never permission to generate or retry a document.
