@@ -67,7 +67,7 @@ export function PiHighlightRemarkView({
           <textarea
             id={id}
             className="pi-detail-highlight-input"
-            rows={3}
+            rows={bare ? 2 : 3}
             value={draft}
             placeholder={HIGHLIGHT_REMARK_PLACEHOLDER}
             disabled={saving}

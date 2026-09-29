@@ -63,10 +63,19 @@ describe('Supporting details', () => {
 describe('Internal order details form', () => {
   const src = read('src/components/orders/PiOrderDetailsSection.tsx')
 
-  test('grouped: dates, assignment, production, commission, payment — each under its own heading', () => {
-    for (const title of ['Order dates', 'Order assignment', 'Production details', 'Commission', 'Payment']) {
-      assert.ok(src.includes(`title="${title}"`), title)
+  test('three groups, by when a value is needed — the same in the read view and the form', () => {
+    for (const title of ['Required to submit', 'Needed when the Order is created', 'Optional']) assert.ok(src.includes(`'${title}'`), title)
+    for (const title of ['REQUIRED_TITLE', 'LATER_TITLE', 'OPTIONAL_TITLE']) {
+      assert.equal(src.split(`<FormGroup title={${title}}`).length - 1, 2, `${title}: read and edit`)
     }
+    // The later and optional groups share one row, in both.
+    assert.equal(src.split('className="pi-form-pair"').length - 1, 2)
+  })
+
+  test('fields are content-sized: a date takes a quarter, not half the card', () => {
+    assert.ok(src.includes('order_confirmation_date: 3,') && src.includes('due_date: 3,'))
+    assert.equal(src.split('required span={3}').length - 1, 3, 'the two dates and the commission figure')
+    assert.ok(src.includes('label="Percentage of" required span={8}'))
   })
 
   test('required is a programmatic state, not a native one that would block a draft save', () => {
@@ -81,7 +90,7 @@ describe('Internal order details form', () => {
     assert.ok(!salesperson.includes('required'))
     const lead = src.slice(src.indexOf('id={orderDetailsInputId(\'lead_source\')} label='), src.indexOf('<select id={orderDetailsInputId(\'lead_source\')}'))
     assert.ok(!lead.includes('required'))
-    assert.ok(src.includes('Needed when the Order is created, not to submit this PI.'))
+    assert.ok(src.includes("const LATER_TITLE = 'Needed when the Order is created'"))
   })
 
   test('no billing terms field, no per-field pill', () => {
@@ -133,10 +142,15 @@ describe('the page and the stylesheet', () => {
     assert.ok(!/localStorage|sessionStorage|useEffect/.test(cardBody))
   })
 
-  test('two columns collapse to one at the phone breakpoint, which is declared last', () => {
-    const at = css.lastIndexOf('@media (max-width: 560px) {\n  .pi-form-card')
-    assert.ok(at > css.indexOf('.pi-form-grid {'))
-    assert.match(css.slice(at), /\.pi-form-grid,\s*\.pi-attach-grid,\s*\.pi-form-facts \{\s*grid-template-columns: minmax\(0, 1fr\)/)
+  test('the grid answers to the card, not the screen: narrower at 720px, one column at 420px, declared after the spans', () => {
+    const block = css.slice(css.indexOf('.pi-form-card {'), css.indexOf('.pi-detail-highlight--bare {'))
+    assert.match(block, /\.pi-form-card \{\s*container-type: inline-size;/)
+    assert.match(block, /\.pi-form-card > \* \{\s*max-width: 920px;/)
+    assert.match(block, /grid-template-columns: repeat\(12, minmax\(0, 1fr\)\)/)
+    const narrow = block.indexOf('@container (max-width: 720px)')
+    const phone = block.indexOf('@container (max-width: 420px)')
+    assert.ok(block.indexOf('.pi-form-grid > .pi-span-3 {') < narrow && narrow < phone)
+    assert.match(block.slice(phone), /\.pi-span-6,\s*\.pi-form-grid > \.pi-span-7 \{ grid-column: span 12; \}/)
     assert.match(css, /\.pi-form-input:focus-visible/)
   })
 })

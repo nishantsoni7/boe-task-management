@@ -2,8 +2,17 @@
 // control, a restrained red star for what Submit for approval needs, one line of
 // help, and the field's own error. No state and no rules — every requirement is
 // decided by piCompletion.ts and the database, and drawn here as `required`.
+//
+// LAYOUT. A form is a 12-column grid inside its card; each field asks for the
+// columns its content needs (a date 3, a select 6, a paragraph 12) instead of
+// being stretched to a half or the whole card. The grid answers to the CARD's
+// width, not the screen's, so the same form is right in the wide completion view,
+// the narrower split view, a tablet and a phone (see globals.css).
 
 export const REQUIRED_LEGEND = 'Required to submit for approval'
+
+/** How many of the grid's 12 columns a field takes when there is room. */
+export type Span = 3 | 4 | 5 | 6 | 7 | 8 | 12
 
 /** The one explanation of the star, drawn once at the top of a form. */
 export function RequiredLegend() {
@@ -19,30 +28,46 @@ export function RequiredMark() {
   return <span className="pi-form-req" aria-hidden="true">*</span>
 }
 
-export function FormGroup({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+/**
+ * A titled group. `aside` is one small status on the title's right (a count of
+ * what is still needed) — never a paragraph.
+ */
+export function FormGroup({ title, note, aside, children }: {
+  title: string
+  note?: string
+  aside?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <section className="pi-form-group" aria-label={title}>
       <div className="pi-form-group-head">
         <h3 className="pi-form-group-title">{title}</h3>
         {note && <p className="pi-form-group-note">{note}</p>}
+        {aside}
       </div>
       {children}
     </section>
   )
 }
 
+/** The grid a group's fields sit in. */
+export function FormGrid({ children, as: Tag = 'div' }: { children: React.ReactNode; as?: 'div' | 'dl' }) {
+  return <Tag className="pi-form-grid">{children}</Tag>
+}
+
 /** A top-aligned label, the control, one line of help, and the error. */
-export function FormField({ id, label, required = false, optional = false, help, error, children }: {
+export function FormField({ id, label, required = false, optional = false, span = 12, help, error, children }: {
   id: string
   label: string
   required?: boolean
   optional?: boolean
+  span?: Span
   help?: React.ReactNode
   error?: string | null
   children: React.ReactNode
 }) {
   return (
-    <div className="pi-form-field">
+    <div className={`pi-form-field pi-span-${span}`}>
       <label htmlFor={id} className="pi-form-label">
         {label}
         {required && <RequiredMark />}
@@ -62,13 +87,15 @@ export function describedBy(id: string, hasHelp: boolean, hasError: boolean): st
 }
 
 /**
- * A choice group: one legend, and options as comfortable cards. A real fieldset
- * with radios in it, so arrow keys, the group name and the checked state come
- * from the platform. Nothing is checked until the person chooses.
+ * A choice group: one legend, and options as content-sized cards side by side.
+ * A real fieldset with radios in it, so arrow keys, the group name and the
+ * checked state come from the platform. Nothing is checked until the person
+ * chooses.
  */
-export function ChoiceGroup({ legend, required = false, help, error, describedById, children }: {
+export function ChoiceGroup({ legend, required = false, span = 12, help, error, describedById, children }: {
   legend: string
   required?: boolean
+  span?: Span
   help?: React.ReactNode
   error?: string | null
   describedById: string
@@ -76,7 +103,7 @@ export function ChoiceGroup({ legend, required = false, help, error, describedBy
 }) {
   return (
     <fieldset
-      className="pi-form-choice-group"
+      className={`pi-form-choice-group pi-span-${span}`}
       role="radiogroup"
       aria-required={required || undefined}
       aria-invalid={error ? true : undefined}
