@@ -313,6 +313,43 @@ describe('the migration is one file, correctly sequenced', () => {
       // here.
       '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
       '20261225000000_order_submission_pi_header_terms_and_fabric.sql',
+      // 20261226000000 → 20270220000000 — Orders, Finance, Expenses, Announcements,
+      // Attendance, security hardening and the asset catalogue. This list stopped
+      // being extended at 20261226, so every branch failed here; they are named
+      // together on 2026-09-29. None of the 31 files mentions customer_review
+      // (checked with a case-insensitive grep), so none reaches anything this file
+      // asserts.
+      '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      '20261227000000_order_fabric_finish_approvals.sql',
+      '20261228000000_personal_module_order.sql',
+      '20261229000000_order_operations_handoff.sql',
+      '20261230000000_order_0524_operations_handoff_for_existing_approval.sql',
+      '20270110000000_announcements.sql',
+      '20270111120000_finance_payment_reference_survives_verification.sql',
+      '20270112000000_order_document_submissions.sql',
+      '20270113000000_order_submission_revised_pi_promotes_on_operations_acceptance.sql',
+      '20270114000000_order_submission_numbering_at_conversion_and_exception_reasons.sql',
+      '20270115000000_order_submission_pi_edit_revisions.sql',
+      '20270116000000_order_pi_revision_in_force_at_admin_approval.sql',
+      '20270117000000_order_finance_guards_run_as_owner.sql',
+      '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
+      '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+      '20270122000000_order_submission_internal_details.sql',
+      '20270123000000_order_submission_internal_details_required_on_submit.sql',
+      '20270201000000_order_pi_version_pdf_order_number.sql',
+      '20270205000000_order_production_needs_order_level_exception.sql',
+      '20270205120000_expense_reimbursements_and_bills.sql',
+      '20270210000000_order_submission_highlight_remark.sql',
+      '20270211000000_order_submission_sales_order_details.sql',
+      '20270211120000_expense_payment_source_required.sql',
+      '20270212000000_order_submission_legacy_advance_doors_closed.sql',
+      '20270213000000_security_definer_search_path_pins_pg_temp.sql',
+      '20270214000000_permission_resolvers_are_not_for_anon.sql',
+      '20270215000000_attendance_requests.sql',
+      '20270215000100_attendance_request_notification_types.sql',
+      '20270216000000_test_data_cleanup_pi_version_set_null.sql',
+      '20270217000000_order_submission_cleanup_number_choice.sql',
+      '20270220000000_asset_catalogue.sql',
     ])
   })
 
