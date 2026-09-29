@@ -11,8 +11,19 @@ visibility scope reveals Orders and never a payment. Everybody's default scope i
 until the owner changes a setting.
 
 The code degrades to an explicit error state ("The dashboard could not be
-loaded") when the read is missing, never to zeros. **Apply the migration first,
-then deploy.**
+loaded") when the read is missing, never to zeros.
+
+**Order of release — fixed:**
+
+1. **Apply the reviewed migration `20270221000000` BEFORE the redesigned dashboard reaches production**
+   (before the code deploys). The new dashboard calls `orders_dashboard_summary()`; deployed first, it
+   shows the error state until the migration lands. The migration also starts fabric/finish tracking at
+   the moment it is applied, so it must precede the first real order.
+2. Deploy the code.
+3. **Turn the test-data phase off BEFORE the first real order** (it may be done before or after 1–2, but
+   never after a real order exists — the flag cannot be flipped later).
+
+This review changes no production setting and applies no migration.
 
 ## Blocker to settle before rollout: the test-data phase
 
@@ -72,16 +83,17 @@ shows follows Order visibility.
 
 ## Rollout
 
-1. Settle the **test-data phase** above.
-2. **Apply the migration** (`supabase db push` from the worktree, after the usual
+1. **Apply the migration** — first, before the code deploys (see the order of release above) (`supabase db push` from the worktree, after the usual
    dry run against a local copy of production history). Its last block verifies the
    objects, that no client role can read the new tables, and that the Finance policy
    moved off the scope-aware rule.
-3. **Smoke check as Nishant**: `select jsonb_object_keys(public.orders_dashboard_summary());`
+2. **Smoke check as Nishant**: `select jsonb_object_keys(public.orders_dashboard_summary());`
    with his `request.jwt.claims` → `today, now, viewer, alignment_reviewer, groups,
    gaps, revenue, factory_focus`.
-4. **Deploy the code.** Until then the old dashboard keeps working: it reads only
-   tables this migration does not change.
+3. **Deploy the code**, only after the migration is applied and smoke-checked. Until then the old dashboard
+   keeps working: it reads only tables this migration does not change.
+4. **Turn the test-data phase off** (permanently) — **before the first real order**; see the blocker above.
+   Do not create a real order until this is done.
 5. In Control Center → **Order Visibility**, set each sales candidate's scope
    (default: their own orders). Check one candidate: their direct API reads, the
    dashboard and the Finance lists all stay inside the choice, and no colleague's
