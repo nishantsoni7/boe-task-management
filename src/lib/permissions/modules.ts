@@ -352,6 +352,12 @@ registerModule({
     // without this; nobody else does, whatever they hold: Order visibility,
     // view_all, approve_order and Finance verification all stop short of it.
     { actionKey: 'view_pi_commission', displayName: 'View PI Middleman Commission' },
+    // Sight of the PANIC MODE Orders on the Orders dashboard — the Orders the
+    // owner has singled out as needing everyone's attention now. Registered by
+    // 20270221000000. Read-only: only the owner account can designate or remove
+    // one, and no grant changes that. Confers no Order visibility of its own,
+    // and an administrator does not have it unless it is granted here.
+    { actionKey: 'view_panic_mode', displayName: 'View PANIC MODE Orders' },
     // Company-wide sight of every order. Until 20260903000000, plain 'view'
     // carried this through the blanket SELECT policies added by 20260685000000
     // and 20260686000000 — module entry and seeing the whole company were the

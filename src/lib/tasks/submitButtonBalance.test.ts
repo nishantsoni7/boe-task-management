@@ -69,9 +69,9 @@ describe('1-2. no saturated fill, no blue shadow', () => {
     // Tailwind blue-50 / 200 / 800 — the same trio the Orders status chips and
     // the permissions role badges already wear. Nothing invented here.
     for (const [hex, where] of [
-      ['#EFF6FF', 'src/app/orders/page.tsx'],
-      ['#1E40AF', 'src/app/orders/page.tsx'],
-      ['#BFDBFE', 'src/app/orders/page.tsx'],
+      ['#EFF6FF', 'src/app/orders/all/page.tsx'],
+      ['#1E40AF', 'src/app/orders/all/page.tsx'],
+      ['#BFDBFE', 'src/app/orders/all/page.tsx'],
     ] as const) {
       assert.ok(read(where).includes(hex), `${hex} must already exist in ${where}`)
     }

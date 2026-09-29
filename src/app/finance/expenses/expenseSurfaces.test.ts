@@ -705,6 +705,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // src/lib/permissions/manageAssetCatalogue.test.ts and
       // supabase/tests/asset_catalogue_assertions.sql.
       if (f === 'supabase/migrations/20270220000000_asset_catalogue.sql') continue
+      // The Orders dashboard (20270221000000): PANIC MODE, the dashboard read and
+      // the orders.view_panic_mode action, held by src/lib/orders/orderDashboardSummary.test.ts
+      // and supabase/tests/orders_dashboard_assertions.sql.
+      if (f === 'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2303,6 +2307,48 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/taskCreateFlow.test.ts',
   ])
 
+  // The Orders dashboard redesign (2026-09-29, 20270221000000): what needs
+  // intervention, revenue and PANIC MODE. One new migration, the dashboard read
+  // and its two write paths, the page and its three components, the
+  // permission registry entry (orders.view_panic_mode) and the suites that hold
+  // it. It reaches no payment entry, allocation, balance or Finance screen: the
+  // Finance cards it removes are removed from the Orders dashboard only.
+  const ALLOWED_ORDERS_DASHBOARD = new Set([
+    'src/app/globals.css',
+    'src/app/orders/page.tsx',
+    'src/components/orders/dashboard/AttentionOverview.tsx',
+    'src/components/orders/dashboard/PanicModeSection.tsx',
+    'src/components/orders/dashboard/RevenueSection.tsx',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/operationsHandoff.test.ts',
+    'src/lib/orders/orderDashboard.ts',
+    'src/lib/orders/orderDashboardSummary.test.ts',
+    'src/lib/orders/orderDashboardSummary.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderRequestRetirement.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/orders/verifiedPaymentGateSchema.test.ts',
+    'src/lib/permissions/accessControlChanges.ts',
+    'src/lib/permissions/levels.test.ts',
+    'src/lib/permissions/levels.ts',
+    'src/lib/permissions/modules.ts',
+    'src/lib/permissions/uiEnforcement.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/submitButtonBalance.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql',
+    'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2366,7 +2412,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(f) &&
     f !== ADVANCE_EXCEPTION_CLEANUP_MIGRATION &&
     !ALLOWED_CLEANUP_NUMBER_CHOICE.has(f) &&
-    f !== CLEANUP_NUMBER_CHOICE_MIGRATION
+    f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
+    !ALLOWED_ORDERS_DASHBOARD.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2571,7 +2618,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue/.test(f),
+      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -2706,7 +2753,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file)
         || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file)
         || ALLOWED_ASSET_CATALOGUE.has(file)
-        || ALLOWED_NEW_TASK_SILENT.has(file),
+        || ALLOWED_NEW_TASK_SILENT.has(file)
+        || ALLOWED_ORDERS_DASHBOARD.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

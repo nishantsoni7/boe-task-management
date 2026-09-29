@@ -114,7 +114,7 @@ describe('no Order Request navigation remains', () => {
   test('the Orders dashboard offers no card into the retired workflow', () => {
     const cards = readCode('src/lib/orders/orderDashboard.ts')
     const hrefs = [...cards.matchAll(/href: '([^']+)'/g)].map(m => m[1])
-    assert.ok(hrefs.length >= 4, 'the dashboard still offers its quick access')
+    assert.ok(hrefs.length >= 1, 'the dashboard still offers its quick access')
     for (const href of hrefs) {
       assert.equal(href.startsWith('/orders/requests'), false, `${href} leads into the retired workflow`)
     }

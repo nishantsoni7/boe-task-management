@@ -158,6 +158,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // because the whole point of the separate table (20270122000000) is that no
   // wider Orders authority reaches it; a preset handing it out would undo that.
   'view_pi_commission',
+  // Seeing the PANIC MODE Orders on the Orders dashboard. Protected because it
+  // is a per-person disclosure the owner decides one grant at a time (and an
+  // administrator does not carry it), so a preset must not hand it out.
+  // Registered by 20270221000000.
+  'view_panic_mode',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -233,6 +238,8 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   align_production: 'view',
   // And again: the commission table is behind the same Orders module gate.
   view_pi_commission: 'view',
+  // And again: the dashboard sits behind the same Orders module gate.
+  view_panic_mode: 'view',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use

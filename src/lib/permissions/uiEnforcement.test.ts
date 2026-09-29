@@ -160,15 +160,20 @@ describe('Orders controls ask the capability helper', () => {
     assert.ok(source.includes('canRequestOrderChange(actingAsAdmin ? profile : { role: \'member\' }, order, mayManageOrders)'))
   })
 
-  test('the money cards inside Orders need Finance capabilities', () => {
+  test('the Orders dashboard draws no Finance card, and its queue links are one capability decision', () => {
+    // The four money cards (Payments, Awaiting Verification, Available Funds,
+    // Running Value) were removed by the dashboard redesign (20270221000000), so
+    // there is no Finance capability left for the page to gate them on.
     const source = read(ORDERS_LIST)
-    assert.ok(source.includes('orderDashboardCards({ counts: stats, orders: ordersCaps, finance: financeCaps })'),
-      'which cards are drawn must be one decision, made from capabilities')
+    assert.ok(source.includes('orderDashboardCards({ counts, orders: ordersCaps })'),
+      'which queue links are drawn must be one decision, made from capabilities')
     assert.equal(source.includes("const canSeeFinance = profile?.role === 'admin'"), false)
+    assert.equal(source.includes('financeCaps'), false)
     const cards = read('src/lib/orders/orderDashboard.ts')
-    assert.ok(cards.includes('finance.canAccessFinanceModule'))
-    assert.ok(cards.includes('finance.canAllocatePayment && finance.canViewAllFinance'),
-      'the available-funds card needs both the authority and a trustworthy figure')
+    assert.equal(cards.includes('finance.'), false, 'the queue links read no Finance capability')
+    // Revenue and PANIC MODE are not gated in the browser at all: the database
+    // sends them only to a reader entitled to them (orders_dashboard_summary).
+    assert.ok(source.includes('parseDashboardSummary'))
   })
 
   test('every Orders screen starts from no capabilities', () => {

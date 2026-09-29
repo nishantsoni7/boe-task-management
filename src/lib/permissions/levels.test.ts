@@ -251,6 +251,10 @@ describe('Manager never receives a protected action', () => {
     // active admins. The commission has its own table precisely so that no
     // wider Orders authority reaches it; a preset must not either.
     //
+    // And by one more in 20270221000000: `orders.view_panic_mode`, sight of the
+    // PANIC MODE Orders on the Orders dashboard. A per-person disclosure the
+    // owner grants one at a time; a preset must not hand it out.
+    //
     // And by one more in 20270220000000: `assets_access.manage_asset_catalogue`,
     // which defines the categories and products every company asset is filed
     // under. It carries no asset authority, and a "Manager" preset must not be
@@ -259,7 +263,7 @@ describe('Manager never receives a protected action', () => {
       'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_access_records', 'manage_asset_catalogue', 'manage_quotations',
-      'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_pi_commission',
+      'mark_lost', 'receive', 'verify', 'verify_own_payment', 'view_all', 'view_panic_mode', 'view_pi_commission',
       'view_quotations', 'view_team',
     ])
   })

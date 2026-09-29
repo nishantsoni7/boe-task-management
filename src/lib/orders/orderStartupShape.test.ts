@@ -349,7 +349,13 @@ describe('no Order screen waits more than it must', () => {
       //   recover_order_production_alignment, a SAVE fired from an admin's
       //   confirmed "Recover production alignment…", offered only when no
       //   operations reviewer can align a held Order again. Nothing at load.
-      [GUARD]: 2, [DASHBOARD]: 13, [ALL]: 4, [DETAIL]: 40,
+      // DASHBOARD 13 -> 7 (20270221000000, the Orders dashboard redesign): the
+      //   running-orders list and every count that fed a removed card (active,
+      //   running value, review queue, awaiting verification, available funds) are
+      //   gone. What remains is ONE orders_dashboard_summary() read, the PI Drafts
+      //   count, the three operations-handoff counts, the profile and the session —
+      //   all but the session inside the existing Promise.all, so the page still waits exactly twice.
+      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 4, [DETAIL]: 40,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -546,10 +552,17 @@ describe('what did NOT change', () => {
 // ══ 5. Two smaller changes in the same pass ══════════════════════════════════
 
 describe('the Order lists prefetch what a hover says is coming', () => {
-  for (const path of [DASHBOARD, ALL]) {
-    test(`${path} prefetches the Order detail route on row hover`, () => {
+  // The dashboard's order links live in its own components since the redesign
+  // (20270221000000): every row of an action list, and PANIC MODE's "Open order".
+  const LISTS: { path: string; source: RegExp }[] = [
+    { path: ALL, source: /router\.prefetch\(`\/orders\/\$\{o\.id\}`\)/ },
+    { path: 'src/components/orders/dashboard/AttentionOverview.tsx', source: /router\.prefetch\(`\/orders\/\$\{r\.orderId\}`\)/ },
+    { path: 'src/components/orders/dashboard/PanicModeSection.tsx', source: /router\.prefetch\(`\/orders\/\$\{row\.orderId\}`\)/ },
+  ]
+  for (const { path, source: pattern } of LISTS) {
+    test(`${path} prefetches the Order detail route on hover`, () => {
       const source = stripComments(read(path))
-      assert.match(source, /router\.prefetch\(`\/orders\/\$\{o\.id\}`\)/, path)
+      assert.match(source, pattern, path)
     })
 
     test(`${path} prefetches the ROUTE and reads no record`, () => {

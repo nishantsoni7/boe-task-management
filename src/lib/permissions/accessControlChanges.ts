@@ -182,6 +182,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   approve_order:             'Approve order submissions',
   approve_advance_exception: 'Approve advance exceptions',
   view_pi_commission:        'See PI middleman commissions',
+  view_panic_mode:           'See PANIC MODE Orders',
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
   verify_own_payment:        'Record and verify own payments in one step',

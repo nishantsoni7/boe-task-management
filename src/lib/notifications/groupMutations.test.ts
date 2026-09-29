@@ -545,6 +545,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
       '20270217000000_order_submission_cleanup_number_choice.sql',
       '20270220000000_asset_catalogue.sql',
+      '20270221000000_orders_dashboard_attention_and_panic_mode.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
