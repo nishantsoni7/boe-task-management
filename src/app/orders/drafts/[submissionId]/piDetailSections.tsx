@@ -600,16 +600,17 @@ export function PiCommercialCard({ figures, billing, canEditBilling, onEditBilli
  * pending rows. That control decides nothing — the rows' Approve and Reject run
  * Finance's own doors.
  *
- * THE CARD OPENS CLOSED. Money is the loudest thing on this page and it is not
- * what most readers came for, so the card starts as its own title and nothing
- * else, and a press opens it. This is CONCEALMENT AND NOTHING ELSE: every
- * control inside keeps the gate it always had, drawn from the same props, and a
- * viewer who may not add a payment is offered no Add payment in either state.
- * The open/closed state is this component's own useState — deliberately not
- * persisted anywhere, because a card that remembers being open never closes.
+ * THE CARD OPENS OPEN. Where the advance stands is the first thing somebody
+ * completing or reviewing a PI needs, and it used to cost a click every time.
+ * Hiding the money is now the header's Hide amounts control, which masks every
+ * figure on the page; this disclosure remains for anyone who wants the card out
+ * of the way. It is CONCEALMENT AND NOTHING ELSE: every control inside keeps the
+ * gate it always had, drawn from the same props, and a viewer who may not add a
+ * payment is offered no Add payment in either state. The open/closed state is
+ * this component's own useState — deliberately not persisted anywhere.
  */
 export function PiPaymentStatusCard(props: PiPaymentStatusCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   return (
     <PiPaymentStatusCardView
       {...props}
@@ -1063,6 +1064,7 @@ export function PiWorkflowPanel({
   openOrderHref = null,
   advanceBand,
   statusShownAbove = false,
+  ownerActionsElsewhere = false,
 }: {
   panel: WorkflowPanel
   actions: SubmissionActions
@@ -1133,10 +1135,16 @@ export function PiWorkflowPanel({
    * nothing to press on it, and the PI-approved line.
    */
   statusShownAbove?: boolean
+  /**
+   * The owner's Change PI and Submit controls are drawn by the Complete PI
+   * details area instead, next to the checklist they depend on. The reviewer's
+   * decisions, and management's notes, stay here.
+   */
+  ownerActionsElsewhere?: boolean
 }) {
   const tone = TONE_STYLE[panel.tone]
   const isReviewer = actions.canRequestChanges || actions.canReject
-  const ownerActions = actions.canSubmit || actions.canChangePi
+  const ownerActions = (actions.canSubmit || actions.canChangePi) && !ownerActionsElsewhere
   const hasActions = isReviewer || ownerActions
 
   const {

@@ -97,8 +97,9 @@ describe('the readiness checklist points each gap at its field in the section', 
   })
 
   test('the page feeds the checklist from it, and Add focuses the field in the section', () => {
-    assert.ok(PAGE.includes('readiness={actions.canSubmit ? withOrderDetailsRequirements(submissionReadiness, detailsRow) : null}'))
-    assert.ok(PAGE.includes("if (section === 'internal') { focusOrderDetails(orderDetailsFieldOf(key) ?? 'middleman_commission'); return }"))
+    // The checklist is the completion list, built from the same requirements.
+    assert.ok(PAGE.includes('readiness: withOrderDetailsRequirements(submissionReadiness, detailsRow)'))
+    assert.ok(PAGE.includes("case 'internal': focusOrderDetails(item.field ?? 'middleman_commission'); return"))
     assert.ok(PAGE.includes("onEdit={() => focusOrderDetails('middleman_commission')}"), 'the commission card opens the same section')
     assert.ok(!PAGE.includes('PiInternalDetailsModal'), 'the separate Internal details dialog is gone')
   })

@@ -1082,9 +1082,9 @@ const statusHtml = (over: Partial<StatusCardProps> = {}) =>
 const openProps = (over: Partial<StatusCardProps> = {}) =>
   ({ ...statusProps(over), expanded: true, onToggleExpanded: () => {} })
 
-/** The card as the page mounts it — no props about disclosure at all. */
+/** The card SHUT — the state a reader reaches by pressing the header. */
 const closedHtml = (over: Partial<StatusCardProps> = {}) =>
-  renderToStaticMarkup(<PiPaymentStatusCard {...statusProps(over)} />)
+  renderToStaticMarkup(<PiPaymentStatusCardView {...statusProps(over)} expanded={false} onToggleExpanded={() => {}} />)
 
 // The bar's three shares, read off the rendered track. Green, amber and red are
 // the colors.green / colors.amber / colors.red tokens, pinned to the tokens in
@@ -1355,14 +1355,16 @@ describe('the card’s actions keep their gates and their place', () => {
   })
 })
 
-describe('payment status opens closed, and is a real disclosure', () => {
-  test('EVERY new page load starts collapsed — nothing is remembered anywhere', () => {
-    const html = closedHtml({ canAdd: true, canVerify: true, decidableCount: 2 })
-    assert.ok(html.includes('aria-expanded="false"'), 'the card the page mounts is shut')
-    assert.equal((html.match(/aria-expanded=/g) ?? []).length, 1, 'one trigger, not one per control')
+describe('payment status opens OPEN, and is still a real disclosure', () => {
+  test('EVERY new page load starts open — nothing is remembered anywhere', () => {
     const sections = read(SECTIONS)
     const card = sections.slice(sections.indexOf('export function PiPaymentStatusCard('))
-    assert.ok(card.includes('useState(false)'), 'and it is local state, closed to begin with')
+    // The wrapper the page mounts, rendered as the page mounts it.
+    const mounted = renderToStaticMarkup(<PiPaymentStatusCard {...statusProps({ canAdd: true, canVerify: true, decidableCount: 2 })} />)
+    assert.ok(mounted.includes('aria-expanded="true"'), 'the card the page mounts is open')
+    assert.ok(text(mounted).includes('received'), 'so the position is readable without a click')
+    assert.equal((mounted.match(/aria-expanded=/g) ?? []).length, 1, 'one trigger, not one per control')
+    assert.ok(card.includes('useState(true)'), 'and it is local state, open to begin with')
     for (const persisted of ['localStorage', 'sessionStorage', 'supabase', 'searchParams']) {
       assert.ok(!card.includes(persisted), `the open state must not be kept in ${persisted}`)
     }

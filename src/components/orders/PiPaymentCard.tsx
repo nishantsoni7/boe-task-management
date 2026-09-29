@@ -258,7 +258,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
         <div>
           <div style={LABEL}>Amount received <span style={{ color: colors.red }}>*</span></div>
           <input
-            style={INPUT} inputMode="decimal" autoFocus placeholder="0.00"
+            style={INPUT} inputMode="decimal" autoFocus placeholder="0.00" data-amount-input
             value={form.amount} onChange={e => set('amount')(e.target.value)}
           />
           {amountMessage && <div role="alert" style={ERR}>{amountMessage}</div>}

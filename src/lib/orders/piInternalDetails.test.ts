@@ -384,7 +384,9 @@ describe('the Submit dialog is wired to the one RPC and the one gate', () => {
     assert.ok(handler.includes('acknowledged,'), 'the tick is passed through, never assumed')
     assert.ok(handler.includes('savedEarlier: savedDatesRef.current,'), 'a retry knows what was already saved')
     assert.ok(handler.includes('if (result.saved) await loadDraft({ quiet: true })'), 'and the page re-reads after a partial success')
-    assert.ok(src.includes("savedDatesRef.current = null; setDialog('submit')"), 'a fresh dialog starts clean')
+    const open = src.slice(src.indexOf('function openSubmit() {'), src.indexOf('function openSubmit() {') + 240)
+    assert.ok(open.includes('savedDatesRef.current = null') && open.includes("setDialog('submit')"), 'a fresh dialog starts clean')
+    assert.ok(src.includes('onSubmit: openSubmit'), 'the Complete PI details Submit control opens it')
   })
   test('the dialog is given the PI\'s internal details while it is being prepared, and the middleman block only', () => {
     const src = page()

@@ -33,11 +33,17 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
+import type { SupportingCategory } from '@/lib/orders/orderDocumentSubmissions'
 import {
-  SUBMIT_WITHOUT_FILES_LABEL,
-  missingSupportingQuestion,
-  type SupportingCategory,
-} from '@/lib/orders/orderDocumentSubmissions'
+  PROCEED_CONTINUE_LABEL,
+  PROCEED_GO_BACK_LABEL,
+  PROCEED_WITHOUT_QUESTION,
+  PROCEED_WITHOUT_TITLE,
+  SUBMIT_FINAL_WARNING,
+  stageAfter,
+  submitStages,
+  type SubmitStage,
+} from '@/lib/orders/piCompletion'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { PiSubmissionDetailsReview } from '@/components/orders/PiInternalDetails'
 import { formatIsoDay as fmtDay } from '@/lib/orders/piInternalDetails'
@@ -87,7 +93,6 @@ import {
 } from '@/lib/orders/billingPercentage'
 import {
   SUBMIT_BUTTON_LABEL,
-  SUBMIT_CONFIRM_NOTE,
   REJECT_BUTTON_LABEL,
   REQUEST_CHANGES_BUTTON_LABEL,
   RESUBMIT_NOTE_LABEL,
@@ -130,8 +135,6 @@ import {
   REJECT_EXCEPTION_REASON_LABEL,
 } from '@/lib/orders/advanceRequirement'
 import {
-  BILLING_TERMS_LABEL,
-  BILLING_TERMS_PLACEHOLDER,
   EMPTY_SUBMISSION_TERMS,
   PAYMENT_POSITION_HINT,
   PAYMENT_POSITION_LABEL,
@@ -142,9 +145,6 @@ import {
   OTHER_REMARK_PLACEHOLDER,
   PAYMENT_REASON_MAX_LENGTH,
   PAYMENT_STANDARD_PERCENT,
-  PAYMENT_TERMS_MAX_LENGTH,
-  PAYMENT_TERMS_OPTIONAL_LABEL,
-  PAYMENT_TERMS_PLACEHOLDER,
   PAYMENT_NOT_A_DECLARATION,
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
@@ -492,19 +492,10 @@ function PaymentPositionPanel({
         </div>
       )}
 
-      {/* At or above the requirement the terms are still OFFERED — a salesperson
-          who has agreed them has recorded a real commercial fact — but nothing is
-          required and no reason is asked for. */}
-      {meetsStandard === true && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: '9px',
-          padding: '10px 11px', borderRadius: '7px',
-          border: `1px solid ${colors.border}`, background: colors.raised,
-        }}>
-          {field('paymentTerms', PAYMENT_TERMS_OPTIONAL_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
-          {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
-        </div>
-      )}
+      {/* AT OR ABOVE THE REQUIREMENT THIS PANEL IS NOT DRAWN AT ALL: the Submit
+          sequence skips the advance step, and the terms the record already
+          carries are sent as they are. Payment terms are edited on the PI
+          (Edit PI); billing terms in Complete PI details. */}
 
       {invalid && (
         <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }} role="alert">
@@ -545,9 +536,11 @@ export function PiSubmitConfirmModal({
   offerReply,
   onCancel,
   onConfirm,
-  supporting,
   missingSupporting,
   supportingBlocked,
+  optionalMissing = [],
+  onGoBack,
+  initialStage,
   internalDetails,
   detailsReview,
 }: {
@@ -560,12 +553,14 @@ export function PiSubmitConfirmModal({
    * A NULL FAILS THE DIALOG CLOSED. Which fields are mandatory depends on
    * whether the requirement is met, and that is precisely what is unknown; a
    * dialog that guessed would either demand a reason nobody owes or omit one the
-   * database will refuse. So Submit stays disabled with the reason on screen.
+   * database will refuse. So the advance step stays on with the reason on screen
+   * and Continue stays disabled.
    */
   payment: PiPaymentSummary | null
   /**
    * The commercial terms the record already carries, so a resubmission does not
-   * silently drop what was agreed the first time.
+   * silently drop what was agreed the first time. They are sent as they are: the
+   * advance step asks only for the reason and, for Other, the remark.
    */
   initialTerms: PiSubmissionTerms
   submitting: boolean
@@ -582,30 +577,36 @@ export function PiSubmitConfirmModal({
   onConfirm: (
     note: string | null,
     terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
-    /** The supporting categories the submitter confirmed going without. */
+    /** The supporting categories the submitter chose to go without. */
     acknowledgedMissing?: string[],
-    /** The two internal dates as entered here — present only when asked for. */
+    /** The two internal dates as reviewed here — present only when asked for. */
     dates?: SubmissionDates,
     /** True only when the submitter ticked the confirmation of the internal details. */
     acknowledged?: boolean,
   ) => void
-  /**
-   * DESIGN FILES AND CLIENT PO (20270112000000), drawn inside this dialog by the
-   * caller. Absent on a screen that does not offer them: the dialog is then
-   * exactly what it was.
-   */
-  supporting?: React.ReactNode
-  /** Categories with no file. Non-empty → one explicit confirmation first. */
+  /** Categories with no file. Recorded as an acknowledged absence when the PI is sent. */
   missingSupporting?: readonly SupportingCategory[]
   /** Why Submit must wait on the attachments (e.g. an invalid file). */
   supportingBlocked?: string | null
   /**
+   * THE NAMES OF EVERYTHING OPTIONAL THAT IS STILL EMPTY — Client PO, Design
+   * Files, billing details, the order highlight. When there are any, the first
+   * step lists them and asks whether to go on without. None: the step is skipped.
+   */
+  optionalMissing?: readonly string[]
+  /** "Go back and fill them": closes the sequence and returns to the page. */
+  onGoBack?: () => void
+  /**
+   * Open on a later step. Used to draw one step in isolation; ignored when that
+   * step does not apply (no optional items, requirement met), so the sequence
+   * still begins where the rules say it does.
+   */
+  initialStage?: SubmitStage
+  /**
    * THE PI'S INTERNAL DETAILS (2026-09-27), while it can still be submitted.
-   * The dialog opens its Date of Order Confirmation / Dispatch Date Finalized
-   * fields on this row's dates (both REQUIRED), states its CURRENT middleman
-   * answer, and asks for an explicit, unticked confirmation whenever Submit
-   * would write them. It follows the row as the page re-reads it. Absent, the
-   * dialog is exactly what it was.
+   * The final step states them for a last look and asks for an explicit,
+   * unticked confirmation whenever Submit would write them. It follows the row
+   * as the page re-reads it. Absent, the dialog is exactly what it was.
    */
   internalDetails?: PiInternalDetailsRow | null
   /**
@@ -662,7 +663,7 @@ export function PiSubmitConfirmModal({
    *
    * Somebody who has just opened the dialog has not made a mistake yet — they
    * have not typed anything — and greeting them with a red sentence about a
-   * reason they were about to write is scolding, not help. Submit is still
+   * reason they were about to write is scolding, not help. Continue is still
    * disabled throughout, so nothing invalid can be sent.
    *
    * AN UNREADABLE PAYMENT POSITION IS SAID IMMEDIATELY, untouched or not: that
@@ -674,10 +675,15 @@ export function PiSubmitConfirmModal({
       ? null
       : (checked as { ok: false; message: string }).message
 
-  const blocked = submitting || tooLong || !checked.ok || !!supportingBlocked || (!!dates && datesInvalid)
-  // THE ONE EXPLICIT CONFIRMATION for a missing supporting category. Cancel
-  // returns to the form and sends nothing.
-  const [confirmingMissing, setConfirmingMissing] = useState(false)
+  // ── The sequence: optional items → advance exception → final confirmation ──
+  const stages = submitStages({ optionalCount: optionalMissing.length, meetsStandard })
+  const [reached, setReached] = useState<SubmitStage>(initialStage && stages.includes(initialStage) ? initialStage : stages[0])
+  // A stage that stopped applying while the dialog was open (a payment landed)
+  // is stepped over rather than shown.
+  const stage: SubmitStage = stages.includes(reached) ? reached : stageAfter(stages, reached)
+  const advance = () => setReached(stageAfter(stages, stage))
+
+  const finalBlocked = submitting || tooLong || !checked.ok || !!supportingBlocked || (!!dates && datesInvalid)
   const missing = missingSupporting ?? []
 
   useScrollLock(true)
@@ -689,9 +695,9 @@ export function PiSubmitConfirmModal({
   useEscapeDismiss(dismiss, !submitting)
 
   const confirm = () => {
-    // Missing or out-of-order dates block the button (see `blocked`): they are
-    // fixed in the section, not here, and the review already says so.
-    if (blocked || !checked.ok) return
+    // Missing or out-of-order dates block the button (see `finalBlocked`): they
+    // are fixed in the section, not here, and the review already says so.
+    if (finalBlocked || !checked.ok) return
     // Nothing is confirmed on the submitter's behalf: when Submit would write
     // the internal details, the tick is required first.
     if (needsAcknowledgement && !acknowledged) {
@@ -702,147 +708,180 @@ export function PiSubmitConfirmModal({
     // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
     // reaches the database is what it stores — no leading spaces, and nothing at
     // all where the field was only whitespace.
-    if (missing.length > 0 && !confirmingMissing) { setConfirmingMissing(true); return }
     onConfirm(offerReply && validation.ok ? validation.note : null, checked.value, [...missing], dates ?? undefined, needsAcknowledgement && acknowledged)
   }
 
+  const title =
+    stage === 'optional' ? PROCEED_WITHOUT_TITLE
+    : stage === 'advance' ? `Advance below ${PAYMENT_STANDARD_PERCENT}%`
+    : SUBMIT_BUTTON_LABEL
+  const subtitle =
+    stage === 'optional' ? client
+    : stage === 'advance' ? 'Management decides before this PI can go further'
+    : 'Management reviews it next'
+
   return (
     // No onClick on the overlay: a click outside is inert, by rule.
-    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={SUBMIT_BUTTON_LABEL}>
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={title} data-submit-stage={stage}>
       <div style={PANEL}>
         <ModalHeader
-          title={SUBMIT_BUTTON_LABEL}
-          subtitle="Management reviews it next"
+          title={title}
+          subtitle={subtitle}
           onClose={() => dismiss('close-icon')}
           disabled={submitting}
         />
 
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
-              <span style={KEY_STYLE}>Client</span>
-              <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{client}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
-              <span style={KEY_STYLE}>Grand total</span>
-              <span style={{ color: colors.primary, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                {grandTotal}
-              </span>
-            </div>
-          </div>
-
-          {dates && (
-            <PiSubmissionDetailsReview
-              rows={detailsReview ?? []}
-              missing={datesInvalid ? SUBMISSION_DETAILS_INCOMPLETE : null}
-              confirmation={internalDetails ? {
-                needed: needsAcknowledgement,
-                checked: acknowledged,
-                onToggle: setAcknowledged,
-                error: datesAttempted && needsAcknowledgement && !acknowledged ? SUBMISSION_CONFIRM_REQUIRED : null,
-                confirmedOn: formatIsoDay(internalDetails.internal_details_confirmed_at),
-              } : undefined}
-              confirmRef={el => { confirmInput.current = el }}
-            />
-          )}
-
-          <PaymentPositionPanel
-            summary={payment}
-            terms={terms}
-            keptReason={keptReason}
-            meetsStandard={meetsStandard}
-            disabled={submitting}
-            invalid={termsMessage}
-            onTerms={(key, value) => setTerms(current => ({ ...current, [key]: value }))}
-          />
-
-          {supporting}
-
-          <div style={{
-            fontSize: '12px', color: colors.primary, lineHeight: 1.5,
-            background: colors.blueTint, border: '1px solid rgba(85,133,232,0.25)',
-            borderRadius: '6px', padding: '9px 12px',
-          }}>
-            {SUBMIT_CONFIRM_NOTE}
-          </div>
-
-          {/* The optional reply, on a resubmission only.
-
-              It is not a required field and does not gate the button: somebody
-              with nothing to add submits exactly as they did before. The counter
-              appears only as the cap approaches, so the ordinary case is a plain
-              box rather than a form with a meter on it. */}
-          {offerReply && (
-            <label style={{
-              display: 'flex', flexDirection: 'column', gap: '4px',
-              fontSize: '11px', fontWeight: 600, color: colors.muted,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>
-              {RESUBMIT_NOTE_LABEL}
-              <textarea
-                value={reply}
-                onChange={e => setReply(e.target.value)}
-                placeholder={RESUBMIT_NOTE_PLACEHOLDER}
-                disabled={submitting}
-                rows={3}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px',
-                  border: `1px solid ${tooLong ? 'rgba(217,79,79,0.5)' : colors.border}`,
-                  background: colors.raised, color: colors.primary,
-                  fontSize: '13px', width: '100%', boxSizing: 'border-box',
-                  outline: 'none', minHeight: '70px', resize: 'vertical',
-                  fontFamily: 'inherit',
-                }}
-              />
-              {(tooLong || remaining <= 100) && (
-                <span style={{
-                  fontSize: '11px', fontWeight: 500, textTransform: 'none', letterSpacing: 0,
-                  color: tooLong ? colors.red : colors.muted,
-                }}>
-                  {tooLong
-                    ? (validation.ok ? '' : validation.message)
-                    : `${remaining} character${remaining === 1 ? '' : 's'} left`}
-                </span>
-              )}
-            </label>
-          )}
-
-          {failure && <FailureNote message={failure} />}
-
-          {confirmingMissing ? (
-            <div role="alertdialog" aria-label="Submit without supporting files" style={{
-              border: '1px solid rgba(190,140,40,0.45)', background: '#FFFBF0', borderRadius: '8px',
-              padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px',
-            }}>
+          {stage === 'optional' && (
+            <>
+              <ul data-testid="pi-submit-optional-list" style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: colors.primary }}>
+                {optionalMissing.map(name => <li key={name}>{name}</li>)}
+              </ul>
               <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.45 }}>
-                {missingSupportingQuestion(missing)}
+                {PROCEED_WITHOUT_QUESTION}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => setConfirmingMissing(false)} disabled={submitting} style={cancelStyle(submitting)}>
+              <Footer>
+                <button type="button" onClick={() => onGoBack?.()} disabled={submitting} style={cancelStyle(submitting)}>
+                  {PROCEED_GO_BACK_LABEL}
+                </button>
+                <button type="button" onClick={advance} disabled={submitting} style={confirmStyle('#DC1F2E', submitting)}>
+                  {PROCEED_CONTINUE_LABEL}
+                </button>
+              </Footer>
+            </>
+          )}
+
+          {stage === 'advance' && (
+            <>
+              <PaymentPositionPanel
+                summary={payment}
+                terms={terms}
+                keptReason={keptReason}
+                meetsStandard={meetsStandard}
+                disabled={submitting}
+                invalid={termsMessage}
+                onTerms={(key, value) => setTerms(current => ({ ...current, [key]: value }))}
+              />
+              <Footer>
+                <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
                   Cancel
                 </button>
-                <button type="button" onClick={confirm} disabled={blocked}
-                        style={{ ...confirmStyle('#DC1F2E', blocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
-                  <Send size={13} strokeWidth={2} />
-                  {submitting ? 'Submitting…' : SUBMIT_WITHOUT_FILES_LABEL}
+                <button type="button" onClick={advance} disabled={submitting || !checked.ok} style={confirmStyle('#DC1F2E', submitting || !checked.ok)}>
+                  {PROCEED_CONTINUE_LABEL}
                 </button>
+              </Footer>
+            </>
+          )}
+
+          {stage === 'final' && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+                  <span style={KEY_STYLE}>Client</span>
+                  <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{client}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+                  <span style={KEY_STYLE}>Grand total</span>
+                  <span style={{ color: colors.primary, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    {grandTotal}
+                  </span>
+                </div>
               </div>
-            </div>
-          ) : (
-          <Footer>
-            <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirm}
-              disabled={blocked}
-              style={{ ...confirmStyle('#DC1F2E', blocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
-            >
-              <Send size={13} strokeWidth={2} />
-              {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}
-            </button>
-          </Footer>
+
+              {dates && (
+                <PiSubmissionDetailsReview
+                  rows={detailsReview ?? []}
+                  missing={datesInvalid ? SUBMISSION_DETAILS_INCOMPLETE : null}
+                  confirmation={internalDetails ? {
+                    needed: needsAcknowledgement,
+                    checked: acknowledged,
+                    onToggle: setAcknowledged,
+                    error: datesAttempted && needsAcknowledgement && !acknowledged ? SUBMISSION_CONFIRM_REQUIRED : null,
+                    confirmedOn: formatIsoDay(internalDetails.internal_details_confirmed_at),
+                  } : undefined}
+                  confirmRef={el => { confirmInput.current = el }}
+                />
+              )}
+
+              {supportingBlocked && (
+                <div role="alert" style={{
+                  fontSize: '12.5px', color: colors.primary, background: colors.amberTint,
+                  border: `1px solid ${colors.amber}`, borderRadius: '8px', padding: '8px 10px',
+                }}>
+                  {supportingBlocked}
+                </div>
+              )}
+
+              {/* THE LAST WORD BEFORE THE PI LEAVES THEIR HANDS. Stated as a
+                  warning, not a footnote: after this the record is locked, and
+                  the way back is a request to management. */}
+              <div data-testid="pi-submit-final-warning" role="note" style={{
+                fontSize: '12.5px', color: colors.primary, lineHeight: 1.5, fontWeight: 600,
+                background: colors.amberTint, border: `1px solid ${colors.amber}`,
+                borderRadius: '6px', padding: '9px 12px', display: 'flex', gap: '9px', alignItems: 'flex-start',
+              }}>
+                <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '2px', color: colors.amber }} aria-hidden="true" />
+                <span>{SUBMIT_FINAL_WARNING}</span>
+              </div>
+
+              {/* The optional reply, on a resubmission only.
+
+                  It is not a required field and does not gate the button: somebody
+                  with nothing to add submits exactly as they did before. The counter
+                  appears only as the cap approaches, so the ordinary case is a plain
+                  box rather than a form with a meter on it. */}
+              {offerReply && (
+                <label style={{
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                  fontSize: '11px', fontWeight: 600, color: colors.muted,
+                  textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  {RESUBMIT_NOTE_LABEL}
+                  <textarea
+                    value={reply}
+                    onChange={e => setReply(e.target.value)}
+                    placeholder={RESUBMIT_NOTE_PLACEHOLDER}
+                    disabled={submitting}
+                    rows={3}
+                    style={{
+                      padding: '7px 10px', borderRadius: '6px',
+                      border: `1px solid ${tooLong ? 'rgba(217,79,79,0.5)' : colors.border}`,
+                      background: colors.raised, color: colors.primary,
+                      fontSize: '13px', width: '100%', boxSizing: 'border-box',
+                      outline: 'none', minHeight: '70px', resize: 'vertical',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                  {(tooLong || remaining <= 100) && (
+                    <span style={{
+                      fontSize: '11px', fontWeight: 500, textTransform: 'none', letterSpacing: 0,
+                      color: tooLong ? colors.red : colors.muted,
+                    }}>
+                      {tooLong
+                        ? (validation.ok ? '' : validation.message)
+                        : `${remaining} character${remaining === 1 ? '' : 's'} left`}
+                    </span>
+                  )}
+                </label>
+              )}
+
+              {failure && <FailureNote message={failure} />}
+
+              <Footer>
+                <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirm}
+                  disabled={finalBlocked}
+                  style={{ ...confirmStyle('#DC1F2E', finalBlocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+                >
+                  <Send size={13} strokeWidth={2} />
+                  {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}
+                </button>
+              </Footer>
+            </>
           )}
         </div>
       </div>
@@ -3017,12 +3056,12 @@ export function PiRequestCorrectionModal({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Request a correction"
+        aria-label="Request a change"
         tabIndex={-1}
         style={{ ...PANEL, maxWidth: '480px', outline: 'none' }}
       >
         <ModalHeader
-          title="Request a correction"
+          title="Request a change"
           subtitle="This PI has been submitted"
           onClose={onCancel}
           disabled={saving}

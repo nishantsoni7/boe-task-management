@@ -23,7 +23,6 @@ import {
   internalDetailsReadiness,
   internalDetailsStatusLine,
   SUBMISSION_CONFIRM_LABEL,
-  SUBMISSION_MIDDLEMAN_HINT,
   type PiInternalDetailsRow,
 } from '@/lib/orders/piInternalDetails'
 import { ORDER_DETAILS_TITLE, orderDetailsAbsent, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
@@ -40,10 +39,16 @@ const fieldError: React.CSSProperties = { fontSize: '11.5px', color: colors.red 
  * the one control that opens the editor, and the review-gate status line.
  * Presentation only — withCommission still decides what this viewer may read.
  */
-export function PiCommissionSummary({ row, canEdit, onEdit }: {
+export function PiCommissionSummary({ row, canEdit, onEdit, summaryOnly = false }: {
   row: PiInternalDetailsRow
   canEdit: boolean
   onEdit: () => void
+  /**
+   * The answer and nothing else: no Edit control, no warning, no status line.
+   * On a page that has a Complete PI details area the middleman commission is
+   * asked for THERE, once; here it is only reported.
+   */
+  summaryOnly?: boolean
 }) {
   const readiness = internalDetailsReadiness(row)
   const statusLine = internalDetailsStatusLine(row)
@@ -60,7 +65,7 @@ export function PiCommissionSummary({ row, canEdit, onEdit }: {
       </div>
       {/* Top-right beside the label on a wide column; last, after the
           warning it resolves, on a phone (CSS order). */}
-      {canEdit && (
+      {canEdit && !summaryOnly && (
         <button
           type="button"
           className="boe-btn boe-btn-ghost pi-detail-internal-action"
@@ -79,12 +84,16 @@ export function PiCommissionSummary({ row, canEdit, onEdit }: {
         <div className={row.commission_restricted ? 'pi-detail-internal-restricted' : 'pi-detail-internal-value'}>{answer}</div>
       )}
 
-      <p className={`pi-detail-internal-status pi-detail-internal-status--${statusLine.tone}`} role="status">
-        {statusLine.tone === 'ready' && <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0 }} />}
-        {statusLine.tone === 'needed' && <AlertTriangle size={13} aria-hidden style={{ flexShrink: 0 }} />}
-        <span>{statusLine.text}</span>
-      </p>
-      <p className="pi-detail-internal-note">{INTERNAL_DETAILS_NOTE}</p>
+      {!summaryOnly && (
+        <>
+          <p className={`pi-detail-internal-status pi-detail-internal-status--${statusLine.tone}`} role="status">
+            {statusLine.tone === 'ready' && <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0 }} />}
+            {statusLine.tone === 'needed' && <AlertTriangle size={13} aria-hidden style={{ flexShrink: 0 }} />}
+            <span>{statusLine.text}</span>
+          </p>
+          <p className="pi-detail-internal-note">{INTERNAL_DETAILS_NOTE}</p>
+        </>
+      )}
     </section>
   )
 }
@@ -160,7 +169,6 @@ export function PiSubmissionDetailsReview({ rows, missing, confirmation, confirm
           </Fragment>
         ))}
       </dl>
-      <p style={{ margin: '10px 0 0', fontSize: '11px', color: colors.tertiary }}>{SUBMISSION_MIDDLEMAN_HINT}</p>
       {missing && (
         <p role="alert" style={{ margin: '10px 0 0', fontSize: '12px', color: '#8a4b12', fontWeight: 600 }}>{missing}</p>
       )}

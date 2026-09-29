@@ -70,10 +70,10 @@ export const ORDER_DETAILS_NOTE =
 export type OrderDetailsNeed = 'submission' | 'approval' | 'optional' | 'conditional'
 
 export const ORDER_DETAILS_NEED_LABEL: Record<OrderDetailsNeed, string> = {
-  submission: 'Needed to submit',
-  approval: 'Needed to create the Order',
+  submission: 'Required for submission',
+  approval: 'Required later to create the Order',
   optional: 'Optional',
-  conditional: 'Needed when Yes',
+  conditional: 'Required if Yes',
 }
 
 export type OrderDetailsFieldKey =

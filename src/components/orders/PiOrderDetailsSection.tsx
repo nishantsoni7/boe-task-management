@@ -88,7 +88,7 @@ function ReviewLine({ row, missing }: { row: OrderDetailsReviewRow; missing: boo
  */
 export function PiOrderDetailsSection({
   supabase, submissionId, row, rowVersion, canEdit, salesDetailsAvailable, people, grandTotal, fabricCost,
-  focus, onSaved,
+  focus, onSaved, locked = false,
 }: {
   supabase: SupabaseClient
   submissionId: string
@@ -104,6 +104,12 @@ export function PiOrderDetailsSection({
   focus: { field: OrderDetailsFieldKey; nonce: number } | null
   /** Re-reads the PI; awaited before Save is offered again. */
   onSaved: () => void | Promise<void>
+  /**
+   * The PI is with management. The section stays fully legible, and its one
+   * editing control is drawn muted and disabled instead of being taken away, so
+   * the reader can see that editing exists and why it is not available.
+   */
+  locked?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<OrderDetailsForm>(() => orderDetailsForm(row))
@@ -203,6 +209,13 @@ export function PiOrderDetailsSection({
         {canEdit && !editing && (
           <button type="button" className="boe-btn boe-btn-ghost" style={{ marginLeft: 'auto' }} onClick={open}>
             <Pencil size={12} aria-hidden /> {gaps.size > 0 ? 'Complete details' : 'Edit details'}
+          </button>
+        )}
+        {!canEdit && locked && (
+          <button type="button" className="boe-btn boe-btn-ghost" disabled
+            style={{ marginLeft: 'auto', opacity: 0.55, cursor: 'not-allowed' }}
+            title="Locked while this PI is with management.">
+            <Pencil size={12} aria-hidden /> Edit details
           </button>
         )}
       </div>
@@ -344,7 +357,7 @@ export function PiOrderDetailsSection({
                     {form.middleman_commission_basis === 'amount' && (
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <span style={LABEL}>Amount (₹)</span>
-                        <input type="number" inputMode="decimal" min="0.01" step="0.01" style={INPUT}
+                        <input type="number" inputMode="decimal" min="0.01" step="0.01" style={INPUT} data-amount-input
                           value={form.middleman_commission_amount} disabled={saving}
                           onChange={e => set('middleman_commission_amount', e.target.value)} />
                         {field('middleman_commission_amount') && <span role="alert" style={ERROR}>{field('middleman_commission_amount')}</span>}

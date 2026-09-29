@@ -8209,3 +8209,49 @@ h1.boe-page-title { margin-top: 0; }
   .od-field--grow { flex-basis: 100%; }
   .od-queue-link { flex: 1 1 100%; }
 }
+
+/* ── Complete PI details, and Hide amounts ──
+   One area for everything a PI needs before it is submitted. The grids fit as
+   many columns as the width allows and never force a horizontal scroll, so no
+   breakpoint is needed until the phone rules at 560px, where the action row
+   becomes full-width buttons. */
+.pi-completion-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pi-completion-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+/* Locked: muted, never faded — every value stays fully legible. */
+.pi-completion[data-locked='true'] section {
+  background: #F7F8FA !important;
+}
+
+/* A typed amount cannot be text-replaced, so an amount field is dotted out
+   while amounts are hidden. */
+[data-amounts-hidden='true'] input[data-amount-input] {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+.pi-amounts-toggle {
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .pi-completion {
+    padding: 12px !important;
+  }
+  .pi-completion-actions > .boe-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}

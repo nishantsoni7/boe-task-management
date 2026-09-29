@@ -464,6 +464,8 @@ export const SUBMISSION_CONFIRM_REQUIRED =
   'Tick the box to confirm the internal details, or Cancel and correct them first.'
 export const SUBMISSION_MIDDLEMAN_HINT =
   'To change any of them, Cancel and use Internal order details on the PI.'
+// (No longer drawn: the review reports these values and does not point at a form.
+// The middleman answer is entered once, in Complete PI details.)
 
 /** Whether pressing Submit with these dates will write (and so confirm) the internal details. */
 export function submissionNeedsConfirmation(row: PiInternalDetailsRow, dates: SubmissionDates): boolean {
