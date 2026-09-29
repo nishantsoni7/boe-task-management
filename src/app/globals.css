@@ -8187,6 +8187,13 @@ h1.boe-page-title { margin-top: 0; }
 .od-error p { margin: 0; font-size: 13px; color: #111318; }
 .od-error-title { margin: 0; font-size: 14px; font-weight: 700; color: #B42318; }
 
+/* Wide screens: two selections per row, so Factory Focus and the alignment list share the first screen. */
+@media (min-width: 1280px) {
+  .od-focus-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .od-focus-item { grid-template-columns: minmax(0, 1fr) minmax(0, max-content); }
+  .od-focus-actions { grid-column: 2; grid-row: 1 / span 2; }
+}
+
 @media (max-width: 899px) {
   .od-pair { grid-template-columns: minmax(0, 1fr); }
   .od-focus-item { grid-template-columns: minmax(0, 1fr); }

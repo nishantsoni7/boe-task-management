@@ -47,7 +47,11 @@ export function OrderVisibilityTab() {
     setDrafts(Object.fromEntries(parsed.rows.map(r => [r.userId, { mode: r.mode, memberIds: r.memberIds }])))
   }, [supabase])
 
-  useEffect(() => { void load() }, [load])
+  // The same shape the Operations Handoff tab uses: the read is started from a callback.
+  useEffect(() => {
+    const startFetch = () => { void load() }
+    startFetch()
+  }, [load])
 
   const save = async (row: ScopeRow) => {
     const draft = drafts[row.userId]
