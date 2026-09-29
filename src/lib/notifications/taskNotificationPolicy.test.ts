@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, isQuotationTask, shouldNotifyTaskStatusEvent,
+  shouldNotifyTaskAssignment,
 } from './taskNotificationPolicy'
 import { TASK_REVIEW_NOTIFICATION_SUFFIXES } from '@/lib/tasks/reviewTransitions'
 import { createAssignmentNotification, type AssignmentNotificationStore, type AssignmentTaskRow } from '@/lib/tasks/assignmentNotificationWriter.server'
@@ -127,11 +128,45 @@ describe('createAssignmentNotification and quotation requests', () => {
     assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: STRANGER }), { status: 'forbidden' })
   })
 
-  test('an ordinary delegated task still notifies its assignee', async () => {
+  test('an ordinary delegated task writes no notification either — see the new-task rule', async () => {
     const { store, inserted } = fakeStore({ ...base, id: 'task-g', title: 'Ship samples', task_type: 'general' })
-    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-g', callerId: CREATOR }), { status: 'created' })
-    assert.equal(inserted.length, 1)
-    assert.equal(inserted[0].user_id, ASSIGNEE)
+    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-g', callerId: CREATOR }), { status: 'skipped_acknowledgment' })
+    assert.equal(inserted.length, 0)
+  })
+
+  test('a quotation keeps its own reason, whatever the new-task rule says', async () => {
+    const { store } = fakeStore({ ...base, task_type: 'quotation_request' })
+    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }, () => true), { status: 'skipped_quotation' })
+  })
+})
+
+// ── 4b. A new task is silent: the acknowledgment section announces it ──────
+
+describe('shouldNotifyTaskAssignment', () => {
+  test('no newly created or assigned task notifies its assignee', () => {
+    for (const task of [delegated, selfTask, quotation, { task_type: null, created_by: null, assigned_to: ASSIGNEE }]) {
+      assert.equal(shouldNotifyTaskAssignment(task), false, JSON.stringify(task))
+    }
+  })
+
+  test('acknowledgment and every later event are untouched by it', () => {
+    // The acknowledgment event itself still notifies the creator, and so does
+    // everything after it, through /api/notify-status-update.
+    for (const action of ['acknowledged', 'comment_added', 'waiting', 'blocked', 'working', 'cancelled']) {
+      assert.equal(shouldNotifyTaskStatusEvent(delegated, action), true, action)
+    }
+  })
+
+  test('the writer asks it after authorization and the self rule, before any read or write', () => {
+    const src = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
+    const fn = src.slice(src.indexOf('export async function createAssignmentNotification('))
+    const forbidden = fn.indexOf("return { status: 'forbidden' }")
+    const self = fn.lastIndexOf("return { status: 'skipped_self' }", fn.indexOf('notifyAssignee(task)'))
+    const rule = fn.indexOf("if (!notifyAssignee(task)) return { status: 'skipped_acknowledgment' }")
+    const reads = fn.indexOf('store.hasAssignmentNotification(')
+    const insert = fn.indexOf('insertUserNotifications(')
+    assert.ok(forbidden > 0 && self > forbidden && rule > self && reads > rule && insert > rule)
+    assert.match(src, /notifyAssignee: \(task: AssignmentTaskRow\) => boolean = shouldNotifyTaskAssignment,/)
   })
 })
 
@@ -162,7 +197,7 @@ describe('every Task Management writer consults the rule', () => {
     const skip = src.indexOf("return { status: 'skipped_quotation' }")
     assert.ok(forbidden > 0 && skip > forbidden)
     // The browser treats the skip as success, so no "notification failed" warning.
-    assert.match(read('src/lib/tasks/assignmentNotification.ts'), /status === 'skipped_quotation'\) \{/)
+    assert.match(read('src/lib/tasks/assignmentNotification.ts'), /status === 'skipped_quotation' \|\| status === 'skipped_acknowledgment'\) \{/)
   })
 })
 

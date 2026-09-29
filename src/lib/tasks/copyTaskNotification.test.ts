@@ -83,7 +83,8 @@ describe('the assignment notification is attempted once, by the shared operation
     // Whatever calls it — the copy route in-process, or the browser hitting
     // /notify-assignment afterwards — the duplicate check is the same one.
     const store = stubStore({ existing: true })
-    const outcome = await createAssignmentNotification(store, { taskId: NEW_TASK, callerId: ADMIN })
+    // The duplicate check sits behind the new-task rule; overridden to reach it.
+    const outcome = await createAssignmentNotification(store, { taskId: NEW_TASK, callerId: ADMIN }, () => true)
     assert.equal(outcome.status, 'skipped_duplicate')
     assert.equal(store.written.length, 0)
   })
@@ -119,6 +120,16 @@ describe('assignmentNotified is accurate for every outcome', () => {
     // …so the caller reads the pending flag, not assignmentNotified, to decide
     // whether anything is outstanding.
     assert.ok(ROUTE.includes("assignmentNotificationPending: notified.status === 'error'"))
+  })
+
+  test('a copied task writes no notification, and the copy is reported as clean', async () => {
+    const store = stubStore()
+    const outcome = await createAssignmentNotification(store, { taskId: NEW_TASK, callerId: ADMIN })
+    assert.equal(outcome.status, 'skipped_acknowledgment')
+    assert.equal(store.written.length, 0)
+    // Not 'error', so no "they were not notified" warning and nothing pending.
+    assert.ok(ROUTE.includes("assignmentNotificationPending: notified.status === 'error'"))
+    assert.equal(/'skipped_acknowledgment'/.test(FIELD), false, 'and no row is claimed to exist')
   })
 
   test('the raw status is returned too, so nothing has to be inferred', () => {

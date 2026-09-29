@@ -97,6 +97,8 @@ export type AssignmentNotificationOutcome =
   | { status: 'skipped_duplicate' }
   /** A quotation request — quotation events write no notification. */
   | { status: 'skipped_quotation' }
+  /** A new task is shown in the assignee's acknowledgment section instead. */
+  | { status: 'skipped_acknowledgment' }
   | { status: 'not_found' }
   | { status: 'forbidden' }
   | { status: 'error'; message: string }
@@ -107,6 +109,7 @@ export const ASSIGNMENT_OUTCOME_STATUS: Record<AssignmentNotificationOutcome['st
   skipped_self:      200,
   skipped_duplicate: 200,
   skipped_quotation: 200,
+  skipped_acknowledgment: 200,
   not_found:         404,
   forbidden:         403,
   error:             500,
@@ -130,7 +133,7 @@ export const ASSIGNMENT_NOTIFICATION_RECOVERED_MESSAGE =
   'Assignee notified.'
 
 export type AssignmentNotificationRequest =
-  | { ok: true; status: 'created' | 'skipped_self' | 'skipped_duplicate' | 'skipped_quotation' }
+  | { ok: true; status: 'created' | 'skipped_self' | 'skipped_duplicate' | 'skipped_quotation' | 'skipped_acknowledgment' }
   | { ok: false; reason: string }
 
 /**
@@ -156,7 +159,7 @@ export async function requestAssignmentNotification(
       if (res.ok) {
         const body = await res.json().catch(() => ({})) as { status?: string }
         const status = body.status
-        if (status === 'created' || status === 'skipped_self' || status === 'skipped_duplicate' || status === 'skipped_quotation') {
+        if (status === 'created' || status === 'skipped_self' || status === 'skipped_duplicate' || status === 'skipped_quotation' || status === 'skipped_acknowledgment') {
           return { retryable: false, result: { ok: true, status } }
         }
         // A 200 without a status we recognise is not a notification we can

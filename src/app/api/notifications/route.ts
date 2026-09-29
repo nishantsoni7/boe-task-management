@@ -8,7 +8,7 @@ import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificatio
 import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
 import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import {
-  APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, NEW_TASK_NOTIFICATION_TYPE, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
   mutateInChunks, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from '@/lib/notifications/taskNotificationPolicy'
 
@@ -108,8 +108,8 @@ export async function GET(req: NextRequest) {
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
-  // THE TASK FEED'S TWO SILENT EVENTS. Quotation requests (by tasks.task_type,
-  // joined through task_id) and approvals are not announced, and rows written
+  // THE TASK FEED'S SILENT EVENTS. Quotation requests (by tasks.task_type,
+  // joined through task_id), approvals and new-task assignments are not announced, and rows written
   // before that rule stay hidden rather than deleted. Applied to the count and
   // the list alike, BEFORE counting and paging, so a hidden row can neither
   // hold the badge up nor turn a page into an empty one. See
@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
       countQuery = countQuery
         .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
         .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+        .neq('type', NEW_TASK_NOTIFICATION_TYPE)
     }
     const [refused, { count, error }] = await Promise.all([refusal(), countQuery])
     if (refused) return refused
@@ -160,6 +161,7 @@ export async function GET(req: NextRequest) {
     listQuery = listQuery
       .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
       .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+      .neq('type', NEW_TASK_NOTIFICATION_TYPE)
   }
   const [refused, { data, error }] = await Promise.all([refusal(), listQuery
     .order('created_at', { ascending: false })

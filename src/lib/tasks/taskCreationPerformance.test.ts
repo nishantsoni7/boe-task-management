@@ -79,7 +79,8 @@ describe('createAssignmentNotification runs its independent reads concurrently',
   test('the duplicate check and the activity lookup overlap, rather than one waiting on the other', async () => {
     const store = timingStore(40)
     const startedAt = Date.now()
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    // The reads sit behind the new-task rule; overridden to reach them.
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
     const totalMs = Date.now() - startedAt
 
     assert.equal(outcome.status, 'created')

@@ -129,9 +129,11 @@ describe('1-3. assigning a task to another user produces exactly one deliverable
     assert.equal(deliverable.length, 1)
   })
 
-  test('1b. the trusted operation writes exactly one row', async () => {
+  test('1b. the trusted operation writes exactly one row (when the new-task rule allows it)', async () => {
     const store = stubStore()
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    // A new task is silent by rule (taskNotificationPolicy.ts); overridden here
+    // to keep the dormant write path verified.
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
     assert.equal(outcome.status, 'created')
     assert.equal(store.written.length, 1, 'one round trip')
     assert.equal(store.written[0].length, 1, 'one row in it')
@@ -166,8 +168,13 @@ describe('1-3. assigning a task to another user produces exactly one deliverable
 })
 
 // ── 4–7. Where it shows up ───────────────────────────────────────────────────
+//
+// SINCE SEPTEMBER 2026 NO SUCH ROW IS WRITTEN, and older ones are hidden by the
+// Task feed's silent-event exclusion (taskFeedExclusion.test.ts). These still
+// pin the CATEGORY filter — the structural rule that no task row is dropped by
+// its wording — which `inFeed` models on its own.
 
-describe('4-7. the row reaches every Task surface', () => {
+describe('4-7. the category filter selects the row on every Task surface', () => {
   test('4. it is selected by the Task notification list query', () => {
     assert.equal(inFeed(asNotification(), ASSIGNEE), true)
   })
@@ -425,7 +432,7 @@ describe('18. insert failures are surfaced, not swallowed', () => {
     const store = stubStore({
       insert: async () => ({ error: { message: 'new row violates row-level security policy' } }),
     })
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
     assert.equal(outcome.status, 'error')
     assert.equal(outcome.status === 'error' && outcome.message,
       'new row violates row-level security policy')

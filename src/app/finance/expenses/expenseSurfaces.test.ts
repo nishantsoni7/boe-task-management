@@ -2271,6 +2271,27 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270220000000_asset_catalogue.sql',
   ])
 
+  // Task Management: a new task is silent (2026-09-29). Creating or assigning
+  // a task writes no notification — the acknowledgment section announces it —
+  // and older new-task rows are hidden from the Task feed. The assignment
+  // writer, its policy, the feed route and their suites; no migration, no
+  // Finance or Orders file.
+  const ALLOWED_NEW_TASK_SILENT = new Set([
+    'src/app/api/notifications/route.ts',
+    'src/app/api/tasks/[id]/notify-assignment/route.ts',
+    'src/lib/notifications/taskNotificationPolicy.ts',
+    'src/lib/tasks/assignmentNotification.ts',
+    'src/lib/tasks/assignmentNotificationWriter.server.ts',
+    'src/lib/notifications/newTaskAcknowledgmentFlow.test.ts',
+    'src/lib/notifications/taskAssignmentRegression.test.ts',
+    'src/lib/notifications/taskFeedExclusion.test.ts',
+    'src/lib/notifications/taskNotificationPolicy.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/copyTaskNotification.test.ts',
+    'src/lib/tasks/taskCreationPerformance.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2323,6 +2344,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
+    !ALLOWED_NEW_TASK_SILENT.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -2672,7 +2694,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ATTENDANCE_REQUESTS.has(file)
         || ALLOWED_ADVANCE_EXCEPTION_CLEANUP.has(file)
         || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file)
-        || ALLOWED_ASSET_CATALOGUE.has(file),
+        || ALLOWED_ASSET_CATALOGUE.has(file)
+        || ALLOWED_NEW_TASK_SILENT.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
