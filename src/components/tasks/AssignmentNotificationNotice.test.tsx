@@ -9,8 +9,9 @@
  *
  * B borrowing A's wording is the dangerous case: the task exists, so a creator
  * told "Task creation failed" fills the form in again and now there are two.
- * These tests pin the wording, the retry, and — at the source of each of the
- * four screens — that B is routed to this notice rather than to the error path.
+ * These tests pin the wording and the retry. Since a new task stopped notifying
+ * its assignee, the four creation screens no longer have an outcome B; the
+ * notice remains for a copied task on the task detail page.
  *
  * Run:
  *   npx tsx --test src/components/tasks/AssignmentNotificationNotice.test.tsx
@@ -163,86 +164,34 @@ describe('retry sends only the notification request', () => {
   })
 })
 
-// ── All four screens ─────────────────────────────────────────────────────────
+// ── The creation screens ─────────────────────────────────────────────────────
+//
+// A new task is silent (taskNotificationPolicy.ts), so no creation screen asks
+// for an assignment notification and outcome B cannot arise there any more.
+// What is left is A and C. The notice itself is still used by the task detail
+// page for a copied task — see copyTaskNotification.test.ts.
 
-describe('every creation screen distinguishes A, B and C', () => {
+describe('every creation screen distinguishes A and C, and has no outcome B', () => {
   for (const { name, path } of SCREENS) {
     const src = read(path)
 
     test(`${name}: A — a creation failure still uses the error path`, () => {
       assert.ok(/setSaveError|setSubmitError|setError\(/.test(src),
         'the screen has a real creation-failure path')
-      // …and that path is reached from the task insert, not from the notification.
+      // …and that path is reached from the task insert.
       const insertFail = src.indexOf('if (error') >= 0 ? src.indexOf('if (error') : src.indexOf('if (taskErr')
       assert.ok(insertFail > 0, 'the task insert error is handled')
     })
 
-    test(`${name}: B — routed to the notice, never to the error banner`, () => {
-      assert.ok(src.includes('!notified.ok'), 'the notification outcome is read')
-      // A screen may branch on the outcome more than once (a log line, then the
-      // UI decision). Every branch is checked, and at least one must raise the
-      // notice — so a single logging branch cannot satisfy this by itself.
-      const branches = outcomeBBranches(src)
-      assert.ok(branches.length > 0)
-      assert.ok(branches.some(b => /setNotifyFailedFor|setCreatedTaskId/.test(b)),
-        'outcome B raises the notice')
-      for (const b of branches) {
-        assert.equal(/setSubmitError|setSaveError|setError\(/.test(b), false,
-          'outcome B must NOT use the creation-failure banner')
-      }
-      assert.ok(src.includes('AssignmentNotificationNotice'), 'and the notice is rendered')
+    test(`${name}: no notification is requested, so no "not notified" notice exists`, () => {
+      assert.equal(outcomeBBranches(src).length, 0)
+      assert.equal(src.includes('requestAssignmentNotification'), false)
+      assert.equal(src.includes('AssignmentNotificationNotice'), false)
+      assert.equal(src.includes(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE), false)
     })
 
     test(`${name}: C — the ordinary success path is untouched`, () => {
       assert.ok(/setSuccess\(true\)|onCreated\(/.test(src))
     })
-
-    test(`${name}: the task is never deleted or rolled back on outcome B`, () => {
-      for (const branch of outcomeBBranches(src)) {
-        assert.equal(/\.delete\(\)|rollback|remove\(/i.test(branch), false)
-      }
-    })
   }
-
-  test('the two modals do not close before the reader can act', () => {
-    // Both hold the created task and defer onCreated — which is what closes
-    // them — until the notice is resolved or dismissed.
-    for (const path of [
-      'src/app/tasks/assigned-by-me/page.tsx',
-      'src/components/meetings/MeetingTaskModal.tsx',
-    ]) {
-      const src = read(path)
-      for (const branch of outcomeBBranches(src)) {
-        assert.equal(/onCreated\(|onClose\(/.test(branch), false,
-          `${path} must not close on outcome B`)
-      }
-      // …and the branch ends by returning, so the success path below it — which
-      // IS the close — is unreachable on outcome B.
-      assert.ok(outcomeBBranches(src).some(b => /\breturn\b/.test(b)),
-        `${path} must return out of the outcome-B branch`)
-      assert.ok(src.includes('onResolved={'), `${path} defers the close to the notice`)
-    }
-  })
-
-  test('and neither can be submitted a second time while the warning shows', () => {
-    // The form still holds its values in a modal, so the Create button is the
-    // duplicate-task hazard the wording rule exists to prevent.
-    assert.ok(read('src/app/tasks/assigned-by-me/page.tsx')
-      .includes('notifyFailedFor === null'))
-    assert.ok(read('src/components/meetings/MeetingTaskModal.tsx')
-      .includes('createdTaskId === null'))
-  })
-
-  test('no screen redirects away after creation, so no destination page is needed', () => {
-    // The requirement's "delayed redirect" branch does not apply here: all four
-    // stay put — two reset their form in place, two are modals. Pinned so a
-    // future redirect has to deal with outcome B deliberately.
-    for (const { name, path } of SCREENS) {
-      const src = read(path)
-      for (const branch of outcomeBBranches(src)) {
-        assert.equal(/router\.(push|replace)\(/.test(branch), false,
-          `${name} must not navigate away from the outcome`)
-      }
-    }
-  })
 })

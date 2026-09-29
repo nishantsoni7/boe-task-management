@@ -1,7 +1,5 @@
 'use client'
 
-import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
-import { AssignmentNotificationNotice, AssignmentNotificationRecovered } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
@@ -64,10 +62,6 @@ export default function CreateTaskPage() {
   const [success,        setSuccess]        = useState(false)
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [submitError,    setSubmitError]    = useState<string | null>(null)
-  // OUTCOME B. The task id is all this holds — no recipient, no title, no
-  // notification content — and it is what the Retry action sends back.
-  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
-  const [notifyRecovered, setNotifyRecovered] = useState(false)
   const [isMobile,       setIsMobile]       = useState(false)
   const [attachFiles,    setAttachFiles]    = useState<File[]>([])
   const [attachError,    setAttachError]    = useState<string | null>(null)
@@ -152,8 +146,6 @@ export default function CreateTaskPage() {
         perf.current = perfTrack('task.create')
         setLoading(true)
         setSubmitError(null)
-        setNotifyFailedFor(null)
-        setNotifyRecovered(false)
       },
       findSimilar: async () => findSimilarTitle(title, await duplicateCandidates.candidates(assigneeId)),
       confirmSimilar: similar => window.confirm(
@@ -204,24 +196,8 @@ export default function CreateTaskPage() {
         })
         if (logErr) console.error('[tasks create] activity log insert failed:', logErr.message)
       },
-      // The assignee's notification starts once the activity row EXISTS, so the
-      // server links it to that row, and the creator is not held on the form for
-      // it. The browser may not write a notification addressed to somebody else;
-      // the server route owns the write, the recipient rule and the self-task
-      // skip — see src/lib/tasks/assignmentNotification.ts.
-      notifyAssignee: task => {
-        void requestAssignmentNotification(task.id).then(notified => {
-          // The task is KEPT — deleting it over a notification would lose real
-          // work. Outcome B, NOT outcome A: the success banner stays, and the
-          // warning appears beside it whenever the request settles. Putting this
-          // in `submitError` would read as "task creation failed" and invite a
-          // duplicate.
-          if (!notified.ok) {
-            console.error('[tasks create] assignment notification failed:', notified.reason)
-            setNotifyFailedFor(task.id)
-          }
-        })
-      },
+      // No assignee notification: a new task is announced by the assignee's
+      // acknowledgment section. See src/lib/notifications/taskNotificationPolicy.ts.
       // Files go up a few at a time; `readyAttachments` is the already-compressed
       // set from the preparation step, not a second compression pass.
       uploadAttachments: async (task, readyAttachments) => {
@@ -341,23 +317,6 @@ export default function CreateTaskPage() {
           >
             ×
           </button>
-        </div>
-      )}
-
-      {/* Outcome B — created, not notified. Sits BELOW the success banner so
-          both facts are on screen at once. */}
-      {notifyFailedFor && (
-        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
-          <AssignmentNotificationNotice
-            taskId={notifyFailedFor}
-            onResolved={() => { setNotifyFailedFor(null); setNotifyRecovered(true) }}
-            onDismiss={() => setNotifyFailedFor(null)}
-          />
-        </div>
-      )}
-      {notifyRecovered && (
-        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
-          <AssignmentNotificationRecovered onDismiss={() => setNotifyRecovered(false)} />
         </div>
       )}
 

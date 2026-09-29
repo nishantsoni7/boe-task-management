@@ -1,7 +1,5 @@
 'use client'
 
-import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
-import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -24,7 +22,7 @@ import type { Meeting, MeetingOrder, MeetingOrderItem } from '@/lib/meetings/typ
 // default date is a task nobody owns.
 //
 // This writes a task exactly the way /tasks/create does — same table, same
-// activity-log entry, same assignee notification — and then records the LINK.
+// activity-log entry — and then records the LINK.
 // Meetings never mirrors acknowledgement, status or completion: Task Management
 // stays the execution source of truth.
 
@@ -60,10 +58,6 @@ export function MeetingTaskModal({
   const [members, setMembers]     = useState<MemberOption[]>([])
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState<string | null>(null)
-  // Outcome B: the created task's id, held only while the notice is on screen.
-  // Its presence also disables Create, so the still-filled form cannot be
-  // submitted a second time and produce a duplicate task.
-  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   /**
@@ -95,11 +89,7 @@ export function MeetingTaskModal({
     return () => { active = false }
   }, [supabase])
 
-  // `createdTaskId` disables Create too: at that point the task already exists
-  // and the form still holds its values, so a second press would make a second
-  // task. Retry lives in the notice and touches only the notification.
-  const canSubmit = createdTaskId === null
-    && title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
+  const canSubmit = title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   const handleCreate = async () => {
     if (!canSubmit || saving) return
@@ -139,21 +129,16 @@ export function MeetingTaskModal({
 
     invalidateTaskLists(assigneeId, profile.id)
 
-    // The activity entry and the assignee's notification depend only on the new
-    // id and not on each other — the same pair /tasks/create writes, in the same
-    // shape, so a meeting-born task is indistinguishable from any other once it
-    // reaches Task Management.
-    const [{ error: logErr }, notified] = await Promise.all([
-      supabase.from('task_activity_log').insert({
-        task_id: task.id,
-        actor_id: profile.id,
-        action: 'created',
-        note: `Task created from meeting: ${meeting.title}`,
-      }),
-      requestAssignmentNotification(task.id),
-    ])
+    // The same activity entry /tasks/create writes, so a meeting-born task is
+    // indistinguishable from any other once it reaches Task Management. No
+    // assignee notification: the acknowledgment section announces a new task.
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
+      task_id: task.id,
+      actor_id: profile.id,
+      action: 'created',
+      note: `Task created from meeting: ${meeting.title}`,
+    })
     if (logErr) console.error('[meetings:create-task] activity log insert failed:', logErr.message)
-    if (!notified.ok) console.error('[meetings:create-task] assignment notification failed:', notified.reason)
 
     // Record the relationship last. If this fails the task still exists and is
     // reported — losing the task would be far worse than losing the link, and
@@ -173,16 +158,6 @@ export function MeetingTaskModal({
       return
     }
 
-    // Outcome B. Same treatment this modal already gives a failed link: the
-    // task exists and is kept, and the modal stays open saying exactly what did
-    // not happen — with a Retry that touches only the notification. Closing on
-    // a silent failure is how the assignee ended up never told.
-    if (!notified.ok) {
-      setCreatedTaskId(task.id)
-      setSaving(false)
-      return
-    }
-
     setSaving(false)
     onCreated(task.id)
   }
@@ -194,14 +169,6 @@ export function MeetingTaskModal({
       onClose={onClose}
       width={540}
     >
-      {createdTaskId && (
-        <AssignmentNotificationNotice
-          variant="inline"
-          taskId={createdTaskId}
-          onResolved={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
-          onDismiss={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
-        />
-      )}
       {error && <MeetingModalError message={error} />}
 
       <MeetingField label="Task Title">

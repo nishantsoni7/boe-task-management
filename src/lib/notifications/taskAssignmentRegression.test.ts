@@ -438,22 +438,10 @@ describe('18. insert failures are surfaced, not swallowed', () => {
       'new row violates row-level security policy')
   })
 
-  test('every call site reads the outcome and reports it to a person', () => {
-    // A console line is not a report. Each screen surfaces the failure through
-    // whatever channel it already uses for "the task exists but something
-    // else did not happen".
-    const SITES: [path: string, surface: string][] = [
-      ['src/app/tasks/create/page.tsx',                 'setSubmitError'],
-      ['src/app/tasks/assigned-by-me/page.tsx',         'onError'],
-      ['src/app/tasks/quotation-requests/new/page.tsx', 'setSubmitError'],
-      ['src/components/meetings/MeetingTaskModal.tsx',  'setError'],
-    ]
-    for (const [path, surface] of SITES) {
-      const src = read(path)
-      assert.ok(src.includes('!notified.ok'), `${path} reads the outcome`)
-      assert.ok(src.includes(surface), `${path} surfaces it via ${surface}`)
-    }
-    // The server route reports it in its response body, not only in a log.
+  test('the one remaining call site reports the outcome, not only a log', () => {
+    // The creation screens no longer request an assignment notification (a new
+    // task is silent). The copy route still runs the operation in-process and
+    // reports it in its response body.
     const copy = read('src/app/api/tasks/[id]/copy/route.ts')
     assert.ok(copy.includes('assignmentNotified'))
   })

@@ -521,7 +521,7 @@ describe('one rule, one place', () => {
 
     // The four browser task creators. These are the paths whose direct insert
     // the database refused — a notifications row addressed to somebody else.
-    // They now ask the server route instead and touch the table nowhere.
+    // A new task is silent now, so they ask for nothing and touch the table nowhere.
     for (const path of [
       'src/app/tasks/create/page.tsx',
       'src/app/tasks/assigned-by-me/page.tsx',
@@ -529,7 +529,7 @@ describe('one rule, one place', () => {
       'src/components/meetings/MeetingTaskModal.tsx',
     ]) {
       const src = read(path)
-      assert.ok(src.includes('requestAssignmentNotification'), `${path} calls the server route`)
+      assert.equal(src.includes('requestAssignmentNotification'), false, `${path} requests no assignment notification`)
       assert.equal(/\.from\(['"]notifications['"]\)/.test(src), false,
         `${path} must not touch the notifications table at all`)
     }

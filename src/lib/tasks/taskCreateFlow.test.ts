@@ -276,11 +276,10 @@ describe('wiring: /tasks/create and /tasks/create-self', () => {
     })
   }
 
-  test('the delegate screen does not await the notification, and still reports its failure', () => {
+  test('the delegate screen asks for no notification either — a new task is silent', () => {
     const code = codeOf(read(DELEGATE))
-    assert.ok(code.includes('void requestAssignmentNotification(task.id).then(notified => {'))
-    assert.equal(/await requestAssignmentNotification/.test(code), false)
-    assert.ok(/if \(!notified\.ok\) \{[\s\S]{0,160}setNotifyFailedFor\(task\.id\)/.test(code))
+    assert.equal(code.includes('requestAssignmentNotification'), false)
+    assert.equal(code.includes('notifyAssignee:'), false)
   })
 
   test('the self screen asks for no notification', () => {

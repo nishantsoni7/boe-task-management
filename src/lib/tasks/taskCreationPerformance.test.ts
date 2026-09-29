@@ -148,36 +148,26 @@ describe('attachment-bearing creation screens compress at most twice per submiss
   })
 })
 
-// ── 3. Every creation screen parallelises its two independent writes ───────
+// ── 3. Every creation screen's only follow-up write is its activity row ───
+//
+// These screens used to run the activity insert and an assignment-notification
+// request side by side. A new task is silent now (taskNotificationPolicy.ts),
+// so the request — and the round trip it cost on every creation — is gone.
 
-describe('every creation screen runs its activity log and its notification together', () => {
+describe('every creation screen writes its activity row and requests no notification', () => {
   const SCREENS = [
-    // /tasks/create and /tasks/create-self no longer wait on the notification at
-    // all: it starts only once the activity row exists and is never awaited —
-    // src/lib/tasks/taskCreateFlow.test.ts pins that stronger shape.
     'src/app/tasks/quotation-requests/new/page.tsx',
     'src/app/tasks/assigned-by-me/page.tsx',
     'src/components/meetings/MeetingTaskModal.tsx',
+    'src/components/meetings/DiscussionTaskModal.tsx',
   ]
 
   for (const path of SCREENS) {
-    test(`${path} does not sequentially await the activity log then the notification`, () => {
+    test(`${path} writes the created activity row and nothing to the notification route`, () => {
       const src = codeOf(read(path))
-      // create-self assigns to nobody but itself, so it never calls
-      // requestAssignmentNotification at all — nothing to parallelise.
-      if (!src.includes('requestAssignmentNotification(task.id)')) return
-      assert.equal(
-        /task_activity_log['"]\)\s*\n\s*\.insert\([\s\S]{0,200}\}\)\s*\n\s*(\/\/[^\n]*\n\s*)*const notified = await requestAssignmentNotification/.test(src),
-        false,
-        `${path} must not await the activity log insert before starting the notification request`,
-      )
+      assert.ok(src.includes("const { error: logErr } = await supabase.from('task_activity_log').insert({"))
+      assert.equal(src.includes('requestAssignmentNotification'), false)
+      assert.equal(src.includes('notify-assignment'), false)
     })
   }
-
-  test('quotation-requests/new now uses Promise.all, matching every sibling screen', () => {
-    const src = codeOf(read('src/app/tasks/quotation-requests/new/page.tsx'))
-    assert.ok(src.includes('const [{ error: logErr }, notified] = await Promise.all(['))
-    assert.ok(src.includes("supabase.from('task_activity_log').insert("))
-    assert.ok(src.includes('requestAssignmentNotification(task.id),'))
-  })
 })

@@ -329,10 +329,15 @@ describe('9-10. every creation path goes through the trusted operation', () => {
     'src/components/meetings/MeetingTaskModal.tsx',
   ]
 
-  for (const path of CLIENT_PATHS) {
-    test(`9. ${path} calls the server route`, () => {
+  // A new task is silent (taskNotificationPolicy.ts), so no creation screen
+  // asks the route any more — the request could only ever come back
+  // `skipped_acknowledgment`. The route stays for tabs still on an older build.
+  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx']) {
+    test(`9. ${path} no longer requests an assignment notification`, () => {
       const src = read(path)
-      assert.ok(src.includes('requestAssignmentNotification'), 'uses the shared client helper')
+      assert.equal(src.includes('requestAssignmentNotification'), false)
+      assert.equal(src.includes('AssignmentNotificationNotice'), false, 'nor shows the "not notified" notice')
+      assert.equal(src.includes('notify-assignment'), false)
     })
   }
 
@@ -435,32 +440,9 @@ describe('11-12. a failed notification is reported, and costs nobody their task'
     assert.equal(res.ok, false)
   })
 
-  test('11e. every screen turns that into something a person sees', () => {
-    // A console.error is what let this run in production unnoticed.
-    const SURFACES: [path: string, call: string][] = [
-      ['src/app/tasks/create/page.tsx',                 'setSubmitError'],
-      ['src/app/tasks/assigned-by-me/page.tsx',         'onError'],
-      ['src/app/tasks/quotation-requests/new/page.tsx', 'setSubmitError'],
-      ['src/components/meetings/MeetingTaskModal.tsx',  'setError'],
-    ]
-    for (const [path, call] of SURFACES) {
-      const src = read(path)
-      const outcomeAt = src.indexOf('notified')
-      assert.ok(outcomeAt > 0, `${path} reads the outcome`)
-      assert.ok(/!notified\.ok/.test(src), `${path} branches on failure`)
-      // The surfacing call must come AFTER the outcome is in hand — an earlier
-      // one belongs to some other failure on the same screen.
-      assert.ok(src.indexOf(call, outcomeAt) > outcomeAt,
-        `${path} surfaces the failure via ${call}, not only a log`)
-    }
-  })
-
-  test('12. a created task is never deleted because its notification failed', () => {
+  test('12. a copied task is never deleted because its notification failed', () => {
+    // The copy route is the one path that still runs the operation (in-process).
     for (const path of [
-      'src/app/tasks/create/page.tsx',
-      'src/app/tasks/assigned-by-me/page.tsx',
-      'src/app/tasks/quotation-requests/new/page.tsx',
-      'src/components/meetings/MeetingTaskModal.tsx',
       'src/app/api/tasks/[id]/copy/route.ts',
     ]) {
       const src = read(path)

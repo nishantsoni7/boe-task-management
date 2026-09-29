@@ -7,8 +7,6 @@ import { assignedByMeKey } from '@/hooks/queries/useAssignedByMe'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { MeetingModal, MeetingField, MeetingModalActions, MeetingModalError } from './MeetingModal'
-import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
-import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
 import { logMeetingFailure, meetingErrorMessage } from '@/lib/meetings/errors'
 import { buildDiscussionTaskDraft } from '@/lib/meetings/taskDraft'
 import { DISCUSSION_CATEGORY_META, type DiscussionRow } from '@/lib/meetings/discussion'
@@ -16,8 +14,8 @@ import type { Meeting } from '@/lib/meetings/types'
 
 // Turn an order-discussion item into a task in Task Management.
 //
-// Deliberately the same shape, the same table, the same activity entry and the
-// same assignee notification as MeetingTaskModal and /tasks/create, so a task born
+// Deliberately the same shape, the same table and the same activity entry as
+// MeetingTaskModal and /tasks/create, so a task born
 // in a meeting is indistinguishable from any other once it reaches Tasks. What is
 // prefilled is the order, the category, the issue and this meeting's position —
 // enough for the assignee to act in three days without the meeting in front of
@@ -69,10 +67,6 @@ export function DiscussionTaskModal({
   const [members, setMembers]         = useState<MemberOption[]>([])
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState<string | null>(null)
-  // Outcome B: the created task's id, held only while the notice is on screen.
-  // Its presence also disables Create, so the still-filled form cannot be
-  // submitted a second time and produce a duplicate task.
-  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   /**
@@ -92,9 +86,8 @@ export function DiscussionTaskModal({
     queryClient.invalidateQueries({ queryKey: assignedByMeKey(creator) })
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
-  // A task that exists but is not yet linked to this item, and whether its
-  // assignee was notified — carried into the retry so its outcome is unchanged.
-  const [unlinked, setUnlinked] = useState<{ taskId: string; notified: boolean } | null>(null)
+  // A task that exists but is not yet linked to this item.
+  const [unlinked, setUnlinked] = useState<{ taskId: string } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -107,7 +100,7 @@ export function DiscussionTaskModal({
     return () => { active = false }
   }, [supabase])
 
-  const canSubmit = createdTaskId === null && unlinked === null
+  const canSubmit = unlinked === null
     && title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   const handleCreate = async () => {
@@ -147,24 +140,21 @@ export function DiscussionTaskModal({
 
     invalidateTaskLists(assigneeId, profile.id)
 
-    const [{ error: logErr }, notified] = await Promise.all([
-      supabase.from('task_activity_log').insert({
-        task_id: task.id,
-        actor_id: profile.id,
-        action: 'created',
-        note: `Task created from meeting: ${meeting.title}`,
-      }),
-      requestAssignmentNotification(task.id),
-    ])
+    // No assignee notification: the acknowledgment section announces a new task.
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
+      task_id: task.id,
+      actor_id: profile.id,
+      action: 'created',
+      note: `Task created from meeting: ${meeting.title}`,
+    })
     if (logErr) console.error('[meetings:create-task] activity log insert failed:', logErr.message)
-    if (!notified.ok) console.error('[meetings:create-task] assignment notification failed:', notified.reason)
 
     // Record the relationship last. If this fails the task still exists and is
     // reported — losing the task would be far worse than losing the link.
-    await linkTask(task.id, notified.ok)
+    await linkTask(task.id)
   }
 
-  const linkTask = async (taskId: string, notified: boolean) => {
+  const linkTask = async (taskId: string) => {
     const { error: linkErr } = await supabase.rpc('link_meeting_discussion_task', {
       p_appearance_id: appearance.id,
       p_task_id: taskId,
@@ -172,7 +162,7 @@ export function DiscussionTaskModal({
 
     if (linkErr) {
       logMeetingFailure('link-discussion-task', linkErr)
-      setUnlinked({ taskId, notified })
+      setUnlinked({ taskId })
       setError(
         'The task was created, but linking it to this discussion item failed. '
         + 'The task is in Task Management. Retry the link — no second task will be created.',
@@ -183,12 +173,6 @@ export function DiscussionTaskModal({
 
     setUnlinked(null)
     setError(null)
-    if (!notified) {
-      setCreatedTaskId(taskId)
-      setSaving(false)
-      return
-    }
-
     setSaving(false)
     onCreated(taskId)
   }
@@ -197,7 +181,7 @@ export function DiscussionTaskModal({
     if (!unlinked || saving) return
     setSaving(true)
     setError(null)
-    await linkTask(unlinked.taskId, unlinked.notified)
+    await linkTask(unlinked.taskId)
   }
 
   return (
@@ -207,14 +191,6 @@ export function DiscussionTaskModal({
       onClose={onClose}
       width={540}
     >
-      {createdTaskId && (
-        <AssignmentNotificationNotice
-          variant="inline"
-          taskId={createdTaskId}
-          onResolved={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
-          onDismiss={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
-        />
-      )}
       {error && <MeetingModalError message={error} />}
 
       <MeetingField label="Task Title">

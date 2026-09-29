@@ -2290,6 +2290,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/copyTaskNotification.test.ts',
     'src/lib/tasks/taskCreationPerformance.test.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
+    // The creation screens stop requesting the now-silent notification.
+    'src/app/tasks/create/page.tsx',
+    'src/app/tasks/assigned-by-me/page.tsx',
+    'src/app/tasks/quotation-requests/new/page.tsx',
+    'src/components/meetings/MeetingTaskModal.tsx',
+    'src/components/meetings/DiscussionTaskModal.tsx',
+    'src/components/tasks/AssignmentNotificationNotice.test.tsx',
+    'src/lib/meetings/discussionFlow.test.ts',
+    'src/lib/notificationSystemActivity.test.ts',
+    'src/lib/tasks/assignmentServerBoundary.test.ts',
+    'src/lib/tasks/taskCreateFlow.test.ts',
   ])
 
   const isUnexpectedFile = (f: string) =>
