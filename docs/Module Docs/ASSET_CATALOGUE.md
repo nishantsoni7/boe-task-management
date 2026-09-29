@@ -1,6 +1,6 @@
 # Asset Catalogue and Owner Overview
 
-Migration `20270131000000_asset_catalogue.sql`. Assets & Access module.
+Migration `20270220000000_asset_catalogue.sql`. Assets & Access module.
 
 ## The three words
 
@@ -91,7 +91,7 @@ Catalogue**. It is protected, denied by default and depends on `view`.
 1. **Before the release**, run `asset-catalogue-post-release-checks.sql` (read-only) and keep
    the section A values as the baseline.
 2. **Apply the migration.** Confirm first that `npx supabase migration list --linked` shows
-   `20270131000000` as the only pending version. Its number must still be above every applied
+   `20270220000000` as the only pending version. Its number must still be above every applied
    version: if production has moved past it, renumber before pushing. It is safe for the
    **currently deployed** frontend. The old app never selects `product_id`, reads no catalogue
    table, and only ever writes one of the six backfilled category keys, all of which pass the

@@ -413,7 +413,7 @@ describe('d) Manage Access Records grants no asset authority', () => {
   })
 })
 
-// ─── Manage Asset Catalogue (20270131000000) ─────────────────────────────────
+// ─── Manage Asset Catalogue (20270220000000) ─────────────────────────────────
 //
 // Mirrors can_manage_asset_catalogue(): admin, or the explicit grant. It opens
 // the module and the catalogue and NOTHING else — and no asset authority, in

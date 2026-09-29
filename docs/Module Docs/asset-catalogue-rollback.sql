@@ -1,4 +1,4 @@
--- ROLLBACK for 20270131000000_asset_catalogue.sql. Reviewed and tested locally; NOT applied anywhere.
+-- ROLLBACK for 20270220000000_asset_catalogue.sql. Reviewed and tested locally; NOT applied anywhere.
 -- Run only by an administrator, only if the catalogue must be withdrawn, and
 -- only after the matching frontend has been rolled back (the new frontend reads
 -- assets.product_id and the catalogue tables and would fail without them).

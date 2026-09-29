@@ -1,4 +1,4 @@
--- Asset catalogue (20270131000000) — production checks. READ-ONLY.
+-- Asset catalogue (20270220000000) — production checks. READ-ONLY.
 --
 -- Every statement is a SELECT. Run it twice:
 --   1. BEFORE the release, to record the baseline (section A only is meaningful);
@@ -29,7 +29,7 @@ select json_build_object(
 
   -- ── B. The migration is applied, once ──
   'B_ledger_has_version',     (select count(*) from supabase_migrations.schema_migrations
-                                where version = '20270131000000'),                       -- expect: 1
+                                where version = '20270220000000'),                       -- expect: 1
 
   -- ── C. Catalogue backfill ──
   'C_original_six_present',   (select count(*) from public.asset_categories

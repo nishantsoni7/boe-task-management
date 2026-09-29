@@ -176,7 +176,7 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // Defining the ASSET CATALOGUE — the categories and products every asset is
   // filed under, for the whole company. Protected so that it is handed to a
   // named person on purpose rather than arriving with a "Manager" preset.
-  // Registered by 20270131000000.
+  // Registered by 20270220000000.
   'manage_asset_catalogue',
   // Opening Team Performance: every employee's score, ranking, EOD discipline
   // and attention briefing. Protected because it is sight of other people's
@@ -247,7 +247,7 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // to prevent.
   manage_access_records: 'view',
   // Same reason: the catalogue tables carry the same RESTRICTIVE entry gate
-  // (20270131000000 §8), so a catalogue grant without module entry would be
+  // (20270220000000 §8), so a catalogue grant without module entry would be
   // stored and never honoured.
   manage_asset_catalogue: 'view',
 }

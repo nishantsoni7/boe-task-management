@@ -5,7 +5,7 @@
 #
 # WHAT IT PROVES
 # --------------
-# enforce_asset_catalogue_links (20270131000000 §6) reads the product and
+# enforce_asset_catalogue_links (20270220000000 §6) reads the product and
 # category it validates against FOR SHARE. update_asset_product holds the
 # product FOR UPDATE while it counts the assets using it and moves it. Those
 # locks make the two operations serialise, in either order:
@@ -57,7 +57,7 @@ q()  { docker exec -i -e PGCLIENTENCODING=UTF8 "$C" psql -U postgres -d postgres
 GOT_MARKER="$(q -c "select coalesce(shobj_description(oid, 'pg_database'), '') from pg_database where datname = current_database()")"
 [ "$GOT_MARKER" = "$MARKER" ] || { echo "FATAL: database is not marked '$MARKER' (found '$GOT_MARKER'). Nothing was written." >&2; exit 1; }
 [ "$(q -c "select to_regclass('public.asset_products') is not null")" = "t" ] \
-  || { echo "FATAL: 20270131000000 is not applied here. Nothing was written." >&2; exit 1; }
+  || { echo "FATAL: 20270220000000 is not applied here. Nothing was written." >&2; exit 1; }
 
 ADMIN=ca7ace00-0000-4000-8000-00000000000a
 PROD=ca7ace00-0000-4000-8000-0000000000b1

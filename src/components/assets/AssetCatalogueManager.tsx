@@ -23,7 +23,7 @@ import {
 } from '@/lib/assets/catalogue'
 
 // Manage Catalogue — add, rename, retire and reactivate asset categories and
-// the products within them (20270131000000).
+// the products within them (20270220000000).
 //
 // Every write is one RPC. The screen is only shown to someone holding
 // canManageCatalogue, but that is a courtesy: the RPCs check the same grant in

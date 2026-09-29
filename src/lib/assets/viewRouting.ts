@@ -41,7 +41,7 @@ export function canOpenView(view: AssetsView, caps: AssetsAccessCapabilities): b
     case 'asset-requests':
       return caps.canReviewAssetRequests || caps.canRequestAssetChanges
     // Managing categories and products. Its own grant, and nothing else opens
-    // it — not the inventory, not asset editing (20270131000000).
+    // it — not the inventory, not asset editing (20270220000000).
     case 'asset-catalogue':
       return caps.canManageCatalogue
   }

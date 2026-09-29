@@ -497,7 +497,7 @@ export default function AssetDetailPage() {
   const assetId = typeof params?.id === 'string' ? params.id : ''
   const router = useRouter()
   const { supabase, profile, caps, loading: authLoading, signOut } = useAssetsAccess()
-  // Category and product by their CURRENT names (20270131000000): a rename in
+  // Category and product by their CURRENT names (20270220000000): a rename in
   // the catalogue shows here without the asset row changing.
   const { catalogue } = useAssetCatalogue(supabase)
 

@@ -42,7 +42,7 @@ import {
 
 const inputStyle = { width: '100%' } as const
 
-// Categories and products come from the managed catalogue (20270131000000),
+// Categories and products come from the managed catalogue (20270220000000),
 // never from a list compiled into the app. A new asset is offered ACTIVE
 // entries only; an asset already resting on a retired one keeps it, labelled
 // "(inactive)", so an edit of some other field never re-categorises it. That

@@ -276,7 +276,7 @@ describe('sortAssetRows', () => {
   })
 })
 
-// ─── The catalogue (20270131000000): product filter, names, and combining ────
+// ─── The catalogue (20270220000000): product filter, names, and combining ────
 
 describe('filtering by the catalogue', () => {
   const T = '2026-09-27T00:00:00Z'

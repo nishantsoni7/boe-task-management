@@ -1,5 +1,5 @@
 -- ═════════════════════════════════════════════════════════════════════════════
--- Assets & Access — asset catalogue (20270131000000) behavioural assertions
+-- Assets & Access — asset catalogue (20270220000000) behavioural assertions
 -- ═════════════════════════════════════════════════════════════════════════════
 --
 -- Proves, against a real database with the migration applied, what a text
@@ -35,7 +35,7 @@ begin;
 do $$
 begin
   if to_regclass('public.asset_categories') is null then
-    raise exception 'ASSET_CATALOGUE_ASSERT_REFUSED: 20270131000000 is not applied here. Nothing was written.';
+    raise exception 'ASSET_CATALOGUE_ASSERT_REFUSED: 20270220000000 is not applied here. Nothing was written.';
   end if;
 end $$;
 

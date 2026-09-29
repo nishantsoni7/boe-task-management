@@ -54,7 +54,7 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // in front of them, and the screen reads the same answer through
   // deriveAssetsAccessCapabilities().canManageAccess.
   //
-  // `manage_asset_catalogue` (20270131000000) likewise: catalogue rows have no
+  // `manage_asset_catalogue` (20270220000000) likewise: catalogue rows have no
   // client write privilege at all, the four write RPCs check
   // can_manage_asset_catalogue() first, and the screen reads
   // deriveAssetsAccessCapabilities().canManageCatalogue.

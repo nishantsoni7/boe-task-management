@@ -221,7 +221,7 @@ describe('defaultViewForArea', () => {
   })
 })
 
-// ─── Catalogue (20270131000000) ──────────────────────────────────────────────
+// ─── Catalogue (20270220000000) ──────────────────────────────────────────────
 
 describe('the Catalogue view', () => {
   const base = {
