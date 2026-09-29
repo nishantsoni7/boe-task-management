@@ -27,7 +27,6 @@ import {
   PiCompletionPanel,
   PiLockedNotice,
 } from './PiCompletionPanel'
-import { PiCommissionSummary } from './PiInternalDetails'
 import {
   PI_LOCKED_TITLE,
   buildCompletionFacts,
@@ -111,10 +110,13 @@ describe('the grouped facts', () => {
     renderToStaticMarkup(<PiCompletionFacts title="Client" facts={facts.filter(f => f.group === 'client')} editLabel="Edit client details"
       canEdit={over.canEdit ?? true} locked={over.locked ?? false} onEdit={noop} />)
 
-  test('every field shows its current value and its label: Required for submission or Optional', () => {
-    const t = text(render())
+  test('every field shows its current value; only the ones Submit needs carry a red star, and no pill repeats per field', () => {
+    const html = render()
+    const t = text(html)
     assert.ok(t.includes('Client name') && t.includes('Kalyan'))
-    assert.ok(t.includes('Required for submission') && t.includes('Optional'))
+    assert.ok(!t.includes('Required for submission') && !t.includes('Optional'), 'no per-field pill')
+    // client name, client city and the salesperson contact number are required; client phone is not.
+    assert.equal((html.match(/pi-form-req/g) ?? []).length, 3)
     assert.ok(t.includes('Not added yet'), 'a missing required value is said in words, not left blank')
     assert.ok(t.includes('Not given'), 'a missing optional one is said too')
   })
@@ -241,24 +243,10 @@ describe('the locked notice', () => {
 })
 
 describe('the middleman commission is one editable item', () => {
-  test('the summary in the commercial card reports the answer and nothing else — no form, warning or call to action', () => {
-    const html = renderToStaticMarkup(<PiCommissionSummary row={{ status: 'draft' }} canEdit onEdit={noop} summaryOnly />)
-    assert.ok(text(html).includes('Middleman commission') && text(html).includes('Not answered'))
-    assert.ok(!html.includes('<button'), 'no Enter / Edit control')
-    assert.ok(!/Needed before review|role="status"|AlertTriangle/.test(html), 'no warning line')
-    assert.ok(!html.includes('<input') && !html.includes('type="radio"'), 'no form')
-  })
-
-  test('the full summary — and its call to action — still exists for any screen that wants it', () => {
-    const html = renderToStaticMarkup(<PiCommissionSummary row={{ status: 'draft' }} canEdit onEdit={noop} />)
-    assert.ok(html.includes('<button') && /Needed before review/.test(html))
-  })
-
-  test('on the page: the commercial card reports it, and Internal order details is the only editor', () => {
+  test('on the page: the summary carries no commission row at all, and Internal order details is the only editor', () => {
     const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
-    const card = page.slice(page.indexOf('<PiCommissionSummary'), page.indexOf('<PiCommissionSummary') + 260)
-    assert.ok(card.includes('summaryOnly'))
-    assert.equal((page.match(/<PiCommissionSummary/g) ?? []).length, 1)
+    assert.ok(!page.includes('PiCommissionSummary'), 'no repeat of the answer beside Product value and Total before GST')
+    assert.ok(!page.includes('internal={'), 'the commercial card is given no commission block')
     assert.equal((page.match(/<PiOrderDetailsSection/g) ?? []).length, 2, 'the one form, drawn in either arrangement')
     assert.ok(!page.includes('internalSubmitBlock &&'), 'the middleman warning above the Submit dialog is gone')
     assert.ok(!page.includes('SUBMISSION_MIDDLEMAN_HINT'))

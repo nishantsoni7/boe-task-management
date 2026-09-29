@@ -94,9 +94,10 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
-import { PiDraftAttachments, PiSentDocuments, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
-import { PiCommissionSummary, PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
+import { usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
+import { PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
 import { PiOrderDetailsSection } from '@/components/orders/PiOrderDetailsSection'
+import { PiSupportingDetails } from '@/components/orders/PiSupportingDetails'
 import {
   SALES_DETAILS_COLUMNS,
   SALES_DETAILS_UNAVAILABLE,
@@ -108,7 +109,6 @@ import {
   type OrderDetailsRow,
   type SalesDetails,
 } from '@/lib/orders/salesOrderDetails'
-import { PiHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { AmountMaskRegion, AmountsToggle, useAmountsHidden } from '@/components/orders/AmountMask'
 import {
   PiCompletionFacts,
@@ -2273,12 +2273,41 @@ function PiDraftDetailPageInner() {
       case 'terms': setClientFailure(null); setEditSection('terms'); return
       case 'schedule': setClientFailure(null); setEditSection('schedule'); return
       case 'internal': focusOrderDetails(item.field ?? 'middleman_commission'); return
-      case 'documents': scrollTo('#pi-draft-attachments'); return
-      case 'highlight': scrollTo('.pi-detail-highlight'); return
+      case 'documents':
+        scrollTo('#pi-draft-attachments')
+        document.querySelector<HTMLElement>('#pi-draft-attachments input')?.focus({ preventScroll: true })
+        return
+      case 'highlight':
+        scrollTo('.pi-detail-highlight')
+        document.getElementById('pi-highlight-remark')?.focus({ preventScroll: true })
+        return
       case 'workbook': router.push(changePiHref(submissionId)); return
       case 'products': router.push(draftEditPiPageHref(submissionId)); return
     }
   }
+  /**
+   * SUPPORTING DETAILS, above Internal order details: Client PO and Design Files,
+   * the Order highlight and the billing percentage, all optional. Locked, the
+   * same parts read-only.
+   */
+  const supportingDetails = (
+    <PiSupportingDetails
+      supabase={supabase}
+      submissionId={submissionId}
+      row={detailsRow}
+      rowVersion={rowVersion}
+      canEditBilling={canEditInternalDetails}
+      canEditFiles={canEditInternalDetails}
+      canEditHighlight={canEditSubmission}
+      locked={isLocked}
+      supporting={supporting}
+      submittedAt={submission.submitted_at ?? null}
+      grandTotal={grandTotalValue}
+      focus={detailsFocus}
+      onSaved={() => loadDraft({ quiet: true })}
+      onHighlightRead={setHighlightRead}
+    />
+  )
   /** The owner's one route once the PI is locked — the same correction request as before. */
   const requestChangeAction =
     isLocked && !canEditSubmission && !canAdminAmend && ownsSubmission
@@ -2497,7 +2526,9 @@ function PiDraftDetailPageInner() {
               onDismissNotice={() => setPaymentNotice(null)}
             />
 
-            {/* ── 2b. Product value, Total before GST, billing, commission ── */}
+            {/* ── 2b. Product value, Total before GST, billing ──
+                The middleman commission is asked and shown once, in Internal
+                order details; it is not repeated here. */}
             <PiCommercialCard
               figures={summaryFigures}
               billing={billingSummary}
@@ -2506,14 +2537,6 @@ function PiDraftDetailPageInner() {
                  set_order_submission_billing_percentage re-derives it anyway. */
               canEditBilling={false}
               onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
-              internal={
-                <PiCommissionSummary
-                  row={submission}
-                  canEdit={canEditInternalDetails}
-                  onEdit={() => focusOrderDetails('middleman_commission')}
-                  summaryOnly
-                />
-              }
             />
           </div>
         </div>
@@ -2552,6 +2575,7 @@ function PiDraftDetailPageInner() {
                     onEdit={() => { setClientFailure(null); setEditSection('terms') }}
                   />
                 </div>
+                {supportingDetails}
                 <PiOrderDetailsSection
                   supabase={supabase}
                   submissionId={submissionId}
@@ -2566,23 +2590,6 @@ function PiDraftDetailPageInner() {
                   focus={detailsFocus}
                   onSaved={() => loadDraft({ quiet: true })}
                 />
-                <div className="pi-completion-facts-grid">
-                  <div id="pi-draft-attachments" style={{ minWidth: 0 }}>
-                    {isLocked ? (
-                      <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
-                    ) : (
-                      <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
-                    )}
-                  </div>
-                  <PiHighlightRemark
-                    supabase={supabase}
-                    submissionId={submissionId}
-                    canEdit={canEditSubmission}
-                    rowVersion={rowVersion}
-                    onSaved={() => { void loadDraft({ quiet: true }) }}
-                    onRead={setHighlightRead}
-                  />
-                </div>
               </>}
               submit={actions.canSubmit ? {
                 label: submitButtonLabel(submission.status),
@@ -2602,6 +2609,7 @@ function PiDraftDetailPageInner() {
                   seen and entered together; each value saved by the RPC that
                   already owns it. Editable exactly where can_edit_order_submission
                   says; read-only for everybody else. */}
+              {supportingDetails}
               <PiOrderDetailsSection
                 supabase={supabase}
                 submissionId={submissionId}
@@ -2614,24 +2622,7 @@ function PiDraftDetailPageInner() {
                 fabricCost={toNumber(submission.fabric_cost)}
                 focus={detailsFocus}
                 onSaved={() => loadDraft({ quiet: true })}
-              />
-              {submission.status === 'submitted' && (
-                <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
-              )}
-              {(submission.status === 'draft' || submission.status === 'needs_changes') && (
-                <div id="pi-draft-attachments">
-                  <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
-                </div>
-              )}
-              {/* THE ORDER HIGHLIGHT (20270210000000): optional, internal, and
-                  shown on the Confirmed Order. Editable exactly where
-                  can_edit_order_submission says so; the RPC re-derives it. */}
-              <PiHighlightRemark
-                supabase={supabase}
-                submissionId={submissionId}
-                canEdit={canEditSubmission}
-                rowVersion={rowVersion}
-                onSaved={() => { void loadDraft({ quiet: true }) }}
+                showLegend
               />
             </div>
 

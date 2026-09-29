@@ -672,9 +672,10 @@ describe('the final step REVIEWS the internal order details — it never asks fo
     const html = render({ internalDetails: dated, detailsReview: reviewOf(dated) })
     const review = html.slice(html.indexOf('data-testid="pi-submit-details-review"'), html.indexOf('</dl>'))
     for (const expected of ['Date of Order Confirmation', '20 Sep 2026', 'Dispatch Date Finalized', '20 Nov 2026',
-      'Lead source', 'Website', 'Billing terms', '50% on dispatch', 'Fabric responsibility', 'Middleman commission', 'No']) {
+      'Lead source', 'Website', 'Fabric responsibility', 'Middleman commission', 'No']) {
       assert.ok(review.includes(expected), `${expected} is reviewed`)
     }
+    assert.ok(!review.includes('Billing terms') && !review.includes('50% on dispatch'), 'billing terms are no longer reviewed')
     assert.ok(!html.includes('type="date"'), 'no second place to type a date')
   })
 

@@ -3,17 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ClipboardList, Lock, Pencil } from 'lucide-react'
-import { colors } from '@/lib/tokens'
 import { formatInr } from '@/lib/pi/previewView'
 import { FABRIC_RESPONSIBILITY_KEEPS_FIGURES, FABRIC_RESPONSIBILITY_OPTIONS, fabricResponsibilityNeedsConfirmation } from '@/lib/orders/piTerms'
 import { COMMISSION_PERCENT_OF_LABEL, COMMISSION_PERCENT_OF_ORDER, formatIsoDay } from '@/lib/orders/piInternalDetails'
 import {
-  BILLING_TERMS_MAX,
   PAYMENT_TERMS_FIELD_MAX,
   LEAD_SOURCE_OPTIONS,
   ORDER_DETAILS_ANCHOR,
   ORDER_DETAILS_FIELD,
-  ORDER_DETAILS_NEED_LABEL,
+  ORDER_DETAILS_SHORT_NOTE,
   ORDER_DETAILS_NOTE,
   ORDER_DETAILS_TITLE,
   orderDetailsAbsent,
@@ -26,56 +24,35 @@ import {
   orderDetailsSubmissionGaps,
   type OrderDetailsFieldKey,
   type OrderDetailsForm,
-  type OrderDetailsNeed,
   type OrderDetailsReviewRow,
   type OrderDetailsRow,
 } from '@/lib/orders/salesOrderDetails'
-
-const LABEL: React.CSSProperties = { fontSize: '11.5px', fontWeight: 600, color: colors.secondary }
-const INPUT: React.CSSProperties = {
-  padding: '7px 10px', fontSize: '13px', border: `1px solid ${colors.border}`, borderRadius: '7px',
-  background: colors.base, color: colors.primary, width: '100%', boxSizing: 'border-box', font: 'inherit',
-}
-const ERROR: React.CSSProperties = { fontSize: '11.5px', color: colors.red }
-const HINT: React.CSSProperties = { fontSize: '11px', color: colors.tertiary, lineHeight: 1.4 }
+import { Choice, ChoiceGroup, FormField, FormGroup, RequiredLegend, RequiredMark, describedBy } from './PiFormParts'
 
 /** The id of a field's input, for the readiness checklist to focus. */
 export const orderDetailsInputId = (key: OrderDetailsFieldKey): string =>
   key === 'middleman_structure' ? 'od-middleman_recipient' : `od-${key}`
 
-const NEED_TONE: Record<OrderDetailsNeed, { color: string; background: string }> = {
-  submission: { color: '#9A6212', background: 'rgba(232,160,48,0.12)' },
-  approval:   { color: '#2F5BB7', background: 'rgba(85,133,232,0.10)' },
-  optional:   { color: '#6b7384', background: '#eef0f4' },
-  conditional:{ color: '#6b7384', background: '#eef0f4' },
-}
+/** What Submit for approval asks of the person, from the fields' own classification. */
+const requiredToSubmit = (key: OrderDetailsFieldKey): boolean => ORDER_DETAILS_FIELD[key].need === 'submission'
 
-function NeedChip({ need }: { need: OrderDetailsNeed }) {
-  const tone = NEED_TONE[need]
-  return (
-    <span data-need={need} style={{
-      display: 'inline-flex', alignItems: 'center', padding: '1px 7px', borderRadius: '999px',
-      fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap', ...tone,
-    }}>
-      {ORDER_DETAILS_NEED_LABEL[need]}
-    </span>
-  )
-}
+/** The groups, in the order the form and the read view both show them. */
+const REVIEW_GROUPS: readonly { title: string; keys: readonly OrderDetailsFieldKey[] }[] = [
+  { title: 'Order dates', keys: ['order_confirmation_date', 'due_date'] },
+  { title: 'Order assignment', keys: ['salesperson_id', 'lead_source'] },
+  { title: 'Production details', keys: ['fabric_responsibility'] },
+  { title: 'Commission', keys: ['middleman_commission'] },
+  { title: 'Payment', keys: ['payment_terms'] },
+]
 
 /** One fact in the read view. A missing required value is said, never blank. */
 function ReviewLine({ row, missing }: { row: OrderDetailsReviewRow; missing: boolean }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-        <span style={LABEL}>{row.label}</span>
-        <NeedChip need={row.need} />
-      </div>
-      <span style={{
-        fontSize: '13.5px', fontWeight: row.value ? 600 : 500, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
-        color: row.value ? colors.primary : missing ? '#8a4b12' : colors.muted,
-      }}>
+    <div className="pi-form-fact">
+      <dt>{row.label}{requiredToSubmit(row.key) && <RequiredMark />}</dt>
+      <dd data-empty={row.value ? undefined : 'true'} data-required={!row.value && missing ? 'true' : undefined}>
         {row.value ?? orderDetailsAbsent(row.need, row.key)}
-      </span>
+      </dd>
     </div>
   )
 }
@@ -86,10 +63,15 @@ function ReviewLine({ row, missing }: { row: OrderDetailsReviewRow; missing: boo
  * value lives and which RPC saves it. PRESENTATION AND ORCHESTRATION ONLY:
  * `canEdit` is the page's can_edit_order_submission answer and every RPC
  * re-derives it; a failure part-way through says what was saved and what was not.
+ *
+ * The billing percentage is not on this form: it sits with the supporting
+ * details above it (PiSupportingDetails) and saves itself. Billing terms are no
+ * longer offered anywhere on this page; a stored value is left exactly as it is,
+ * because this form only ever sends the fields whose value changed.
  */
 export function PiOrderDetailsSection({
   supabase, submissionId, row, rowVersion, canEdit, salesDetailsAvailable, people, grandTotal, fabricCost,
-  focus, onSaved, locked = false,
+  focus, onSaved, locked = false, showLegend = false,
 }: {
   supabase: SupabaseClient
   submissionId: string
@@ -111,6 +93,8 @@ export function PiOrderDetailsSection({
    * the reader can see that editing exists and why it is not available.
    */
   locked?: boolean
+  /** Draw the one-line "* Required to submit" key. False when an area above it already has. */
+  showLegend?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<OrderDetailsForm>(() => orderDetailsForm(row))
@@ -120,6 +104,7 @@ export function PiOrderDetailsSection({
   const sectionRef = useRef<HTMLElement | null>(null)
 
   const review = useMemo(() => orderDetailsReview(row, people), [row, people])
+  const reviewByKey = useMemo(() => new Map(review.map(r => [r.key, r])), [review])
   const gaps = useMemo(() => new Set(orderDetailsSubmissionGaps(row).map(g => g.key)), [row])
   const errors = orderDetailsErrors(form, grandTotal)
   const shapeOk = Object.keys(errors).length === 0
@@ -129,8 +114,10 @@ export function PiOrderDetailsSection({
   const open = () => { setForm(orderDetailsForm(row)); setFailure(null); setAttempted(false); setEditing(true) }
 
   // The checklist's "Add": open the form on the record and put the cursor in the field.
+  // The billing percentage lives in the supporting details above and answers to the
+  // same request itself, so this form does not open for it.
   useEffect(() => {
-    if (!focus || !canEdit) return
+    if (!focus || !canEdit || focus.field === 'billing_percentage') return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     open()
     const id = orderDetailsInputId(focus.field)
@@ -179,30 +166,19 @@ export function PiOrderDetailsSection({
   }
 
   const field = (key: keyof OrderDetailsForm) => (attempted || form[key] !== orderDetailsForm(row)[key] ? errors[key] : undefined)
-  const labelFor = (key: OrderDetailsFieldKey, text?: string) => (
-    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-      <label htmlFor={orderDetailsInputId(key)} style={LABEL}>{text ?? ORDER_DETAILS_FIELD[key].label}</label>
-      <NeedChip need={ORDER_DETAILS_FIELD[key].need} />
-    </span>
-  )
-  const grid: React.CSSProperties = { display: 'grid', gap: '12px 14px', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }
   const fabricNote = fabricResponsibilityNeedsConfirmation({ next: form.fabric_responsibility || null, fabricCost })
+  const workbookName = row.source_created_by ? ` The client PDF prints the workbook’s salesperson, “${row.source_created_by}”.` : ''
 
   return (
     <section
       id={ORDER_DETAILS_ANCHOR}
       ref={sectionRef}
       aria-label={ORDER_DETAILS_TITLE}
-      className="pi-order-details"
-      style={{
-        border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.base,
-        padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0,
-        scrollMarginTop: '80px',
-      }}
+      className="pi-form-card pi-order-details"
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <ClipboardList size={15} aria-hidden style={{ color: colors.secondary }} />
-        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: colors.primary }}>{ORDER_DETAILS_TITLE}</h2>
+      <div className="pi-form-card-head">
+        <ClipboardList size={16} aria-hidden style={{ color: '#4A5261' }} />
+        <h2 className="pi-form-card-title">{ORDER_DETAILS_TITLE}</h2>
         <span className="pi-detail-internal-tag" title={ORDER_DETAILS_NOTE}>
           <Lock size={10} strokeWidth={2.2} aria-hidden />
           Internal
@@ -220,198 +196,185 @@ export function PiOrderDetailsSection({
           </button>
         )}
       </div>
-      <p style={{ margin: 0, ...HINT }}>{ORDER_DETAILS_NOTE}</p>
+      <p className="pi-form-group-note" style={{ margin: '4px 0 0' }}>{ORDER_DETAILS_SHORT_NOTE}</p>
+      {showLegend && <RequiredLegend />}
 
       {!editing ? (
-        <div style={grid}>
-          {review.map(r => <ReviewLine key={r.key} row={r} missing={gaps.has(r.key)} />)}
-        </div>
+        <>
+          {REVIEW_GROUPS.map(group => (
+            <FormGroup key={group.title} title={group.title} note={group.title === 'Order assignment' ? 'Needed when the Order is created, not to submit this PI.' : undefined}>
+              <dl className="pi-form-facts">
+                {group.keys.map(key => {
+                  const r = reviewByKey.get(key)
+                  return r ? <ReviewLine key={key} row={r} missing={gaps.has(key)} /> : null
+                })}
+              </dl>
+            </FormGroup>
+          ))}
+          {row.internal_details_confirmed_at && (
+            <span className="pi-form-help">Confirmed {formatIsoDay(row.internal_details_confirmed_at)}. A change clears the confirmation until Submit for Approval asks for it again.</span>
+          )}
+        </>
       ) : (
         <form
+          noValidate
           onSubmit={e => { e.preventDefault(); void save() }}
-          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          style={{ display: 'flex', flexDirection: 'column' }}
           aria-label={`Edit ${ORDER_DETAILS_TITLE.toLowerCase()}`}
         >
-          {/* ── Dates ── */}
-          <div style={grid}>
-            {(['order_confirmation_date', 'due_date'] as const).map(key => (
-              <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-                {labelFor(key)}
-                <input id={orderDetailsInputId(key)} type="date" style={INPUT} value={form[key]} disabled={saving}
-                  min={key === 'due_date' && form.order_confirmation_date ? form.order_confirmation_date : undefined}
-                  aria-invalid={field(key) ? true : undefined}
-                  onChange={e => set(key, e.target.value)} />
-                {ORDER_DETAILS_FIELD[key].hint && <span style={HINT}>{ORDER_DETAILS_FIELD[key].hint}</span>}
-                {field(key) && <span role="alert" style={ERROR}>{field(key)}</span>}
-              </div>
-            ))}
-          </div>
+          {/* ── Order dates ── */}
+          <FormGroup title="Order dates" note="The dispatch date cannot be before the confirmation date.">
+            <div className="pi-form-grid">
+              {(['order_confirmation_date', 'due_date'] as const).map(key => {
+                const id = orderDetailsInputId(key)
+                const error = field(key)
+                return (
+                  <FormField key={key} id={id} label={ORDER_DETAILS_FIELD[key].label} required error={error}>
+                    <input id={id} type="date" className="pi-form-input" value={form[key]} disabled={saving}
+                      min={key === 'due_date' && form.order_confirmation_date ? form.order_confirmation_date : undefined}
+                      aria-required="true" aria-invalid={error ? true : undefined}
+                      aria-describedby={describedBy(id, false, Boolean(error))}
+                      onChange={e => set(key, e.target.value)} />
+                  </FormField>
+                )
+              })}
+            </div>
+          </FormGroup>
 
-          {/* ── Salesperson and lead source ── */}
-          <div style={grid}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-              {labelFor('salesperson_id')}
-              <select id={orderDetailsInputId('salesperson_id')} style={INPUT} value={form.salesperson_id}
-                disabled={saving || !salesDetailsAvailable} onChange={e => set('salesperson_id', e.target.value)}>
-                <option value="">Choose the salesperson…</option>
-                {form.salesperson_id && !people.some(p => p.id === form.salesperson_id) && (
-                  <option value={form.salesperson_id}>Saved (not in the list)</option>
-                )}
-                {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <span style={HINT}>
-                {salesDetailsAvailable
-                  ? `${ORDER_DETAILS_FIELD.salesperson_id.hint}${row.source_created_by ? ` The workbook names “${row.source_created_by}”.` : ''}`
-                  : 'Available once the database update for this section is applied.'}
-              </span>
+          {/* ── Order assignment ── */}
+          <FormGroup title="Order assignment" note="Needed when the Order is created, not to submit this PI.">
+            <div className="pi-form-grid">
+              <FormField id={orderDetailsInputId('salesperson_id')} label={ORDER_DETAILS_FIELD.salesperson_id.label}
+                help={salesDetailsAvailable ? `Management can change it when creating the Order.${workbookName}` : 'Available once the database update for this section is applied.'}>
+                <select id={orderDetailsInputId('salesperson_id')} className="pi-form-input" value={form.salesperson_id}
+                  disabled={saving || !salesDetailsAvailable}
+                  aria-describedby={describedBy(orderDetailsInputId('salesperson_id'), true, false)}
+                  onChange={e => set('salesperson_id', e.target.value)}>
+                  <option value="">Choose the salesperson…</option>
+                  {form.salesperson_id && !people.some(p => p.id === form.salesperson_id) && (
+                    <option value={form.salesperson_id}>Saved (not in the list)</option>
+                  )}
+                  {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </FormField>
+              <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} error={field('lead_source')}>
+                <select id={orderDetailsInputId('lead_source')} className="pi-form-input" value={form.lead_source}
+                  disabled={saving || !salesDetailsAvailable}
+                  aria-invalid={field('lead_source') ? true : undefined}
+                  aria-describedby={describedBy(orderDetailsInputId('lead_source'), false, Boolean(field('lead_source')))}
+                  onChange={e => set('lead_source', e.target.value)}>
+                  <option value="">Choose the lead source…</option>
+                  {LEAD_SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </FormField>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-              {labelFor('lead_source')}
-              <select id={orderDetailsInputId('lead_source')} style={INPUT} value={form.lead_source}
-                disabled={saving || !salesDetailsAvailable} onChange={e => set('lead_source', e.target.value)}>
-                <option value="">Choose the lead source…</option>
-                {LEAD_SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-              {field('lead_source') && <span role="alert" style={ERROR}>{field('lead_source')}</span>}
-            </div>
-          </div>
+          </FormGroup>
 
-          {/* ── Billing ── */}
-          <div style={grid}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-              {labelFor('billing_percentage')}
-              <input id={orderDetailsInputId('billing_percentage')} type="text" inputMode="decimal" style={INPUT}
-                value={form.billing_percentage} disabled={saving} placeholder="e.g. 65"
-                aria-invalid={field('billing_percentage') ? true : undefined}
-                onChange={e => set('billing_percentage', e.target.value)} />
-              <span style={HINT}>{ORDER_DETAILS_FIELD.billing_percentage.hint} Leave blank to keep it undeclared.</span>
-              {field('billing_percentage') && <span role="alert" style={ERROR}>{field('billing_percentage')}</span>}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-              {labelFor('billing_terms')}
-              <textarea id={orderDetailsInputId('billing_terms')} rows={2} style={{ ...INPUT, resize: 'vertical' }}
-                maxLength={BILLING_TERMS_MAX} value={form.billing_terms} disabled={saving}
-                onChange={e => set('billing_terms', e.target.value)} />
-              {field('billing_terms') && <span role="alert" style={ERROR}>{field('billing_terms')}</span>}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-              {labelFor('payment_terms')}
-              <textarea id={orderDetailsInputId('payment_terms')} rows={2} style={{ ...INPUT, resize: 'vertical' }}
-                maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
-                placeholder="e.g. 30% advance, 30% during production, 40% before dispatch"
-                onChange={e => set('payment_terms', e.target.value)} />
-              <span style={HINT}>{ORDER_DETAILS_FIELD.payment_terms.hint}</span>
-              {field('payment_terms') && <span role="alert" style={ERROR}>{field('payment_terms')}</span>}
-            </div>
-          </div>
+          {/* ── Production details ── */}
+          <FormGroup title="Production details">
+            <ChoiceGroup
+              legend={ORDER_DETAILS_FIELD.fabric_responsibility.label}
+              required
+              describedById="od-fabric-group"
+              help={<>Fabric cost on this PI: {fabricCost === null ? 'not stated' : formatInr(fabricCost)}, from the workbook. Printed on the client PDF as one sentence.</>}
+              error={field('fabric_responsibility')}
+            >
+              {FABRIC_RESPONSIBILITY_OPTIONS.map((option, i) => (
+                <Choice key={option.value} id={i === 0 ? orderDetailsInputId('fabric_responsibility') : undefined}
+                  name="od-fabric" label={option.label} disabled={saving}
+                  checked={form.fabric_responsibility === option.value}
+                  onChange={() => set('fabric_responsibility', option.value)} />
+              ))}
+            </ChoiceGroup>
+            {fabricNote && <span className="pi-form-help">{FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>}
+          </FormGroup>
 
-          {/* ── Fabric ── */}
-          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
-            <legend style={{ padding: 0, marginBottom: '4px' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span style={LABEL}>{ORDER_DETAILS_FIELD.fabric_responsibility.label}</span>
-                <NeedChip need="submission" />
-              </span>
-            </legend>
-            <span style={HINT}>Fabric cost on this PI: {fabricCost === null ? 'not stated' : formatInr(fabricCost)} (from the workbook; not changed here).</span>
-            {FABRIC_RESPONSIBILITY_OPTIONS.map((option, i) => (
-              <label key={option.value} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '13px', color: colors.primary }}>
-                <input id={i === 0 ? orderDetailsInputId('fabric_responsibility') : undefined} type="radio" name="od-fabric"
-                  checked={form.fabric_responsibility === option.value} disabled={saving}
-                  onChange={() => set('fabric_responsibility', option.value)} style={{ marginTop: '3px' }} />
-                <span>{option.label}</span>
-              </label>
-            ))}
-            {fabricNote && <span style={HINT}>{FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>}
-          </fieldset>
-
-          {/* ── Middleman commission ── */}
-          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-            <legend style={{ padding: 0, marginBottom: '4px' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span style={LABEL}>{ORDER_DETAILS_FIELD.middleman_commission.label}</span>
-                <NeedChip need="submission" />
-              </span>
-            </legend>
+          {/* ── Commission: the question and its follow-up, together ── */}
+          <FormGroup title="Commission">
             {restricted ? (
-              <span style={HINT}>You may not read the middleman commission on this PI, so it is not edited here.</span>
+              <span className="pi-form-help">You may not read the middleman commission on this PI, so it is not edited here.</span>
             ) : (
               <>
-                <div style={{ display: 'flex', gap: '16px' }}>
+                <ChoiceGroup legend={ORDER_DETAILS_FIELD.middleman_commission.label} required describedById="od-middleman-group">
                   {(['no', 'yes'] as const).map((answer, i) => (
-                    <label key={answer} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: colors.primary }}>
-                      <input id={i === 0 ? orderDetailsInputId('middleman_commission') : undefined} type="radio" name="od-middleman"
-                        checked={form.middleman_commission === answer} disabled={saving}
-                        onChange={() => set('middleman_commission', answer)} />
-                      {answer === 'yes' ? 'Yes' : 'No'}
-                    </label>
+                    <Choice key={answer} id={i === 0 ? orderDetailsInputId('middleman_commission') : undefined}
+                      name="od-middleman" label={answer === 'yes' ? 'Yes' : 'No'} disabled={saving}
+                      checked={form.middleman_commission === answer}
+                      onChange={() => set('middleman_commission', answer)} />
                   ))}
-                </div>
+                </ChoiceGroup>
                 {form.middleman_commission === 'yes' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '4px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {labelFor('middleman_structure', 'Who receives it')}
-                      <input id={orderDetailsInputId('middleman_structure')} type="text" maxLength={200} style={INPUT}
-                        value={form.middleman_recipient} disabled={saving} onChange={e => set('middleman_recipient', e.target.value)} />
-                      {field('middleman_recipient') && <span role="alert" style={ERROR}>{field('middleman_recipient')}</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                  <div className="pi-form-followup">
+                    <FormField id={orderDetailsInputId('middleman_structure')} label="Who receives it" required error={field('middleman_recipient')}>
+                      <input id={orderDetailsInputId('middleman_structure')} type="text" maxLength={200} className="pi-form-input"
+                        value={form.middleman_recipient} disabled={saving}
+                        aria-required="true" aria-invalid={field('middleman_recipient') ? true : undefined}
+                        aria-describedby={describedBy(orderDetailsInputId('middleman_structure'), false, Boolean(field('middleman_recipient')))}
+                        onChange={e => set('middleman_recipient', e.target.value)} />
+                    </FormField>
+                    <ChoiceGroup legend="How it is agreed" required describedById="od-basis-group">
                       {(['amount', 'percent'] as const).map(basis => (
-                        <label key={basis} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: colors.primary }}>
-                          <input type="radio" name="od-basis" checked={form.middleman_commission_basis === basis} disabled={saving}
-                            onChange={() => set('middleman_commission_basis', basis)} />
-                          {basis === 'amount' ? 'Agreed amount (₹)' : 'Agreed percentage'}
-                        </label>
+                        <Choice key={basis} name="od-basis" label={basis === 'amount' ? 'Agreed amount (₹)' : 'Agreed percentage'}
+                          disabled={saving} checked={form.middleman_commission_basis === basis}
+                          onChange={() => set('middleman_commission_basis', basis)} />
                       ))}
-                    </div>
+                    </ChoiceGroup>
                     {form.middleman_commission_basis === 'amount' && (
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={LABEL}>Amount (₹)</span>
-                        <input type="number" inputMode="decimal" min="0.01" step="0.01" style={INPUT} data-amount-input
+                      <FormField id="od-commission-amount" label="Amount (₹)" required error={field('middleman_commission_amount')}>
+                        <input id="od-commission-amount" type="number" inputMode="decimal" min="0.01" step="0.01" className="pi-form-input" data-amount-input
                           value={form.middleman_commission_amount} disabled={saving}
+                          aria-required="true" aria-invalid={field('middleman_commission_amount') ? true : undefined}
+                          aria-describedby={describedBy('od-commission-amount', false, Boolean(field('middleman_commission_amount')))}
                           onChange={e => set('middleman_commission_amount', e.target.value)} />
-                        {field('middleman_commission_amount') && <span role="alert" style={ERROR}>{field('middleman_commission_amount')}</span>}
-                      </label>
+                      </FormField>
                     )}
                     {form.middleman_commission_basis === 'percent' && (
-                      <div style={grid}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={LABEL}>Percentage (%)</span>
-                          <input type="number" inputMode="decimal" min="0.001" max="100" step="0.001" style={INPUT}
+                      <div className="pi-form-grid">
+                        <FormField id="od-commission-percent" label="Percentage (%)" required error={field('middleman_commission_percent')}>
+                          <input id="od-commission-percent" type="number" inputMode="decimal" min="0.001" max="100" step="0.001" className="pi-form-input"
                             value={form.middleman_commission_percent} disabled={saving}
+                            aria-required="true" aria-invalid={field('middleman_commission_percent') ? true : undefined}
+                            aria-describedby={describedBy('od-commission-percent', false, Boolean(field('middleman_commission_percent')))}
                             onChange={e => set('middleman_commission_percent', e.target.value)} />
-                          {field('middleman_commission_percent') && <span role="alert" style={ERROR}>{field('middleman_commission_percent')}</span>}
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={LABEL}>Percentage of</span>
-                          <select style={INPUT} value={form.middleman_commission_percent_of} disabled={saving}
+                        </FormField>
+                        <FormField id="od-commission-percent-of" label="Percentage of" required>
+                          <select id="od-commission-percent-of" className="pi-form-input" aria-required="true"
+                            value={form.middleman_commission_percent_of} disabled={saving}
                             onChange={e => set('middleman_commission_percent_of', e.target.value as OrderDetailsForm['middleman_commission_percent_of'])}>
                             <option value="">Choose the figure…</option>
                             {COMMISSION_PERCENT_OF_ORDER.map(k => <option key={k} value={k}>{COMMISSION_PERCENT_OF_LABEL[k]}</option>)}
                           </select>
-                        </label>
+                        </FormField>
                       </div>
                     )}
                   </div>
                 )}
               </>
             )}
-          </fieldset>
+          </FormGroup>
 
-          {failure && <div role="alert" style={{ ...ERROR, background: colors.redTint, borderRadius: '7px', padding: '8px 10px' }}>{failure}</div>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <span style={{ ...HINT, marginRight: 'auto' }}>
-              Saving keeps this a private draft. Anything left blank can be added later; Submit for Approval needs the ones marked “{ORDER_DETAILS_NEED_LABEL.submission}”.
-            </span>
+          {/* ── Payment terms ── */}
+          <FormGroup title="Payment">
+            <FormField id={orderDetailsInputId('payment_terms')} label={ORDER_DETAILS_FIELD.payment_terms.label} optional
+              help="How the payments are agreed to fall due. Sent unchanged with the PI." error={field('payment_terms')}>
+              <textarea id={orderDetailsInputId('payment_terms')} rows={2} className="pi-form-input"
+                maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
+                placeholder="e.g. 30% advance, 30% during production, 40% before dispatch"
+                aria-invalid={field('payment_terms') ? true : undefined}
+                aria-describedby={describedBy(orderDetailsInputId('payment_terms'), true, Boolean(field('payment_terms')))}
+                onChange={e => set('payment_terms', e.target.value)} />
+            </FormField>
+          </FormGroup>
+
+          {failure && <div role="alert" className="pi-form-failure">{failure}</div>}
+          <div className="pi-form-footer">
+            <span className="pi-form-footer-note">Saving keeps this a private draft; anything left blank can be added later.</span>
             <button type="button" className="boe-btn boe-btn-ghost" disabled={saving} onClick={() => { setEditing(false); setFailure(null) }}>Cancel</button>
             <button type="submit" className="boe-btn boe-btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Save details'}
             </button>
           </div>
         </form>
-      )}
-      {!editing && row.internal_details_confirmed_at && (
-        <span style={HINT}>Confirmed {formatIsoDay(row.internal_details_confirmed_at)}. A change clears the confirmation until Submit for Approval asks for it again.</span>
       )}
     </section>
   )

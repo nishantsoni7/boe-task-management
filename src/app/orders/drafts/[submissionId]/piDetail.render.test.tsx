@@ -3070,10 +3070,10 @@ describe('the layout is CSS, at real breakpoints', () => {
       'payment on the left, which is also the order they stack in')
     const decideRow = decide.slice(0, decide.indexOf('{/* ── 4. What stops this being submitted'))
     const stack = decideRow.indexOf('<div className="pi-detail-split-stack">')
-    assert.ok(stack > 0 && stack < decideRow.indexOf('<PiDraftAttachments')
-      && decideRow.indexOf('<PiDraftAttachments') < decideRow.indexOf('<PiHighlightRemark')
-      && decideRow.indexOf('<PiHighlightRemark') < decideRow.indexOf('{workflowPanel}'),
-      'documents and the highlight on the left, Ready for management? on the right')
+    assert.ok(stack > 0 && stack < decideRow.indexOf('{supportingDetails}')
+      && decideRow.indexOf('{supportingDetails}') < decideRow.indexOf('<PiOrderDetailsSection')
+      && decideRow.indexOf('<PiOrderDetailsSection') < decideRow.indexOf('{workflowPanel}'),
+      'Supporting details, then Internal order details, on the left; Ready for management? on the right')
 
     assert.ok(/\.pi-detail-split \{[^}]*container-type: inline-size/.test(css), 'measured on the column, not the viewport')
     assert.ok(/\.pi-detail-split-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css), 'stacked by default')
@@ -3244,8 +3244,9 @@ describe('the page is assembled in the redesigned scan order', () => {
       // The page builds the workflow panel once and places it with the Complete PI details area (#259).
       '{workflowPanel}',
       '<PiCompletionPanel',
-      '<PiDraftAttachments',
-      '<PiHighlightRemark',
+      // Supporting details (Client PO, Design Files, highlight, billing percentage) come BEFORE Internal order details.
+      '{supportingDetails}',
+      '<PiOrderDetailsSection',
     ].map(at)
     assert.deepEqual([...order].sort((a, b) => a - b), order,
       'the top card sits directly under the save banner, above the two split rows')
