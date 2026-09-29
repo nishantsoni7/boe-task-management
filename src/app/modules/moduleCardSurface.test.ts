@@ -327,11 +327,15 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
   })
 
-  test('a narrow grid stacks a compact icon DIRECTLY above its name', () => {
-    const at = CSS.indexOf('@container (max-width: 559px)')
-    assert.notEqual(at, -1, 'the narrow-grid block exists')
+  test('a one-column grid keeps the icon BESIDE the name, at full size', () => {
+    // The phone is one column of full-width rows, so there is no reason left
+    // to stack the icon over a shrunken name.
+    const at = CSS.indexOf('@container (max-width: 479px)')
+    assert.notEqual(at, -1, 'the one-column block exists')
     const narrow = CSS.slice(at, CSS.indexOf('@media (max-width: 767px)'))
-    assert.match(narrow, /\.cardCompact \.cardBody\s*\{[^}]*flex-direction:\s*column/)
+    assert.equal(/flex-direction:\s*column/.test(narrow), false, 'no stacked tile')
+    const size = narrow.match(/\.cardCompact \.title\s*\{[^}]*font-size:\s*([\d.]+)px/)
+    assert.ok(size && Number(size[1]) >= 14, 'the name is not shrunk to fit')
   })
 
   test('the badge stays on the icon in BOTH tile sizes', () => {
@@ -346,7 +350,7 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
 })
 
 // ── The phone ────────────────────────────────────────────────────────────────
-describe('a phone gets full-width Essentials and two compact tiles across', () => {
+describe('a phone gets full-width Essentials and one full-width row per module', () => {
   test('Essentials are one column until the launcher is 720px wide', () => {
     assert.match(baseRule('.essentialsGrid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
     const at = CSS.indexOf('@container (min-width: 720px)')
@@ -363,11 +367,12 @@ describe('a phone gets full-width Essentials and two compact tiles across', () =
       `a compact tile must stay tappable — found ${compact?.[1]}px`)
   })
 
-  test('two compact tiles across, and one only below 340px', () => {
-    assert.match(baseRule('.grid'), /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
-    const narrow = CSS.indexOf('@media (max-width: 339px)')
-    assert.notEqual(narrow, -1)
-    assert.ok(/grid-template-columns:\s*minmax\(0, 1fr\)/.test(CSS.slice(narrow)))
+  test('one compact column until the launcher is 480px wide', () => {
+    // Two across a 390px phone left ~165px tiles; one column keeps names whole
+    // and full-size instead.
+    assert.match(baseRule('.grid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
+    const one = CSS.match(/@container \(max-width: 479px\)[\s\S]*?\.cardCompact\s*\{[^}]*min-height:\s*(\d+)px/)
+    assert.ok(one && Number(one[1]) >= 56, 'a one-column row is still a generous tap target')
   })
 
   test('there is no hover lift on a touch screen', () => {
@@ -483,7 +488,24 @@ describe('the header, and the latest announcement beneath it', () => {
 
   test('SPACE ONLY BETWEEN BLOCKS, so nothing leaves a gap under the header', () => {
     assert.match(baseRule('.section'), /margin-top:\s*0/)
-    assert.match(CSS, /\.announcementRow \+ \.section,\s*\.section \+ \.section\s*\{\s*margin-top:\s*26px;/)
+    assert.match(CSS, /\.announcementRow \+ \.section\s*\{\s*margin-top:\s*\d+px;/)
+    assert.match(CSS, /\.section \+ \.section\s*\{\s*margin-top:\s*\d+px;/)
+  })
+
+  test('THE ANNOUNCEMENT IS A SLIM BANNER, lower than any module tile', () => {
+    const banner = baseRule('.announcement').match(/min-height:\s*(\d+)px/)
+    const tile = DESKTOP_CARD.match(/min-height:\s*(\d+)px/)
+    assert.ok(banner && tile && Number(banner[1]) < Number(tile[1]),
+      'a notice must not read as another section')
+    assert.equal(/text-transform:\s*uppercase/.test(baseRule('.eyebrow')), false,
+      'its label is sentence case')
+  })
+
+  test('section titles are plain headings — no uppercase tracking, no rules', () => {
+    const title = baseRule('.sectionTitle')
+    assert.equal(/text-transform:\s*uppercase/.test(title), false)
+    assert.equal(/letter-spacing:\s*0\.\d+em/.test(title), false)
+    assert.equal(/\.sectionTitle::(before|after)/.test(stripCss(CSS)), false)
   })
 
   test('Edit order, the bell and Quick Add Expense are still offered', () => {
@@ -648,8 +670,8 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.equal(/@media \(min-width/.test(CSS), false)
   })
 
-  test('the compact grid steps 2 → 3 → 4 → 5, and never past five', () => {
-    for (const [width, cols] of [[560, 3], [860, 4], [1120, 5]] as const) {
+  test('the compact grid steps 1 → 2 → 3 → 4 → 5, and never past five', () => {
+    for (const [width, cols] of [[480, 2], [660, 3], [880, 4], [1120, 5]] as const) {
       const at = CSS.indexOf(`@container (min-width: ${width}px)`)
       assert.notEqual(at, -1, `the ${width}px step exists`)
       assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid', at))),
@@ -658,17 +680,17 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.equal(/repeat\([6-9], /.test(stripCss(CSS)), false)
   })
 
-  test('THE PAGE ASKS FOR ONE 1440px CONTENT COLUMN', () => {
+  test('THE PAGE ASKS FOR ONE 1400px CONTENT COLUMN', () => {
     const LAYOUT = read('src/components/layout/BoeOsLayout.tsx')
-    assert.match(PAGE, /contentMaxWidth=\{1440\}/)
+    assert.match(PAGE, /contentMaxWidth=\{1400\}/)
     assert.ok(LAYOUT.includes('boe-main-content-capped'))
   })
 
   test('a compact tile is a sensible width at 1920, 1366 and 1024', () => {
-    // Launcher width = min(window - 260px sidebar - 44px gutters, 1440px
+    // Launcher width = min(window - 260px sidebar - 44px gutters, 1400px
     // column); 14px between tiles.
     const tile = (window: number, cols: number) => {
-      const grid = Math.min(window - 260 - 44, 1440)
+      const grid = Math.min(window - 260 - 44, 1400)
       return (grid - (cols - 1) * 14) / cols
     }
     for (const [window, cols] of [[1920, 5], [1366, 4], [1024, 3]] as const) {

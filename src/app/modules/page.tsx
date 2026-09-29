@@ -765,11 +765,12 @@ export default function BoeOsHomePage() {
           title="Modules"
           onSignOut={handleSignOut}
           quickActions={quickActions}
-          // ONE CONTENT COLUMN. The header and the launcher share a 1440px
+          // ONE CONTENT COLUMN. The header and the launcher share a 1400px
           // column, centred in whatever the sidebar leaves, so the title,
           // Edit order and the tiles line up on the same two edges. Wide
-          // enough for three Essentials and five compact tiles across.
-          contentMaxWidth={1440}
+          // enough for three Essentials and five compact tiles across, and
+          // narrow enough that a 1920 screen keeps real margins either side.
+          contentMaxWidth={1400}
           announcementUnread={unreadAnnouncements}
           // The reorder control now travels with the heading it belongs to.
           // Unchanged in behaviour: same reducer, same handlers, same props —
@@ -855,7 +856,7 @@ export default function BoeOsHomePage() {
                 <h2 id="modules-arrange-heading" className={styles.sectionTitle}>Arrange your modules</h2>
                 {essentialModules.length > 0 && (
                   <p className={styles.arrangeNote}>
-                    Task Management, Order Management and Finance stay in The essentials. Their order
+                    Task Management, Order Management and Finance stay in Your essentials. Their order
                     there, and the order of every other module, follows this list.
                   </p>
                 )}
@@ -977,7 +978,7 @@ function LatestAnnouncement({ latest }: { latest: MyAnnouncement }) {
       aria-label={`${isNew ? 'New announcement' : 'Announcement'}: ${latest.title}. Read update.`}
     >
       <span className={styles.announcementIcon} aria-hidden="true">
-        <Megaphone size={16} strokeWidth={1.9} />
+        <Megaphone size={15} strokeWidth={1.9} />
       </span>
       <span className={styles.announcementText}>
         <span className={styles.eyebrow}>{isNew ? 'New announcement' : 'Announcement'}</span>
