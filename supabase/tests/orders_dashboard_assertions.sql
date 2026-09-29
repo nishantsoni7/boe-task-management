@@ -711,7 +711,7 @@ end $$;
 -- ═══ 8. The permission matrix, at the database boundary ═══════════════════════
 --
 -- Personas, all acting on ONE colleague's order (o2, owned by S2, 10% paid, PI in force):
---   OWNER     S2, the order's own salesperson
+--   OWNER     S2, the order's own salesperson: a PLAIN sales owner, no approve_order, no scope
 --   SCOPE     S1, all_sales scope, nothing else
 --   SCOPEFIN  S3, all_sales scope AND finance.allocate
 --   APPROVER  A1, all_sales scope AND orders.approve_order
@@ -735,6 +735,11 @@ on conflict do nothing;
 create temporary table matrix (n serial, persona text, op text, result text) on commit drop;
 create function pg_temp.mx(p_persona text, p_op text, p_result text) returns text language plpgsql as $$
 begin insert into matrix (persona, op, result) values (p_persona, p_op, p_result); return p_result; end $$;
+/** A submission id for an approval RPC to be pointed at. Both approval RPCs check the caller's PERMISSION
+ *  before they read the row, so a caller without the grant is refused with 42501 and one with it reaches
+ *  "not found" — which is exactly the difference the matrix needs. (A genuinely submitted PI needs a full
+ *  workbook to satisfy order_submissions_reviewable_is_complete.) */
+create function pg_temp.mk_submitted(p_by uuid) returns uuid language sql as $$ select gen_random_uuid() $$;
 /** Run one statement as a user and report its single value, or how it was refused. */
 create function pg_temp.probe(p_user uuid, p_sql text) returns text language plpgsql as $$
 declare v text;
@@ -794,6 +799,14 @@ begin
     perform pg_temp.mx(who, 'request document generation', pg_temp.probe(uid, format('select public.request_order_document_generation(%L) ->> ''created''', o2)));
     perform pg_temp.mx(who, 'select for Factory Focus', pg_temp.probe(uid, format('select public.select_order_for_factory_focus(%L) ->> ''order_id''', o2)));
     perform pg_temp.mx(who, 'set an Order visibility scope', pg_temp.probe(uid, format('select public.set_order_visibility_scope(%L, ''own'') ->> ''mode''', s1)));
+    -- ── APPROVE (direct RPC calls; the permission check runs before any row is read) ──
+    perform pg_temp.mx(who, 'approve_pi_review (a submitted PI)', pg_temp.probe(uid, format('select public.approve_pi_review(%L) ->> ''status''', pg_temp.mk_submitted(s2))));
+    perform pg_temp.mx(who, 'reject_order_submission', pg_temp.probe(uid, format('select public.reject_order_submission(%L, ''no'') ->> ''status''', pg_temp.mk_submitted(s2))));
+    perform pg_temp.mx(who, 'approve_order_advance_exception', pg_temp.probe(uid, format('select public.approve_order_advance_exception(%L, ''a long enough reason'') ->> ''ok''', pg_temp.mk_order('apr_' || who, 'running', t, 1000000, 800000, s2, false, s2))));
+    perform pg_temp.mx(who, 'cancel_order', pg_temp.probe(uid, format('select public.cancel_order(%L, ''test'') ->> ''ok''', pg_temp.mk_order('can_' || who, 'running', t, 100, 100, s2, false, s2))));
+    -- The PI-revision approve API route asks user_holds_permission(approve_order) and then calls approve_order_pi_revision as service_role only.
+    perform pg_temp.mx(who, 'API gate: holds orders.approve_order', (select public.user_holds_permission(uid, 'orders', 'approve_order'))::text);
+    perform pg_temp.mx(who, 'approve_order_pi_revision (direct)', pg_temp.probe(uid, format('select public.approve_order_pi_revision(%L, %L, ''{}''::jsonb)::text', o2, v2)));
     perform pg_temp.mx(who, 'PI notify gate: may open unscoped', pg_temp.probe(uid, format('select public.can_view_order_unscoped(%L)', o2)));
   end loop;
 
@@ -818,6 +831,20 @@ begin
   perform pg_temp.check((select result like 'REFUSED: ORDER_DOCUMENT_NO_SUCH_ORDER%' from matrix where persona = 'APPROVER' and op = 'request document generation'), 'CHANGE: a scoped APPROVER, who holds the authority, is stopped for want of unscoped visibility of a colleague''s order');
   perform pg_temp.check((select bool_and(result like 'REFUSED%') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'OWNER', 'ADMIN') and op = 'request document generation'), 'CHANGE: nor can anyone without the approval authority');
   perform pg_temp.check((select bool_and(result like 'REFUSED%') from matrix where persona <> 'NISHANT' and op in ('select for Factory Focus', 'set an Order visibility scope')), 'CHANGE: Factory Focus and visibility scopes are the owner account''s alone');
+  -- THE PLAIN SALES OWNER (no approve_order) and every scope-only persona are DENIED every approval, by direct call.
+  perform pg_temp.check((select bool_and(result ~ '^REFUSED: (You do not have permission|Only an administrator|.*permission|ORDER_[A-Z_]*FORBIDDEN)') from matrix where persona in ('OWNER', 'SCOPE', 'SCOPEFIN') and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission', 'approve_order_advance_exception', 'cancel_order')),
+    'APPROVE: a plain sales owner, a scope-only salesperson and a scoped Finance user are all refused by permission: ' || coalesce((select string_agg(persona || '/' || op || '=' || result, '; ') from matrix where persona in ('OWNER', 'SCOPE', 'SCOPEFIN') and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission', 'approve_order_advance_exception', 'cancel_order') and result !~ '^REFUSED: (You do not have permission|Only an administrator|.*permission|ORDER_[A-Z_]*FORBIDDEN)'), ''));
+  -- CONTROL: the ones who hold approve_order are NOT stopped by permission (they stop later, on the missing row).
+  perform pg_temp.check((select bool_and(result ~ 'not found') from matrix where persona in ('APPROVER', 'NISHANT') and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission')),
+    'CONTROL: the approver and the owner account, who hold approve_order, get past the permission check: ' || coalesce((select string_agg(persona || '/' || op || '=' || result, '; ') from matrix where persona in ('APPROVER', 'NISHANT') and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission')), ''));
+  perform pg_temp.check((select bool_and(result = 'false') from matrix where persona in ('OWNER', 'SCOPE', 'SCOPEFIN', 'ADMIN') and op = 'API gate: holds orders.approve_order')
+                        and (select bool_and(result = 'true') from matrix where persona in ('APPROVER', 'NISHANT') and op = 'API gate: holds orders.approve_order'),
+    'the approve API route gate: only the two who hold orders.approve_order pass');
+  perform pg_temp.check((select bool_and(result like 'REFUSED: permission denied%') from matrix where op = 'approve_order_pi_revision (direct)'),
+    'approve_order_pi_revision cannot be called directly by ANY signed-in user (service_role only): ' || coalesce((select string_agg(persona || '=' || result, '; ') from matrix where op = 'approve_order_pi_revision (direct)' and result not like 'REFUSED: permission denied%'), ''));
+  -- The ADMINISTRATOR ROLE is not the grant: an administrator without approve_order is refused too (unchanged by this migration).
+  perform pg_temp.check((select bool_and(result ~ '^REFUSED: You do not have permission') from matrix where persona = 'ADMIN' and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission')),
+    'an administrator without the approve_order grant is refused: ' || coalesce((select string_agg(op || '=' || result, '; ') from matrix where persona = 'ADMIN' and op in ('approve_pi_review (a submitted PI)', 'reject_order_submission')), ''));
   perform pg_temp.check((select result = 'true' from matrix where persona = 'NISHANT' and op = 'PI notify gate: may open unscoped'), 'NOTIFY: the announce gate is true for the owner account');
   perform pg_temp.check((select bool_and(result = 'false') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER') and op = 'PI notify gate: may open unscoped'), 'NOTIFY: and false for every scoped persona');
   perform pg_temp.check((select result = 'true' from matrix where persona = 'OWNER' and op = 'PI notify gate: may open unscoped'), 'NOTIFY: and true for the order''s own salesperson');

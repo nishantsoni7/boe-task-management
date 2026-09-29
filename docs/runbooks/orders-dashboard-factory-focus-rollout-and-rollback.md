@@ -163,6 +163,24 @@ Function and view bodies are patched from their live definitions with asserts, a
 Proven at the database boundary by section 8 of `supabase/tests/orders_dashboard_assertions.sql` (owner,
 scope-only salesperson, scope + Finance, approver, admin; direct calls, not hidden buttons).
 
+**Matrix** — every cell is a direct RPC / table call by that persona on a colleague's order (section 8 of
+the SQL suite), not a hidden button. The personas are distinct: a **plain sales owner** is the order's own
+salesperson with *no* `approve_order` and no scope; **Nishant** is the owner account (TEST-001), who holds
+`approve_order`. An administrator *role* is not the approval grant.
+
+| Persona | Read the order | Payment-derived figures | Finance picker / lookup | Approve (PI, exception, cancel) | Generate / retry document | Notify gate | Factory Focus / scopes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Plain sales owner (own order, no grant) | yes | yes (own order, as before) | yes (as before) | **denied** (every RPC; API gate false) | **denied** | open | denied |
+| Scope-only salesperson | yes, incl. PI PDF | **denied** | none | **denied** | **denied** | closed | denied |
+| Scoped + `finance.allocate` | yes | denied | **none** (same as before the scope) | **denied** | **denied** | closed | denied |
+| Approver (`approve_order` + scope, not the order's owner) | yes (scope) | denied | none | PI approve / reject pass the permission check; exception and cancel denied | passes the permission check, refused for visibility | closed | denied |
+| Administrator (no `approve_order` grant) | yes | yes | yes | **denied** — the role is not the grant | passes permission | open | denied |
+| Nishant (TEST-001) | yes | yes | yes | passes | passes | open | select / remove / scopes |
+
+`approve_order_pi_revision` is callable by no signed-in user directly (service role only); the API route asks
+`user_holds_permission(approve_order)` first. The one thing a plain owner may record on their own order is a
+fabric/finish approval event — an intended feature (`can_record_order_approval`), not an order approval.
+
 **Still true:** `/api/orders/[id]/pi-versions/[versionId]/pdf` reads with the caller's client, so a scoped viewer
 opens a scoped Order's PI PDF — intended, it is order detail.
 
