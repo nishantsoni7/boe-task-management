@@ -122,9 +122,14 @@ describe('the two surfaces read one computation, not two', () => {
   })
 
   test('both surfaces are handed that one value', () => {
-    // The submit control.
-    assert.ok(page.includes('readiness={actions.canSubmit ? submissionReadiness : null}'),
+    // The submit control: its checklist and its disabled state both come from
+    // the ONE completion list, which is built from that one readiness value
+    // (plus the internal order details the database also refuses a submission
+    // without — withOrderDetailsRequirements).
+    assert.ok(page.includes('readiness: withOrderDetailsRequirements(submissionReadiness, detailsRow)'),
       'missing wiring: the submit control')
+    assert.ok(page.includes('disabled: acting || submitBlockedReason !== null'),
+      'the submit control is disabled by that same list')
     // The approval control, through describeApprovalReadiness.
     assert.match(page,
       /incompleteSummary: submissionReadiness\.ready \? null : submissionReadiness\.summary/)

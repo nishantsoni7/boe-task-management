@@ -94,13 +94,12 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import { draftEditPiPageHref } from '@/lib/orders/editPiPage'
-import { PiDraftAttachments, PiSentDocuments, PiSupportingDocumentsPicker, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
+import { PiDraftAttachments, PiSentDocuments, usePiSupportingDocuments } from '@/components/orders/PiSupportingDocuments'
 import { PiCommissionSummary, PiDiscountWordingNotice } from '@/components/orders/PiInternalDetails'
 import { PiOrderDetailsSection } from '@/components/orders/PiOrderDetailsSection'
 import {
   SALES_DETAILS_COLUMNS,
   SALES_DETAILS_UNAVAILABLE,
-  orderDetailsFieldOf,
   orderDetailsReview,
   readSalesDetails,
   salespersonName,
@@ -110,11 +109,24 @@ import {
   type SalesDetails,
 } from '@/lib/orders/salesOrderDetails'
 import { PiHighlightRemark } from '@/components/orders/PiHighlightRemark'
+import { AmountMaskRegion, AmountsToggle, useAmountsHidden } from '@/components/orders/AmountMask'
+import {
+  PiCompletionFacts,
+  PiCompletionPanel,
+  PiLockedNotice,
+} from '@/components/orders/PiCompletionPanel'
+import {
+  PI_LOCKED_TITLE,
+  buildCompletionFacts,
+  describeLockedNotice,
+  buildPiCompletion,
+  type CompletionItem,
+} from '@/lib/orders/piCompletion'
 import { Pencil } from 'lucide-react'
 import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
-  internalDetailsStillOpen, submissionCommissionBlock,
+  formatIsoDay, internalDetailsStillOpen, submissionCommissionBlock,
   submitWithInternalDates, withCommission, workbookDateNotes, type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
@@ -196,6 +208,7 @@ import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
   changePiHref,
+  submitButtonLabel,
   submissionOffersReply,
   describeSubmissionActions,
   describeSubmissionFailure,
@@ -408,6 +421,11 @@ function PiDraftDetailPageInner() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
+  // Hide amounts: a display preference kept for this browser session. It masks
+  // what is drawn and changes nothing about who may see, or what is stored.
+  const [amountsHidden, setAmountsHidden] = useAmountsHidden()
+  // The optional order highlight as the box last read it, for the checklist.
+  const [highlightRead, setHighlightRead] = useState<{ available: boolean; remark: string | null } | null>(null)
   /**
    * A QUIET re-read (after a save, or the header's Refresh) that failed.
    *
@@ -2217,6 +2235,56 @@ function PiDraftDetailPageInner() {
     ? { reason: advance.rejectionReason, instruction: ADVANCE_REJECTED_INSTRUCTION }
     : null
 
+  // ── COMPLETE PI DETAILS ──
+  //
+  // ONE LIST, from the two lists the code already keeps (piReadiness for the PI
+  // itself, the internal order details for what Sales owns), read by the
+  // checklist, by the Submit control and by the Submit sequence — so they cannot
+  // disagree about what is missing. It is not the enforcement: the database
+  // re-derives every required item when the PI is sent.
+  const isLocked = submission.status === 'submitted'
+  const completion = buildPiCompletion({
+    readiness: withOrderDetailsRequirements(submissionReadiness, detailsRow),
+    details: detailsRow,
+    salesDetailsAvailable: salesDetails.available,
+    supportingMissing: supporting.missing,
+    highlight: highlightRead ?? { available: false, remark: null },
+  })
+  /** The area is drawn for whoever can submit, and — locked — for everybody. */
+  const showCompletion = actions.canSubmit || isLocked
+  const completionFacts = buildCompletionFacts(submission, formatIsoDay)
+  const submitBlockedReason =
+    draft.blocking.length > 0 ? 'Fix the issues in the PI first'
+    : completion.requiredMissing.length === 1 ? '1 required item is still missing'
+    : completion.requiredMissing.length > 1 ? `${completion.requiredMissing.length} required items are still missing`
+    : null
+  /** OPENS THE SEQUENCE; nothing is sent until its last step. */
+  function openSubmit() {
+    setActionFailure(null)
+    savedDatesRef.current = null
+    setDialog('submit')
+  }
+  /** Takes the person to the editor that owns a checklist item. */
+  const fixCompletionItem = (item: CompletionItem) => {
+    const scrollTo = (selector: string) =>
+      document.querySelector(selector)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    switch (item.where) {
+      case 'client': setClientFailure(null); setEditSection('client'); return
+      case 'terms': setClientFailure(null); setEditSection('terms'); return
+      case 'schedule': setClientFailure(null); setEditSection('schedule'); return
+      case 'internal': focusOrderDetails(item.field ?? 'middleman_commission'); return
+      case 'documents': scrollTo('#pi-draft-attachments'); return
+      case 'highlight': scrollTo('.pi-detail-highlight'); return
+      case 'workbook': router.push(changePiHref(submissionId)); return
+      case 'products': router.push(draftEditPiPageHref(submissionId)); return
+    }
+  }
+  /** The owner's one route once the PI is locked — the same correction request as before. */
+  const requestChangeAction =
+    isLocked && !canEditSubmission && !canAdminAmend && ownsSubmission
+      ? () => { setCorrectionFailure(null); setCorrectionOpen(true) }
+      : null
+
   /**
    * EDIT PI, TOP RIGHT, beside Back. Same destination and the same rule as the
    * bar it replaced: the one editor while this PI may be edited, and on an
@@ -2239,6 +2307,80 @@ function PiDraftDetailPageInner() {
     </button>
   ) : null
 
+  /**
+   * THE WORKFLOW PANEL, built once and placed by whichever arrangement below is
+   * drawn: management's notes, the reviewer's decisions, and — for a viewer the
+   * Complete PI details area is not drawn for — nothing else. The owner's Change
+   * PI and Submit controls and their checklist live in that area.
+   */
+  const workflowPanel = (
+    <PiWorkflowPanel
+      panel={workflow}
+      actions={actions}
+      status={submission.status}
+      reviewNote={submission.review_note}
+      employeeReply={employeeReply}
+      // Shown with the reply, so the reply is not the only account of
+      // what changed (read from the activity trail, never re-derived).
+      resubmission={submission.status === 'submitted' ? draft.resubmission : null}
+      advanceRefusal={advanceRefusal}
+      blockingCount={draft.blocking.length}
+      /* THE OWNER'S CHECKLIST AND THEIR SUBMIT CONTROL LIVE IN THE
+         COMPLETE PI DETAILS AREA now: one list, next to the action it
+         blocks. This panel keeps management's notes and the reviewer's
+         decisions. */
+      readiness={null}
+      onFixReadiness={null}
+      ownerActionsElsewhere={showCompletion}
+      acting={acting}
+      onChangePi={() => router.push(changePiHref(submissionId))}
+      onSubmit={openSubmit}
+      onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
+      onReject={() => { setActionFailure(null); setDialog('reject') }}
+      approvalBlocker={readiness.blocker}
+      approvalReady={readiness.ready}
+      decision={reviewDecision}
+      piApprovedLine={piApprovedText}
+      approvedOrder={approvedOrder}
+      onApprove={() => {
+        setActionFailure(null)
+        /* THE PI'S OWN SAVED SALESPERSON, or nobody — never the viewer,
+           the submitter, the only option, the first one, or a person
+           matched by the workbook's printed name. A legacy PI with no
+           saved id opens unselected (the name is shown as a hint), and
+           validateOrderConfirmation refuses to confirm until management
+           chooses. Re-derived on every open rather than remembered, so
+           the dialog always reflects the PI as it stands now. */
+        setConfirmationField(null)
+        setConfirmation(prev => ({
+          ...prev,
+          // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
+          // there is one — never the approver. A PI from before that has
+          // none, and nobody is selected for it.
+          salesperson: salesDetails.salesperson_id ?? null,
+          leadSource: salesDetails.lead_source ?? prev.leadSource,
+          confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
+          dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
+        }))
+        // THE DOOR FOLLOWS THE DECISION, never the other way round: the
+        // PI-only dialog opens only when the payment condition is the one
+        // thing outstanding, and the create-Order dialog only when the PI
+        // already stands approved.
+        setDialog(
+          reviewDecision.mode === 'approve_pi' ? 'approve_pi'
+          : reviewDecision.mode === 'create_order' ? 'create_order'
+          : 'approve',
+        )
+      }}
+      onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
+      openOrderHref={approvedOrder ? orderHref(approvedOrder.orderId) : null}
+      advanceBand={advanceBand}
+      /* The top card already says who submitted it, when, and where
+         review stands; the panel keeps its controls and notes. */
+      statusShownAbove
+    />
+  )
+
   return (
     <OrdersLayout
       profile={profile}
@@ -2252,11 +2394,28 @@ function PiDraftDetailPageInner() {
       // The payment summary is read separately (its figures depend on the PI's
       // grand total), so a refresh re-reads both.
       onRefresh={async () => { await Promise.all([loadDraft({ quiet: true }), loadPayments()]) }}
-      actions={editPiAction ? <>{editPiAction}{backButton}</> : backButton}
+      actions={<>
+        <AmountsToggle hidden={amountsHidden} onChange={setAmountsHidden} />
+        {editPiAction}
+        {backButton}
+      </>}
     >
+      <AmountMaskRegion hidden={amountsHidden}>
       <div className="pi-detail-stack">
 
         {justSaved && <PiSavedStrip />}
+
+        {/* ── THE LOCK, said first. A PI with management is read-only for
+            everybody; its owner is shown the one way back. Enforced by the
+            database (can_edit_order_submission is false once submitted, and
+            every editing RPC asks it again) — this only says so. ── */}
+        {isLocked && (
+          <PiLockedNotice
+            title={PI_LOCKED_TITLE}
+            body={describeLockedNotice({ ownsSubmission, canAdminAmend, canEdit: canEditSubmission, canReview, canAddPayment })}
+            onRequestChange={requestChangeAction}
+          />
+        )}
 
         {refreshFailed && (
           <div role="status" className="pi-refresh-failed">
@@ -2292,7 +2451,7 @@ function PiDraftDetailPageInner() {
              they own this PI and it has left their hands. The RPC re-derives
              both halves of that. */
           onRequestCorrection={
-            !canEditSubmission && !canAdminAmend && ownsSubmission
+            !isLocked && !canEditSubmission && !canAdminAmend && ownsSubmission
               ? () => { setCorrectionFailure(null); setCorrectionOpen(true) }
               : null
           }
@@ -2352,16 +2511,90 @@ function PiDraftDetailPageInner() {
                   row={submission}
                   canEdit={canEditInternalDetails}
                   onEdit={() => focusOrderDetails('middleman_commission')}
+                  summaryOnly
                 />
               }
             />
           </div>
         </div>
 
-        {/* ── 3. Documents and the highlight beside the decisions ──
-            Left: the optional Client PO and Design Files, and the optional
-            internal order highlight. Right: Ready for management? and the
-            submission controls — or, for a reviewer, the review decisions. */}
+        {/* ── 3. Complete PI details, and what management is asking ──
+            For whoever can submit this PI — and, once it is with management, for
+            everybody, read-only — ONE area holds every detail, the live
+            checklist and the Submit control. The workflow panel above it keeps
+            management's notes and the reviewer's decisions. Viewers the area is
+            not drawn for keep the arrangement below it. */}
+        {showCompletion ? (
+          <>
+            {workflowPanel}
+
+            <PiCompletionPanel
+              completion={completion}
+              locked={isLocked}
+              checklistDisabled={acting}
+              onFix={mayEditPi || canEditInternalDetails ? fixCompletionItem : null}
+              groups={<>
+                <div className="pi-completion-facts-grid">
+                  <PiCompletionFacts
+                    title="Client"
+                    facts={completionFacts.filter(f => f.group === 'client')}
+                    editLabel="Edit client details"
+                    canEdit={canEditInternalDetails}
+                    locked={isLocked}
+                    onEdit={() => { setClientFailure(null); setEditSection('client') }}
+                  />
+                  <PiCompletionFacts
+                    title="PI terms"
+                    facts={completionFacts.filter(f => f.group === 'terms')}
+                    editLabel="Edit PI terms"
+                    canEdit={canEditInternalDetails}
+                    locked={isLocked}
+                    onEdit={() => { setClientFailure(null); setEditSection('terms') }}
+                  />
+                </div>
+                <PiOrderDetailsSection
+                  supabase={supabase}
+                  submissionId={submissionId}
+                  row={detailsRow}
+                  rowVersion={rowVersion}
+                  canEdit={canEditInternalDetails}
+                  locked={isLocked}
+                  salesDetailsAvailable={salesDetails.available}
+                  people={salespeople}
+                  grandTotal={grandTotalValue}
+                  fabricCost={toNumber(submission.fabric_cost)}
+                  focus={detailsFocus}
+                  onSaved={() => loadDraft({ quiet: true })}
+                />
+                <div className="pi-completion-facts-grid">
+                  <div id="pi-draft-attachments" style={{ minWidth: 0 }}>
+                    {isLocked ? (
+                      <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submission.submitted_at} />
+                    ) : (
+                      <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditSubmission} />
+                    )}
+                  </div>
+                  <PiHighlightRemark
+                    supabase={supabase}
+                    submissionId={submissionId}
+                    canEdit={canEditSubmission}
+                    rowVersion={rowVersion}
+                    onSaved={() => { void loadDraft({ quiet: true }) }}
+                    onRead={setHighlightRead}
+                  />
+                </div>
+              </>}
+              submit={actions.canSubmit ? {
+                label: submitButtonLabel(submission.status),
+                disabled: acting || submitBlockedReason !== null,
+                reason: submitBlockedReason,
+                onSubmit: openSubmit,
+              } : null}
+              onChangePi={actions.canChangePi ? () => router.push(changePiHref(submissionId)) : null}
+              requestChange={null}
+            />
+          </>
+        ) : (
         <div className="pi-detail-split">
           <div className="pi-detail-split-grid">
             <div className="pi-detail-split-stack">
@@ -2405,82 +2638,11 @@ function PiDraftDetailPageInner() {
             {/* ── Workflow and actions, ABOVE the products ──
                 Whatever is being asked of this viewer, in one coordinated panel,
                 so nobody scrolls a product table to find out that nothing is. */}
-            <PiWorkflowPanel
-              panel={workflow}
-              actions={actions}
-              status={submission.status}
-              reviewNote={submission.review_note}
-              employeeReply={employeeReply}
-              // Shown with the reply, so the reply is not the only account of
-              // what changed (read from the activity trail, never re-derived).
-              resubmission={submission.status === 'submitted' ? draft.resubmission : null}
-              advanceRefusal={advanceRefusal}
-              blockingCount={draft.blocking.length}
-              /* The same list the approval control and the finance dialog read.
-                 Offered only where submitting is the question: a reviewer looking
-                 at a submitted PI is not the person who fills these in. */
-              // The shared list plus the internal details the database also
-              // requires before a submission (20270123000000).
-              readiness={actions.canSubmit ? withOrderDetailsRequirements(submissionReadiness, detailsRow) : null}
-              onFixReadiness={
-                mayEditPi || canEditInternalDetails
-                  ? (section, key) => {
-                      if (section === 'internal') { focusOrderDetails(orderDetailsFieldOf(key) ?? 'middleman_commission'); return }
-                      if (!mayEditPi) return
-                      if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                      router.push(draftEditPiPageHref(submissionId))
-                    }
-                  : null
-              }
-              acting={acting}
-              onChangePi={() => router.push(changePiHref(submissionId))}
-              onSubmit={() => { setActionFailure(null); savedDatesRef.current = null; setDialog('submit') }}
-              onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
-              onReject={() => { setActionFailure(null); setDialog('reject') }}
-              approvalBlocker={readiness.blocker}
-              approvalReady={readiness.ready}
-              decision={reviewDecision}
-              piApprovedLine={piApprovedText}
-              approvedOrder={approvedOrder}
-              onApprove={() => {
-                setActionFailure(null)
-                /* THE PI'S OWN SAVED SALESPERSON, or nobody — never the viewer,
-                   the submitter, the only option, the first one, or a person
-                   matched by the workbook's printed name. A legacy PI with no
-                   saved id opens unselected (the name is shown as a hint), and
-                   validateOrderConfirmation refuses to confirm until management
-                   chooses. Re-derived on every open rather than remembered, so
-                   the dialog always reflects the PI as it stands now. */
-                setConfirmationField(null)
-                setConfirmation(prev => ({
-                  ...prev,
-                  // THE SALESPERSON SALES SAVED ON THE PI (20270211000000) when
-                  // there is one — never the approver. A PI from before that has
-                  // none, and nobody is selected for it.
-                  salesperson: salesDetails.salesperson_id ?? null,
-                  leadSource: salesDetails.lead_source ?? prev.leadSource,
-                  confirmDate: submission.order_confirmation_date?.slice(0, 10) ?? prev.confirmDate,
-                  dueDate: submission.due_date?.slice(0, 10) ?? prev.dueDate,
-                }))
-                // THE DOOR FOLLOWS THE DECISION, never the other way round: the
-                // PI-only dialog opens only when the payment condition is the one
-                // thing outstanding, and the create-Order dialog only when the PI
-                // already stands approved.
-                setDialog(
-                  reviewDecision.mode === 'approve_pi' ? 'approve_pi'
-                  : reviewDecision.mode === 'create_order' ? 'create_order'
-                  : 'approve',
-                )
-              }}
-              onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
-              openOrderHref={approvedOrder ? orderHref(approvedOrder.orderId) : null}
-              advanceBand={advanceBand}
-              /* The top card already says who submitted it, when, and where
-                 review stands; the panel keeps its controls and notes. */
-              statusShownAbove
-            />
+            {workflowPanel}
           </div>
         </div>
+
+        )}
 
         {/* ── 4. What stops this being submitted ──
             Above the products, because it is the reason the primary action is
@@ -2951,21 +3113,17 @@ function PiDraftDetailPageInner() {
           offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
-          supporting={<>
-            {/* The internal details — dates, the middleman answer and the
-                confirmation — are the dialog's own fieldset (internalDetails
-                below). Never on the client PI. */}
-            {internalSubmitBlock && (
-              // supportingBlocked only disables Submit; the reason is said here.
-              <div role="alert" style={{
-                fontSize: '12.5px', color: colors.primary, background: colors.amberTint,
-                border: `1px solid ${colors.amber}`, borderRadius: '8px', padding: '8px 10px',
-              }}>
-                {internalSubmitBlock}
-              </div>
-            )}
-            <PiSupportingDocumentsPicker state={supporting} disabled={acting} />
-          </>}
+          // THE SEQUENCE: what optional is still empty (named, with one
+          // question), then the advance exception where it applies, then the
+          // final confirmation. Files are attached in Complete PI details, not
+          // here. The categories still empty are recorded as an acknowledged
+          // absence when the PI is sent.
+          optionalMissing={completion.optionalMissing.map(item => item.label)}
+          laterMissing={completion.laterMissing.map(item => item.label)}
+          onGoBack={() => {
+            closeDialog()
+            document.getElementById('pi-complete-details')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+          }}
           missingSupporting={supporting.missing}
           // THE INTERNAL DETAILS WAIT FIRST: from 20270123000000 the database
           // refuses a submission without them, so the dialog says so up front.
@@ -3048,6 +3206,7 @@ function PiDraftDetailPageInner() {
           onNext={() => stepViewer(nav.nextIndex)}
         />
       )}
+      </AmountMaskRegion>
     </OrdersLayout>
   )
 }

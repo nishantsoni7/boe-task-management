@@ -200,9 +200,17 @@ export const PAYMENT_UNVERIFIED_DOES_NOT_COUNT =
  * the verified requirement is met while ₹0 is verified.
  */
 export const ATTACHED_MET_AWAITING_VERIFICATION =
-  `No approval to proceed below ${PAYMENT_STANDARD_PERCENT}% is needed to submit. Finance must still verify this payment before the Order can be created — only verified payment counts for the Order.`
+  `No approval to proceed below ${PAYMENT_STANDARD_PERCENT}% is needed to submit. Finance must still verify this payment: only verified payment counts to create the Order (unless an exception is approved) and to accept it for production (unless an administrator approves production below 40%).`
 export const PAYMENT_NOT_A_DECLARATION =
-  'Only payment Finance has verified counts. Nothing here records or requests money.'
+  'Nothing here records or requests money. For this submission check, payment awaiting Finance verification is counted as attached; only verified payment counts later — to create the Order (unless an exception is approved) and to accept it for production (unless an administrator approves production below 40%).'
+/**
+ * What the submission step says under "Admin approval required", in the SUBMISSION
+ * rule's terms. The approval position's own sentences ("Unverified payment does not
+ * count towards the requirement") describe the Order gate and would be wrong here,
+ * where payment awaiting verification IS counted — and is still short.
+ */
+export const SUBMISSION_BELOW_HINT =
+  `Attached payment (verified plus awaiting Finance verification) has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total. Admin approval is needed to send this PI for approval below it. Payment awaiting verification is not verified payment.`
 
 // ── The submit dialog's fields ────────────────────────────────────────────────
 

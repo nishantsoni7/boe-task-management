@@ -64,6 +64,8 @@
  * ship_to_phone, and those stay optional exactly as they were.
  */
 
+import { WORKBOOK_SALESPERSON_LABEL } from './orderConfirmation'
+
 /** What a surface is about to do, which decides how much has to be true. */
 export type PiReadinessPurpose = 'payment' | 'submission'
 
@@ -205,7 +207,7 @@ export const PI_CLIENT_NAME_REQUIREMENT: PiRequirement = {
  */
 export const PI_FINALIZATION_REQUIREMENTS: readonly PiRequirement[] = [
   { key: 'creation_date',         label: 'Date of creation',           section: 'terms'  },
-  { key: 'source_created_by',     label: 'Salesperson',                section: 'terms'  },
+  { key: 'source_created_by',     label: WORKBOOK_SALESPERSON_LABEL,  section: 'terms'  },
   { key: 'contact_number',        label: 'Salesperson contact number', section: 'client' },
   PI_CLIENT_NAME_REQUIREMENT,
   { key: 'client_city',           label: 'Client city',                section: 'client' },

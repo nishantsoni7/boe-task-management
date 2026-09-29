@@ -111,8 +111,14 @@ describe('the two PI screens put the answer above the product table', () => {
     // Siblings in the page stack: nested into any card, these would not be found.
     // The identity strip is gone: status, creator, timestamp and workbook all
     // live inside the summary card now, so the page opens with the card itself.
-    assert.ok(at(s, 'PiTopCard') < at(s, 'PiWorkflowPanel'),
+    // The page builds the workflow panel once (`workflowPanel`) and places it in
+    // the section that also holds the Complete PI details area.
+    assert.ok(at(s, 'PiTopCard') < at(s, 'workflowPanel'),
       'who, when and how much paid — above the controls that act on them')
+    assert.equal(at(s, 'workflowPanel'), at(s, 'PiCompletionPanel'),
+      'the workflow panel and the Complete PI details area are one section, in one place')
+    assert.ok(at(s, 'PiCompletionPanel') < at(s, 'PiProductTableHead'),
+      'the details a PI needs are completed above the products, not below them')
     assert.ok(at(s, 'PiTopCard') < at(s, 'PiProductTableHead'),
       'the money received must not sit below the lines it was received against')
     assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiLowerGrid'),

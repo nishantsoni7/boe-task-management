@@ -135,14 +135,25 @@ function useHighlightRemark(supabase: SupabaseClient, submissionId: string | nul
  * `refreshKey` is the PI's row_version; `onSaved` lets the page re-read, so
  * the next write elsewhere carries the new version.
  */
-export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion, onSaved }: {
+export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion, onSaved, onRead }: {
   supabase: SupabaseClient
   submissionId: string
   canEdit: boolean
   rowVersion: number | null
   onSaved: () => void
+  /**
+   * What the box last read, so the page's checklist can say whether the
+   * optional highlight is still empty without reading the column a second time.
+   * Null while it is loading.
+   */
+  onRead?: (state: { available: boolean; remark: string | null } | null) => void
 }) {
   const [read, setRead] = useHighlightRemark(supabase, submissionId, rowVersion)
+  useEffect(() => {
+    onRead?.(read.kind === 'ready' ? { available: true, remark: read.remark }
+      : read.kind === 'unavailable' ? { available: false, remark: null } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [read])
   // NULL UNTIL SOMEBODY TYPES: the box shows what is stored, and a re-read
   // never overwrites text that has not been saved.
   const [edited, setEdited] = useState<string | null>(null)

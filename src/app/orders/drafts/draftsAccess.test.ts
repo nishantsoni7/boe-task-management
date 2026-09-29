@@ -1225,8 +1225,8 @@ describe('the page identity is a strip, not a card that repeats the title', () =
     // Salesperson · Submitted by · Created — all three in the CONTEXT ROW now,
     // beside the status badge. They used to sit in a four-item strip under the
     // client's name, where BOE facts read as the client's.
-    assert.ok(read(DETAIL_SECTIONS).includes('{SALESPERSON_LABEL}'),
-      'the one established word for the salesperson, from the Order flow')
+    assert.ok(read(DETAIL_SECTIONS).includes('{WORKBOOK_SALESPERSON_LABEL}'),
+      'the context row names the salesperson the PI workbook names, under its own label')
     for (const label of ["'Submitted by'", "'Created'"]) {
       assert.ok(view.includes(label), `${label} must survive the redesign`)
     }
@@ -1595,7 +1595,9 @@ describe('the record page draws controls from one rule, and from nothing else', 
     assert.ok(source.includes('actions={actions}'))
     const sections = read(DETAIL_SECTIONS)
     assert.ok(sections.includes('const isReviewer = actions.canRequestChanges || actions.canReject'))
-    assert.ok(sections.includes('const ownerActions = actions.canSubmit || actions.canChangePi'))
+    // The owner's controls are drawn by the Complete PI details area whenever it
+    // is drawn; this panel keeps them for every other arrangement.
+    assert.ok(sections.includes('const ownerActions = (actions.canSubmit || actions.canChangePi) && !ownerActionsElsewhere'))
     assert.ok(!/status === 'submitted' &&\s*canReview/.test(source),
       'no second, looser copy of the rule in a JSX condition')
     assert.ok(!sections.includes('canReview'),
@@ -2133,13 +2135,14 @@ describe('the submit dialog states the payment position and asks only what is un
     assert.ok(source.includes('EXCEPTION_REASON_OPTIONS.map'), 'the three reasons are drawn from one list')
     assert.ok(source.includes("terms.reasonChoice === 'other' && field("), 'and only Other asks for a remark')
     assert.ok(!source.includes('PAYMENT_TERMS_LABEL,'), 'Payment terms are no longer demanded below the requirement')
-    assert.ok(source.includes('BILLING_TERMS_LABEL'), 'billing terms are still offered where they always were')
+    assert.ok(!source.includes('BILLING_TERMS_LABEL'), 'billing terms are entered in Complete PI details, not in this dialog')
   })
 
-  test('at or above the requirement it asks for nothing mandatory', () => {
-    assert.ok(source.includes('{meetsStandard === true && ('))
-    assert.ok(source.includes('PAYMENT_TERMS_OPTIONAL_LABEL'),
-      'the terms are still offered, and both optional')
+  test('at or above the requirement the exception step is skipped altogether', () => {
+    assert.ok(!source.includes('{meetsStandard === true && ('), 'no terms box is drawn for a PI that meets the requirement')
+    const completion = read('src/lib/orders/piCompletion.ts')
+    assert.ok(completion.includes("if (input.meetsStandard !== true) stages.push('advance')"),
+      'the advance step is pushed only when the requirement is not met (or could not be read)')
   })
 
   test('an unreadable position fails CLOSED rather than guessing a route', () => {
@@ -2154,9 +2157,9 @@ describe('the submit dialog states the payment position and asks only what is un
   })
 
   test('submit is disabled while the terms are invalid or in flight', () => {
-    assert.ok(source.includes('const blocked = submitting || tooLong || !checked.ok'))
-    assert.ok(source.includes('disabled={blocked}'))
-    assert.ok(source.includes('if (blocked || !checked.ok) return'),
+    assert.ok(source.includes('const finalBlocked = submitting || tooLong || !checked.ok'))
+    assert.ok(source.includes('disabled={finalBlocked}'))
+    assert.ok(source.includes('if (finalBlocked || !checked.ok) return'),
       'and the handler refuses too, so a defeated button sends nothing')
   })
 

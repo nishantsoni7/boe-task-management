@@ -902,7 +902,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         `${untouchable} is outside what a PI's own content reaches`)
       // AND UNCHANGED, unless another authorized branch legitimately reaches it.
       if (!ALLOWED_CONFIRMED_ORDER_DETAIL_REDESIGN.has(untouchable) && !ALLOWED_OPERATIONS_HANDOFF.has(untouchable)
-          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable) && !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(untouchable)) {
+          && !ALLOWED_PI_NUMBERING_AND_EDITING.has(untouchable) && !ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) && !ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) && !ALLOWED_PI_INTERNAL_DETAILS.has(untouchable) && !ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable) && !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(untouchable) && !ALLOWED_PI_COMPLETION_FLOW.has(untouchable)) {
         assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
       }
     }
@@ -1918,6 +1918,42 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
   ])
 
+  // Complete PI details: one area to finish a PI and submit it in a fixed order
+  // (optional items → advance exception → final confirmation), the locked state
+  // after submission, and Hide amounts. Orders screens only; no Finance file and
+  // no migration — the lock is the database's own can_edit_order_submission.
+  const ALLOWED_PI_COMPLETION_FLOW = new Set([
+    'src/app/globals.css',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/piSectionOrder.test.ts',
+    'src/components/orders/AmountMask.tsx',
+    'src/components/orders/PiCompletionPanel.tsx',
+    'src/components/orders/PiHighlightRemark.tsx',
+    'src/components/orders/PiInternalDetails.tsx',
+    'src/components/orders/PiOrderDetailsSection.tsx',
+    'src/components/orders/PiPaymentCard.tsx',
+    'src/lib/orders/orderConfirmation.ts',
+    'src/lib/orders/orderConfirmation.test.ts',
+    'src/lib/orders/paymentGate.ts',
+    'src/lib/orders/piReadiness.ts',
+    'src/lib/orders/piTerms.test.ts',
+    'src/components/orders/piCompletionPanel.render.test.tsx',
+    'src/components/orders/piReviewModals.tsx',
+    'src/components/orders/piSubmitModal.render.test.tsx',
+    'src/lib/orders/amountMask.test.ts',
+    'src/lib/orders/amountMask.ts',
+    'src/lib/orders/piCompletion.test.ts',
+    'src/lib/orders/piCompletion.ts',
+    'src/lib/orders/piInternalDetails.test.ts',
+    'src/lib/orders/piInternalDetails.ts',
+    'src/lib/orders/piReadinessWiring.test.tsx',
+    'src/lib/orders/salesOrderDetails.test.tsx',
+    'src/lib/orders/salesOrderDetails.ts',
+  ])
+
   // The saved PI Draft's top layout, its corrected Product value, and the
   // optional internal order highlight shown on the Confirmed Order
   // (20270210000000). No Finance file; orderPiHandoff.ts only follows the
@@ -2413,6 +2449,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_PDF_ORDER_NUMBER.has(f) &&
     !ALLOWED_PRODUCTION_ADVANCE_GATE.has(f) &&
     !ALLOWED_PI_DRAFT_TOP_LAYOUT.has(f) &&
+    !ALLOWED_PI_COMPLETION_FLOW.has(f) &&
     !ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(f) &&
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
@@ -2760,6 +2797,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PRODUCTION_ADVANCE_GATE.has(file)
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
         || ALLOWED_PI_DRAFT_TOP_LAYOUT.has(file)
+        || ALLOWED_PI_COMPLETION_FLOW.has(file)
         || ALLOWED_EXPENSE_REIMBURSEMENTS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file)
