@@ -179,6 +179,13 @@ export async function POST(req: NextRequest) {
   const token = claim?.claim_token
   if (!token) return bad('The cleanup claim could not be taken.', 500)
 
+  // A RESUMED CLAIM MAY ALREADY HAVE DESTROYED FILES. A claim is only ever left
+  // standing by an attempt that issued a remove, or that swept everything and
+  // then saw finalization refuse (Order 0526, 2026-09-27). Either way this
+  // request cannot prove the files are whole, so it must never give the records
+  // back — even if its own sweep fails before issuing a single remove.
+  if (claim?.resumed === true) storageRemovalAttempted = true
+
   /**
    * Give the records back — ONLY safe while nothing has been destroyed.
    *
@@ -336,11 +343,15 @@ export async function POST(req: NextRequest) {
   if (finalErr) {
     // THE CLAIM IS DELIBERATELY NOT RELEASED. The files are gone; the records
     // must stay frozen until this completes, and asking again resumes it.
-    report('finalization refused after storage cleanup')
+    //
+    // The database's own refusal goes into the log line: until it did, the only
+    // copy was this response body, and diagnosing 0526 needed a replay.
+    const detail = String((finalErr as { message?: unknown }).message ?? '')
+    report(`finalization refused after storage cleanup: ${detail}`)
     return NextResponse.json({
       error: 'The files were removed but the records could not be deleted. This cleanup is reserved — run it again to finish it.',
       reserved: true,
-      detail: String((finalErr as { message?: unknown }).message ?? ''),
+      detail,
     }, { status: 502 })
   }
 
