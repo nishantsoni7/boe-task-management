@@ -116,11 +116,9 @@ import {
   PiLockedNotice,
 } from '@/components/orders/PiCompletionPanel'
 import {
-  PI_LOCKED_ADMIN_BODY,
-  PI_LOCKED_OWNER_BODY,
   PI_LOCKED_TITLE,
-  PI_LOCKED_VIEWER_BODY,
   buildCompletionFacts,
+  describeLockedNotice,
   buildPiCompletion,
   type CompletionItem,
 } from '@/lib/orders/piCompletion'
@@ -2414,7 +2412,7 @@ function PiDraftDetailPageInner() {
         {isLocked && (
           <PiLockedNotice
             title={PI_LOCKED_TITLE}
-            body={canAdminAmend ? PI_LOCKED_ADMIN_BODY : ownsSubmission ? PI_LOCKED_OWNER_BODY : PI_LOCKED_VIEWER_BODY}
+            body={describeLockedNotice({ ownsSubmission, canAdminAmend, canEdit: canEditSubmission, canReview, canAddPayment })}
             onRequestChange={requestChangeAction}
           />
         )}
@@ -3121,6 +3119,7 @@ function PiDraftDetailPageInner() {
           // here. The categories still empty are recorded as an acknowledged
           // absence when the PI is sent.
           optionalMissing={completion.optionalMissing.map(item => item.label)}
+          laterMissing={completion.laterMissing.map(item => item.label)}
           onGoBack={() => {
             closeDialog()
             document.getElementById('pi-complete-details')?.scrollIntoView({ block: 'start', behavior: 'smooth' })

@@ -1225,8 +1225,8 @@ describe('the page identity is a strip, not a card that repeats the title', () =
     // Salesperson · Submitted by · Created — all three in the CONTEXT ROW now,
     // beside the status badge. They used to sit in a four-item strip under the
     // client's name, where BOE facts read as the client's.
-    assert.ok(read(DETAIL_SECTIONS).includes('{SALESPERSON_LABEL}'),
-      'the one established word for the salesperson, from the Order flow')
+    assert.ok(read(DETAIL_SECTIONS).includes('{WORKBOOK_SALESPERSON_LABEL}'),
+      'the context row names the salesperson the PI workbook names, under its own label')
     for (const label of ["'Submitted by'", "'Created'"]) {
       assert.ok(view.includes(label), `${label} must survive the redesign`)
     }

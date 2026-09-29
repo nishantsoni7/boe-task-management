@@ -610,8 +610,8 @@ describe('every surface calls the salesperson the salesperson', () => {
     assert.equal(context.salesperson, 'Dhruv')
     const sections = readFileSync(
       join(process.cwd(), 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'), 'utf8')
-    assert.ok(sections.includes('{SALESPERSON_LABEL}'),
-      'and it is drawn under the one shared label, never a second word for it')
+    assert.ok(sections.includes('{WORKBOOK_SALESPERSON_LABEL}'),
+      'and it is drawn under the workbook-salesperson label, never the assigned-salesperson one')
   })
 
   test('and the generated PDF', () => {

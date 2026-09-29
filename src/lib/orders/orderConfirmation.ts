@@ -19,8 +19,17 @@
 // one fact. The column is NOT renamed: a database rename to change a label
 // would move every policy, index and query that reads it, for nothing.
 
-/** The label the whole Order flow uses. Never "Owner", never "Assignee". */
-export const SALESPERSON_LABEL = 'Salesperson'
+/**
+ * TWO DIFFERENT SALESPEOPLE, TWO NAMES.
+ *
+ * The one the PI workbook names (order_submissions.source_created_by, printed on
+ * the client PDF) is needed to SUBMIT. The one BOE assigns to the Order
+ * (salesperson_id, a user) is needed LATER, to create it. They used to share the
+ * label "Salesperson" and were easy to mistake for each other.
+ */
+export const WORKBOOK_SALESPERSON_LABEL = 'Salesperson named in PI workbook'
+/** The label the whole Order flow uses for the assigned user. Never "Owner", never "Assignee". */
+export const SALESPERSON_LABEL = 'BOE salesperson assigned to Order'
 
 // ── Lead source ───────────────────────────────────────────────────────────────
 //

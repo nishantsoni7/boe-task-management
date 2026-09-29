@@ -23,6 +23,7 @@ import {
   ORDER_CONFIRMATION_MESSAGE,
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
+  WORKBOOK_SALESPERSON_LABEL,
   CLIENT_UPDATE_REQUIRED_MESSAGE,
   describeConfirmationFailure,
   isOrderLeadSource,
@@ -371,9 +372,11 @@ describe('the approval dialog asks for all four, and the page sends them', () =>
   })
 })
 
-describe('the Order flow says Salesperson, and never Owner or Assignee', () => {
-  test('the label is one constant', () => {
-    assert.equal(SALESPERSON_LABEL, 'Salesperson')
+describe('the Order flow names the assigned salesperson, and never Owner or Assignee', () => {
+  test('the label is one constant — and it is not the workbook salesperson\'s', () => {
+    assert.equal(SALESPERSON_LABEL, 'BOE salesperson assigned to Order')
+    assert.equal(WORKBOOK_SALESPERSON_LABEL, 'Salesperson named in PI workbook')
+    assert.notEqual(SALESPERSON_LABEL, WORKBOOK_SALESPERSON_LABEL)
   })
 
   test('the Confirmed Order screen shows no Owner and no Assignee field', () => {

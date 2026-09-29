@@ -27,7 +27,7 @@ import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
-import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
+import { WORKBOOK_SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 import { colors } from '@/lib/tokens'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
@@ -408,7 +408,7 @@ export function PiTopCard({
             </div>
 
             <div className="pi-detail-context-who">
-              <span className="pi-detail-context-who-label">{SALESPERSON_LABEL}</span>
+              <span className="pi-detail-context-who-label">{WORKBOOK_SALESPERSON_LABEL}</span>
               {context.salesperson ? (
                 <span className="pi-detail-context-name">{context.salesperson}</span>
               ) : (

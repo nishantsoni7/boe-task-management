@@ -48,7 +48,7 @@ describe('every field says how much it is needed — and nothing optional became
     assert.deepEqual(need, {
       order_confirmation_date: 'submission', due_date: 'submission',
       salesperson_id: 'approval', lead_source: 'approval',
-      billing_percentage: 'optional', billing_terms: 'optional',
+      billing_percentage: 'optional', billing_terms: 'optional', payment_terms: 'optional',
       fabric_responsibility: 'submission',
       middleman_commission: 'submission', middleman_structure: 'conditional',
     })
@@ -258,8 +258,8 @@ describe('the section states what Sales has provided', () => {
     const html = render(COMPLETE)
     assert.match(html, /aria-label="Internal order details"/)
     assert.match(html, />Internal</)
-    for (const label of ['Date of Order Confirmation', 'Dispatch Date Finalized', 'Salesperson', 'Lead source',
-      'Billing percentage', 'Billing terms', 'Fabric responsibility', 'Middleman commission']) {
+    for (const label of ['Date of Order Confirmation', 'Dispatch Date Finalized', 'BOE salesperson assigned to Order', 'Lead source',
+      'Billing percentage', 'Billing terms', 'Payment terms', 'Fabric responsibility', 'Middleman commission']) {
       assert.ok(html.includes(label), label)
     }
     assert.ok(html.includes('Dhruv Mehta') && html.includes('Website') && html.includes('65%') && html.includes('Fabric will be provided by client'))
@@ -360,13 +360,68 @@ describe('the migration', () => {
 describe('the section says exactly what the client PDF prints (#248)', () => {
   test('only fabric responsibility is printed; billing is internal', () => {
     assert.equal(ORDER_DETAILS_NOTE,
-      'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the Salesperson chosen here.')
-    assert.match(ORDER_DETAILS_FIELD.salesperson_id.hint ?? '', /Not printed on the client PDF, which shows the salesperson the workbook names\./)
+      'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the BOE salesperson assigned here.')
+    assert.match(ORDER_DETAILS_FIELD.salesperson_id.hint ?? '', /Not printed on the client PDF, which shows the salesperson named in the PI workbook\./)
     assert.match(ORDER_DETAILS_FIELD.billing_percentage.hint ?? '', /Internal; not printed on the client PDF\./)
     assert.equal(ORDER_DETAILS_FIELD.fabric_responsibility.hint, 'Printed on the client PDF as one sentence.')
     for (const field of ORDER_DETAILS_FIELDS) {
       if (field.key === 'fabric_responsibility') continue
       assert.ok(!/printed on the (generated|client)/i.test(field.hint ?? '') || /not printed/i.test(field.hint ?? ''), field.key)
     }
+  })
+})
+
+// ── Payment terms: an Optional field at every advance level ──────────────────
+
+describe('payment terms are an Optional field of Internal order details', () => {
+  const row: OrderDetailsRow = { ...COMPLETE, payment_terms: '30% advance, 70% before dispatch' }
+
+  test('optional, and never among what submission needs', () => {
+    assert.equal(ORDER_DETAILS_FIELD.payment_terms.need, 'optional')
+    assert.ok(!orderDetailsSubmissionGaps({ ...COMPLETE, payment_terms: null }).some(g => g.key === 'payment_terms'))
+  })
+
+  test('the stored value opens in the form and in the review, unchanged', () => {
+    assert.equal(orderDetailsForm(row).payment_terms, '30% advance, 70% before dispatch')
+    const review = orderDetailsReview(row, []).find(r => r.key === 'payment_terms')
+    assert.equal(review?.value, '30% advance, 70% before dispatch')
+    assert.equal(orderDetailsReview({ ...COMPLETE, payment_terms: null }, []).find(r => r.key === 'payment_terms')?.value, null)
+  })
+
+  test('a save that touches nothing writes nothing — the stored value is never rewritten', () => {
+    assert.deepEqual(orderDetailsSavePlan(row, orderDetailsForm(row)), [])
+  })
+
+  test('changing only payment terms sends only payment terms, through the RPC that already owns them', () => {
+    const plan = orderDetailsSavePlan(row, { ...orderDetailsForm(row), payment_terms: '50% advance' })
+    assert.equal(plan.length, 1)
+    assert.equal(plan[0].rpc, 'update_order_submission_schedule_terms')
+    assert.deepEqual(plan[0].args, { p_fields: { payment_terms: '50% advance' }, p_reason: null })
+    assert.equal(plan[0].label, 'Payment terms')
+  })
+
+  test('clearing it sends null, and changing both terms is one call carrying both', () => {
+    assert.deepEqual(orderDetailsSavePlan(row, { ...orderDetailsForm(row), payment_terms: '  ' })[0].args,
+      { p_fields: { payment_terms: null }, p_reason: null })
+    const both = orderDetailsSavePlan(row, { ...orderDetailsForm(row), payment_terms: 'x', billing_terms: 'y' })
+    assert.equal(both.length, 1)
+    assert.deepEqual(both[0].args, { p_fields: { billing_terms: 'y', payment_terms: 'x' }, p_reason: null })
+    assert.equal(both[0].label, 'Payment and billing terms')
+  })
+
+  test('over the database limit is refused before it is sent', () => {
+    assert.ok(orderDetailsErrors({ ...orderDetailsForm(row), payment_terms: 'x'.repeat(501) }, null).payment_terms)
+    assert.equal(orderDetailsErrors({ ...orderDetailsForm(row), payment_terms: 'x'.repeat(500) }, null).payment_terms, undefined)
+  })
+
+  test('the form offers it, in the section, whatever the advance level — the section knows nothing of payments', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/orders/PiOrderDetailsSection.tsx'), 'utf8')
+    assert.ok(src.includes("labelFor('payment_terms')"))
+    assert.ok(!/payments?\b.*summary|attached_meets|meets_standard/.test(src), 'no advance rule reaches this section')
+  })
+
+  test('the Submit dialog still carries the stored value through as it is', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes("paymentTerms: submission.payment_terms ?? payments?.payment_terms ?? ''"))
   })
 })

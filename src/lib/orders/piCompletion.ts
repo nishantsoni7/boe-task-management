@@ -29,6 +29,7 @@
 // about things they could have filled in and chose not to.
 
 import { readBillingPercentage } from './billingPercentage'
+import { WORKBOOK_SALESPERSON_LABEL } from './orderConfirmation'
 import { CATEGORY_LABEL, type DocumentCategory } from './orderDocumentSubmissions'
 import { HIGHLIGHT_REMARK_TITLE } from './highlightRemark'
 import { orderDetailsFieldOf, ORDER_DETAILS_FIELD, type OrderDetailsFieldKey, type OrderDetailsRow } from './salesOrderDetails'
@@ -107,6 +108,9 @@ export function buildPiCompletion(input: {
   }
   if (blank(input.details.billing_terms)) {
     optionalMissing.push({ key: 'billing_terms', label: ORDER_DETAILS_FIELD.billing_terms.label, need: 'optional', where: 'internal', field: 'billing_terms' })
+  }
+  if (blank(input.details.payment_terms)) {
+    optionalMissing.push({ key: 'payment_terms', label: ORDER_DETAILS_FIELD.payment_terms.label, need: 'optional', where: 'internal', field: 'payment_terms' })
   }
   for (const category of input.supportingMissing) {
     optionalMissing.push({ key: `documents:${category}`, label: CATEGORY_LABEL[category], need: 'optional', where: 'documents' })
@@ -207,7 +211,7 @@ export function buildCompletionFacts(row: CompletionFactsRow, formatDay: (iso: s
     { key: 'billing_address', label: 'Billing address', need: 'optional', value: text(row.billing_address), group: 'client' },
     { key: 'shipping_address', label: 'Shipping address', need: 'optional', value: text(row.shipping_address), group: 'client' },
     { key: 'creation_date', label: 'Date of creation', need: 'submission', value: formatDay(row.creation_date ?? null), group: 'terms' },
-    { key: 'source_created_by', label: 'Salesperson', need: 'submission', value: text(row.source_created_by), group: 'terms' },
+    { key: 'source_created_by', label: WORKBOOK_SALESPERSON_LABEL, need: 'submission', value: text(row.source_created_by), group: 'terms' },
     { key: 'commercial_terms_note', label: 'Commercial terms', need: 'submission', value: text(row.commercial_terms_note), group: 'terms' },
   ]
 }
@@ -215,12 +219,57 @@ export function buildCompletionFacts(row: CompletionFactsRow, formatDay: (iso: s
 // ── The locked state, in words ──────────────────────────────────────────────
 
 export const PI_LOCKED_TITLE = 'Submitted — this PI is locked'
-/** For the person who owns the PI: what they cannot do, and the one thing they can. */
-export const PI_LOCKED_OWNER_BODY =
+/** What this viewer is doing on a PI that is with management — every fact from an answer the page already holds. */
+export type LockedViewer = {
+  /** created_by or submitted_by. */
+  ownsSubmission: boolean
+  /** can_admin_edit_order_submission: an active admin may amend at any stage, with a reason. */
+  canAdminAmend: boolean
+  /** can_edit_order_submission: the owner rule. False for everybody once a PI is submitted. */
+  canEdit: boolean
+  /** orders.approve_order: may send it back, reject it, or approve it. */
+  canReview: boolean
+  /** The record-a-payment rule the payment card already uses. */
+  canAddPayment: boolean
+}
+
+/**
+ * THE LOCK NOTICE'S SECOND LINE, worded for what THIS viewer can actually do.
+ *
+ * It only DESCRIBES: each clause is the page's own answer to the question the
+ * database re-asks on every write, so the sentence cannot promise a right the
+ * screen is not also offering — or deny one it is.
+ *
+ *   owner            cannot edit; may request a change from management
+ *   active admin     may still amend, from Edit PI, with a reason
+ *   management       may approve, send back or reject, and may not edit
+ *   anybody else     reads it
+ *
+ * Adding a payment is not an edit of the PI, so it is said separately, and only
+ * to somebody who may do it.
+ */
+export function describeLockedNotice(viewer: LockedViewer): string {
+  const parts: string[] = []
+  if (viewer.canAdminAmend) {
+    parts.push('It is with management for review. As an administrator you can still amend it from Edit PI, with a reason.')
+  } else if (viewer.ownsSubmission && !viewer.canEdit) {
+    parts.push(PI_LOCKED_OWNER_SENTENCE)
+  } else {
+    parts.push('It is with management for review, and you cannot edit it.')
+  }
+  if (viewer.canReview) {
+    parts.push('You can approve it, send it back for changes, or reject it.')
+  } else if (!viewer.ownsSubmission && !viewer.canAdminAmend) {
+    parts.push('You can read it here.')
+  }
+  if (!viewer.canAdminAmend && !viewer.canReview && !viewer.ownsSubmission) {
+    // nothing more to add
+  } else if (!viewer.canAdminAmend && !viewer.ownsSubmission) {
+    parts.push('It can be edited again only if it is sent back for changes.')
+  }
+  if (viewer.canAddPayment) parts.push('You can still add payments; that does not edit the PI.')
+  return parts.join(' ')
+}
+
+export const PI_LOCKED_OWNER_SENTENCE =
   'You cannot edit this PI while it is with management. You can request a change from management.'
-/** For an active administrator, who may still amend a submitted PI — with a reason, from Edit PI. */
-export const PI_LOCKED_ADMIN_BODY =
-  'It is with management for review. As an administrator you can still amend it from Edit PI, with a reason; otherwise it can be edited again only if management sends it back for changes.'
-/** For everybody else who opens it. */
-export const PI_LOCKED_VIEWER_BODY =
-  'It is with management for review. It can be edited again only if management sends it back for changes.'

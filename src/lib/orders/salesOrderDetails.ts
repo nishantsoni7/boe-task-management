@@ -64,7 +64,7 @@ export const ORDER_DETAILS_ANCHOR = 'pi-internal-order-details'
  * not even read. The note says so, so nobody expects a change here to reach it.
  */
 export const ORDER_DETAILS_NOTE =
-  'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the Salesperson chosen here.'
+  'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the BOE salesperson assigned here.'
 
 /** How much a field is needed, in the words the section shows beside it. */
 export type OrderDetailsNeed = 'submission' | 'approval' | 'optional' | 'conditional'
@@ -79,7 +79,7 @@ export const ORDER_DETAILS_NEED_LABEL: Record<OrderDetailsNeed, string> = {
 export type OrderDetailsFieldKey =
   | 'order_confirmation_date' | 'due_date'
   | 'salesperson_id' | 'lead_source'
-  | 'billing_percentage' | 'billing_terms'
+  | 'billing_percentage' | 'billing_terms' | 'payment_terms'
   | 'fabric_responsibility'
   | 'middleman_commission' | 'middleman_structure'
 
@@ -89,10 +89,11 @@ export type OrderDetailsField = { key: OrderDetailsFieldKey; label: string; need
 export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'order_confirmation_date', label: SUBMISSION_DATE_LABEL.order_confirmation_date, need: 'submission' },
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
-  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson the workbook names.' },
+  { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson named in the PI workbook.' },
   { key: 'lead_source',             label: 'Lead source',                                 need: 'approval' },
   { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `From ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },
+  { key: 'payment_terms',           label: 'Payment terms',                               need: 'optional', hint: 'How the payments are agreed to fall due. Optional at every advance level; saved as it is, and sent unchanged with the PI.' },
   { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                   need: 'submission', hint: 'Printed on the client PDF as one sentence.' },
   { key: 'middleman_commission',    label: MIDDLEMAN_QUESTION,                            need: 'submission' },
   { key: 'middleman_structure',     label: 'Who receives it, and the amount or percentage', need: 'conditional' },
@@ -102,6 +103,8 @@ export const ORDER_DETAILS_FIELD: Record<OrderDetailsFieldKey, OrderDetailsField
   Object.fromEntries(ORDER_DETAILS_FIELDS.map(f => [f.key, f])) as Record<OrderDetailsFieldKey, OrderDetailsField>
 
 export const BILLING_TERMS_MAX = 500
+/** The database's own limit for payment terms (order_submissions_payment_terms_valid). */
+export const PAYMENT_TERMS_FIELD_MAX = 500
 
 /** Said in the Submit review when the dates are missing or out of order. */
 export const SUBMISSION_DETAILS_INCOMPLETE =
@@ -113,6 +116,7 @@ export type OrderDetailsRow = PiInternalDetailsRow & {
   lead_source?: string | null
   billing_percentage?: number | string | null
   billing_terms?: string | null
+  payment_terms?: string | null
   fabric_responsibility?: string | null
   source_created_by?: string | null
 }
@@ -141,6 +145,7 @@ export type OrderDetailsForm = PiInternalDetailsForm & {
   lead_source: string
   billing_percentage: string
   billing_terms: string
+  payment_terms: string
   fabric_responsibility: string
 }
 
@@ -156,6 +161,7 @@ export function orderDetailsForm(row: OrderDetailsRow): OrderDetailsForm {
     lead_source: isOrderLeadSource(row.lead_source) ? row.lead_source : '',
     billing_percentage: billing === null ? '' : String(billing),
     billing_terms: text(row.billing_terms),
+    payment_terms: text(row.payment_terms),
     fabric_responsibility: isFabricResponsibility(row.fabric_responsibility) ? row.fabric_responsibility : '',
   }
 }
@@ -175,6 +181,7 @@ export function orderDetailsErrors(
     if (!parsed.ok) errors.billing_percentage = parsed.message
   }
   if (form.billing_terms.trim().length > BILLING_TERMS_MAX) errors.billing_terms = `At most ${BILLING_TERMS_MAX} characters.`
+  if (form.payment_terms.trim().length > PAYMENT_TERMS_FIELD_MAX) errors.payment_terms = `At most ${PAYMENT_TERMS_FIELD_MAX} characters.`
   if (form.lead_source && !isOrderLeadSource(form.lead_source)) errors.lead_source = 'Choose one of the listed lead sources.'
   if (form.fabric_responsibility && !isFabricResponsibility(form.fabric_responsibility)) {
     errors.fabric_responsibility = 'Choose one of the listed answers.'
@@ -224,10 +231,17 @@ export function orderDetailsSavePlan(row: OrderDetailsRow, form: OrderDetailsFor
       args: { p_fields: { fabric_responsibility: blankToNull(form.fabric_responsibility) }, p_reason: null },
     })
   }
-  if (blankToNull(form.billing_terms) !== blankToNull(before.billing_terms)) {
+  // ONE call for both terms: update_order_submission_schedule_terms takes only the keys sent,
+  // so a value that did not change is never rewritten.
+  const termsChanged: Record<string, string | null> = {}
+  if (blankToNull(form.billing_terms) !== blankToNull(before.billing_terms)) termsChanged.billing_terms = blankToNull(form.billing_terms)
+  if (blankToNull(form.payment_terms) !== blankToNull(before.payment_terms)) termsChanged.payment_terms = blankToNull(form.payment_terms)
+  if (Object.keys(termsChanged).length > 0) {
     steps.push({
-      rpc: 'update_order_submission_schedule_terms', label: 'Billing terms', versioned: true,
-      args: { p_fields: { billing_terms: blankToNull(form.billing_terms) }, p_reason: null },
+      rpc: 'update_order_submission_schedule_terms', versioned: true,
+      label: 'billing_terms' in termsChanged && 'payment_terms' in termsChanged ? 'Payment and billing terms'
+        : 'payment_terms' in termsChanged ? 'Payment terms' : 'Billing terms',
+      args: { p_fields: termsChanged, p_reason: null },
     })
   }
   const nextBilling = form.billing_percentage.trim() === '' ? null : Number(form.billing_percentage.trim().replace(/%$/, ''))
@@ -409,6 +423,7 @@ export function orderDetailsReview(
     { key: 'lead_source',             label: 'Lead source',                                     value: leadSourceLabel(row.lead_source),           need: 'approval' },
     { key: 'billing_percentage',      label: 'Billing percentage',                              value: billing === null ? null : formatBillingPercentage(billing), need: 'optional' },
     { key: 'billing_terms',           label: 'Billing terms',                                   value: blankToNull(text(row.billing_terms)),        need: 'optional' },
+    { key: 'payment_terms',           label: 'Payment terms',                                   value: blankToNull(text(row.payment_terms)),        need: 'optional' },
     { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                       value: fabricResponsibilityLabel(row.fabric_responsibility), need: 'submission' },
     { key: 'middleman_commission',    label: 'Middleman commission',                            value: middleman === 'Not answered' ? null : middleman, need: 'submission' },
   ]

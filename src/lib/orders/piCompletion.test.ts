@@ -67,7 +67,7 @@ describe('what is required for submission — each one a gate the database alrea
   test('the finalization gate names the seven fields the checklist calls required', () => {
     assert.ok(finalizable.includes("'fabric_responsibility'"), 'fabric responsibility is in the database gate (its own test is below)')
     for (const [field, label] of [
-      ['creation_date', 'Date of creation'], ['source_created_by', 'Salesperson'],
+      ['creation_date', 'Date of creation'], ['source_created_by', 'Salesperson named in PI workbook'],
       ['contact_number', 'Salesperson contact number'], ['client_name', 'Client name'],
       ['client_city', 'Client city'],
       ['commercial_terms_note', 'Commercial terms'],
@@ -151,23 +151,36 @@ describe('what is required only LATER — never a submission blocker', () => {
     assert.deepEqual(completion({ salesDetailsAvailable: false }).laterMissing, [])
   })
 
-  test('they are not offered in the "proceed without these?" question, which is about optional things', () => {
-    assert.ok(!completion().optionalMissing.some(i => i.key === 'salesperson_id' || i.key === 'lead_source'))
+  test('they are listed in the "proceed without these?" step, in their own group, apart from the optional ones', () => {
+    const c = completion()
+    assert.ok(!c.optionalMissing.some(i => i.key === 'salesperson_id' || i.key === 'lead_source'), 'not mislabelled Optional')
+    assert.deepEqual(c.laterMissing.map(i => i.label), ['BOE salesperson assigned to Order', 'Lead source'])
+    assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
+  })
+
+  test('with only later items empty the step still appears', () => {
+    const c = completion({
+      details: { billing_percentage: 65, billing_terms: 'x', payment_terms: 'y' },
+      highlight: { available: true, remark: 'x' },
+    })
+    assert.deepEqual(c.optionalMissing, [])
+    assert.equal(c.laterMissing.length, 2)
+    assert.equal(submitStages({ optionalCount: c.optionalMissing.length + c.laterMissing.length, meetsStandard: true })[0], 'optional')
   })
 })
 
 describe('what is optional, and still empty', () => {
-  test('billing percentage, billing terms, Client PO, Design Files and the order highlight — by name', () => {
+  test('billing percentage, billing terms, payment terms, Client PO, Design Files and the order highlight — by name', () => {
     const c = completion({ supportingMissing: ['design_files', 'client_po'], highlight: { available: true, remark: null } })
     assert.deepEqual(c.optionalMissing.map(i => i.label),
-      ['Billing percentage', 'Billing terms', 'Design Files', 'Client PO', 'Order highlight'])
+      ['Billing percentage', 'Billing terms', 'Payment terms', 'Design Files', 'Client PO', 'Order highlight'])
     assert.ok(c.optionalMissing.every(i => i.need === 'optional'))
     assert.equal(c.readyToSubmit, true, 'optional items never block')
   })
 
   test('filled ones drop out', () => {
     const c = completion({
-      details: { billing_percentage: 65, billing_terms: '50% on dispatch' },
+      details: { billing_percentage: 65, billing_terms: '50% on dispatch', payment_terms: '30% advance' },
       supportingMissing: ['client_po'], highlight: { available: true, remark: 'Rush order' },
     })
     assert.deepEqual(c.optionalMissing.map(i => i.label), ['Client PO'])

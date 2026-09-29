@@ -35,6 +35,7 @@ import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
 import type { SupportingCategory } from '@/lib/orders/orderDocumentSubmissions'
 import {
+  COMPLETION_NEED_LABEL,
   PROCEED_CONTINUE_LABEL,
   PROCEED_GO_BACK_LABEL,
   PROCEED_WITHOUT_QUESTION,
@@ -147,7 +148,7 @@ import {
   PAYMENT_STANDARD_PERCENT,
   PAYMENT_NOT_A_DECLARATION,
   PAYMENT_POSITION_UNKNOWN,
-  PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
+  SUBMISSION_BELOW_HINT,
   ATTACHED_MET_AWAITING_VERIFICATION,
   SUBMISSION_POSITION_LABEL,
   asSubmissionPosition,
@@ -427,10 +428,12 @@ function PaymentPositionPanel({
           </strong>
           <span style={{ display: 'block', marginTop: '2px' }}>
             {position !== null && !meetsStandard
-              ? PAYMENT_POSITION_HINT[position]
+              ? (position === 'payment_required' || position === 'verification_pending'
+                  ? SUBMISSION_BELOW_HINT
+                  : PAYMENT_POSITION_HINT[position])
               : meetsStandard
                 ? (attachedOnly ? ATTACHED_MET_AWAITING_VERIFICATION : PAYMENT_POSITION_HINT.standard_met)
-                : PAYMENT_UNVERIFIED_DOES_NOT_COUNT}
+                : SUBMISSION_BELOW_HINT}
           </span>
         </div>
       )}
@@ -539,6 +542,7 @@ export function PiSubmitConfirmModal({
   missingSupporting,
   supportingBlocked,
   optionalMissing = [],
+  laterMissing = [],
   onGoBack,
   initialStage,
   internalDetails,
@@ -594,6 +598,13 @@ export function PiSubmitConfirmModal({
    * step lists them and asks whether to go on without. None: the step is skipped.
    */
   optionalMissing?: readonly string[]
+  /**
+   * THE NAMES OF WHAT IS EMPTY AND ONLY NEEDED LATER, to create the Order (the
+   * assigned salesperson, the lead source). Shown in the same first step, in
+   * their own group: they do not block this submission, but the person leaving
+   * them empty should be told they will be asked again.
+   */
+  laterMissing?: readonly string[]
   /** "Go back and fill them": closes the sequence and returns to the page. */
   onGoBack?: () => void
   /**
@@ -676,7 +687,7 @@ export function PiSubmitConfirmModal({
       : (checked as { ok: false; message: string }).message
 
   // ── The sequence: optional items → advance exception → final confirmation ──
-  const stages = submitStages({ optionalCount: optionalMissing.length, meetsStandard })
+  const stages = submitStages({ optionalCount: optionalMissing.length + laterMissing.length, meetsStandard })
   const [reached, setReached] = useState<SubmitStage>(initialStage && stages.includes(initialStage) ? initialStage : stages[0])
   // A stage that stopped applying while the dialog was open (a payment landed)
   // is stepped over rather than shown.
@@ -734,9 +745,17 @@ export function PiSubmitConfirmModal({
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {stage === 'optional' && (
             <>
-              <ul data-testid="pi-submit-optional-list" style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: colors.primary }}>
-                {optionalMissing.map(name => <li key={name}>{name}</li>)}
-              </ul>
+              {([
+                ['optional', COMPLETION_NEED_LABEL.optional, optionalMissing],
+                ['later', COMPLETION_NEED_LABEL.later, laterMissing],
+              ] as const).filter(([, , names]) => names.length > 0).map(([group, heading, names]) => (
+                <div key={group} data-testid={`pi-submit-${group}-group`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={KEY_STYLE}>{heading}</div>
+                  <ul data-testid={group === 'optional' ? 'pi-submit-optional-list' : 'pi-submit-later-list'} style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: colors.primary }}>
+                    {names.map(name => <li key={name}>{name}</li>)}
+                  </ul>
+                </div>
+              ))}
               <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.45 }}>
                 {PROCEED_WITHOUT_QUESTION}
               </div>

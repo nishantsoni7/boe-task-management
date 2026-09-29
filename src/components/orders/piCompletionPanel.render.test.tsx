@@ -29,11 +29,10 @@ import {
 } from './PiCompletionPanel'
 import { PiCommissionSummary } from './PiInternalDetails'
 import {
-  PI_LOCKED_ADMIN_BODY,
-  PI_LOCKED_OWNER_BODY,
   PI_LOCKED_TITLE,
-  PI_LOCKED_VIEWER_BODY,
   buildCompletionFacts,
+  describeLockedNotice,
+  type LockedViewer,
   type CompletionItem,
   type PiCompletion,
 } from '@/lib/orders/piCompletion'
@@ -182,9 +181,13 @@ describe('the area: checklist above the fields, the action last', () => {
   })
 })
 
+const viewer = (over: Partial<LockedViewer> = {}): LockedViewer =>
+  ({ ownsSubmission: false, canAdminAmend: false, canEdit: false, canReview: false, canAddPayment: false, ...over })
+const OWNER = describeLockedNotice(viewer({ ownsSubmission: true }))
+
 describe('the locked notice', () => {
   test('is a status, says what it means, and gives the owner the one route back', () => {
-    const html = renderToStaticMarkup(<PiLockedNotice title={PI_LOCKED_TITLE} body={PI_LOCKED_OWNER_BODY} onRequestChange={noop} />)
+    const html = renderToStaticMarkup(<PiLockedNotice title={PI_LOCKED_TITLE} body={OWNER} onRequestChange={noop} />)
     assert.ok(html.includes('role="status"') && html.includes('data-testid="pi-locked-notice"'))
     assert.ok(text(html).includes('Submitted — this PI is locked'))
     assert.ok(text(html).includes('You cannot edit this PI while it is with management. You can request a change from management.'))
@@ -192,13 +195,48 @@ describe('the locked notice', () => {
   })
 
   test('for anybody who cannot ask, it says so and offers nothing to press', () => {
-    const html = renderToStaticMarkup(<PiLockedNotice title={PI_LOCKED_TITLE} body={PI_LOCKED_VIEWER_BODY} onRequestChange={null} />)
+    const html = renderToStaticMarkup(<PiLockedNotice title={PI_LOCKED_TITLE} body={describeLockedNotice(viewer())} onRequestChange={null} />)
     assert.ok(!html.includes('<button'))
     assert.ok(text(html).includes('with management for review'))
   })
 
-  test('an administrator is told the amendment route that still exists, not that nothing can be done', () => {
-    assert.ok(PI_LOCKED_ADMIN_BODY.includes('Edit PI') && PI_LOCKED_ADMIN_BODY.includes('reason'))
+  test('the owner is told they cannot edit and may request a change — and nothing they cannot do', () => {
+    assert.equal(OWNER, 'You cannot edit this PI while it is with management. You can request a change from management.')
+  })
+
+  test('an administrator is told the amendment route that still exists, with its reason — not that nothing can be done', () => {
+    const admin = describeLockedNotice(viewer({ canAdminAmend: true, canReview: true }))
+    assert.ok(admin.includes('you can still amend it from Edit PI, with a reason'))
+    assert.ok(admin.includes('approve it, send it back for changes, or reject it'))
+    assert.ok(!admin.includes('request a change'), 'an admin amends; they do not ask')
+    // The owner who is also an admin is told the admin truth, not the owner's.
+    assert.equal(describeLockedNotice(viewer({ ownsSubmission: true, canAdminAmend: true })).includes('cannot edit this PI'), false)
+  })
+
+  test('management that is not an admin can decide but is told it cannot edit', () => {
+    const reviewer = describeLockedNotice(viewer({ canReview: true }))
+    assert.ok(reviewer.includes('you cannot edit it') && reviewer.includes('approve it, send it back for changes, or reject it'))
+    assert.ok(!reviewer.includes('Edit PI') && !reviewer.includes('request a change'))
+  })
+
+  test('somebody with no rights but to read is told so', () => {
+    const reader = describeLockedNotice(viewer())
+    assert.ok(reader.includes('you cannot edit it') && reader.includes('read it'))
+    assert.ok(!reader.includes('approve') && !reader.includes('Edit PI') && !reader.includes('payments'))
+  })
+
+  test('Add payment is said, separately and only to somebody who may do it — and it is never described as an edit of the PI', () => {
+    for (const v of [viewer({ ownsSubmission: true }), viewer({ canAdminAmend: true }), viewer({ canReview: true }), viewer()]) {
+      assert.ok(!describeLockedNotice(v).includes('payments'))
+      const paying = describeLockedNotice({ ...v, canAddPayment: true })
+      assert.ok(paying.endsWith('You can still add payments; that does not edit the PI.'), paying)
+    }
+  })
+
+  test('every clause follows a right the page already resolved — no clause without its input', () => {
+    const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
+    assert.ok(page.includes('describeLockedNotice({ ownsSubmission, canAdminAmend, canEdit: canEditSubmission, canReview, canAddPayment })'))
+    assert.ok(page.includes('isLocked && !canEditSubmission && !canAdminAmend && ownsSubmission'), 'Request change follows the same rule the sentence does')
   })
 })
 
@@ -262,6 +300,20 @@ describe('the page wiring', () => {
 
   test('the header Edit PI is still governed by the same rule — it is not shown for a locked PI to its owner', () => {
     assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'))
+  })
+
+  test('Add payment does not depend on the lock, and the lock does not depend on Add payment', () => {
+    // Recording a payment is Finance data, not an edit of the PI.
+    const rule = page.slice(page.indexOf('const canAddPayment = canAddPiPayment('), page.indexOf('const canAddPayment = canAddPiPayment(') + 900)
+    assert.ok(!/isLocked|showCompletion/.test(rule), 'the payment rule is its own')
+    assert.ok(page.includes('canAdd={canAddPayment}'))
+    // The shared rule admits a submitted PI (and refuses an approved, rejected or Order-bound one).
+    const view = read('src/lib/finance/piPaymentView.ts')
+    const fn = view.slice(view.indexOf('export function canAddPiPayment'), view.indexOf('export function canAddPiPayment') + 800)
+    assert.ok(fn.includes("pi.status === 'approved' || pi.status === 'rejected'") && !fn.includes("'submitted'"))
+    assert.ok(!/canEditSubmissions*=s*.*canAddPayment|canAddPayment.*canEditSubmission =/.test(page), 'and it grants no edit')
+    // While locked, the payment write goes through the payment RPC, never a PI edit door.
+    assert.ok(page.includes('recordPiPayment(supabase, submissionId, form, key)'))
   })
 
   test('the Submit sequence is opened by one function, and sent by the one existing door', () => {

@@ -66,6 +66,7 @@ import {
 } from '@/lib/orders/paymentGate'
 import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { SUBMIT_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
+import { SUBMISSION_BELOW_HINT } from '@/lib/orders/paymentGate'
 import { formatInr } from '@/lib/pi/previewView'
 import { SUBMISSION_DETAILS_INCOMPLETE, orderDetailsReview } from '@/lib/orders/salesOrderDetails'
 import { SUBMISSION_CONFIRM_LABEL, type PiInternalDetailsRow } from '@/lib/orders/piInternalDetails'
@@ -117,6 +118,7 @@ function render(over: {
   internalDetails?: PiInternalDetailsRow | null
   detailsReview?: ReturnType<typeof orderDetailsReview>
   optionalMissing?: string[]
+  laterMissing?: string[]
   stage?: SubmitStage
   supportingBlocked?: string | null
 } = {}): string {
@@ -132,6 +134,7 @@ function render(over: {
       onCancel={() => {}}
       onConfirm={() => {}}
       optionalMissing={over.optionalMissing}
+      laterMissing={over.laterMissing}
       initialStage={over.stage}
       supportingBlocked={over.supportingBlocked}
       internalDetails={over.internalDetails}
@@ -223,7 +226,8 @@ describe('the advance step states the live payment position', () => {
   })
 
   test('it says only verified payment counts, without claiming any verification', () => {
-    assert.ok(/Only payment Finance has verified counts/i.test(html))
+    assert.ok(/payment awaiting Finance verification is counted as attached/i.test(html))
+    assert.ok(/only payment Finance has verified counts towards creating the Order/i.test(html))
     assert.ok(!/has been verified by Finance/i.test(html))
   })
 
@@ -370,12 +374,93 @@ describe('unverified payment is shown and said not to count', () => {
     assert.ok(html.includes('₹40,000.00'))
   })
 
-  test('and it is stated that Finance has not decided it', () => {
-    assert.ok(html.includes(PAYMENT_POSITION_HINT.verification_pending))
+  test('and it is stated that Finance has not decided it — in the submission rule\'s terms, not the Order gate\'s', () => {
+    assert.ok(html.includes(SUBMISSION_BELOW_HINT))
+    assert.ok(html.includes('Payment awaiting verification is not verified payment.'))
+    assert.ok(!html.includes(PAYMENT_POSITION_HINT.verification_pending), 'that sentence says awaiting money does not count, which is the Order gate')
   })
 
   test('it does not close the gate on its own', () => {
     assert.equal(primaryDisabled(html), true, 'the mandatory fields are still required')
+  })
+})
+
+// ── Payment awaiting Finance verification is never called verified ───────────
+//
+// The submission rule counts verified PLUS awaiting-verification payment; the Order
+// gate counts verified only. Neither the exception step nor the final confirmation
+// may let one word stand for the other.
+
+describe('payment awaiting Finance verification is never described as verified', () => {
+  // ₹0 verified, ₹1,00,000 awaiting: attached is 15.9% of ₹6,28,350 — short of 40%.
+  const awaiting = () => below({
+    verified_amount: '0.00', verified_percent: '0.00',
+    unverified_amount: '100000.00', unverified_percent: '15.92',
+    attached_amount: '100000.00', attached_percent: '15.92',
+    attached_meets_standard: false, submission_position: 'attached_partial', approval_position: 'verification_pending',
+  })
+  test('the payment panel puts the awaiting amount on the awaiting and attached lines, and ₹0 on the verified one', () => {
+    const html = advance({ payment: awaiting() })
+    const t = html.replace(/<[^>]+>/g, '|').replace(/\|+/g, '|')
+    assert.ok(/Verified payment\|₹0\.00/.test(t), 'verified stays ₹0.00')
+    assert.ok(/Awaiting verification\|₹1,00,000\.00/.test(t))
+    assert.ok(/Total attached payment\|₹1,00,000\.00/.test(t))
+  })
+
+  test('the below-40% step says attached payment is short, says awaiting payment is not verified, and never the reverse', () => {
+    const text = advance({ payment: awaiting() }).replace(/<[^>]+>/g, ' ')
+    assert.ok(text.includes('has not reached 40%') && text.includes('is not verified payment'))
+    for (const wrong of ['has been verified', 'is verified', 'verified payment is at or above', 'Unverified payment does not count']) {
+      assert.ok(!text.toLowerCase().includes(wrong.toLowerCase()), `must not say "${wrong}"`)
+    }
+  })
+
+  test('the final confirmation makes no payment claim at all', () => {
+    const text = render({ payment: awaiting(), stage: 'final', initialTerms: { ...EMPTY_SUBMISSION_TERMS, reasonChoice: 'sample_order' } }).replace(/<[^>]+>/g, ' ')
+    assert.ok(!/verif/i.test(text), 'the last step says nothing about verification, so it cannot get it wrong')
+  })
+
+  test('met by attached money (awaiting Finance) skips the step, and the final confirmation still claims nothing', () => {
+    const met = below({
+      verified_amount: '0.00', verified_percent: '0.00',
+      unverified_amount: '251340.00', unverified_percent: '40.00',
+      attached_amount: '251340.00', attached_percent: '40.00',
+      attached_meets_standard: true, submission_position: 'attached_met', approval_position: 'verification_pending',
+    })
+    const html = render({ payment: met })
+    assert.equal(stageOf(html), 'final')
+    assert.ok(!/verif/i.test(html.replace(/<[^>]+>/g, ' ')))
+  })
+})
+
+// ── Everything empty that does not block: two groups, named accurately ───────
+
+describe('the first step lists every empty item that does not block submission', () => {
+  const html = render({ optionalMissing: ['Billing terms', 'Payment terms', 'Client PO'], laterMissing: ['BOE salesperson assigned to Order', 'Lead source'] })
+  const group = (name: string) => {
+    const start = html.indexOf(`data-testid="pi-submit-${name}-group"`)
+    return html.slice(start, html.indexOf('</ul>', start)).replace(/<[^>]+>/g, '|').replace(/\|+/g, '|')
+  }
+
+  test('two groups, each under its own accurate heading', () => {
+    assert.equal(stageOf(html), 'optional')
+    assert.ok(group('optional').startsWith('|Optional|') || group('optional').includes('Optional|Billing terms|Payment terms|Client PO'))
+    assert.ok(group('later').includes('Required later to create the Order|BOE salesperson assigned to Order|Lead source'))
+  })
+
+  test('no item is in the wrong group', () => {
+    assert.ok(!group('optional').includes('Lead source') && !group('optional').includes('BOE salesperson'))
+    assert.ok(!group('later').includes('Client PO') && !group('later').includes('Payment terms'))
+  })
+
+  test('with only later items empty there is one group and the step is still there', () => {
+    const only = render({ laterMissing: ['Lead source'] })
+    assert.equal(stageOf(only), 'optional')
+    assert.ok(only.includes('pi-submit-later-group') && !only.includes('pi-submit-optional-group'))
+  })
+
+  test('it asks one question, with the same two ways on', () => {
+    assert.ok(html.includes(PROCEED_WITHOUT_QUESTION) && html.includes(PROCEED_GO_BACK_LABEL) && html.includes(PROCEED_CONTINUE_LABEL))
   })
 })
 

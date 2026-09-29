@@ -9,6 +9,7 @@ import { FABRIC_RESPONSIBILITY_KEEPS_FIGURES, FABRIC_RESPONSIBILITY_OPTIONS, fab
 import { COMMISSION_PERCENT_OF_LABEL, COMMISSION_PERCENT_OF_ORDER, formatIsoDay } from '@/lib/orders/piInternalDetails'
 import {
   BILLING_TERMS_MAX,
+  PAYMENT_TERMS_FIELD_MAX,
   LEAD_SOURCE_OPTIONS,
   ORDER_DETAILS_ANCHOR,
   ORDER_DETAILS_FIELD,
@@ -292,6 +293,15 @@ export function PiOrderDetailsSection({
                 maxLength={BILLING_TERMS_MAX} value={form.billing_terms} disabled={saving}
                 onChange={e => set('billing_terms', e.target.value)} />
               {field('billing_terms') && <span role="alert" style={ERROR}>{field('billing_terms')}</span>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+              {labelFor('payment_terms')}
+              <textarea id={orderDetailsInputId('payment_terms')} rows={2} style={{ ...INPUT, resize: 'vertical' }}
+                maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
+                placeholder="e.g. 30% advance, 30% during production, 40% before dispatch"
+                onChange={e => set('payment_terms', e.target.value)} />
+              <span style={HINT}>{ORDER_DETAILS_FIELD.payment_terms.hint}</span>
+              {field('payment_terms') && <span role="alert" style={ERROR}>{field('payment_terms')}</span>}
             </div>
           </div>
 
