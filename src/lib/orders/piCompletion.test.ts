@@ -170,12 +170,17 @@ describe('what is required only LATER — never a submission blocker', () => {
 })
 
 describe('what is optional, and still empty', () => {
-  test('billing percentage, billing terms, payment terms, Client PO, Design Files and the order highlight — by name', () => {
+  test('billing percentage, payment terms, Client PO, Design Files and the order highlight — by name', () => {
     const c = completion({ supportingMissing: ['design_files', 'client_po'], highlight: { available: true, remark: null } })
     assert.deepEqual(c.optionalMissing.map(i => i.label),
-      ['Billing percentage', 'Billing terms', 'Payment terms', 'Design Files', 'Client PO', 'Order highlight'])
+      ['Billing percentage', 'Payment terms', 'Design Files', 'Client PO', 'Order highlight'])
     assert.ok(c.optionalMissing.every(i => i.need === 'optional'))
     assert.equal(c.readyToSubmit, true, 'optional items never block')
+  })
+
+  test('billing terms are not asked for at all — empty or filled, they never appear in the list', () => {
+    assert.ok(!completion({ details: { billing_terms: null } }).optionalMissing.some(i => i.key === 'billing_terms'))
+    assert.ok(!completion({ details: { billing_terms: '50% on dispatch' } }).optionalMissing.some(i => i.key === 'billing_terms'))
   })
 
   test('filled ones drop out', () => {

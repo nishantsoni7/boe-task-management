@@ -8255,3 +8255,462 @@ h1.boe-page-title { margin-top: 0; }
     justify-content: center;
   }
 }
+
+/* ── PI Draft forms: grouped, top-aligned, one column on a phone ──
+   Supporting details and Internal order details share these. A label sits above
+   its control, the red star marks only what Submit for approval needs, and
+   groups are separated by a hairline rather than by more boxes. The phone rule
+   is at 560px and comes last, so the tablet layout is never cancelled. */
+.pi-form-card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px 20px 18px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  scroll-margin-top: 80px;
+}
+
+.pi-form-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.pi-form-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-form-legend {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #4a5261;
+}
+
+.pi-form-req {
+  color: #c0392b;
+  font-weight: 700;
+  margin-left: 3px;
+}
+
+.pi-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 0;
+}
+
+.pi-form-group:first-of-type {
+  margin-top: 14px;
+}
+
+.pi-form-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pi-form-group-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #4a5261;
+}
+
+.pi-form-group-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b7384;
+}
+
+.pi-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: start;
+  min-width: 0;
+}
+
+.pi-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pi-form-label {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111318;
+}
+
+.pi-form-optional {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #8c94a6;
+}
+
+.pi-form-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  color: #111318;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+}
+
+textarea.pi-form-input {
+  height: auto;
+  padding: 9px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.pi-form-input:focus-visible,
+.pi-form-choice:focus-within {
+  outline: 2px solid rgba(85, 133, 232, 0.75);
+  outline-offset: 1px;
+}
+
+.pi-form-input:disabled {
+  background: #f4f5f7;
+  color: #6b7384;
+}
+
+.pi-form-input[aria-invalid='true'] {
+  border-color: #d94f4f;
+}
+
+.pi-form-help {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b7384;
+}
+
+.pi-form-error {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #b23b3b;
+}
+
+.pi-form-choice-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pi-form-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pi-form-choice {
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  font-size: 14px;
+  color: #111318;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pi-form-choice input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #5585e8;
+}
+
+.pi-form-choice[data-checked='true'] {
+  border-color: #5585e8;
+  background: rgba(85, 133, 232, 0.07);
+}
+
+.pi-form-followup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  background: #f8f9fb;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.pi-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.pi-form-footer-note {
+  margin-right: auto;
+  font-size: 12px;
+  color: #6b7384;
+}
+
+.pi-form-failure {
+  font-size: 12.5px;
+  color: #b23b3b;
+  background: rgba(217, 79, 79, 0.07);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+/* Read view: the same groups, values instead of controls. */
+.pi-form-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.pi-form-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pi-form-fact dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a5261;
+}
+
+.pi-form-fact dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111318;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pi-form-fact dd[data-empty='true'] {
+  font-weight: 500;
+  color: #8c94a6;
+}
+
+.pi-form-fact dd[data-empty='true'][data-required='true'] {
+  color: #8a4b12;
+}
+
+/* Supporting details: two file columns, then the highlight, then billing. */
+.pi-attach-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  min-width: 0;
+}
+
+.pi-attach {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.pi-attach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pi-attach-state {
+  font-size: 12.5px;
+  color: #6b7384;
+}
+
+.pi-attach-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.pi-attach-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pi-attach-files .pi-attach-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: #2f5bb7;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pi-inline-save {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pi-inline-save > .pi-form-input {
+  flex: 1 1 auto;
+}
+
+.pi-inline-save > .boe-btn {
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.pi-input-suffix {
+  position: relative;
+  flex: 0 1 200px;
+  min-width: 0;
+}
+
+.pi-input-suffix > .pi-form-input {
+  padding-right: 34px;
+}
+
+.pi-input-suffix > span {
+  position: absolute;
+  right: 12px;
+  top: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  color: #6b7384;
+  pointer-events: none;
+}
+
+@media (max-width: 560px) {
+  .pi-form-card {
+    padding: 14px 14px 16px;
+  }
+  .pi-form-grid,
+  .pi-attach-grid,
+  .pi-form-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pi-form-choice {
+    flex-basis: 100%;
+  }
+  .pi-form-footer > .boe-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .pi-form-footer-note {
+    flex-basis: 100%;
+  }
+  .pi-inline-save {
+    flex-wrap: wrap;
+  }
+  .pi-inline-save > .boe-btn {
+    flex: 1 1 100%;
+    height: 44px;
+  }
+  .pi-input-suffix {
+    flex: 1 1 100%;
+  }
+  .pi-form-input {
+    height: 44px;
+  }
+  .pi-input-suffix > span {
+    height: 44px;
+  }
+}
+
+/* Supporting details hosts the highlight and the file inputs inside its own card. */
+.pi-detail-highlight--bare {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.pi-detail-highlight--bare .pi-detail-highlight-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pi-detail-highlight--bare .pi-detail-highlight-input {
+  font-size: 14px;
+  padding: 9px 12px;
+  border-color: rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+}
+
+label.boe-btn:has(.pi-attach-input) {
+  position: relative;
+}
+
+.pi-attach-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+label.boe-btn:has(.pi-attach-input:focus-visible) {
+  outline: 2px solid rgba(85, 133, 232, 0.75);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  label.boe-btn:has(.pi-attach-input) {
+    min-height: 40px;
+  }
+}

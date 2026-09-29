@@ -242,7 +242,7 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
   return tiles
 }
 
-export type PiPaymentTermLine = { key: 'payment_terms' | 'billing_terms'; label: string; value: string }
+export type PiPaymentTermLine = { key: 'payment_terms'; label: string; value: string }
 
 /**
  * The agreed commercial terms, when there are any.
@@ -250,15 +250,15 @@ export type PiPaymentTermLine = { key: 'payment_terms' | 'billing_terms'; label:
  * ABSENT RATHER THAN EMPTY. A PI that agreed no terms prints no rows at all,
  * because "Payment terms —" reads as a field somebody forgot rather than as a
  * question nobody was asked. Plain text, rendered exactly as it was typed: this
- * is not a schedule and nothing here parses it.
+ * is not a schedule and nothing here parses it. Billing terms are not shown:
+ * Billing percentage is the one billing instruction. The summary still carries
+ * the stored value; it is simply not drawn.
  */
 export function piPaymentTermLines(summary: PiPaymentSummary | null): PiPaymentTermLine[] {
   if (!summary) return []
   const lines: PiPaymentTermLine[] = []
   const payment = (summary.payment_terms ?? '').trim()
-  const billing = (summary.billing_terms ?? '').trim()
   if (payment !== '') lines.push({ key: 'payment_terms', label: 'Payment terms', value: payment })
-  if (billing !== '') lines.push({ key: 'billing_terms', label: 'Billing terms', value: billing })
   return lines
 }
 

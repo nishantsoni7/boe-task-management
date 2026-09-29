@@ -439,8 +439,9 @@ function PaymentPositionPanel({
       )}
 
       {/* BELOW THE REQUIREMENT: ONE OF THREE REASONS, and nothing else
-          (20270114000000). "Other" asks for a remark. The stored Payment and
-          Billing terms are carried as they are; they are edited on the PI, not
+          (20270114000000). "Other" asks for a remark. The stored Payment terms
+          (and any Billing terms already on the record, no longer offered
+          anywhere) are carried as they are; they are edited on the PI, not
           here. Choosing a reason asks — an admin decides. */}
       {meetsStandard === false && (
         <div style={{
@@ -498,7 +499,7 @@ function PaymentPositionPanel({
       {/* AT OR ABOVE THE REQUIREMENT THIS PANEL IS NOT DRAWN AT ALL: the Submit
           sequence skips the advance step, and the terms the record already
           carries are sent as they are. Payment terms are edited on the PI
-          (Edit PI); billing terms in Complete PI details. */}
+          (Edit PI); billing terms are no longer edited anywhere. */}
 
       {invalid && (
         <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }} role="alert">
@@ -2153,7 +2154,6 @@ export const PI_SCHEDULE_FIELDS = [
   { key: 'due_date',                label: 'Due date',            kind: 'date',     required: false },
   { key: 'dispatch_commitment',     label: 'Dispatch commitment', kind: 'text',     required: false },
   { key: 'payment_terms',           label: 'Payment terms',       kind: 'textarea', required: false },
-  { key: 'billing_terms',           label: 'Billing terms',       kind: 'textarea', required: false },
 ] as const
 
 export type PiScheduleFieldKey = typeof PI_SCHEDULE_FIELDS[number]['key']
@@ -2671,8 +2671,9 @@ export function PiScheduleTermsEditModal({
  * ITS OWN SECTION AND ITS OWN SAVE, exactly like the client and schedule
  * editors: one RPC, one transaction, so a save lands whole or not at all.
  *
- * WHY NOT IN "DATES AND TERMS". Payment terms and billing terms are the
- * ARRANGEMENT with the client — when money moves, and how much is billed. These
+ * WHY NOT IN "DATES AND TERMS". Payment terms are the
+ * ARRANGEMENT with the client — when money moves (billing terms once sat
+ * beside them and are no longer offered). These
  * three are what the DOCUMENT STATES: the day it was drawn up, what its prices
  * cover, and who buys the fabric. They are also mandatory before the PI can be
  * submitted, where all five of the schedule fields are optional, and mixing a

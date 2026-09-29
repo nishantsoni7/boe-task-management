@@ -111,7 +111,9 @@ describe('the Confirmed Order’s banner', () => {
 describe('where the remark is read and written', () => {
   test('the draft page offers it exactly where can_edit_order_submission does, and re-reads after a save', () => {
     const page = read(DRAFT_PAGE)
-    assert.match(page, /<PiHighlightRemark\s+supabase=\{supabase\}\s+submissionId=\{submissionId\}\s+canEdit=\{canEditSubmission\}\s+rowVersion=\{rowVersion\}\s+onSaved=\{\(\) => \{ void loadDraft\(\{ quiet: true \}\) \}\}/)
+    assert.ok(page.includes('canEditHighlight={canEditSubmission}'), 'the page hands the section the RPC-backed answer')
+    const section = read('src/components/orders/PiSupportingDetails.tsx')
+    assert.match(section, /<PiHighlightRemark\s+supabase=\{supabase\}\s+submissionId=\{submissionId\}\s+canEdit=\{canEditHighlight && !locked\}\s+rowVersion=\{rowVersion\}\s+onSaved=\{\(\) => \{ void onSaved\(\) \}\}/, 'and never offers Save once locked')
   })
 
   test('the Confirmed Order reads it from its own PI row, near the top', () => {

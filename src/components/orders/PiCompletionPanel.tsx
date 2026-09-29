@@ -13,6 +13,7 @@
 
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Lock, Pencil, Send, Upload } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { RequiredLegend, RequiredMark } from './PiFormParts'
 import {
   COMPLETION_NEED_LABEL,
   joinItemNames,
@@ -144,9 +145,9 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
       <dl style={{ margin: 0, display: 'grid', gap: '9px 14px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
         {facts.map(fact => (
           <div key={fact.key} data-fact={fact.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-            <dt style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '11.5px', fontWeight: 600, color: colors.secondary }}>
+            <dt style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
               {fact.label}
-              <NeedBadge need={fact.need} />
+              {fact.need === 'submission' && <RequiredMark />}
             </dt>
             <dd style={{
               margin: 0, fontSize: '13px', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
@@ -210,6 +211,8 @@ export function PiCompletionPanel({
       </div>
 
       {!locked && <PiCompletionChecklist completion={completion} onFix={onFix} disabled={checklistDisabled} />}
+
+      <RequiredLegend />
 
       <div className="pi-completion-groups">{groups}</div>
 

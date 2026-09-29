@@ -100,7 +100,7 @@ describe('the readiness checklist points each gap at its field in the section', 
     // The checklist is the completion list, built from the same requirements.
     assert.ok(PAGE.includes('readiness: withOrderDetailsRequirements(submissionReadiness, detailsRow)'))
     assert.ok(PAGE.includes("case 'internal': focusOrderDetails(item.field ?? 'middleman_commission'); return"))
-    assert.ok(PAGE.includes("onEdit={() => focusOrderDetails('middleman_commission')}"), 'the commission card opens the same section')
+    assert.ok(!PAGE.includes("onEdit={() => focusOrderDetails('middleman_commission')}"), 'the summary offers no second door to the commission answer')
     assert.ok(!PAGE.includes('PiInternalDetailsModal'), 'the separate Internal details dialog is gone')
   })
 })
@@ -259,11 +259,15 @@ describe('the section states what Sales has provided', () => {
     assert.match(html, /aria-label="Internal order details"/)
     assert.match(html, />Internal</)
     for (const label of ['Date of Order Confirmation', 'Dispatch Date Finalized', 'BOE salesperson assigned to Order', 'Lead source',
-      'Billing percentage', 'Billing terms', 'Payment terms', 'Fabric responsibility', 'Middleman commission']) {
+      'Payment terms', 'Fabric responsibility', 'Middleman commission']) {
       assert.ok(html.includes(label), label)
     }
-    assert.ok(html.includes('Dhruv Mehta') && html.includes('Website') && html.includes('65%') && html.includes('Fabric will be provided by client'))
-    for (const need of ['submission', 'approval', 'optional']) assert.match(html, new RegExp(`data-need="${need}"`))
+    assert.ok(html.includes('Dhruv Mehta') && html.includes('Website') && html.includes('Fabric will be provided by client'))
+    // Billing percentage lives in Supporting details; billing terms are not offered anywhere on this page.
+    assert.ok(!html.includes('Billing percentage') && !html.includes('Billing terms'))
+    // No per-field pill: a red star marks only what Submit for approval needs (dates, fabric, commission).
+    assert.doesNotMatch(html, /data-need=|Needed to submit|Required for submission/)
+    assert.equal((html.match(/pi-form-req/g) ?? []).length, 4)
     assert.match(html, />\s*Edit details</)
   })
 
@@ -310,9 +314,10 @@ describe('approval reviews what Sales provided instead of asking again', () => {
   test('billing, fabric and commission are reviewed, never re-entered', () => {
     const html = render({ salesperson: { id: 'u-dhruv', name: 'Dhruv Mehta' }, leadSource: 'website', confirmDate: '2026-09-27', dueDate: '2026-11-20' })
     const review = html.slice(html.indexOf('data-testid="pi-approve-details-review"'))
-    for (const text of ['Billing percentage', '65%', 'Billing terms', '50% on dispatch', 'Fabric will be provided by client', 'Middleman commission', 'No']) {
+    for (const text of ['Billing percentage', '65%', 'Fabric will be provided by client', 'Middleman commission', 'No']) {
       assert.ok(review.includes(text), text)
     }
+    assert.ok(!review.includes('Billing terms'), 'billing terms are no longer reviewed; the stored value is left as it is')
   })
 
   test('A LEGACY PI with no saved salesperson keeps the selector, says so, and picks nobody', () => {
@@ -362,7 +367,7 @@ describe('the section says exactly what the client PDF prints (#248)', () => {
     assert.equal(ORDER_DETAILS_NOTE,
       'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the BOE salesperson assigned here.')
     assert.match(ORDER_DETAILS_FIELD.salesperson_id.hint ?? '', /Not printed on the client PDF, which shows the salesperson named in the PI workbook\./)
-    assert.match(ORDER_DETAILS_FIELD.billing_percentage.hint ?? '', /Internal; not printed on the client PDF\./)
+    assert.match(ORDER_DETAILS_FIELD.billing_percentage.hint ?? '', /How much of the order should be billed.*Internal; not printed on the client PDF\./)
     assert.equal(ORDER_DETAILS_FIELD.fabric_responsibility.hint, 'Printed on the client PDF as one sentence.')
     for (const field of ORDER_DETAILS_FIELDS) {
       if (field.key === 'fabric_responsibility') continue
@@ -416,7 +421,7 @@ describe('payment terms are an Optional field of Internal order details', () => 
 
   test('the form offers it, in the section, whatever the advance level — the section knows nothing of payments', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/orders/PiOrderDetailsSection.tsx'), 'utf8')
-    assert.ok(src.includes("labelFor('payment_terms')"))
+    assert.ok(src.includes('label={ORDER_DETAILS_FIELD.payment_terms.label}'))
     assert.ok(!/payments?\b.*summary|attached_meets|meets_standard/.test(src), 'no advance rule reaches this section')
   })
 

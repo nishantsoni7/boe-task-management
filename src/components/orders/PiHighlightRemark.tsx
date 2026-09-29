@@ -32,7 +32,7 @@ import {
  * there is none — an empty labelled box would only say "nobody wrote one".
  */
 export function PiHighlightRemarkView({
-  remark, canEdit, draft, onDraftChange, onSave, saving, failure, saved,
+  remark, canEdit, draft, onDraftChange, onSave, saving, failure, saved, bare = false,
 }: {
   remark: string | null
   canEdit: boolean
@@ -42,13 +42,15 @@ export function PiHighlightRemarkView({
   saving: boolean
   failure: string | null
   saved: boolean
+  /** Drawn inside a card that already frames it: no border or padding of its own. */
+  bare?: boolean
 }) {
   if (!canEdit && remark === null) return null
   const problem = highlightRemarkProblem(draft)
   const dirty = normalizeHighlightRemark(draft) !== remark
   const id = 'pi-highlight-remark'
   return (
-    <section className="pi-detail-highlight" aria-label={HIGHLIGHT_REMARK_TITLE}>
+    <section className={bare ? 'pi-detail-highlight pi-detail-highlight--bare' : 'pi-detail-highlight'} aria-label={HIGHLIGHT_REMARK_TITLE}>
       <div className="pi-detail-highlight-head">
         <label htmlFor={canEdit ? id : undefined} className="pi-detail-highlight-title">
           {HIGHLIGHT_REMARK_TITLE}
@@ -135,7 +137,7 @@ function useHighlightRemark(supabase: SupabaseClient, submissionId: string | nul
  * `refreshKey` is the PI's row_version; `onSaved` lets the page re-read, so
  * the next write elsewhere carries the new version.
  */
-export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion, onSaved, onRead }: {
+export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion, onSaved, onRead, bare = false }: {
   supabase: SupabaseClient
   submissionId: string
   canEdit: boolean
@@ -147,6 +149,7 @@ export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion,
    * Null while it is loading.
    */
   onRead?: (state: { available: boolean; remark: string | null } | null) => void
+  bare?: boolean
 }) {
   const [read, setRead] = useHighlightRemark(supabase, submissionId, rowVersion)
   useEffect(() => {
@@ -198,6 +201,7 @@ export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion,
       saving={saving}
       failure={failure}
       saved={saved}
+      bare={bare}
     />
   )
 }
