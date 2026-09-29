@@ -37,18 +37,24 @@ export type AdvanceRow = DashboardOrderRef & {
 }
 
 export type ItemKind = 'fabric' | 'finish'
-export type PendingItem = { kind: ItemKind; status: 'not_approved' | 'partially_approved' }
+/**
+ * 'no_approval_recorded' is a NEW order whose approval is required and has simply not been given
+ * (no event at all): pending, exactly like an explicit 'not_approved'. It is never confused with an
+ * older order's missing record, which is UnrecordedRow.
+ */
+export type PendingStatus = 'not_approved' | 'partially_approved' | 'no_approval_recorded'
+export type PendingItem = { kind: ItemKind; status: PendingStatus }
 
-/** Fabric or finish RECORDED as not fully approved, more than 15 days after confirmation. */
+/** Fabric or finish not fully approved (recorded, or required and never given), more than 15 days after confirmation. */
 export type FabricFinishRow = DashboardOrderRef & {
   confirmDate: string
   daysSinceConfirmation: number
   pending: PendingItem[]
-  /** The other item, when nobody ever recorded a status for it. */
+  /** The other item, when it is an OLDER order's missing record (ambiguous history). */
   notRecorded: ItemKind[]
 }
 
-/** Nothing ever recorded for the item(s): a historical gap, NOT a confirmed pending. */
+/** An order that predates tracking, with no record for the item(s): ambiguous history, NOT a confirmed pending. */
 export type UnrecordedRow = DashboardOrderRef & {
   confirmDate: string
   daysSinceConfirmation: number
@@ -77,6 +83,8 @@ export type GroupKey = 'not_aligned' | 'advance_below_40' | 'fabric_finish_pendi
 export type DashboardGaps = {
   openOrders: number
   advanceValueUnknown: number
+  /** Open orders the reader sees only through a visibility scope: their payment figures are not shown. */
+  advanceOutsideScope: number
   noConfirmDate: number
 }
 
@@ -264,7 +272,7 @@ export function parseDashboardSummary(raw: unknown): ParsedSummary {
         const pending = arr(o.pending, 'pending').map(p => {
           const po = obj(p, 'pending item')
           if (po.kind !== 'fabric' && po.kind !== 'finish') throw new Bad('pending kind')
-          if (po.status !== 'not_approved' && po.status !== 'partially_approved') throw new Bad('pending status')
+          if (po.status !== 'not_approved' && po.status !== 'partially_approved' && po.status !== 'no_approval_recorded') throw new Bad('pending status')
           return { kind: po.kind, status: po.status } as PendingItem
         })
         if (pending.length === 0) throw new Bad('a fabric row with nothing pending')
@@ -286,6 +294,7 @@ export function parseDashboardSummary(raw: unknown): ParsedSummary {
       gaps: {
         openOrders: num(gaps.open_orders, 'open_orders'),
         advanceValueUnknown: num(gaps.advance_value_unknown, 'advance_value_unknown'),
+        advanceOutsideScope: num(gaps.advance_outside_scope, 'advance_outside_scope'),
         noConfirmDate: num(gaps.no_confirm_date, 'no_confirm_date'),
       },
       revenue: null,
@@ -390,7 +399,7 @@ export const GROUP_COPY: Record<GroupKey, GroupCopy> = {
   },
   fabric_finish_pending: {
     key: 'fabric_finish_pending', label: 'Fabric or finish pending',
-    rule: 'Fabric or finish recorded as not fully approved more than 15 days after the client confirmed the order. Each item is judged on its own.',
+    rule: 'Fabric or finish not fully approved — or never approved — more than 15 days after the client confirmed the order. Each item is judged on its own, so one approved item never hides the other.',
     emptyText: 'No open order has fabric or finish pending beyond 15 days.',
   },
 }
@@ -419,14 +428,15 @@ export const ADVANCE_BLOCKS_NOTE = 'Advance below 40% also blocks alignment'
 export const EXCEPTION_APPROVED_NOTE = 'Exception approved'
 
 export const ITEM_LABEL: Record<ItemKind, string> = { fabric: 'Fabric', finish: 'Finish' }
-export const PENDING_STATUS_LABEL: Record<PendingItem['status'], string> = {
+export const PENDING_STATUS_LABEL: Record<PendingStatus, string> = {
   not_approved: 'not approved',
   partially_approved: 'partially approved',
+  no_approval_recorded: 'no approval recorded',
 }
 
-export const UNRECORDED_TITLE = 'Fabric or finish status never recorded'
+export const UNRECORDED_TITLE = 'Older orders with no fabric or finish record'
 export const UNRECORDED_RULE =
-  'More than 15 days after confirmation, but nobody has recorded a status for the item — typically an order from before this was tracked. This is a gap in the record, not a confirmed pending.'
+  'These orders were created before fabric and finish approvals were tracked, so a missing record is ambiguous: it may never have been needed, or never been logged. It is a gap in the history, not a confirmed pending. New orders never appear here — a new order with no approval is pending.'
 
 // ── What could not be assessed — said, never counted as fine ─────────────────
 
@@ -439,8 +449,13 @@ export function groupGapNote(key: GroupKey, gaps: DashboardGaps): string | null 
   const n = (count: number, what: string) =>
     count > 0 ? `${count} open ${count === 1 ? 'order' : 'orders'} ${what}` : null
   switch (key) {
-    case 'advance_below_40':
-      return n(gaps.advanceValueUnknown, 'with no order value could not be checked.')
+    case 'advance_below_40': {
+      const unknown = n(gaps.advanceValueUnknown, 'with no order value could not be checked.')
+      const scope = gaps.advanceOutsideScope > 0
+        ? `Payment figures are not shown for ${plural(gaps.advanceOutsideScope, 'order')} you can see only through your visibility scope.`
+        : null
+      return [unknown, scope].filter(Boolean).join(' ') || null
+    }
     case 'fabric_finish_pending':
       return n(gaps.noConfirmDate, 'with no confirmation date could not be checked.')
     default:

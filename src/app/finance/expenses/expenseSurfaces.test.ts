@@ -2336,6 +2336,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderDashboardSummary.test.ts',
     'src/lib/orders/orderDashboardSummary.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderHistory.ts',
     'src/lib/orders/orderRequestRetirement.test.ts',
     'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
     'src/lib/orders/orderStartupShape.test.ts',

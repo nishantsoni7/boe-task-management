@@ -18,6 +18,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ALIGNMENT_STATE_LABEL,
   GROUP_COPY,
+  UNRECORDED_RULE,
+  UNRECORDED_TITLE,
   advanceLine,
   alignmentLine,
   alignmentSummary,
@@ -42,6 +44,7 @@ import {
   waitingOnLabel,
   type DashboardSummary,
 } from './orderDashboardSummary'
+import { ORDER_EVENT_LABEL, describeOrderEvent, mergeOrderHistory } from './orderHistory'
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { skeletonVariantFor } from '@/components/layout/ModuleRouteFallback'
 
@@ -63,11 +66,16 @@ function payload(over: Record<string, unknown> = {}) {
         { ...ref('1025'), state: 'clarification_needed', waiting_on: 'approver', rank: 4, since: '2026-09-27T09:00:00+00:00', waiting_seconds: 90000, detail: 'Sofa fabric not stocked', advance_blocks: false },
       ],
       advance_below_40: [{ ...ref('1021'), order_value: 1000000, verified: 399999.99, percent: 39.99, shortfall: 0.01, exception_approved: true, held: false }],
-      fabric_finish_pending: [{ ...ref('1023'), confirm_date: '2026-09-10', days_since_confirmation: 19,
-        pending: [{ kind: 'fabric', status: 'not_approved' }], not_recorded: ['finish'] }],
+      fabric_finish_pending: [
+        { ...ref('1023'), confirm_date: '2026-09-10', days_since_confirmation: 19,
+          pending: [{ kind: 'fabric', status: 'not_approved' }], not_recorded: ['finish'] },
+        // A NEW order: fabric approved, finish with no event at all — pending, not hidden.
+        { ...ref('1031'), confirm_date: '2026-09-05', days_since_confirmation: 24,
+          pending: [{ kind: 'finish', status: 'no_approval_recorded' }], not_recorded: [] },
+      ],
       fabric_finish_unrecorded: [{ ...ref('1030'), confirm_date: '2026-07-01', days_since_confirmation: 90, not_recorded: ['fabric', 'finish'] }],
     },
-    gaps: { open_orders: 40, advance_value_unknown: 2, no_confirm_date: 3 },
+    gaps: { open_orders: 40, advance_value_unknown: 2, advance_outside_scope: 0, no_confirm_date: 3 },
     revenue: {
       currency: 'INR', basis: 'product_value', date_basis: 'confirm_date',
       current_month: { from: '2026-09-01', to: '2026-09-29', amount: 1234567.5, orders: 3 },
@@ -102,6 +110,7 @@ describe('the summary is read as sent, and a bad answer is an error — never ze
     assert.equal(s.notAligned[1].detail, 'Sofa fabric not stocked')
     assert.equal(s.advance[0].exceptionApproved, true)
     assert.deepEqual(s.fabricFinish[0].notRecorded, ['finish'])
+    assert.equal(s.fabricFinish[1].pending[0].status, 'no_approval_recorded')
     assert.deepEqual(s.fabricUnrecorded[0].notRecorded, ['fabric', 'finish'])
     assert.equal(s.reviewer?.name, 'Nitish Bansal')
     assert.equal(s.revenue?.lastSixMonths.to, '2026-08-31')
@@ -232,6 +241,13 @@ describe('advance, and fabric/finish, say what the database said', () => {
     assert.equal(advanceLine({ ...s.advance[0], percent: 0, shortfall: 400000 }), '0% verified · ₹4,00,000 short of 40%')
   })
 
+  test('a new order with no approval event reads "no approval recorded" — pending, and the other item is not concealed', () => {
+    const s = parsed(payload())
+    assert.equal(fabricFinishLine(s.fabricFinish[1]), 'Finish no approval recorded · 24 days since confirmation')
+    assert.equal(fabricFinishLine({ ...s.fabricFinish[1], pending: [{ kind: 'fabric', status: 'no_approval_recorded' }, { kind: 'finish', status: 'no_approval_recorded' }] }),
+      'Fabric no approval recorded · Finish no approval recorded · 24 days since confirmation')
+  })
+
   test('fabric and finish: the pending item, the elapsed days, and a gap on the other item said on the row', () => {
     const s = parsed(payload())
     assert.equal(fabricFinishLine(s.fabricFinish[0]), 'Fabric not approved · Finish status not recorded · 19 days since confirmation')
@@ -249,6 +265,7 @@ describe('advance, and fabric/finish, say what the database said', () => {
     assert.equal(groupGapNote('advance_below_40', s.gaps), '2 open orders with no order value could not be checked.')
     assert.equal(groupGapNote('fabric_finish_pending', s.gaps), '3 open orders with no confirmation date could not be checked.')
     assert.equal(groupGapNote('not_aligned', s.gaps), null)
+    assert.equal(groupGapNote('advance_below_40', { ...s.gaps, advanceValueUnknown: 0, advanceOutsideScope: 3 }), 'Payment figures are not shown for 3 orders you can see only through your visibility scope.')
     assert.equal(groupGapNote('fabric_finish_pending', { ...s.gaps, noConfirmDate: 1 }), '1 open order with no confirmation date could not be checked.')
     assert.equal(listsNote(true), 'An order can appear under more than one heading.')
     assert.equal(listsNote(false), 'Counts cover the orders you can open. An order can appear under more than one heading.')
@@ -275,6 +292,58 @@ describe('revenue', () => {
       '2 orders this year with no product value on record are not counted.',
     ])
     assert.deepEqual(revenueGapNotes({ ...r, gaps: { noConfirmDate: 0, futureConfirmDate: 0, noProductValueInYear: 0, beforeDiscountInYear: 0 } }), [])
+  })
+})
+
+describe('the older-orders list is about history, and says new orders never land in it', () => {
+  test('the words', () => {
+    assert.match(UNRECORDED_TITLE, /Older orders/)
+    assert.match(UNRECORDED_RULE, /created before fabric and finish approvals were tracked/)
+    assert.match(UNRECORDED_RULE, /New orders never appear here/)
+  })
+})
+
+describe('Factory Focus lives in the Order’s permanent history, not only on the dashboard', () => {
+  const removed = { id: 'e1', event_type: 'factory_focus_removed', created_at: '2026-09-29T10:00:00+00:00', actor_name: 'Nishant',
+    payload: { selected_month: '2026-08-01', reason: 'Client paused the order' } }
+  const selected = { id: 'e0', event_type: 'factory_focus_selected', created_at: '2026-08-05T10:00:00+00:00', actor_name: 'Nishant',
+    payload: { selected_month: '2026-08-01', note: 'Won from scratch' } }
+
+  test('both events have words, and the reason is the detail line', () => {
+    assert.equal(ORDER_EVENT_LABEL.factory_focus_selected, 'Selected for Factory Focus')
+    assert.equal(ORDER_EVENT_LABEL.factory_focus_removed, 'Removed from Factory Focus')
+    assert.equal(describeOrderEvent(removed as never), 'Selected August 2026 · Client paused the order')
+    assert.equal(describeOrderEvent(selected as never), 'Selected August 2026 · Won from scratch')
+  })
+
+  test('the merged history carries them, newest first, with who did it', () => {
+    const merged = mergeOrderHistory({
+      orderRows: [selected, removed] as never, orderLabel: () => null, orderDetail: () => null,
+      piRows: [], namesById: new Map(), formatWhen: iso => iso ?? '',
+    })
+    assert.deepEqual(merged.map(m => m.label), ['Removed from Factory Focus', 'Selected for Factory Focus'])
+    assert.equal(merged[0].detail, 'Selected August 2026 · Client paused the order')
+    assert.equal(merged[0].actor, 'Nishant')
+  })
+
+  test('the Order page reads its whole activity log, so nothing filters these events out', () => {
+    const page = read('src/app/orders/[id]/page.tsx')
+    const q = page.slice(page.indexOf("const activityQuery = () =>"), page.indexOf('const mapActivityRows'))
+    assert.ok(q.includes(".from('order_activity_log')") && q.includes(".eq('order_id', id)"))
+    assert.equal(/\.in\('event_type'/.test(q), false)
+  })
+
+  test('the migration writes both events for every writer, with the reason, in the same transaction', () => {
+    const sql = read('supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql')
+    assert.match(sql, /create trigger order_factory_focus_history\s+after insert or update on public\.order_factory_focus_selections/)
+    assert.match(sql, /'factory_focus_removed'[\s\S]{0,200}'reason', new\.removal_reason/)
+    assert.match(sql, /'factory_focus_selected'/)
+  })
+
+  test('the dashboard notice is only a convenience: it still says it expires, the record does not', () => {
+    const sql = read('supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql')
+    assert.match(sql, /interval '30 days'/)
+    assert.match(sql, /The 30-day\s+-- dashboard notice is a convenience/)
   })
 })
 

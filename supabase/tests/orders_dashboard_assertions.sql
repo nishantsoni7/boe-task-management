@@ -4,8 +4,10 @@
 --   1  alignment        every state says WHOSE court it is in and SINCE WHEN; an order
 --                       flagged for clarification is never "waiting for the reviewer"
 --   2  advance          the 40% line; an approved exception is STILL listed, and said
---   3  fabric / finish  each item on its own; 15 days is not flagged, 16 is; a status
---                       that was never recorded is a SEPARATE list, never "pending"
+--   3  fabric / finish  each item on its own (one approved item never hides the other);
+--                       15 days is not flagged, 16 is; NEW orders with no approval event
+--                       are PENDING ("no approval recorded"); only orders that predate
+--                       tracking keep a missing record in a separate, ambiguous list
 --   4  no overdue       the overdue group is gone from the read
 --   5  revenue          this month to today; the six COMPLETED months before it; the
 --                       year; once per Order however many PI versions; after discount
@@ -14,9 +16,12 @@
 --                       reason and is manual (a dispatch hides nothing); everybody with
 --                       Orders entry sees WHICH orders, and only a reader who may open
 --                       one sees its client; the removal reason reaches the salesperson
+--                       AND is kept in the Order's permanent activity log, readable under
+--                       normal Order permissions long after the dashboard notice is gone
 --   7  visibility       own / selected / all_sales enforced in the database: direct table
 --                       reads, the summary's counts and lists, updates, and no Finance
---                       (allocations, payments, payment totals) and no revenue widened
+--                       (allocations, payments, payment totals), no revenue, and no
+--                       activity log widened
 --
 -- One transaction, ROLLBACK. Synthetic records only.
 -- On success prints NOTICE 'ALL ORDERS DASHBOARD ASSERTIONS PASSED'.
@@ -149,6 +154,18 @@ begin
   return v_id;
 end $$;
 
+/** Make an Order pre-date fabric/finish tracking: its missing records are ambiguous history. */
+create function pg_temp.make_historical(p_order uuid) returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims', '', true);
+  -- created_at is frozen by orders_guard_amendable_columns; the fixture steps around it (rolled back).
+  alter table public.orders disable trigger orders_guard_amendable_columns;
+  update public.orders
+     set created_at = (select fabric_finish_tracking_from from public.orders_dashboard_settings) - interval '30 days'
+   where id = p_order;
+  alter table public.orders enable trigger orders_guard_amendable_columns;
+end $$;
+
 /** Verified money allocated to an Order. Returns the payment id. */
 create function pg_temp.pay(p_order uuid, p_amount numeric) returns uuid language plpgsql as $$
 declare v_pay uuid := gen_random_uuid();
@@ -258,9 +275,18 @@ begin
     perform pg_temp.fabric(o, 'fabric', 'fully_approved', now() - interval '5 days');
     perform pg_temp.fabric(o, 'fabric', 'not_approved', now() - interval '1 day');       -- newest wins
     perform pg_temp.fabric(o, 'finish', 'fully_approved', now() - interval '2 days');
-  -- NEVER RECORDED (a historical order): its own list, not "pending".
-  o := pg_temp.mk_order('ff_history', 'running', t - 60, 100, 100);
-  -- One item recorded pending, the other never recorded: judged independently.
+  -- A HISTORICAL order (created before tracking began), nothing recorded: ambiguous, its own list.
+  o := pg_temp.mk_order('ff_history', 'running', t - 60, 100, 100);   perform pg_temp.make_historical(o);
+  -- Historical, one item approved, the other never recorded: still ambiguous, and says which.
+  o := pg_temp.mk_order('ff_hist_one', 'running', t - 60, 100, 100); perform pg_temp.make_historical(o);
+    perform pg_temp.fabric(o, 'fabric', 'fully_approved', now() - interval '3 days');
+  -- A NEW order, nothing recorded: approval is required and has not been given. Day 15 vs day 16.
+  o := pg_temp.mk_order('ff_new_15', 'running', t - 15, 100, 100);
+  o := pg_temp.mk_order('ff_new_16', 'running', t - 16, 100, 100);
+  -- A NEW order, fabric approved and finish with NO event: the approved item must not hide the other.
+  o := pg_temp.mk_order('ff_new_one', 'running', t - 20, 100, 100);
+    perform pg_temp.fabric(o, 'fabric', 'fully_approved', now() - interval '3 days');
+  -- One item recorded pending, the other never recorded (new order): both pending, judged independently.
   o := pg_temp.mk_order('ff_mixed', 'running', t - 30, 100, 100);
     perform pg_temp.fabric(o, 'fabric', 'partially_approved', now() - interval '2 days');
   o := pg_temp.mk_order('ff_nodate', 'running', null, 100, 100);
@@ -313,13 +339,29 @@ begin
   perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_both_done') is null, 'both fully approved: not listed');
   r := pg_temp.row_of(s, 'fabric_finish_pending', 'ff_reverted');
   perform pg_temp.check(r -> 'pending' -> 0 ->> 'kind' = 'fabric', 'the NEWEST event wins: a reverted fabric is pending again');
-  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_history') is null, 'a status never recorded is NOT confirmed pending');
+  -- historical, ambiguous
+  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_history') is null, 'a HISTORICAL order with nothing recorded is not a confirmed pending');
   r := pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_history');
-  perform pg_temp.check(r is not null and r -> 'not_recorded' = '["fabric","finish"]'::jsonb, 'it is in its own list, both items named');
+  perform pg_temp.check(r is not null and r -> 'not_recorded' = '["fabric","finish"]'::jsonb, 'it is in the ambiguous list, both items named');
+  r := pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_hist_one');
+  perform pg_temp.check(r is not null and r -> 'not_recorded' = '["finish"]'::jsonb, 'historical, fabric approved: only the FINISH gap is named');
+  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_hist_one') is null, 'and it is not called pending');
+  -- new orders: no event = pending
+  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_new_15') is null and pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_new_15') is null,
+                        'a NEW order with no events: day 15 is not more than 15');
+  r := pg_temp.row_of(s, 'fabric_finish_pending', 'ff_new_16');
+  perform pg_temp.check(r is not null and (r ->> 'days_since_confirmation')::int = 16 and jsonb_array_length(r -> 'pending') = 2
+                        and r -> 'pending' -> 0 ->> 'status' = 'no_approval_recorded' and r -> 'pending' -> 1 ->> 'status' = 'no_approval_recorded',
+                        'a NEW order with no events on day 16: BOTH items pending, "no approval recorded"');
+  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_new_16') is null, 'and it is not hidden in the ambiguous list');
+  r := pg_temp.row_of(s, 'fabric_finish_pending', 'ff_new_one');
+  perform pg_temp.check(r is not null and jsonb_array_length(r -> 'pending') = 1 and r -> 'pending' -> 0 ->> 'kind' = 'finish'
+                        and r -> 'pending' -> 0 ->> 'status' = 'no_approval_recorded' and r -> 'not_recorded' = '[]'::jsonb,
+                        'a NEW order, fabric approved and finish with no event: the approved item does not hide the FINISH');
   r := pg_temp.row_of(s, 'fabric_finish_pending', 'ff_mixed');
-  perform pg_temp.check(r is not null and r -> 'pending' -> 0 ->> 'kind' = 'fabric' and r -> 'not_recorded' = '["finish"]'::jsonb,
-                        'fabric recorded pending, finish never recorded: judged independently, the gap said on the row');
-  perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_mixed') is null, 'and not duplicated into the unrecorded list');
+  perform pg_temp.check(r is not null and jsonb_array_length(r -> 'pending') = 2
+                        and r -> 'pending' -> 0 ->> 'status' = 'partially_approved' and r -> 'pending' -> 1 ->> 'status' = 'no_approval_recorded',
+                        'new order, fabric partial and finish with no event: judged independently, both pending');
   perform pg_temp.check(pg_temp.row_of(s, 'fabric_finish_pending', 'ff_nodate') is null
                         and pg_temp.row_of(s, 'fabric_finish_unrecorded', 'ff_nodate') is null, 'no confirmation date is not flagged');
   perform pg_temp.check((s -> 'gaps' ->> 'no_confirm_date')::int >= 1, 'and is COUNTED');
@@ -499,6 +541,32 @@ begin
                         and jsonb_array_length(pg_temp.summary(current_setting('test.owner_id')::uuid) -> 'factory_focus' -> 'removed_for_you') = 0,
                         'and nobody else');
 
+  -- THE PERMANENT HISTORY. Every selection and the removal REASON are in the Order's own activity
+  -- log, read under the normal Order permissions — not only in the 30-day dashboard notice.
+  perform pg_temp.become(current_setting('test.s2_id')::uuid);
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = b and event_type = 'factory_focus_selected') = 1, 'the selection is in the order''s history');
+  perform pg_temp.check((select payload ->> 'reason' from public.order_activity_log where order_id = b and event_type = 'factory_focus_removed') = 'Client cancelled the second phase',
+                        'the removal REASON is in the history, readable by the order''s salesperson');
+  perform pg_temp.check((select actor_id from public.order_activity_log where order_id = b and event_type = 'factory_focus_removed') = current_setting('test.owner_id')::uuid, 'with who removed it');
+  perform pg_temp.restore();
+  perform pg_temp.become(current_setting('test.n_id')::uuid);
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = b) = 0, 'a purchase-team user reads no history of an order that is not theirs');
+  perform pg_temp.restore();
+  perform pg_temp.become(current_setting('test.s1_id')::uuid);
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = b) = 0, 'nor does a colleague with the own-only scope');
+  perform pg_temp.restore();
+  -- Long after the 30-day notice has gone, the history still holds the reason.
+  alter table public.order_factory_focus_selections disable trigger order_factory_focus_guard;
+  update public.order_factory_focus_selections set selected_at = now() - interval '120 days', removed_at = now() - interval '90 days' where id = sel2;
+  alter table public.order_factory_focus_selections enable trigger order_factory_focus_guard;
+  perform pg_temp.check(jsonb_array_length(pg_temp.summary(current_setting('test.s2_id')::uuid) -> 'factory_focus' -> 'removed_for_you') = 0, 'the dashboard notice has expired');
+  perform pg_temp.become(current_setting('test.s2_id')::uuid);
+  perform pg_temp.check((select payload ->> 'reason' from public.order_activity_log where order_id = b and event_type = 'factory_focus_removed') = 'Client cancelled the second phase',
+                        'but the history still shows the reason');
+  perform pg_temp.restore();
+  -- A removal by ANY path (here a direct write) is written to the history too.
+  perform pg_temp.check((select count(*) from public.order_activity_log where event_type = 'factory_focus_removed' and payload ->> 'selection_id' = sel2::text) = 1, 'exactly once');
+
   -- A dispatch hides NOTHING: removal is manual.
   perform pg_temp.check(pg_temp.card_of(pg_temp.summary(current_setting('test.owner_id')::uuid), pg_temp.number_of('fo_a')) is not null, 'the order is active before it moves');
   update public.orders set status = 'ready_for_dispatch' where id = a;
@@ -535,7 +603,7 @@ begin
   o2 := pg_temp.mk_order('sc_2', 'running', t, 1000, 1000, s2);
   o3 := pg_temp.mk_order('sc_3', 'running', t, 1000, 1000, current_setting('test.s3_id')::uuid);
   on_ := pg_temp.mk_order('sc_n', 'running', t, 1000, 1000, n);           -- belongs to a NON-candidate
-  pay := pg_temp.pay(o2, 700);                                           -- verified money on S2's order
+  pay := pg_temp.pay(o2, 100);                                           -- verified money on S2's order: 10%, below 40%
 
   -- ── who may change it ──
   perform pg_temp.expect_error_as(s1, format('select public.set_order_visibility_scope(%L, ''all_sales'')', s1), 'ORDER_SCOPE_NOT_OWNER', 'a candidate widening their own scope');
@@ -588,6 +656,13 @@ begin
   s := pg_temp.summary(s1);
   perform pg_temp.check(pg_temp.row_of(s, 'not_aligned', 'sc_3') is not null and pg_temp.row_of(s, 'not_aligned', 'sc_n') is null, 'all_sales: the summary follows');
 
+  -- Orders-side satellites that ask can_view_order follow the scope by design (the order DETAIL): here the
+  -- fabric/finish approval log. Everything below it that is Finance, money or history does not.
+  perform pg_temp.fabric(o2, 'fabric', 'not_approved', now());
+  perform pg_temp.become(s1);
+  perform pg_temp.check((select count(*) from public.order_approval_events where order_id = o2) = 1, 'DETAIL: the approval log of a scoped order is readable, as the order detail is');
+  perform pg_temp.restore();
+
   -- ── what a scope must NOT reveal or allow ──
   perform pg_temp.become(s1);
   select count(*) into alloc from public.finance_payment_allocations where order_id = o2;
@@ -603,6 +678,17 @@ begin
   perform pg_temp.check((select status from public.orders where id = o2) = 'running', '…and the row is unchanged');
   s := pg_temp.summary(s1);
   perform pg_temp.check(s -> 'revenue' = 'null'::jsonb and not (s -> 'viewer' ->> 'can_view_revenue')::boolean, 'REVENUE: a scope never sends company revenue');
+  -- Payment-derived figures follow the UNSCOPED rule: 10% verified on a colleague's order is not sent.
+  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'sc_2') is null, 'FINANCE: a colleague''s advance percentage and shortfall are not sent through a scope');
+  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'sc_1') is not null, 'but their OWN order''s are');
+  perform pg_temp.check((s -> 'gaps' ->> 'advance_outside_scope')::int >= 2, 'and the orders withheld are COUNTED, not silently dropped');
+  perform pg_temp.check((select bool_or((x ->> 'advance_blocks')::boolean) from jsonb_array_elements(s -> 'groups' -> 'not_aligned') x where x ->> 'client_name' in ('DASH-sc_2', 'DASH-sc_3')) is not true,
+                        'and the payment-derived "advance blocks alignment" flag is withheld for them too');
+  perform pg_temp.check(pg_temp.row_of(pg_temp.summary(own), 'advance_below_40', 'sc_2') is not null, 'while the owner sees it');
+  -- The rest of an order's satellite data, read directly as the widest-scope candidate.
+  perform pg_temp.become(s1);
+  perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o2) = 0, 'ACTIVITY: a colleague''s order history is not opened by a scope');
+  perform pg_temp.restore();
 
   -- the owner's read of the same settings
   perform pg_temp.become(own);

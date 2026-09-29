@@ -69,6 +69,9 @@ export const ORDER_EVENT_LABEL: Record<string, string> = {
   order_advance_hold_opened:        'Production on hold: advance below 40%',
   order_advance_exception_approved: 'Production approved below 40% by an administrator',
   order_advance_exception_voided:   'Below-40% approval void: payment reversed',
+  // Factory Focus (20270221000000): the selection and — permanently — the reason it was removed.
+  factory_focus_selected:           'Selected for Factory Focus',
+  factory_focus_removed:            'Removed from Factory Focus',
 }
 
 export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
@@ -83,10 +86,19 @@ export const ORDER_EVENT_TONE: Record<string, PiActivityTone> = {
   order_advance_hold_opened:        'red',
   order_advance_exception_approved: 'amber',
   order_advance_exception_voided:   'red',
+  factory_focus_selected:           'green',
+  factory_focus_removed:            'amber',
 }
 
 const text = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+/** `2026-09-01` → `Selected September 2026`. */
+function monthOf(v: unknown): string | null {
+  const m = typeof v === 'string' ? /^(\d{4})-(\d{2})/.exec(v) : null
+  return m ? `Selected ${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}` : null
+}
 
 /** One sentence for the Order-side events this module labels. */
 export function describeOrderEvent(row: OrderActivityRow): string | null {
@@ -125,6 +137,11 @@ export function describeOrderEvent(row: OrderActivityRow): string | null {
     }
     case 'order_workbook_replaced':
       return text(p.reason)
+    case 'factory_focus_selected':
+      return [monthOf(p.selected_month), text(p.note)].filter(Boolean).join(' · ') || null
+    case 'factory_focus_removed':
+      // THE REASON IS THE RECORD: it is kept here for good, whatever the dashboard's 30-day notice shows.
+      return [monthOf(p.selected_month), text(p.reason)].filter(Boolean).join(' · ') || null
     case 'order_advance_hold_opened': {
       const why = holdCauseText(p.cause, p.previous_order_value, p.order_value)
       const figures = p.value_known === false

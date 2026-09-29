@@ -43,10 +43,15 @@
 --                         WHOSE COURT IT IS IN and SINCE WHEN.
 --   verified advance %    order_advance_position(). "Below 40%" is its shortfall
 --                         > 0. An approved exception is still listed and said.
---   fabric / finish       each judged on its own: the newest order_approval_events
---                         row per kind; a recorded status other than Fully
---                         Approved is pending; no row is NOT RECORDED, a separate
---                         list, never counted as pending. Flagged when
+--   fabric / finish       each item judged on its own (one approved item never
+--                         hides the other). The newest order_approval_events row
+--                         per kind; a status other than Fully Approved is pending.
+--                         NO EVENT: for an Order created on or after the tracking
+--                         start (orders_dashboard_settings) the approval is
+--                         required and simply has not been given, so it is PENDING
+--                         ("no approval recorded"); for an Order that predates
+--                         tracking the missing record is ambiguous history and sits
+--                         in a separate list. Flagged when
 --                         IST today - orders.confirm_date > 15.
 --   revenue               product value of each non-cancelled, non-test Order
 --                         ONCE, by orders.confirm_date, IST calendar periods:
@@ -246,6 +251,41 @@ drop trigger if exists order_factory_focus_guard on public.order_factory_focus_s
 create trigger order_factory_focus_guard
   before insert or update or delete on public.order_factory_focus_selections
   for each row execute function public.order_factory_focus_guard();
+
+-- THE ORDER'S PERMANENT HISTORY. Every selection and every removal — with the
+-- removal REASON — is written to the Order's own activity log in the same
+-- transaction, by whichever path wrote it. order_activity_log is what the Order's
+-- history view reads, and its policies already decide who may read it: the Order's
+-- salesperson and requester, operations, admins and orders.view_all. The 30-day
+-- dashboard notice is a convenience; this is the record.
+create or replace function public.order_factory_focus_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+    values (new.order_id, new.selected_by, 'factory_focus_selected',
+            jsonb_build_object('selection_id', new.id, 'selected_month', new.selected_month,
+                               'salesperson_id', new.salesperson_id, 'note', new.note));
+  elsif tg_op = 'UPDATE' and old.removed_at is null and new.removed_at is not null then
+    insert into public.order_activity_log (order_id, actor_id, event_type, payload)
+    values (new.order_id, new.removed_by, 'factory_focus_removed',
+            jsonb_build_object('selection_id', new.id, 'selected_month', new.selected_month,
+                               'salesperson_id', new.salesperson_id, 'reason', new.removal_reason));
+  end if;
+  return null;
+end;
+$$;
+revoke execute on function public.order_factory_focus_history() from public, anon, authenticated, service_role;
+comment on function public.order_factory_focus_history() is
+  'Writes factory_focus_selected / factory_focus_removed (with the removal reason) to the Order''s activity log for every writer. 20270221000000.';
+drop trigger if exists order_factory_focus_history on public.order_factory_focus_selections;
+create trigger order_factory_focus_history
+  after insert or update on public.order_factory_focus_selections
+  for each row execute function public.order_factory_focus_history();
 
 create or replace function public.select_order_for_factory_focus(p_order_id uuid, p_note text default null)
 returns jsonb
@@ -581,6 +621,25 @@ grant  execute on function public.list_order_visibility_scopes() to authenticate
 comment on function public.list_order_visibility_scopes() is
   'Every sales candidate with their Order visibility scope. Owner only. 20270221000000.';
 
+-- ═══ 3b. When fabric/finish tracking began ═════════════════════════════════════
+--
+-- An Order created before this moment predates the approval log, so a MISSING
+-- fabric/finish record on it is ambiguous history. An Order created on or after
+-- it is a new Order for which both approvals are required, so a missing record
+-- means "not approved yet". The moment defaults to when this migration is applied,
+-- i.e. the module starts with new Orders. It is a database setting (no client
+-- grant), changed by a migration or by an administrator with database access.
+
+create table if not exists public.orders_dashboard_settings (
+  id                            boolean primary key default true check (id),
+  fabric_finish_tracking_from   timestamptz not null default now()
+);
+insert into public.orders_dashboard_settings (id) values (true) on conflict (id) do nothing;
+alter table public.orders_dashboard_settings enable row level security;
+revoke all on table public.orders_dashboard_settings from public, anon, authenticated;
+comment on table public.orders_dashboard_settings is
+  'One row. fabric_finish_tracking_from: Orders created on or after it require fabric and finish approval, so a missing approval record is PENDING; earlier Orders'' missing records are ambiguous history. Defaults to the moment the dashboard migration was applied. 20270221000000.';
+
 -- ═══ 4. The dashboard read ═══════════════════════════════════════════════════
 --
 -- ONE ROUND TRIP, ONE STATEMENT, over the Orders the caller may open
@@ -623,7 +682,10 @@ begin
 
   with open_orders as materialized (
     select o.id, o.display_number, o.client_name, o.status, o.confirm_date, o.created_at,
-           o.total_value, o.production_alignment
+           o.total_value, o.production_alignment,
+           -- PAYMENT-DERIVED FIGURES (verified %, shortfall, exceptions) are shown only for an
+           -- Order the reader may open WITHOUT a visibility scope. A scope widens Orders, not money.
+           public.can_view_order_unscoped(o.id) as full_view
       from public.orders o
      where coalesce(o.is_test_data, false) = false
        and o.status not in ('dispatched', 'cancelled')
@@ -664,7 +726,8 @@ begin
                'since', st.since,
                'waiting_seconds', greatest(extract(epoch from (v_now - st.since)), 0),
                'detail', case when st.state = 'clarification_needed' then h.clarification_reason end,
-               'advance_blocks', not coalesce((p.pos ->> 'ready')::boolean, false)) as x
+               -- A payment-derived flag: withheld for an Order seen only through a scope.
+               'advance_blocks', d.full_view and not coalesce((p.pos ->> 'ready')::boolean, false)) as x
         from open_orders d
         join pos p on p.order_id = d.id
         left join lateral (
@@ -705,18 +768,23 @@ begin
                'exception_approved', (jsonb_typeof(p.pos -> 'exception') = 'object'),
                'held', (jsonb_typeof(p.pos -> 'hold') = 'object')) as x
         from open_orders d join pos p on p.order_id = d.id
-       where coalesce((p.pos ->> 'value_known')::boolean, false)
+       where d.full_view
+         and coalesce((p.pos ->> 'value_known')::boolean, false)
          and coalesce((p.pos ->> 'shortfall')::numeric, 0) > 0
     ) s
   ),
   ff_status as (
-    -- Fabric and finish, each on its own. A recorded status other than Fully
-    -- Approved is PENDING; no recorded status at all is NOT RECORDED — a
-    -- historical gap, never a confirmed pending. Only orders more than 15 days
-    -- past the client confirmation date.
+    -- Fabric and finish, each on its own, for Orders more than 15 days past the
+    -- client confirmation date. A recorded status other than Fully Approved is
+    -- PENDING. No record at all is PENDING too for an Order created since tracking
+    -- began (approval is required and has not been given: 'no_approval_recorded'),
+    -- and NOT RECORDED — ambiguous history — for an older Order.
     select d.id, d.display_number, d.client_name, d.status, d.confirm_date,
            (v_today - d.confirm_date) as days_since,
-           k.kind, k.recorded_status
+           k.kind,
+           coalesce(k.recorded_status,
+                    case when d.created_at >= (select st.fabric_finish_tracking_from from public.orders_dashboard_settings st where st.id)
+                         then 'no_approval_recorded' end) as effective_status
       from open_orders d
      cross join lateral (
        select kinds.kind,
@@ -733,12 +801,12 @@ begin
                'order_id', f.id, 'display_number', f.display_number, 'client_name', f.client_name,
                'status', f.status, 'confirm_date', f.confirm_date,
                'days_since_confirmation', max(f.days_since),
-               'pending', jsonb_agg(jsonb_build_object('kind', f.kind, 'status', f.recorded_status) order by f.kind)
-                            filter (where f.recorded_status is not null and f.recorded_status <> 'fully_approved'),
-               'not_recorded', coalesce(jsonb_agg(f.kind order by f.kind) filter (where f.recorded_status is null), '[]'::jsonb)) as x
+               'pending', jsonb_agg(jsonb_build_object('kind', f.kind, 'status', f.effective_status) order by f.kind)
+                            filter (where f.effective_status is not null and f.effective_status <> 'fully_approved'),
+               'not_recorded', coalesce(jsonb_agg(f.kind order by f.kind) filter (where f.effective_status is null), '[]'::jsonb)) as x
         from ff_status f
        group by f.id, f.display_number, f.client_name, f.status, f.confirm_date
-      having count(*) filter (where f.recorded_status is not null and f.recorded_status <> 'fully_approved') > 0
+      having count(*) filter (where f.effective_status is not null and f.effective_status <> 'fully_approved') > 0
     ) s
   ),
   fabric_unrecorded as (
@@ -748,18 +816,19 @@ begin
                'order_id', f.id, 'display_number', f.display_number, 'client_name', f.client_name,
                'status', f.status, 'confirm_date', f.confirm_date,
                'days_since_confirmation', max(f.days_since),
-               'not_recorded', jsonb_agg(f.kind order by f.kind) filter (where f.recorded_status is null)) as x
+               'not_recorded', jsonb_agg(f.kind order by f.kind) filter (where f.effective_status is null)) as x
         from ff_status f
        group by f.id, f.display_number, f.client_name, f.status, f.confirm_date
-      having count(*) filter (where f.recorded_status is null) > 0
-         and count(*) filter (where f.recorded_status is not null and f.recorded_status <> 'fully_approved') = 0
+      having count(*) filter (where f.effective_status is null) > 0
+         and count(*) filter (where f.effective_status is not null and f.effective_status <> 'fully_approved') = 0
     ) s
   ),
   gaps as (
     select jsonb_build_object(
              'open_orders', (select count(*) from open_orders),
-             'advance_value_unknown', (select count(*) from pos p
-                                        where not coalesce((p.pos ->> 'value_known')::boolean, false)),
+             'advance_value_unknown', (select count(*) from pos p join open_orders d on d.id = p.order_id
+                                        where d.full_view and not coalesce((p.pos ->> 'value_known')::boolean, false)),
+             'advance_outside_scope', (select count(*) from open_orders where not full_view),
              'no_confirm_date', (select count(*) from open_orders where confirm_date is null)) j
   ),
   rev as (
@@ -889,13 +958,15 @@ begin
      or to_regprocedure('public.remove_order_factory_focus(uuid, text)') is null
      or to_regprocedure('public.set_order_visibility_scope(uuid, text, uuid[])') is null
      or to_regprocedure('public.can_view_order_unscoped(uuid)') is null
+     or to_regclass('public.orders_dashboard_settings') is null
      or to_regclass('public.order_factory_focus_selections') is null then
     raise exception 'VERIFY: the Factory Focus / visibility objects were not created';
   end if;
   if has_table_privilege('authenticated', 'public.order_factory_focus_selections', 'select')
      or has_table_privilege('anon', 'public.order_factory_focus_selections', 'select')
      or has_table_privilege('authenticated', 'public.order_visibility_scopes', 'select')
-     or has_table_privilege('authenticated', 'public.order_visibility_scope_members', 'select') then
+     or has_table_privilege('authenticated', 'public.order_visibility_scope_members', 'select')
+     or has_table_privilege('authenticated', 'public.orders_dashboard_settings', 'select') then
     raise exception 'VERIFY: the Factory Focus and scope tables must not be readable by a client role';
   end if;
   -- The Finance policy must have moved off the scope-aware rule.

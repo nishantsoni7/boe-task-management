@@ -45,6 +45,8 @@ needs Nishant's decision; nothing here assumes it.
 | `order_factory_focus_guard()` + trigger | owner-only, two NEW per IST month, stamped month/salesperson, reason required to remove, append-only | dropped with the table |
 | `select_order_for_factory_focus(uuid, text)`, `remove_order_factory_focus(uuid, text)` | the only write paths (owner) | `revoke execute`, then `drop function` |
 | `order_visibility_scopes`, `order_visibility_scope_members` | tables; RLS on; no grant | `drop table` (everyone returns to "own") |
+| `orders_dashboard_settings` | one row, no grant: `fabric_finish_tracking_from` (defaults to the moment the migration is applied) | `drop table` |
+| `order_factory_focus_history()` + trigger | writes `factory_focus_selected` / `factory_focus_removed` (with the reason) to `order_activity_log`, for every writer | `drop trigger`; existing history rows stay |
 | `set_order_visibility_scope()`, `list_order_visibility_scopes()` | owner-only RPCs | `revoke execute` / `drop function` |
 | `sales_scope_allows_order()` + policy `orders_sales_scope_select` | the scope, applied to the Orders table | `drop policy`, then the function |
 | `can_view_order_unscoped()` | the previous rule, kept for Finance | keep |
@@ -93,8 +95,10 @@ shows follows Order visibility.
 * **Factory Focus.** Two NEW selections per IST calendar month, counted by
   `selected_month`, serialised by an advisory lock; a removal does **not** refund
   the month's selection. Active selections carry into later months, so more than two
-  can be visible. Removal is manual and needs a reason (≤ 300 characters), which the
-  Order's salesperson sees for 30 days. Nothing — not the calendar, a dispatch or a
+  can be visible. Removal is manual and needs a reason (≤ 300 characters). The reason is
+  written to the Order's **permanent activity log** (`factory_focus_removed`, with who and when) and shows in the
+  Order's history to whoever may read that history — the salesperson and requester, operations, admins and
+  `orders.view_all`. The dashboard also shows the reason to the salesperson for 30 days, as a convenience only. Nothing — not the calendar, a dispatch or a
   cancellation — hides a selection. An Order with no salesperson cannot be selected
   (there is nobody to recognise); a closed Order cannot be newly selected.
 * **Not aligned.** `production_alignment <> 'aligned'`, said with whose court it is
@@ -105,9 +109,7 @@ shows follows Order visibility.
   reviewer.
 * **Advance.** `order_advance_position()`'s `shortfall > 0` against the current
   amended value; an approved exception is still listed and said.
-* **Fabric / finish.** Each item on its own: the newest `order_approval_events` row;
-  a recorded status other than Fully Approved is pending; **no row at all is "not
-  recorded"**, a separate list. Flagged when `IST today − orders.confirm_date > 15`.
+* **Fabric / finish.** Each item on its own, so one approved item never hides the other. The newest `order_approval_events` row decides; a status other than Fully Approved is pending. **No event at all:** for an Order created on or after `orders_dashboard_settings.fabric_finish_tracking_from` the approval is required and has not been given, so it is **pending ("no approval recorded")**; for an Order created before that moment the missing record is ambiguous history and sits in a separate "older orders" list. Flagged when `IST today − orders.confirm_date > 15` (day 15 is not flagged, day 16 is). The tracking start defaults to the moment the migration is applied — so **apply it before the first real Order**, or every Order created before it is treated as history.
 * **No overdue list** in this phase. Planned dispatch date is the date to use if one
   is added later; `orders.due_date` and every date and filter elsewhere are untouched.
 * **Revenue.** Each non-cancelled, non-test Order once, by `confirm_date`, at its
@@ -117,6 +119,52 @@ shows follows Order visibility.
 * **Scopes** widen Orders only. The advance position and the alignment list are
   Orders facts and follow them. No allocation, payment, payment total or revenue is
   reachable through a scope.
+
+## Audit: what broadening Orders visibility can reach
+
+The scope is one extra `SELECT` policy on `orders` and one branch in `can_view_order_as_actor()`. Audited on
+2026-09-29 against a fully migrated database: every policy, function and view that reads Orders, and every
+route in `src/` that reads `orders` under the caller's session.
+
+**Follows the scope — by design, the order detail** (each already open to `orders.view_all`):
+`order_approval_events`, `order_operations_handoffs`, `order_product_codes`, `order_pi_versions`,
+`order_document_versions` / submissions / files, the confirmed order's PI (`order_submissions`, items, images,
+activity) through `can_view_order_submission_via_order`, and the storage buckets `order-files` and
+`order-approval-evidence`. The definer RPCs that ask `can_view_order_as_actor()` (`order_pi_version_detail`,
+`…pdf_detail`, `order_pi_revision_differences`, `order_advance_readiness`) follow it too. The middleman
+commission is **not** among them: it has its own table and function (submitter, assigned reviewer, admin,
+`orders.view_pi_commission`) that no Orders visibility reaches.
+
+**Does not follow the scope** (explicit own / operations / admin / `view_all` rules, or pinned to the unscoped
+rule): `order_activity_log` (the order's history — so the removal reason is readable by the salesperson and
+requester, and *not* by a scoped colleague), `finance_payment_allocations`' order policy,
+`can_read_payment_as_participant()`, `order_linked_payment_total()`, every other Finance policy, company revenue,
+`order_submission_middleman_commissions`, `order_change_requests`, `order_pi_edit_drafts`, and the meeting-order
+tables (which key on meetings, not Orders). The two Finance views (`finance_received_payments`,
+`finance_payment_destinations`) are `security_invoker` and only LEFT JOIN `orders` for the order number of a
+payment the caller can already see.
+
+**Remaining exposures — for a person who holds a scope AND another grant:**
+
+1. **Payment-derived figures through Orders RPCs.** `order_advance_readiness()` (verified, awaiting, shortfall,
+   exception, hold) is available to any Order viewer today, so a scope reaches it for scoped orders. The
+   dashboard no longer sends these figures for a scoped-only order (it counts what it withholds), but the Order
+   detail page's advance card still calls `order_advance_readiness()`. Closing that means re-emitting the
+   function against `can_view_order_unscoped()`; it is not done here because it touches a function outside this
+   feature.
+2. **Finance allocation picker.** `AllocatePaymentModal` searches `orders` under the caller's row security. A
+   candidate who also holds `finance.allocate` would see scoped orders (number, client, value) in the picker.
+   `allocate_payment_to_target` itself checks only `finance.allocate`, not Order visibility, so the scope adds no
+   ability to allocate — the permission already implied it — only sight.
+3. **Document generation.** `order_document_versions` insert/retry need `orders.approve_order` **and**
+   `can_view_order()`. An approver who also has a scope could request or retry document generation for a
+   scoped colleague's order — as a `view_all` approver already can.
+4. **Reading routes.** `/api/orders/[id]/notify` and `…/pi-versions/[versionId]/pdf` read `orders` with the
+   caller's client, so they follow the scope: a scoped viewer can open a scoped order's PI PDF (order detail).
+   `/api/orders/[id]/documents` reads with the service client after checking the caller, and is unaffected.
+
+Nothing in the audit reaches another module's data: samples, showroom, tasks, performance, assets, notifications
+and customer reviews never read `orders` under a user session.
 
 ## Rollback
 
