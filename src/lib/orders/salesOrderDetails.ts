@@ -63,6 +63,8 @@ export const ORDER_DETAILS_ANCHOR = 'pi-internal-order-details'
  * contact_number), never the salesperson_id chosen here, which the PDF does
  * not even read. The note says so, so nobody expects a change here to reach it.
  */
+export const ORDER_DETAILS_SHORT_NOTE = 'For BOE only. Of these, only fabric responsibility reaches the client PDF.'
+
 export const ORDER_DETAILS_NOTE =
   'For BOE. Kept off the client workbook. Of these fields, only fabric responsibility appears on the generated client PDF, as one sentence. The PDF also shows a salesperson and contact number, but those are the ones the workbook states, not the BOE salesperson assigned here.'
 
@@ -91,7 +93,7 @@ export const ORDER_DETAILS_FIELDS: readonly OrderDetailsField[] = [
   { key: 'due_date',                label: SUBMISSION_DATE_LABEL.due_date,                need: 'submission', hint: 'On or after the order confirmation date.' },
   { key: 'salesperson_id',          label: SALESPERSON_LABEL,                             need: 'approval', hint: 'Management sees it when creating the Order and may change it. Not printed on the client PDF, which shows the salesperson named in the PI workbook.' },
   { key: 'lead_source',             label: 'Lead source',                                 need: 'approval' },
-  { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `From ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
+  { key: 'billing_percentage',      label: 'Billing percentage',                          need: 'optional', hint: `How much of the order should be billed, from ${BILLING_MIN}% to ${BILLING_MAX}%. Internal; not printed on the client PDF.` },
   { key: 'billing_terms',           label: 'Billing terms',                               need: 'optional' },
   { key: 'payment_terms',           label: 'Payment terms',                               need: 'optional', hint: 'How the payments are agreed to fall due. Optional at every advance level; saved as it is, and sent unchanged with the PI.' },
   { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                   need: 'submission', hint: 'Printed on the client PDF as one sentence.' },
@@ -422,7 +424,6 @@ export function orderDetailsReview(
     { key: 'salesperson_id',          label: SALESPERSON_LABEL,                                 value: salesperson,                                need: 'approval' },
     { key: 'lead_source',             label: 'Lead source',                                     value: leadSourceLabel(row.lead_source),           need: 'approval' },
     { key: 'billing_percentage',      label: 'Billing percentage',                              value: billing === null ? null : formatBillingPercentage(billing), need: 'optional' },
-    { key: 'billing_terms',           label: 'Billing terms',                                   value: blankToNull(text(row.billing_terms)),        need: 'optional' },
     { key: 'payment_terms',           label: 'Payment terms',                                   value: blankToNull(text(row.payment_terms)),        need: 'optional' },
     { key: 'fabric_responsibility',   label: FABRIC_RESPONSIBILITY_LABEL,                       value: fabricResponsibilityLabel(row.fabric_responsibility), need: 'submission' },
     { key: 'middleman_commission',    label: 'Middleman commission',                            value: middleman === 'Not answered' ? null : middleman, need: 'submission' },

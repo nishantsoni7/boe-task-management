@@ -21,7 +21,7 @@
 //   required later           the salesperson and lead source, which
 //                            approve_order_submission asks for when the Order is
 //                            created (ORDER_DETAILS_FIELDS, need 'approval').
-//   optional                 billing percentage, billing terms, Client PO,
+//   optional                 billing percentage, payment terms, Client PO,
 //                            Design Files and the order highlight.
 //
 // A LATER item is never a submission blocker. It is listed so the person knows
@@ -106,9 +106,6 @@ export function buildPiCompletion(input: {
   if (readBillingPercentage(input.details.billing_percentage ?? null) === null) {
     optionalMissing.push({ key: 'billing_percentage', label: ORDER_DETAILS_FIELD.billing_percentage.label, need: 'optional', where: 'internal', field: 'billing_percentage' })
   }
-  if (blank(input.details.billing_terms)) {
-    optionalMissing.push({ key: 'billing_terms', label: ORDER_DETAILS_FIELD.billing_terms.label, need: 'optional', where: 'internal', field: 'billing_terms' })
-  }
   if (blank(input.details.payment_terms)) {
     optionalMissing.push({ key: 'payment_terms', label: ORDER_DETAILS_FIELD.payment_terms.label, need: 'optional', where: 'internal', field: 'payment_terms' })
   }
@@ -122,7 +119,7 @@ export function buildPiCompletion(input: {
   return { requiredMissing, laterMissing, optionalMissing, readyToSubmit: requiredMissing.length === 0 }
 }
 
-/** "Billing percentage, Billing terms and Client PO" — the names the question lists. */
+/** "Billing percentage, Payment terms and Client PO" — the names the question lists. */
 export function joinItemNames(items: readonly { label: string }[]): string {
   const names = items.map(item => item.label)
   if (names.length <= 1) return names.join('')

@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs'
 import {
   buildEditProposal,
   DIFF_FIELD_LABELS,
+  PI_EDIT_TERMS_FIELDS,
   diffPi,
   editChangesSomething,
   editProductFigures,
@@ -94,6 +95,21 @@ describe('the editor opens on the version in force', () => {
     const diff = diffPi(normalizePi(current()), normalizeProposal(build(s)))
     assert.equal(editChangesSomething(diff), false)
     assert.deepEqual(summarizeChanges(diff), ['No changes'])
+  })
+})
+
+describe('billing terms are no longer offered, and a stored value is never lost', () => {
+  test('the editable terms are payment terms and the commercial note only', () => {
+    assert.deepEqual(PI_EDIT_TERMS_FIELDS.map(f => f.key), ['payment_terms', 'commercial_terms_note'])
+  })
+  test('a value already on the PI is carried through a save unchanged, so it is neither blanked nor shown as a change', () => {
+    const base = current()
+    const stored = { ...base, submission: { ...base.submission, billing_terms: '50% on dispatch' } } as PiContent
+    const s = initialEditState(stored)
+    assert.equal(s.terms.billing_terms, '50% on dispatch')
+    const proposal = build(s, stored)
+    assert.equal((proposal as { terms?: Record<string, unknown> }).terms?.billing_terms, '50% on dispatch')
+    assert.equal(editChangesSomething(diffPi(normalizePi(stored), normalizeProposal(proposal))), false)
   })
 })
 

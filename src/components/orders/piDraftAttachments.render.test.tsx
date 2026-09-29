@@ -51,10 +51,14 @@ describe('the draft attachments card', () => {
   test('the owner sees both optional categories and an Add control for each', () => {
     const out = html(state())
     assert.ok(out.includes(DRAFT_ATTACHMENTS_TITLE))
-    assert.ok(DRAFT_ATTACHMENTS_TITLE.includes('optional'), 'important, but never mandatory')
+    assert.ok(DRAFT_ATTACHMENTS_NOTE.includes('submit it for approval'), 'says when they are sent')
     assert.ok(out.includes('Add Design Files') && out.includes('Add Client PO'))
     assert.equal((out.match(/None attached yet/g) ?? []).length, 2)
     assert.ok(out.includes(DRAFT_ATTACHMENTS_NOTE))
+    // two balanced columns, Client PO first, and one short Add action each — no big empty upload boxes
+    assert.equal((out.match(/class="pi-attach"/g) ?? []).length, 2)
+    assert.ok(out.indexOf('Client PO') < out.indexOf('Design Files'))
+    assert.ok(out.includes('>Add file<') && out.includes('>Add files<'))
     assert.ok(/<input[^>]*type="file"[^>]*multiple=""/.test(out), 'several design files at once')
   })
 
