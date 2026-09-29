@@ -369,7 +369,8 @@ describe('normal mode', () => {
     // every desktop size, with a 124px centred card on a phone. The Signature
     // workspace redesign then split the launcher into three 112px Essentials
     // (a 76px full-width row on a phone) and compact 100px tiles, up to five
-    // across.
+    // across. The refinement after it settled on 104px Essentials (72px on a
+    // phone), 88px compact tiles, and one 60px row per module on a phone.
     //
     // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
     // promise that it owns no card dimension. The card's own shape is pinned by
@@ -378,20 +379,20 @@ describe('normal mode', () => {
     for (const rule of [
       'grid-template-columns: repeat(5, minmax(0, 1fr))',
       'grid-template-columns: repeat(3, minmax(0, 1fr))',
-      'min-height: 100px',
-      'min-height: 112px',
-      'min-height: 76px',
-      'min-height: 96px',
+      'min-height: 88px',
+      'min-height: 104px',
+      'min-height: 72px',
+      'min-height: 60px',
       'width: 40px',
       'width: 44px',
       '@media (max-width: 767px)',
-      '@media (max-width: 339px)',
+      '@container (max-width: 479px)',
       'grid-template-columns: repeat(2, minmax(0, 1fr))',
       'overflow-wrap: anywhere',
-      'font-size: 17px',
+      'font-size: 16.5px',
       'font-size: 16px',
+      'font-size: 15px',
       'font-size: 14px',
-      'font-size: 13.5px',
     ]) {
       assert.ok(CSS.includes(rule), `the responsive card design lost: ${rule}`)
     }
