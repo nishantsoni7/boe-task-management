@@ -82,7 +82,8 @@ import {
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
-import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
+// The top card labels the PI workbook's name, not the Order's assigned salesperson (#259).
+import { WORKBOOK_SALESPERSON_LABEL as SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 import { RESERVE_ACTION_LABEL, type ReservationView } from '@/lib/orders/orderNumberReservation'
 import {
   APPROVED_ORDER_HEADING,
@@ -3071,7 +3072,7 @@ describe('the layout is CSS, at real breakpoints', () => {
     const stack = decideRow.indexOf('<div className="pi-detail-split-stack">')
     assert.ok(stack > 0 && stack < decideRow.indexOf('<PiDraftAttachments')
       && decideRow.indexOf('<PiDraftAttachments') < decideRow.indexOf('<PiHighlightRemark')
-      && decideRow.indexOf('<PiHighlightRemark') < decideRow.indexOf('<PiWorkflowPanel'),
+      && decideRow.indexOf('<PiHighlightRemark') < decideRow.indexOf('{workflowPanel}'),
       'documents and the highlight on the left, Ready for management? on the right')
 
     assert.ok(/\.pi-detail-split \{[^}]*container-type: inline-size/.test(css), 'measured on the column, not the viewport')
@@ -3143,10 +3144,11 @@ describe('the layout is CSS, at real breakpoints', () => {
     for (const value of tracks) {
       // `repeat(N, minmax(0, …))` is just as bounded as a list of minmax()
       // tracks; unwrapping it is what lets the same check cover both.
-      for (const track of value.replace(/repeat\(\d+,\s*/g, '').split(/\)\s+/)) {
+      for (const track of value.replace(/repeat\((\d+|auto-fit|auto-fill),\s*/g, '').split(/\)\s+/)) {
         // A FIXED length cannot be widened by its content either, so the rule is
         // "bounded", not "spelled minmax". Anything flexible has to say minmax(0, …).
-        assert.ok(track.startsWith('minmax(0,') || /^\d+px\b/.test(track),
+        // minmax(min(100%, Npx), 1fr) is bounded too: the track can never be wider than its container.
+        assert.ok(track.startsWith('minmax(0,') || /^\d+px\b/.test(track) || /^minmax\(min\(100%,\s*\d+px\),/.test(track),
           `${value} must not be able to overflow its grid`)
       }
     }
@@ -3216,7 +3218,7 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('identity, summary, workflow, blocking — all ABOVE the products', () => {
     const order = [
       '<PiTopCard',
-      '<PiWorkflowPanel',
+      '{workflowPanel}',
       '<PiBlockingPanel',
       '{/* Products */}',
     ].map(at)
@@ -3239,9 +3241,11 @@ describe('the page is assembled in the redesigned scan order', () => {
       '<PiTopCard',
       '<PiPaymentStatusCard',
       '<PiCommercialCard',
+      // The page builds the workflow panel once and places it with the Complete PI details area (#259).
+      '{workflowPanel}',
+      '<PiCompletionPanel',
       '<PiDraftAttachments',
       '<PiHighlightRemark',
-      '<PiWorkflowPanel',
     ].map(at)
     assert.deepEqual([...order].sort((a, b) => a - b), order,
       'the top card sits directly under the save banner, above the two split rows')
@@ -3252,8 +3256,8 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('Edit PI is a compact header action, and the full-width Edit PI card is gone', () => {
     assert.ok(!page.includes('pi-edit-bar'), 'no full-width bar')
     assert.ok(!page.includes('are all edited in one place'), 'and no description card')
-    assert.ok(page.includes('actions={editPiAction ? <>{editPiAction}{backButton}</> : backButton}'),
-      'top right, beside Back')
+    assert.ok(/actions=\{<>\s*<AmountsToggle[^>]*\/>\s*\{editPiAction\}\s*\{backButton\}\s*<\/>\}/.test(page),
+      'top right, beside Back (after the Hide amounts control)')
   })
 
   test('the commercial breakdown and the activity trail come after them, together', () => {
