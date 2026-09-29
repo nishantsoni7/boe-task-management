@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { Fragment, useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, List, FileText, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -13,6 +13,7 @@ import { useUnreadOrderNotifications } from '@/hooks/queries/useUnreadNotificati
 import { activeOrdersNav, type OrdersNavKey } from '@/lib/navigation/moduleNav'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
+import { PiFormatNavLink } from '@/components/orders/PiFormatLink'
 
 type OrdersLayoutProps = {
   profile: UserProfile | null
@@ -157,14 +158,18 @@ export function OrdersLayout({
             and Next prefetches each destination's code while it is on screen. */}
         <nav className="boe-sidebar-section" aria-label="Orders">
           {navItems.map(item => (
-            <ShellNavLink
-              key={item.path}
-              href={item.path}
-              label={item.label}
-              icon={item.icon}
-              active={item.key === activeKey}
-              onNavigate={() => setSidebarOpen(false)}
-            />
+            <Fragment key={item.path}>
+              <ShellNavLink
+                href={item.path}
+                label={item.label}
+                icon={item.icon}
+                active={item.key === activeKey}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+              {/* The approved PI format sits right under PI Drafts (the page it is for). A file
+                  download, not a page: never lit, and the same action as the PI Drafts heading. */}
+              {item.key === 'drafts' ? <PiFormatNavLink onNavigate={() => setSidebarOpen(false)} /> : null}
+            </Fragment>
           ))}
 
           {/* Permanent Notifications entry — always visible, badge only when

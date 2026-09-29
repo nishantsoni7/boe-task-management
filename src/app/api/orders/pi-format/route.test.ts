@@ -257,16 +257,16 @@ describe('the Orders dashboard offers the download to every reader', () => {
   const page = read('src/app/orders/page.tsx')
 
   test('the link points at the route and is rendered outside the create gate', () => {
-    const start = page.indexOf('actions={')
-    const gateEnd = page.indexOf(') : null', page.indexOf('ordersCaps.canCreateOrder ? (', start))
-    const blockEnd = page.indexOf('</>', gateEnd)
-    assert.ok(start > 0 && gateEnd > start && blockEnd > gateEnd, 'the header actions block is where it was')
-    // After the create-gated Upload PI has closed, and still inside the actions.
-    const afterGate = page.slice(gateEnd, blockEnd)
-    assert.ok(afterGate.includes('href={PI_FORMAT_ACTION.href}'), 'the link sits in the header actions, outside the create gate')
-    assert.ok(afterGate.includes('download={PI_FORMAT_FILENAME}'))
-    assert.ok(!/ordersCaps\.\w+\s*(&&|\?)/.test(afterGate), 'nothing gates the link on an Orders capability')
-    assert.equal(page.split('PI_FORMAT_ACTION.href').length, 2, 'offered exactly once')
+    // Since #258 the download lives in the left navigation (under PI Drafts) and on the PI Drafts
+    // heading — one shared component, the same route and file name. Neither is gated on a capability.
+    const link = read('src/components/orders/PiFormatLink.tsx')
+    assert.equal(link.split('href={PI_FORMAT_ACTION.href}').length, 3, 'both variants use the one route')
+    assert.equal(link.split('download={PI_FORMAT_FILENAME}').length, 3)
+    assert.ok(!/ordersCaps|canCreate|hasPermission/.test(link), 'nothing gates the link on a capability')
+    const drafts = read('src/app/orders/drafts/page.tsx')
+    assert.ok(drafts.includes('<PiFormatButton />'))
+    assert.ok(read('src/components/layout/OrdersLayout.tsx').includes('<PiFormatNavLink'))
+    assert.equal(page.split('PI_FORMAT_ACTION').length, 1, 'the dashboard no longer offers it')
     assert.equal(PI_FORMAT_ACTION.href, '/api/orders/pi-format')
   })
 

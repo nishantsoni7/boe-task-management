@@ -1040,13 +1040,13 @@ describe('the Finance linkage projection', () => {
     // between an Order and a PI Draft is in several views at once and no single
     // one of them is "the page that holds it".
     //
-    // The Orders dashboard reads it too, for one head-count, and does so through
-    // the same constant.
+    // The Orders dashboard used to read it too, for the Available Funds head-count;
+    // that card was removed by the dashboard redesign (20270221000000), so it is
+    // no longer among the readers.
     const readers = [
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/hooks/queries/useReceivedPaymentsCounts.ts',
       'src/app/admin/control-center/action-queue/page.tsx',
-      'src/app/orders/page.tsx',
     ]
     for (const file of readers) {
       assert.ok(existsSync(join(process.cwd(), file)), `${file} must exist`)

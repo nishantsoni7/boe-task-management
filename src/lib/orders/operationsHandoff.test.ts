@@ -37,7 +37,6 @@ import {
 import { orderAttentionItems } from './orderWorkspace'
 import { orderDashboardCards, NO_ORDER_DASHBOARD_COUNTS } from './orderDashboard'
 import { NO_ORDERS_CAPABILITIES } from '../permissions/orders'
-import { NO_FINANCE_CAPABILITIES } from '../permissions/finance'
 import { ORDER_EVENT_LABEL, describeOrderEvent, mergeOrderHistory } from './orderHistory'
 
 const NISHANT = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -383,7 +382,7 @@ describe('the attention strip and the dashboard', () => {
   })
   test('the dashboard offers an Operations Review card only when something waits — including a flagged version', () => {
     const cards = (over: Partial<typeof NO_ORDER_DASHBOARD_COUNTS>) =>
-      orderDashboardCards({ counts: { ...NO_ORDER_DASHBOARD_COUNTS, ...over }, orders: NO_ORDERS_CAPABILITIES, finance: NO_FINANCE_CAPABILITIES })
+      orderDashboardCards({ counts: { ...NO_ORDER_DASHBOARD_COUNTS, ...over }, orders: NO_ORDERS_CAPABILITIES })
         .find(c => c.key === 'operations_review')
     assert.equal(cards({}), undefined)
     assert.equal(cards({ operationsReview: 0, operationsUnassigned: 0, operationsFlagged: 0 }), undefined)

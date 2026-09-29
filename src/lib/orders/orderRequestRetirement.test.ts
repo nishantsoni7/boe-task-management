@@ -114,7 +114,7 @@ describe('no Order Request navigation remains', () => {
   test('the Orders dashboard offers no card into the retired workflow', () => {
     const cards = readCode('src/lib/orders/orderDashboard.ts')
     const hrefs = [...cards.matchAll(/href: '([^']+)'/g)].map(m => m[1])
-    assert.ok(hrefs.length >= 4, 'the dashboard still offers its quick access')
+    assert.ok(hrefs.length >= 1, 'the dashboard still offers its quick access')
     for (const href of hrefs) {
       assert.equal(href.startsWith('/orders/requests'), false, `${href} leads into the retired workflow`)
     }
@@ -218,7 +218,8 @@ describe('no Create Order Request action remains', () => {
   test('the allocation picker offers Confirmed Orders and PI Drafts only', () => {
     const modal = read('src/app/finance/received/AllocatePaymentModal.tsx')
     assert.equal(modal.includes("from('order_requests')"), false)
-    assert.ok(modal.includes("from('orders')"))
+    // Orders arrive through finance_order_search(), the pre-scope rule (20270221000000).
+    assert.ok(modal.includes("rpc('finance_order_search'"))
     assert.ok(modal.includes("from('order_submissions')"))
     assert.ok(modal.includes('allocate_payment_to_target'))
   })

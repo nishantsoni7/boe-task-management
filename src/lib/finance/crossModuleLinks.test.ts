@@ -367,8 +367,9 @@ describe('who is offered Add payment on a Confirmed Order', () => {
 
   test('and that agrees with the picker, which already declines to offer one', () => {
     const picker = readFileSync('src/app/finance/received/AllocatePaymentModal.tsx', 'utf8')
-    assert.ok(picker.includes(".not('status', 'in', '(cancelled)')"),
-      'searchAllocationTargets filters cancelled Orders out')
+    // finance_order_search() leaves cancelled Orders out inside the database (20270221000000).
+    assert.ok(picker.includes("rpc('finance_order_search'"),
+      'searchAllocationTargets asks the function that filters cancelled Orders out')
   })
 
   test('it decides DRAWING only, and says so', () => {
