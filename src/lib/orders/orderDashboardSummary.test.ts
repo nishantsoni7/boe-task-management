@@ -9,6 +9,7 @@
 //
 // Run with: npx tsx --test "src/lib/orders/orderDashboardSummary.test.ts"
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- the malformed-payload cases reach into an untyped fixture on purpose */
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
