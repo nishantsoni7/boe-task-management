@@ -8206,7 +8206,7 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
 }
 
 @media (max-width: 559px) {
-  .od-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .od-row { grid-template-columns: minmax(0, 1fr) minmax(0, max-content); }
   .od-row-id { display: flex; flex-direction: column; gap: 2px; grid-column: 1; }
   .od-row-detail { grid-column: 1 / -1; }
   .od-row-wait { grid-column: 2; grid-row: 1; }
