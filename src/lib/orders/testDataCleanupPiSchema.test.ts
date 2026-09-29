@@ -530,7 +530,10 @@ describe('one route owns claim -> storage -> finalize', () => {
   })
 
   test('the browser sends only what the admin typed', () => {
-    assert.ok(route.includes('const { rootType, rootId, reason, confirmation } = body'))
+    // The admin's keep/reuse Order number choice is the one addition, and only
+    // its two literal values are accepted.
+    assert.ok(route.includes('const { rootType, rootId, reason, confirmation, orderNumberChoice } = body'))
+    assert.ok(route.includes("orderNumberChoice !== 'keep' && orderNumberChoice !== 'reuse'"))
     for (const forbidden of ['submissionId', 'storagePaths', 'claimToken', 'paths']) {
       assert.ok(!new RegExp(`${forbidden}[^A-Za-z]*[=:][^=]*body`).test(routeCode),
         `${forbidden} must never come from the request body`)
