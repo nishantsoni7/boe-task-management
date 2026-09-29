@@ -463,13 +463,13 @@ describe('Task Detail offers Add to Meeting only to the people the database acce
 
 describe('a follow-up task whose link failed is never created twice', () => {
   test('the created task is kept and only Retry link is offered', () => {
-    assert.match(TASK_MODAL, /setUnlinked\(\{ taskId, notified \}\)/)
-    assert.match(TASK_MODAL, /const canSubmit = createdTaskId === null && unlinked === null/)
+    assert.match(TASK_MODAL, /setUnlinked\(\{ taskId \}\)/)
+    assert.match(TASK_MODAL, /const canSubmit = unlinked === null/)
     assert.match(TASK_MODAL, /\{unlinked \? \(\s*<MeetingModalActions[\s\S]*?onSave=\{retryLink\}[\s\S]*?saveLabel="Retry link"/)
     // The retry re-records the link; it never inserts a task.
     const retry = TASK_MODAL.slice(TASK_MODAL.indexOf('const retryLink'), TASK_MODAL.indexOf('return (', TASK_MODAL.indexOf('const retryLink')))
     assert.ok(!retry.includes(".from('tasks')"))
-    assert.match(retry, /linkTask\(unlinked\.taskId, unlinked\.notified\)/)
+    assert.match(retry, /linkTask\(unlinked\.taskId\)/)
   })
 })
 

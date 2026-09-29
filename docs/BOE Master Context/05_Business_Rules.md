@@ -600,6 +600,14 @@ Notification noise should be minimized.
 * Quotation workflows, activity history and the Quotation sidebar counts are
   unchanged.
 
+## A new task is silent (September 2026)
+
+* Creating, copying or assigning a task writes no notification to the
+  assignee. The task waits in their acknowledgment section instead.
+* Acknowledging it still records `acknowledged_at`, moves it to Working and
+  notifies the creator. Comments, Waiting, Blocked, completion and every other
+  later event notify as before.
+
 ## Hidden, never deleted
 
 Rows written before these rules stay in the table. The feed, every unread

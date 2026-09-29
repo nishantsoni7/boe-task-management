@@ -225,15 +225,16 @@ describe('the split is real, and points one way only', () => {
     assert.equal(/^\s*['"]use client['"]/m.test(writerSrc.slice(0, 400)), false)
   })
 
-  test('the four creation screens import only the browser half', () => {
+  test('the creation screens import neither half — a new task is silent', () => {
     for (const path of [
       'src/app/tasks/create/page.tsx',
       'src/app/tasks/assigned-by-me/page.tsx',
       'src/app/tasks/quotation-requests/new/page.tsx',
       'src/components/meetings/MeetingTaskModal.tsx',
+      'src/components/meetings/DiscussionTaskModal.tsx',
     ]) {
       const text = readFileSync(join(ROOT, path), 'utf8')
-      assert.ok(text.includes("from '@/lib/tasks/assignmentNotification'"), `${path} imports the browser half`)
+      assert.equal(text.includes("from '@/lib/tasks/assignmentNotification'"), false, `${path} requests no notification`)
       assert.equal(/assignmentNotificationWriter/.test(text), false,
         `${path} must not import the writer`)
     }

@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  APPROVAL_NOTIFICATION_TITLE_PATTERN, MUTATION_ID_CHUNK_SIZE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, MUTATION_ID_CHUNK_SIZE, NEW_TASK_NOTIFICATION_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
   VISIBLE_ID_PAGE_SIZE, chunkIds, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from './taskNotificationPolicy'
 import { getNotificationCategoryFilter, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
@@ -63,6 +63,9 @@ describe('selectVisibleTaskNotificationIds — the set a bulk mutation may touch
     assert.ok(calls.some(c => c[0] === 'neq' && c[1] === TASK_FEED_TASK_TYPE_COLUMN && c[2] === 'quotation_request'))
     assert.ok(calls.some(c => c[0] === 'not' && c[1] === 'title' && c[2] === 'like' && c[3] === APPROVAL_NOTIFICATION_TITLE_PATTERN))
     assert.equal(calls.some(c => c[0] === 'eq' && c[1] === 'is_read'), false, 'not unread-only unless asked')
+    // …and new-task assignments, which the acknowledgment section announces instead.
+    assert.ok(calls.some(c => c[0] === 'neq' && c[1] === 'type' && c[2] === 'task_assigned'))
+    assert.equal(NEW_TASK_NOTIFICATION_TYPE, 'task_assigned')
   })
 
   test('narrows to unread and to one task when asked, on top of the predicate', async () => {
@@ -114,6 +117,8 @@ describe('every Task feed read applies the exclusion before paging or counting',
   test('the count and the list both join the task and exclude quotation and approval rows', () => {
     assert.equal(route.match(/\.neq\(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE\)/g)?.length, 2)
     assert.equal(route.match(/\.not\('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN\)/g)?.length, 2)
+    assert.equal(route.match(/\.neq\('type', NEW_TASK_NOTIFICATION_TYPE\)/g)?.length, 2,
+      'new-task rows are hidden from the badge and the list alike')
     const count = route.indexOf('let countQuery')
     const list = route.indexOf('let listQuery')
     assert.ok(count > 0 && route.indexOf('.neq(TASK_FEED_TASK_TYPE_COLUMN', count) < route.indexOf('unreadCount: count ?? 0'))

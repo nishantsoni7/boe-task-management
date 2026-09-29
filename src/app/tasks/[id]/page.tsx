@@ -509,7 +509,7 @@ export default function TaskDetailPage() {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'working', actorName: profile?.full_name }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[acknowledge] notification failed:', d))
       }).catch(err => console.error('[acknowledge] notification fetch error:', err))

@@ -1,7 +1,5 @@
 'use client'
 
-import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
-import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
@@ -440,24 +438,10 @@ function DelegateTaskModal({
   const [saveError,     setSaveError]     = useState<string | null>(null)
   const [attachFiles,   setAttachFiles]   = useState<File[]>([])
   const [attachError,   setAttachError]   = useState<string | null>(null)
-  // Outcome B. The modal STAYS OPEN when this is set — closing it would carry
-  // the reader away from the only place the partial failure is explained, and
-  // the page-level toast has nowhere to put a Retry action.
-  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
-  // The created task, held only while the outcome-B notice is on screen.
-  // `onCreated` both adds it to the list AND closes this modal, so on outcome B
-  // it is deferred until the reader has dealt with the warning — otherwise the
-  // modal unmounts and takes the explanation and the Retry button with it.
-  const [createdTask, setCreatedTask] = useState<Task | null>(null)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const supabase = useMemo(() => createClient(), [])
 
-  // `notifyFailedFor` disables Create as well as `saving`: the task ALREADY
-  // exists at that point, the form still holds its values, and the one thing
-  // that must not happen while a partial-failure warning is on screen is a
-  // second press producing a second task. Retry lives in the notice and touches
-  // only the notification.
-  const canSave = !saving && notifyFailedFor === null
+  const canSave = !saving
     && title.trim().length > 0 && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior
@@ -535,20 +519,13 @@ function DelegateTaskModal({
       return
     }
 
-    // Both outcomes are read. A dropped notification is the exact failure this
-    // screen was reported for; it must never leave without a trace, and the
-    // trace has to be one the person creating the task can see.
-    const [{ error: logErr }, notified] = await Promise.all([
-      supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: session.user.id,
-        action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
-      }),
-      requestAssignmentNotification(task.id),
-    ])
+    // No assignee notification: a new task is announced by the assignee's
+    // acknowledgment section. See src/lib/notifications/taskNotificationPolicy.ts.
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: session.user.id,
+      action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
+    })
     if (logErr) console.error('[assigned-by-me] activity log insert failed:', logErr.message)
-    // The task STAYS — it was created, and deleting it over a notification
-    // would lose real work.
-    if (!notified.ok) console.error('[assigned-by-me] assignment notification failed:', notified.reason)
 
     // Upload attachments and link to the new task
     let attachUploadFailed = false
@@ -583,14 +560,6 @@ function DelegateTaskModal({
     // If uploads partially failed, surface the error at the page level after close.
     if (attachUploadFailed) onError('Task created, but some attachments failed to upload.')
 
-    // Outcome B: hold the modal open with the warning and a Retry action.
-    // Outcome C: hand the task up, which adds it to the list and closes.
-    if (!notified.ok) {
-      setCreatedTask(task as unknown as Task)
-      setNotifyFailedFor(task.id)
-      setSaving(false)
-      return
-    }
     onCreated(task as unknown as Task)
   }
 
@@ -822,14 +791,6 @@ function DelegateTaskModal({
           </div>
         </div>
 
-        {notifyFailedFor && (
-          <AssignmentNotificationNotice
-            variant="inline"
-            taskId={notifyFailedFor}
-            onResolved={() => { setNotifyFailedFor(null); if (createdTask) onCreated(createdTask) }}
-            onDismiss={() => { setNotifyFailedFor(null); if (createdTask) onCreated(createdTask) }}
-          />
-        )}
         {saveError && (
           <div style={{ fontSize: '12px', color: colors.red, marginBottom: '10px' }}>{saveError}</div>
         )}

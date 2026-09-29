@@ -14,6 +14,12 @@
 //   simply complete; nobody is notified. Submitting for approval still notifies
 //   the creator, and returning or reopening still notifies the assignee.
 //
+//   A NEW TASK IS SILENT. Creating or assigning a task writes no notification
+//   to its assignee (September 2026): the task already waits in their
+//   acknowledgment section until they acknowledge it, so a "New task assigned
+//   to you" row only repeated it. Acknowledging, and everything after it —
+//   comments, waiting, blocked, completion — notifies exactly as before.
+//
 // ENFORCED TWICE, NEITHER A SUBSTITUTE FOR THE OTHER.
 //
 //   Where rows are CREATED. Every Task Management writer asks the predicates
@@ -30,6 +36,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getNotificationCategoryFilter, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { TASK_REVIEW_NOTIFICATION_SUFFIXES } from '@/lib/tasks/reviewTransitions'
+import { TASK_ASSIGNMENT_NOTIFICATION_TYPE } from '@/lib/tasks/assignmentNotification'
 
 export const QUOTATION_TASK_TYPE = 'quotation_request'
 
@@ -42,6 +49,16 @@ type TaskFacts = {
 /** A quotation request, by its stored `task_type`. */
 export function isQuotationTask(task: Pick<TaskFacts, 'task_type'> | null | undefined): boolean {
   return task?.task_type === QUOTATION_TASK_TYPE
+}
+
+/**
+ * May a newly created, copied or assigned task notify its assignee? Never —
+ * see "A NEW TASK IS SILENT" above. Asked by createAssignmentNotification, the
+ * one writer every creation screen and the copy route go through, so this is
+ * the single place the rule would be reversed.
+ */
+export function shouldNotifyTaskAssignment(_task: TaskFacts): boolean {
+  return false
 }
 
 /**
@@ -86,6 +103,12 @@ export const TASK_FEED_TASK_TYPE_COLUMN = 'tasks.task_type'
  * "approved".
  */
 export const APPROVAL_NOTIFICATION_TITLE_PATTERN = `*${TASK_REVIEW_NOTIFICATION_SUFFIXES.approve}`
+
+/**
+ * The "New task assigned to you" row. Only that one event writes this type, so
+ * it is what hides the rows written before the new-task rule.
+ */
+export const NEW_TASK_NOTIFICATION_TYPE = TASK_ASSIGNMENT_NOTIFICATION_TYPE
 
 /** Drop the embed used for filtering before rows leave the server. */
 export function stripTaskFeedEmbed<T>(rows: readonly T[]): T[] {
@@ -202,6 +225,7 @@ export async function selectVisibleTaskNotificationIds(
       .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
       .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
       .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+      .neq('type', NEW_TASK_NOTIFICATION_TYPE)
     if (opts.unreadOnly) query = query.eq('is_read', false)
     if (opts.taskId) query = query.eq('task_id', opts.taskId)
     if (opts.entityId) query = query.eq('entity_id', opts.entityId)

@@ -24,7 +24,7 @@
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import type { NotificationInsert } from '@/lib/notificationWrites'
 import { findTaskCreationActivityId } from '@/lib/notifications/activityLink'
-import { isQuotationTask } from '@/lib/notifications/taskNotificationPolicy'
+import { isQuotationTask, shouldNotifyTaskAssignment } from '@/lib/notifications/taskNotificationPolicy'
 import {
   buildTaskAssignmentNotification,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
@@ -133,6 +133,9 @@ export type AssignmentNotificationStore = {
 export async function createAssignmentNotification(
   store: AssignmentNotificationStore,
   args: { taskId: string; callerId: string },
+  // The new-task rule. Production callers never pass it; tests do, so the
+  // write path below — dormant while the rule says no — stays verified.
+  notifyAssignee: (task: AssignmentTaskRow) => boolean = shouldNotifyTaskAssignment,
 ): Promise<AssignmentNotificationOutcome> {
   const { taskId, callerId } = args
   if (!taskId || !callerId) return { status: 'forbidden' }
@@ -151,6 +154,11 @@ export async function createAssignmentNotification(
 
   if (!task.assigned_to) return { status: 'skipped_self' }
   if (task.assigned_to === task.created_by) return { status: 'skipped_self' }
+
+  // A new task is announced by the assignee's acknowledgment section, not by a
+  // notification. Nothing is read or written past this point while the rule
+  // holds. See src/lib/notifications/taskNotificationPolicy.ts.
+  if (!notifyAssignee(task)) return { status: 'skipped_acknowledgment' }
 
   // Independent reads, run together: the duplicate check and the activity-log
   // lookup each need only `task` (already in hand) and neither's answer

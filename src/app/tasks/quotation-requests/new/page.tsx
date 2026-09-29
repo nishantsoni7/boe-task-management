@@ -1,7 +1,5 @@
 'use client'
 
-import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
-import { AssignmentNotificationNotice, AssignmentNotificationRecovered } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -49,9 +47,6 @@ export default function NewQuotationRequestPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success,     setSuccess]     = useState(false)
   const [createdId,   setCreatedId]   = useState<string | null>(null)
-  // Outcome B. Task id only — see the create screen and the notice component.
-  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
-  const [notifyRecovered, setNotifyRecovered] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
@@ -123,8 +118,6 @@ export default function NewQuotationRequestPage() {
 
     setLoading(true)
     setSubmitError(null)
-    setNotifyFailedFor(null)
-    setNotifyRecovered(false)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setLoading(false); return }
@@ -172,29 +165,14 @@ export default function NewQuotationRequestPage() {
       return
     }
 
-    // The activity row and the assignee's notification depend only on
-    // `task.id`, which now exists, and neither depends on the other — running
-    // them together removes one full round-trip from every submission (same
-    // as /tasks/create). Server-side write: a browser may not address a
-    // notifications row to somebody else. The route derives the recipient from
-    // tasks.assigned_to, which this screen has just set to the quotation owner.
-    const [{ error: logErr }, notified] = await Promise.all([
-      supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: session.user.id,
-        action: 'created', note: 'Quotation request submitted',
-      }),
-      requestAssignmentNotification(task.id),
-    ])
+    // No notification: a quotation request is silent, and a new task is
+    // announced by the acknowledgment section. See
+    // src/lib/notifications/taskNotificationPolicy.ts.
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: session.user.id,
+      action: 'created', note: 'Quotation request submitted',
+    })
     if (logErr) console.error('[quotation request] activity log insert failed:', logErr.message)
-    // The request is KEPT — it was submitted successfully. What changes is that
-    // the screen no longer claims the owner was told when they were not.
-    // Outcome B. Deliberately NOT setSubmitError: the request was submitted,
-    // and an error banner here would read as a failed submission and invite a
-    // duplicate. Same sentence and same Retry action as every other screen.
-    if (!notified.ok) {
-      console.error('[quotation request] assignment notification failed:', notified.reason)
-      setNotifyFailedFor(task.id)
-    }
 
     // Upload attachments — `readyAttachments` is the already-compressed set
     // from validation above, not a second compression pass.
@@ -267,21 +245,6 @@ export default function NewQuotationRequestPage() {
             onClick={() => setSuccess(false)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px' }}
           >×</button>
-        </div>
-      )}
-
-      {notifyFailedFor && (
-        <div style={{ maxWidth: '520px' }}>
-          <AssignmentNotificationNotice
-            taskId={notifyFailedFor}
-            onResolved={() => { setNotifyFailedFor(null); setNotifyRecovered(true) }}
-            onDismiss={() => setNotifyFailedFor(null)}
-          />
-        </div>
-      )}
-      {notifyRecovered && (
-        <div style={{ maxWidth: '520px' }}>
-          <AssignmentNotificationRecovered onDismiss={() => setNotifyRecovered(false)} />
         </div>
       )}
 

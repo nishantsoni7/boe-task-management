@@ -74,6 +74,11 @@ function stubStore(opts: {
 }
 
 const ROUTE  = 'src/app/api/tasks/[id]/notify-assignment/route.ts'
+
+// A new task writes no notification (taskNotificationPolicy.ts). The write path
+// behind that rule is kept, and these tests reach it by overriding the rule —
+// the only way anything reaches it — so it stays correct if the rule is reversed.
+const WRITE_PATH = () => true
 const routeSrc = read(ROUTE)
 
 // ── 1–3. The client cannot choose anything ───────────────────────────────────
@@ -83,7 +88,7 @@ describe('1-3. the server derives every field; the client supplies only a task i
     // There is no parameter to pass one through. The operation's whole input is
     // { taskId, callerId }, and callerId comes from the session, not the body.
     const store = stubStore()
-    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     assert.equal(store.written[0][0].user_id, ASSIGNEE)
 
     // And the route reads nothing from the request at all.
@@ -96,7 +101,7 @@ describe('1-3. the server derives every field; the client supplies only a task i
     const store = stubStore({
       task: { id: TASK, title: 'test task', assigned_to: OUTSIDER, created_by: CREATOR },
     })
-    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     assert.equal(store.written[0][0].user_id, OUTSIDER, 'whatever assigned_to says')
     assert.deepEqual(store.fetched, [TASK])
   })
@@ -105,7 +110,7 @@ describe('1-3. the server derives every field; the client supplies only a task i
     const store = stubStore({
       task: { id: TASK, title: 'a title only the database knows', assigned_to: ASSIGNEE, created_by: CREATOR },
     })
-    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     const row = store.written[0][0]
     assert.equal(row.type, TASK_ASSIGNMENT_NOTIFICATION_TYPE)
     assert.equal(row.title, 'New task assigned to you')
@@ -144,10 +149,10 @@ describe('4-5. who may cause a notification', () => {
 
   test('5b. the creator may, and so may an admin', async () => {
     const asCreator = stubStore()
-    assert.equal((await createAssignmentNotification(asCreator, { taskId: TASK, callerId: CREATOR })).status, 'created')
+    assert.equal((await createAssignmentNotification(asCreator, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)).status, 'created')
 
     const asAdmin = stubStore({ admins: [ADMIN] })
-    assert.equal((await createAssignmentNotification(asAdmin, { taskId: TASK, callerId: ADMIN })).status, 'created')
+    assert.equal((await createAssignmentNotification(asAdmin, { taskId: TASK, callerId: ADMIN }, WRITE_PATH)).status, 'created')
     // An admin acting for the creator still notifies the ASSIGNEE.
     assert.equal(asAdmin.written[0][0].user_id, ASSIGNEE)
   })
@@ -229,9 +234,24 @@ describe('4-5. who may cause a notification', () => {
 // ── 6–8. One row, retry-safe, and the self-task rule ─────────────────────────
 
 describe('6-8. exactly one notification, and only when there is somebody to tell', () => {
-  test('6. a valid assignment creates exactly one notification', async () => {
+  test('6. a valid assignment writes NO notification — the acknowledgment section announces it', async () => {
     const store = stubStore()
     const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    assert.equal(outcome.status, 'skipped_acknowledgment')
+    assert.equal(store.written.length, 0, 'nothing reaches the feed, the unread count or a push')
+    assert.equal(ASSIGNMENT_OUTCOME_STATUS.skipped_acknowledgment, 200, 'a success, never a warning')
+  })
+
+  test('6a. an admin assigning on the creator\'s behalf writes nothing either', async () => {
+    const store = stubStore({ admins: [ADMIN] })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: ADMIN })
+    assert.equal(outcome.status, 'skipped_acknowledgment')
+    assert.equal(store.written.length, 0)
+  })
+
+  test('6b. the dormant write path still writes exactly one row', async () => {
+    const store = stubStore()
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     assert.equal(outcome.status, 'created')
     assert.equal(store.written.length, 1)
     assert.equal(store.written[0].length, 1)
@@ -240,7 +260,7 @@ describe('6-8. exactly one notification, and only when there is somebody to tell
   test('7. a retry does not create a duplicate', async () => {
     // Second call: the store now reports an existing row, as the real one would.
     const store = stubStore({ existing: true })
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     assert.equal(outcome.status, 'skipped_duplicate')
     assert.equal(store.written.length, 0)
     assert.equal(ASSIGNMENT_OUTCOME_STATUS.skipped_duplicate, 200, 'a repeat is a success')
@@ -251,7 +271,7 @@ describe('6-8. exactly one notification, and only when there is somebody to tell
     // notification is worse than a duplicated one — the same direction
     // /api/finance/notify takes when its dedup query errors.
     const store = stubStore({ existing: false, dupReadable: false })
-    assert.equal((await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })).status, 'created')
+    assert.equal((await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)).status, 'created')
     assert.equal(store.written.length, 1)
   })
 
@@ -285,7 +305,7 @@ describe('6-8. exactly one notification, and only when there is somebody to tell
       admins: [ADMIN],
       task: { id: TASK, title: 'for the admin', assigned_to: ADMIN, created_by: CREATOR },
     })
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: ADMIN })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: ADMIN }, WRITE_PATH)
     assert.equal(outcome.status, 'created')
     assert.equal(store.written[0][0].user_id, ADMIN)
   })
@@ -309,10 +329,15 @@ describe('9-10. every creation path goes through the trusted operation', () => {
     'src/components/meetings/MeetingTaskModal.tsx',
   ]
 
-  for (const path of CLIENT_PATHS) {
-    test(`9. ${path} calls the server route`, () => {
+  // A new task is silent (taskNotificationPolicy.ts), so no creation screen
+  // asks the route any more — the request could only ever come back
+  // `skipped_acknowledgment`. The route stays for tabs still on an older build.
+  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx']) {
+    test(`9. ${path} no longer requests an assignment notification`, () => {
       const src = read(path)
-      assert.ok(src.includes('requestAssignmentNotification'), 'uses the shared client helper')
+      assert.equal(src.includes('requestAssignmentNotification'), false)
+      assert.equal(src.includes('AssignmentNotificationNotice'), false, 'nor shows the "not notified" notice')
+      assert.equal(src.includes('notify-assignment'), false)
     })
   }
 
@@ -363,7 +388,7 @@ describe('9-10. every creation path goes through the trusted operation', () => {
 describe('11-12. a failed notification is reported, and costs nobody their task', () => {
   test('11. an insert failure returns an error outcome, never a success', async () => {
     const store = stubStore({ insertError: { message: 'new row violates row-level security policy' } })
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, WRITE_PATH)
     assert.equal(outcome.status, 'error')
     assert.equal(ASSIGNMENT_OUTCOME_STATUS.error, 500)
     // The route turns that into a 500 with a generic message — never the row.
@@ -399,38 +424,25 @@ describe('11-12. a failed notification is reported, and costs nobody their task'
     assert.equal(forbidden, 1, 'a decision is not retried')
   })
 
+  test('11c2. a newly assigned task is a success on the screen, never the "not notified" warning', async () => {
+    let calls = 0
+    const silent: typeof fetch = async () => {
+      calls += 1
+      return new Response(JSON.stringify({ status: 'skipped_acknowledgment' }), { status: 200 }) as Response
+    }
+    assert.deepEqual(await requestAssignmentNotification(TASK, silent), { ok: true, status: 'skipped_acknowledgment' })
+    assert.equal(calls, 1, 'nothing to retry')
+  })
+
   test('11d. a transport failure is reported as a failure, not assumed fine', async () => {
     const dead: typeof fetch = async () => { throw new Error('network down') }
     const res = await requestAssignmentNotification(TASK, dead)
     assert.equal(res.ok, false)
   })
 
-  test('11e. every screen turns that into something a person sees', () => {
-    // A console.error is what let this run in production unnoticed.
-    const SURFACES: [path: string, call: string][] = [
-      ['src/app/tasks/create/page.tsx',                 'setSubmitError'],
-      ['src/app/tasks/assigned-by-me/page.tsx',         'onError'],
-      ['src/app/tasks/quotation-requests/new/page.tsx', 'setSubmitError'],
-      ['src/components/meetings/MeetingTaskModal.tsx',  'setError'],
-    ]
-    for (const [path, call] of SURFACES) {
-      const src = read(path)
-      const outcomeAt = src.indexOf('notified')
-      assert.ok(outcomeAt > 0, `${path} reads the outcome`)
-      assert.ok(/!notified\.ok/.test(src), `${path} branches on failure`)
-      // The surfacing call must come AFTER the outcome is in hand — an earlier
-      // one belongs to some other failure on the same screen.
-      assert.ok(src.indexOf(call, outcomeAt) > outcomeAt,
-        `${path} surfaces the failure via ${call}, not only a log`)
-    }
-  })
-
-  test('12. a created task is never deleted because its notification failed', () => {
+  test('12. a copied task is never deleted because its notification failed', () => {
+    // The copy route is the one path that still runs the operation (in-process).
     for (const path of [
-      'src/app/tasks/create/page.tsx',
-      'src/app/tasks/assigned-by-me/page.tsx',
-      'src/app/tasks/quotation-requests/new/page.tsx',
-      'src/components/meetings/MeetingTaskModal.tsx',
       'src/app/api/tasks/[id]/copy/route.ts',
     ]) {
       const src = read(path)

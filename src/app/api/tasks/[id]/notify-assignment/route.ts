@@ -7,6 +7,11 @@
  * task-creation screens were issuing an insert the database always rejected and
  * the assignee was never told. See src/lib/tasks/assignmentNotification.ts.
  *
+ * NOW WRITES NOTHING, BY RULE (September 2026): a new task is announced by the
+ * assignee's acknowledgment section, so the operation answers
+ * `skipped_acknowledgment` after authorization. See
+ * src/lib/notifications/taskNotificationPolicy.ts.
+ *
  * THE TASK ID IS THE ONLY INPUT. It arrives in the path; the body is ignored
  * entirely, so there is nothing for a caller to put in it. Recipient, task
  * title, notification type, body and the push flag are all derived from the

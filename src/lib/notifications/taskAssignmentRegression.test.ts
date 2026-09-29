@@ -129,9 +129,11 @@ describe('1-3. assigning a task to another user produces exactly one deliverable
     assert.equal(deliverable.length, 1)
   })
 
-  test('1b. the trusted operation writes exactly one row', async () => {
+  test('1b. the trusted operation writes exactly one row (when the new-task rule allows it)', async () => {
     const store = stubStore()
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    // A new task is silent by rule (taskNotificationPolicy.ts); overridden here
+    // to keep the dormant write path verified.
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
     assert.equal(outcome.status, 'created')
     assert.equal(store.written.length, 1, 'one round trip')
     assert.equal(store.written[0].length, 1, 'one row in it')
@@ -166,8 +168,13 @@ describe('1-3. assigning a task to another user produces exactly one deliverable
 })
 
 // ── 4–7. Where it shows up ───────────────────────────────────────────────────
+//
+// SINCE SEPTEMBER 2026 NO SUCH ROW IS WRITTEN, and older ones are hidden by the
+// Task feed's silent-event exclusion (taskFeedExclusion.test.ts). These still
+// pin the CATEGORY filter — the structural rule that no task row is dropped by
+// its wording — which `inFeed` models on its own.
 
-describe('4-7. the row reaches every Task surface', () => {
+describe('4-7. the category filter selects the row on every Task surface', () => {
   test('4. it is selected by the Task notification list query', () => {
     assert.equal(inFeed(asNotification(), ASSIGNEE), true)
   })
@@ -425,28 +432,16 @@ describe('18. insert failures are surfaced, not swallowed', () => {
     const store = stubStore({
       insert: async () => ({ error: { message: 'new row violates row-level security policy' } }),
     })
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR }, () => true)
     assert.equal(outcome.status, 'error')
     assert.equal(outcome.status === 'error' && outcome.message,
       'new row violates row-level security policy')
   })
 
-  test('every call site reads the outcome and reports it to a person', () => {
-    // A console line is not a report. Each screen surfaces the failure through
-    // whatever channel it already uses for "the task exists but something
-    // else did not happen".
-    const SITES: [path: string, surface: string][] = [
-      ['src/app/tasks/create/page.tsx',                 'setSubmitError'],
-      ['src/app/tasks/assigned-by-me/page.tsx',         'onError'],
-      ['src/app/tasks/quotation-requests/new/page.tsx', 'setSubmitError'],
-      ['src/components/meetings/MeetingTaskModal.tsx',  'setError'],
-    ]
-    for (const [path, surface] of SITES) {
-      const src = read(path)
-      assert.ok(src.includes('!notified.ok'), `${path} reads the outcome`)
-      assert.ok(src.includes(surface), `${path} surfaces it via ${surface}`)
-    }
-    // The server route reports it in its response body, not only in a log.
+  test('the one remaining call site reports the outcome, not only a log', () => {
+    // The creation screens no longer request an assignment notification (a new
+    // task is silent). The copy route still runs the operation in-process and
+    // reports it in its response body.
     const copy = read('src/app/api/tasks/[id]/copy/route.ts')
     assert.ok(copy.includes('assignmentNotified'))
   })
