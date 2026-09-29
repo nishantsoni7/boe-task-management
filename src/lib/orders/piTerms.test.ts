@@ -581,7 +581,7 @@ describe('every surface calls the salesperson the salesperson', () => {
   test('the Upload PI preview', () => {
     const rows = buildOrderInformationRows({
       header: EMPTY_HEADER,
-      grossProductAmount: 1000,
+      productSubtotal: { amount: 1000, text: null, zeroMeaning: null, cell: 'I116' },
       upload: { by: 'Priya Rao', at: '01 Aug 2026' },
     })
     const salesperson = rows.find(r => r.key === 'salesperson')
@@ -626,7 +626,7 @@ describe('every surface calls the salesperson the salesperson', () => {
     // the salesperson on it.
     const rows = buildOrderInformationRows({
       header: EMPTY_HEADER,
-      grossProductAmount: 1000,
+      productSubtotal: { amount: 1000, text: null, zeroMeaning: null, cell: 'I116' },
       upload: { by: 'Priya Rao', at: '01 Aug 2026' },
     })
     assert.ok(rows.some(r => r.label === 'Uploaded by'))

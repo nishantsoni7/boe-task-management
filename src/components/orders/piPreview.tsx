@@ -761,6 +761,12 @@ const DETAIL_HEADER_STYLE: React.CSSProperties = {
   borderBottom: '1px solid rgba(232,160,48,0.20)',
 }
 
+/** The commercial ledger's spacing, stated once so the rows stay even. */
+const LEDGER_EDGE_PX = 8
+const LEDGER_ROW_PAD_PX = 7
+const EMPHASIS_ROW_PAD_PX = 10
+const GROUP_GAP_PX = 4
+
 export function PiCommercialSummary({ rows, title = 'Commercial summary', variant = 'preview' }: {
   rows: readonly PiAmountRow[]
   title?: string
@@ -785,6 +791,12 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
   // detail card's markup is exactly what it was.
   const ledger = rows.filter(row => row.emphasis !== 'advance')
   const advance = rows.find(row => row.emphasis === 'advance') ?? null
+  // THE GRAND TOTAL CLOSES THE LEDGER FLUSH (2026-09-27). The list's own bottom
+  // padding sat under the Grand Total's ground, so the highlighted row was
+  // followed by a strip of white and then the advance's rule — an empty band
+  // that read as a missing line. When the total is the last row, the list
+  // stops at its edge; otherwise the list keeps its bottom padding.
+  const endsOnTotal = ledger.length > 0 && ledger[ledger.length - 1].emphasis === 'total'
 
   /** Shared by the ledger's figures and the callout's, so they cannot drift. */
   const amountStyle = (row: PiAmountRow): React.CSSProperties => ({
@@ -809,7 +821,7 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
     }}>
       <PiCard style={detail ? DETAIL_CARD_STYLE : undefined}>
         <PiCardHeader title={title} style={detail ? DETAIL_HEADER_STYLE : undefined} />
-        <div style={{ padding: '8px 0' }}>
+        <div style={{ padding: endsOnTotal ? `${LEDGER_EDGE_PX}px 0 0` : `${LEDGER_EDGE_PX}px 0` }}>
           {ledger.map(row => {
           // THE STRONGEST POINT ON THE CARD, and the only row that gets a class.
           // Its ground and its rule live in CSS (see .pi-commercial-grand-total)
@@ -828,7 +840,10 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
               className={grandTotal ? 'pi-commercial-grand-total' : undefined}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
-                padding: row.emphasis ? '11px 18px' : '6px 18px',
+                // One rhythm for every row. The emphasised rows are taller by the
+                // same step above and below, so the Grand Total sits centred in
+                // its ground instead of floating above an extra gap.
+                padding: row.emphasis ? `${EMPHASIS_ROW_PAD_PX}px 18px` : `${LEDGER_ROW_PAD_PX}px 18px`,
                 // A hairline before tax, so the column reads as three groups
                 // rather than nine equal lines: what the products came to, what
                 // tax does to it, and what is owed. `groupStart` is set by the
@@ -838,8 +853,11 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                   : row.groupStart ? `1px solid ${colors.borderSoft}` : 'none',
                 // `undefined`, never 0: a falsy-but-present value would still be
                 // serialised as `margin-top:0` on every other row.
-                marginTop: row.groupStart ? '4px' : undefined,
-                paddingTop: row.groupStart ? '10px' : undefined,
+                // The same space on both sides of the rule: the row above ends
+                // with its own padding plus this margin, and this row starts
+                // with the same total below the line.
+                marginTop: row.groupStart ? `${GROUP_GAP_PX}px` : undefined,
+                paddingTop: row.groupStart ? `${LEDGER_ROW_PAD_PX + GROUP_GAP_PX}px` : undefined,
                 // The Grand Total's ground comes from the class; every other
                 // row states its own, so a row can never inherit one.
                 background: grandTotal ? undefined : 'transparent',

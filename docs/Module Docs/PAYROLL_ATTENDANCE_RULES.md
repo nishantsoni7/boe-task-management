@@ -295,3 +295,40 @@ header comment.
 
 Old application code with these migrations applied is safe — nothing selects the
 new columns, and `NULL` satisfies every constraint.
+
+---
+
+## 9. Attendance requests and the payroll review (2026-09-27, branch `feat/attendance-requests`)
+
+Employees can now request permission for a late arrival, early departure, time
+out, half day or leave, and an admin approves or rejects it. Before payroll, the
+admin reviews each employee's month and records a salary treatment for each
+attendance event. See `ATTENDANCE_REQUESTS.md`.
+
+**None of this changes the calculation above.** The engine does not read
+requests, approvals or review decisions. An approved request never replaces the
+actual punch. The only way a decision changes pay is still an attendance
+correction (§2.2 waivers / day treatment). For a late arrival, early departure
+or missing punch, the review applies that correction itself, through the same
+service the payslip's correction uses (`applyAttendanceCorrection`). Every
+other event is corrected on the payslip. The review reads the stored draft's
+deduction lines and shows an event as matching only when the draft agrees, so
+the same minutes cannot be deducted, or waived, twice. The "more than three
+uninformed late arrivals" rule is a review flag only; no extra deduction exists
+for it.
+
+**Correction recalculation now uses the period's pinned settings** (§3.1), as
+generation always did. Before this change the correction route passed no
+settings and recalculated under the defaults. See `ATTENDANCE_REQUESTS.md` §4.
+
+---
+
+## 10. A month is generated and locked only after it ends (2026-09-27, branch `feat/attendance-requests`)
+
+The engine counts every unpunched working day in the month as an absence and
+has no notion of today, so a month generated before it ended charged the days
+still to come as absences. Generation, attendance-correction recalculation and
+locking now refuse a month until 00:00 IST on the 1st of the next month
+(`src/lib/payroll/periodCompletion.ts`). Payroll Monthly Preview shows the
+current month only up to yesterday. A completed month calculates exactly as
+before. See `ATTENDANCE_REQUESTS.md` §3b.

@@ -16,6 +16,7 @@ import {
   VERSION_CONTENT_NOT_RECORDED,
   piVersionPdfFilename,
   piVersionPdfHref,
+  piVersionPdfOrderNumber,
   piVersionPdfSource,
 } from './piVersionPdf'
 
@@ -113,6 +114,43 @@ describe('the actions and the file', () => {
     assert.equal(piVersionPdfHref('o', 'v', true), '/api/orders/o/pi-versions/v/pdf?download=1')
     assert.equal(piVersionPdfFilename('524', 2), 'Order-524-PI-V2.pdf')
     assert.equal(piVersionPdfFilename('5"2;4', 1), 'Order-524-PI-V1.pdf', 'nothing can break out of the header')
+  })
+})
+
+describe('each version prints the Order number stored on it (20270201000000)', () => {
+  test('a version issued before keeps "526"; one created since prints "0526"', () => {
+    assert.equal(piVersionPdfOrderNumber('526'), '526')
+    assert.equal(piVersionPdfOrderNumber('0526'), '0526', 'the stored four-digit form is printed as it is')
+    assert.equal(piVersionPdfFilename(piVersionPdfOrderNumber('526')!, 2), 'Order-526-PI-V2.pdf')
+    assert.equal(piVersionPdfFilename(piVersionPdfOrderNumber('0526')!, 2), 'Order-0526-PI-V2.pdf')
+  })
+  test('nothing usable stored reads as missing, never as a guess', () => {
+    for (const missing of [null, undefined, '', '   ']) {
+      assert.equal(piVersionPdfOrderNumber(missing), null, JSON.stringify(missing))
+    }
+  })
+})
+
+describe('the route prints the stored number, and refuses without one', () => {
+  const route = readFileSync('src/app/api/orders/[id]/pi-versions/[versionId]/pdf/route.ts', 'utf8').replace(/\r\n/g, '\n')
+  test('the version is read, as the caller, with its stored number', () => {
+    assert.match(route, /\.from\('order_pi_versions'\)\.select\('id, order_id, submission_id, version_number, status, pdf_order_number'\)/)
+    assert.ok(route.includes('const orderNumber = piVersionPdfOrderNumber(version.pdf_order_number)'))
+  })
+  test('the header, title and filename all use that one value', () => {
+    assert.equal((route.match(/const orderNumber =/g) ?? []).length, 1, 'orderNumber is set once')
+    assert.ok(route.includes('orderNumber, submission, items'), 'the PDF header (the Confirmed PDF model)')
+    assert.ok(route.includes('title: `Order ${orderNumber} — PI V${version.version_number}`'), 'the PDF title')
+    assert.ok(route.includes('piVersionPdfFilename(orderNumber, version.version_number)'), 'the filename')
+  })
+  test('the Order\'s number is no longer formatted for the PDF: it would rewrite issued PDFs', () => {
+    assert.equal(/formatOrderOperationalNumber/.test(route), false)
+    assert.equal(/orderNumber\s*=\s*[^\n]*display_number/.test(route), false)
+  })
+  test('a missing value is refused before anything is read with the service role', () => {
+    const refusal = route.indexOf("'PI_PDF_ORDER_NUMBER_MISSING'")
+    assert.ok(refusal > 0 && refusal < route.indexOf('adminClient()'))
+    assert.match(route, /if \(!orderNumber\) \{\n\s*return fail\(500, 'PI_PDF_ORDER_NUMBER_MISSING'/)
   })
 })
 

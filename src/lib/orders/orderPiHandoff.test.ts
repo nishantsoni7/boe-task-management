@@ -254,7 +254,7 @@ describe('the handoff adds facts rather than repeating them', () => {
 
   test('Product value is DROPPED when the Order\'s own strip already states it', () => {
     const figures = handoffFigures(rows, ORDER_STATES_BOTH)
-    assert.ok(!figures.some(f => f.key === 'gross'),
+    assert.ok(!figures.some(f => f.key === 'productValue'),
       'orders.total_product_value is already on screen; a second Product value is the same rupees under a second caption')
   })
 
@@ -267,7 +267,7 @@ describe('the handoff adds facts rather than repeating them', () => {
 
   test('a NULL on the Order is not "already shown", so the PI carries the figure', () => {
     const figures = handoffFigures(rows, { totalProductValue: null, totalValue: 1380600 })
-    assert.ok(figures.some(f => f.key === 'gross'),
+    assert.ok(figures.some(f => f.key === 'productValue'),
       'an Order printing an em dash states nothing; the PI has the number')
   })
 

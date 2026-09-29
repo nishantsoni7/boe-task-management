@@ -2746,7 +2746,15 @@ body {
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
   min-width: 0;
+  /* The card's own width, not the window's, decides the two-column layout:
+     the sidebar takes a different share at every desktop size. */
+  container-type: inline-size;
 }
+/* MAIN PI | DESIGN FILES over CLIENT PO. Stacked, in that order, by default;
+   side by side (about 60 / 40) once the card is wide enough for both. */
+.order-docs-main, .order-docs-side { min-width: 0; }
+.order-docs-side { border-top: 1px solid #F0F2F5; }
+.order-docs-link.order-doc-pi-history { margin-left: auto; padding: 2px 0; }
 .order-docs-head {
   display: flex;
   align-items: center;
@@ -2953,6 +2961,10 @@ body {
 .order-docsub-file:hover .order-docsub-file-name { text-decoration: underline; }
 .order-docsub-file-name { overflow-wrap: anywhere; min-width: 0; }
 .order-docsub-file-size { color: #8C94A6; font-size: 11px; white-space: nowrap; }
+/* The files chosen in the upload dialog, named before they are sent. */
+.order-docsub-chosen { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.order-docsub-chosen li { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: #3A4150; }
+.order-docsub-chosen .order-docsub-file-name { min-width: 0; overflow-wrap: anywhere; }
 .order-docsub-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .order-docsub-fieldset legend { font-size: 11px; font-weight: 600; color: #6B7384; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
 .order-docsub-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; }
@@ -2988,6 +3000,183 @@ body {
   .order-doc-change-actions { justify-content: stretch; }
   .order-doc-change-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
 }
+
+/* TWO COLUMNS once the Documents card is wide enough. Inside them every row
+   stacks what it is, when, and its actions, so neither column squeezes three
+   columns of its own. Declared after the viewport rules above so it wins in a
+   wide card whatever the window width. */
+/* MAIN PI: stacked in a narrow card — what it is, its dates, then its actions. */
+.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.order-docs-main .order-doc-row-meta,
+.order-docs-main .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+.order-docs-main .order-doc-row-actions { justify-content: flex-start; }
+@container (min-width: 760px) {
+  /* MAIN PI across the full width: what it is beside its dates, actions below. */
+  .order-docs-main .order-doc-section { padding: 14px 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .order-docs-main .order-doc-row-actions { grid-column: 1 / -1; }
+  /* DESIGN FILES | CLIENT PO, side by side, each stacking what, when and files. */
+  .order-docs-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .order-docs-side .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: start; padding: 13px 18px 14px; }
+  .order-docs-side .order-doc-section + .order-doc-section { border-top: 0; border-left: 1px solid #F0F2F5; }
+  .order-docs-side .order-doc-row-meta,
+  .order-docs-side .order-doc-row-actions { grid-column: auto; grid-row: auto; }
+  .order-docs-side .order-doc-row-meta:empty,
+  .order-docs-side .order-doc-row-actions:empty { display: none; }
+  .order-docs-side .order-doc-row-actions { justify-content: flex-start; }
+}
+
+/* THE PI'S PRODUCT PICTURES, a quiet strip under the Main PI they belong to. */
+.order-doc-pictures {
+  display: flex;
+  align-items: center;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+  margin: 0 18px 14px;
+  padding: 9px 12px;
+  border: 1px solid #EEF0F3;
+  border-radius: 8px;
+  background: #FAFBFC;
+}
+.order-doc-pictures-icon { color: #8C94A6; flex: 0 0 auto; }
+.order-doc-pictures-main { flex: 1 1 220px; min-width: 0; }
+.order-doc-pictures-title { margin: 0; font-size: 12.5px; font-weight: 700; color: #111318; }
+.order-doc-pictures-line { margin: 1px 0 0; font-size: 12.5px; color: #3A4150; }
+.order-doc-pictures-line--warn { color: #B42318; }
+.order-doc-pictures-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* A file: its name opens it; the icon beside it saves it. */
+.order-doc-file-row { display: flex; align-items: center; gap: 4px; }
+.order-doc-file-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6B7384;
+  cursor: pointer;
+}
+.order-doc-file-download:hover { background: #F2F4F7; color: #111318; }
+.order-doc-file-download:focus-visible { outline: 2px solid #2F6FEB; outline-offset: 1px; }
+
+@container (min-width: 1100px) {
+  /* Wide enough for all three side by side: what | when | how to open it. */
+  .order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr) minmax(0, 320px) auto; }
+  .order-docs-main .order-doc-row-actions { grid-column: auto; justify-content: flex-end; }
+}
+
+@media (max-width: 560px) {
+  .order-doc-pictures { margin: 0 14px 12px; }
+  .order-doc-pictures-actions { flex: 1 1 100%; }
+  .order-doc-pictures-actions .order-doc-action { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+}
+
+/* ── EDIT PI — the full page (/orders/[id]/edit-pi, /orders/drafts/[id]/edit-pi) ──
+   One column of section cards, each with a title and a one-line summary, a
+   quiet section index, and one sticky action bar. No nested scrolling: the
+   page scrolls, and the bar stays in reach. */
+.pi-edit-page { display: flex; flex-direction: column; gap: 14px; max-width: 1080px; width: 100%; margin: 0 auto; padding-bottom: 96px; }
+.pi-edit-loading { padding: 24px 0; font-size: 13px; color: #6B7384; }
+.pi-edit-intro { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.pi-edit-back { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: #FFFFFF; color: #111318; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.pi-edit-back:hover { background: #F7F8FA; }
+.pi-edit-intro-text { flex: 1 1 320px; min-width: 0; }
+.pi-edit-context { margin: 0; font-size: 15px; font-weight: 700; color: #111318; letter-spacing: -0.01em; }
+.pi-edit-note { margin: 3px 0 0; font-size: 12.5px; color: #6B7384; line-height: 1.5; max-width: 760px; }
+.pi-edit-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 4px; overflow-x: auto; padding: 6px; border-radius: 10px; background: rgba(247,248,250,0.92); backdrop-filter: blur(6px); border: 1px solid rgba(0,0,0,0.06); scrollbar-width: none; }
+.pi-edit-nav::-webkit-scrollbar { display: none; }
+.pi-edit-nav a { flex: 0 0 auto; padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: #3A4150; text-decoration: none; white-space: nowrap; }
+.pi-edit-nav a:hover { background: #FFFFFF; color: #111318; }
+.pi-edit-alert { padding: 10px 12px; border-radius: 8px; background: #FEF3F2; color: #B42318; font-size: 13px; }
+.pi-edit-resume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(47,111,235,0.35); background: #F2F6FF; font-size: 13px; }
+.pi-edit-resume > span { flex: 1 1 240px; }
+.pi-edit-card { background: #FFFFFF; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; scroll-margin-top: 64px; min-width: 0; }
+.pi-edit-card-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px 12px; border-bottom: 1px solid #F0F2F5; }
+.pi-edit-card-heading { flex: 1 1 auto; min-width: 0; }
+.pi-edit-card-title { margin: 0; font-size: 14px; font-weight: 700; color: #111318; }
+.pi-edit-card-summary { margin: 2px 0 0; font-size: 12.5px; color: #6B7384; overflow-wrap: anywhere; }
+.pi-edit-card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.pi-edit-denied { margin: 0; font-size: 13.5px; color: #3A4150; }
+.pi-edit-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px 14px; }
+.pi-edit-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pi-edit-field > span { font-size: 12px; font-weight: 600; color: #3A4150; }
+.pi-edit-field--wide { grid-column: 1 / -1; }
+.pi-edit-field .boe-input { width: 100%; box-sizing: border-box; }
+.pi-edit-field textarea.boe-input { resize: vertical; min-height: 58px; }
+.pi-edit-add { padding: 6px 12px; font-size: 12.5px; }
+.pi-edit-products { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pi-edit-product { border: 1px solid #ECEEF2; border-radius: 10px; padding: 12px 14px; background: #FFFFFF; }
+.pi-edit-product--new { border-color: rgba(22,101,52,0.3); background: #F6FBF7; }
+.pi-edit-product--removed { opacity: 0.6; background: #FAFAFB; }
+.pi-edit-product-head { display: flex; align-items: center; gap: 10px; }
+.pi-edit-product-title { flex: 1 1 auto; min-width: 0; font-size: 13px; color: #111318; overflow-wrap: anywhere; }
+.pi-edit-product-total { font-size: 13px; font-weight: 700; color: #111318; white-space: nowrap; }
+.pi-edit-product-toggle { padding: 4px 9px; font-size: 12px; }
+.pi-edit-product-body { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 14px; margin-top: 10px; }
+.pi-edit-photo { display: flex; flex-direction: column; gap: 6px; }
+.pi-edit-photo-frame { aspect-ratio: 1; border-radius: 8px; border: 1px solid #ECEEF2; background: #F7F8FA; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: #8C94A6; }
+.pi-edit-photo-frame img { width: 100%; height: 100%; object-fit: cover; }
+.pi-edit-photo-btn { padding: 4px 6px; font-size: 11.5px; justify-content: center; cursor: pointer; }
+.pi-edit-hint { margin: 0; font-size: 12px; color: #6B7384; line-height: 1.5; }
+.pi-edit-figures { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 14px; border-radius: 10px; background: #F7F8FA; }
+.pi-edit-figures > div { min-width: 0; }
+.pi-edit-figures dt { font-size: 11.5px; color: #6B7384; }
+.pi-edit-figures dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; color: #111318; }
+.pi-edit-figures-total dd { color: #0B5FD6; }
+.pi-edit-attach { display: flex; flex-direction: column; gap: 12px; }
+.pi-edit-attach-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid #ECEEF2; border-radius: 10px; }
+.pi-edit-attach-item > svg { color: #6B7384; margin-top: 2px; flex: 0 0 auto; }
+.pi-edit-attach-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pi-edit-attach-title { margin: 0; font-size: 13px; font-weight: 700; color: #111318; }
+.pi-edit-attach-line { margin: 0; font-size: 12.5px; color: #3A4150; overflow-wrap: anywhere; }
+.pi-edit-problems { margin: 0; padding-left: 18px; color: #B42318; font-size: 12.5px; }
+.pi-edit-diff { border: 1px solid #ECEEF2; border-radius: 10px; padding: 12px 14px; }
+.pi-edit-bar { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.96); backdrop-filter: blur(6px); box-shadow: 0 -6px 18px rgba(16,24,40,0.06); }
+.pi-edit-bar-status { flex: 1 1 200px; min-width: 0; font-size: 12.5px; color: #6B7384; }
+.pi-edit-bar-failure { color: #B42318; }
+@media (min-width: 600px) {
+  .pi-edit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1000px) {
+  .pi-edit-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pi-edit-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Code, quantity, price and dimensions on one line; name and the long text across. */
+  .pi-edit-grid--product { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .pi-edit-card-head { padding: 12px 14px 10px; flex-wrap: wrap; }
+  .pi-edit-card-body { padding: 14px; }
+  .pi-edit-product-body { grid-template-columns: minmax(0, 1fr); }
+  .pi-edit-photo { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; align-items: start; }
+  .pi-edit-photo-frame { grid-row: span 2; }
+  .pi-edit-attach-item { flex-wrap: wrap; }
+  .pi-edit-attach-item > .boe-btn { width: 100%; justify-content: center; }
+  .pi-edit-bar { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .pi-edit-bar > .boe-btn { flex: 1 1 auto; justify-content: center; min-height: 42px; }
+  .pi-edit-bar-status { flex-basis: 100%; }
+}
+
+/* ── The PI history popup (PiVersionHistory) ── */
+.pi-history-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+.pi-history-intro { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12px; color: #6B7384; line-height: 1.45; }
+.pi-history-notice { margin: 0; font-size: 12px; color: #166534; line-height: 1.45; }
+.pi-history-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pi-history-summary { font-size: 12.5px; color: #111318; line-height: 1.4; overflow-wrap: anywhere; }
+.pi-history-rejected { font-size: 11.5px; color: #991B1B; overflow-wrap: anywhere; }
 
 /* The "Needs your action" queue on the Orders dashboard. */
 .order-docq { background: #FFFFFF; border: 1px solid rgba(190,140,40,0.45); border-radius: 10px; margin-bottom: 14px; min-width: 0; }
@@ -5670,46 +5859,157 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   transform: none;
 }
 
-/* ── Payment status beside Management review ─────────────────────────────────
-   ONE ROW on a wide column: payment ~70%, the review decisions ~30%. Measured on
-   the column itself rather than the viewport, so the sidebar cannot squeeze the
-   review card below a readable width; below that the two stack, payment first.
-   A workflow panel with nothing to draw leaves Payment status the whole row. */
-.pi-detail-decision-row {
+/* ── The two split rows ──────────────────────────────────────────────────────
+   Row 2: Payment status | Product value, Total before GST, billing, commission.
+   Row 3: Client PO, Design Files and the order highlight | Ready for management?
+   ~60/40 on a wide column, measured on the column itself rather than the
+   viewport so the sidebar cannot squeeze the right card below a readable width;
+   below that the two stack, left first. A side with nothing to draw leaves the
+   other the whole row. */
+.pi-detail-split {
   container-type: inline-size;
   min-width: 0;
 }
 
-.pi-detail-decision-grid {
+.pi-detail-split-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
-@container (min-width: 900px) {
-  .pi-detail-decision-grid {
-    grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
-    /* TOP-ALIGNED, NOT STRETCHED. Payment status is a disclosure now and is a
-       header and nothing else while it is closed; the grid's default stretch
-       would pull that one header down to the review card's full height and
-       leave a card-shaped hole under it. Each card is as tall as it is. */
+.pi-detail-split-stack {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pi-detail-split-stack:empty {
+  display: none;
+}
+
+@container (min-width: 860px) {
+  .pi-detail-split-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    /* TOP-ALIGNED, NOT STRETCHED. Payment status is a disclosure and is a
+       header and nothing else while it is closed; stretching it to the card
+       beside it would leave a card-shaped hole under it. */
     align-items: start;
   }
-  .pi-detail-decision-grid > :only-child {
+  .pi-detail-split-grid > :only-child,
+  .pi-detail-split-grid:has(> .pi-detail-split-stack:empty) > * {
     grid-column: 1 / -1;
   }
-  /* In the narrow review column the controls take the column's width, and the
-     approval control gets a line of its own, so no label is squeezed. */
-  .pi-detail-decision-grid .pi-detail-workflow-head > :not(:first-child) {
+  /* In the narrower right column the review controls take the column's width,
+     and the approval control gets a line of its own, so no label is squeezed. */
+  .pi-detail-split-grid .pi-detail-workflow-head > :not(:first-child) {
     flex: 1 1 100%;
   }
-  .pi-detail-decision-grid .pi-detail-workflow-actions > .boe-btn {
+  .pi-detail-split-grid .pi-detail-workflow-actions > .boe-btn {
     flex: 1 1 auto;
     justify-content: center;
   }
-  .pi-detail-decision-grid .pi-detail-workflow-actions > .pi-approve-btn {
+  .pi-detail-split-grid .pi-detail-workflow-actions > .pi-approve-btn {
     flex-basis: 100%;
   }
+}
+
+/* THE ORDER HIGHLIGHT (20270210000000): an optional internal note, in its own
+   quiet card beside the documents. */
+.pi-detail-highlight {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.pi-detail-highlight-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.pi-detail-highlight-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-detail-highlight-optional {
+  font-size: 11px;
+  color: #8c94a6;
+}
+
+.pi-detail-highlight-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111318;
+  background: #fff;
+}
+
+.pi-detail-highlight-input:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
+}
+
+.pi-detail-highlight-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.pi-detail-highlight-note {
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #8c94a6;
+}
+
+/* In the editor's footer the note takes the row's slack; read-only, it is a line. */
+.pi-detail-highlight-foot .pi-detail-highlight-note {
+  flex: 1 1 220px;
+}
+
+.pi-detail-highlight-count {
+  font-size: 11px;
+  color: #8c94a6;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-highlight-text {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #111318;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-highlight-error {
+  font-size: 11.5px;
+  color: #b23b3b;
+}
+
+.pi-detail-highlight-saved {
+  font-size: 11.5px;
+  color: #2f7a52;
 }
 
 /* ── The lower information grid ───────────────────────────────────────────────
@@ -5825,12 +6125,19 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   padding-bottom: 0;
 }
 
-/* ── The context row ──────────────────────────────────────────────────────────
-   Reserved Order no. | Submitted for review — ONE card, two equal columns from
-   tablet width up, stacked on a phone. The divider is the second cell's own
-   edge: a top rule while stacked, a left rule side by side. */
+/* ── The top card ─────────────────────────────────────────────────────────────
+   Order | Client | Sales and dates — ONE card, three columns once the card is
+   wide enough, stacked in that reading order below it. Measured on the card,
+   not the viewport, so the sidebar cannot squeeze three columns. The divider
+   is each later group's own edge: a top rule while stacked, a left rule side
+   by side — never both. */
 
-.pi-detail-context {
+.pi-detail-top {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.pi-detail-top-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
 }
@@ -5839,22 +6146,45 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 18px 15px;
+  gap: 8px;
+  padding: 16px 20px 18px;
 }
 
 .pi-detail-context-cell + .pi-detail-context-cell {
   border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-@media (min-width: 768px) {
-  .pi-detail-context {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@container (min-width: 820px) {
+  .pi-detail-top-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
   }
   .pi-detail-context-cell + .pi-detail-context-cell {
     border-top: none;
     border-left: 1px solid rgba(0, 0, 0, 0.07);
   }
+}
+
+/* The client's contact and location, one per line in their column. */
+.pi-detail-top .pi-detail-meta {
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A long client name takes the column; its Edit or Request correction wraps
+   under it rather than squeezing the name into a narrow strip. */
+.pi-detail-top .pi-detail-summary-party {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.pi-detail-top .pi-detail-overview-file {
+  margin-top: 0;
+}
+
+.pi-detail-context-who-label {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #8c94a6;
 }
 
 .pi-detail-context-head {
@@ -6023,32 +6353,6 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   overflow-wrap: anywhere;
 }
 
-/* ── The PI overview ──────────────────────────────────────────────────────────
-   Who and when on the left, what it is worth on the right, as two balanced
-   columns once there is room; one column, in that order, below it. */
-
-.pi-detail-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px 18px 18px;
-}
-
-@media (min-width: 1024px) {
-  .pi-detail-overview {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: stretch;
-  }
-}
-
-.pi-detail-overview-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .pi-detail-overview-file {
   align-self: flex-start;
   max-width: 100%;
@@ -6120,6 +6424,16 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   gap: 12px 20px;
 }
 
+/* The app date and the uploaded workbook disagree: both are said, nothing is
+   chosen silently (workbookDateNotes). */
+.pi-detail-dates-workbook {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #6b7384;
+  overflow-wrap: anywhere;
+}
+
 .pi-detail-dates-edit {
   position: absolute;
   top: 10px;
@@ -6156,6 +6470,14 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   color: #96702e;
 }
 
+/* Not asked for yet — Submit for Approval collects it. Neutral, like any fact. */
+.pi-detail-date-pending {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #6b7384;
+}
+
 .pi-detail-date-note {
   font-size: 11px;
   line-height: 1.35;
@@ -6176,6 +6498,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   container-type: inline-size;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   border-radius: 9px;
   background: #fafbfc;
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -6201,13 +6524,16 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-@container (min-width: 480px) {
+@container (min-width: 340px) {
   .pi-detail-figures-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .pi-detail-figure + .pi-detail-figure {
+  .pi-detail-figure:nth-child(2) {
     border-top: none;
     border-left: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .pi-detail-figure:nth-child(3) {
+    grid-column: 1 / -1;
   }
 }
 
@@ -6271,6 +6597,119 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   font-weight: 700;
   color: #9a6212;
 }
+
+/* THE INTERNAL MIDDLEMAN ANSWER — a full-width row under the three figures, so
+   a long answer ("Yes — agent, 2.5% of Total before GST") wraps rather than
+   squeezing Billing percentage. BOE-only, and labelled as such. */
+.pi-detail-internal {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: 5px 10px;
+  padding: 12px 16px 13px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Everything but the action spans the row; the action sits beside the label. */
+.pi-detail-internal > :not(.pi-detail-internal-head):not(.pi-detail-internal-action) { grid-column: 1 / -1; }
+.pi-detail-internal .pi-detail-state-chip { justify-self: start; }
+
+.pi-detail-internal-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.pi-detail-internal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef0f4;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #6b7384;
+  white-space: nowrap;
+}
+
+.pi-detail-internal-action {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pi-detail-internal-value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #111318;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-restricted {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #6b7384;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-status {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #3a4150;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-internal-status svg { margin-top: 1px; }
+.pi-detail-internal-status--ready svg { color: #2f7a52; }
+/* NEEDED BEFORE REVIEW is the one thing here somebody must act on. */
+.pi-detail-internal-status--needed { color: #8a4b12; font-weight: 600; }
+.pi-detail-internal-status--needed svg { color: #d9a552; }
+.pi-detail-internal-status--neutral { color: #6b7384; }
+
+.pi-detail-internal-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8c94a6;
+}
+
+@media (max-width: 560px) {
+  /* Answer, warning, then the action that resolves it — full width to tap. */
+  .pi-detail-internal-action { grid-column: 1 / -1; grid-row: auto; order: 10; min-height: 38px; justify-content: center; }
+  .pi-detail-internal-note { order: 11; }
+}
+
+/* WHAT CHANGED SINCE THE RETURN — beside the employee's reply, for the reviewer. */
+.pi-detail-resubmission {
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: #f5f8ff;
+  border: 1px solid rgba(85, 133, 232, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pi-detail-resubmission-title { font-size: 11px; font-weight: 700; color: #3a5fb0; }
+.pi-detail-resubmission-line { margin: 0; font-size: 12px; color: #111318; line-height: 1.45; }
+.pi-detail-resubmission-note { margin: 0; font-size: 11px; color: #6b7384; line-height: 1.4; }
+.pi-detail-resubmission-figures { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pi-detail-resubmission-figure { display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr); gap: 2px 8px; font-size: 12px; min-width: 0; }
+.pi-detail-resubmission-figure dt { color: #6b7384; }
+.pi-detail-resubmission-figure dd { margin: 0; color: #111318; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pi-detail-resubmission-before { color: #6b7384; text-decoration: line-through; }
 
 /* ── Payment status ───────────────────────────────────────────────────────── */
 
@@ -7263,6 +7702,79 @@ h1.boe-page-title { margin-top: 0; }
   /* On a phone the two sit side by side on their own line, full width between
      them — no horizontal scrolling, and each stays a comfortable tap target. */
   .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
+}
+
+/* ── Reimbursement (20270205120000) ──
+   The "Missing bill" toggle sits in the toolbar at the height of its selects;
+   the payee opens the expense's details; the selection bar stays in reach at the
+   bottom of the screen while pending expenses are ticked. */
+.expense-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #3A4150;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.expense-open-link {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-open-link:hover,
+.expense-open-link:focus-visible { text-decoration: underline; }
+.expense-selection-bar {
+  position: fixed;
+  left: 282px;
+  right: 22px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #E3E6EB;
+  border-radius: 10px;
+  background: #FFFFFF;
+  box-shadow: 0 -2px 10px rgba(20, 25, 34, 0.06);
+}
+.expense-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.expense-selection-spacer { height: 88px; }
+@media (max-width: 480px) {
+  .expense-filter-check { height: 38px; font-size: 13px; }
+}
+/* The bar is FIXED, not sticky: below 768px .boe-main-content sets
+   overflow-x: hidden, which makes it the container sticky binds to while the
+   WINDOW scrolls, so sticky would never engage. Beside the 260px sidebar on a
+   desktop, full width on a phone (no sidebar); the spacer keeps the last row
+   reachable above it. */
+@media (max-width: 767px) {
+  .expense-selection-bar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .expense-selection-spacer { height: 96px; }
 }
 
 /* ── The operations review of a revised PI (20270113000000) ── */

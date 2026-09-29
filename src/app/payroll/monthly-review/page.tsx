@@ -82,6 +82,9 @@ export default function PayrollMonthlyReviewPage() {
   const [results,   setResults]   = useState<AnyResult[] | null>(null)
   const [token,     setToken]     = useState('')
   const [error,     setError]     = useState('')
+  // Set when the month is still in progress: the preview then stops at this
+  // date and days after it are not charged (src/lib/payroll/periodCompletion.ts).
+  const [calculatedThrough, setCalculatedThrough] = useState<string | null>(null)
   const [showSkip,  setShowSkip]  = useState(false)
 
   // The month the table below is actually showing, which is not the month in
@@ -125,7 +128,7 @@ export default function PayrollMonthlyReviewPage() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
       const json = await res.json()
-      if (res.ok) { setResults(json.results); setShown({ year: y, month: m }) }
+      if (res.ok) { setResults(json.results); setShown({ year: y, month: m }); setCalculatedThrough(json.calculated_through ?? null) }
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,6 +144,7 @@ export default function PayrollMonthlyReviewPage() {
     if (res.ok) {
       setResults(json.results)
       setShown({ year, month })
+      setCalculatedThrough(json.calculated_through ?? null)
     } else {
       setError(json.error ?? 'Failed to load preview')
       setResults(null)
@@ -242,6 +246,18 @@ export default function PayrollMonthlyReviewPage() {
             </button>
           </div>
         </div>
+
+        {/* A month still in progress: say what the figures cover. */}
+        {calculatedThrough && shown && (
+          <div role="status" style={{
+            background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.30)',
+            borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#8A5A12', lineHeight: 1.5,
+          }}>
+            This month is still in progress. The preview covers days up to {calculatedThrough} only; days after it
+            have not happened and are not counted or charged. Payroll for the month can be generated and locked
+            once it has ended.
+          </div>
+        )}
 
         {/* Error */}
         {error && (

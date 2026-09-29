@@ -82,11 +82,13 @@ and mobile cannot disagree.
 3. Attendance Upload — `/attendance/upload`
 4. Attendance Records — `/attendance/records`
 5. Monthly Attendance Review — `/attendance/monthly-review`
-6. Payroll Runs — `/payroll`
-7. Payroll Monthly Preview — `/payroll/monthly-review`
-8. How Payroll Works — `/payroll/how-it-works`
-9. Payroll Settings — `/payroll/settings`
-10. Holiday Management — `/attendance/holidays`
+6. Attendance Requests — `/attendance/requests` (request queue + monthly payroll
+   review; see `ATTENDANCE_REQUESTS.md`)
+7. Payroll Runs — `/payroll`
+8. Payroll Monthly Preview — `/payroll/monthly-review`
+9. How Payroll Works — `/payroll/how-it-works`
+10. Payroll Settings — `/payroll/settings`
+11. Holiday Management — `/attendance/holidays`
 
 Plus the issue feed, via the notification bell → `/attendance/notifications`.
 
