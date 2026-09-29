@@ -46,6 +46,7 @@ import {
   piPaymentErrorMessage,
   piPaymentStatusLabel,
   piPaymentStatusTone,
+  piPaymentTermLines,
   piPaymentTiles,
   validatePiPaymentForm,
   type PiPaymentFormState,
@@ -482,5 +483,14 @@ describe('the card renders the database figures exactly', () => {
     assert.equal(tiles.find(t => t.key === 'needed')!.value, '₹1.11')
     assert.equal(tiles.find(t => t.key === 'balance')!.value, '₹2.22')
     assert.equal(tiles.find(t => t.key === 'percent')!.value, '99.99%')
+  })
+})
+
+describe('the agreed terms shown beside the payments', () => {
+  test('payment terms are listed; billing terms are never drawn, even when stored', () => {
+    const lines = piPaymentTermLines({ payment_terms: '50% advance', billing_terms: '100% invoice before dispatch' } as PiPaymentSummary)
+    assert.deepEqual(lines, [{ key: 'payment_terms', label: 'Payment terms', value: '50% advance' }])
+    assert.deepEqual(piPaymentTermLines({ billing_terms: 'only billing terms' } as PiPaymentSummary), [])
+    assert.deepEqual(piPaymentTermLines(null), [])
   })
 })
