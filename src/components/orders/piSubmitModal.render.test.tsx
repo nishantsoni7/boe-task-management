@@ -227,7 +227,8 @@ describe('the advance step states the live payment position', () => {
 
   test('it says only verified payment counts, without claiming any verification', () => {
     assert.ok(/payment awaiting Finance verification is counted as attached/i.test(html))
-    assert.ok(/only payment Finance has verified counts towards creating the Order/i.test(html))
+    // Two later gates, each named: the Order (verified payment or an approved exception) and production acceptance.
+    assert.ok(html.includes('only verified payment counts later — to create the Order (unless an exception is approved) and to accept it for production (unless an administrator approves production below 40%)'))
     assert.ok(!/has been verified by Finance/i.test(html))
   })
 
