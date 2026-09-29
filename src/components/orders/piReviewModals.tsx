@@ -2153,7 +2153,6 @@ export const PI_SCHEDULE_FIELDS = [
   { key: 'due_date',                label: 'Due date',            kind: 'date',     required: false },
   { key: 'dispatch_commitment',     label: 'Dispatch commitment', kind: 'text',     required: false },
   { key: 'payment_terms',           label: 'Payment terms',       kind: 'textarea', required: false },
-  { key: 'billing_terms',           label: 'Billing terms',       kind: 'textarea', required: false },
 ] as const
 
 export type PiScheduleFieldKey = typeof PI_SCHEDULE_FIELDS[number]['key']

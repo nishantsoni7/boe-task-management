@@ -3038,7 +3038,6 @@ function PiDraftDetailPageInner() {
             due_date:                submission.due_date ?? null,
             dispatch_commitment:     submission.dispatch_commitment ?? null,
             payment_terms:           submission.payment_terms ?? null,
-            billing_terms:           submission.billing_terms ?? null,
           }}
           saving={clientSaving}
           failure={clientFailure}

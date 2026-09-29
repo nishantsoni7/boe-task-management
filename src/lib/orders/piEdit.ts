@@ -104,7 +104,6 @@ export const PI_EDIT_HEADER_FIELDS = [
 
 export const PI_EDIT_TERMS_FIELDS = [
   { key: 'payment_terms',         label: 'Payment terms',          kind: 'textarea', max: 500 },
-  { key: 'billing_terms',         label: 'Billing terms',          kind: 'textarea', max: 500 },
   { key: 'commercial_terms_note', label: 'Commercial terms note',  kind: 'textarea', max: 2000 },
 ] as const
 
@@ -137,6 +136,8 @@ export type PiEditItem = {
 export type PiEditState = {
   header: Record<PiEditHeaderKey, string>
   terms: Record<PiEditTermsKey, string> & {
+    /** Not offered on the form any more (Billing percentage is the one billing instruction); carried through unchanged so a save never blanks a stored value. */
+    billing_terms: string
     fabric_responsibility: '' | 'not_selected' | 'boe' | 'client'
     billing_percentage: string
   }

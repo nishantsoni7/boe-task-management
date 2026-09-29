@@ -3835,14 +3835,15 @@ describe('the three dialogs stay separate', () => {
     assert.ok(!body.includes('billingLabel'))
   })
 
-  test('the dates dialog still carries all five schedule fields', () => {
+  test('the dates dialog carries the four schedule fields — billing terms is no longer offered', () => {
     const start = modals.indexOf('export function PiScheduleTermsEditModal')
     const end = modals.indexOf('export function', start + 10)
     assert.match(modals.slice(start, end), /PI_SCHEDULE_FIELDS\.map/)
     for (const field of ['order_confirmation_date', 'due_date', 'dispatch_commitment',
-                         'payment_terms', 'billing_terms']) {
+                         'payment_terms']) {
       assert.ok(modals.includes(`'${field}'`), `${field} left the schedule editor`)
     }
+    assert.ok(!modals.slice(modals.indexOf('export const PI_SCHEDULE_FIELDS'), modals.indexOf('export type PiScheduleFieldKey')).includes('billing_terms'))
   })
 
   test('each dialog announces the section it edits', () => {
