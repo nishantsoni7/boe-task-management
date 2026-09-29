@@ -68,6 +68,7 @@ type Body = {
   rootId?: unknown
   reason?: unknown
   confirmation?: unknown
+  orderNumberChoice?: unknown
 }
 
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status })
@@ -84,11 +85,17 @@ export async function POST(req: NextRequest) {
     return bad('A cleanup request is required.')
   }
 
-  const { rootType, rootId, reason, confirmation } = body
+  const { rootType, rootId, reason, confirmation, orderNumberChoice } = body
   if (typeof rootType !== 'string' || !ROOT_TYPES.has(rootType)) return bad('Unknown record type.')
   if (typeof rootId !== 'string' || !UUID_RE.test(rootId)) return bad('A valid record id is required.')
   if (typeof reason !== 'string' || reason.trim() === '') return bad('Enter why this test data is being removed.')
   if (typeof confirmation !== 'string') return bad('Type DELETE TEST DATA exactly to confirm.')
+  if (orderNumberChoice != null && orderNumberChoice !== 'keep' && orderNumberChoice !== 'reuse') {
+    return bad('Choose whether to keep or reuse the deleted Order number.')
+  }
+  if (rootType === 'order' && orderNumberChoice == null) {
+    return bad('Choose whether to keep or reuse the deleted Order number.')
+  }
 
   // Cleanup must be ATTEMPTABLE before anything is claimed, let alone destroyed.
   // A missing service key is a deployment fault, not a permission one, and it
@@ -189,14 +196,35 @@ export async function POST(req: NextRequest) {
   /**
    * Give the records back — ONLY safe while nothing has been destroyed.
    *
+   * A RESUMED claim is never given back from here. An earlier request under the
+   * same claim may already have removed files (Order 0526's did), so "this
+   * request issued no remove" does not mean "nothing was destroyed".
+   *
    * Never throws over the error it is reporting: a failed release leaves the
    * claim standing, which is the safe direction, and replacing the real failure
    * with a cleanup one would hide what actually went wrong.
    */
   const release = async () => {
+    if (claim.resumed === true) return
     try {
       await authClient.rpc('release_test_data_cleanup', { p_claim_token: token })
     } catch { /* the claim stays; the records stay frozen and intact */ }
+  }
+
+  // Fix the numbering decision ON THE CLAIM before touching Storage. A retry
+  // must carry the same choice; it cannot silently switch after files are gone.
+  if (claim.order_id) {
+    if (orderNumberChoice !== 'keep' && orderNumberChoice !== 'reuse') {
+      if (!storageRemovalAttempted) await release()
+      return bad('Choose whether to keep or reuse the deleted Order number.')
+    }
+    const { error: choiceErr } = await authClient.rpc('choose_test_cleanup_order_number', {
+      p_claim_token: token, p_choice: orderNumberChoice,
+    })
+    if (choiceErr) {
+      if (!storageRemovalAttempted) await release()
+      return bad(String(choiceErr.message ?? 'The Order number choice was refused.'), 409)
+    }
   }
 
   /**
@@ -216,6 +244,8 @@ export async function POST(req: NextRequest) {
    * that failed before any remove request went out.
    */
   const storageFailed = async (detail: string) => {
+    // release() also refuses a resumed claim: an earlier request may already
+    // have removed objects even when THIS attempt has issued no remove request.
     if (!storageRemovalAttempted) await release()
     report(`storage cleanup failed: ${detail}`)
     return NextResponse.json({

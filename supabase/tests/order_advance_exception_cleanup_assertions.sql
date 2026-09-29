@@ -22,7 +22,8 @@
 --
 -- PREREQUISITES: a database with production's public schema (for example a
 -- private copy restored from `supabase db dump --linked --schema public`) and
--- 20270216000000 applied. Run as a SUPERUSER (supabase_admin locally): the
+-- 20270216000000 applied (and 20270217000000, whose finalize needs the
+-- keep/reuse choice recorded first). Run as a SUPERUSER (supabase_admin locally): the
 -- fixture is written with session_replication_role = replica so it can create
 -- an already-approved PI without replaying the approval flow. Everything the
 -- suite ASSERTS runs with triggers on, as the signed-in admin.
@@ -157,11 +158,21 @@ select pg_temp.ok((select (c->>'resumed')::boolean from retry_claim),
 select pg_temp.ok((select r.c->>'claim_token' = f.c->>'claim_token' from retry_claim r, first_claim f),
   'B2: the retry is handed the same claim token');
 
+-- 20270217000000: a cleanup that deletes an Order records keep or reuse first.
+select pg_temp.ok(
+  pg_temp.fails_with(format('select public.finalize_test_data_cleanup(%L::uuid)',
+    (select c->>'claim_token' from retry_claim))) like '%ORDER_NUMBER_CHOICE_REQUIRED%',
+  'B3a: finalization refuses until the keep/reuse choice is recorded');
+
+select public.choose_test_cleanup_order_number((select (c->>'claim_token')::uuid from retry_claim), 'keep');
+
 create temp table finalized on commit drop as
 select public.finalize_test_data_cleanup((select (c->>'claim_token')::uuid from retry_claim)) as r;
 
 select pg_temp.ok((select (r->>'already_finalized')::boolean = false from finalized),
   'B3: finalization completes (was ORDER_ADVANCE_EXCEPTION_IMMUTABLE before 20270216000000)');
+select pg_temp.ok((select r->'deleted'->>'order_number_choice' = 'keep' from finalized),
+  'B3b: the kept choice is recorded');
 select pg_temp.ok((select (r->'deleted'->>'orders')::int = 1 and (r->'deleted'->>'order_submissions')::int = 1 from finalized),
   'B4: the Order and its PI are deleted');
 
