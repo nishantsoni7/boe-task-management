@@ -167,6 +167,10 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // worse than a neutral one.
   attendance_issue_reviewed:    { label: 'Issue reviewed', color: colors.blue,  bg: colors.blueTint  },
   payroll_issue_reviewed:       { label: 'Issue reviewed', color: colors.blue,  bg: colors.blueTint  },
+  // Attendance requests. Amber = waiting for a decision; blue for the outcome,
+  // which (approved or rejected) is stated in the title.
+  attendance_request_submitted: { label: 'Request',         color: colors.amber, bg: colors.amberTint },
+  attendance_request_decided:   { label: 'Request decided', color: colors.blue,  bg: colors.blueTint  },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -255,6 +259,22 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
       href: n.entity_id ? `/my-issues?${ISSUE_PARAM}=${n.entity_id}` : '/my-issues',
       actionLabel: 'View issue',
+    }
+  }
+
+  // ── Attendance requests ────────────────────────────────────────────────────
+  // The admin lands on the queue; the employee on their own attendance page,
+  // where their requests are listed. No id travels in either link: the queue
+  // shows every pending request and the employee's list is already their own.
+  if (type === 'attendance_request_submitted' || type === 'attendance_request_decided') {
+    const toAdmin = type === 'attendance_request_submitted'
+    return {
+      category: 'other',
+      heading: 'Attendance',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: toAdmin ? '/attendance/requests' : '/my-attendance',
+      actionLabel: toAdmin ? 'Review request' : 'View request',
     }
   }
 

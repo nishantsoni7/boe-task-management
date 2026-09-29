@@ -125,14 +125,16 @@ export async function toEmbeddableImage(bytes: Uint8Array | null): Promise<Buffe
  * That would make the recorded sha256 meaningless as an identity — two
  * regenerations of the same version could never be compared.
  *
- * So both dates are set from a value the CALLER supplies. In production that is
- * the Order's confirm date, which is a fact about the document rather than about
- * when a machine happened to render it; in the tests it is a fixed instant, and
- * the tests assert that two renders of one model come out byte-identical.
+ * So both dates are ONE FIXED INSTANT, the Unix epoch, and the caller cannot
+ * supply another (20270122000000). They used to be the Order's confirm date —
+ * the internal confirmation date, which no client document may carry — and a
+ * PDF's CreationDate is one "Document properties" click away for any client.
+ * The tests assert that two renders of one model come out byte-identical, and
+ * that no other date is stamped.
  */
+export const CLIENT_PDF_DATE = new Date(0)
+
 export type PdfMetadata = {
-  /** Stamped as both CreationDate and ModDate. */
-  date: Date
   /** Shown in a reader's title bar and in file listings. */
   title: string
 }
@@ -202,8 +204,8 @@ export async function renderConfirmedPdf(input: RenderConfirmedPdfInput): Promis
         Author: 'Best of Exports',
         Creator: 'BOE Task Management',
         Producer: 'BOE Task Management',
-        CreationDate: metadata.date,
-        ModDate: metadata.date,
+        CreationDate: CLIENT_PDF_DATE,
+        ModDate: CLIENT_PDF_DATE,
       },
     })
 

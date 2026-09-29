@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, Megaphone, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -54,6 +54,39 @@ type BoeOsLayoutProps = {
   children: React.ReactNode
 }
 
+// The breakpoint at which globals.css turns .boe-sidebar into an off-screen
+// drawer and reveals .boe-menu-toggle. Keep the two in step.
+export const PHONE_DRAWER_QUERY = '(max-width: 767px)'
+
+function subscribePhoneDrawer(onChange: () => void) {
+  const mq = window.matchMedia(PHONE_DRAWER_QUERY)
+  mq.addEventListener('change', onChange)
+  return () => mq.removeEventListener('change', onChange)
+}
+
+/**
+ * Whether the sidebar is a drawer (phone widths). The server snapshot is
+ * false — the permanent sidebar — so the server markup and a desktop client
+ * are exactly what they were before; a phone client corrects it on hydration.
+ */
+function usePhoneDrawer(): boolean {
+  return useSyncExternalStore(
+    subscribePhoneDrawer,
+    () => window.matchMedia(PHONE_DRAWER_QUERY).matches,
+    () => false,
+  )
+}
+
+/**
+ * A CLOSED DRAWER IS NOT THERE. Below 768px the closed sidebar is only
+ * translated off-screen, which leaves its links as invisible Tab stops and in
+ * the accessibility tree. `inert` removes both — but only while it is a
+ * drawer AND closed. The permanent desktop sidebar is never inert.
+ */
+export function isDrawerInert(isPhone: boolean, open: boolean): boolean {
+  return isPhone && !open
+}
+
 export function BoeOsLayout({
   profile, title, subtitle, onSignOut, quickActions = [], headerActions = null,
   contentMaxWidth, announcementUnread = 0, children,
@@ -61,6 +94,31 @@ export function BoeOsLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
+  const isPhone  = usePhoneDrawer()
+  const drawerRef = useRef<HTMLElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const wasOpen   = useRef(false)
+
+  // Focus follows the drawer on a phone: opening it moves focus to its first
+  // control; closing it (overlay, a nav item, or ☰) returns focus to ☰ when
+  // focus was inside the drawer or has been dropped because the drawer went
+  // inert. The desktop sidebar is never opened or closed, so nothing moves.
+  useEffect(() => {
+    const opened = sidebarOpen && !wasOpen.current
+    const closed = !sidebarOpen && wasOpen.current
+    wasOpen.current = sidebarOpen
+    if (!isPhone) return
+    if (opened) {
+      drawerRef.current
+        ?.querySelector<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        ?.focus()
+    } else if (closed) {
+      const active = document.activeElement
+      if (!active || active === document.body || drawerRef.current?.contains(active)) {
+        toggleRef.current?.focus()
+      }
+    }
+  }, [sidebarOpen, isPhone])
 
   const navTo = (path: string) => {
     router.push(path)
@@ -77,7 +135,12 @@ export function BoeOsLayout({
       />
 
       {/* Sidebar */}
-      <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
+      <aside
+        id="boe-os-drawer"
+        ref={drawerRef}
+        className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}
+        inert={isDrawerInert(isPhone, sidebarOpen)}
+      >
 
         {/* Brand */}
         <div className="boe-sidebar-brand">
@@ -142,9 +205,12 @@ export function BoeOsLayout({
         {/* Sticky page header */}
         <div className="boe-page-header">
           <button
+            ref={toggleRef}
             className="boe-menu-toggle"
             onClick={() => setSidebarOpen(o => !o)}
-            aria-label="Open menu"
+            aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={sidebarOpen}
+            aria-controls="boe-os-drawer"
           >
             {sidebarOpen ? <X size={18} /> : '☰'}
           </button>

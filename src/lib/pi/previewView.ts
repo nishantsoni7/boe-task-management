@@ -317,9 +317,12 @@ export type PiUploadIdentity = {
  *
  *   Product value   the gross figure, restated at the top so the reviewer does
  *                   not have to scroll past a twelve-line product table to
- *                   learn the size of what they are approving. It is the SAME
- *                   number buildCommercialRows puts in its first row, through
- *                   the same formatter; nothing here adds, nets or rounds.
+ *                   learn the size of what they are approving. It is the
+ *                   workbook's own SUBTOTAL AFTER DISCOUNT — the figure saved as
+ *                   subtotal_after_discount, and what "Product value" means on
+ *                   the saved PI Draft, the PI Drafts list and the Order — shown
+ *                   through the same formatter as buildCommercialRows' subtotal
+ *                   row; nothing here adds, nets or rounds.
  *   Location        one destination line instead of the Bill To / Ship To pair,
  *                   which on the overwhelming majority of PIs printed the same
  *                   name twice.
@@ -337,17 +340,28 @@ export type PiUploadIdentity = {
  */
 export function buildOrderInformationRows(input: {
   header: PiHeader
-  /** commercial.grossProductAmount, passed through unchanged. */
-  grossProductAmount: number | null
+  /** commercial.subtotalAfterDiscount, passed through unchanged. */
+  productSubtotal: PiAmountOrText | null
   upload: PiUploadIdentity
 }): PiSummaryRow[] {
-  const { header, grossProductAmount, upload } = input
+  const { header, productSubtotal, upload } = input
+  // A BLANK DATE IS NOT SHOWN AT ALL (2026-09-27). Sales normally leaves both
+  // out of the client-facing PI and enters them in the app at submission, so
+  // two em dashes under "Confirmed date" and "Due date" read as a gap in a
+  // workbook that has none. A date the workbook does carry is still shown.
+  const dates: PiSummaryRow[] = [
+    ...(header.orderConfirmationDate
+      ? [{ key: 'confirmed', label: 'Confirmed date', value: formatPiDate(header.orderConfirmationDate) }]
+      : []),
+    ...(header.dispatchCommitment
+      ? [{ key: 'due', label: 'Due date', value: formatPiDate(header.dispatchCommitment) }]
+      : []),
+  ]
   return [
     { key: 'client',       label: 'Client name',    value: orDash(header.billToName) },
-    { key: 'productValue', label: 'Product value',  value: formatInr(grossProductAmount) },
+    { key: 'productValue', label: 'Product value',  value: formatPiValue(productSubtotal).display },
     { key: 'location',     label: 'Location',       value: orDash(piLocationName(header)) },
-    { key: 'confirmed',    label: 'Confirmed date', value: formatPiDate(header.orderConfirmationDate) },
-    { key: 'due',          label: 'Due date',       value: formatPiDate(header.dispatchCommitment) },
+    ...dates,
     { key: 'salesperson',  label: 'Salesperson',    value: orDash(header.createdBy) },
     { key: 'uploadedBy',   label: 'Uploaded by',    value: orDash(upload.by) },
     { key: 'uploadedAt',   label: 'Upload date',    value: orDash(upload.at) },
@@ -500,7 +514,15 @@ export function buildCommercialRows(commercial: PiCommercialSummary): PiAmountRo
 
 export const BLOCKING_PANEL_TITLE = 'Must be fixed before submission'
 export const WARNING_PANEL_TITLE = 'Worth checking'
-export const READY_TITLE = 'PI ready for submission'
+/**
+ * SAVING IS NOT SUBMITTING. The card that carries Save Draft used to be titled
+ * "PI ready for submission", which read as though pressing it sent the PI for
+ * approval. It stores a private draft; Submit for Approval is a later step on
+ * that draft, where the internal order dates are asked for.
+ */
+export const READY_TITLE = 'Ready to save as a draft'
+export const READY_NOTE =
+  'Nothing blocks this PI. Save Draft keeps it as a private draft; it is not sent for approval. You submit it from the draft, where the order confirmation and dispatch dates are asked for.'
 
 export type PiDiagnosticEntry = {
   code: string
@@ -542,6 +564,24 @@ function byRowThenCode(a: PiDiagnosticEntry, b: PiDiagnosticEntry): number {
 }
 
 /**
+ * WARNINGS THE PARSER NO LONGER RAISES (2026-09-27), and that no screen shows.
+ *
+ * The workbook's two date cells are client-facing and normally blank; the dates
+ * are internal details collected at Submit for Approval. Drafts saved before
+ * then still carry these codes in parse_warnings, so both PI screens drop them
+ * here rather than tell Sales to edit a client document. Only warnings: no
+ * blocking issue is ever filtered.
+ */
+export const RETIRED_WARNING_CODES: ReadonlySet<string> = new Set([
+  'PI_CONFIRMATION_DATE_MISSING',
+  'PI_DISPATCH_DATE_MISSING',
+])
+
+export function isRetiredWarning(code: string): boolean {
+  return RETIRED_WARNING_CODES.has(code)
+}
+
+/**
  * Split what the parser reported into the two panels the screen shows.
  *
  * The split is the parser's, not this function's: a PiBlockingIssue is blocking
@@ -562,6 +602,7 @@ export function groupPiDiagnostics(input: {
     .sort(byRowThenCode)
 
   const warnings = input.warnings
+    .filter(warning => !isRetiredWarning(warning.code))
     .map<PiDiagnosticEntry>(warning => ({
       code: warning.code,
       message: warning.message,

@@ -673,7 +673,12 @@ describe('the commercial payload', () => {
   test('the discount is the position, not the workbook label', () => {
     const c = commercialOf(plan([product()]))
     assert.equal(c.discount_amount, 0)
-    assert.ok(!('discount_label' in c), 'the label is not persisted as a figure')
+    // 20270122000000: the label IS now recorded — as text beside the figure,
+    // for display provenance ("Design Fee" vs "Discount"). It is never a figure
+    // and never decides what discount_amount means.
+    assert.ok('discount_label' in c, 'the wording is recorded beside the figure')
+    assert.ok(c.discount_label === null || typeof c.discount_label === 'string', 'the wording is text, never a figure')
+    assert.equal(typeof c.discount_amount, 'number')
   })
 })
 

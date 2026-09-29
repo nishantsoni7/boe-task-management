@@ -130,7 +130,11 @@ describe('the page moves the picture summary through named states, and clears ev
   })
 
   test('the box is fed the STATE, not a bare count', () => {
-    assert.match(code, /designFilesDocument\(piImages\.summary, piProducts\.length\)/)
+    // The pictures strip reads the summary's STATE: loading, a failed read and
+    // "no source PI" stay distinct from a real count of zero.
+    assert.ok(code.includes('state: productPicturesState({'))
+    assert.ok(code.includes("loading: piImages.summary.kind === 'loading'"))
+    assert.ok(code.includes("recorded: piImages.summary.kind === 'ready'"))
     assert.equal(code.includes('piImages.counts'), false)
   })
 })

@@ -12,6 +12,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
+import { runLockFlow } from '@/lib/attendance/lockWarning'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,19 +149,15 @@ export default function PayrollResultsPage() {
       : 'this period'
     // No longer claims the lock is permanent: an admin can reopen a locked
     // period from the Payroll dashboard, with a recorded reason.
-    if (!confirm(`Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)) return
-
     setLocking(true)
     setLockError(null)
     try {
-      const res  = await fetch('/api/payroll/lock', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
-        body:    JSON.stringify({ payroll_period_id: periodId }),
-      })
-      const json = await res.json()
-      if (!res.ok) { setLockError(json.error ?? 'Lock failed') }
-      else { await loadData(token) }
+      // Open attendance-review items need a stated acknowledgement the server
+      // checks and records (src/lib/payroll/lockPeriod.ts).
+      const outcome = await runLockFlow(token, periodId,
+        `Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)
+      if (outcome.status === 'error') setLockError(outcome.error ?? 'Lock failed')
+      else if (outcome.status === 'locked') await loadData(token)
     } finally {
       setLocking(false)
     }

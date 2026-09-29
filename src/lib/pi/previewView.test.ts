@@ -45,6 +45,10 @@ import {
   PI_ADVANCE_PERCENT,
   ADVANCE_NOT_A_PAYMENT_NOTE,
   groupPiDiagnostics,
+  isRetiredWarning,
+  RETIRED_WARNING_CODES,
+  READY_NOTE,
+  READY_TITLE,
   describePiFailure,
   describeFileRejection,
   createPiImageUrls,
@@ -457,7 +461,7 @@ describe('buildOrderInformationRows', () => {
       orderConfirmationDate: { iso: '2026-08-20', text: '20/08/2026', source: 'serial' },
       dispatchCommitment: { iso: null, text: '6 weeks from date of confirmation', source: 'text' },
     }),
-    grossProductAmount: 512000,
+    productSubtotal: amount(512000, 'I116'),
     upload,
   })
 
@@ -481,11 +485,29 @@ describe('buildOrderInformationRows', () => {
     assert.equal(byKey.uploadedAt, '02 Sep 2026, 11:20 AM')
   })
 
-  test('the product value is the commercial summary’s own gross figure', () => {
-    const rows = buildCommercialRows(commercial({ grossProductAmount: 512000 }))
-    const gross = rows.find(r => r.key === 'gross')?.value
-    assert.equal(Object.fromEntries(full().map(r => [r.key, r.value])).productValue, gross,
-      'one figure, one formatter — the block states it, it does not recompute it')
+  test('no discount: Product value is the subtotal, which equals the gross', () => {
+    const c = commercial({ grossProductAmount: 512000, discount: 0, subtotalAfterDiscount: amount(512000, 'I116') })
+    const rows = buildCommercialRows(c)
+    const info = buildOrderInformationRows({ header: header(), productSubtotal: c.subtotalAfterDiscount, upload })
+    const value = info.find(r => r.key === 'productValue')?.value
+    assert.equal(value, '₹5,12,000')
+    assert.equal(value, rows.find(r => r.key === 'subtotal')?.value, 'one figure, one formatter')
+    assert.equal(value, rows.find(r => r.key === 'gross')?.value, 'and with no discount it is also the gross')
+  })
+
+  test('a discount: Product value is the workbook’s subtotal after it, never the gross, never discounted again', () => {
+    // Gross 5,12,000, discount 12,000, the workbook’s own subtotal 5,00,000.
+    const c = commercial({ grossProductAmount: 512000, discount: 12000, subtotalAfterDiscount: amount(500000, 'I116') })
+    const rows = buildCommercialRows(c)
+    const info = buildOrderInformationRows({ header: header(), productSubtotal: c.subtotalAfterDiscount, upload })
+    const value = info.find(r => r.key === 'productValue')?.value
+    assert.equal(value, '₹5,00,000')
+    assert.equal(value, rows.find(r => r.key === 'subtotal')?.value)
+    assert.notEqual(value, rows.find(r => r.key === 'gross')?.value)
+    assert.notEqual(value, '₹4,88,000', 'the discount is not taken off the subtotal a second time')
+    // A subtotal the workbook stated that disagrees with gross − discount is shown as stated.
+    const odd = buildOrderInformationRows({ header: header(), productSubtotal: amount(499999, 'I116'), upload })
+    assert.equal(odd.find(r => r.key === 'productValue')?.value, '₹4,99,999')
   })
 
   test('the upload date is the application’s, never the date inside the workbook', () => {
@@ -510,7 +532,7 @@ describe('buildOrderInformationRows', () => {
   test('an absent optional value is an em dash, never a blank or "null"', () => {
     for (const row of buildOrderInformationRows({
       header: header(),
-      grossProductAmount: null,
+      productSubtotal: null,
       upload: { by: null, at: null },
     })) {
       assert.equal(row.value, '—', `${row.key} should be an em dash`)
@@ -1494,5 +1516,68 @@ describe('unstorable image formats are not previewed', () => {
       assert.equal(created.length, 1, format)
       assert.equal(bag.representativeByRow.get(32), created[0])
     }
+  })
+})
+
+// ── The two workbook dates are not asked for on upload (2026-09-27) ──────────
+//
+// Sales leaves Date of Order Confirmation and Dispatch Date Finalized off the
+// client-facing PI; they are internal details required at Submit for Approval.
+
+describe('the upload preview asks nothing of the workbook dates', () => {
+  const dateWarning = (code: 'PI_CONFIRMATION_DATE_MISSING' | 'PI_DISPATCH_DATE_MISSING') =>
+    warning({ code, message: 'Old wording about a blank date cell.', row: 113, cell: code === 'PI_CONFIRMATION_DATE_MISSING' ? 'A113' : 'E113' })
+
+  test('a missing-date warning on record is not shown', () => {
+    const groups = groupPiDiagnostics({
+      blockingIssues: [],
+      warnings: [dateWarning('PI_CONFIRMATION_DATE_MISSING'), dateWarning('PI_DISPATCH_DATE_MISSING')],
+    })
+    assert.deepEqual(groups.warnings, [], 'no "Worth checking" entry for a date')
+    assert.equal(groups.readyToSubmit, true, 'and nothing stops the save')
+  })
+
+  test('every other warning, and every blocking issue, is kept', () => {
+    const groups = groupPiDiagnostics({
+      blockingIssues: [blockingIssue()],
+      warnings: [dateWarning('PI_DISPATCH_DATE_MISSING'), warning(),
+        warning({ code: 'PI_SALESPERSON_MISSING', message: 'Sales Person (cell G21) is empty.', row: 21, cell: 'G21' })],
+    })
+    assert.deepEqual(groups.blocking.map(e => e.code), ['PRODUCT_IMAGE_REQUIRED'])
+    assert.deepEqual(groups.warnings.map(e => e.code).sort(), ['PI_SALESPERSON_MISSING', 'PRODUCT_MATERIAL_MISSING'])
+    assert.equal(groups.readyToSubmit, false, 'a genuine blocking issue still blocks')
+  })
+
+  test('only warnings are ever retired, and only the two date codes', () => {
+    assert.deepEqual([...RETIRED_WARNING_CODES].sort(), ['PI_CONFIRMATION_DATE_MISSING', 'PI_DISPATCH_DATE_MISSING'])
+    assert.equal(isRetiredWarning('PRODUCT_IMAGE_REQUIRED'), false)
+    assert.equal(isRetiredWarning('PI_SALESPERSON_MISSING'), false)
+  })
+
+  test('blank dates leave no empty rows in Order information', () => {
+    const rows = buildOrderInformationRows({
+      header: header({ billToName: 'Zzyzx Fixture Co', createdBy: 'Fixture Operator' }),
+      productSubtotal: amount(512000, 'I116'),
+      upload: { by: 'Fixture Uploader', at: '02 Sep 2026, 11:20 AM' },
+    })
+    assert.deepEqual(rows.map(r => r.key), [
+      'client', 'productValue', 'location', 'salesperson', 'uploadedBy', 'uploadedAt',
+    ])
+  })
+
+  test('a date the workbook does carry is still shown, alone', () => {
+    const rows = buildOrderInformationRows({
+      header: header({ orderConfirmationDate: { iso: '2026-08-20', text: '20/08/2026', source: 'serial' } }),
+      productSubtotal: amount(1, 'I116'),
+      upload: { by: null, at: null },
+    })
+    assert.ok(rows.some(r => r.key === 'confirmed'))
+    assert.ok(!rows.some(r => r.key === 'due'))
+  })
+
+  test('the Save Draft card says saving is not submitting', () => {
+    assert.ok(!/submission/i.test(READY_TITLE), READY_TITLE)
+    assert.match(READY_NOTE, /private draft/)
+    assert.match(READY_NOTE, /not sent for approval/)
   })
 })

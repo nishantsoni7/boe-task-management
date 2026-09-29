@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
+import { calendarThroughFor } from '@/lib/payroll/periodCompletion'
 import {
   fetchHolidaysForPeriod,
   fetchCurrentCorrectionsByEmployee,
@@ -210,6 +211,11 @@ export async function GET(req: NextRequest) {
     status: 'draft' as const,
   }
 
+  // A month still in progress is previewed only up to yesterday (IST): days
+  // that have not happened are left out, never charged as absences. A month
+  // that has ended is calculated in full, exactly as generation would.
+  const calendarThrough = calendarThroughFor(year, month)
+
   // Run engine for each employee
   const results = (employees as EmployeeRow[]).map(emp => {
     const attendance   = byEmployee.get(emp.id)   ?? []
@@ -219,7 +225,7 @@ export async function GET(req: NextRequest) {
     // Same eight arguments generation passes. The corrections argument used to
     // be omitted, which silently made this a preview of a different calculation;
     // the settings and redemptions arguments are the same rule for the same reason.
-    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections, settings, redemptions)
+    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections, settings, redemptions, { calendarThrough })
 
     if (isSkip(outcome)) {
       return {
@@ -255,5 +261,5 @@ export async function GET(req: NextRequest) {
 
   // settings_source is reported so the screen can say which rules the figures
   // were produced under, rather than leaving an admin to infer it.
-  return NextResponse.json({ year, month, results, settings_source: settingsSource })
+  return NextResponse.json({ year, month, results, settings_source: settingsSource, in_progress: calendarThrough != null, calculated_through: calendarThrough ?? null })
 }

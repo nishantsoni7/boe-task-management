@@ -34,6 +34,7 @@ import {
 import { fetchPrecedingPeriod, materialiseSettlement } from '@/lib/payroll/settlementStore'
 import { fetchActiveSettings, pinSettingsToPeriod } from '@/lib/payroll/settingsStore'
 import { reconcileAttendanceCoverage } from '@/lib/payroll/creditCoverage'
+import { isPayrollMonthComplete, monthInProgressMessage, MONTH_IN_PROGRESS_CODE } from '@/lib/payroll/periodCompletion'
 
 export async function POST(req: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -83,6 +84,17 @@ export async function POST(req: NextRequest) {
   if (period.status === 'locked') {
     return NextResponse.json(
       { error: 'Payroll period is locked — generation and regeneration are not allowed.' },
+      { status: 422 },
+    )
+  }
+
+  // ── Month-end guard ─────────────────────────────────────────────────────────
+  // The engine charges every unpunched working day as an absence, including
+  // days that have not happened yet. A month is generated only once it has
+  // ended in IST (src/lib/payroll/periodCompletion.ts).
+  if (!isPayrollMonthComplete(period.payroll_year, period.payroll_month)) {
+    return NextResponse.json(
+      { code: MONTH_IN_PROGRESS_CODE, error: monthInProgressMessage(period.payroll_year, period.payroll_month, 'generated') },
       { status: 422 },
     )
   }

@@ -78,10 +78,10 @@ describe('attendance_payroll is a real category with exactly four members', () =
       ['notifications', 'count', 'attendance_payroll'])
   })
 
-  test('2. the filter selects exactly the four issue types — no more, no fewer', () => {
+  test('2. the filter selects exactly the four issue types and the two request types — no more, no fewer', () => {
     const selected = typesIn(getNotificationCategoryFilter('attendance_payroll'))
     assert.deepEqual(selected.sort(), [...ATTENDANCE_PAYROLL_NOTIFICATION_TYPES].sort())
-    assert.equal(selected.length, 4)
+    assert.equal(selected.length, 6)
   })
 
   test('2a. the feed carries both halves of the conversation', () => {
@@ -109,7 +109,9 @@ describe('attendance_payroll is a real category with exactly four members', () =
     // select — which is exactly the defect this feed exists to fix.
     const raise  = read('src/app/api/objections/route.ts')
     const review = read('src/app/api/objections/review/route.ts')
-    const emitted = `${raise}\n${review}`
+    // Attendance requests share the feed; their writer is one server module.
+    const requests = read('src/lib/attendance/requestsServer.ts')
+    const emitted = `${raise}\n${review}\n${requests}`
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) {
       assert.ok(emitted.includes(`'${t}'`), `${t} must be a type some objection path emits`)
     }
@@ -126,6 +128,7 @@ describe('attendance_payroll is a real category with exactly four members', () =
     const migrations = [
       read('supabase/migrations/20260824000000_objection_notification_types.sql'),
       read('supabase/migrations/20260825000000_objection_review_notification_types.sql'),
+      read('supabase/migrations/20270215000100_attendance_request_notification_types.sql'),
     ].join('\n')
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) {
       assert.ok(migrations.includes(`ADD VALUE IF NOT EXISTS '${t}'`), t)

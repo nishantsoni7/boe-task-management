@@ -298,6 +298,19 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270117000000_order_finance_guards_run_as_owner.sql',
     '20270118120000_finance_payment_proof_opens_for_its_reviewers.sql',
     '20270120000000_order_submission_admin_decisions_ask_permissions.sql',
+    '20270122000000_order_submission_internal_details.sql',
+    '20270123000000_order_submission_internal_details_required_on_submit.sql',
+    '20270201000000_order_pi_version_pdf_order_number.sql',
+    '20270205000000_order_production_needs_order_level_exception.sql',
+    '20270205120000_expense_reimbursements_and_bills.sql',
+    '20270210000000_order_submission_highlight_remark.sql',
+    '20270211000000_order_submission_sales_order_details.sql',
+    '20270211120000_expense_payment_source_required.sql',
+    '20270212000000_order_submission_legacy_advance_doors_closed.sql',
+    '20270213000000_security_definer_search_path_pins_pg_temp.sql',
+    '20270214000000_permission_resolvers_are_not_for_anon.sql',
+    '20270215000000_attendance_requests.sql',
+    '20270215000100_attendance_request_notification_types.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

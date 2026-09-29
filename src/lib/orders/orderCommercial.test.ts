@@ -23,6 +23,7 @@ import { join } from 'node:path'
 import {
   ORDER_COMMERCIAL_TITLE,
   ORDER_VALUE_LABEL,
+  PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL,
   PRODUCT_VALUE_LABEL,
   orderCommercialLines,
   orderStoredCommercialLines,
@@ -69,7 +70,9 @@ describe('the lines, and what each one IS', () => {
   test('it opens on the product value and ends on the order value', () => {
     const lines = orderCommercialLines(rows())
     assert.equal(lines[0].role, 'base')
-    assert.equal(lines[0].label, PRODUCT_VALUE_LABEL)
+    // The fixture carries a discount, so the opening line is the value BEFORE
+    // it; Product value (the summary's) is the amount after the discount.
+    assert.equal(lines[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
     assert.equal(lines.at(-1)?.role, 'final')
     assert.equal(lines.at(-1)?.label, ORDER_VALUE_LABEL)
     // Exactly one of each: two "final" rows would be two answers.
@@ -135,7 +138,7 @@ describe('the lines, and what each one IS', () => {
       if (line.key === 'gross' || line.key === 'grandTotal') continue
       assert.equal(line.label, built[i].label, line.key)
     }
-    assert.equal(lines[0].label, 'Product value')
+    assert.equal(lines[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL, 'with a discount, the gross is named as before it')
     assert.equal(lines.at(-1)?.label, 'Order value')
   })
 
@@ -184,7 +187,7 @@ describe('THE NET-EFFECT LINE IS GONE, and nothing replaced it', () => {
     // The breakdown still opens on the product value and closes on the Order
     // value; only the line BETWEEN their two figures went.
     const lines = orderCommercialLines(rows())
-    assert.equal(lines[0].label, PRODUCT_VALUE_LABEL)
+    assert.equal(lines[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
     assert.equal(lines[lines.length - 1].label, ORDER_VALUE_LABEL)
     assert.equal(lines[lines.length - 1].role, 'final')
   })
