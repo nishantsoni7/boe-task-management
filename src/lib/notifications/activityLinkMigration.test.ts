@@ -408,6 +408,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20270214000000_permission_resolvers_are_not_for_anon.sql',
       '20270215000000_attendance_requests.sql',
       '20270215000100_attendance_request_notification_types.sql',
+      '20270216000000_test_data_cleanup_pi_version_set_null.sql',
       '20270220000000_asset_catalogue.sql',
     ])
   })
