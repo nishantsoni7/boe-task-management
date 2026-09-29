@@ -59,7 +59,8 @@ export function PiHighlightRemarkView({
           <Lock size={10} strokeWidth={2.2} aria-hidden />
           {HIGHLIGHT_REMARK_TAG}
         </span>
-        {canEdit && <span className="pi-detail-highlight-optional">{HIGHLIGHT_REMARK_OPTIONAL}</span>}
+        {/* Bare, the host card already says everything in it is optional. */}
+        {canEdit && !bare && <span className="pi-detail-highlight-optional">{HIGHLIGHT_REMARK_OPTIONAL}</span>}
       </div>
 
       {canEdit ? (
@@ -67,7 +68,7 @@ export function PiHighlightRemarkView({
           <textarea
             id={id}
             className="pi-detail-highlight-input"
-            rows={3}
+            rows={bare ? 2 : 3}
             value={draft}
             placeholder={HIGHLIGHT_REMARK_PLACEHOLDER}
             disabled={saving}

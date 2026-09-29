@@ -22,8 +22,8 @@ const BILLING_ID = 'od-billing_percentage'
 
 /**
  * SUPPORTING DETAILS: the optional things around a PI, in one compact card above
- * Internal order details — Client PO and Design Files side by side, the Order
- * highlight, and the billing percentage.
+ * Internal order details — Client PO and Design Files as two short rows, then the
+ * Order highlight with the billing percentage beside it.
  *
  * Nothing here is needed to submit. Each part keeps the door it always had: the
  * files go through the staging table, the highlight through its own RPC, and the
@@ -119,59 +119,66 @@ export function PiSupportingDetails({
         <span className="pi-form-optional" style={{ marginLeft: 0 }}>Optional. Nothing here is needed to submit.</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '14px' }}>
+      <div className="pi-form-body">
         {locked ? (
           <PiSentDocuments supabase={supabase} piSubmissionId={submissionId} refreshKey={submittedAt} />
         ) : (
           <PiDraftAttachments supabase={supabase} state={supporting} canEdit={canEditFiles} />
         )}
 
-        <PiHighlightRemark
-          supabase={supabase}
-          submissionId={submissionId}
-          canEdit={canEditHighlight && !locked}
-          rowVersion={rowVersion}
-          onSaved={() => { void onSaved() }}
-          onRead={onHighlightRead}
-          bare
-        />
+        {/* The highlight takes the room a sentence needs; the percentage, a short
+            number, sits beside it rather than alone on its own row. */}
+        <div className="pi-supporting-row">
+          <div className="pi-supporting-highlight">
+            <PiHighlightRemark
+              supabase={supabase}
+              submissionId={submissionId}
+              canEdit={canEditHighlight && !locked}
+              rowVersion={rowVersion}
+              onSaved={() => { void onSaved() }}
+              onRead={onHighlightRead}
+              bare
+            />
+          </div>
 
-        {canEditBilling && !locked ? (
-          <FormField
-            id={BILLING_ID}
-            label={ORDER_DETAILS_FIELD.billing_percentage.label}
-            optional
-            help={<>{ORDER_DETAILS_FIELD.billing_percentage.hint} Leave blank if it is not declared.</>}
-            error={error ?? failure}
-          >
-            <div className="pi-inline-save">
-              <div className="pi-input-suffix">
-                <input
-                  id={BILLING_ID} type="text" inputMode="decimal" className="pi-form-input" placeholder="e.g. 65"
-                  value={value} disabled={saving}
-                  aria-invalid={error ? true : undefined}
-                  aria-describedby={describedBy(BILLING_ID, true, Boolean(error ?? failure))}
-                  onChange={e => { setEdited(e.target.value); setSaved(false); setFailure(null) }}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save() } }}
-                />
-                <span aria-hidden="true">%</span>
+          {canEditBilling && !locked ? (
+            <div className="pi-supporting-billing">
+              <FormField
+                id={BILLING_ID}
+                label={ORDER_DETAILS_FIELD.billing_percentage.label}
+                help={<>{ORDER_DETAILS_FIELD.billing_percentage.hint} Leave blank if it is not declared.</>}
+                error={error ?? failure}
+              >
+                <div className="pi-inline-save">
+                  <div className="pi-input-suffix">
+                    <input
+                      id={BILLING_ID} type="text" inputMode="decimal" className="pi-form-input" placeholder="e.g. 65"
+                      value={value} disabled={saving}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={describedBy(BILLING_ID, true, Boolean(error ?? failure))}
+                      onChange={e => { setEdited(e.target.value); setSaved(false); setFailure(null) }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save() } }}
+                    />
+                    <span aria-hidden="true">%</span>
+                  </div>
+                  <button type="button" className="boe-btn boe-btn-ghost" disabled={saving || !dirty || Boolean(error)} onClick={() => void save()}>
+                    {saving ? 'Saving…' : 'Save percentage'}
+                  </button>
+                  {saved && !dirty && <span role="status" className="pi-detail-highlight-saved" style={{ alignSelf: 'center' }}>Saved</span>}
+                </div>
+              </FormField>
+            </div>
+          ) : (declared !== null || locked) && (
+            <dl className="pi-supporting-billing" style={{ margin: 0 }}>
+              <div className="pi-form-fact">
+                <dt>{ORDER_DETAILS_FIELD.billing_percentage.label} <span className="pi-form-optional">Internal</span></dt>
+                <dd data-empty={declared === null ? 'true' : undefined}>
+                  {declared === null ? 'Not declared' : formatBillingPercentage(declared)}
+                </dd>
               </div>
-              <button type="button" className="boe-btn boe-btn-ghost" disabled={saving || !dirty || Boolean(error)} onClick={() => void save()}>
-                {saving ? 'Saving…' : 'Save percentage'}
-              </button>
-              {saved && !dirty && <span role="status" className="pi-detail-highlight-saved" style={{ alignSelf: 'center' }}>Saved</span>}
-            </div>
-          </FormField>
-        ) : (declared !== null || locked) && (
-          <dl className="pi-form-facts" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
-            <div className="pi-form-fact">
-              <dt>{ORDER_DETAILS_FIELD.billing_percentage.label} <span className="pi-form-optional">Internal</span></dt>
-              <dd data-empty={declared === null ? 'true' : undefined}>
-                {declared === null ? 'Not declared' : formatBillingPercentage(declared)}
-              </dd>
-            </div>
-          </dl>
-        )}
+            </dl>
+          )}
+        </div>
       </div>
     </section>
   )

@@ -27,7 +27,7 @@ import {
   type OrderDetailsReviewRow,
   type OrderDetailsRow,
 } from '@/lib/orders/salesOrderDetails'
-import { Choice, ChoiceGroup, FormField, FormGroup, RequiredLegend, RequiredMark, describedBy } from './PiFormParts'
+import { Choice, ChoiceGroup, FormField, FormGrid, FormGroup, RequiredLegend, RequiredMark, describedBy, type Span } from './PiFormParts'
 
 /** The id of a field's input, for the readiness checklist to focus. */
 export const orderDetailsInputId = (key: OrderDetailsFieldKey): string =>
@@ -36,19 +36,37 @@ export const orderDetailsInputId = (key: OrderDetailsFieldKey): string =>
 /** What Submit for approval asks of the person, from the fields' own classification. */
 const requiredToSubmit = (key: OrderDetailsFieldKey): boolean => ORDER_DETAILS_FIELD[key].need === 'submission'
 
-/** The groups, in the order the form and the read view both show them. */
-const REVIEW_GROUPS: readonly { title: string; keys: readonly OrderDetailsFieldKey[] }[] = [
-  { title: 'Order dates', keys: ['order_confirmation_date', 'due_date'] },
-  { title: 'Order assignment', keys: ['salesperson_id', 'lead_source'] },
-  { title: 'Production details', keys: ['fabric_responsibility'] },
-  { title: 'Commission', keys: ['middleman_commission'] },
-  { title: 'Payment', keys: ['payment_terms'] },
-]
+/**
+ * THREE GROUPS, by when each value is needed — the read view and the form share
+ * them, so a person scanning either sees the same three answers: what Submit for
+ * approval still needs, what management needs later, and what is optional.
+ */
+const REQUIRED_TITLE = 'Required to submit'
+const LATER_TITLE = 'Needed when the Order is created'
+const OPTIONAL_TITLE = 'Optional'
+
+/**
+ * How many of the 12 grid columns each value takes in the read view: a date is a
+ * short value and gets a quarter, a sentence gets a half, a paragraph the row.
+ * The later/optional pair shares one row, so their spans are within a half.
+ */
+const READ_SPAN: Partial<Record<OrderDetailsFieldKey, Span>> = {
+  order_confirmation_date: 3,
+  due_date: 3,
+  fabric_responsibility: 6,
+  middleman_commission: 12,
+  salesperson_id: 7,
+  lead_source: 5,
+  payment_terms: 12,
+}
+const REQUIRED_KEYS: readonly OrderDetailsFieldKey[] = ['order_confirmation_date', 'due_date', 'fabric_responsibility', 'middleman_commission']
+const LATER_KEYS: readonly OrderDetailsFieldKey[] = ['salesperson_id', 'lead_source']
+const OPTIONAL_KEYS: readonly OrderDetailsFieldKey[] = ['payment_terms']
 
 /** One fact in the read view. A missing required value is said, never blank. */
 function ReviewLine({ row, missing }: { row: OrderDetailsReviewRow; missing: boolean }) {
   return (
-    <div className="pi-form-fact">
+    <div className={`pi-form-fact pi-span-${READ_SPAN[row.key] ?? 12}`}>
       <dt>{row.label}{requiredToSubmit(row.key) && <RequiredMark />}</dt>
       <dd data-empty={row.value ? undefined : 'true'} data-required={!row.value && missing ? 'true' : undefined}>
         {row.value ?? orderDetailsAbsent(row.need, row.key)}
@@ -167,6 +185,12 @@ export function PiOrderDetailsSection({
 
   const field = (key: keyof OrderDetailsForm) => (attempted || form[key] !== orderDetailsForm(row)[key] ? errors[key] : undefined)
   const fabricNote = fabricResponsibilityNeedsConfirmation({ next: form.fabric_responsibility || null, fabricCost })
+  // A commission answered Yes without its details is a gap keyed middleman_structure; the read view shows it on the commission line.
+  const facts = (keys: readonly OrderDetailsFieldKey[]) => keys.map(key => {
+    const r = reviewByKey.get(key)
+    const missing = gaps.has(key) || (key === 'middleman_commission' && gaps.has('middleman_structure'))
+    return r ? <ReviewLine key={key} row={r} missing={missing} /> : null
+  })
   const workbookName = row.source_created_by ? ` The client PDF prints the workbook’s salesperson, “${row.source_created_by}”.` : ''
 
   return (
@@ -200,171 +224,181 @@ export function PiOrderDetailsSection({
       {showLegend && <RequiredLegend />}
 
       {!editing ? (
-        <>
-          {REVIEW_GROUPS.map(group => (
-            <FormGroup key={group.title} title={group.title} note={group.title === 'Order assignment' ? 'Needed when the Order is created, not to submit this PI.' : undefined}>
-              <dl className="pi-form-facts">
-                {group.keys.map(key => {
-                  const r = reviewByKey.get(key)
-                  return r ? <ReviewLine key={key} row={r} missing={gaps.has(key)} /> : null
-                })}
-              </dl>
+        <div className="pi-form-body">
+          <FormGroup title={REQUIRED_TITLE} aside={
+            <span className="pi-form-group-status" data-tone={gaps.size > 0 ? 'needed' : 'done'}>
+              {gaps.size > 0 ? `${gaps.size} still needed` : 'Complete'}
+            </span>
+          }>
+            <FormGrid as="dl">{facts(REQUIRED_KEYS)}</FormGrid>
+          </FormGroup>
+          <div className="pi-form-pair">
+            <FormGroup title={LATER_TITLE}>
+              <FormGrid as="dl">{facts(LATER_KEYS)}</FormGrid>
             </FormGroup>
-          ))}
+            <FormGroup title={OPTIONAL_TITLE}>
+              <FormGrid as="dl">{facts(OPTIONAL_KEYS)}</FormGrid>
+            </FormGroup>
+          </div>
           {row.internal_details_confirmed_at && (
             <span className="pi-form-help">Confirmed {formatIsoDay(row.internal_details_confirmed_at)}. A change clears the confirmation until Submit for Approval asks for it again.</span>
           )}
-        </>
+        </div>
       ) : (
         <form
           noValidate
           onSubmit={e => { e.preventDefault(); void save() }}
-          style={{ display: 'flex', flexDirection: 'column' }}
+          className="pi-form-body"
           aria-label={`Edit ${ORDER_DETAILS_TITLE.toLowerCase()}`}
         >
-          {/* ── Order dates ── */}
-          <FormGroup title="Order dates" note="The dispatch date cannot be before the confirmation date.">
-            <div className="pi-form-grid">
+          {/* ── Required to submit: the two dates, fabric, and the commission question ── */}
+          <FormGroup title={REQUIRED_TITLE}>
+            <FormGrid>
               {(['order_confirmation_date', 'due_date'] as const).map(key => {
                 const id = orderDetailsInputId(key)
                 const error = field(key)
+                const help = key === 'due_date' ? 'Not before the confirmation date.' : undefined
                 return (
-                  <FormField key={key} id={id} label={ORDER_DETAILS_FIELD[key].label} required error={error}>
+                  <FormField key={key} id={id} label={ORDER_DETAILS_FIELD[key].label} required span={3} help={help} error={error}>
                     <input id={id} type="date" className="pi-form-input" value={form[key]} disabled={saving}
                       min={key === 'due_date' && form.order_confirmation_date ? form.order_confirmation_date : undefined}
                       aria-required="true" aria-invalid={error ? true : undefined}
-                      aria-describedby={describedBy(id, false, Boolean(error))}
+                      aria-describedby={describedBy(id, Boolean(help), Boolean(error))}
                       onChange={e => set(key, e.target.value)} />
                   </FormField>
                 )
               })}
-            </div>
-          </FormGroup>
 
-          {/* ── Order assignment ── */}
-          <FormGroup title="Order assignment" note="Needed when the Order is created, not to submit this PI.">
-            <div className="pi-form-grid">
-              <FormField id={orderDetailsInputId('salesperson_id')} label={ORDER_DETAILS_FIELD.salesperson_id.label}
-                help={salesDetailsAvailable ? `Management can change it when creating the Order.${workbookName}` : 'Available once the database update for this section is applied.'}>
-                <select id={orderDetailsInputId('salesperson_id')} className="pi-form-input" value={form.salesperson_id}
-                  disabled={saving || !salesDetailsAvailable}
-                  aria-describedby={describedBy(orderDetailsInputId('salesperson_id'), true, false)}
-                  onChange={e => set('salesperson_id', e.target.value)}>
-                  <option value="">Choose the salesperson…</option>
-                  {form.salesperson_id && !people.some(p => p.id === form.salesperson_id) && (
-                    <option value={form.salesperson_id}>Saved (not in the list)</option>
+              <ChoiceGroup
+                legend={ORDER_DETAILS_FIELD.fabric_responsibility.label}
+                required
+                describedById="od-fabric-group"
+                help={<>Fabric cost on this PI: {fabricCost === null ? 'not stated' : formatInr(fabricCost)}, from the workbook. Printed on the client PDF as one sentence.</>}
+                error={field('fabric_responsibility')}
+              >
+                {FABRIC_RESPONSIBILITY_OPTIONS.map((option, i) => (
+                  <Choice key={option.value} id={i === 0 ? orderDetailsInputId('fabric_responsibility') : undefined}
+                    name="od-fabric" label={option.label} disabled={saving}
+                    checked={form.fabric_responsibility === option.value}
+                    onChange={() => set('fabric_responsibility', option.value)} />
+                ))}
+              </ChoiceGroup>
+              {fabricNote && <span className="pi-form-help pi-span-12">{FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>}
+
+              {/* The commission question and its follow-up, together. */}
+              {restricted ? (
+                <span className="pi-form-help pi-span-12">You may not read the middleman commission on this PI, so it is not edited here.</span>
+              ) : (
+                <>
+                  <ChoiceGroup legend={ORDER_DETAILS_FIELD.middleman_commission.label} required describedById="od-middleman-group">
+                    {(['no', 'yes'] as const).map((answer, i) => (
+                      <Choice key={answer} id={i === 0 ? orderDetailsInputId('middleman_commission') : undefined}
+                        name="od-middleman" label={answer === 'yes' ? 'Yes' : 'No'} disabled={saving}
+                        checked={form.middleman_commission === answer}
+                        onChange={() => set('middleman_commission', answer)} />
+                    ))}
+                  </ChoiceGroup>
+                  {form.middleman_commission === 'yes' && (
+                    <div className="pi-form-followup pi-span-12">
+                      <FormGrid>
+                        <FormField id={orderDetailsInputId('middleman_structure')} label="Who receives it" required span={6} error={field('middleman_recipient')}>
+                          <input id={orderDetailsInputId('middleman_structure')} type="text" maxLength={200} className="pi-form-input"
+                            value={form.middleman_recipient} disabled={saving}
+                            aria-required="true" aria-invalid={field('middleman_recipient') ? true : undefined}
+                            aria-describedby={describedBy(orderDetailsInputId('middleman_structure'), false, Boolean(field('middleman_recipient')))}
+                            onChange={e => set('middleman_recipient', e.target.value)} />
+                        </FormField>
+                        <ChoiceGroup legend="How it is agreed" required span={6} describedById="od-basis-group">
+                          {(['amount', 'percent'] as const).map(basis => (
+                            <Choice key={basis} name="od-basis" label={basis === 'amount' ? 'Agreed amount (₹)' : 'Agreed percentage'}
+                              disabled={saving} checked={form.middleman_commission_basis === basis}
+                              onChange={() => set('middleman_commission_basis', basis)} />
+                          ))}
+                        </ChoiceGroup>
+                        {form.middleman_commission_basis === 'amount' && (
+                          <FormField id="od-commission-amount" label="Amount (₹)" required span={3} error={field('middleman_commission_amount')}>
+                            <input id="od-commission-amount" type="number" inputMode="decimal" min="0.01" step="0.01" className="pi-form-input" data-amount-input
+                              value={form.middleman_commission_amount} disabled={saving}
+                              aria-required="true" aria-invalid={field('middleman_commission_amount') ? true : undefined}
+                              aria-describedby={describedBy('od-commission-amount', false, Boolean(field('middleman_commission_amount')))}
+                              onChange={e => set('middleman_commission_amount', e.target.value)} />
+                          </FormField>
+                        )}
+                        {form.middleman_commission_basis === 'percent' && (
+                          <>
+                            <FormField id="od-commission-percent" label="Percentage (%)" required span={3} error={field('middleman_commission_percent')}>
+                              <input id="od-commission-percent" type="number" inputMode="decimal" min="0.001" max="100" step="0.001" className="pi-form-input"
+                                value={form.middleman_commission_percent} disabled={saving}
+                                aria-required="true" aria-invalid={field('middleman_commission_percent') ? true : undefined}
+                                aria-describedby={describedBy('od-commission-percent', false, Boolean(field('middleman_commission_percent')))}
+                                onChange={e => set('middleman_commission_percent', e.target.value)} />
+                            </FormField>
+                            <FormField id="od-commission-percent-of" label="Percentage of" required span={8}>
+                              <select id="od-commission-percent-of" className="pi-form-input" aria-required="true"
+                                value={form.middleman_commission_percent_of} disabled={saving}
+                                onChange={e => set('middleman_commission_percent_of', e.target.value as OrderDetailsForm['middleman_commission_percent_of'])}>
+                                <option value="">Choose the figure…</option>
+                                {COMMISSION_PERCENT_OF_ORDER.map(k => <option key={k} value={k}>{COMMISSION_PERCENT_OF_LABEL[k]}</option>)}
+                              </select>
+                            </FormField>
+                          </>
+                        )}
+                      </FormGrid>
+                    </div>
                   )}
-                  {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </FormField>
-              <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} error={field('lead_source')}>
-                <select id={orderDetailsInputId('lead_source')} className="pi-form-input" value={form.lead_source}
-                  disabled={saving || !salesDetailsAvailable}
-                  aria-invalid={field('lead_source') ? true : undefined}
-                  aria-describedby={describedBy(orderDetailsInputId('lead_source'), false, Boolean(field('lead_source')))}
-                  onChange={e => set('lead_source', e.target.value)}>
-                  <option value="">Choose the lead source…</option>
-                  {LEAD_SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </FormField>
-            </div>
+                </>
+              )}
+            </FormGrid>
           </FormGroup>
 
-          {/* ── Production details ── */}
-          <FormGroup title="Production details">
-            <ChoiceGroup
-              legend={ORDER_DETAILS_FIELD.fabric_responsibility.label}
-              required
-              describedById="od-fabric-group"
-              help={<>Fabric cost on this PI: {fabricCost === null ? 'not stated' : formatInr(fabricCost)}, from the workbook. Printed on the client PDF as one sentence.</>}
-              error={field('fabric_responsibility')}
-            >
-              {FABRIC_RESPONSIBILITY_OPTIONS.map((option, i) => (
-                <Choice key={option.value} id={i === 0 ? orderDetailsInputId('fabric_responsibility') : undefined}
-                  name="od-fabric" label={option.label} disabled={saving}
-                  checked={form.fabric_responsibility === option.value}
-                  onChange={() => set('fabric_responsibility', option.value)} />
-              ))}
-            </ChoiceGroup>
-            {fabricNote && <span className="pi-form-help">{FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>}
-          </FormGroup>
-
-          {/* ── Commission: the question and its follow-up, together ── */}
-          <FormGroup title="Commission">
-            {restricted ? (
-              <span className="pi-form-help">You may not read the middleman commission on this PI, so it is not edited here.</span>
-            ) : (
-              <>
-                <ChoiceGroup legend={ORDER_DETAILS_FIELD.middleman_commission.label} required describedById="od-middleman-group">
-                  {(['no', 'yes'] as const).map((answer, i) => (
-                    <Choice key={answer} id={i === 0 ? orderDetailsInputId('middleman_commission') : undefined}
-                      name="od-middleman" label={answer === 'yes' ? 'Yes' : 'No'} disabled={saving}
-                      checked={form.middleman_commission === answer}
-                      onChange={() => set('middleman_commission', answer)} />
-                  ))}
-                </ChoiceGroup>
-                {form.middleman_commission === 'yes' && (
-                  <div className="pi-form-followup">
-                    <FormField id={orderDetailsInputId('middleman_structure')} label="Who receives it" required error={field('middleman_recipient')}>
-                      <input id={orderDetailsInputId('middleman_structure')} type="text" maxLength={200} className="pi-form-input"
-                        value={form.middleman_recipient} disabled={saving}
-                        aria-required="true" aria-invalid={field('middleman_recipient') ? true : undefined}
-                        aria-describedby={describedBy(orderDetailsInputId('middleman_structure'), false, Boolean(field('middleman_recipient')))}
-                        onChange={e => set('middleman_recipient', e.target.value)} />
-                    </FormField>
-                    <ChoiceGroup legend="How it is agreed" required describedById="od-basis-group">
-                      {(['amount', 'percent'] as const).map(basis => (
-                        <Choice key={basis} name="od-basis" label={basis === 'amount' ? 'Agreed amount (₹)' : 'Agreed percentage'}
-                          disabled={saving} checked={form.middleman_commission_basis === basis}
-                          onChange={() => set('middleman_commission_basis', basis)} />
-                      ))}
-                    </ChoiceGroup>
-                    {form.middleman_commission_basis === 'amount' && (
-                      <FormField id="od-commission-amount" label="Amount (₹)" required error={field('middleman_commission_amount')}>
-                        <input id="od-commission-amount" type="number" inputMode="decimal" min="0.01" step="0.01" className="pi-form-input" data-amount-input
-                          value={form.middleman_commission_amount} disabled={saving}
-                          aria-required="true" aria-invalid={field('middleman_commission_amount') ? true : undefined}
-                          aria-describedby={describedBy('od-commission-amount', false, Boolean(field('middleman_commission_amount')))}
-                          onChange={e => set('middleman_commission_amount', e.target.value)} />
-                      </FormField>
+          <div className="pi-form-pair">
+            {/* ── Needed when the Order is created, not to submit ── */}
+            <FormGroup title={LATER_TITLE}>
+              <FormGrid>
+                <FormField id={orderDetailsInputId('salesperson_id')} label={ORDER_DETAILS_FIELD.salesperson_id.label} span={7}>
+                  <select id={orderDetailsInputId('salesperson_id')} className="pi-form-input" value={form.salesperson_id}
+                    disabled={saving || !salesDetailsAvailable}
+                    aria-describedby={describedBy(orderDetailsInputId('salesperson_id'), true, false)}
+                    onChange={e => set('salesperson_id', e.target.value)}>
+                    <option value="">Choose…</option>
+                    {form.salesperson_id && !people.some(p => p.id === form.salesperson_id) && (
+                      <option value={form.salesperson_id}>Saved (not in the list)</option>
                     )}
-                    {form.middleman_commission_basis === 'percent' && (
-                      <div className="pi-form-grid">
-                        <FormField id="od-commission-percent" label="Percentage (%)" required error={field('middleman_commission_percent')}>
-                          <input id="od-commission-percent" type="number" inputMode="decimal" min="0.001" max="100" step="0.001" className="pi-form-input"
-                            value={form.middleman_commission_percent} disabled={saving}
-                            aria-required="true" aria-invalid={field('middleman_commission_percent') ? true : undefined}
-                            aria-describedby={describedBy('od-commission-percent', false, Boolean(field('middleman_commission_percent')))}
-                            onChange={e => set('middleman_commission_percent', e.target.value)} />
-                        </FormField>
-                        <FormField id="od-commission-percent-of" label="Percentage of" required>
-                          <select id="od-commission-percent-of" className="pi-form-input" aria-required="true"
-                            value={form.middleman_commission_percent_of} disabled={saving}
-                            onChange={e => set('middleman_commission_percent_of', e.target.value as OrderDetailsForm['middleman_commission_percent_of'])}>
-                            <option value="">Choose the figure…</option>
-                            {COMMISSION_PERCENT_OF_ORDER.map(k => <option key={k} value={k}>{COMMISSION_PERCENT_OF_LABEL[k]}</option>)}
-                          </select>
-                        </FormField>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </FormGroup>
+                    {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </FormField>
+                <FormField id={orderDetailsInputId('lead_source')} label={ORDER_DETAILS_FIELD.lead_source.label} span={5} error={field('lead_source')}>
+                  <select id={orderDetailsInputId('lead_source')} className="pi-form-input" value={form.lead_source}
+                    disabled={saving || !salesDetailsAvailable}
+                    aria-invalid={field('lead_source') ? true : undefined}
+                    aria-describedby={describedBy(orderDetailsInputId('lead_source'), false, Boolean(field('lead_source')))}
+                    onChange={e => set('lead_source', e.target.value)}>
+                    <option value="">Choose…</option>
+                    {LEAD_SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </FormField>
+                {/* The salesperson's help sits under both selects, so it is not squeezed into one. */}
+                <span id={`${orderDetailsInputId('salesperson_id')}-help`} className="pi-form-help pi-span-12">
+                  {salesDetailsAvailable ? `Management can change the salesperson when creating the Order.${workbookName}` : 'Available once the database update for this section is applied.'}
+                </span>
+              </FormGrid>
+            </FormGroup>
 
-          {/* ── Payment terms ── */}
-          <FormGroup title="Payment">
-            <FormField id={orderDetailsInputId('payment_terms')} label={ORDER_DETAILS_FIELD.payment_terms.label} optional
-              help="How the payments are agreed to fall due. Sent unchanged with the PI." error={field('payment_terms')}>
-              <textarea id={orderDetailsInputId('payment_terms')} rows={2} className="pi-form-input"
-                maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
-                placeholder="e.g. 30% advance, 30% during production, 40% before dispatch"
-                aria-invalid={field('payment_terms') ? true : undefined}
-                aria-describedby={describedBy(orderDetailsInputId('payment_terms'), true, Boolean(field('payment_terms')))}
-                onChange={e => set('payment_terms', e.target.value)} />
-            </FormField>
-          </FormGroup>
+            {/* ── Optional ── */}
+            <FormGroup title={OPTIONAL_TITLE}>
+              <FormGrid>
+                <FormField id={orderDetailsInputId('payment_terms')} label={ORDER_DETAILS_FIELD.payment_terms.label}
+                  help="How the payments are agreed to fall due. Sent unchanged with the PI." error={field('payment_terms')}>
+                  <textarea id={orderDetailsInputId('payment_terms')} rows={2} className="pi-form-input"
+                    maxLength={PAYMENT_TERMS_FIELD_MAX} value={form.payment_terms} disabled={saving}
+                    placeholder="e.g. 30% advance, 30% during production, 40% before dispatch"
+                    aria-invalid={field('payment_terms') ? true : undefined}
+                    aria-describedby={describedBy(orderDetailsInputId('payment_terms'), true, Boolean(field('payment_terms')))}
+                    onChange={e => set('payment_terms', e.target.value)} />
+                </FormField>
+              </FormGrid>
+            </FormGroup>
+          </div>
 
           {failure && <div role="alert" className="pi-form-failure">{failure}</div>}
           <div className="pi-form-footer">

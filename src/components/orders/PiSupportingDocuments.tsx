@@ -320,9 +320,9 @@ const ATTACH_ORDER = ['client_po', 'design_files'] as const
 /**
  * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270114000000).
  *
- * Two balanced columns, one per category: its name, what is attached (file names,
- * each openable and removable), and one Add control. No empty upload boxes — an
- * empty category is one quiet line. The parent supplies the card and heading.
+ * One compact row per category: its name, what is attached (file names, each
+ * openable and removable), and one Add control at the row's end. No upload
+ * boxes — an empty category is one quiet line. The parent supplies the card and heading.
  *
  * Attached any time while the PI is a draft or returned, kept between visits,
  * and ticked by default in the "Submit for approval" dialog, which sends them.
@@ -348,38 +348,26 @@ export function PiDraftAttachments({ supabase, state, canEdit }: {
 
   return (
     <div id="pi-draft-attachments" aria-label={DRAFT_ATTACHMENTS_TITLE} role="group" style={{ minWidth: 0 }}>
-      <div className="pi-attach-grid">
+      <div className="pi-attach-list">
         {ATTACH_ORDER.map(category => {
           const files = state.staged.filter(s => s.category === category)
           const many = category === 'design_files'
           const addLabel = files.length === 0 ? (many ? 'Add files' : 'Add file') : (many ? 'Add more' : 'Add another')
           return (
             <div key={category} role="group" aria-label={CATEGORY_LABEL[category]} className="pi-attach">
-              <div className="pi-attach-head">
-                <span className="pi-form-label">{CATEGORY_LABEL[category]}</span>
-                {canEdit && (
-                  <label className="boe-btn boe-btn-ghost" style={{ cursor: state.staging ? 'default' : 'pointer', flexShrink: 0 }}>
-                    {state.staging ? 'Uploading…' : addLabel}
-                    <input type="file" multiple={many} accept={DOCUMENT_ACCEPT_ATTR}
-                           disabled={state.staging}
-                           className="pi-attach-input"
-                           aria-label={`Add ${CATEGORY_LABEL[category]}`}
-                           onChange={e => { const list = e.target.files; void state.stage(list, category).then(setFailure); e.target.value = '' }} />
-                  </label>
-                )}
-              </div>
+              <span className="pi-form-label">{CATEGORY_LABEL[category]}</span>
               {files.length === 0 ? (
                 <span className="pi-attach-state">None attached yet</span>
               ) : (
                 <ul className="pi-attach-files">
                   {files.map(f => (
                     <li key={f.storage_path}>
-                      <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
-                      <button type="button" className="pi-attach-name" onClick={() => void open(f.storage_path)}>
+                      <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
+                      <button type="button" className="pi-attach-name" title={f.file_name} onClick={() => void open(f.storage_path)}>
                         {f.file_name}
                       </button>
                       {canEdit && (
-                        <button type="button" className="boe-btn boe-btn-ghost" style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: '11.5px', flexShrink: 0 }}
+                        <button type="button" className="pi-attach-remove"
                                 disabled={state.staging}
                                 aria-label={`Remove ${f.file_name}`}
                                 onClick={() => void state.unstage(f.storage_path).then(setFailure)}>
@@ -390,11 +378,21 @@ export function PiDraftAttachments({ supabase, state, canEdit }: {
                   ))}
                 </ul>
               )}
+              {canEdit && (
+                <label className="boe-btn boe-btn-ghost pi-attach-add" style={{ cursor: state.staging ? 'default' : 'pointer' }}>
+                  {state.staging ? 'Uploading…' : addLabel}
+                  <input type="file" multiple={many} accept={DOCUMENT_ACCEPT_ATTR}
+                         disabled={state.staging}
+                         className="pi-attach-input"
+                         aria-label={`Add ${CATEGORY_LABEL[category]}`}
+                         onChange={e => { const list = e.target.files; void state.stage(list, category).then(setFailure); e.target.value = '' }} />
+                </label>
+              )}
             </div>
           )
         })}
       </div>
-      {canEdit && <p className="pi-form-help" style={{ margin: '8px 0 0' }}>PDF, PNG, JPEG or WebP, up to 10 MB each. {DRAFT_ATTACHMENTS_NOTE}</p>}
+      {canEdit && <p className="pi-form-help" style={{ margin: '6px 0 0' }}>PDF, PNG, JPEG or WebP, up to 10 MB each. {DRAFT_ATTACHMENTS_NOTE}</p>}
       {failure && <div role="alert" className="pi-form-error" style={{ marginTop: '6px' }}>{failure}</div>}
     </div>
   )
