@@ -118,10 +118,11 @@ const COMPACT_ACTION_BUTTON_BASE: React.CSSProperties = {
 }
 
 /** A compact action's visible label: `short` replaces `full` when the row is narrow. */
-function ActionLabel({ full, short = full }: { full: string; short?: string }) {
+function ActionLabel({ full, short = full, long = false }: { full: string; short?: string; long?: boolean }) {
   if (short === full) return <span className="boe-task-action-label">{full}</span>
+  // `long`: the full label is wide (Approve & Complete), so it needs a wider row than the others before it shows.
   return (
-    <span className="boe-task-action-label">
+    <span className={`boe-task-action-label${long ? ' boe-task-action-label--long' : ''}`}>
       <span className="boe-task-action-label-full">{full}</span>
       <span className="boe-task-action-label-short">{short}</span>
     </span>
@@ -1319,7 +1320,7 @@ export default function TaskDetailPage() {
   const canCopyAssign = isAdmin && !isQuotation   // admin-only; the API enforces this too
   // Every active-task action row except the creator's review decision (its own
   // 2x2 grid) and a quotation (one centred button) is the compact single row.
-  const compactActions = !isReviewDecision && !isQuotation
+  const compactActions = !isQuotation
   const actionBase     = compactActions ? COMPACT_ACTION_BUTTON_BASE : ACTION_BUTTON_BASE
 
   // The legacy single attachment, as an object path. De-duplication compares
@@ -1852,8 +1853,12 @@ export default function TaskDetailPage() {
                       className="boe-task-action-primary"
                       onClick={approveTask}
                       disabled={reviewBusyAny}
+                      // Visible label "Approve" on a narrow row; the full action
+                      // name is the accessible name and the tooltip.
+                      aria-label={reviewBusy === 'approve' ? 'Approving…' : 'Approve & Complete'}
+                      title="Approve & Complete"
                       style={{
-                        ...ACTION_BUTTON_BASE,
+                        ...COMPACT_ACTION_BUTTON_BASE,
                         fontWeight: 700,
                         border: `1.5px solid ${colors.green}`,
                         background: colors.green, color: '#ffffff',
@@ -1862,8 +1867,8 @@ export default function TaskDetailPage() {
                         boxShadow: `0 2px 6px ${colors.green}38`,
                       }}
                     >
-                      <CircleCheckBig size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                      {reviewBusy === 'approve' ? 'Approving…' : 'Approve & Complete'}
+                      <CircleCheckBig size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      <ActionLabel long full={reviewBusy === 'approve' ? 'Approving…' : 'Approve & Complete'} short={reviewBusy === 'approve' ? 'Approving…' : 'Approve'} />
                     </button>
                   )}
                   {mayReturn && (
@@ -1871,8 +1876,10 @@ export default function TaskDetailPage() {
                       className="boe-task-action-secondary"
                       onClick={() => { setReturnReason(''); setReturnReasonError(null); setReturnModalOpen(true) }}
                       disabled={reviewBusyAny}
+                      aria-label={reviewBusy === 'return' ? 'Returning…' : 'Return to Working'}
+                      title="Return to Working"
                       style={{
-                        ...ACTION_BUTTON_BASE,
+                        ...COMPACT_ACTION_BUTTON_BASE,
                         border: `1.5px solid ${APPROVAL_GOLD}55`,
                         background: '#ffffff', color: APPROVAL_GOLD,
                         cursor: reviewBusyAny ? 'not-allowed' : 'pointer',
@@ -1881,8 +1888,8 @@ export default function TaskDetailPage() {
                       onMouseEnter={e => { if (!reviewBusyAny) e.currentTarget.style.background = APPROVAL_GOLD_TINT }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
-                      <Undo2 size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                      {reviewBusy === 'return' ? 'Returning…' : 'Return to Working'}
+                      <Undo2 size={17} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      <ActionLabel long full={reviewBusy === 'return' ? 'Returning…' : 'Return to Working'} short={reviewBusy === 'return' ? 'Returning…' : 'Return'} />
                     </button>
                   )}
 
@@ -1910,7 +1917,7 @@ export default function TaskDetailPage() {
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
                       <UserCheck size={compactActions ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
-                      {compactActions ? <ActionLabel full="Copy & Assign" short="Copy" /> : <>Copy &amp; Assign</>}
+                      {compactActions ? <ActionLabel long={isReviewDecision} full="Copy & Assign" short="Copy" /> : <>Copy &amp; Assign</>}
                     </button>
                   )}
                   {showCancelButton && !isQuotation && !isUnacknowledged && (
