@@ -15,12 +15,20 @@
 --                                       candidate may see: own / own + selected
 --                                       / all sales candidates. Owner only.
 --   5. sales_scope_allows_order() + ONE extra SELECT policy on public.orders,
---      can_view_order_as_actor() widened by the same branch, and
---      can_view_order_unscoped() — the rule as it was.
---   6. Finance is held where it was: finance_payment_allocations'
---      order-participant policy, can_read_payment_as_participant() and
---      order_linked_payment_total() now ask can_view_order_unscoped(), so a
---      visibility scope reveals Orders and NEVER a payment record.
+--      and can_read_order_detail(): the scope-aware "may read this Order's
+--      detail" predicate. can_view_order_as_actor() is the RULE AS IT WAS
+--      (unscoped) — every authorization helper that already asked it, including
+--      order_advance_readiness() and the operations decisions, is untouched by a scope.
+--   6. A SCOPE REVEALS ORDER DETAIL, NEVER MONEY OR AUTHORITY:
+--      * Finance: the allocation policy, can_read_payment_as_participant(),
+--        order_linked_payment_total(), the two Finance views' order joins, and the
+--        new finance_order_search() / finance_order_lookup() (which replace the
+--        Finance screens' direct reads of orders) all ask the UNSCOPED rule.
+--      * Authority: order_document_versions' request/retry policies and
+--        request_order_document_generation() ask the unscoped rule, so a scope is
+--        never permission to generate or retry a document for a colleague's Order.
+--      * The three read-only PI detail RPCs follow the scope on purpose (the
+--        order detail page and its PI PDF).
 --   7. orders_dashboard_summary()       the dashboard's one read.
 --
 -- ADDITIVE except three deliberate re-emissions (5 and 6), each restating the
@@ -464,8 +472,23 @@ grant execute on function public.can_view_order_unscoped(uuid) to authenticated;
 comment on function public.can_view_order_unscoped(uuid) is
   'May the caller see this Order WITHOUT any visibility scope: admin, operations, their own, or orders.view_all. What Finance asks, so a scope reveals Orders and never a payment. 20270221000000.';
 
--- The Orders-side predicate: the same, plus the caller's scope.
+-- can_view_order_as_actor() IS THE RULE AS IT WAS. Everything that authorizes on it
+-- (order_advance_readiness, the three operations decisions, the payment helpers)
+-- keeps its pre-scope meaning: a scope adds nothing to any of them.
 create or replace function public.can_view_order_as_actor(p_order_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select public.can_view_order_unscoped(p_order_id);
+$$;
+
+-- May the caller READ this Order's detail: the unscoped rule, or their visibility
+-- scope. Used ONLY by the read-only detail surfaces (the dashboard and the PI
+-- version / PDF / revision-difference RPCs below). It authorizes no write.
+create or replace function public.can_read_order_detail(p_order_id uuid)
 returns boolean
 language sql
 stable
@@ -479,6 +502,10 @@ as $$
            and public.module_entry_open('orders')
            and public.sales_scope_allows_order(o.assigned_to, o.requested_by));
 $$;
+revoke all on function public.can_read_order_detail(uuid) from public, anon, service_role;
+grant execute on function public.can_read_order_detail(uuid) to authenticated;
+comment on function public.can_read_order_detail(uuid) is
+  'May the caller READ this Order''s detail: the unscoped rule, or their Order visibility scope. Read-only surfaces only; never a write, never Finance. 20270221000000.';
 
 -- FINANCE STAYS WHERE IT WAS. Both were 20261006000000's bodies asking
 -- can_view_order_as_actor; they now ask the unscoped rule.
@@ -621,6 +648,139 @@ grant  execute on function public.list_order_visibility_scopes() to authenticate
 comment on function public.list_order_visibility_scopes() is
   'Every sales candidate with their Order visibility scope. Owner only. 20270221000000.';
 
+-- ═══ 3a. A scope is never money and never authority ═══════════════════════════
+--
+-- Each block below RE-PINS something that reads Orders under the caller's row
+-- security (and so would have followed the new SELECT policy) to the unscoped rule.
+-- Function and view bodies are patched from their LIVE definitions rather than
+-- retyped, so the change cannot drift from what is deployed; every patch asserts
+-- that it changed exactly what it meant to.
+
+-- (a) The read-only PI detail RPCs follow the scope on purpose: the order detail
+-- page and its PI PDF. Their body is otherwise untouched.
+do $$
+declare
+  f record;
+  d text;
+  patched integer := 0;
+begin
+  for f in
+    select p.oid, p.proname from pg_proc p
+     where p.pronamespace = 'public'::regnamespace
+       and p.proname in ('order_pi_version_detail', 'order_pi_version_pdf_detail', 'order_pi_revision_differences')
+  loop
+    d := pg_get_functiondef(f.oid);
+    if position('can_read_order_detail' in d) = 0 then     -- idempotent: already patched is fine
+      if (length(d) - length(replace(d, 'can_view_order_as_actor', ''))) / length('can_view_order_as_actor') <> 1 then
+        raise exception 'PATCH: % should ask can_view_order_as_actor exactly once', f.proname;
+      end if;
+      execute replace(d, 'can_view_order_as_actor', 'can_read_order_detail');
+    end if;
+    patched := patched + 1;
+  end loop;
+  if patched <> 3 then raise exception 'PATCH: expected the three PI detail functions, found %', patched; end if;
+end $$;
+
+-- (b) A scope is never permission to generate or retry a document.
+do $$
+declare
+  d text;
+  pol record;
+  n integer := 0;
+begin
+  d := pg_get_functiondef('public.request_order_document_generation(uuid)'::regprocedure);
+  if position('public.can_view_order_unscoped(p_order_id)' in d) = 0 then      -- idempotent
+    if position('public.can_view_order(p_order_id)' in d) = 0 then
+      raise exception 'PATCH: request_order_document_generation no longer asks can_view_order(p_order_id)';
+    end if;
+    execute replace(d, 'public.can_view_order(p_order_id)', 'public.can_view_order_unscoped(p_order_id)');
+  end if;
+
+  for pol in
+    select policyname, permissive, cmd, roles, qual, with_check from pg_policies
+     where schemaname = 'public' and tablename = 'order_document_versions'
+       and policyname in ('order_document_versions_request_insert', 'order_document_versions_retry_update')
+  loop
+    if coalesce(pol.qual, '') || coalesce(pol.with_check, '') ~ 'can_view_order_unscoped' then
+      n := n + 1;                                                           -- idempotent
+      continue;
+    end if;
+    if coalesce(pol.qual, '') || coalesce(pol.with_check, '') !~ 'can_view_order\(' then
+      raise exception 'PATCH: policy % no longer asks can_view_order', pol.policyname;
+    end if;
+    execute format('drop policy %I on public.order_document_versions', pol.policyname);
+    execute format('create policy %I on public.order_document_versions as %s for %s to %s%s%s',
+      pol.policyname, pol.permissive, pol.cmd, array_to_string(pol.roles, ', '),
+      case when pol.qual is not null then ' using (' || replace(pol.qual, 'can_view_order(', 'can_view_order_unscoped(') || ')' else '' end,
+      case when pol.with_check is not null then ' with check (' || replace(pol.with_check, 'can_view_order(', 'can_view_order_unscoped(') || ')' else '' end);
+    n := n + 1;
+  end loop;
+  if n <> 2 then raise exception 'PATCH: expected the two document-version policies, found %', n; end if;
+end $$;
+
+-- (c) Finance reads Orders through these two functions instead of the table, so the
+-- picker and every Finance order lookup return exactly what they returned before a
+-- scope existed: the Orders the caller may open WITHOUT one.
+create or replace function public.finance_order_search(p_term text)
+returns table (id uuid, display_number text, client_name text, total_value numeric, status text)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select o.id, o.display_number, o.client_name, o.total_value, o.status
+    from public.orders o
+   where auth.uid() is not null
+     and o.status <> 'cancelled'
+     and public.can_view_order_unscoped(o.id)
+     and (o.display_number ilike '%' || replace(replace(replace(coalesce(p_term, ''), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+       or o.client_name    ilike '%' || replace(replace(replace(coalesce(p_term, ''), '\', '\\'), '%', '\%'), '_', '\_') || '%')
+   order by o.created_at desc
+   limit 15;
+$$;
+revoke all on function public.finance_order_search(text) from public, anon, service_role;
+grant execute on function public.finance_order_search(text) to authenticated;
+comment on function public.finance_order_search(text) is
+  'The Finance allocation picker''s order search: the Orders the caller may open WITHOUT a visibility scope, open ones only, fifteen at most. 20270221000000.';
+
+create or replace function public.finance_order_lookup(p_ids uuid[])
+returns table (id uuid, display_number text)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select o.id, o.display_number
+    from public.orders o
+   where auth.uid() is not null
+     and o.id = any (coalesce(p_ids, '{}'))
+     and public.can_view_order_unscoped(o.id);
+$$;
+revoke all on function public.finance_order_lookup(uuid[]) from public, anon, service_role;
+grant execute on function public.finance_order_lookup(uuid[]) to authenticated;
+comment on function public.finance_order_lookup(uuid[]) is
+  'Order numbers for the Finance screens, for the Orders the caller may open WITHOUT a visibility scope. 20270221000000.';
+
+-- (d) The Finance views join Orders under the caller's row security (security_invoker):
+-- pin each order join to the unscoped rule, from the live definition.
+do $$
+declare
+  v text;
+  d text;
+  e text;
+  joins integer;
+begin
+  foreach v in array array['finance_received_payments', 'finance_payment_destinations'] loop
+    d := pg_get_viewdef(('public.' || v)::regclass);
+    continue when position('can_view_order_unscoped' in d) > 0;          -- idempotent
+    e := regexp_replace(d, 'LEFT JOIN orders (\w+) ON \(\((\w+)\.id = ([\w.]+)\)\)',
+                        'LEFT JOIN orders \1 ON (((\2.id = \3) AND public.can_view_order_unscoped(\2.id)))', 'g');
+    joins := (length(e) - length(replace(e, 'can_view_order_unscoped', ''))) / length('can_view_order_unscoped');
+    if joins < 1 or e = d then raise exception 'PATCH: found no order join to pin in %', v; end if;
+    execute format('create or replace view public.%I with (security_invoker = true) as %s', v, e);
+  end loop;
+end $$;
+
 -- ═══ 3b. When fabric/finish tracking began ═════════════════════════════════════
 --
 -- An Order created before this moment predates the approval log, so a MISSING
@@ -643,7 +803,7 @@ comment on table public.orders_dashboard_settings is
 -- ═══ 4. The dashboard read ═══════════════════════════════════════════════════
 --
 -- ONE ROUND TRIP, ONE STATEMENT, over the Orders the caller may open
--- (can_view_order_as_actor — scope included), so a count is never a number for
+-- (can_read_order_detail — scope included), so a count is never a number for
 -- records the reader cannot see. Anything that cannot be assessed is COUNTED in
 -- `gaps` rather than treated as zero or as "all clear".
 
@@ -689,7 +849,7 @@ begin
       from public.orders o
      where coalesce(o.is_test_data, false) = false
        and o.status not in ('dispatched', 'cancelled')
-       and public.can_view_order_as_actor(o.id)
+       and public.can_read_order_detail(o.id)
   ),
   pos as materialized (
     select d.id as order_id, public.order_advance_position(d.id) as pos
@@ -902,7 +1062,7 @@ begin
           from public.order_factory_focus_selections d
           join public.orders o on o.id = d.order_id
           left join public.users sp on sp.id = d.salesperson_id
-          cross join lateral (select public.can_view_order_as_actor(o.id) as v) can_open
+          cross join lateral (select public.can_read_order_detail(o.id) as v) can_open
          where d.removed_at is null
            and coalesce(o.is_test_data, false) = false), '[]'::jsonb),
       -- The removal reason goes to the Order's salesperson, for a month.
@@ -958,6 +1118,9 @@ begin
      or to_regprocedure('public.remove_order_factory_focus(uuid, text)') is null
      or to_regprocedure('public.set_order_visibility_scope(uuid, text, uuid[])') is null
      or to_regprocedure('public.can_view_order_unscoped(uuid)') is null
+     or to_regprocedure('public.can_read_order_detail(uuid)') is null
+     or to_regprocedure('public.finance_order_search(text)') is null
+     or to_regprocedure('public.finance_order_lookup(uuid[])') is null
      or to_regclass('public.orders_dashboard_settings') is null
      or to_regclass('public.order_factory_focus_selections') is null then
     raise exception 'VERIFY: the Factory Focus / visibility objects were not created';
@@ -968,6 +1131,13 @@ begin
      or has_table_privilege('authenticated', 'public.order_visibility_scope_members', 'select')
      or has_table_privilege('authenticated', 'public.orders_dashboard_settings', 'select') then
     raise exception 'VERIFY: the Factory Focus and scope tables must not be readable by a client role';
+  end if;
+  if pg_get_viewdef('public.finance_received_payments'::regclass) !~ 'can_view_order_unscoped'
+     or pg_get_viewdef('public.finance_payment_destinations'::regclass) !~ 'can_view_order_unscoped' then
+    raise exception 'VERIFY: a Finance view still joins Orders under the scope';
+  end if;
+  if pg_get_functiondef('public.request_order_document_generation(uuid)'::regprocedure) !~ 'can_view_order_unscoped' then
+    raise exception 'VERIFY: document generation still follows the scope';
   end if;
   -- The Finance policy must have moved off the scope-aware rule.
   if not exists (select 1 from pg_policies

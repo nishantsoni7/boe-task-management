@@ -218,7 +218,8 @@ describe('no Create Order Request action remains', () => {
   test('the allocation picker offers Confirmed Orders and PI Drafts only', () => {
     const modal = read('src/app/finance/received/AllocatePaymentModal.tsx')
     assert.equal(modal.includes("from('order_requests')"), false)
-    assert.ok(modal.includes("from('orders')"))
+    // Orders arrive through finance_order_search(), the pre-scope rule (20270221000000).
+    assert.ok(modal.includes("rpc('finance_order_search'"))
     assert.ok(modal.includes("from('order_submissions')"))
     assert.ok(modal.includes('allocate_payment_to_target'))
   })

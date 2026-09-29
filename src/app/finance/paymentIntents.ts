@@ -108,12 +108,9 @@ export async function loadPaymentIntent(
 
   let reference: string | null = null
   if (targetType === 'confirmed_order' && row.order_id) {
-    const { data: o } = await supabase
-      .from('orders')
-      .select('display_number')
-      .eq('id', row.order_id)
-      .maybeSingle()
-    reference = (o as { display_number?: string } | null)?.display_number ?? null
+    // Through finance_order_lookup(): the pre-scope rule, never an Order visibility scope (20270221000000).
+    const { data: o } = await supabase.rpc('finance_order_lookup', { p_ids: [row.order_id] })
+    reference = ((o as { display_number?: string }[] | null) ?? [])[0]?.display_number ?? null
   } else if (targetType === 'pi_draft' && row.order_submission_id) {
     // A PI has no allocated number of its own until one is reserved or issued,
     // so its reference is what the workbook itself carries — the same two

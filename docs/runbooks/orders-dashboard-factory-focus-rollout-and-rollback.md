@@ -122,7 +122,7 @@ shows follows Order visibility.
 
 ## Audit: what broadening Orders visibility can reach
 
-The scope is one extra `SELECT` policy on `orders` and one branch in `can_view_order_as_actor()`. Audited on
+The scope is one extra `SELECT` policy on `orders` and one branch in `can_read_order_detail()`. Audited on
 2026-09-29 against a fully migrated database: every policy, function and view that reads Orders, and every
 route in `src/` that reads `orders` under the caller's session.
 
@@ -130,8 +130,7 @@ route in `src/` that reads `orders` under the caller's session.
 `order_approval_events`, `order_operations_handoffs`, `order_product_codes`, `order_pi_versions`,
 `order_document_versions` / submissions / files, the confirmed order's PI (`order_submissions`, items, images,
 activity) through `can_view_order_submission_via_order`, and the storage buckets `order-files` and
-`order-approval-evidence`. The definer RPCs that ask `can_view_order_as_actor()` (`order_pi_version_detail`,
-`…pdf_detail`, `order_pi_revision_differences`, `order_advance_readiness`) follow it too. The middleman
+`order-approval-evidence`. The three PI detail RPCs follow it too (via `can_read_order_detail()`); `order_advance_readiness` does not. The middleman
 commission is **not** among them: it has its own table and function (submitter, assigned reviewer, admin,
 `orders.view_pi_commission`) that no Orders visibility reaches.
 
@@ -144,24 +143,28 @@ tables (which key on meetings, not Orders). The two Finance views (`finance_rece
 `finance_payment_destinations`) are `security_invoker` and only LEFT JOIN `orders` for the order number of a
 payment the caller can already see.
 
-**Remaining exposures — for a person who holds a scope AND another grant:**
+**Closed by this migration — a scope reveals Order detail, never money or authority.**
 
-1. **Payment-derived figures through Orders RPCs.** `order_advance_readiness()` (verified, awaiting, shortfall,
-   exception, hold) is available to any Order viewer today, so a scope reaches it for scoped orders. The
-   dashboard no longer sends these figures for a scoped-only order (it counts what it withholds), but the Order
-   detail page's advance card still calls `order_advance_readiness()`. Closing that means re-emitting the
-   function against `can_view_order_unscoped()`; it is not done here because it touches a function outside this
-   feature.
-2. **Finance allocation picker.** `AllocatePaymentModal` searches `orders` under the caller's row security. A
-   candidate who also holds `finance.allocate` would see scoped orders (number, client, value) in the picker.
-   `allocate_payment_to_target` itself checks only `finance.allocate`, not Order visibility, so the scope adds no
-   ability to allocate — the permission already implied it — only sight.
-3. **Document generation.** `order_document_versions` insert/retry need `orders.approve_order` **and**
-   `can_view_order()`. An approver who also has a scope could request or retry document generation for a
-   scoped colleague's order — as a `view_all` approver already can.
-4. **Reading routes.** `/api/orders/[id]/notify` and `…/pi-versions/[versionId]/pdf` read `orders` with the
-   caller's client, so they follow the scope: a scoped viewer can open a scoped order's PI PDF (order detail).
-   `/api/orders/[id]/documents` reads with the service client after checking the caller, and is unaffected.
+* `can_view_order_as_actor()` is the rule as it was (unscoped). `order_advance_readiness()`, the operations
+  decisions and the payment helpers therefore ignore a scope: a scope-only viewer gets no payment-derived amount,
+  percentage or shortfall from the order detail page or a direct RPC. The owner, the Order's own people and
+  Finance users with the pre-scope right keep exactly what they had.
+* `can_read_order_detail()` (unscoped OR scope) is used only by the read-only surfaces: the dashboard and the
+  three PI detail RPCs (`order_pi_version_detail`, `…pdf_detail`, `order_pi_revision_differences`). PI PDF reading
+  stays available wherever order-detail reading is.
+* Finance: the picker calls `finance_order_search()`, the Finance screens' order-number lookups call
+  `finance_order_lookup()`, and both Finance views join Orders behind `can_view_order_unscoped()`. A user with a
+  scope and `finance.allocate` gets the same Orders and values as before the scope existed.
+* Authority: `request_order_document_generation()` and the `order_document_versions` request/retry policies ask
+  the unscoped rule; `/api/orders/[id]/notify` refuses (404) before reading when the caller lacks the unscoped
+  right. `approve_order` was never scope-aware (it asks `orders.approve_order` and the unscoped view rule).
+
+Function and view bodies are patched from their live definitions with asserts, and the patches are idempotent.
+Proven at the database boundary by section 8 of `supabase/tests/orders_dashboard_assertions.sql` (owner,
+scope-only salesperson, scope + Finance, approver, admin; direct calls, not hidden buttons).
+
+**Still true:** `/api/orders/[id]/pi-versions/[versionId]/pdf` reads with the caller's client, so a scoped viewer
+opens a scoped Order's PI PDF — intended, it is order detail.
 
 Nothing in the audit reaches another module's data: samples, showroom, tasks, performance, assets, notifications
 and customer reviews never read `orders` under a user session.

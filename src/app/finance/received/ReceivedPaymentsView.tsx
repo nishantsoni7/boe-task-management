@@ -3010,7 +3010,7 @@ function ReceivedPaymentsViewInner(
 
     const [ordersRes, submissionsRes] = await Promise.all([
       orderIds.size > 0
-        ? supabase.from('orders').select('id, display_number').in('id', [...orderIds])
+        ? supabase.rpc('finance_order_lookup', { p_ids: [...orderIds] })   // pinned to the pre-scope rule (20270221000000)
         : Promise.resolve({ data: [] }),
       submissionIds.size > 0
         ? supabase.from('order_submissions')
@@ -3106,7 +3106,7 @@ function ReceivedPaymentsViewInner(
     if (orderIds.size > 0 || submissionIds.size > 0) {
       const [ordersRes, submissionsRes] = await Promise.all([
         orderIds.size > 0
-          ? supabase.from('orders').select('id, display_number').in('id', [...orderIds])
+          ? supabase.rpc('finance_order_lookup', { p_ids: [...orderIds] })   // pinned to the pre-scope rule (20270221000000)
           : Promise.resolve({ data: [] }),
         submissionIds.size > 0
           ? supabase.from('order_submissions')

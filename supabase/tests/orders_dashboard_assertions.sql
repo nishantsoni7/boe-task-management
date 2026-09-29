@@ -18,6 +18,10 @@
 --                       one sees its client; the removal reason reaches the salesperson
 --                       AND is kept in the Order's permanent activity log, readable under
 --                       normal Order permissions long after the dashboard notice is gone
+--   8  the matrix       for an order's owner, a scope-only salesperson, a scoped user who also
+--                       holds finance.allocate, a scoped approver and an admin: what each can READ
+--                       and CHANGE at the database boundary (direct calls, not buttons) — a scope
+--                       reveals order detail and never money, Finance results or authority
 --   7  visibility       own / selected / all_sales enforced in the database: direct table
 --                       reads, the summary's counts and lists, updates, and no Finance
 --                       (allocations, payments, payment totals), no revenue, and no
@@ -621,7 +625,7 @@ begin
   perform pg_temp.become(s1);
   select count(*) into cnt from public.orders where client_name like 'DASH-sc_%';
   perform pg_temp.check(cnt = 1, format('own: a direct read returns ONLY their order (got %s)', cnt));
-  perform pg_temp.check(public.can_view_order_as_actor(o1) and not public.can_view_order_as_actor(o2) and not public.can_view_order_as_actor(o3), 'own: the visibility predicate agrees');
+  perform pg_temp.check(public.can_read_order_detail(o1) and not public.can_read_order_detail(o2) and not public.can_read_order_detail(o3), 'own: the visibility predicate agrees');
   perform pg_temp.restore();
   s := pg_temp.summary(s1);
   perform pg_temp.check(pg_temp.row_of(s, 'not_aligned', 'sc_1') is not null and pg_temp.row_of(s, 'not_aligned', 'sc_2') is null
@@ -634,7 +638,7 @@ begin
   perform pg_temp.become(s1);
   select count(*) into cnt from public.orders where client_name like 'DASH-sc_%';
   perform pg_temp.check(cnt = 2, format('selected: their own + the selected candidate''s (got %s)', cnt));
-  perform pg_temp.check(public.can_view_order_as_actor(o2) and not public.can_view_order_as_actor(o3) and not public.can_view_order_as_actor(on_), 'selected: the predicate agrees, and the unselected candidate and the non-candidate stay hidden');
+  perform pg_temp.check(public.can_read_order_detail(o2) and not public.can_read_order_detail(o3) and not public.can_read_order_detail(on_), 'selected: the predicate agrees, and the unselected candidate and the non-candidate stay hidden');
   select count(*) into cnt from public.orders where id = o3;
   perform pg_temp.check(cnt = 0, 'selected: a direct read of an Order OUTSIDE the scope returns nothing');
   perform pg_temp.restore();
@@ -651,7 +655,7 @@ begin
   perform pg_temp.become(s1);
   select count(*) into cnt from public.orders where client_name like 'DASH-sc_%';
   perform pg_temp.check(cnt = 3, format('all_sales: every sales candidate''s order (got %s)', cnt));
-  perform pg_temp.check(not public.can_view_order_as_actor(on_), 'all_sales: but NOT an order that belongs to a non-candidate');
+  perform pg_temp.check(not public.can_read_order_detail(on_), 'all_sales: but NOT an order that belongs to a non-candidate');
   perform pg_temp.restore();
   s := pg_temp.summary(s1);
   perform pg_temp.check(pg_temp.row_of(s, 'not_aligned', 'sc_3') is not null and pg_temp.row_of(s, 'not_aligned', 'sc_n') is null, 'all_sales: the summary follows');
@@ -702,6 +706,166 @@ begin
   perform pg_temp.check(cnt = 1, 'own again: the widening is gone at once');
   perform pg_temp.restore();
   perform pg_temp.check((select count(*) from public.order_visibility_scope_members where user_id = s1) = 0, 'and the selected members are cleared');
+end $$;
+
+-- ═══ 8. The permission matrix, at the database boundary ═══════════════════════
+--
+-- Personas, all acting on ONE colleague's order (o2, owned by S2, 10% paid, PI in force):
+--   OWNER     S2, the order's own salesperson
+--   SCOPE     S1, all_sales scope, nothing else
+--   SCOPEFIN  S3, all_sales scope AND finance.allocate
+--   APPROVER  A1, all_sales scope AND orders.approve_order
+--   ADMIN     an active administrator
+--   NISHANT   the owner account (TEST-001), who holds orders.approve_order
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('d0000000-0000-4000-8000-00000000d021', 'DASH Approver', 'd-a1@example.test', 'member', 'sales', true, 'ASSERT-D21')
+on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select g.uid, mpa.module_id, mpa.action_id, true, current_setting('test.owner_id')::uuid
+  from (values
+    ('d0000000-0000-4000-8000-00000000d021'::uuid, 'orders', 'view'),
+    ('d0000000-0000-4000-8000-00000000d021'::uuid, 'orders', 'approve_order'),
+    (current_setting('test.s3_id')::uuid,        'finance', 'view'),
+    (current_setting('test.s3_id')::uuid,        'finance', 'allocate')) g(uid, m, a)
+  join public.permission_modules pm on pm.module_key = g.m
+  join public.permission_actions pa on pa.action_key = g.a
+  join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
+on conflict do nothing;
+
+create temporary table matrix (n serial, persona text, op text, result text) on commit drop;
+create function pg_temp.mx(p_persona text, p_op text, p_result text) returns text language plpgsql as $$
+begin insert into matrix (persona, op, result) values (p_persona, p_op, p_result); return p_result; end $$;
+/** Run one statement as a user and report its single value, or how it was refused. */
+create function pg_temp.probe(p_user uuid, p_sql text) returns text language plpgsql as $$
+declare v text;
+begin
+  perform pg_temp.become(p_user);
+  begin
+    execute p_sql into v;
+  exception when others then
+    v := 'REFUSED: ' || left(sqlerrm, 70);
+  end;
+  perform pg_temp.restore();
+  return coalesce(v, 'null');
+end $$;
+
+do $$
+declare
+  t date := pg_temp.today();
+  own uuid := current_setting('test.owner_id')::uuid;
+  s1 uuid := current_setting('test.s1_id')::uuid; s2 uuid := current_setting('test.s2_id')::uuid;
+  s3 uuid := current_setting('test.s3_id')::uuid; a1 uuid := 'd0000000-0000-4000-8000-00000000d021';
+  adm uuid := current_setting('test.admin2_id')::uuid;
+  o2 uuid; v2 uuid; pay uuid; own_pay uuid; num text; res text;
+  personas text[] := array['OWNER', 'SCOPE', 'SCOPEFIN', 'APPROVER', 'ADMIN', 'NISHANT'];
+  ids uuid[]; who text; uid uuid; i int;
+  before_search text; before_total text;
+begin
+  select id, display_number into o2, num from public.orders where client_name = 'DASH-sc_2';
+  v2 := pg_temp.mk_version(o2);
+  pay := (select payment_request_id from public.finance_payment_allocations where order_id = o2 limit 1);
+  -- A payment S3 SUBMITTED, allocated to the colleague's order: a Finance row they may legitimately see.
+  perform set_config('request.jwt.claims', '', true);
+  own_pay := gen_random_uuid();
+  insert into public.finance_payment_requests (id, client_name, amount, payment_date, payment_mode, status, submitted_by, received_in)
+  values (own_pay, 'DASH-OWNPAY', 55, current_date, 'hdfc', 'approved_unlinked', s3, null);
+  insert into public.finance_payment_allocations (payment_request_id, order_id, allocated_amount, origin_target_type, created_by)
+  values (own_pay, o2, 55, 'confirmed_order', own);
+
+  perform pg_temp.become(own);
+  perform public.set_order_visibility_scope(s1, 'all_sales');
+  perform public.set_order_visibility_scope(s3, 'all_sales');
+  perform public.set_order_visibility_scope(a1, 'all_sales');
+  perform pg_temp.restore();
+
+  ids := array[s2, s1, s3, a1, adm, own];
+  for i in 1 .. array_length(personas, 1) loop
+    who := personas[i]; uid := ids[i];
+    -- ── READ ──
+    perform pg_temp.mx(who, 'read the order row', pg_temp.probe(uid, format('select count(*) from public.orders where id = %L', o2)));
+    perform pg_temp.mx(who, 'order_advance_readiness -> verified', pg_temp.probe(uid, format('select public.order_advance_readiness(%L) ->> ''verified''', o2)));
+    perform pg_temp.mx(who, 'PI version detail RPC', pg_temp.probe(uid, format('select (public.order_pi_version_detail(%L) ->> ''source'')', v2)));
+    perform pg_temp.mx(who, 'Finance order search', pg_temp.probe(uid, format('select count(*) from public.finance_order_search(%L) where id = %L', 'DASH-sc_2', o2)));
+    perform pg_temp.mx(who, 'Finance order lookup', pg_temp.probe(uid, format('select count(*) from public.finance_order_lookup(array[%L]::uuid[])', o2)));
+    perform pg_temp.mx(who, 'allocations of the order', pg_temp.probe(uid, format('select count(*) from public.finance_payment_allocations where order_id = %L', o2)));
+    perform pg_temp.mx(who, 'order payment total', pg_temp.probe(uid, format('select public.order_linked_payment_total(%L)', o2)));
+    -- ── CHANGE ──
+    perform pg_temp.mx(who, 'update the order row', pg_temp.probe(uid, format('with u as (update public.orders set status = ''on_hold'' where id = %L returning 1) select count(*) from u', o2)));
+    perform pg_temp.mx(who, 'request document generation', pg_temp.probe(uid, format('select public.request_order_document_generation(%L) ->> ''created''', o2)));
+    perform pg_temp.mx(who, 'select for Factory Focus', pg_temp.probe(uid, format('select public.select_order_for_factory_focus(%L) ->> ''order_id''', o2)));
+    perform pg_temp.mx(who, 'set an Order visibility scope', pg_temp.probe(uid, format('select public.set_order_visibility_scope(%L, ''own'') ->> ''mode''', s1)));
+    perform pg_temp.mx(who, 'PI notify gate: may open unscoped', pg_temp.probe(uid, format('select public.can_view_order_unscoped(%L)', o2)));
+  end loop;
+
+  -- ══ what the matrix must say ══
+  -- READ: the order detail follows the scope; nothing else does.
+  perform pg_temp.check((select bool_and(result = '1') from matrix where op = 'read the order row'), 'every persona reads the order row (owner, scope, admin)');
+  perform pg_temp.check((select result from matrix where persona = 'SCOPE' and op = 'PI version detail RPC') = 'live', 'a scope-only salesperson reads the PI version detail (order detail)');
+  perform pg_temp.check((select bool_and(result = 'live') from matrix where op = 'PI version detail RPC'), 'so does everyone else who may open the order');
+  -- FINANCE / MONEY: a scope adds nothing.
+  perform pg_temp.check((select result like 'REFUSED%' from matrix where persona = 'SCOPE' and op = 'order_advance_readiness -> verified'), 'ADVANCE: a scope-only salesperson gets no verified amount through the RPC');
+  perform pg_temp.check((select bool_and(result like 'REFUSED%') from matrix where persona in ('SCOPEFIN', 'APPROVER') and op = 'order_advance_readiness -> verified'), 'ADVANCE: nor does a scoped user with Finance or approval access');
+  perform pg_temp.check((select bool_and(result not like 'REFUSED%') from matrix where persona in ('OWNER', 'ADMIN', 'NISHANT') and op = 'order_advance_readiness -> verified'), 'ADVANCE: the order''s owner and an administrator keep it');
+  perform pg_temp.check((select result from matrix where persona = 'OWNER' and op = 'order_advance_readiness -> verified')::numeric = 155, 'and it is the real figure (100 + 55 verified)');
+  perform pg_temp.check((select bool_and(result = '0') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER') and op = 'Finance order search'), 'FINANCE: the allocation picker returns no colleague order for any scoped persona, finance.allocate included');
+  perform pg_temp.check((select bool_and(result = '1') from matrix where persona in ('OWNER', 'ADMIN', 'NISHANT') and op = 'Finance order search'), 'FINANCE: and returns it to those who could always open it');
+  perform pg_temp.check((select bool_and(result = '0') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER') and op = 'Finance order lookup'), 'FINANCE: order lookups likewise');
+  perform pg_temp.check((select bool_and(result = '0') from matrix where persona in ('SCOPE', 'APPROVER') and op = 'allocations of the order'), 'FINANCE: no allocation rows are opened by a scope');
+  perform pg_temp.check((select result from matrix where persona = 'SCOPEFIN' and op = 'allocations of the order') = '1', 'FINANCE: the scoped Finance user sees only the allocation of the payment they submitted themselves (1 of 2)');
+  perform pg_temp.check((select bool_and(result = 'null' or result like 'REFUSED%') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER') and op = 'order payment total'), 'FINANCE: nor the order''s payment total');
+  -- AUTHORITY: a scope is never permission to change anything.
+  perform pg_temp.check((select bool_and(result = '0') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER', 'OWNER') and op = 'update the order row'), 'CHANGE: no direct update of the order row for a scope, an approver, or the salesperson');
+  perform pg_temp.check((select result like 'REFUSED: ORDER_DOCUMENT_NO_SUCH_ORDER%' from matrix where persona = 'APPROVER' and op = 'request document generation'), 'CHANGE: a scoped APPROVER, who holds the authority, is stopped for want of unscoped visibility of a colleague''s order');
+  perform pg_temp.check((select bool_and(result like 'REFUSED%') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'OWNER', 'ADMIN') and op = 'request document generation'), 'CHANGE: nor can anyone without the approval authority');
+  perform pg_temp.check((select bool_and(result like 'REFUSED%') from matrix where persona <> 'NISHANT' and op in ('select for Factory Focus', 'set an Order visibility scope')), 'CHANGE: Factory Focus and visibility scopes are the owner account''s alone');
+  perform pg_temp.check((select result = 'true' from matrix where persona = 'NISHANT' and op = 'PI notify gate: may open unscoped'), 'NOTIFY: the announce gate is true for the owner account');
+  perform pg_temp.check((select bool_and(result = 'false') from matrix where persona in ('SCOPE', 'SCOPEFIN', 'APPROVER') and op = 'PI notify gate: may open unscoped'), 'NOTIFY: and false for every scoped persona');
+  perform pg_temp.check((select result = 'true' from matrix where persona = 'OWNER' and op = 'PI notify gate: may open unscoped'), 'NOTIFY: and true for the order''s own salesperson');
+
+  -- The approver who genuinely holds the authority CAN generate (proving the refusal above is the scope, not a broken RPC).
+  res := pg_temp.probe(own, format('select public.request_order_document_generation(%L) ->> ''created''', o2));
+  -- (this fixture Order has no source PI, so the RPC stops at THAT validation — after both the authority and the visibility checks passed)
+  perform pg_temp.check(res not like '%FORBIDDEN%' and res not like '%NO_SUCH_ORDER%' and res not like '%NOT_AUTHENTICATED%', 'CONTROL: the owner account, with approve_order and open access, passes the authority and visibility checks: ' || res);
+  -- ...and the same approver WITHOUT any scope is refused only for want of visibility:
+  perform pg_temp.check(pg_temp.probe(a1, format('insert into public.order_document_versions (order_id, version, status) values (%L, 99, ''pending'')', o2)) like 'REFUSED: permission denied%',
+                        'CHANGE: a direct insert into order_document_versions by a scoped approver is refused (no table grant at all; the row policies are pinned to the unscoped rule as well)');
+  perform pg_temp.check((select count(*) from pg_policies where tablename = 'order_document_versions' and policyname in ('order_document_versions_request_insert', 'order_document_versions_retry_update') and (coalesce(qual, '') || coalesce(with_check, '')) ~ 'can_view_order_unscoped') = 2, 'and both document-version write policies ask the unscoped rule');
+
+  -- The scoped user with finance.allocate: the picker returns the SAME orders and values with the scope on and off.
+  before_search := (select string_agg(id::text || ':' || total_value::text, ',' order by id) from public.finance_order_search('DASH-sc'));
+  perform pg_temp.become(s3);
+  before_search := (select string_agg(id::text || ':' || total_value::text, ',' order by id) from public.finance_order_search('DASH-sc'));
+  perform pg_temp.restore();
+  perform pg_temp.become(own); perform public.set_order_visibility_scope(s3, 'own'); perform pg_temp.restore();
+  perform pg_temp.become(s3);
+  perform pg_temp.check(before_search is not distinct from (select string_agg(id::text || ':' || total_value::text, ',' order by id) from public.finance_order_search('DASH-sc')),
+                        'FINANCE: the picker returns exactly the same orders and values with the scope on and with it off');
+  perform pg_temp.check(before_search = (select o.id::text || ':' || o.total_value::text from public.orders o where o.client_name = 'DASH-sc_3'), 'and that is only the person''s own order');
+  perform pg_temp.restore();
+  perform pg_temp.become(own); perform public.set_order_visibility_scope(s3, 'all_sales'); perform pg_temp.restore();
+
+  -- A Finance row S3 may legitimately see (their own payment) names no colleague's order while scoped.
+  perform pg_temp.become(s3);
+  perform pg_temp.check((select count(*) from public.finance_received_payments where id = own_pay) = 1, 'FINANCE VIEW: their own payment is still listed');
+  perform pg_temp.check((select count(*) from public.finance_received_payments r where r.id = own_pay and r::text ilike '%' || num || '%') = 0,
+                        'FINANCE VIEW: but it does not name the colleague''s order (number) through the scope');
+  perform pg_temp.check((select count(*) from public.finance_received_payments r where r.id = own_pay and r::text ilike '%DASH-sc_2%') = 0, 'FINANCE VIEW: nor its client');
+  perform pg_temp.check((select count(*) from public.finance_payment_destinations d where d::text ilike '%' || num || '%') = 0, 'FINANCE VIEW: the destinations view names it nowhere');
+  perform pg_temp.restore();
+  perform pg_temp.become(own);
+  perform pg_temp.check((select count(*) from public.finance_received_payments r where r.id = own_pay and r::text ilike '%' || num || '%') = 1, 'FINANCE VIEW: an administrator-class reader still sees the order named');
+  perform pg_temp.restore();
+
+  -- The allocation and approval functions never ask an Orders-visibility predicate at all (so a scope cannot reach them).
+  perform pg_temp.check((select count(*) from pg_proc p where p.pronamespace = 'public'::regnamespace
+                           and p.proname in ('allocate_payment_to_target', 'allocate_payment_to_target_internal', 'approve_order_submission', 'approve_order_pi_revision')
+                           and p.prosrc ~* 'can_view_order[(]|can_read_order_detail|sales_scope') = 0,
+                        'allocation and approval functions never ask a scope-aware Orders predicate (they use their own explicit authority and submission rules)');
+
+  -- Print the matrix.
+  for res in select format('%-9s | %-38s | %s', persona, op, result) from matrix order by n loop
+    raise notice 'MATRIX %', res;
+  end loop;
 end $$;
 
 do $$ begin raise notice 'ALL ORDERS DASHBOARD ASSERTIONS PASSED'; end $$;

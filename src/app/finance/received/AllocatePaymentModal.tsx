@@ -202,14 +202,12 @@ export async function searchAllocationTargets(
   const wantDrafts = kind !== 'order'
 
   const [ordersRes, draftsRes] = await Promise.all([
-    !wantOrders ? Promise.resolve({ data: [] }) : supabase
-      .from('orders')
-      .select('id, display_number, client_name, total_value, status')
-      .or(`display_number.ilike.%${term}%,client_name.ilike.%${term}%`)
-      // The RPC refuses a cancelled Order outright, so it is not offered.
-      .not('status', 'in', '(cancelled)')
-      .order('created_at', { ascending: false })
-      .limit(15),
+    // FINANCE READS ORDERS THROUGH finance_order_search(), NOT THE TABLE (20270221000000).
+    // The table follows an Order visibility scope; this function asks the rule as it was before
+    // scopes existed, so a candidate who holds both a scope and finance.allocate is offered exactly
+    // the Orders — and values — they were offered before. It also leaves out cancelled Orders,
+    // which the allocation RPC refuses outright, and returns fifteen at most.
+    !wantOrders ? Promise.resolve({ data: [] }) : supabase.rpc('finance_order_search', { p_term: term }),
     // A PI DRAFT IS NAMED BY ITS OWN REFERENCE, PID-00001 (20270114000000):
     // the name Sales and Admin see on the draft, and the one Finance is told.
     // The workbook's own B20 number stays SEARCHABLE — a salesperson may quote

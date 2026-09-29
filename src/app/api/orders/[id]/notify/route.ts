@@ -104,6 +104,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'A known event is required' }, { status: 400 })
   }
 
+  // ── 0. May the caller open this Order WITHOUT a visibility scope? ──
+  //
+  // A scope lets somebody READ a colleague's Order; it is never permission to announce a change to
+  // it. Same 404 as an Order that does not exist (20270221000000).
+  const { data: mayOpen } = await authClient.rpc('can_view_order_unscoped', { p_order_id: orderId })
+  if (mayOpen !== true) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   // ── 1. The Order, AS THE CALLER ──
   //
   // RLS decides. A caller who cannot see this Order cannot announce a change to

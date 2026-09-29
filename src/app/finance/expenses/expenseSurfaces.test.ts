@@ -2314,7 +2314,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // Finance cards it removes are removed from the Orders dashboard only.
   const ALLOWED_ORDERS_DASHBOARD = new Set([
     'src/app/admin/control-center/page.tsx',
+    'src/app/api/orders/[id]/notify/route.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/app/finance/paymentIntents.ts',
+    'src/app/finance/received/AllocatePaymentModal.tsx',
+    'src/app/finance/received/ReceivedPaymentsView.tsx',
     'src/app/globals.css',
     'src/app/orders/page.tsx',
     'src/components/controlCenter/OrderVisibilityTab.tsx',
@@ -2327,7 +2331,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
     'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/crossModuleLinks.test.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/finance/paymentEntry.test.ts',
     'src/lib/modules/moduleOrderStorage.test.ts',
     'src/lib/notifications/activityLinkMigration.test.ts',
     'src/lib/notifications/groupMutations.test.ts',
@@ -2343,12 +2349,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderVisibilityScopes.test.ts',
     'src/lib/orders/orderVisibilityScopes.ts',
     'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/orders/scopeIsNeverMoneyOrAuthority.test.ts',
     'src/lib/orders/verifiedPaymentGateSchema.test.ts',
     'src/lib/permissions/uiEnforcement.test.ts',
     'src/lib/tasks/assignmentWriteAuthority.test.ts',
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/submitButtonBalance.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/ui/menuPlacement.test.ts',
     'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql',
   ])
 
@@ -2786,7 +2794,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         l === "PI_DRAFT_NAME_COLUMNS," ||
         l === ".select(PI_DRAFT_NAME_COLUMNS)" ||
         l === ".select('id, reserved_order_number, source_workbook_name')" ||
-        isRecordNotice(l)),
+        isRecordNotice(l) ||
+        // 20270221000000: the order-number lookups go through finance_order_lookup(), the pre-scope rule.
+        l.startsWith("? supabase.from('orders').select('id, display_number').in('id', [...orderIds])") ||
+        l.startsWith("? supabase.rpc('finance_order_lookup', { p_ids: [...orderIds] })")),
         'ReceivedPaymentsView.tsx changes only the PI Draft name columns: ' + JSON.stringify(moved))
     }
     for (const untouchable of [

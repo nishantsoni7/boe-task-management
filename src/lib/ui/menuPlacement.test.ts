@@ -525,7 +525,7 @@ describe('Allocate Funds is the only attachment workflow, and is unchanged', () 
       'and the target picker is the shared one')
     // The shared picker is what makes a MIXED PI-Draft/Order division possible.
     const picker = readFileSync(join(process.cwd(), 'src/app/finance/received/AllocatePaymentModal.tsx'), 'utf8')
-    assert.ok(picker.includes("from('orders')") && picker.includes("from('order_submissions')"),
+    assert.ok(picker.includes("rpc('finance_order_search'") && picker.includes("from('order_submissions')"),
       'both target kinds are still searchable, so a mixed division is still possible')
     // Several rows in one call is what makes a MULTI-TARGET allocation possible.
     assert.ok(modal.includes('toRpcAllocations'), 'the rows are sent as a set')
