@@ -8847,6 +8847,22 @@ textarea.pi-form-input,
   border-radius: 8px;
 }
 
+/* A phone has no room for the note, the count and Save on one row, and Save
+   used to wrap onto a line of its own. Instead the count and Save share the
+   line under the box, and the note follows. */
+@container (max-width: 420px) {
+  .pi-detail-highlight--bare .pi-detail-highlight-foot .pi-detail-highlight-note {
+    order: 2;
+    flex-basis: 100%;
+  }
+  .pi-detail-highlight--bare .pi-detail-highlight-count {
+    margin-right: auto;
+  }
+  .pi-detail-highlight--bare .pi-detail-highlight-foot > .boe-btn {
+    min-height: 44px;
+  }
+}
+
 label.boe-btn:has(.pi-attach-input) {
   position: relative;
 }
