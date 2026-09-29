@@ -24,7 +24,6 @@ import { useRouter } from 'next/navigation'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
-  FOCUS_INTRO,
   FOCUS_NOTE_MAX,
   FOCUS_OUT_OF_SCOPE_NOTE,
   FOCUS_REMOVAL_REASON_MAX,
@@ -159,7 +158,6 @@ export function FactoryFocusSection({ focus, supabase, readOnlyReason, addOpen, 
           {FOCUS_TITLE}
           {focus.active.length > 0 ? <span className="od-focus-count"> · {plural(focus.active.length, 'order')}</span> : null}
         </h2>
-        <span className="od-focus-intro">{FOCUS_INTRO}</span>
         {canManage ? <span className="od-focus-slots">{focusSlotsLabel(focus)}</span> : null}
       </div>
 

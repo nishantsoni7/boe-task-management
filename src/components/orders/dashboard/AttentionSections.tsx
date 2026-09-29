@@ -42,7 +42,16 @@ import {
 /** How many rows a heading shows before "Show all". */
 export const VISIBLE_ROWS = 5
 
-type Row = DashboardOrderRef & { key?: string; detail: ReactNode }
+/** One line per order: what is wrong, whose court it is in, and how long it has waited. */
+type Row = DashboardOrderRef & {
+  key?: string
+  status: ReactNode
+  /** Small muted line under the status. */
+  sub?: ReactNode
+  /** Elapsed time, short; `waitingTitle` carries the full timestamp for hover. */
+  waiting?: string
+  waitingTitle?: string
+}
 
 function RowList({ rows, visible = VISIBLE_ROWS }: { rows: Row[]; visible?: number }) {
   const listId = useId()
@@ -69,7 +78,11 @@ function RowList({ rows, visible = VISIBLE_ROWS }: { rows: Row[]; visible?: numb
               </Link>
               <span className="od-row-client">{r.clientName || 'Client not recorded'}</span>
             </div>
-            <div className="od-row-detail">{r.detail}</div>
+            <div className="od-row-detail">
+              <span className="od-row-strong">{r.status}</span>
+              {r.sub ? <span className="od-row-sub">{r.sub}</span> : null}
+            </div>
+            <div className="od-row-wait" title={r.waitingTitle}>{r.waiting ?? ''}</div>
           </li>
         ))}
       </ul>
@@ -86,15 +99,42 @@ function RowList({ rows, visible = VISIBLE_ROWS }: { rows: Row[]; visible?: numb
   )
 }
 
-function Heading({ id, title, count, rule }: { id: string; title: string; count: number; rule: string }) {
+function Heading({ id, title, count }: { id: string; title: string; count: number }) {
   return (
     <header className="od-group-head">
-      <h2 id={id} className="od-group-title">
-        {title}
-        <span className="od-group-count"> · {count}</span>
-      </h2>
-      <p className="od-group-rule">{rule}</p>
+      <h2 id={id} className="od-group-title">{title}</h2>
+      <span className="od-group-count">{count}</span>
     </header>
+  )
+}
+
+// ── The status strip: three counters, one glance ─────────────────────────────
+//
+// A list with nothing in it draws no section at all — its counter says "0" here, in green. A
+// counter above zero jumps to its list. What could not be assessed is still said, under the
+// strip, so a green zero is never a claim about orders nobody could check.
+
+export function StatusStrip({ summary }: { summary: DashboardSummary }) {
+  const items: { key: GroupKey; count: number }[] = [
+    { key: 'not_aligned', count: summary.notAligned.length },
+    { key: 'advance_below_40', count: summary.advance.length },
+    { key: 'fabric_finish_pending', count: summary.fabricFinish.length },
+  ]
+  return (
+    <nav className="od-strip" aria-label="Orders that need intervention">
+      {items.map(i => {
+        const inner = (
+          <>
+            <span className="od-strip-dot" data-state={i.count > 0 ? 'attention' : 'clear'} aria-hidden="true" />
+            <span className="od-strip-label">{GROUP_COPY[i.key].label}</span>
+            <span className="od-strip-count">{i.count}</span>
+          </>
+        )
+        return i.count > 0
+          ? <a key={i.key} href={`#${groupAnchor(i.key)}`} className="od-strip-item">{inner}</a>
+          : <span key={i.key} className="od-strip-item" data-clear="true">{inner}</span>
+      })}
+    </nav>
   )
 }
 
@@ -108,24 +148,22 @@ export function AlignmentSection({ summary }: { summary: DashboardSummary }) {
   const reviewerName = summary.reviewer?.name ?? null
   const rows: Row[] = summary.notAligned.map(r => ({
     ...r,
-    detail: (
+    status: alignmentLine(r),
+    sub: (
       <>
-        <span className="od-row-strong">{alignmentLine(r)}</span>
         <span className="od-row-court" data-court={r.waitingOn}>{waitingOnLabel(r.waitingOn, reviewerName)}</span>
-        <span className="od-row-since">
-          Since {formatInstantIst(r.since)} · waiting {formatWaiting(r.waitingSeconds)}
-        </span>
-        {r.advanceBlocks && r.state !== 'held_advance' ? <span className="od-row-note">{ADVANCE_BLOCKS_NOTE}</span> : null}
+        {r.advanceBlocks && r.state !== 'held_advance' ? <> · {ADVANCE_BLOCKS_NOTE}</> : null}
       </>
     ),
+    waiting: formatWaiting(r.waitingSeconds),
+    waitingTitle: `Since ${formatInstantIst(r.since)}`,
   }))
+  if (rows.length === 0) return null
   return (
-    <section id={groupAnchor('not_aligned')} className="od-group od-group--prominent" aria-labelledby={headId}>
-      <Heading id={headId} title={copy.label} count={rows.length} rule={copy.rule} />
-      {rows.length > 0 ? (
-        <p className="od-group-summary">{alignmentSummary(summary.notAligned, reviewerName)}</p>
-      ) : null}
-      {rows.length === 0 ? <p className="od-group-empty">{copy.emptyText}</p> : <RowList rows={rows} visible={6} />}
+    <section id={groupAnchor('not_aligned')} className="od-group" aria-labelledby={headId}>
+      <Heading id={headId} title={copy.label} count={rows.length} />
+      <p className="od-group-summary">{alignmentSummary(summary.notAligned, reviewerName)}</p>
+      <RowList rows={rows} visible={6} />
     </section>
   )
 }
@@ -137,19 +175,20 @@ export function AdvanceSection({ summary }: { summary: DashboardSummary }) {
   const headId = useId()
   const rows: Row[] = summary.advance.map(r => ({
     ...r,
-    detail: (
+    status: advanceLine(r),
+    sub: r.exceptionApproved || r.held ? (
       <>
-        <span>{advanceLine(r)}</span>
         {r.exceptionApproved ? <span className="od-row-flag">{EXCEPTION_APPROVED_NOTE}</span> : null}
-        {r.held ? <span className="od-row-note">Held for advance</span> : null}
+        {r.held ? <span>Held for advance</span> : null}
       </>
-    ),
+    ) : undefined,
   }))
   const gap = groupGapNote('advance_below_40', summary.gaps)
+  if (rows.length === 0) return gap ? <p className="od-group-gap">{gap}</p> : null
   return (
     <section id={groupAnchor('advance_below_40')} className="od-group" aria-labelledby={headId}>
-      <Heading id={headId} title={copy.label} count={rows.length} rule={copy.rule} />
-      {rows.length === 0 ? <p className="od-group-empty">{copy.emptyText}</p> : <RowList rows={rows} />}
+      <Heading id={headId} title={copy.label} count={rows.length} />
+      <RowList rows={rows} />
       {gap ? <p className="od-group-gap">{gap}</p> : null}
     </section>
   )
@@ -160,20 +199,30 @@ export function AdvanceSection({ summary }: { summary: DashboardSummary }) {
 export function FabricFinishSection({ summary }: { summary: DashboardSummary }) {
   const copy = GROUP_COPY.fabric_finish_pending
   const headId = useId()
-  const rows: Row[] = summary.fabricFinish.map(r => ({ ...r, detail: <span>{fabricFinishLine(r)}</span> }))
-  const unrecorded: Row[] = summary.fabricUnrecorded.map(r => ({ ...r, detail: <span>{unrecordedLine(r)}</span> }))
+  const rows: Row[] = summary.fabricFinish.map(r => ({ ...r, status: fabricFinishLine(r) }))
+  const unrecorded: Row[] = summary.fabricUnrecorded.map(r => ({ ...r, status: unrecordedLine(r) }))
   const gap = groupGapNote('fabric_finish_pending', summary.gaps)
+  const unrecordedBlock = unrecorded.length > 0 ? (
+    <details className="od-unrecorded">
+      <summary>{UNRECORDED_TITLE} · {unrecorded.length}</summary>
+      <p className="od-group-rule">{UNRECORDED_RULE}</p>
+      <RowList rows={unrecorded} />
+    </details>
+  ) : null
+  if (rows.length === 0) {
+    if (!unrecordedBlock && !gap) return null
+    return (
+      <div id={groupAnchor('fabric_finish_pending')}>
+        {unrecordedBlock}
+        {gap ? <p className="od-group-gap">{gap}</p> : null}
+      </div>
+    )
+  }
   return (
     <section id={groupAnchor('fabric_finish_pending')} className="od-group" aria-labelledby={headId}>
-      <Heading id={headId} title={copy.label} count={rows.length} rule={copy.rule} />
-      {rows.length === 0 ? <p className="od-group-empty">{copy.emptyText}</p> : <RowList rows={rows} />}
-      {unrecorded.length > 0 ? (
-        <details className="od-unrecorded">
-          <summary>{UNRECORDED_TITLE} · {unrecorded.length}</summary>
-          <p className="od-group-rule">{UNRECORDED_RULE}</p>
-          <RowList rows={unrecorded} />
-        </details>
-      ) : null}
+      <Heading id={headId} title={copy.label} count={rows.length} />
+      <RowList rows={rows} />
+      {unrecordedBlock}
       {gap ? <p className="od-group-gap">{gap}</p> : null}
     </section>
   )

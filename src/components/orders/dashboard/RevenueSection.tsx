@@ -24,8 +24,10 @@ export function RevenueSection({ revenue }: { revenue: DashboardRevenue | null }
   const notes = revenueGapNotes(revenue)
   return (
     <section className="od-revenue" aria-labelledby="od-revenue-h">
-      <h2 id="od-revenue-h" className="od-revenue-title">{REVENUE_TITLE}</h2>
-      <p className="od-revenue-basis">{REVENUE_BASIS}</p>
+      <h2 id="od-revenue-h" className="od-revenue-title" title={REVENUE_METHOD_NOTE}>
+        {REVENUE_TITLE}
+        <span className="od-revenue-basis">{REVENUE_BASIS}</span>
+      </h2>
       <dl className="od-revenue-grid">
         {revenueTiles(revenue).map(t => (
           <div key={t.key} className="od-revenue-tile">
@@ -37,7 +39,6 @@ export function RevenueSection({ revenue }: { revenue: DashboardRevenue | null }
           </div>
         ))}
       </dl>
-      <p className="od-revenue-note">{REVENUE_METHOD_NOTE}</p>
       {notes.length > 0 ? (
         <ul className="od-revenue-gaps">
           {notes.map(n => <li key={n}>{n}</li>)}
