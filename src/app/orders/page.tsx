@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Download, Upload } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -33,7 +33,6 @@ import {
   type DashboardSummary,
 } from '@/lib/orders/orderDashboardSummary'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
-import { PI_FORMAT_ACTION, PI_FORMAT_FILENAME } from '@/lib/orders/piFormat'
 import { DocumentActionQueue } from '@/components/orders/DocumentActionQueue'
 import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/dashboard/FactoryFocusSection'
 import { AdvanceSection, AlignmentSection, FabricFinishSection } from '@/components/orders/dashboard/AttentionSections'
@@ -213,20 +212,6 @@ export default function OrdersDashboardPage() {
               {FOCUS_ADD_LABEL}
             </button>
           ) : null}
-          {/* ── THE PI FORMAT, FOR EVERYONE WHO CAN ENTER ORDERS ──
-              Not gated on `create`: a viewer who cannot upload a PI still needs
-              to see how one is filled in. A plain link, so the download is an
-              ordinary navigation carrying the session cookie. AFTER Upload PI,
-              so on a phone the primary action keeps the first header row. */}
-          <a
-            className="boe-btn boe-btn-ghost"
-            href={PI_FORMAT_ACTION.href}
-            download={PI_FORMAT_FILENAME}
-            title={PI_FORMAT_ACTION.title}
-          >
-            <Download size={13} strokeWidth={2.2} />
-            {PI_FORMAT_ACTION.label}
-          </a>
         </>
       }
     >

@@ -1856,7 +1856,7 @@ describe('PI Drafts offers Upload PI', () => {
   const source = read(LIST_PAGE)
 
   test('the header carries it for a holder of orders.create', () => {
-    assert.ok(source.includes('actions={canCreate ? ('), 'gated on the create capability')
+    assert.ok(source.includes('{canCreate ? ('), 'gated on the create capability (the PI format beside it is not)')
     assert.ok(source.includes('{UPLOAD_PI_BUTTON_LABEL}'))
     assert.ok(source.includes('className="boe-btn boe-btn-primary"'), 'the existing primary style')
   })

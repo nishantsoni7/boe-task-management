@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FileText, Inbox, Trash2, Upload } from 'lucide-react'
+import { PiFormatButton } from '@/components/orders/PiFormatLink'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -721,12 +722,19 @@ export default function PiDraftsPage() {
       // person who already has records. Shown only to a holder of orders.create
       // — a courtesy, not the control: /orders/import re-resolves the permission
       // for itself, and the storage policies and the server route decide again.
-      actions={canCreate ? (
-        <button className="boe-btn boe-btn-primary" onClick={goToImport}>
-          <Upload size={13} strokeWidth={2} />
-          {UPLOAD_PI_BUTTON_LABEL}
-        </button>
-      ) : undefined}
+      actions={(
+        <>
+          {canCreate ? (
+            <button className="boe-btn boe-btn-primary" onClick={goToImport}>
+              <Upload size={13} strokeWidth={2} />
+              {UPLOAD_PI_BUTTON_LABEL}
+            </button>
+          ) : null}
+          {/* The approved PI format, for everyone who can enter Orders (the route's own rule) —
+              the same action as the left navigation's entry. */}
+          <PiFormatButton />
+        </>
+      )}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
         {/* Concise, dismissible, and gone the moment anything else happens. A
