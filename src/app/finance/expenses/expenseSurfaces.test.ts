@@ -705,10 +705,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // src/lib/permissions/manageAssetCatalogue.test.ts and
       // supabase/tests/asset_catalogue_assertions.sql.
       if (f === 'supabase/migrations/20270220000000_asset_catalogue.sql') continue
-      // The Orders dashboard (20270221000000): PANIC MODE, the dashboard read and
-      // the orders.view_panic_mode action, held by src/lib/orders/orderDashboardSummary.test.ts
+      // The Orders dashboard (20270221000000): Factory Focus, Order visibility scopes and the dashboard read,
+      // held by src/lib/orders/orderDashboardSummary.test.ts
       // and supabase/tests/orders_dashboard_assertions.sql.
-      if (f === 'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql') continue
+      if (f === 'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2308,16 +2308,21 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
   // The Orders dashboard redesign (2026-09-29, 20270221000000): what needs
-  // intervention, revenue and PANIC MODE. One new migration, the dashboard read
+  // intervention, revenue, Factory Focus and Order visibility scopes. One new migration, the dashboard read
   // and its two write paths, the page and its three components, the
-  // permission registry entry (orders.view_panic_mode) and the suites that hold
-  // it. It reaches no payment entry, allocation, balance or Finance screen: the
+  // Control Center screen for visibility scopes, and the suites that hold it. It reaches no payment entry, allocation, balance or Finance screen: the
   // Finance cards it removes are removed from the Orders dashboard only.
   const ALLOWED_ORDERS_DASHBOARD = new Set([
+    'src/app/admin/control-center/page.tsx',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
     'src/app/globals.css',
     'src/app/orders/page.tsx',
-    'src/components/orders/dashboard/AttentionOverview.tsx',
-    'src/components/orders/dashboard/PanicModeSection.tsx',
+    'src/components/controlCenter/OrderVisibilityTab.tsx',
+    'src/components/layout/ControlCenterLayout.tsx',
+    'src/components/layout/ModulePageSkeleton.tsx',
+    'src/components/layout/ModuleRouteFallback.tsx',
+    'src/components/orders/dashboard/AttentionSections.tsx',
+    'src/components/orders/dashboard/FactoryFocusSection.tsx',
     'src/components/orders/dashboard/RevenueSection.tsx',
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
@@ -2334,19 +2339,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderRequestRetirement.test.ts',
     'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
     'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/orders/orderVisibilityScopes.test.ts',
+    'src/lib/orders/orderVisibilityScopes.ts',
     'src/lib/orders/piFinanceVerificationRemoval.test.ts',
     'src/lib/orders/verifiedPaymentGateSchema.test.ts',
-    'src/lib/permissions/accessControlChanges.ts',
-    'src/lib/permissions/levels.test.ts',
-    'src/lib/permissions/levels.ts',
-    'src/lib/permissions/modules.ts',
     'src/lib/permissions/uiEnforcement.test.ts',
     'src/lib/tasks/assignmentWriteAuthority.test.ts',
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/submitButtonBalance.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
-    'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql',
-    'supabase/migrations/20270221000000_orders_dashboard_attention_and_panic_mode.sql',
+    'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql',
   ])
 
   const isUnexpectedFile = (f: string) =>

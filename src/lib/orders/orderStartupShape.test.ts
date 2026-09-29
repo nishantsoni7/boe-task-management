@@ -556,8 +556,8 @@ describe('the Order lists prefetch what a hover says is coming', () => {
   // (20270221000000): every row of an action list, and PANIC MODE's "Open order".
   const LISTS: { path: string; source: RegExp }[] = [
     { path: ALL, source: /router\.prefetch\(`\/orders\/\$\{o\.id\}`\)/ },
-    { path: 'src/components/orders/dashboard/AttentionOverview.tsx', source: /router\.prefetch\(`\/orders\/\$\{r\.orderId\}`\)/ },
-    { path: 'src/components/orders/dashboard/PanicModeSection.tsx', source: /router\.prefetch\(`\/orders\/\$\{row\.orderId\}`\)/ },
+    { path: 'src/components/orders/dashboard/AttentionSections.tsx', source: /router\.prefetch\(`\/orders\/\$\{r\.orderId\}`\)/ },
+    { path: 'src/components/orders/dashboard/FactoryFocusSection.tsx', source: /router\.prefetch\(`\/orders\/\$\{card.orderId\}`\)/ },
   ]
   for (const { path, source: pattern } of LISTS) {
     test(`${path} prefetches the Order detail route on hover`, () => {

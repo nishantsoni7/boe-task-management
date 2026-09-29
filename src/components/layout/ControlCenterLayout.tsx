@@ -17,7 +17,7 @@ import cc from '@/components/controlCenter/controlCenter.module.css'
 // the note in ControlCenterNav.
 export type ControlCenterTab =
   'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
-  | 'operations-handoff'
+  | 'operations-handoff' | 'order-visibility'
 
 const MAIN_PATH = '/admin/control-center'
 
@@ -25,7 +25,7 @@ const MAIN_PATH = '/admin/control-center'
 export function resolveControlCenterTab(tabParam: string | null): ControlCenterTab {
   return tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
     || tabParam === 'order-numbering' || tabParam === 'order-notifications'
-    || tabParam === 'operations-handoff'
+    || tabParam === 'operations-handoff' || tabParam === 'order-visibility'
     ? tabParam : 'overview'
 }
 
@@ -64,6 +64,10 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
   'operations-handoff': {
     group: 'System', title: 'Operations Handoff',
     subtitle: 'Who reviews each approved PI version for production and accepts it, or asks for clarification.',
+  },
+  'order-visibility': {
+    group: 'System', title: 'Order Visibility',
+    subtitle: 'Whose orders each sales candidate can see: their own, selected colleagues’, or all sales candidates’.',
   },
 }
 
@@ -353,6 +357,16 @@ function ControlCenterNav({
           href={tabHref('operations-handoff')}
           replace={onMain}
           active={onMain && tab === 'operations-handoff'}
+          onNavigate={onNavigate}
+        />
+        {/* Whose orders each sales candidate may see (20270221000000). Owner-only
+            in the database; the screen refuses anybody else. */}
+        <NavItem
+          label="Order Visibility"
+          icon={icon(Users)}
+          href={tabHref('order-visibility')}
+          replace={onMain}
+          active={onMain && tab === 'order-visibility'}
           onNavigate={onNavigate}
         />
         {/* Company notices for chosen employees. Its own route, like

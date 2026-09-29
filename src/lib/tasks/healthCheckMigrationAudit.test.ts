@@ -751,7 +751,7 @@ describe('the migration is placed correctly', () => {
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
       '20270217000000_order_submission_cleanup_number_choice.sql',
       '20270220000000_asset_catalogue.sql',
-      '20270221000000_orders_dashboard_attention_and_panic_mode.sql',
+      '20270221000000_orders_dashboard_factory_focus.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

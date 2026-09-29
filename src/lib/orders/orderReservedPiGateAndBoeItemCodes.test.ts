@@ -449,7 +449,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270216000000_test_data_cleanup_pi_version_set_null.sql',
       '20270217000000_order_submission_cleanup_number_choice.sql',
       '20270220000000_asset_catalogue.sql',
-      '20270221000000_orders_dashboard_attention_and_panic_mode.sql',
+      '20270221000000_orders_dashboard_factory_focus.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

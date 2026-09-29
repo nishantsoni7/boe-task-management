@@ -27,15 +27,17 @@ import {
   DASHBOARD_ERROR_HEADING,
   DASHBOARD_LOADING_LABEL,
   DASHBOARD_RETRY_LABEL,
-  GROUP_COPY,
+  FOCUS_ADD_LABEL,
+  listsNote,
   parseDashboardSummary,
   type DashboardSummary,
 } from '@/lib/orders/orderDashboardSummary'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
 import { PI_FORMAT_ACTION, PI_FORMAT_FILENAME } from '@/lib/orders/piFormat'
 import { DocumentActionQueue } from '@/components/orders/DocumentActionQueue'
-import { PanicModeSection } from '@/components/orders/dashboard/PanicModeSection'
-import { AttentionCounts, AttentionGroups } from '@/components/orders/dashboard/AttentionOverview'
+import { FactoryFocusSection, FocusRemovedNotices } from '@/components/orders/dashboard/FactoryFocusSection'
+import { AdvanceSection, AlignmentSection, FabricFinishSection } from '@/components/orders/dashboard/AttentionSections'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { useViewAs } from '@/contexts/ViewAsContext'
 
@@ -56,6 +58,8 @@ export default function OrdersDashboardPage() {
   const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [summary,     setSummary]     = useState<SummaryState>({ kind: 'loading' })
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
+  // The owner's "Select an order" control opens the Factory Focus form.
+  const [focusFormOpen, setFocusFormOpen] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -66,16 +70,17 @@ export default function OrdersDashboardPage() {
   /**
    * THE DASHBOARD'S DATA — ONE SUMMARY READ, and the few queue counts beside it.
    *
-   * public.orders_dashboard_summary() (20270221000000) returns the four action
-   * groups, revenue and PANIC MODE in one round trip, computed by the database
-   * over the Orders THIS reader may open. Revenue arrives only for a reader who
-   * sees every Order, and PANIC MODE only for one granted it in Control Center;
-   * for anybody else those keys are null, so nothing is fetched and hidden — it
-   * is never sent.
+   * public.orders_dashboard_summary() (20270221000000) returns Factory Focus, the
+   * action groups and revenue in one round trip, computed by the database over the
+   * Orders THIS reader may open — including any visibility scope the owner set for
+   * them in Control Center. Revenue arrives only for a reader who sees every Order;
+   * for anybody else it is null, so nothing is fetched and hidden — it is never sent.
+   * Factory Focus arrives for everybody with Orders entry, with detail only for the
+   * Orders they may open.
    *
    * ALL OF IT TOGETHER, and none of it depends on another's answer.
    *
-   * A FAILED OR UNREADABLE SUMMARY IS AN ERROR STATE, NEVER ZEROS. The counts
+   * A FAILED OR UNREADABLE SUMMARY IS AN ERROR STATE, NEVER ZEROS. The lists
    * drawn from it are what tells somebody an order needs them.
    */
   const loadData = async (viewerId: string) => {
@@ -201,6 +206,13 @@ export default function OrdersDashboardPage() {
               </button>
             ) : null
           }
+          {/* ── FACTORY FOCUS, FOR THE OWNER ── opens the selection form. The database
+              refuses anybody else, so this is only a courtesy. */}
+          {ready?.viewer.canManageFocus && !viewAsUserId ? (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setFocusFormOpen(true)}>
+              {FOCUS_ADD_LABEL}
+            </button>
+          ) : null}
           {/* ── THE PI FORMAT, FOR EVERYONE WHO CAN ENTER ORDERS ──
               Not gated on `create`: a viewer who cannot upload a PI still needs
               to see how one is filled in. A plain link, so the download is an
@@ -219,30 +231,27 @@ export default function OrdersDashboardPage() {
       }
     >
       <div className="od-stack">
-        {/* ── PANIC MODE ── directly under the title, above every metric. Draws
-            nothing for a reader who was not granted it (the read returned no
-            panic data) and nothing when there is nothing to show. */}
-        {ready ? (
-          <PanicModeSection
-            panic={ready.panic}
-            supabase={supabase}
-            readOnlyReason={viewAsUserId ? 'View As is read-only' : null}
-            onChanged={reload}
-          />
+        {summary.kind === 'ready' ? (
+          <>
+            {/* ── FACTORY FOCUS ── directly under the title. Draws nothing when there are
+                no active selections (the owner's header control opens the form), and only
+                the removal reason for the salesperson it concerns. */}
+            <FocusRemovedNotices focus={summary.summary.focus} />
+            <FactoryFocusSection
+              focus={summary.summary.focus}
+              supabase={supabase}
+              readOnlyReason={viewAsUserId ? 'View As is read-only' : null}
+              addOpen={focusFormOpen}
+              onCloseAdd={() => setFocusFormOpen(false)}
+              onChanged={reload}
+            />
+          </>
         ) : null}
 
         {/* ── WHAT NEEDS INTERVENTION ── */}
         {summary.kind === 'loading' ? (
           <div aria-busy="true" aria-label={DASHBOARD_LOADING_LABEL}>
-            <div className="od-counts">
-              {GROUP_COPY.map(g => (
-                <div key={g.key} className={g.prominent ? 'od-tile od-tile--prominent od-tile--loading' : 'od-tile od-tile--loading'}>
-                  <span className="od-tile-label">{g.label}</span>
-                  <span className="od-tile-count">—</span>
-                  <span className="od-tile-sub">Loading…</span>
-                </div>
-              ))}
-            </div>
+            <ModulePageSkeleton variant="orders-dashboard" label={DASHBOARD_LOADING_LABEL} />
           </div>
         ) : summary.kind === 'error' ? (
           <div className="od-error" role="alert">
@@ -254,8 +263,13 @@ export default function OrdersDashboardPage() {
           </div>
         ) : (
           <>
-            <AttentionCounts summary={summary.summary} />
-            <AttentionGroups summary={summary.summary} />
+            {/* Waiting for manufacturing alignment: prominent, straight after Factory Focus. */}
+            <AlignmentSection summary={summary.summary} />
+            <p className="od-note">{listsNote(summary.summary.viewer.seesAllOrders)}</p>
+            <div className="od-pair">
+              <AdvanceSection summary={summary.summary} />
+              <FabricFinishSection summary={summary.summary} />
+            </div>
           </>
         )}
 
@@ -272,8 +286,7 @@ export default function OrdersDashboardPage() {
           formatWhen={iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         />
 
-        {/* ── Other queues ── small links to the pages that resolve them. A dash
-            means "not asked", never "nothing waiting". */}
+        {/* ── Other queues ── small links to the pages that resolve them. */}
         {queues.length > 0 ? (
           <nav className="od-queues" aria-label="Other queues">
             {queues.map(q => (

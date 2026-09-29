@@ -18,7 +18,10 @@
 // aria-busy tell assistive technology something is loading; the blocks
 // themselves are hidden from it.
 
-export type ModulePageSkeletonVariant = 'dashboard' | 'list' | 'record'
+// 'orders-dashboard' is the redesigned Orders dashboard's own shape (Factory Focus, the
+// alignment list, two lists side by side, revenue). It is ADDITIVE: 'dashboard' — the
+// card-and-table shape — is unchanged, and Finance never asks for the new one.
+export type ModulePageSkeletonVariant = 'dashboard' | 'list' | 'record' | 'orders-dashboard'
 
 function Block({ w, h, radius }: { w: string | number; h: number; radius?: number }) {
   return <span aria-hidden="true" className="boe-skel" style={{ width: w, height: h, borderRadius: radius }} />
@@ -70,6 +73,36 @@ export function ModulePageSkeleton({
           </div>
           <TableRows rows={4} />
         </>
+      )}
+
+      {variant === 'orders-dashboard' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Block w="22%" h={12} />
+            <Block w="100%" h={44} radius={8} />
+          </div>
+          <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Block w="30%" h={14} />
+            <Block w="55%" h={10} />
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <Block w="12%" h={12} />
+                <Block w="20%" h={12} />
+                <Block w="40%" h={12} />
+              </div>
+            ))}
+          </div>
+          <div className="od-pair">
+            {Array.from({ length: 2 }, (_, i) => (
+              <div key={i} className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Block w="45%" h={14} />
+                <Block w="90%" h={10} />
+                <Block w="70%" h={12} />
+                <Block w="60%" h={12} />
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {variant === 'list' && (

@@ -48,7 +48,10 @@ export function OrdersRouteFallback() {
   const title = pendingModuleTitle(pathname)
   return (
     <OrdersLayout profile={null} title={title} onSignOut={signOut} showRefresh={false}>
-      <ModulePageSkeleton variant={skeletonVariantFor(pathname)} label={`Loading ${title}`} />
+      <ModulePageSkeleton
+        variant={pathname.split('/').filter(Boolean).join('/') === 'orders' ? 'orders-dashboard' : skeletonVariantFor(pathname)}
+        label={`Loading ${title}`}
+      />
     </OrdersLayout>
   )
 }
