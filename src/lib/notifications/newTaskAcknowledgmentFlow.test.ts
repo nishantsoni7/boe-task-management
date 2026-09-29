@@ -102,6 +102,20 @@ describe('the acknowledgment event', () => {
     }
   })
 
+  test('as an acknowledgment, from every screen — never as "moved to Working"', () => {
+    // The task detail page used to send `action: 'working'`, so the creator read
+    // "<name> moved task to Working" where the other two screens say
+    // "<name> acknowledged task".
+    for (const path of ACK_SCREENS) {
+      const src = read(path)
+      const ack = src.indexOf("action: 'acknowledged', note: null")
+      const notify = src.indexOf("fetch('/api/notify-status-update'", ack)
+      const call = src.slice(notify, src.indexOf('})', notify))
+      assert.match(call, /action: 'acknowledged'/, path)
+      assert.equal(/action: 'working'/.test(call), false, path)
+    }
+  })
+
   test('the policy announces it, and every later event, on a delegated task', () => {
     const delegated = { task_type: 'general', created_by: CREATOR, assigned_to: ASSIGNEE }
     for (const action of ['acknowledged', 'working', 'comment_added', 'waiting', 'blocked']) {
