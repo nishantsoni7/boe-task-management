@@ -315,6 +315,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270217000000_order_submission_cleanup_number_choice.sql',
     '20270220000000_asset_catalogue.sql',
     '20270221000000_orders_dashboard_factory_focus.sql',
+    '20270222000000_attendance_request_live_uniqueness.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
