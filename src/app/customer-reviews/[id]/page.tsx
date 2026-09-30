@@ -1,19 +1,10 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { Suspense } from 'react'
-import { useParams } from 'next/navigation'
-import { LoadingScreen } from '@/components/ui/atoms'
-import { TestCardDetailScreen } from './TestCardDetailScreen'
-
-// The Suspense boundary is required because CustomerReviewsLayout reads search
-// params for its navigation.
-export default function CustomerReviewTestCardPage() {
-  const routeParams = useParams<{ id: string }>()
-  const id = routeParams?.id ?? ''
-
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <TestCardDetailScreen cardId={id} />
-    </Suspense>
-  )
+// RETIRED FRONTEND PAGE. The generated-review workflow (prepare → allocate →
+// assign → book → share) is deactivated for every role; the module is custom
+// reviews only. Nothing behind it is deleted — the tables, records, storage,
+// routes and the screen components all remain — this page simply no longer
+// opens, so a saved link or bookmark lands on the Reviews landing page.
+export default function RetiredPage() {
+  redirect('/customer-reviews')
 }

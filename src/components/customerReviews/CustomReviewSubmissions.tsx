@@ -217,6 +217,7 @@ export function CustomReviewSubmissions({
           <button
             type="button"
             className="boe-btn boe-btn-primary"
+            id="submit-custom-review"
             disabled={!loaded || !allowance.canSubmitAny}
             onClick={() => { setNotice(null); setForm({ mode: 'new' }) }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', minHeight: '44px' }}

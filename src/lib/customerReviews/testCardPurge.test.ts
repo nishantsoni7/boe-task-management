@@ -557,30 +557,16 @@ describe('the screens', () => {
 describe('an admin without verify reaches the purge, and only the purge', () => {
   const code = (s: string) => s.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
 
-  test('the layout lets them onto one card page, on the database answer, and nowhere else', () => {
+  test('the layout no longer admits anyone to a card page: the purge frontend exception is retired', () => {
     const layout = code(LAYOUT)
     // Ordinary entry is unchanged: use OR verify, both catches denying.
     assert.ok(layout.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'use').catch(() => false)"))
     assert.ok(layout.includes("hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify').catch(() => false)"))
-    const exception = layout.slice(layout.indexOf('if (!allowed) {'), layout.indexOf('setAuthorized(true)'))
-    assert.ok(exception.includes("PURGE_PAGE.test(pathname ?? '')"))
-    assert.ok(exception.includes("supabase.rpc('can_purge_customer_review_test_cards').then(({ data }: { data: unknown }) => data === true, () => false)"))
-    assert.ok(exception.includes("router.replace('/coming-soon')"))
-    assert.ok(exception.includes('setPurgeOnly(true)'))
-    // Admitted that way, any other page of the module is refused.
-    assert.ok(layout.includes('const outsidePurgePage = purgeOnly && !PURGE_PAGE.test(pathname ?? \'\')'))
-    assert.ok(layout.includes('if (!authorized) return <LoadingScreen />'))
-    assert.ok(layout.includes('if (outsidePurgePage) return <LoadingScreen />'))
+    assert.equal(/PURGE_PAGE|can_purge_customer_review_test_cards|purgeOnly|outsidePurgePage/.test(layout), false)
+    assert.ok(layout.includes("if (!allowed) { router.replace('/coming-soon'); return }"))
     assert.equal(/role/.test(layout), false, 'the layout reads a role')
-
-    const literal = /const PURGE_PAGE = \/(.+)\/$/m.exec(LAYOUT)
-    assert.ok(literal, 'the purge page pattern is missing')
-    const page = new RegExp(literal[1])
-    assert.equal(page.test(`/customer-reviews/${CARD}`), true)
-    for (const other of ['/customer-reviews', '/customer-reviews/reviews', '/customer-reviews/custom',
-      `/customer-reviews/${CARD}/edit`, `/customer-reviews/x${CARD}`, '/customer-reviews/batches']) {
-      assert.equal(page.test(other), false, other)
-    }
+    // The card page itself redirects for everybody; the API and database purge remain.
+    assert.ok(read('src/app/customer-reviews/[id]/page.tsx').includes("redirect('/customer-reviews')"))
   })
 
   test('the detail page shows them the purge page and returns before any review control', () => {

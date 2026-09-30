@@ -278,9 +278,11 @@ describe('the generated-review workflow is paused for candidates', () => {
     assert.equal(/drop table|delete from|truncate table|truncate public\./i.test(code), false)
   })
 
-  test('both routes that render My Reviews give a candidate the Custom Review workspace', () => {
-    assert.ok(read('src/app/customer-reviews/page.tsx').includes('candidateGeneratedReviewsHidden(caps) ? <CustomReviewsScreen /> : <MyReviewsScreen />'))
-    assert.ok(read('src/app/customer-reviews/mine/page.tsx').includes('{candidateGeneratedReviewsHidden(caps) ? <CustomReviewsScreen /> : <MyReviewsScreen />}'))
+  test('the landing page is the Custom Review workspace for everybody; /mine is retired', () => {
+    const page = read('src/app/customer-reviews/page.tsx')
+    assert.ok(page.includes('<CustomReviewsScreen />'))
+    assert.equal(/MyReviewsScreen|OverviewScreen/.test(page), false)
+    assert.ok(read('src/app/customer-reviews/mine/page.tsx').includes("redirect('/customer-reviews')"))
     const screen = read('src/app/customer-reviews/CustomReviewsScreen.tsx')
     assert.equal(/customer_review_test_cards|book_customer_review_test_card/.test(screen + WORKSPACE), false)
   })

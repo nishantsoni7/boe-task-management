@@ -694,39 +694,29 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.equal(/\bHistory\b/.test(executable), false, 'the History icon is still imported or used')
   })
 
-  test('and the module shell offers no History entry either', () => {
+  test('the module shell is custom-only: one candidate entry, verifier-only Custom Submissions, History and Reports', () => {
     const shell = read('src/components/layout/CustomerReviewsLayout.tsx')
-    const executable = shell.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
-    assert.equal(/history/i.test(executable), false, 'the sidebar still links to history')
-    // Five entries now, and three of the five are verifier-only. The two a
-    // candidate sees are the two they always saw.
-    // FIVE DESTINATIONS, NOT FIVE STATES. The sidebar used to list the
-    // workflow states, every entry pointing at `?tab=` on one route, while the
-    // page rendered the same five as tabs — two controls for one parameter.
+    const executable = shell.split(/\r?\n/).filter(l => !l.trimStart().startsWith('//')).join(' ')
+    // History is the READ-ONLY record of the retired generated reviews, verifier-only.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress', 'Reports'])
-
-    // AND NO ENTRY CARRIES A QUERY ANY MORE: each is a route of its own, so
-    // the sidebar cannot duplicate an in-page tab by construction.
+    assert.deepEqual(items, ['My Reviews', 'Custom Submissions', 'History', 'Reports'])
     assert.equal(/query:/.test(executable), false, 'a nav entry still points at a tab')
-
-    const verifierOnly = [...executable.matchAll(/label: '([^']+)'[\s\S]*?(?=\{\s*$|\},)/g)]
-    assert.ok(verifierOnly.length >= 0)   // structural read below is the assertion
-    // Everything but Available and My reviews carries verifierOnly, so a
-    // candidate's sidebar is unchanged by this work.
-    const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf('const ROOT_LABEL'))
-    // FIVE OF THE SIX ARE VERIFIER-ONLY. A candidate sees exactly one entry —
-    // they submit a custom review from My Reviews; deciding one is verify work.
-    for (const label of ['Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress']) {
+    const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf('export function CustomerReviewsLayout'))
+    for (const label of ['Custom Submissions', 'History', 'Reports']) {
       const at = entries.indexOf(`label: '${label}'`)
       assert.ok(at !== -1, `${label} is missing`)
-      assert.ok(entries.slice(at, at + 260).includes('verifierOnly: true'),
-        `${label} is shown to candidates`)
+      assert.ok(entries.slice(at, at + 260).includes('verifierOnly: true'), `${label} is shown to candidates`)
     }
     const rootAt = entries.indexOf("label: 'My Reviews'")
-    assert.ok(rootAt !== -1, 'My Reviews is missing')
-    assert.equal(entries.slice(rootAt, rootAt + 160).includes('verifierOnly'), false,
-      'My Reviews became verifier-only')
+    assert.equal(entries.slice(rootAt, rootAt + 160).includes('verifierOnly'), false, 'My Reviews became verifier-only')
+  })
+
+  test('the History screen is read-only: no write, no RPC, no action control', () => {
+    const screen = read('src/app/customer-reviews/HistoryScreen.tsx')
+    const executable = screen.split(/\r?\n/).filter(l => !l.trimStart().startsWith('//')).join(' ')
+    assert.equal(/\.rpc\(|\.insert\(|\.update\(|\.delete\(|\.upsert\(|fetch\(|<button|onClick|storage/.test(executable), false)
+    assert.ok(executable.includes("if (!caps.canVerify) router.replace('/customer-reviews')"))
+    assert.ok(executable.includes(".from('customer_review_test_cards')"))
   })
 
   test('THE DETAIL SCREEN DECLINES A VERIFIED CARD TOO', () => {
