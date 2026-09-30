@@ -832,8 +832,58 @@ leaderboard ranks by eligible count, ties share a rank, joint leaders need 1.
 review cannot be approved again; a held credit cannot be re-priced (so type is locked); a Duplicate decision on a review whose
 month lapsed cannot reverse a second time; Duplicate → Different restores no reward.
 
-**Remaining verification gaps:** the real `/dashboard` integration of the leader card was verified only in a throwaway page, not
-on a real dashboard in a non-production environment; production backfill and production-scale timing are unmeasured.
+**Verified on a disposable local Supabase stack** (all three migrations applied, real routes, real `/dashboard`): submit; duplicate
+warning (409) and Submit anyway (forged token refused); edit of an approved review (Pending, balance unchanged, off the leaderboard);
+re-approval (one reward); delete and reject (one reversal each, delete idempotent); ownership denial (stranger, other employee,
+verifier); confirmed Duplicate on a paid review (rejected, one reversal, approval refused, out of eligible, still in submitted);
+Duplicate → Different (no reward restored, still Rejected, cannot be approved or reapplied); ties and zero-review employees; an expired
+month (earned result kept, shown as expired); cards, employee rows and click-through lists reconcile.
+
+**Confirmation before Duplicate:** on a paid review the admin is told it "has already been paid", that confirming reverses the reward
+once and that changing the decision to Different later will not restore it; on an unpaid review that nothing is reversed.
+
+**Remaining limitations:** production backfill and production-scale timing are unmeasured; the local stack is a partial replay of the
+migration history (25 unrelated migrations do not apply locally), so it proves this module, not the whole schema.
+
+## 27. Production runbook — PREPARED, NOT EXECUTED
+
+Order: `20270223000000_customer_review_custom_edit_delete.sql` → `20270224000000_customer_review_custom_duplicate_detection.sql` →
+`20270225000000_customer_review_reporting_and_leaderboard.sql`. The migrations post **no** ledger row and change **no** existing award.
+
+**Pre-check (read-only SQL, run first, keep the output):**
+
+```sql
+-- 1. none of the three is applied yet
+select version from supabase_migrations.schema_migrations where version >= '20270223000000' order by 1;
+-- 2. baseline the ledger and the reviews (must be identical after)
+select count(*) as tx, coalesce(sum(credits),0) as net from public.boe_credit_transactions;
+select status, count(*) from public.customer_review_custom_submissions group by 1 order by 1;
+-- 3. the invariants the new code relies on already hold
+select count(*) from (select source_id from public.boe_credit_transactions where transaction_type='review_reward' group by 1 having count(*)>1) t;   -- 0
+select count(*) from public.customer_review_custom_submissions where status='approved' and credit_transaction_id is null;                          -- 0 expected
+```
+
+**Dry run:** `supabase db push --linked --dry-run` lists the pending files and must show exactly the three above (never run it with
+`[db.migrations] enabled = false` — it then reports "up to date"). Rehearse the SQL on a local copy of production history first.
+
+**Apply** (owner, in a quiet window; the app code is deployed AFTER the migrations): `supabase db push --linked`.
+
+**Post-check (read-only):**
+
+```sql
+select version from supabase_migrations.schema_migrations where version >= '20270223000000' order by 1;   -- the three
+select count(*) as tx, coalesce(sum(credits),0) as net from public.boe_credit_transactions;                -- unchanged from the pre-check
+select status, count(*) from public.customer_review_custom_submissions group by 1 order by 1;               -- unchanged
+-- new functions are not callable by anon, and the two internal ones by nobody
+select p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') as anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname='public' and p.proname in ('customer_review_report_rows','customer_review_month_standings','reverse_customer_review_custom_reward',
+   'edit_customer_review_custom_submission','delete_customer_review_custom_submission','backfill_customer_review_custom_proof_phash');   -- anon false everywhere; authed false everywhere
+```
+
+Then, signed in as an administrator: open Reports (the cards must reconcile with the employee table) and the leaderboard as any employee.
+**Backfill** only after the app code is live, and only as in §24.8 (dry run → `--apply --limit=200` → `--verify`). Rollback of the migrations is
+by the generated down scripts only if no new-format data exists; once employees have edited or deleted reviews, prefer a forward fix.
 
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
