@@ -4,11 +4,12 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { Notice, ui } from '@/components/attendancePayroll/ui'
+import styles from './upload.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,26 +100,28 @@ const MONTH_NAMES = [
   'July','August','September','October','November','December',
 ]
 
-function StatBox({ label, value, color }: { label: string; value: number | string; color?: string }) {
+/** A value and its label on one line; a run of these replaces tiles. */
+function Stat({ label, value, color }: { label: string; value: number | string; color?: string }) {
   return (
-    <div style={{ minWidth: 88 }}>
-      <div style={{ fontSize: 24, fontWeight: 700, color: color ?? colors.primary, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 5 }}>{label}</div>
+    <div className={styles.stat}>
+      <span className={styles.statValue} style={color ? { color } : undefined}>{value}</span>
+      <span>{label}</span>
     </div>
   )
 }
 
-function SectionCard({ children, warning }: { children: React.ReactNode; warning?: boolean }) {
+/** A titled white surface. `warning` tints the head amber for things that need attention. */
+function Section({ title, warning, children }: { title: React.ReactNode; warning?: boolean; children: React.ReactNode }) {
   return (
-    <div style={{
-      background: warning ? 'rgba(245,158,11,0.05)' : colors.base,
-      border: `1.5px solid ${warning ? 'rgba(245,158,11,0.5)' : colors.border}`,
-      borderRadius: 10, overflow: 'hidden',
-    }}>
+    <section className={ui.surface} style={warning ? { borderColor: 'rgba(232,160,48,0.45)' } : undefined}>
+      <div
+        className={ui.surfaceHead}
+        style={warning ? { background: 'rgba(232,160,48,0.08)' } : undefined}
+      >
+        <h2 className={ui.surfaceTitle} style={warning ? { color: '#92400E' } : undefined}>{title}</h2>
+      </div>
       {children}
-    </div>
+    </section>
   )
 }
 
@@ -140,17 +143,22 @@ function searchEmployees(employees: SelectableEmployee[], query: string): Select
   )
 }
 
-function CardHeader({ children, warning }: { children: React.ReactNode; warning?: boolean }) {
+const STEP_LABELS = ['Choose file', 'Check results', 'Confirm import', 'Outcome']
+
+function Steps({ current }: { current: number }) {
   return (
-    <div style={{
-      padding: '12px 16px',
-      borderBottom: `1px solid ${warning ? 'rgba(245,158,11,0.25)' : colors.border}`,
-      fontSize: 11, fontWeight: 600,
-      color: warning ? '#92400E' : colors.tertiary,
-      textTransform: 'uppercase' as const, letterSpacing: '0.06em',
-    }}>
-      {children}
-    </div>
+    <ol className={styles.steps} aria-label="Import steps">
+      {STEP_LABELS.map((label, i) => {
+        const n = i + 1
+        const cls = n < current ? styles.stepDone : n === current ? styles.stepCurrent : ''
+        return (
+          <li key={label} className={`${styles.step} ${cls}`} aria-current={n === current ? 'step' : undefined}>
+            <span className={styles.stepNum} aria-hidden>{n < current ? '✓' : n}</span>
+            {label}
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -359,487 +367,349 @@ export default function AttendanceUploadPage() {
   if (loading) return <LoadingScreen />
 
   const canImport = profile?.role === 'admin' || profile?.role === 'manager'
-
-  const inputStyle: React.CSSProperties = {
-    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
-    background: colors.base, color: colors.primary, outline: 'none',
-    padding: '8px 12px', width: '100%', boxSizing: 'border-box',
-  }
-
-  const btnBase: React.CSSProperties = {
-    padding: '9px 22px', fontSize: 13, fontWeight: 600, borderRadius: 7,
-    border: 'none', cursor: 'pointer',
-  }
+  const step = result ? 4 : preview ? 2 : 1
+  const btn = `boe-btn boe-btn-ghost ${ui.btnSm}`
 
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Attendance Upload"
-      subtitle="Import attendance records from fingerprint machine export"
+      title="Upload"
+      subtitle="Import a fingerprint machine export, check it, then confirm"
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 680, padding: '24px 0' }}>
-
-        <Link
-          href="/attendance"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-          onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back to Attendance Dashboard
-        </Link>
+      <div className={ui.stack}>
+        <Steps current={step} />
 
         {!canImport && (
-          <div style={{
-            padding: '12px 16px', borderRadius: 8, marginBottom: 20,
-            background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
-            fontSize: 13, color: '#DC2626',
-          }}>
-            Only admin and manager users can import attendance records.
+          <div className={styles.narrow}>
+            <Notice kind="error">Only admin and manager users can import attendance records.</Notice>
           </div>
         )}
 
-        {/* ── Upload card (hidden after preview/result) ── */}
+        {/* ── Step 1: choose file (hidden after preview/result) ── */}
         {!preview && !result && (
-          <div style={{
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '24px',
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: colors.primary, marginBottom: 4 }}>
-              Fingerprint Machine Import
-            </div>
-            <div style={{ fontSize: 12, color: colors.tertiary, marginBottom: 20, lineHeight: 1.6 }}>
-              Upload the monthly attendance report exported from the fingerprint machine (<code style={{ background: colors.raised, padding: '1px 5px', borderRadius: 4 }}>.xls</code> or <code style={{ background: colors.raised, padding: '1px 5px', borderRadius: 4 }}>.xlsx</code>).
-              Employees are matched by <strong>fingerprint employee code</strong> (e.g. 0014, 0017).
-            </div>
-
-            <div style={{
-              background: colors.raised, border: `1px solid ${colors.border}`,
-              borderRadius: 8, padding: '12px 14px', marginBottom: 20,
-              fontFamily: 'monospace', fontSize: 11.5, color: colors.secondary, lineHeight: 1.7,
-            }}>
-              <div style={{ fontWeight: 700, marginBottom: 4, fontFamily: 'inherit', color: colors.tertiary, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em' }}>Expected file</div>
-              Monthly performance report from fingerprint machine
-              <div style={{ marginTop: 6, color: colors.tertiary, fontSize: 11 }}>
-                • Format: XLS/XLSX monthly attendance export<br />
-                • Employee codes must be mapped in Employee Master<br />
-                • Days with no punch (--:--) are automatically skipped
+          <section className={`${ui.surface} ${styles.narrow}`}>
+            <div className={ui.surfaceHead}>
+              <div>
+                <h2 className={ui.surfaceTitle}>Fingerprint machine import</h2>
+                <p className={ui.surfaceSub}>
+                  Upload the monthly attendance report exported from the machine (.xls or .xlsx).
+                  Employees are matched by <strong>fingerprint employee code</strong> (e.g. 0014, 0017).
+                </p>
               </div>
             </div>
+            <div className={`${ui.surfaceBody} ${ui.stack}`}>
+              <ul className={styles.expected}>
+                <li>Format: XLS/XLSX monthly attendance export</li>
+                <li>Employee codes must be mapped in Employee Master</li>
+                <li>Days with no punch (--:--) are automatically skipped</li>
+              </ul>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
-                Select file
-              </label>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={handleFileChange}
-                disabled={!canImport}
-                style={inputStyle}
-              />
-              {file && (
-                <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 5 }}>
-                  {file.name} · {(file.size / 1024).toFixed(1)} KB
-                </div>
-              )}
+              <div className={ui.field}>
+                <label className={ui.label} htmlFor="upload-file">Select file</label>
+                <input
+                  id="upload-file"
+                  ref={fileRef}
+                  type="file"
+                  accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={handleFileChange}
+                  disabled={!canImport}
+                  className={ui.input}
+                />
+                {file && (
+                  <div className={styles.fileMeta}>{file.name} · {(file.size / 1024).toFixed(1)} KB</div>
+                )}
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  className={`boe-btn boe-btn-primary ${ui.btn}`}
+                  onClick={() => handlePreview()}
+                  disabled={!file || previewing || !canImport}
+                >
+                  {previewing ? 'Analysing…' : 'Preview Import'}
+                </button>
+              </div>
             </div>
-
-            <button
-              onClick={() => handlePreview()}
-              disabled={!file || previewing || !canImport}
-              style={{
-                ...btnBase,
-                background: '#3B82F6', color: '#fff',
-                opacity: !file || previewing || !canImport ? 0.5 : 1,
-                cursor: !file || previewing || !canImport ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {previewing ? 'Analysing…' : 'Preview Import'}
-            </button>
-          </div>
+          </section>
         )}
 
         {/* ── Page-level error ── */}
         {pageError && (
-          <div style={{
-            marginTop: 16, padding: '12px 16px', borderRadius: 8,
-            background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
-            fontSize: 13, color: '#DC2626',
-          }}>
-            <strong>Error:</strong> {pageError}
-            <button
-              onClick={() => setPageError(null)}
-              style={{ marginLeft: 12, fontSize: 12, color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+          <div className={styles.narrow}>
+            <Notice
+              kind="error"
+              action={<button type="button" className={btn} onClick={() => setPageError(null)}>Dismiss</button>}
             >
-              Dismiss
-            </button>
+              <strong>Error:</strong> {pageError}
+            </Notice>
           </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            PHASE 1: PREVIEW CARDS
+            STEP 2–3: CHECK RESULTS, THEN CONFIRM
         ════════════════════════════════════════════════════════════════ */}
         {preview && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
+          <>
             {/* ── Status banner ── */}
             {preview.allUnchanged ? (
-              <div style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: 'rgba(239,68,68,0.07)',
-                border: '1.5px solid rgba(239,68,68,0.3)',
-                fontSize: 13, color: '#DC2626',
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>🚫</span>
-                <span>This attendance data already appears to be imported. No changes found.</span>
-              </div>
+              <Notice kind="error">This attendance data already appears to be imported. No changes found.</Notice>
             ) : preview.modifiedCount > 0 && preview.newCount === 0 ? (
-              <div style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: 'rgba(139,92,246,0.07)',
-                border: '1.5px solid rgba(139,92,246,0.4)',
-                fontSize: 13, color: '#5B21B6',
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>✏️</span>
-                <span>{preview.modifiedCount} record{preview.modifiedCount !== 1 ? 's' : ''} have different timings and will be corrected. Review the changes below before confirming.</span>
-              </div>
+              <Notice kind="info">{preview.modifiedCount} record{preview.modifiedCount !== 1 ? 's' : ''} have different timings and will be corrected. Review the changes below before confirming.</Notice>
             ) : preview.modifiedCount > 0 ? (
-              <div style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: 'rgba(139,92,246,0.07)',
-                border: '1.5px solid rgba(139,92,246,0.4)',
-                fontSize: 13, color: '#5B21B6',
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>✏️</span>
-                <span>{preview.newCount} new record{preview.newCount !== 1 ? 's' : ''} will be added and {preview.modifiedCount} existing record{preview.modifiedCount !== 1 ? 's' : ''} will be corrected.</span>
-              </div>
+              <Notice kind="info">{preview.newCount} new record{preview.newCount !== 1 ? 's' : ''} will be added and {preview.modifiedCount} existing record{preview.modifiedCount !== 1 ? 's' : ''} will be corrected.</Notice>
             ) : null}
-
-            {/* Section 1: File Summary */}
-            <SectionCard>
-              <CardHeader>Section 1 — File Summary</CardHeader>
-              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[
-                  { label: 'File name',       value: preview.fileName },
-                  { label: 'Device format',   value: preview.deviceFormat },
-                  { label: 'Month detected',  value: preview.month > 0 ? MONTH_NAMES[preview.month - 1] : '—' },
-                  { label: 'Year detected',   value: preview.year > 0 ? String(preview.year) : '—' },
-                  { label: 'Total rows found', value: String(preview.totalRows) },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: colors.tertiary, minWidth: 140 }}>{label}</span>
-                    <span style={{ fontSize: 13, color: colors.primary, fontWeight: 500 }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            {/* Section 2: Employee Matching */}
-            <SectionCard warning={preview.unmatchedCount > 0}>
-              <CardHeader warning={preview.unmatchedCount > 0}>Section 2 — Employee Matching</CardHeader>
-              <div style={{ padding: '16px 20px' }}>
-                <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: preview.unmatchedEntries.length > 0 ? 16 : 0 }}>
-                  <StatBox label="Employees detected" value={preview.detectedEmployees} />
-                  <StatBox label="Matched" value={preview.matchedCount} color="#10B981" />
-                  <StatBox label="Unmatched" value={preview.unmatchedCount} color={preview.unmatchedCount > 0 ? '#F59E0B' : colors.tertiary} />
-                </div>
-
-                {/* Codes an admin named an employee for. Shown as the server
-                    resolved them, so what is confirmed here is what will run. */}
-                {preview.manualMappings.length > 0 && (
-                  <div style={{ marginBottom: preview.unmatchedEntries.length > 0 ? 16 : 0 }}>
-                    <div style={{ fontSize: 11, color: '#065F46', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                      Manually matched — these will be imported
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {preview.manualMappings.map(m => (
-                        <div key={m.excel_code} style={{
-                          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                          padding: '9px 12px', borderRadius: 8,
-                          background: 'rgba(16,185,129,0.07)',
-                          border: '1px solid rgba(16,185,129,0.3)',
-                          fontSize: 12.5, color: '#065F46',
-                        }}>
-                          <span style={{ fontFamily: 'monospace' }}>{m.excel_code}</span>
-                          <span style={{ color: '#047857' }}>{m.excel_name || 'unnamed in file'}</span>
-                          <span style={{ color: '#047857' }}>{m.days} day{m.days !== 1 ? 's' : ''}</span>
-                          <span aria-hidden>→</span>
-                          <strong style={{ fontWeight: 700 }}>{m.employee_name}</strong>
-                          <button
-                            onClick={() => handleRemoveMapping(m.excel_code)}
-                            disabled={previewing || confirming}
-                            style={{
-                              marginLeft: 'auto', fontSize: 11.5, fontWeight: 600,
-                              padding: '4px 10px', borderRadius: 6,
-                              background: 'transparent', color: '#065F46',
-                              border: '1px solid rgba(16,185,129,0.45)',
-                              cursor: previewing || confirming ? 'not-allowed' : 'pointer',
-                              opacity: previewing || confirming ? 0.5 : 1,
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {preview.unmatchedEntries.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 11, color: '#92400E', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                      Unmatched employees — skipped unless you choose who they are
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {preview.unmatchedEntries.map(u => {
-                        const open      = pickerFor === u.excel_code
-                        const confirmed = pendingChoice?.entry.excel_code === u.excel_code
-                        const matches   = open && !confirmed
-                          ? searchEmployees(employees, pickerQuery).slice(0, 40)
-                          : []
-                        return (
-                          <div key={u.excel_code} style={{
-                            padding: '10px 12px', borderRadius: 8,
-                            background: 'rgba(245,158,11,0.06)',
-                            border: '1px solid rgba(245,158,11,0.28)',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: '#78350F' }}>
-                              <span style={{ fontFamily: 'monospace', color: '#92400E' }}>{u.excel_code}</span>
-                              <span style={{ fontWeight: 500 }}>{u.excel_name || 'unnamed in file'}</span>
-                              <span style={{ color: '#92400E' }}>{u.days} day{u.days !== 1 ? 's' : ''}</span>
-                              {!open && (
-                                <button
-                                  onClick={() => { setPickerFor(u.excel_code); setPickerQuery(''); setPendingChoice(null); loadEmployees() }}
-                                  disabled={previewing || confirming}
-                                  style={{
-                                    marginLeft: 'auto', fontSize: 11.5, fontWeight: 600,
-                                    padding: '5px 12px', borderRadius: 6,
-                                    background: '#F59E0B', color: '#fff', border: 'none',
-                                    cursor: previewing || confirming ? 'not-allowed' : 'pointer',
-                                    opacity: previewing || confirming ? 0.5 : 1,
-                                  }}
-                                >
-                                  Choose employee
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Confirmation gate — naming the employee and
-                                agreeing to import as them are two steps. */}
-                            {confirmed && pendingChoice && (
-                              <div style={{
-                                marginTop: 10, padding: '10px 12px', borderRadius: 7,
-                                background: colors.base, border: `1.5px solid ${colors.border}`,
-                              }}>
-                                <div style={{ fontSize: 12.5, color: colors.primary, lineHeight: 1.6 }}>
-                                  Import {u.days} day{u.days !== 1 ? 's' : ''} recorded under code{' '}
-                                  <strong style={{ fontFamily: 'monospace' }}>{u.excel_code}</strong>
-                                  {u.excel_name ? ` ("${u.excel_name}")` : ''} as{' '}
-                                  <strong>{pendingChoice.employee.full_name ?? 'this employee'}</strong>?
-                                </div>
-                                <div style={{ fontSize: 11.5, color: colors.tertiary, marginTop: 6 }}>
-                                  These punches will be written to that employee&apos;s attendance and counted in their payroll.
-                                </div>
-                                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                                  <button
-                                    onClick={handleConfirmChoice}
-                                    disabled={previewing}
-                                    style={{
-                                      fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
-                                      background: '#10B981', color: '#fff', border: 'none',
-                                      cursor: previewing ? 'not-allowed' : 'pointer',
-                                      opacity: previewing ? 0.5 : 1,
-                                    }}
-                                  >
-                                    {previewing ? 'Applying…' : 'Yes, import as this employee'}
-                                  </button>
-                                  <button
-                                    onClick={() => setPendingChoice(null)}
-                                    disabled={previewing}
-                                    style={{
-                                      fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
-                                      background: colors.raised, color: colors.secondary,
-                                      border: `1px solid ${colors.border}`,
-                                      cursor: previewing ? 'not-allowed' : 'pointer',
-                                    }}
-                                  >
-                                    Back
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Searchable selector */}
-                            {open && !confirmed && (
-                              <div style={{ marginTop: 10 }}>
-                                <input
-                                  autoFocus
-                                  value={pickerQuery}
-                                  onChange={e => setPickerQuery(e.target.value)}
-                                  placeholder="Search by name or employee code…"
-                                  style={{ ...inputStyle, fontSize: 12.5 }}
-                                />
-                                {loadingEmployees && (
-                                  <div style={{ fontSize: 12, color: colors.tertiary, padding: '8px 2px' }}>Loading employees…</div>
-                                )}
-                                {employeesError && (
-                                  <div style={{ fontSize: 12, color: '#DC2626', padding: '8px 2px' }}>{employeesError}</div>
-                                )}
-                                {!loadingEmployees && !employeesError && (
-                                  <div style={{
-                                    marginTop: 6, maxHeight: 210, overflowY: 'auto',
-                                    border: `1px solid ${colors.border}`, borderRadius: 7,
-                                    background: colors.base,
-                                  }}>
-                                    {matches.length === 0 ? (
-                                      <div style={{ fontSize: 12, color: colors.tertiary, padding: '10px 12px' }}>
-                                        No employee matches that search.
-                                      </div>
-                                    ) : matches.map(emp => (
-                                      <button
-                                        key={emp.id}
-                                        onClick={() => setPendingChoice({ entry: u, employee: emp })}
-                                        style={{
-                                          display: 'block', width: '100%', textAlign: 'left',
-                                          padding: '8px 12px', fontSize: 12.5,
-                                          background: 'transparent', border: 'none',
-                                          borderBottom: `1px solid ${colors.border}`,
-                                          color: colors.primary, cursor: 'pointer',
-                                        }}
-                                      >
-                                        <span style={{ fontWeight: 500 }}>{emp.full_name ?? 'Unnamed'}</span>
-                                        {emp.employee_code && (
-                                          <span style={{ color: colors.tertiary, fontFamily: 'monospace', fontSize: 11, marginLeft: 8 }}>
-                                            {emp.employee_code}
-                                          </span>
-                                        )}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                                <button
-                                  onClick={() => { setPickerFor(null); setPickerQuery('') }}
-                                  style={{
-                                    marginTop: 8, fontSize: 11.5, fontWeight: 600,
-                                    padding: '5px 12px', borderRadius: 6,
-                                    background: colors.raised, color: colors.secondary,
-                                    border: `1px solid ${colors.border}`, cursor: 'pointer',
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    <div style={{ padding: '10px 0 0' }}>
-                      <Link
-                        href="/attendance/employees"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          padding: '6px 14px', borderRadius: 7,
-                          fontSize: 12, fontWeight: 600,
-                          background: '#F59E0B', color: '#fff',
-                          textDecoration: 'none',
-                        }}
-                      >
-                        Fix Fingerprint Codes in Employee Master →
-                      </Link>
-                    </div>
-                  </>
-                )}
-              </div>
-            </SectionCard>
-
-            {/* Section 3: Import Safety */}
-            <SectionCard warning={preview.allUnchanged}>
-              <CardHeader warning={preview.allUnchanged}>Section 3 — Import Safety</CardHeader>
-              <div style={{ padding: '16px 20px', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-                <StatBox label="New records"      value={preview.newCount}       color={preview.newCount > 0       ? '#3B82F6' : colors.tertiary} />
-                <StatBox label="Modified records" value={preview.modifiedCount}  color={preview.modifiedCount > 0  ? '#8B5CF6' : colors.tertiary} />
-                <StatBox label="Unchanged"        value={preview.unchangedCount} color={preview.unchangedCount > 0 ? '#10B981' : colors.tertiary} />
-              </div>
-              {preview.allUnchanged && (
-                <div style={{ padding: '0 20px 16px', fontSize: 13, color: '#DC2626', fontWeight: 500 }}>
-                  This attendance data already appears to be imported. No changes found.
-                </div>
-              )}
-            </SectionCard>
 
             {/* Payroll lock / generated warnings — shown whenever this import would write to a locked/generated period */}
             {preview.payrollStatus === 'locked' && (
-              <div style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: 'rgba(239,68,68,0.07)',
-                border: '1.5px solid rgba(239,68,68,0.35)',
-                fontSize: 13, color: '#DC2626',
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>🔒</span>
-                <span><strong>Payroll is locked for this month.</strong> Attendance cannot be imported or corrected.</span>
-              </div>
+              <Notice kind="error"><strong>Payroll is locked for this month.</strong> Attendance cannot be imported or corrected.</Notice>
             )}
             {preview.payrollStatus === 'generated' && (
-              <div style={{
-                padding: '12px 16px', borderRadius: 8,
-                background: 'rgba(245,158,11,0.07)',
-                border: '1.5px solid rgba(245,158,11,0.45)',
-                fontSize: 13, color: '#92400E',
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-              }}>
-                <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
-                <span><strong>Payroll has already been generated for this month.</strong> Applying corrections may require payroll regeneration.</span>
-              </div>
+              <Notice kind="warning"><strong>Payroll has already been generated for this month.</strong> Applying corrections may require payroll regeneration.</Notice>
             )}
+
+            <div className={styles.narrow}>
+              <Section title="File summary">
+                <div className={ui.surfaceBody}>
+                  <dl className={ui.facts}>
+                    <dt>File name</dt><dd>{preview.fileName}</dd>
+                    <dt>Device format</dt><dd>{preview.deviceFormat}</dd>
+                    <dt>Month detected</dt><dd>{preview.month > 0 ? MONTH_NAMES[preview.month - 1] : '—'}</dd>
+                    <dt>Year detected</dt><dd>{preview.year > 0 ? String(preview.year) : '—'}</dd>
+                    <dt>Total rows found</dt><dd>{String(preview.totalRows)}</dd>
+                  </dl>
+                </div>
+              </Section>
+            </div>
+
+            <div className={styles.narrow}>
+              <Section title="Employee matching" warning={preview.unmatchedCount > 0}>
+                <div className={`${ui.surfaceBody} ${ui.stack}`}>
+                  <div className={styles.stats}>
+                    <Stat label="Employees detected" value={preview.detectedEmployees} />
+                    <Stat label="Matched" value={preview.matchedCount} color="#047857" />
+                    <Stat label="Unmatched" value={preview.unmatchedCount} color={preview.unmatchedCount > 0 ? '#B45309' : '#6B7384'} />
+                  </div>
+
+                  {/* Codes an admin named an employee for. Shown as the server
+                      resolved them, so what is confirmed here is what will run. */}
+                  {preview.manualMappings.length > 0 && (
+                    <div>
+                      <h3 className={styles.sectionLabel}>Manually matched — these will be imported</h3>
+                      <div className={ui.stack} style={{ gap: 6 }}>
+                        {preview.manualMappings.map(m => (
+                          <div key={m.excel_code} className={`${styles.mapRow} ${styles.mapRowGood}`}>
+                            <span className={styles.mono}>{m.excel_code}</span>
+                            <span>{m.excel_name || 'unnamed in file'}</span>
+                            <span>{m.days} day{m.days !== 1 ? 's' : ''}</span>
+                            <span aria-hidden>→</span>
+                            <strong>{m.employee_name}</strong>
+                            <button
+                              type="button"
+                              className={`${btn} ${styles.mapEnd}`}
+                              onClick={() => handleRemoveMapping(m.excel_code)}
+                              disabled={previewing || confirming}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {preview.unmatchedEntries.length > 0 && (
+                    <div>
+                      <h3 className={styles.sectionLabel}>Unmatched employees — skipped unless you choose who they are</h3>
+
+                      <div className={ui.stack} style={{ gap: 8 }}>
+                        {preview.unmatchedEntries.map(u => {
+                          const open      = pickerFor === u.excel_code
+                          const confirmed = pendingChoice?.entry.excel_code === u.excel_code
+                          const matches   = open && !confirmed
+                            ? searchEmployees(employees, pickerQuery).slice(0, 40)
+                            : []
+                          return (
+                            <div key={u.excel_code} className={`${styles.mapRow} ${styles.mapRowWarn}`}>
+                              <div className={styles.mapLine}>
+                                <span className={styles.mono}>{u.excel_code}</span>
+                                <span className={ui.strong}>{u.excel_name || 'unnamed in file'}</span>
+                                <span className={ui.muted}>{u.days} day{u.days !== 1 ? 's' : ''}</span>
+                                {!open && (
+                                  <button
+                                    type="button"
+                                    className={`boe-btn boe-btn-primary ${ui.btnSm} ${styles.mapEnd}`}
+                                    onClick={() => { setPickerFor(u.excel_code); setPickerQuery(''); setPendingChoice(null); loadEmployees() }}
+                                    disabled={previewing || confirming}
+                                  >
+                                    Choose employee
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Confirmation gate — naming the employee and
+                                  agreeing to import as them are two steps. */}
+                              {confirmed && pendingChoice && (
+                                <div className={styles.confirmBox}>
+                                  <div>
+                                    Import {u.days} day{u.days !== 1 ? 's' : ''} recorded under code{' '}
+                                    <strong className={styles.mono}>{u.excel_code}</strong>
+                                    {u.excel_name ? ` ("${u.excel_name}")` : ''} as{' '}
+                                    <strong>{pendingChoice.employee.full_name ?? 'this employee'}</strong>?
+                                  </div>
+                                  <div className={ui.sub} style={{ marginTop: 4 }}>
+                                    These punches will be written to that employee&apos;s attendance and counted in their payroll.
+                                  </div>
+                                  <div className={styles.actions} style={{ marginTop: 10 }}>
+                                    <button
+                                      type="button"
+                                      className={`boe-btn boe-btn-primary ${ui.btnSm}`}
+                                      onClick={handleConfirmChoice}
+                                      disabled={previewing}
+                                    >
+                                      {previewing ? 'Applying…' : 'Yes, import as this employee'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={btn}
+                                      onClick={() => setPendingChoice(null)}
+                                      disabled={previewing}
+                                    >
+                                      Back
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Searchable selector */}
+                              {open && !confirmed && (
+                                <div style={{ marginTop: 10 }}>
+                                  <label className={ui.srOnly} htmlFor={`pick-${u.excel_code}`}>Search employees</label>
+                                  <input
+                                    id={`pick-${u.excel_code}`}
+                                    autoFocus
+                                    className={ui.input}
+                                    value={pickerQuery}
+                                    onChange={e => setPickerQuery(e.target.value)}
+                                    placeholder="Search by name or employee code…"
+                                  />
+                                  {loadingEmployees && (
+                                    <div className={ui.sub} style={{ padding: '8px 2px' }}>Loading employees…</div>
+                                  )}
+                                  {employeesError && (
+                                    <div role="alert" style={{ fontSize: 12.5, color: '#B91C1C', padding: '8px 2px' }}>{employeesError}</div>
+                                  )}
+                                  {!loadingEmployees && !employeesError && (
+                                    <div className={styles.picker}>
+                                      {matches.length === 0 ? (
+                                        <div className={ui.sub} style={{ padding: '10px 12px' }}>
+                                          No employee matches that search.
+                                        </div>
+                                      ) : matches.map(emp => (
+                                        <button
+                                          type="button"
+                                          key={emp.id}
+                                          className={styles.pickerItem}
+                                          onClick={() => setPendingChoice({ entry: u, employee: emp })}
+                                        >
+                                          <span className={ui.strong}>{emp.full_name ?? 'Unnamed'}</span>
+                                          {emp.employee_code && (
+                                            <span className={`${ui.muted} ${styles.mono}`} style={{ fontSize: 12, marginLeft: 8 }}>
+                                              {emp.employee_code}
+                                            </span>
+                                          )}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className={btn}
+                                    style={{ marginTop: 8 }}
+                                    onClick={() => { setPickerFor(null); setPickerQuery('') }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div style={{ paddingTop: 12 }}>
+                        <Link href="/attendance/employees" className={btn}>
+                          Fix Fingerprint Codes in Employee Master →
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Section>
+            </div>
+
+            <div className={styles.narrow}>
+              <Section title="Import safety" warning={preview.allUnchanged}>
+                <div className={`${ui.surfaceBody} ${ui.stack}`} style={{ gap: 10 }}>
+                  <div className={styles.stats}>
+                    <Stat label="New records" value={preview.newCount} color={preview.newCount > 0 ? '#1D4ED8' : '#6B7384'} />
+                    <Stat label="Modified records" value={preview.modifiedCount} color={preview.modifiedCount > 0 ? '#6D28D9' : '#6B7384'} />
+                    <Stat label="Unchanged" value={preview.unchangedCount} color={preview.unchangedCount > 0 ? '#047857' : '#6B7384'} />
+                  </div>
+                  {preview.allUnchanged && (
+                    <div style={{ fontSize: 13, color: '#B91C1C', fontWeight: 500 }}>
+                      This attendance data already appears to be imported. No changes found.
+                    </div>
+                  )}
+                </div>
+              </Section>
+            </div>
 
             {/* Modified records detail */}
             {preview.modifiedRecords.length > 0 && (
-              <SectionCard>
-                <CardHeader>Modified Records — timings will be corrected</CardHeader>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(139,92,246,0.07)' }}>
-                        {['Employee', 'Date', 'Old Check-in', 'New Check-in', 'Old Check-out', 'New Check-out'].map(h => (
-                          <th key={h} style={{
-                            padding: '7px 12px', textAlign: 'left',
-                            fontSize: 10, fontWeight: 600, color: '#5B21B6',
-                            textTransform: 'uppercase', letterSpacing: '0.05em',
-                            borderBottom: '1px solid rgba(139,92,246,0.2)',
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.modifiedRecords.map((r, i) => (
-                        <tr key={i} style={{ borderBottom: i < preview.modifiedRecords.length - 1 ? '1px solid rgba(139,92,246,0.1)' : 'none' }}>
-                          <td style={{ padding: '8px 12px', color: colors.primary, fontWeight: 500 }}>{r.employeeName}</td>
-                          <td style={{ padding: '8px 12px', color: colors.secondary, fontFamily: 'monospace', fontSize: 11 }}>{r.date}</td>
-                          <td style={{ padding: '8px 12px', color: '#9CA3AF', fontFamily: 'monospace' }}>{r.oldCheckIn}</td>
-                          <td style={{ padding: '8px 12px', color: '#7C3AED', fontFamily: 'monospace', fontWeight: 600 }}>{r.newCheckIn}</td>
-                          <td style={{ padding: '8px 12px', color: '#9CA3AF', fontFamily: 'monospace' }}>{r.oldCheckOut}</td>
-                          <td style={{ padding: '8px 12px', color: '#7C3AED', fontFamily: 'monospace', fontWeight: 600 }}>{r.newCheckOut}</td>
+              <Section title="Modified records — timings will be corrected">
+                <div className={ui.desktopOnly}>
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          {['Employee', 'Date', 'Old Check-in', 'New Check-in', 'Old Check-out', 'New Check-out'].map(h => (
+                            <th key={h} scope="col">{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {preview.modifiedRecords.map((r, i) => (
+                          <tr key={i}>
+                            <td className={ui.strong}>{r.employeeName}</td>
+                            <td className={`${ui.nowrap} ${styles.mono}`}>{r.date}</td>
+                            <td className={`${styles.oldVal} ${styles.mono}`}>{r.oldCheckIn}</td>
+                            <td className={`${styles.newVal} ${styles.mono}`}>{r.newCheckIn}</td>
+                            <td className={`${styles.oldVal} ${styles.mono}`}>{r.oldCheckOut}</td>
+                            <td className={`${styles.newVal} ${styles.mono}`}>{r.newCheckOut}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </SectionCard>
+                <ul className={ui.cards} style={{ padding: 12 }}>
+                  {preview.modifiedRecords.map((r, i) => (
+                    <li key={i} className={`${ui.surface} ${ui.card}`}>
+                      <div className={ui.strong}>{r.employeeName}</div>
+                      <div className={ui.sub}>{r.date}</div>
+                      <div style={{ fontSize: 13 }}>
+                        <div>Check-in: <span className={styles.oldVal}>{r.oldCheckIn}</span> → <span className={styles.newVal}>{r.newCheckIn}</span></div>
+                        <div>Check-out: <span className={styles.oldVal}>{r.oldCheckOut}</span> → <span className={styles.newVal}>{r.newCheckOut}</span></div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
             )}
 
-            {/* Section 4: Actions */}
+            {/* Confirm import */}
             {(() => {
               const payrollLocked   = preview.payrollStatus === 'locked'
               const onlyCorrections = preview.newCount === 0 && preview.modifiedCount > 0
@@ -856,228 +726,187 @@ export default function AttendanceUploadPage() {
                       : mixed
                         ? 'Import New & Apply Corrections'
                         : `Confirm Import (${preview.newCount} new record${preview.newCount !== 1 ? 's' : ''})`
-              const btnBg = isDisabled
-                ? colors.raised
-                : (onlyCorrections || mixed) ? '#7C3AED' : '#3B82F6'
               return (
-                <div style={{
-                  background: colors.base, border: `1px solid ${colors.border}`,
-                  borderRadius: 10, padding: '16px 20px',
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
-                    Section 4 — Actions
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <button
-                      onClick={handleConfirmImport}
-                      disabled={isDisabled}
-                      style={{
-                        ...btnBase,
-                        background: btnBg,
-                        color: isDisabled ? colors.secondary : '#fff',
-                        border: isDisabled ? `1px solid ${colors.border}` : 'none',
-                        opacity: isDisabled ? 0.55 : 1,
-                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {buttonLabel}
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      disabled={confirming}
-                      style={{
-                        ...btnBase,
-                        background: colors.raised, color: colors.secondary,
-                        border: `1px solid ${colors.border}`,
-                        opacity: confirming ? 0.5 : 1,
-                        cursor: confirming ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                <div className={styles.narrow}>
+                  <Section title="Confirm import">
+                    <div className={`${ui.surfaceBody} ${styles.actions}`}>
+                      <button
+                        type="button"
+                        className={`boe-btn boe-btn-primary ${ui.btn}`}
+                        onClick={handleConfirmImport}
+                        disabled={isDisabled}
+                      >
+                        {buttonLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className={`boe-btn boe-btn-ghost ${ui.btn}`}
+                        onClick={handleCancel}
+                        disabled={confirming}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </Section>
                 </div>
               )
             })()}
-
-          </div>
+          </>
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-            PHASE 2: IMPORT RESULT
+            STEP 4: IMPORT OUTCOME
         ════════════════════════════════════════════════════════════════ */}
         {result && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-            {/* Header */}
-            <div style={{
-              background: colors.base, border: `1px solid ${colors.border}`,
-              borderRadius: 10, overflow: 'hidden',
-            }}>
-              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.border}` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: colors.primary }}>
-                  Import Complete
-                  {result.month > 0 && (
-                    <span style={{ fontWeight: 400, color: colors.secondary, marginLeft: 8 }}>
-                      — {MONTH_NAMES[result.month - 1]} {result.year}
-                    </span>
-                  )}
+          <>
+            <div className={styles.narrow}>
+              <Notice kind="success">
+                <strong>Import complete</strong>
+                {result.month > 0 && <> — {MONTH_NAMES[result.month - 1]} {result.year}</>}
+                <div className={styles.stats} style={{ marginTop: 8 }}>
+                  <Stat label="Records inserted" value={result.imported} />
+                  <Stat label="Records corrected" value={result.updated} />
+                  <Stat label="Unchanged" value={result.unchanged ?? 0} />
+                  <Stat label="Records skipped" value={result.skipped} color={result.skipped > 0 ? '#B45309' : undefined} />
                 </div>
-              </div>
-              <div style={{ padding: '16px 20px', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-                <StatBox label="Records Inserted"  value={result.imported}  color="#3B82F6" />
-                <StatBox label="Records Corrected" value={result.updated}   color={result.updated   > 0 ? '#8B5CF6' : colors.tertiary} />
-                <StatBox label="Unchanged"         value={result.unchanged ?? 0} color={colors.tertiary} />
-                <StatBox label="Records Skipped"   value={result.skipped}   color={result.skipped   > 0 ? '#F59E0B' : colors.tertiary} />
-              </div>
+              </Notice>
             </div>
 
             {/* Imported employees */}
             {result.importedEmployees.length > 0 && (
-              <SectionCard>
-                <CardHeader>Imported ({result.importedEmployees.length} employee{result.importedEmployees.length !== 1 ? 's' : ''})</CardHeader>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: colors.raised }}>
-                        {['Employee', 'HR Code', 'Inserted', 'Corrected', 'Unchanged'].map(h => (
-                          <th key={h} style={{
-                            padding: '8px 14px', textAlign: ['Inserted','Corrected','Unchanged'].includes(h) ? 'center' : 'left',
-                            fontSize: 11, fontWeight: 600, color: colors.tertiary,
-                            textTransform: 'uppercase', letterSpacing: '0.05em',
-                            borderBottom: `1px solid ${colors.border}`,
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.importedEmployees.map((emp, i) => (
-                        <tr key={i} style={{ borderBottom: i < result.importedEmployees.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
-                          <td style={{ padding: '9px 14px', color: colors.primary, fontWeight: 500 }}>{emp.name}</td>
-                          <td style={{ padding: '9px 14px', color: colors.tertiary, fontFamily: 'monospace', fontSize: 12 }}>
-                            {emp.employee_code ?? '—'}
-                          </td>
-                          <td style={{ padding: '9px 14px', textAlign: 'center', color: emp.inserted > 0 ? '#3B82F6' : colors.tertiary, fontWeight: emp.inserted > 0 ? 600 : 400 }}>
-                            {emp.inserted}
-                          </td>
-                          <td style={{ padding: '9px 14px', textAlign: 'center', color: emp.updated > 0 ? '#8B5CF6' : colors.tertiary, fontWeight: emp.updated > 0 ? 600 : 400 }}>
-                            {emp.updated}
-                          </td>
-                          <td style={{ padding: '9px 14px', textAlign: 'center', color: colors.tertiary }}>
-                            {emp.unchanged ?? 0}
-                          </td>
+              <Section title={`Imported (${result.importedEmployees.length} employee${result.importedEmployees.length !== 1 ? 's' : ''})`}>
+                <div className={ui.desktopOnly}>
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th scope="col">Employee</th>
+                          <th scope="col">HR Code</th>
+                          <th scope="col" className={ui.num}>Inserted</th>
+                          <th scope="col" className={ui.num}>Corrected</th>
+                          <th scope="col" className={ui.num}>Unchanged</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {result.importedEmployees.map((emp, i) => (
+                          <tr key={i}>
+                            <td className={ui.strong}>{emp.name}</td>
+                            <td className={`${ui.muted} ${styles.mono}`}>{emp.employee_code ?? '—'}</td>
+                            <td className={ui.num}>{emp.inserted}</td>
+                            <td className={ui.num}>{emp.updated}</td>
+                            <td className={ui.num}>{emp.unchanged ?? 0}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </SectionCard>
+                <ul className={ui.cards} style={{ padding: 12 }}>
+                  {result.importedEmployees.map((emp, i) => (
+                    <li key={i} className={`${ui.surface} ${ui.card}`}>
+                      <div className={ui.strong}>{emp.name}</div>
+                      {emp.employee_code && <div className={ui.sub}>{emp.employee_code}</div>}
+                      <div style={{ fontSize: 13, color: '#4A5261' }}>
+                        {emp.inserted} inserted · {emp.updated} corrected · {emp.unchanged ?? 0} unchanged
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
             )}
 
             {/* Manually matched codes — the one fact about this import that
                 cannot be recovered from the file afterwards. */}
             {(result.manualMappings ?? []).length > 0 && (
-              <SectionCard>
-                <CardHeader>Manually matched codes</CardHeader>
-                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {(result.manualMappings ?? []).map(m => (
-                    <div key={m.excel_code} style={{ fontSize: 12.5, color: colors.secondary }}>
-                      <span style={{ fontFamily: 'monospace', color: colors.tertiary }}>{m.excel_code}</span>
-                      {' '}
-                      {m.excel_name ? `("${m.excel_name}") ` : ''}
-                      imported as <strong style={{ color: colors.primary }}>{m.employee_name}</strong>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
+              <div className={styles.narrow}>
+                <Section title="Manually matched codes">
+                  <div className={`${ui.surfaceBody} ${ui.stack}`} style={{ gap: 6 }}>
+                    {(result.manualMappings ?? []).map(m => (
+                      <div key={m.excel_code} style={{ fontSize: 13, color: '#4A5261' }}>
+                        <span className={styles.mono}>{m.excel_code}</span>
+                        {' '}
+                        {m.excel_name ? `("${m.excel_name}") ` : ''}
+                        imported as <strong style={{ color: '#111318' }}>{m.employee_name}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              </div>
             )}
 
             {/* Skipped employees */}
             {result.skippedEmployees.length > 0 && (
-              <SectionCard warning>
-                <CardHeader warning>
-                  {result.skippedEmployees.length} employee{result.skippedEmployees.length !== 1 ? 's' : ''} skipped
-                </CardHeader>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(245,158,11,0.08)' }}>
-                        {['Employee (File)', 'Code', 'Days Skipped', 'Reason'].map(h => (
-                          <th key={h} style={{
-                            padding: '8px 14px', textAlign: 'left',
-                            fontSize: 11, fontWeight: 600, color: '#92400E',
-                            textTransform: 'uppercase', letterSpacing: '0.05em',
-                            borderBottom: '1px solid rgba(245,158,11,0.2)',
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.skippedEmployees.map((s, i) => (
-                        <tr key={i} style={{ borderBottom: i < result.skippedEmployees.length - 1 ? '1px solid rgba(245,158,11,0.15)' : 'none' }}>
-                          <td style={{ padding: '9px 14px', color: '#78350F', fontWeight: 500 }}>{s.excel_name || '—'}</td>
-                          <td style={{ padding: '9px 14px', color: '#92400E', fontFamily: 'monospace', fontSize: 12 }}>{s.excel_code}</td>
-                          <td style={{ padding: '9px 14px', color: '#92400E' }}>{s.days_skipped}</td>
-                          <td style={{ padding: '9px 14px', color: '#78350F', fontSize: 12 }}>{s.reason}</td>
+              <Section
+                warning
+                title={`${result.skippedEmployees.length} employee${result.skippedEmployees.length !== 1 ? 's' : ''} skipped`}
+              >
+                <div className={ui.desktopOnly}>
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th scope="col">Employee (File)</th>
+                          <th scope="col">Code</th>
+                          <th scope="col">Days Skipped</th>
+                          <th scope="col">Reason</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {result.skippedEmployees.map((s, i) => (
+                          <tr key={i}>
+                            <td className={ui.strong}>{s.excel_name || '—'}</td>
+                            <td className={styles.mono}>{s.excel_code}</td>
+                            <td>{s.days_skipped}</td>
+                            <td>{s.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+                <ul className={ui.cards} style={{ padding: 12 }}>
+                  {result.skippedEmployees.map((s, i) => (
+                    <li key={i} className={`${ui.surface} ${ui.card}`}>
+                      <div className={ui.strong}>{s.excel_name || '—'}</div>
+                      <div className={ui.sub}><span className={styles.mono}>{s.excel_code}</span> · {s.days_skipped} day{s.days_skipped !== 1 ? 's' : ''} skipped</div>
+                      <div style={{ fontSize: 13 }}>{s.reason}</div>
+                    </li>
+                  ))}
+                </ul>
                 {result.skippedEmployees.some(s => s.reason.includes('Fingerprint')) && (
-                  <div style={{ padding: '10px 16px 14px' }}>
-                    <Link
-                      href="/attendance/employees"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '7px 16px', borderRadius: 7,
-                        fontSize: 12.5, fontWeight: 600,
-                        background: '#F59E0B', color: '#fff',
-                        textDecoration: 'none',
-                      }}
-                    >
+                  <div style={{ padding: '4px 18px 16px' }}>
+                    <Link href="/attendance/employees" className={btn}>
                       Set Fingerprint Codes in Employee Master →
                     </Link>
                   </div>
                 )}
-              </SectionCard>
+              </Section>
             )}
 
             {/* Row-level punch errors */}
             {result.errors.length > 0 && (
-              <div style={{
-                background: colors.base, border: `1px solid ${colors.border}`,
-                borderRadius: 10, padding: '14px 16px',
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                  Row-level errors ({result.errors.length})
+              <Section title={`Row-level errors (${result.errors.length})`}>
+                <div className={ui.surfaceBody}>
+                  <ul className={styles.errList}>
+                    {result.errors.map((e, i) => (
+                      <li key={i} className={styles.errItem}>{e}</li>
+                    ))}
+                  </ul>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {result.errors.map((e, i) => (
-                    <div key={i} style={{
-                      fontSize: 12, color: '#DC2626',
-                      padding: '5px 10px', borderRadius: 5,
-                      background: 'rgba(239,68,68,0.06)',
-                      fontFamily: 'monospace',
-                    }}>
-                      {e}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </Section>
             )}
 
             {/* Import another */}
-            <div style={{ paddingTop: 4 }}>
+            <div>
               <button
+                type="button"
+                className={`boe-btn boe-btn-primary ${ui.btn}`}
                 onClick={() => { setResult(null); setPageError(null) }}
-                style={{ ...btnBase, background: colors.raised, color: colors.secondary, border: `1px solid ${colors.border}`, cursor: 'pointer' }}
               >
                 Import Another File
               </button>
             </div>
-
-          </div>
+          </>
         )}
 
       </div>

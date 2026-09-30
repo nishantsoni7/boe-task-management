@@ -1,0 +1,19 @@
+/* Payroll Runs: the few page-local rules the shared ui.module.css does not cover. */
+
+.totals { margin: 0; font-size: 13.5px; line-height: 1.5; color: #4A5261; }
+.totals strong { color: #111318; font-weight: 600; }
+.warnText { color: #B45309 !important; }
+
+.badges { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.progressNote { font-size: 12px; color: #92400E; margin-top: 6px; max-width: 280px; line-height: 1.4; }
+
+.dismiss {
+  background: none; border: 0; cursor: pointer; color: inherit; font-size: 14px; line-height: 1;
+  min-width: 32px; min-height: 32px; padding: 0; flex-shrink: 0; border-radius: 6px;
+}
+.dismiss:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
+
+.cardActions { margin-top: 4px; }
+.cardActions :global(.boe-payroll-actions) { flex-wrap: wrap; }
+.cardActions .progressNote { max-width: none; }

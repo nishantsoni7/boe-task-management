@@ -13,6 +13,8 @@ import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
+import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
+import styles from './results.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,26 +62,9 @@ function fmtDateTime(iso: string): string {
 }
 
 function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
-  if (reviewedAt) {
-    return (
-      <span style={{
-        display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-        fontSize: 11.5, fontWeight: 600,
-        background: 'rgba(16,185,129,0.12)', color: '#059669',
-      }}>
-        Reviewed
-      </span>
-    )
-  }
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-      fontSize: 11.5, fontWeight: 600,
-      background: 'rgba(140,148,166,0.12)', color: '#6B7280',
-    }}>
-      Pending
-    </span>
-  )
+  return reviewedAt
+    ? <Badge tone="good">Reviewed</Badge>
+    : <Badge tone="neutral">Pending</Badge>
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -112,6 +97,12 @@ export default function PayrollResultsPage() {
     if (!res.ok) { setError(json.error ?? 'Failed to load results'); return }
     setPeriod(json.period ?? null)
     setResults(json.results ?? [])
+  }
+
+  // Same request as the first load, run again on demand.
+  const retryLoad = async () => {
+    setError(null)
+    await loadData(token)
   }
 
   useEffect(() => {
@@ -189,247 +180,231 @@ export default function PayrollResultsPage() {
     net:         results.reduce((s, r) => s + (r.net_salary               ?? 0), 0),
   } : null
 
+  const statusTone: Tone = isLocked ? 'info' : period?.status === 'generated' ? 'good' : 'neutral'
+  const statusText = isLocked ? 'Locked' : period?.status === 'generated' ? 'Generated' : 'Draft'
+
+  // One review badge plus the objection tag, shared by the table and the cards.
+  const reviewCell = (r: ResultRow) => {
+    const objection = objections.byResult.get(r.id)
+    return (
+      <div className={ui.row} style={{ gap: 6 }}>
+        <ReviewBadge reviewedAt={r.employee_reviewed_at} />
+        {objection && (
+          <span
+            title={objection.reason}
+            className={styles.objectionTag}
+            style={{
+              background: objectionTone(objection.status).bg,
+              color: objectionTone(objection.status).fg,
+            }}
+          >
+            {employeeStatusLabel(objection.status)}
+          </span>
+        )}
+      </div>
+    )
+  }
+
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Payroll Results"
-      subtitle={periodLabel ? `Results — ${periodLabel}` : 'Results for this payroll period'}
+      title={periodLabel ? `${periodLabel} Payroll` : 'Payroll Results'}
+      subtitle="Saved payroll results — review each payslip, then lock the month."
       onSignOut={handleSignOut}
       actions={
         // The processing report reads the same stored results this page shows,
         // so it is reachable from here rather than from a separate nav entry.
         <Link
           href={`/payroll/results/${periodId}/salary-report`}
-          style={{
-            padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(0,0,0,0.13)',
-            fontSize: 13, fontWeight: 600, color: '#111318', textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
+          className="boe-btn boe-btn-ghost"
+          style={{ whiteSpace: 'nowrap' }}
         >
           Salary Processing Report
         </Link>
       }
     >
-      {/* Back link */}
-      <div style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => router.push('/payroll')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: '#6B7280', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4,
-            padding: 0,
-          }}
-        >
-          ← Back to Payroll Periods
-        </button>
-      </div>
-
-      {/* What employees have reported about THIS payroll run, on the screen
-          where an admin reviews that run's payslips. Resolving one records the
-          outcome; any actual correction is still made through the existing
-          adjustment and correction tools.
-
-          Scoped to `periodId` — the run this page is — so a period generated
-          in August no longer carries July's objections underneath August's
-          salaries. Earlier runs keep their issues; they are read on Payroll
-          Monthly Preview for the month they belong to. */}
-      <ObjectionQueue
-        subject="payroll"
-        token={token}
-        period={{ periodId }}
-        title="Reported payroll issues"
-        emptyLabel="No payroll issues were reported for this period."
-      />
-
-      {/* Locked banner */}
-      {isLocked && (
-        <div style={{
-          marginBottom: 16, padding: '12px 18px', borderRadius: 10,
-          background: 'rgba(232,160,48,0.10)', color: '#92400E',
-          border: '1px solid rgba(232,160,48,0.35)',
-          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
-        }}>
-          <span style={{ fontSize: 16 }}>🔒</span>
-          <span>
-            <strong>Payroll locked</strong>
-            {period?.locked_at ? ` · ${fmtDateTime(period.locked_at)}` : ''}
-            {' — Regeneration and employee review are disabled.'}
-          </span>
+      <div className={ui.stack}>
+        {/* True detail page: one way back to its list. */}
+        <div>
+          <Link href="/payroll" className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>← Payroll Runs</Link>
         </div>
-      )}
 
-      {/* Lock action bar — shown only when period is generated */}
-      {canLock && (
-        <div style={{
-          marginBottom: 16, padding: '12px 18px', borderRadius: 10,
-          background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(0,0,0,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-        }}>
-          <div style={{ fontSize: 13, color: '#6B7280' }}>
-            Lock this payroll period to finalise it. Generation and employee review will be disabled.
-            {totalCount > 0 && (
-              <div style={{ marginTop: 4, fontSize: 12.5, color: reviewedCount === totalCount ? '#059669' : '#D97706' }}>
-                {reviewedCount} of {totalCount} employee{totalCount !== 1 ? 's' : ''} have reviewed their payslip.
+        {error && (
+          <Notice
+            kind="error"
+            action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => void retryLoad()}>Try again</button>}
+          >
+            {error}
+          </Notice>
+        )}
+
+        {lockError && <Notice kind="error">{lockError}</Notice>}
+
+        {/* The state of this saved run. */}
+        {period && (
+          <div className={`${ui.surface} ${ui.surfaceBody} ${styles.runState}`}>
+            <div className={styles.runStateText}>
+              <div className={ui.row} style={{ gap: 8 }}>
+                <Badge tone={statusTone}>{statusText}</Badge>
+                {isLocked ? (
+                  <span className={styles.runStateLine}>
+                    <strong>Payroll locked</strong>
+                    {period.locked_at ? ` · ${fmtDateTime(period.locked_at)}` : ''}
+                    {' — Regeneration and employee review are disabled.'}
+                  </span>
+                ) : canLock ? (
+                  <span className={styles.runStateLine}>
+                    Lock this payroll period to finalise it. Generation and employee review will be disabled.
+                  </span>
+                ) : (
+                  <span className={styles.runStateLine}>
+                    {period.status === 'generated' ? 'Only an admin can lock this period.' : 'This period has not been generated.'}
+                  </span>
+                )}
               </div>
+              {canLock && totalCount > 0 && (
+                <div className={styles.reviewLine} style={{ color: reviewedCount === totalCount ? '#047857' : '#B45309' }}>
+                  {reviewedCount} of {totalCount} employee{totalCount !== 1 ? 's' : ''} have reviewed their payslip.
+                </div>
+              )}
+            </div>
+            {canLock && (
+              <button
+                type="button"
+                onClick={handleLock}
+                disabled={locking}
+                className={`boe-btn boe-btn-primary ${ui.btn}`}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {locking ? 'Locking…' : 'Lock Payroll'}
+              </button>
             )}
           </div>
-          <button
-            onClick={handleLock}
-            disabled={locking}
-            style={{
-              padding: '7px 18px', borderRadius: 7, fontSize: 13, fontWeight: 700,
-              cursor: locking ? 'not-allowed' : 'pointer',
-              border: '1px solid rgba(232,160,48,0.5)',
-              background: locking ? 'rgba(0,0,0,0.04)' : 'rgba(232,160,48,0.12)',
-              color: locking ? '#8C94A6' : '#92400E',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {locking ? 'Locking…' : '🔒 Lock Payroll'}
-          </button>
-        </div>
-      )}
-
-      {lockError && (
-        <div style={{
-          marginBottom: 14, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
-        }}>
-          {lockError}
-        </div>
-      )}
-
-      {error && (
-        <div style={{
-          marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
-        }}>
-          {error}
-        </div>
-      )}
-
-      <div style={{
-        background: '#fff', borderRadius: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        overflow: 'hidden',
-      }}>
-        {results.length === 0 ? (
-          <div style={{
-            padding: '48px 24px', textAlign: 'center',
-            color: '#8C94A6', fontSize: 14,
-          }}>
-            No payroll results generated for this period yet.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                  {['Employee', 'Working Days', 'Gross Salary', 'Deductions', 'Adjustments', 'Net Salary', 'Employee Review', ''].map(h => (
-                    <th key={h} style={{
-                      padding: '11px 16px', textAlign: 'left',
-                      fontSize: 11.5, fontWeight: 700,
-                      color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderBottom: i < results.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
-                  >
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 500, color: '#111318' }}>
-                        {r.employee_name}
-                      </div>
-                      {r.employee_code && (
-                        <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 1 }}>
-                          {r.employee_code}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13.5, color: '#3D4455' }}>
-                      {r.working_days_in_month ?? '—'}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13.5, color: '#3D4455', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(r.gross_salary)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13.5, color: r.total_deductions ? '#DC2626' : '#3D4455', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(r.total_deductions)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13.5, color: '#3D4455', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(r.pending_adjustment_total)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13.5, fontWeight: 600, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(r.net_salary)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <ReviewBadge reviewedAt={r.employee_reviewed_at} />
-                        {objections.byResult.get(r.id) && (
-                          <span
-                            title={objections.byResult.get(r.id)!.reason}
-                            style={{
-                              padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                              background: objectionTone(objections.byResult.get(r.id)!.status).bg,
-                              color: objectionTone(objections.byResult.get(r.id)!.status).fg,
-                            }}
-                          >
-                            {employeeStatusLabel(objections.byResult.get(r.id)!.status)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <Link
-                        href={`/payroll/results/${periodId}/${r.employee_id}`}
-                        style={{
-                          fontSize: 12.5, fontWeight: 600,
-                          color: '#4F6FD0', textDecoration: 'none',
-                          padding: '4px 10px', borderRadius: 6,
-                          border: '1px solid rgba(79,111,208,0.3)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        View Details
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-                {totals && (
-                  <tr style={{ borderTop: '2px solid rgba(0,0,0,0.10)', background: 'rgba(0,0,0,0.025)' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318' }}>
-                      Total ({totalCount})
-                    </td>
-                    <td style={{ padding: '12px 16px' }} />
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(totals.gross)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: totals.deductions > 0 ? '#DC2626' : '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(totals.deductions)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(totals.adjustments)}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(totals.net)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }} />
-                    <td style={{ padding: '12px 16px' }} />
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         )}
+
+        {results.length === 0 ? (
+          error ? null : (
+            <StateBlock kind="empty" title="No payroll results yet">
+              No payroll results generated for this period yet.
+            </StateBlock>
+          )
+        ) : (
+          <>
+            <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }}>
+              <div className={ui.surfaceHead}>
+                <div>
+                  <h2 className={ui.surfaceTitle}>Employee results</h2>
+                  <p className={ui.surfaceSub}>Saved figures for {periodLabel || 'this period'}.</p>
+                </div>
+              </div>
+              <div className={ui.tableWrap}>
+                <table className={ui.table}>
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Working days</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Gross salary</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Deductions</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Adjustments</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Net salary</th>
+                      <th>Employee review</th>
+                      <th><span className={ui.srOnly}>Details</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map(r => (
+                      <tr key={r.id}>
+                        <td>
+                          <div className={ui.strong}>{r.employee_name}</div>
+                          {r.employee_code && <div className={ui.sub}>{r.employee_code}</div>}
+                        </td>
+                        <td className={ui.num}>{r.working_days_in_month ?? '—'}</td>
+                        <td className={ui.num}>{fmt(r.gross_salary)}</td>
+                        <td className={`${ui.num} ${r.total_deductions ? styles.neg : ''}`}>{fmt(r.total_deductions)}</td>
+                        <td className={ui.num}>{fmt(r.pending_adjustment_total)}</td>
+                        <td className={`${ui.num} ${ui.strong}`}>{fmt(r.net_salary)}</td>
+                        <td>{reviewCell(r)}</td>
+                        <td className={ui.nowrap}>
+                          <Link href={`/payroll/results/${periodId}/${r.employee_id}`} className={ui.link}>
+                            View Details
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {totals && (
+                    <tfoot>
+                      <tr className={styles.totalRow}>
+                        <td>Total ({totalCount})</td>
+                        <td />
+                        <td className={ui.num}>{fmt(totals.gross)}</td>
+                        <td className={`${ui.num} ${totals.deductions > 0 ? styles.neg : ''}`}>{fmt(totals.deductions)}</td>
+                        <td className={ui.num}>{fmt(totals.adjustments)}</td>
+                        <td className={ui.num}>{fmt(totals.net)}</td>
+                        <td />
+                        <td />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+
+            {/* Phone: one card per employee, and the totals as a line. */}
+            <ul className={ui.cards} aria-label="Employee results">
+              {results.map(r => (
+                <li key={r.id} className={`${ui.surface} ${ui.card}`}>
+                  <div className={ui.cardHead}>
+                    <div>
+                      <div className={ui.strong}>{r.employee_name}</div>
+                      {r.employee_code && <div className={ui.sub}>{r.employee_code}</div>}
+                    </div>
+                    <div className={styles.cardNet}>
+                      <div className={ui.strong}>{fmt(r.net_salary)}</div>
+                      <div className={ui.sub}>Net salary</div>
+                    </div>
+                  </div>
+                  <dl className={styles.cardFacts}>
+                    <div><dt>Working days</dt><dd>{r.working_days_in_month ?? '—'}</dd></div>
+                    <div><dt>Gross</dt><dd>{fmt(r.gross_salary)}</dd></div>
+                    <div><dt>Deductions</dt><dd className={r.total_deductions ? styles.neg : ''}>{fmt(r.total_deductions)}</dd></div>
+                    <div><dt>Adjustments</dt><dd>{fmt(r.pending_adjustment_total)}</dd></div>
+                  </dl>
+                  {reviewCell(r)}
+                  <Link href={`/payroll/results/${periodId}/${r.employee_id}`} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
+                    View Details
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {totals && (
+              <p className={`${styles.totalsLine} ${styles.phoneOnly}`}>
+                <strong>Total ({totalCount})</strong>
+                {' · '}gross {fmt(totals.gross)}
+                {' · '}deductions {fmt(totals.deductions)}
+                {' · '}adjustments {fmt(totals.adjustments)}
+                {' · '}net <strong>{fmt(totals.net)}</strong>
+              </p>
+            )}
+          </>
+        )}
+
+        {/* What employees have reported about THIS payroll run, on the screen
+            where an admin reviews that run's payslips. Resolving one records the
+            outcome; any actual correction is still made through the existing
+            adjustment and correction tools.
+
+            Scoped to `periodId` — the run this page is — so a period generated
+            in August no longer carries July's objections underneath August's
+            salaries. Earlier runs keep their issues; they are read on Payroll
+            Monthly Preview for the month they belong to. */}
+        <ObjectionQueue
+          subject="payroll"
+          token={token}
+          period={{ periodId }}
+          title="Reported payroll issues"
+          emptyLabel="No payroll issues were reported for this period."
+        />
       </div>
     </AttendancePayrollLayout>
   )

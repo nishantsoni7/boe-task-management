@@ -1,16 +1,25 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+// Monthly Preview — an engine-computed PREVIEW of a month's payroll. Nothing on
+// this page is saved: the figures are recalculated from attendance and salary
+// settings every time Preview runs. Saved payroll lives under Payroll Runs.
+//
+// `?year=&month=` (the attendance Monthly Review links here with them) picks the
+// month shown on load; anything that is not a real, non-future month falls back
+// to the current month, exactly as before.
+
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { formatRupees } from '@/lib/payroll/money'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
+import { Badge, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
+import styles from './preview.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +66,19 @@ function currentYearMonth() {
   return { year: now.getFullYear(), month: now.getMonth() + 1 }
 }
 
+/** A month from the address, or the current month when it is absent, malformed or in the future. */
+function monthFromParams(params: URLSearchParams): { year: number; month: number } {
+  const now = currentYearMonth()
+  const rawYear = params.get('year')
+  const rawMonth = params.get('month')
+  if (!rawYear || !rawMonth || !/^\d+$/.test(rawYear) || !/^\d+$/.test(rawMonth)) return now
+  const year = Number(rawYear)
+  const month = Number(rawMonth)
+  if (month < 1 || month > 12 || year < 2000 || year > now.year) return now
+  if (year === now.year && month > now.month) return now
+  return { year, month }
+}
+
 function fmt(n: number): string {
   return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
@@ -73,9 +95,39 @@ const SKIP_LABELS: Record<string, string> = {
   no_salary_configured:  'No salary set',
 }
 
+function deductionText(r: EmployeeResult): string {
+  return r.total_deductions > 0 ? `−${fmtExact(r.total_deductions)}` : '—'
+}
+
+function adjustmentText(r: EmployeeResult): string {
+  const a = r.adjustment_total ?? 0
+  return a !== 0 ? `${a > 0 ? '+' : '−'}${fmtExact(Math.abs(a))}` : '—'
+}
+
+function adjustmentClass(r: EmployeeResult): string {
+  const a = r.adjustment_total ?? 0
+  return a > 0 ? styles.pos : a < 0 ? styles.neg : styles.dim
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// useSearchParams needs a Suspense boundary; same shape as /attendance/monthly-review.
 export default function PayrollMonthlyReviewPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <KeyedPreview />
+    </Suspense>
+  )
+}
+
+/** Re-mounts on a new ?year=&month= so a link to another month starts from that month. */
+function KeyedPreview() {
+  const params = useSearchParams()
+  const initial = monthFromParams(params)
+  return <PayrollMonthlyPreview key={`${initial.year}-${initial.month}`} initial={initial} />
+}
+
+function PayrollMonthlyPreview({ initial }: { initial: { year: number; month: number } }) {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
   const [loading,   setLoading]   = useState(true)
   const [fetching,  setFetching]  = useState(false)
@@ -94,8 +146,8 @@ export default function PayrollMonthlyReviewPage() {
   const [shown, setShown] = useState<{ year: number; month: number } | null>(null)
 
   const def = currentYearMonth()
-  const [year,  setYear]  = useState(def.year)
-  const [month, setMonth] = useState(def.month)
+  const [year,  setYear]  = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -122,13 +174,22 @@ export default function PayrollMonthlyReviewPage() {
       setProfile(prof as UserProfile)
       setLoading(false)
 
-      // Auto-load current month preview once token is available
-      const { year: y, month: m } = currentYearMonth()
-      const res  = await fetch(`/api/payroll/monthly-review?year=${y}&month=${m}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      const json = await res.json()
-      if (res.ok) { setResults(json.results); setShown({ year: y, month: m }); setCalculatedThrough(json.calculated_through ?? null) }
+      // Auto-load the preview for the month on load (the current month, or the
+      // one named in the address) once the token is available.
+      const { year: y, month: m } = initial
+      setFetching(true)
+      try {
+        const res  = await fetch(`/api/payroll/monthly-review?year=${y}&month=${m}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+        const json = await res.json()
+        if (res.ok) { setResults(json.results); setShown({ year: y, month: m }); setCalculatedThrough(json.calculated_through ?? null) }
+        else setError(json.error ?? 'Failed to load preview')
+      } catch {
+        setError('Failed to load preview')
+      } finally {
+        setFetching(false)
+      }
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,20 +198,27 @@ export default function PayrollMonthlyReviewPage() {
   const handleLoad = async () => {
     setFetching(true)
     setError('')
-    const res  = await fetch(`/api/payroll/monthly-review?year=${year}&month=${month}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const json = await res.json()
-    if (res.ok) {
-      setResults(json.results)
-      setShown({ year, month })
-      setCalculatedThrough(json.calculated_through ?? null)
-    } else {
-      setError(json.error ?? 'Failed to load preview')
+    try {
+      const res  = await fetch(`/api/payroll/monthly-review?year=${year}&month=${month}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setResults(json.results)
+        setShown({ year, month })
+        setCalculatedThrough(json.calculated_through ?? null)
+      } else {
+        setError(json.error ?? 'Failed to load preview')
+        setResults(null)
+        setShown(null)
+      }
+    } catch {
+      setError('Failed to load preview')
       setResults(null)
       setShown(null)
+    } finally {
+      setFetching(false)
     }
-    setFetching(false)
   }
 
   const handleSignOut = async () => {
@@ -162,12 +230,9 @@ export default function PayrollMonthlyReviewPage() {
 
   const yearOptions: number[] = []
   for (let y = def.year; y >= def.year - 2; y--) yearOptions.push(y)
-
-  const inputStyle: React.CSSProperties = {
-    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
-    background: colors.base, color: colors.primary, outline: 'none',
-    padding: '8px 12px', boxSizing: 'border-box',
-  }
+  if (!yearOptions.includes(initial.year)) yearOptions.push(initial.year)
+  if (!yearOptions.includes(year)) yearOptions.push(year)
+  yearOptions.sort((a, b) => b - a)
 
   const active   = results ? results.filter((r): r is EmployeeResult => !r.skipped) : null
   const skipped  = results ? results.filter((r): r is SkippedResult  =>  r.skipped) : null
@@ -188,308 +253,229 @@ export default function PayrollMonthlyReviewPage() {
     ? active.filter(r => r.days_present === 0 && r.working_days_in_month > 0).length
     : 0
 
+  const context = shown ?? { year, month }
+  const detailHref = (id: string) => `/payroll/monthly-review/${id}?year=${year}&month=${month}`
+
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Payroll Monthly Preview"
-      subtitle="Engine-computed payroll summary for the selected month"
+      title="Monthly Preview"
+      subtitle={`${MONTH_NAMES[context.month - 1]} ${context.year} — calculated now from attendance, not saved.`}
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 1100, padding: '24px 0' }}>
+      <div className={ui.stack}>
 
-        <Link
-          href="/payroll"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-          onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back to Payroll
-        </Link>
+        <Notice kind="info">
+          <strong>Preview only.</strong> These figures are calculated live and have not been saved.
+          Saved payroll is under <Link href="/payroll" className={ui.link}>Payroll Runs</Link>.
+        </Notice>
 
         {/* Month selector */}
-        <div style={{
-          background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: 10, padding: '20px 24px', marginBottom: 20,
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
-            Select Month
-          </div>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Month</label>
-              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} style={{ ...inputStyle, width: 160 }}>
-                {MONTH_NAMES.map((name, i) => (
-                  <option key={i + 1} value={i + 1}>{name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Year</label>
-              <select value={year} onChange={e => setYear(parseInt(e.target.value))} style={{ ...inputStyle, width: 110 }}>
-                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <button
-              onClick={handleLoad}
-              disabled={fetching || !token}
-              style={{
-                padding: '9px 22px', fontSize: 13, fontWeight: 600, borderRadius: 7,
-                border: 'none', cursor: fetching ? 'not-allowed' : 'pointer',
-                background: '#1A2035', color: '#E8A030', opacity: fetching ? 0.6 : 1,
-                flexShrink: 0,
-              }}
+        <div className={ui.toolbar} style={{ marginBottom: 0 }}>
+          <div className={ui.row} role="group" aria-label="Month to preview">
+            <label className={ui.srOnly} htmlFor="preview-month">Month</label>
+            <select
+              id="preview-month" className={ui.input} style={{ width: 'auto', minWidth: 130 }}
+              value={month} onChange={e => setMonth(parseInt(e.target.value))}
             >
-              {fetching ? 'Computing…' : 'Preview'}
-            </button>
+              {MONTH_NAMES.map((name, i) => (
+                <option key={i + 1} value={i + 1}>{name}</option>
+              ))}
+            </select>
+            <label className={ui.srOnly} htmlFor="preview-year">Year</label>
+            <select
+              id="preview-year" className={ui.input} style={{ width: 'auto', minWidth: 90 }}
+              value={year} onChange={e => setYear(parseInt(e.target.value))}
+            >
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
+          <button
+            type="button"
+            onClick={handleLoad}
+            disabled={fetching || !token}
+            className={`boe-btn boe-btn-primary ${ui.btn}`}
+          >
+            {fetching ? 'Computing…' : 'Preview'}
+          </button>
         </div>
 
         {/* A month still in progress: say what the figures cover. */}
         {calculatedThrough && shown && (
-          <div role="status" style={{
-            background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.30)',
-            borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#8A5A12', lineHeight: 1.5,
-          }}>
+          <Notice kind="warning">
             This month is still in progress. The preview covers days up to {calculatedThrough} only; days after it
             have not happened and are not counted or charged. Payroll for the month can be generated and locked
             once it has ended.
-          </div>
+          </Notice>
         )}
 
-        {/* Error */}
         {error && (
-          <div style={{
-            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: 8, padding: '12px 16px', marginBottom: 16,
-            fontSize: 13, color: '#DC2626',
-          }}>
+          <Notice
+            kind="error"
+            action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={handleLoad} disabled={fetching}>Try again</button>}
+          >
             {error}
-          </div>
-        )}
-
-        {/* KPI cards */}
-        {kpi && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 20 }}>
-            {[
-              { label: 'Employees',        value: String(kpi.totalEmployees),           color: colors.primary },
-              { label: 'Total Gross',      value: fmt(kpi.totalGross),                  color: '#3B82F6' },
-              { label: 'Total Deductions', value: fmt(kpi.totalDeductions),             color: kpi.totalDeductions > 0 ? '#DC2626' : colors.tertiary },
-              { label: 'Total Adjustments',value: (kpi.totalAdjustments >= 0 ? '+' : '−') + fmt(Math.abs(kpi.totalAdjustments)), color: kpi.totalAdjustments > 0 ? '#059669' : kpi.totalAdjustments < 0 ? '#DC2626' : colors.tertiary },
-              { label: 'Total Net',        value: fmt(kpi.totalNet),                    color: '#059669' },
-              { label: 'Absent Days',      value: String(kpi.totalAbsent),              color: kpi.totalAbsent > 0 ? '#D97706' : colors.tertiary },
-              { label: 'Leave Absorbed',   value: String(kpi.leaveAbsorbed),            color: kpi.leaveAbsorbed > 0 ? '#7C3AED' : colors.tertiary },
-            ].map(k => (
-              <div key={k.label} style={{
-                background: colors.base, border: `1px solid ${colors.border}`,
-                borderRadius: 10, padding: '16px 18px',
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: k.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-                  {k.value}
-                </div>
-                <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 6 }}>{k.label}</div>
-              </div>
-            ))}
-          </div>
+          </Notice>
         )}
 
         {/* Zero-attendance warning */}
         {zeroAttendanceCount > 0 && (
-          <div style={{
-            background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.35)',
-            borderRadius: 8, padding: '12px 16px', marginBottom: 16,
-            fontSize: 13, color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: 8,
-          }}>
-            <span style={{ fontSize: 15, flexShrink: 0 }}>⚠</span>
-            <span>
-              <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
-              Check that fingerprint import is complete before generating payroll.
-            </span>
-          </div>
+          <Notice kind="warning">
+            <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
+            Check that fingerprint import is complete before generating payroll.
+          </Notice>
         )}
 
-        {/* Main table */}
-        {sorted !== null && (
+        {fetching && results === null && (
+          <StateBlock kind="loading" title="Computing preview…">This can take a few seconds.</StateBlock>
+        )}
+
+        {sorted !== null && kpi && (
           <>
-            <div style={{ fontSize: 13, color: colors.secondary, marginBottom: 12 }}>
-              {sorted.length} employee{sorted.length !== 1 ? 's' : ''} — {MONTH_NAMES[month - 1]} {year} preview
-              {skipped && skipped.length > 0 && (
-                <button
-                  onClick={() => setShowSkip(v => !v)}
-                  style={{
-                    marginLeft: 12, fontSize: 12, color: colors.tertiary,
-                    background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline',
-                  }}
-                >
-                  {showSkip ? 'Hide' : 'Show'} {skipped.length} skipped
-                </button>
-              )}
-            </div>
+            <p className={styles.totals}>
+              <strong>{kpi.totalEmployees}</strong> employee{kpi.totalEmployees !== 1 ? 's' : ''}
+              {' · '}gross <strong>{fmt(kpi.totalGross)}</strong>
+              {' · '}deductions <strong className={kpi.totalDeductions > 0 ? styles.neg : undefined}>{fmt(kpi.totalDeductions)}</strong>
+              {' · '}adjustments <strong className={kpi.totalAdjustments > 0 ? styles.pos : kpi.totalAdjustments < 0 ? styles.neg : undefined}>
+                {(kpi.totalAdjustments >= 0 ? '+' : '−') + fmt(Math.abs(kpi.totalAdjustments))}
+              </strong>
+              {' · '}net <strong>{fmt(kpi.totalNet)}</strong>
+              {' · '}{kpi.totalAbsent} absent day{kpi.totalAbsent !== 1 ? 's' : ''}
+              {' · '}{kpi.leaveAbsorbed} with leave absorbed
+            </p>
 
-            <div style={{
-              background: colors.base, border: `1px solid ${colors.border}`,
-              borderRadius: 10, overflow: 'hidden', marginBottom: 16,
-            }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
-                      {[
-                        { label: 'Employee',      align: 'left'   },
-                        { label: 'Work Days',     align: 'center' },
-                        { label: 'Present',       align: 'center' },
-                        { label: 'Absent',        align: 'center' },
-                        { label: 'Half Days',     align: 'center' },
-                        { label: 'PL Used',       align: 'center' },
-                        { label: 'Gross',         align: 'right'  },
-                        { label: 'Deductions',    align: 'right'  },
-                        { label: 'Adjustments',   align: 'right'  },
-                        { label: 'Net Salary',    align: 'right'  },
-                        { label: '',              align: 'left'   },
-                      ].map(col => (
-                        <th key={col.label} style={{
-                          padding: '10px 14px',
-                          textAlign: col.align as React.CSSProperties['textAlign'],
-                          fontSize: 11, fontWeight: 600, color: colors.tertiary,
-                          textTransform: 'uppercase', letterSpacing: '0.05em',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {col.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((r, i) => (
-                      <tr
-                        key={r.employee_id}
-                        style={{ borderBottom: i < sorted.length - 1 ? `1px solid ${colors.border}` : 'none' }}
-                      >
-                        <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 500, color: colors.primary }}>{r.employee_name}</div>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                            {r.employee_code && (
-                              <span style={{ fontSize: 11, color: colors.tertiary }}>{r.employee_code}</span>
-                            )}
-                            <span style={{ fontSize: 11, color: colors.tertiary }}>
-                              {fmt(r.monthly_salary)}/mo
-                            </span>
-                            {r.leave_absorbed_deductions && (
-                              <span style={{
-                                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 20,
-                                background: 'rgba(124,58,237,0.1)', color: '#7C3AED',
-                              }}>
-                                PL Absorbed
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'center', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
-                          {r.working_days_in_month}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'center', color: '#059669', fontVariantNumeric: 'tabular-nums' }}>
-                          {r.days_present}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
-                          color: r.days_absent > 0 ? '#DC2626' : colors.tertiary,
-                          fontWeight: r.days_absent > 0 ? 600 : 400,
-                        }}>
-                          {r.days_absent}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
-                          color: r.half_day_count > 0 ? '#D97706' : colors.tertiary,
-                        }}>
-                          {r.half_day_count}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'center', fontVariantNumeric: 'tabular-nums',
-                          color: r.paid_leave_used > 0 ? '#7C3AED' : colors.tertiary,
-                        }}>
-                          {r.paid_leave_used > 0 ? `${r.paid_leave_used}d` : '—'}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtExact(r.gross_salary)}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-                          color: r.total_deductions > 0 ? '#DC2626' : colors.tertiary,
-                          fontWeight: r.total_deductions > 0 ? 600 : 400,
-                        }}>
-                          {r.total_deductions > 0 ? `−${fmtExact(r.total_deductions)}` : '—'}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
-                          color: (r.adjustment_total ?? 0) > 0 ? '#059669' : (r.adjustment_total ?? 0) < 0 ? '#DC2626' : colors.tertiary,
-                          fontWeight: (r.adjustment_total ?? 0) !== 0 ? 600 : 400,
-                        }}>
-                          {(r.adjustment_total ?? 0) !== 0
-                            ? `${(r.adjustment_total ?? 0) > 0 ? '+' : '−'}${fmtExact(Math.abs(r.adjustment_total ?? 0))}`
-                            : '—'}
-                        </td>
-                        <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtExact(r.net_salary)}
-                        </td>
-                        <td style={{ padding: '11px 14px' }}>
-                          <Link
-                            href={`/payroll/monthly-review/${r.employee_id}?year=${year}&month=${month}`}
-                            style={{
-                              fontSize: 12, fontWeight: 600, color: '#3B82F6',
-                              textDecoration: 'none', whiteSpace: 'nowrap',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
-                          >
-                            Detail →
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {sorted.length === 0 && (
-                <div style={{ padding: '48px 24px', textAlign: 'center', color: colors.tertiary, fontSize: 13 }}>
-                  No payroll-active employees found.
-                </div>
-              )}
-            </div>
-
-            {/* Skipped employees */}
-            {showSkip && skipped && skipped.length > 0 && (
-              <div style={{
-                background: colors.base, border: `1px solid ${colors.border}`,
-                borderRadius: 10, overflow: 'hidden', marginBottom: 16,
-              }}>
-                <div style={{
-                  padding: '10px 16px', fontSize: 11, fontWeight: 600,
-                  color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em',
-                  borderBottom: `1px solid ${colors.border}`, background: colors.raised,
-                }}>
-                  Skipped Employees
-                </div>
-                {skipped.map((r, i) => (
-                  <div key={r.employee_id} style={{
-                    padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    borderBottom: i < skipped.length - 1 ? `1px solid ${colors.border}` : 'none',
-                    fontSize: 13,
-                  }}>
-                    <span style={{ color: colors.primary }}>
-                      {r.employee_name}
-                      {r.employee_code && <span style={{ fontSize: 11, color: colors.tertiary, marginLeft: 6 }}>{r.employee_code}</span>}
-                    </span>
-                    <span style={{ color: colors.tertiary, fontSize: 12 }}>
-                      {SKIP_LABELS[r.skip_reason] ?? r.skip_reason}
-                    </span>
+            {sorted.length === 0 ? (
+              <StateBlock kind="empty" title="No payroll-active employees found." />
+            ) : (
+              <>
+                <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }}>
+                  <div className={ui.surfaceHead}>
+                    <div>
+                      <h2 className={ui.surfaceTitle}>Preview — {MONTH_NAMES[context.month - 1]} {context.year}</h2>
+                      <p className={ui.surfaceSub}>Highest net salary first. Not saved.</p>
+                    </div>
                   </div>
-                ))}
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th>Employee</th>
+                          <th className={ui.center} style={{ textAlign: 'center' }}>Work days</th>
+                          <th className={ui.center} style={{ textAlign: 'center' }}>Present</th>
+                          <th className={ui.center} style={{ textAlign: 'center' }}>Absent</th>
+                          <th className={ui.center} style={{ textAlign: 'center' }}>Half days</th>
+                          <th className={ui.center} style={{ textAlign: 'center' }}>PL used</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Gross</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Deductions</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Adjustments</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Net salary</th>
+                          <th><span className={ui.srOnly}>Detail</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map(r => (
+                          <tr key={r.employee_id}>
+                            <td className={ui.nowrap}>
+                              <div className={ui.strong}>{r.employee_name}</div>
+                              <div className={ui.sub}>
+                                {r.employee_code && <>{r.employee_code} · </>}
+                                {fmt(r.monthly_salary)}/mo
+                                {r.leave_absorbed_deductions && <> {' '}<Badge tone="info">PL absorbed</Badge></>}
+                              </div>
+                            </td>
+                            <td className={`${ui.center} ${ui.num}`}>{r.working_days_in_month}</td>
+                            <td className={`${ui.center} ${ui.num} ${styles.pos}`}>{r.days_present}</td>
+                            <td className={`${ui.center} ${ui.num} ${r.days_absent > 0 ? styles.negBold : styles.dim}`}>{r.days_absent}</td>
+                            <td className={`${ui.center} ${ui.num} ${r.half_day_count > 0 ? styles.warnc : styles.dim}`}>{r.half_day_count}</td>
+                            <td className={`${ui.center} ${ui.num} ${r.paid_leave_used > 0 ? styles.pl : styles.dim}`}>
+                              {r.paid_leave_used > 0 ? `${r.paid_leave_used}d` : '—'}
+                            </td>
+                            <td className={ui.num}>{fmtExact(r.gross_salary)}</td>
+                            <td className={`${ui.num} ${r.total_deductions > 0 ? styles.negBold : styles.dim}`}>{deductionText(r)}</td>
+                            <td className={`${ui.num} ${adjustmentClass(r)}`}>{adjustmentText(r)}</td>
+                            <td className={`${ui.num} ${ui.strong}`}>{fmtExact(r.net_salary)}</td>
+                            <td className={ui.nowrap}>
+                              <Link href={detailHref(r.employee_id)} className={ui.link} aria-label={`Detail for ${r.employee_name}`}>
+                                Detail →
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Phone: one card per employee. */}
+                <ul className={ui.cards} aria-label={`Payroll preview, ${MONTH_NAMES[context.month - 1]} ${context.year}`}>
+                  {sorted.map(r => (
+                    <li key={r.employee_id} className={`${ui.surface} ${ui.card}`}>
+                      <div className={ui.cardHead}>
+                        <div>
+                          <div className={ui.strong}>{r.employee_name}</div>
+                          <div className={ui.sub}>
+                            {r.employee_code && <>{r.employee_code} · </>}{fmt(r.monthly_salary)}/mo
+                          </div>
+                        </div>
+                        <div className={styles.cardNet}>
+                          <div className={ui.strong} style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtExact(r.net_salary)}</div>
+                          <div className={ui.sub}>Net salary</div>
+                        </div>
+                      </div>
+                      {r.leave_absorbed_deductions && <div><Badge tone="info">PL absorbed</Badge></div>}
+                      <dl className={styles.cardFacts}>
+                        <div><dt>Work days</dt><dd>{r.working_days_in_month}</dd></div>
+                        <div><dt>Present</dt><dd className={styles.pos}>{r.days_present}</dd></div>
+                        <div><dt>Absent</dt><dd className={r.days_absent > 0 ? styles.negBold : styles.dim}>{r.days_absent}</dd></div>
+                        <div><dt>Half days</dt><dd className={r.half_day_count > 0 ? styles.warnc : styles.dim}>{r.half_day_count}</dd></div>
+                        <div><dt>PL used</dt><dd className={r.paid_leave_used > 0 ? styles.pl : styles.dim}>{r.paid_leave_used > 0 ? `${r.paid_leave_used}d` : '—'}</dd></div>
+                        <div><dt>Gross</dt><dd>{fmtExact(r.gross_salary)}</dd></div>
+                        <div><dt>Deductions</dt><dd className={r.total_deductions > 0 ? styles.negBold : styles.dim}>{deductionText(r)}</dd></div>
+                        <div><dt>Adjustments</dt><dd className={adjustmentClass(r)}>{adjustmentText(r)}</dd></div>
+                      </dl>
+                      <Link href={detailHref(r.employee_id)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
+                        Detail →
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {skipped && skipped.length > 0 && (
+              <div className={ui.surface}>
+                <div className={ui.surfaceHead}>
+                  <h2 className={ui.surfaceTitle}>{skipped.length} skipped employee{skipped.length !== 1 ? 's' : ''}</h2>
+                  <button
+                    type="button"
+                    className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
+                    aria-expanded={showSkip}
+                    onClick={() => setShowSkip(v => !v)}
+                  >
+                    {showSkip ? 'Hide' : 'Show'} {skipped.length} skipped
+                  </button>
+                </div>
+                {showSkip && (
+                  <ul className={styles.skipList}>
+                    {skipped.map(r => (
+                      <li key={r.employee_id}>
+                        <span>
+                          {r.employee_name}
+                          {r.employee_code && <span className={ui.muted} style={{ fontSize: 12, marginLeft: 6 }}>{r.employee_code}</span>}
+                        </span>
+                        <span className={ui.muted}>{SKIP_LABELS[r.skip_reason] ?? r.skip_reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
 
-            <div style={{ fontSize: 12, color: colors.tertiary, lineHeight: 1.7 }}>
-              <strong style={{ color: colors.secondary }}>Preview</strong> — computed live from attendance records using V1 engine rules.
+            <p className={styles.footnote}>
+              <strong>Preview</strong>{' '}— computed live from attendance records using V1 engine rules.
               Per-day rate = salary ÷ 26. Paid leave: 0.5d if present &gt;10 days, 1d if &gt;15 days.
               Adjustments are included in net salary. Click Detail to manage adjustments per employee.
-            </div>
+            </p>
 
             {/* What employees reported about the payroll run for THIS month.
                 An audit record, so it is read where the month is read.
@@ -501,27 +487,21 @@ export default function PayrollMonthlyReviewPage() {
                 that was never generated has no run and therefore no issues,
                 which the panel states rather than hides. */}
             {shown && (
-              <div style={{ marginTop: 24 }}>
-                <ObjectionQueue
-                  subject="payroll"
-                  token={token}
-                  period={{ year: shown.year, month: shown.month }}
-                  title={`Reported payroll issues — ${MONTH_NAMES[shown.month - 1]} ${shown.year}`}
-                  emptyLabel="No payroll issues were reported for this period."
-                />
-              </div>
+              <ObjectionQueue
+                subject="payroll"
+                token={token}
+                period={{ year: shown.year, month: shown.month }}
+                title={`Reported payroll issues — ${MONTH_NAMES[shown.month - 1]} ${shown.year}`}
+                emptyLabel="No payroll issues were reported for this period."
+              />
             )}
           </>
         )}
 
         {results === null && !fetching && !error && (
-          <div style={{
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '48px 24px', textAlign: 'center',
-            color: colors.tertiary, fontSize: 13,
-          }}>
+          <StateBlock kind="empty" title="No preview yet">
             Select a month and click Preview to compute the payroll summary.
-          </div>
+          </StateBlock>
         )}
 
       </div>

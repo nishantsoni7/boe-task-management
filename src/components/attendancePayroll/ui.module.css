@@ -221,3 +221,7 @@ textarea.input { resize: vertical; line-height: 1.45; }
   .surfaceBody { padding: 14px; }
   .surfaceHead { padding: 12px 14px; }
 }
+
+/* Header cells follow their column's alignment (.table th sets left otherwise). */
+.table th.num { text-align: right; }
+.table th.center { text-align: center; }
