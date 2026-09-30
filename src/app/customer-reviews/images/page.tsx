@@ -1,8 +1,10 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { ImagesScreen } from '../ImagesScreen'
-
-// The project image library: one group is one project.
-export default function ImagesPage() {
-  return <ImagesScreen />
+// RETIRED FRONTEND PAGE. The generated-review workflow (prepare → allocate →
+// assign → book → share) is deactivated for every role; the module is custom
+// reviews only. Nothing behind it is deleted — the tables, records, storage,
+// routes and the screen components all remain — this page simply no longer
+// opens, so a saved link or bookmark lands on the Reviews landing page.
+export default function RetiredPage() {
+  redirect('/customer-reviews')
 }

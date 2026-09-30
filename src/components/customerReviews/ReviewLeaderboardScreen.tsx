@@ -14,6 +14,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
 import {
   FIRST_PLACE_FOOTNOTE,
+  REVIEW_LEADERBOARD_KEY,
   CREDITS_PER_POINT,
   formatPoints,
   firstPlaceMessage,
@@ -70,7 +71,7 @@ export function ReviewLeaderboardScreen() {
   }, [supabase, router])
 
   const board = useQuery({
-    queryKey: ['review-leaderboard', month],
+    queryKey: [...REVIEW_LEADERBOARD_KEY, month],
     enabled: ready,
     queryFn: async (): Promise<Leaderboard> => {
       const { data, error } = await supabase.rpc('customer_review_leaderboard', { p_month: month })

@@ -931,6 +931,20 @@ select jsonb_pretty(jsonb_build_object(
 leaderboard as any employee. **Backfill** only after the code is live, as in §24.8 (dry run → `--apply --limit=200` → `--verify`). Prefer a forward fix to a rollback once employees
 have edited or deleted reviews.
 
+## 28. Custom reviews only, and the Reviews landing page (frontend only)
+
+The generated-review workflow is **deactivated in the frontend for every role**. No migration, table, record, storage object or
+reward changes; the routes, database functions and screen components stay in the repository.
+
+* **Retired pages redirect to `/customer-reviews`:** `/batches`, `/images`, `/progress`, `/mine`, `/reviews` and `/<card id>`.
+  The test-card **purge frontend exception is gone** with `/<card id>` (the purge route and database function remain).
+* **Sidebar:** My Reviews (everyone); Custom Submissions, History, Reports and Notifications (`verify` holders).
+* **History** (`/customer-reviews/history`): read-only list of the old generated reviews, same RLS and module guard as before, no actions.
+* **Landing page** (`/customer-reviews`, everyone with Reviews access): current-month leaderboard (leader, runner-up, joint leaders,
+  ranking, own position and gap), a **Submit review** button, then the custom-review workspace. One read of
+  `customer_review_leaderboard(null)`; arrangement in `leaderboardLanding.ts`. Asia/Kolkata months, credits = points x 10.
+* **Outstanding release evidence:** post-deploy verification of this change and the image-hash backfill (§24.8) are not done.
+
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
 Kept as a record of what exists and is paused. See the migrations and tests for

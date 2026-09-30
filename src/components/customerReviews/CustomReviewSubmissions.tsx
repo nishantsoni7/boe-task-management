@@ -51,7 +51,10 @@ import {
   DUPLICATE_WARNING_TITLE,
   type EmployeeDuplicateView,
 } from '@/lib/customerReviews/duplicateDetection'
+import { REVIEW_LEADERBOARD_KEY, REVIEW_LEADER_CARD_KEY } from '@/lib/customerReviews/reviewReport'
 import { CUSTOM_REVIEW_PENDING_COUNT_KEY } from '@/hooks/queries/useCustomReviewPendingCount'
+import { usePublishSubmitControl } from './CustomReviewSubmitControl'
+import { submitAvailability } from '@/lib/customerReviews/submitAvailability'
 import { ReviewBadge } from './ReviewPieces'
 import { ReviewSheet } from './ReviewSheet'
 import {
@@ -191,11 +194,23 @@ export function CustomReviewSubmissions({
 
   const rejected = history.filter(r => r.status === 'rejected')
 
+  // ONE availability for both entry points (this section's button and the page header's).
+  const availability = useMemo(() => submitAvailability({
+    loaded, loadError, canSubmitAny: allowance.canSubmitAny, limitMessage: allowance.limitMessage,
+  }), [loaded, loadError, allowance.canSubmitAny, allowance.limitMessage])
+  const openNew = useCallback(() => { setNotice(null); setForm({ mode: 'new' }) }, [])
+  usePublishSubmitControl(availability, openNew)
+
   const afterChange = async (message: string) => {
     setForm(null)
     setNotice(message)
     // A submission or a reapplication adds to the reviewers' pending queue.
     void queryClient.invalidateQueries({ queryKey: CUSTOM_REVIEW_PENDING_COUNT_KEY })
+    // Every change here can move an eligible count (an edit of an approved review
+    // holds it, a delete withdraws it), so the mounted leaderboards refetch now:
+    // the landing panel and the past-months page (prefix match) and the dashboard card.
+    void queryClient.invalidateQueries({ queryKey: REVIEW_LEADERBOARD_KEY })
+    void queryClient.invalidateQueries({ queryKey: REVIEW_LEADER_CARD_KEY })
     await load()
   }
 
@@ -217,8 +232,8 @@ export function CustomReviewSubmissions({
           <button
             type="button"
             className="boe-btn boe-btn-primary"
-            disabled={!loaded || !allowance.canSubmitAny}
-            onClick={() => { setNotice(null); setForm({ mode: 'new' }) }}
+            disabled={availability.status !== 'ready'}
+            onClick={openNew}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', minHeight: '44px' }}
           >
             <Upload size={14} strokeWidth={2.2} />

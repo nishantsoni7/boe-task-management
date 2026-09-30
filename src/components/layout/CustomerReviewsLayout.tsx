@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { BadgeCheck, BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, PieChart, Sparkles } from 'lucide-react'
+import { BadgeCheck, History, Home, MessageSquareHeart, PieChart } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -17,23 +17,17 @@ import { useCustomReviewPendingCount } from '@/hooks/queries/useCustomReviewPend
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// SEVEN DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
+// CUSTOM REVIEWS ONLY. The generated-review workflow (Reviews queue, Batches, Image
+// Library, Progress) is deactivated for every role and has no entry here; its
+// pages redirect to the landing page and everything behind them is kept.
 //
-//   Overview       what needs attention right now. The verifier's landing page.
-//   Reviews        the operational queue. The four workflow states live inside
-//                  it as tabs, because a state filters one queue rather than
-//                  being a place of its own.
-//   Custom Submissions  custom reviews employees submitted: open the proof,
-//                  approve with credits or reject with a reason. Carries the
-//                  number of custom reviews waiting for a decision.
-//   Batches        generate → review → approve → assign, in one workspace.
-//   Image Library  the project image groups an image review draws from.
-//   Progress       assigned / posted / verified / remaining, per employee.
-//   Reports        custom reviews submitted by month, type and employee; the
-//                  monthly text / image split, eligible totals, credits and points.
-//
-//   My Reviews     the candidate's single screen, and their only entry. During
-//                  the Custom Review phase it is the Custom Review workspace.
+//   My Reviews     the landing page for everyone: the monthly leaderboard, Submit
+//                  review, and the employee's own reviews (edit / delete).
+//   Custom Submissions  verifiers: open the proof, approve with credits or reject
+//                  with a reason. Also the history of every submission, including
+//                  approved, rejected and deleted ones. Carries the pending count.
+//   Reports        verifiers: custom reviews by month, type and employee; eligible
+//                  totals, credits, points and duplicates.
 //
 // A verifier also gets the module's Notifications entry: custom reviews
 // submitted or reapplied for approval are addressed to them.
@@ -65,36 +59,12 @@ type NavItem = {
   count?: 'custom-pending'
 }
 
-/**
- * SIX DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE — and each is a place,
- * not a filter.
- *
- * WHAT THIS REPLACED, AND WHY. The sidebar used to list the five workflow
- * STATES, every entry pointing at `/customer-reviews?tab=…`, while the page
- * body rendered the same five as tabs. Two controls, one query parameter: the
- * sidebar told you where you were and the tab strip told you the same thing
- * again, and neither could show you anything the other could not. A state is
- * not a destination — it is a filter over one queue, and it belongs inside that
- * queue's page.
- *
- * A candidate now has ONE entry. They used to have two, Available and My
- * reviews, which split one question ("what work do I have?") across two screens
- * and made every summary number partial.
- */
 const NAV_ITEMS: NavItem[] = [
-  // The candidate's only entry, and the verifier's landing page. One route,
-  // two audiences: a verifier gets Overview, a candidate gets My Reviews.
   {
     label: 'My Reviews',
     path: '/customer-reviews',
     icon: <MessageSquareHeart size={15} strokeWidth={1.8} />,
     exact: true,
-  },
-  {
-    label: 'Reviews',
-    path: '/customer-reviews/reviews',
-    icon: <Layers size={15} strokeWidth={1.8} />,
-    verifierOnly: true,
   },
   {
     label: 'Custom Submissions',
@@ -104,21 +74,9 @@ const NAV_ITEMS: NavItem[] = [
     count: 'custom-pending',
   },
   {
-    label: 'Batches',
-    path: '/customer-reviews/batches',
-    icon: <Sparkles size={15} strokeWidth={1.8} />,
-    verifierOnly: true,
-  },
-  {
-    label: 'Image Library',
-    path: '/customer-reviews/images',
-    icon: <ImageIcon size={15} strokeWidth={1.8} />,
-    verifierOnly: true,
-  },
-  {
-    label: 'Progress',
-    path: '/customer-reviews/progress',
-    icon: <BarChart3 size={15} strokeWidth={1.8} />,
+    label: 'History',
+    path: '/customer-reviews/history',
+    icon: <History size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
   {
@@ -128,9 +86,6 @@ const NAV_ITEMS: NavItem[] = [
     verifierOnly: true,
   },
 ]
-
-/** The verifier's landing page is Overview; the candidate's is their own work. */
-const ROOT_LABEL = { verifier: 'Overview', candidate: 'My Reviews' } as const
 
 export function CustomerReviewsLayout({
   profile, title, subtitle, actions, canVerify, onSignOut, children,
@@ -146,9 +101,6 @@ export function CustomerReviewsLayout({
 
   const items = NAV_ITEMS
     .filter(item => !item.verifierOnly || canVerify)
-    // The root entry is Overview for a verifier and My Reviews for everybody
-    // else. It is the same route; what it renders differs, so the label has to.
-    .map(item => (item.exact && canVerify ? { ...item, label: ROOT_LABEL.verifier } : item))
 
   // BY ROUTE, not by query — the same shape MeetingsLayout uses. The root is
   // `exact` because otherwise it would claim every page beneath it.

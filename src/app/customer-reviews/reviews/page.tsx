@@ -1,17 +1,10 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { Suspense } from 'react'
-import { LoadingScreen } from '@/components/ui/atoms'
-import { TestCardListScreen } from '../TestCardListScreen'
-
-// The verifier's review queue. The four workflow states are tabs inside it.
-//
-// The Suspense boundary is required: the screen keeps its tab and search in the
-// URL, so it reads search params.
-export default function ReviewsPage() {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <TestCardListScreen />
-    </Suspense>
-  )
+// RETIRED FRONTEND PAGE. The generated-review workflow (prepare → allocate →
+// assign → book → share) is deactivated for every role; the module is custom
+// reviews only. Nothing behind it is deleted — the tables, records, storage,
+// routes and the screen components all remain — this page simply no longer
+// opens, so a saved link or bookmark lands on the Reviews landing page.
+export default function RetiredPage() {
+  redirect('/customer-reviews')
 }
