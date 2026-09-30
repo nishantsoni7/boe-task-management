@@ -30,6 +30,8 @@ export function useCustomReviewPendingCount(enabled: boolean): number | undefine
         .from('customer_review_custom_submissions')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'pending_verification')
+        // An employee's deleted review is kept for history, not queued.
+        .is('deleted_at', null)
       // A refusal is not a zero.
       return result.error ? null : (result.count ?? 0)
     },

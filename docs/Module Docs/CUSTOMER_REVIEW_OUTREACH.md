@@ -115,7 +115,8 @@ The stored value `pending_verification` is displayed as **Pending Approval**;
 it keeps its stored name because it is the audit history's word. The guard
 trigger `customer_review_custom_submissions_guard` enforces the moves: a pending
 row may be decided once; a rejected row may only be reapplied (its corrections,
-counted once); an approved row never changes; nothing is deleted.
+counted once); an approved row changes only through an employee edit (§23), which
+keeps its credit held; nothing is ever hard-deleted (an employee's delete is a soft delete, §23).
 
 ## 7. Reapply
 
@@ -477,6 +478,90 @@ reward to be handled first. A batch that lost a draft to a purge can no longer b
 assigned whole, exactly as after a verifier's Delete.
 
 ---
+
+## 23. Employee edit and delete (`20270223000000`, in the repository — NOT applied)
+
+An employee may edit or delete **their own** custom review from **My Reviews**.
+
+| | |
+| --- | --- |
+| Routes | `PUT` (edit) and `DELETE` on `/api/customer-reviews/custom-submissions` |
+| RPCs | `edit_customer_review_custom_submission()`, `delete_customer_review_custom_submission()` — **service role only**; `reverse_customer_review_custom_reward()` — owner-only helper, callable by nobody |
+| Columns | `deleted_at`, `deleted_by`, `edit_count`, `last_edited_at`, `reward_held`, `reward_reversal_transaction_id` |
+| History | two new events, `edited` and `deleted`, written by the trail trigger |
+| Tests | `src/lib/customerReviews/customReviewEditDelete.test.ts`; `supabase/tests/custom_review_edit_delete_assertions.sql` via `run_custom_review_edit_delete_local.sh`; two-session races in `run_custom_review_edit_delete_race.sh` |
+
+### 23.1 Who, and how it is enforced
+
+Only the submitter. The route reads the review under the caller's own RLS (a review
+that is not theirs reads as *not found*), compares `submitted_by` with the session user,
+and passes that user as the actor; the database function compares again and refuses
+anyone else — administrators and verifiers included — with
+`CUSTOMER_REVIEW_CUSTOM_NOT_OWNER`. No client role can write the table or call the
+functions, so hiding the buttons is not what protects a review.
+
+### 23.2 What an edit does to each status
+
+| Status | Edit | Effect |
+| --- | --- | --- |
+| Pending Approval | in place | stays pending; queue position, submission date and month do not move; history row |
+| Rejected | not here | corrected through **Edit & Reapply** (§7), as before |
+| Approved | in place | **goes back to Pending Approval**; the credit is **held** (§23.3); the type cannot change; reviewers are notified |
+
+The submission date (`submitted_at`) and reference never change, so an old review does
+not move into the current month. A published date may be corrected but never set in the
+future. A screenshot may be replaced; the old object is kept and the history names it.
+A review in a **closed** (lapsed) month cannot be edited.
+
+### 23.3 Points and credits when a review is edited or deleted
+
+The ledger allows one `review_reward` per source and one reversal per row; "re-awarding
+after a reversal is deliberately not possible" (`20261101000000`). So *reverse on edit,
+pay again on approval* cannot work. Instead:
+
+* **Edit of an approved review** — nothing is posted. `credits_awarded` and
+  `credit_transaction_id` stay on the row, `reward_held` marks them as held.
+* **A verifier approves it again** — nothing is posted; the same credit stands.
+* **A verifier rejects it** — the held credit is **reversed once** and the review is
+  Rejected. Because a second reward for the same source is impossible, such a review
+  cannot be reapplied (*submit it again as a new review*).
+* **The employee deletes it** (any status) — an approved or held credit is reversed once,
+  in the same transaction; a pending or rejected review has nothing on the ledger.
+  A month that already **lapsed** is not reversed a second time.
+
+However often a review is edited, it has at most one reward and at most one reversal.
+The reversal is an ordinary ledger row (`reversal`, negating the reward), posted for the
+employee by `reverse_customer_review_custom_reward()` — the ledger's own triggers
+recount the review month. Note the existing rule that a month that already
+**qualified** stays qualified after an individual reversal.
+
+### 23.4 Delete
+
+A soft delete: `deleted_at` / `deleted_by` are stamped and the row, proof and history
+stay. The employee no longer sees it (the SELECT policy hides it; verifiers still read
+it). It leaves every list, count and total, **frees its monthly slot**, and no longer
+blocks the same screenshot (the duplicate check keeps it as evidence — see the next
+migration). A deleted row is frozen. Verifiers see it under **Custom Submissions →
+Deleted**, with who deleted it, when, and whether a credit was reversed.
+
+### 23.5 Repeated and concurrent requests
+
+* Delete is idempotent: the second call answers `already_deleted`, adds no history and
+  reverses nothing.
+* Edit carries the `edit_count` the form was opened on. An identical repeat (double click,
+  retry) answers `unchanged`; a stale counter with different content is refused (409).
+* Locks are taken in one order — the employee's month lock, then the row, then the credits
+  lock — so edit, delete, approval and rejection serialise on the row. The two-session
+  races in `run_custom_review_edit_delete_race.sh` cover delete-vs-delete, delete-vs-edit
+  and re-approval-vs-delete.
+
+### 23.6 Screens
+
+**My Reviews:** *Edit* (pending and approved) and *Delete* (any) beside *View Proof*; the
+form is the submission form with the current values and a notice when the review is
+approved; Delete asks first and says if a credit will be taken back.
+**Custom Submissions:** an *Edited after approval* badge, **Approve again** (no amount
+field — nothing more is paid), and the **Deleted** tab.
 
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 

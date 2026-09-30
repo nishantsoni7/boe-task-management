@@ -130,6 +130,12 @@ export function CustomSubmissionFacts({
     })
     facts.push({ label: 'Employee Note', value: row.candidate_note ?? '—' })
   }
+  if (row.edit_count > 0) {
+    facts.push({
+      label: 'Edited',
+      value: `${row.edit_count} ${row.edit_count === 1 ? 'time' : 'times'} · last ${formatSubmissionMoment(row.last_edited_at)}`,
+    })
+  }
   if (row.status === 'approved') {
     facts.push({ label: 'Credits Awarded', value: formatCredits(Number(row.credits_awarded ?? 0)) })
     facts.push({ label: 'Approved On', value: formatSubmissionMoment(row.approved_at) })
@@ -161,6 +167,8 @@ const EVENT_TONE: Record<CustomSubmissionEvent['event_type'], string> = {
   reapplied: '#4F6FD0',
   rejected:  '#B91C1C',
   approved:  '#047857',
+  edited:    '#4F6FD0',
+  deleted:   '#6B7280',
 }
 
 function typeLabel(value: unknown): string | null {
@@ -236,6 +244,21 @@ export function CustomSubmissionTrail({
                 {e.note && <div style={{ color: colors.secondary, overflowWrap: 'anywhere' }}>Note: {e.note}</div>}
                 {typeChange && <div style={{ color: colors.secondary }}>Type changed: {typeChange}</div>}
                 {e.details?.proof_replaced === true && <div style={{ color: colors.secondary }}>Screenshot replaced</div>}
+                {e.event_type === 'edited' && e.details?.sent_back_for_approval === true && (
+                  <div style={{ color: '#92400E' }}>Sent back for approval · credit held, not paid again</div>
+                )}
+                {e.event_type === 'approved' && e.details?.reaffirmed_after_edit === true && (
+                  <div style={{ color: colors.secondary }}>Approved again after an edit · nothing more awarded</div>
+                )}
+                {e.event_type === 'rejected' && e.details?.credit_reversed === true && (
+                  <div style={{ color: '#B91C1C' }}>Credit withdrawn</div>
+                )}
+                {e.event_type === 'deleted' && (
+                  <div style={{ color: colors.secondary }}>
+                    Was {typeof e.details?.status_at_delete === 'string' ? String(e.details.status_at_delete).replace('pending_verification', 'pending approval') : 'submitted'}
+                    {e.details?.credits_reversed === true ? ' · credit reversed' : ''}
+                  </div>
+                )}
                 {e.event_type === 'approved' && e.details?.credits_awarded != null && (
                   <div style={{ color: '#047857' }}>{formatCredits(Number(e.details.credits_awarded), { signed: true })}</div>
                 )}

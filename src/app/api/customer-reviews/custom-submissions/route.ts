@@ -69,6 +69,7 @@ const MESSAGES = {
   failed:          'That submission could not be saved. Try again.',
   not_found:       'That review could not be found.',
   not_rejected:    'Only a rejected review can be reapplied.',
+  not_editable:    'A rejected review is corrected with Edit & Reapply.',
 } as const
 
 const NO_STORE = { 'Cache-Control': 'no-store, private' }
@@ -342,6 +343,159 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json(
     { submission: result.submission, already_pending: result.already_pending === true },
+    { status: 200, headers: NO_STORE },
+  )
+}
+
+// ── Edit your own review ──────────────────────────────────────────────────────
+//
+// PUT edits a PENDING or APPROVED review in place: the same row, the same
+// submission date and month, an incremented edit counter and a history row. An
+// approved review goes back to Pending Approval with its credit HELD — never
+// paid twice; rejecting the edit reverses it. A rejected review is corrected
+// through PATCH (Edit & Reapply), so this route refuses it.
+//
+// OWNERSHIP IS ENFORCED THREE TIMES: the caller reads the row under their own
+// RLS (a row that is not theirs is answered like one that does not exist), the
+// route compares submitted_by with the session user, and the database function
+// compares again with the actor the route passes — no client role can write the
+// table, so there is no other way in. The screenshot, when replaced, is
+// re-encoded like every other proof and the old object is KEPT (history names it).
+//
+// REPEATS. `expectedEditCount` is the counter the employee opened the form on.
+// A repeat of an edit that already went through answers `unchanged`; a stale
+// counter with different content is refused (409).
+
+export async function PUT(req: NextRequest) {
+  const caller = await createClient()
+  const auth = await authorize(caller)
+  if (auth instanceof NextResponse) return auth
+  const actorId = auth.userId
+
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch {
+    return fail(400, MESSAGES.bad_request)
+  }
+
+  const submissionId = form.get('submissionId')
+  if (typeof submissionId !== 'string' || !UUID_RE.test(submissionId)) return fail(400, MESSAGES.bad_request)
+
+  const expectedRaw = form.get('expectedEditCount')
+  const expectedEditCount = typeof expectedRaw === 'string' && /^\d{1,6}$/.test(expectedRaw) ? Number(expectedRaw) : null
+  if (expectedEditCount === null) return fail(400, MESSAGES.bad_request)
+
+  const parsed = parseCustomSubmissionInput({
+    reviewType:  form.get('reviewType'),
+    publishedOn: form.get('publishedOn'),
+    remark:      form.get('remark'),
+    hasProof:    true,
+  }, istToday())
+  if (!parsed.ok) return fail(422, parsed.issues[0].message)
+
+  const { data: current } = await caller
+    .from('customer_review_custom_submissions')
+    .select('id, submitted_by, status, deleted_at')
+    .eq('id', submissionId)
+    .maybeSingle()
+  const row = current as { id: string; submitted_by: string; status: string; deleted_at: string | null } | null
+  if (!row || row.submitted_by !== actorId || row.deleted_at) return fail(404, MESSAGES.not_found)
+  if (row.status === 'rejected') return fail(409, MESSAGES.not_editable)
+
+  const file = form.get('file')
+  const proof = file && typeof file !== 'string' && (file as File).size > 0 ? (file as File) : null
+  const image = proof ? await processProof(proof) : null
+  if (image && !image.ok) return image.response
+
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[customer-reviews:custom-submissions] missing env:', admin.missing.join(', '))
+    return fail(503, MESSAGES.unavailable)
+  }
+  const service = admin.client
+
+  const newPath = image && image.ok ? `${submissionId}/proof/${randomUUID()}.${image.extension}` : null
+  if (image && image.ok && newPath) {
+    const { error: uploadError } = await service.storage
+      .from(CUSTOM_PROOF_BUCKET)
+      .upload(newPath, image.bytes, { contentType: image.mime, upsert: false })
+    if (uploadError) return fail(500, MESSAGES.upload_failed)
+  }
+
+  const { data, error } = await service.rpc('edit_customer_review_custom_submission', {
+    p_submission_id:        submissionId,
+    p_actor_id:             actorId,
+    p_review_type:          parsed.value.reviewType,
+    p_published_on:         parsed.value.publishedOn,
+    p_remark:               parsed.value.remark,
+    p_expected_edit_count:  expectedEditCount,
+    p_proof_storage_path:   newPath,
+    p_proof_file_name:      image && image.ok ? image.displayName : null,
+    p_proof_mime_type:      image && image.ok ? image.mime : null,
+    p_proof_byte_size:      image && image.ok ? image.bytes.length : null,
+    p_proof_content_sha256: image && image.ok ? image.digest : null,
+  })
+
+  const result = data as { submission?: unknown; unchanged?: boolean; sent_back_for_approval?: boolean } | null
+  if (error || !result) {
+    if (newPath) await service.storage.from(CUSTOM_PROOF_BUCKET).remove([newPath])
+    return failFromDatabase(error?.message ?? '')
+  }
+  // An unchanged answer did not use the new object.
+  if (result.unchanged && newPath) {
+    await service.storage.from(CUSTOM_PROOF_BUCKET).remove([newPath])
+  }
+
+  return NextResponse.json(
+    {
+      submission: result.submission,
+      unchanged: result.unchanged === true,
+      sent_back_for_approval: result.sent_back_for_approval === true,
+    },
+    { status: 200, headers: NO_STORE },
+  )
+}
+
+// ── Delete your own review ────────────────────────────────────────────────────
+//
+// A SOFT delete. The row, its proof and its history stay for verifiers (and as
+// duplicate-check evidence); the employee no longer sees it. A posted credit is
+// reversed once, in the same transaction. Repeats answer `already_deleted`.
+
+export async function DELETE(req: NextRequest) {
+  const caller = await createClient()
+  const auth = await authorize(caller)
+  if (auth instanceof NextResponse) return auth
+  const actorId = auth.userId
+
+  const body = await req.json().catch(() => null) as { submissionId?: unknown } | null
+  const submissionId = body?.submissionId
+  if (typeof submissionId !== 'string' || !UUID_RE.test(submissionId)) return fail(400, MESSAGES.bad_request)
+
+  const { data: current } = await caller
+    .from('customer_review_custom_submissions')
+    .select('id, submitted_by')
+    .eq('id', submissionId)
+    .maybeSingle()
+  const row = current as { id: string; submitted_by: string } | null
+  if (!row || row.submitted_by !== actorId) return fail(404, MESSAGES.not_found)
+
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[customer-reviews:custom-submissions] missing env:', admin.missing.join(', '))
+    return fail(503, MESSAGES.unavailable)
+  }
+
+  const { data, error } = await admin.client.rpc('delete_customer_review_custom_submission', {
+    p_submission_id: submissionId,
+    p_actor_id:      actorId,
+  })
+  const result = data as { already_deleted?: boolean; credits_reversed?: number | string } | null
+  if (error || !result) return failFromDatabase(error?.message ?? '')
+
+  return NextResponse.json(
+    { deleted: true, already_deleted: result.already_deleted === true, credits_reversed: Number(result.credits_reversed ?? 0) },
     { status: 200, headers: NO_STORE },
   )
 }

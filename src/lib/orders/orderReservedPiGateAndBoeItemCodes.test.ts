@@ -451,6 +451,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270220000000_asset_catalogue.sql',
       '20270221000000_orders_dashboard_factory_focus.sql',
       '20270222000000_attendance_request_live_uniqueness.sql',
+      '20270223000000_customer_review_custom_edit_delete.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

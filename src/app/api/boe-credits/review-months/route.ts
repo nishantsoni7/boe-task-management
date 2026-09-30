@@ -68,6 +68,8 @@ async function unresolvedByEmployee(
     .from('customer_review_custom_submissions')
     .select('submitted_by')
     .eq('status', 'pending_verification')
+    // A deleted review is not waiting for anyone.
+    .is('deleted_at', null)
     .gte('submitted_at', from)
     .lte('submitted_at', to)
   if (customError) throw new Error(`unresolved custom reviews: ${customError.message}`)
