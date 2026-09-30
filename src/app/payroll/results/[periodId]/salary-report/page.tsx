@@ -188,7 +188,7 @@ export default function SalaryProcessingReportPage() {
 
             {/* Selection list */}
             <section style={{ ...card, padding: 0, overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
+              <table className="salary-report-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                 <thead>
                   <tr style={{ background: colors.raised }}>
                     <th style={{ ...th, width: 40 }}>

@@ -401,7 +401,7 @@ export default function AttendanceUploadPage() {
             <div className={`${ui.surfaceBody} ${ui.stack}`}>
               <ul className={styles.expected}>
                 <li>Format: XLS/XLSX monthly attendance export</li>
-                <li>Employee codes must be mapped in Employee Master</li>
+                <li>Employee codes must be mapped in Employee directory</li>
                 <li>Days with no punch (--:--) are automatically skipped</li>
               </ul>
 
@@ -640,7 +640,7 @@ export default function AttendanceUploadPage() {
 
                       <div style={{ paddingTop: 12 }}>
                         <Link href="/attendance/employees" className={btn}>
-                          Fix Fingerprint Codes in Employee Master →
+                          Fix Fingerprint Codes in Employee directory →
                         </Link>
                       </div>
                     </div>
@@ -876,7 +876,7 @@ export default function AttendanceUploadPage() {
                 {result.skippedEmployees.some(s => s.reason.includes('Fingerprint')) && (
                   <div style={{ padding: '4px 18px 16px' }}>
                     <Link href="/attendance/employees" className={btn}>
-                      Set Fingerprint Codes in Employee Master →
+                      Set Fingerprint Codes in Employee directory →
                     </Link>
                   </div>
                 )}

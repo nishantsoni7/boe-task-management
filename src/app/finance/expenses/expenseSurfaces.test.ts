@@ -2203,6 +2203,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/api/payroll/monthly-review/route.ts',
     // Navigation redesign: six sections with page tabs, a request page and review drawer,
     // and the shared layout on every module page. UI only; named one by one.
+    'src/app/payroll/results/[periodId]/salary-report/page.tsx',
+    // Navigation redesign: six sections with page tabs, a request page and review drawer,
+    // and the shared layout on every module page. UI only; named one by one.
     'next.config.ts',
     'src/app/attendance/correction-log/page.tsx',
     'src/app/attendance/employees/[id]/detail.module.css',
