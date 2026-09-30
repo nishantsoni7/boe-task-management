@@ -120,6 +120,8 @@ export function CustomSubmissionFacts({
     { label: 'Review Type',  value: CUSTOM_REVIEW_TYPE_LABELS[row.review_type] },
     { label: 'Published On', value: formatSubmissionDay(row.published_on) },
     { label: 'Submitted On', value: formatSubmissionMoment(row.submitted_at) },
+    { label: 'Reviewer Name', value: row.reviewer_name ?? '—' },
+    { label: 'Review Text',  value: row.review_text ?? '—' },
     { label: 'Remark',       value: row.remark ?? '—' },
     { label: 'Status',       value: CUSTOM_SUBMISSION_STATUS_META[row.status].label },
   )
@@ -169,6 +171,8 @@ const EVENT_TONE: Record<CustomSubmissionEvent['event_type'], string> = {
   approved:  '#047857',
   edited:    '#4F6FD0',
   deleted:   '#6B7280',
+  duplicate_flagged: '#B45309',
+  duplicate_decided: '#6B7280',
 }
 
 function typeLabel(value: unknown): string | null {
@@ -252,6 +256,21 @@ export function CustomSubmissionTrail({
                 )}
                 {e.event_type === 'rejected' && e.details?.credit_reversed === true && (
                   <div style={{ color: '#B91C1C' }}>Credit withdrawn</div>
+                )}
+                {e.event_type === 'duplicate_flagged' && (
+                  <div style={{ color: '#92400E' }}>
+                    {Number(e.details?.matches ?? 0)} possible {Number(e.details?.matches ?? 0) === 1 ? 'match' : 'matches'}
+                    {e.details?.status === 'unavailable' ? ' · check unavailable' : ''}
+                    {e.details?.employee_proceeded === true ? ' · the employee proceeded after the warning' : ''}
+                  </div>
+                )}
+                {e.event_type === 'duplicate_decided' && (
+                  <div style={{ color: colors.secondary }}>
+                    Marked {e.details?.decision === 'duplicate' ? 'Duplicate' : 'Different review'}
+                    {typeof e.details?.previous_decision === 'string'
+                      ? ` (was ${e.details.previous_decision === 'duplicate' ? 'Duplicate' : 'Different review'})`
+                      : ''}
+                  </div>
                 )}
                 {e.event_type === 'deleted' && (
                   <div style={{ color: colors.secondary }}>

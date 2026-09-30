@@ -353,6 +353,7 @@ describe('the migration is one file, correctly sequenced', () => {
       '20270221000000_orders_dashboard_factory_focus.sql',
       '20270222000000_attendance_request_live_uniqueness.sql',
       '20270223000000_customer_review_custom_edit_delete.sql',
+      '20270224000000_customer_review_custom_duplicate_detection.sql',
     ])
   })
 

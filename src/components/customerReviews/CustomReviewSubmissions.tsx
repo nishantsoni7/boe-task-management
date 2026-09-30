@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Image as ImageIcon, ImagePlus, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, FileText, Image as ImageIcon, ImagePlus, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { colors } from '@/lib/tokens'
@@ -21,6 +21,8 @@ import {
   APPROVED_EDIT_NOTICE,
   MAX_CANDIDATE_NOTE_LENGTH,
   MAX_CUSTOM_REMARK_LENGTH,
+  MAX_REVIEWER_NAME_LENGTH,
+  MAX_REVIEW_TEXT_LENGTH,
   canDeleteSubmission,
   canEditSubmission,
   canReapplySubmission,
@@ -43,6 +45,12 @@ import {
   type SubmissionAllowance,
 } from '@/lib/customerReviews/customMonthlyRules'
 import { REVIEW_TYPE_META, type ReviewType } from '@/lib/customerReviews/types'
+import {
+  DUPLICATE_REASON_LABELS,
+  DUPLICATE_UNAVAILABLE_TITLE,
+  DUPLICATE_WARNING_TITLE,
+  type EmployeeDuplicateView,
+} from '@/lib/customerReviews/duplicateDetection'
 import { CUSTOM_REVIEW_PENDING_COUNT_KEY } from '@/hooks/queries/useCustomReviewPendingCount'
 import { ReviewBadge } from './ReviewPieces'
 import { ReviewSheet } from './ReviewSheet'
@@ -495,6 +503,60 @@ function DeleteConfirmSheet({
   )
 }
 
+/**
+ * The inline duplicate warning: an amber icon, the plain reason, and who it
+ * concerns. It names REASON CATEGORIES only. For another employee's review it
+ * says nothing about which review, who wrote it, or when; for the employee's own
+ * earlier review it gives its reference. Nothing is sent as a notification.
+ */
+function DuplicateWarning({ view }: { view: EmployeeDuplicateView }) {
+  const unavailable = view.status === 'unavailable'
+  return (
+    <section
+      role="alert"
+      aria-labelledby="duplicate-warning-title"
+      style={{
+        display: 'flex', gap: '10px', alignItems: 'flex-start',
+        padding: '11px 13px', borderRadius: '10px',
+        border: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E',
+      }}
+    >
+      <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px', color: '#D97706' }} />
+      <div style={{ minWidth: 0, fontSize: '12.5px', lineHeight: 1.55 }}>
+        <div id="duplicate-warning-title" style={{ fontWeight: 700 }}>
+          {unavailable ? DUPLICATE_UNAVAILABLE_TITLE : DUPLICATE_WARNING_TITLE}
+        </div>
+        {unavailable ? (
+          <p style={{ margin: '3px 0 0' }}>
+            We could not check this review against earlier ones, so it is not confirmed as unique.
+            You can edit it, cancel, or submit anyway; a reviewer will see that the check did not run.
+          </p>
+        ) : (
+          <>
+            <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
+              {view.reasons.map(reason => <li key={reason}>{DUPLICATE_REASON_LABELS[reason]}</li>)}
+            </ul>
+            {view.items.some(i => i.scope === 'yours') && (
+              <p style={{ margin: '4px 0 0' }}>
+                Matches your own earlier {view.items.filter(i => i.scope === 'yours').length === 1 ? 'review' : 'reviews'}
+                {view.items.filter(i => i.scope === 'yours' && i.ref).length > 0
+                  ? ` (${view.items.filter(i => i.scope === 'yours' && i.ref).map(i => i.ref).join(', ')})`
+                  : ''}.
+              </p>
+            )}
+            {view.items.some(i => i.scope === 'another_employee') && (
+              <p style={{ margin: '4px 0 0' }}>Matches a review already in the system.</p>
+            )}
+            <p style={{ margin: '4px 0 0' }}>
+              Edit it, cancel, or submit anyway. A reviewer decides; nothing is rejected automatically.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
 const labelStyle: React.CSSProperties = { fontSize: '12.5px', fontWeight: 600, color: colors.primary }
 const hintStyle: React.CSSProperties = { fontSize: '11px', color: colors.muted, lineHeight: 1.5 }
 const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' }
@@ -527,6 +589,10 @@ function CustomReviewFormSheet({
   const [reviewType, setReviewType] = useState<ReviewType | null>(source?.review_type ?? null)
   const [publishedOn, setPublishedOn] = useState(source?.published_on ?? '')
   const [remark, setRemark] = useState(source?.remark ?? '')
+  const [reviewerName, setReviewerName] = useState(source?.reviewer_name ?? '')
+  const [reviewText, setReviewText] = useState(source?.review_text ?? '')
+  // The inline duplicate warning: what the server found, and the token "Submit anyway" must echo.
+  const [warning, setWarning] = useState<{ view: EmployeeDuplicateView; token: string } | null>(null)
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -572,9 +638,10 @@ function CustomReviewFormSheet({
     previewUrl.current = url
     setFile(next)
     setPreview(url)
+    setWarning(null)
   }
 
-  const submit = async () => {
+  const submit = async (acknowledge?: string) => {
     if (submitting.current) return
     if (reviewType && typeIssue(reviewType)) { setError(typeIssue(reviewType)); return }
 
@@ -609,6 +676,10 @@ function CustomReviewFormSheet({
       body.append('file', file)
     }
 
+    body.append('reviewerName', reviewerName.trim())
+    body.append('reviewText', reviewText.trim())
+    if (acknowledge) body.append('acknowledgeDuplicate', acknowledge)
+
     submitting.current = true
     setBusy(true)
     setError(null)
@@ -619,6 +690,11 @@ function CustomReviewFormSheet({
           ? await fetch('/api/customer-reviews/custom-submissions', { method: 'PATCH', body })
           : await fetch('/api/customer-reviews/custom-submissions', { method: 'POST', body })
       const payload = await response.json().catch(() => null)
+      if (response.status === 409 && payload?.code === 'possible_duplicate' && payload?.duplicate) {
+        // Nothing was saved. The employee edits, cancels, or chooses Submit anyway.
+        setWarning({ view: payload.duplicate as EmployeeDuplicateView, token: String(payload.token ?? '') })
+        return
+      }
       if (!response.ok) {
         setError(typeof payload?.error === 'string' ? payload.error : 'That submission could not be saved. Try again.')
         return
@@ -664,15 +740,38 @@ function CustomReviewFormSheet({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            className="boe-btn boe-btn-primary"
-            onClick={() => { void submit() }}
-            disabled={busy}
-            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
-          >
-            {busy ? (editing ? 'Saving…' : 'Sending…') : editing ? 'Save Changes' : original ? 'Reapply for Approval' : 'Submit for Approval'}
-          </button>
+          {warning ? (
+            <>
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                onClick={() => setWarning(null)}
+                disabled={busy}
+                style={{ padding: '8px 14px', fontSize: '13px', minHeight: '44px' }}
+              >
+                Edit review
+              </button>
+              <button
+                type="button"
+                className="boe-btn boe-btn-primary"
+                onClick={() => { void submit(warning.token) }}
+                disabled={busy}
+                style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
+              >
+                {busy ? 'Sending…' : 'Submit anyway'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="boe-btn boe-btn-primary"
+              onClick={() => { void submit() }}
+              disabled={busy}
+              style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
+            >
+              {busy ? (editing ? 'Saving…' : 'Sending…') : editing ? 'Save Changes' : original ? 'Reapply for Approval' : 'Submit for Approval'}
+            </button>
+          )}
         </div>
       }
     >
@@ -695,6 +794,8 @@ function CustomReviewFormSheet({
             {APPROVED_EDIT_NOTICE}
           </p>
         )}
+
+        {warning && <DuplicateWarning view={warning.view} />}
 
         {error && (
           <p role="alert" style={{ fontSize: '12.5px', color: colors.red, margin: 0 }}>{error}</p>
@@ -753,6 +854,36 @@ function CustomReviewFormSheet({
             onChange={e => { setPublishedOn(e.target.value); setError(null) }}
             style={inputStyle}
           />
+        </label>
+
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Reviewer name <span style={{ fontWeight: 400, color: colors.muted }}>(optional)</span></span>
+          <input
+            type="text"
+            value={reviewerName}
+            maxLength={MAX_REVIEWER_NAME_LENGTH}
+            disabled={busy}
+            autoComplete="off"
+            placeholder="The customer's name as shown on the review"
+            onChange={e => { setReviewerName(e.target.value); setWarning(null); setError(null) }}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Review text <span style={{ fontWeight: 400, color: colors.muted }}>(optional)</span></span>
+          <textarea
+            value={reviewText}
+            rows={4}
+            maxLength={MAX_REVIEW_TEXT_LENGTH}
+            disabled={busy}
+            placeholder="Paste the review as it was published"
+            onChange={e => { setReviewText(e.target.value); setWarning(null); setError(null) }}
+            style={{ ...inputStyle, minHeight: '96px', resize: 'vertical' }}
+          />
+          <span style={hintStyle}>
+            Helps us notice when the same review is submitted twice. It is checked against earlier reviews; you never see anyone else&rsquo;s.
+          </span>
         </label>
 
         <div style={fieldStyle}>

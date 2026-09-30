@@ -30,6 +30,8 @@ export type CustomSubmissionStatus = (typeof CUSTOM_SUBMISSION_STATUSES)[number]
 export const MAX_CUSTOM_REMARK_LENGTH = 300
 export const MAX_REJECTION_REASON_LENGTH = 300
 export const MAX_CANDIDATE_NOTE_LENGTH = 500
+export const MAX_REVIEWER_NAME_LENGTH = 80
+export const MAX_REVIEW_TEXT_LENGTH = 2000
 
 /** The review types, in this workflow's words. The stored values are the Review Workflow's own. */
 export const CUSTOM_REVIEW_TYPE_LABELS: Record<ReviewType, string> = {
@@ -79,10 +81,13 @@ export type CustomReviewSubmission = {
   deleted_by: string | null
   /** The ledger reversal, when a paid review was deleted or its edit was rejected. */
   reward_reversal_transaction_id: string | null
+  /** The customer or reviewer name and the review text, as the employee typed them. Optional. */
+  reviewer_name: string | null
+  review_text: string | null
 }
 
 export const CUSTOM_SUBMISSION_COLUMNS =
-  'id, submission_ref, submitted_by, review_type, published_on, remark, proof_storage_path, proof_file_name, status, submitted_at, approved_by, approved_at, credits_awarded, rejected_by, rejected_at, rejection_reason, candidate_note, reapplication_count, last_reapplied_at, edit_count, last_edited_at, reward_held, deleted_at, deleted_by, reward_reversal_transaction_id'
+  'id, submission_ref, submitted_by, review_type, published_on, remark, proof_storage_path, proof_file_name, status, submitted_at, approved_by, approved_at, credits_awarded, rejected_by, rejected_at, rejection_reason, candidate_note, reapplication_count, last_reapplied_at, edit_count, last_edited_at, reward_held, deleted_at, deleted_by, reward_reversal_transaction_id, reviewer_name, review_text'
 
 export function isCustomSubmissionStatus(value: unknown): value is CustomSubmissionStatus {
   return typeof value === 'string' && (CUSTOM_SUBMISSION_STATUSES as readonly string[]).includes(value)
@@ -90,7 +95,9 @@ export function isCustomSubmissionStatus(value: unknown): value is CustomSubmiss
 
 // ─── The history ──────────────────────────────────────────────────────────────
 
-export const CUSTOM_SUBMISSION_EVENT_TYPES = ['submitted', 'rejected', 'reapplied', 'approved', 'edited', 'deleted'] as const
+export const CUSTOM_SUBMISSION_EVENT_TYPES = [
+  'submitted', 'rejected', 'reapplied', 'approved', 'edited', 'deleted', 'duplicate_flagged', 'duplicate_decided',
+] as const
 export type CustomSubmissionEventType = (typeof CUSTOM_SUBMISSION_EVENT_TYPES)[number]
 
 /** One row of public.customer_review_custom_submission_events. Append-only. */
@@ -117,6 +124,8 @@ export const CUSTOM_SUBMISSION_EVENT_LABELS: Record<CustomSubmissionEventType, s
   approved:  'Approved',
   edited:    'Edited',
   deleted:   'Deleted by the employee',
+  duplicate_flagged: 'Possible duplicate flagged',
+  duplicate_decided: 'Duplicate decision recorded',
 }
 
 // ─── The submission form ──────────────────────────────────────────────────────
@@ -200,6 +209,25 @@ export function parseCustomReapplicationInput(input: CustomReapplicationInput, t
 
   if (issues.length > 0 || !base.ok) return { ok: false, issues }
   return { ok: true, value: { ...base.value, note: noteRaw === '' ? null : noteRaw } }
+}
+
+// ─── The optional name and text the duplicate check compares ──────────────────
+
+export type ParsedMatchFields =
+  | { ok: true; value: { reviewerName: string | null; reviewText: string | null } }
+  | { ok: false; message: string }
+
+/** Trim, empty → null, and the length limits the database restates. */
+export function parseMatchFields(input: { reviewerName: unknown; reviewText: unknown }): ParsedMatchFields {
+  const name = typeof input.reviewerName === 'string' ? input.reviewerName.trim() : ''
+  const text = typeof input.reviewText === 'string' ? input.reviewText.trim() : ''
+  if (name.length > MAX_REVIEWER_NAME_LENGTH) {
+    return { ok: false, message: `Keep the reviewer name under ${MAX_REVIEWER_NAME_LENGTH} characters.` }
+  }
+  if (text.length > MAX_REVIEW_TEXT_LENGTH) {
+    return { ok: false, message: `Keep the review text under ${MAX_REVIEW_TEXT_LENGTH} characters.` }
+  }
+  return { ok: true, value: { reviewerName: name === '' ? null : name, reviewText: text === '' ? null : text } }
 }
 
 /** Only the submitter, only a rejected review. The database asks again. */
@@ -286,6 +314,7 @@ export function customSubmissionFailureStatus(message: string | null | undefined
     ['CUSTOMER_REVIEW_CUSTOM_DECIDED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_NOT_EDITABLE', 409],
     ['CUSTOMER_REVIEW_CUSTOM_STALE', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE_WARNING', 409],
     ['CUSTOMER_REVIEW_CUSTOM_MONTH_CLOSED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_INVALID', 422],
     ['CUSTOMER_REVIEW_CUSTOM_MONTHLY_LIMIT', 422],

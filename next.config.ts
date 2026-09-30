@@ -54,6 +54,8 @@ const nextConfig: NextConfig = {
     // sharp. Without this it died in production with the same ERR_DLOPEN_FAILED.
     '/api/orders/\\[id\\]/pi-versions/\\[versionId\\]/pdf': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
     '/api/showroom/quotation/\\[id\\]': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
+    // Custom review proofs are re-encoded and hashed (duplicate detection) with sharp.
+    '/api/customer-reviews/custom-submissions': ['./node_modules/@img/sharp-libvips-linux-x64/**/*'],
   },
 
   images: {

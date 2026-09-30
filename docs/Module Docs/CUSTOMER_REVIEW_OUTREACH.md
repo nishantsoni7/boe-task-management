@@ -563,6 +563,121 @@ approved; Delete asks first and says if a credit will be taken back.
 **Custom Submissions:** an *Edited after approval* badge, **Approve again** (no amount
 field — nothing more is paid), and the **Deleted** tab.
 
+## 24. Possible-duplicate detection (`20270224000000`, in the repository — NOT applied)
+
+Every new submission, edit and reapplication is checked against **every earlier custom
+review of every employee — deleted ones included** — so submitting the same review twice, or
+deleting one and reposting it, is seen. A check produces *possible* duplicates with reasons; it
+never rejects a review and never touches a reward.
+
+| | |
+| --- | --- |
+| Pure rules | `src/lib/customerReviews/duplicateDetection.ts` (normalization, thresholds, matching, what an employee may see) |
+| Server | `duplicateCheck.server.ts` (fetch candidates, compare, token), `imageHash.ts` (difference hash, sharp) |
+| Database | columns `reviewer_name`, `review_text`, `reviewer_name_norm`, `review_text_norm`, `proof_phash`; tables `customer_review_custom_duplicate_checks` and `…_flags`; view `…_duplicate_summary`; `decide_customer_review_custom_duplicate()`; `customer_review_custom_duplicate_candidates()` |
+| Tests | `duplicateDetection.test.ts`, `customReviewDuplicates.test.ts`, `supabase/tests/custom_review_duplicate_assertions.sql` |
+| Backfill | `scripts/backfill-review-image-hashes.ts` (dry run by default; `--apply` writes null hashes only) |
+
+### 24.1 What is compared
+
+The submit and edit form gained two **optional** fields: **Reviewer name** and **Review text**
+(the words as published). Custom reviews had neither before, so a name or text signal exists only
+where the employee filled them in.
+
+| Signal | How | Strength on its own |
+| --- | --- | --- |
+| Reviewer name | normalized (case, spacing, punctuation, word order) and equal as a whole name | **weak**, always |
+| Review text | normalized; identical, or character-trigram (Dice) similarity | moderate or strong |
+| Image, identical | SHA-256 of the stored (re-encoded) bytes | strong |
+| Image, similar | 4096-bit difference hash (65 × 64, lightly blurred); differing bits as a share of the marked bits | moderate or strong |
+
+A filename or upload URL is never compared.
+
+### 24.2 Thresholds (all in `DUPLICATE_THRESHOLDS`)
+
+| Setting | Value | Meaning |
+| --- | ---: | --- |
+| `NAME_MIN_CHARS` | 4 | a shorter normalized name is not compared |
+| `TEXT_MIN_CHARS` / `TEXT_MIN_TOKENS` | 30 / 6 | shorter text carries **no** text signal, identical or not — "Great service, thank you" is written by thousands of customers |
+| `TEXT_EXACT_STRONG_CHARS` | 60 | an exact match at or above this is strong; between 30 and 60 it is moderate |
+| `TEXT_NEAR_MIN` | 0.8 | trigram similarity from which text is "similar" (moderate) |
+| `TEXT_NEAR_STRONG` | 0.92 | similarity from which it is strong |
+| `IMAGE_STRONG_MAX_RATIO` | 0.12 | differing bits ÷ marked bits: at most this is a strong image match |
+| `IMAGE_SIMILAR_MAX_RATIO` | 0.3 | differing bits ÷ marked bits: at most this is "similar" (moderate) |
+| `IMAGE_MIN_MARKED_BITS` | 60 | fewer marked bits between two hashes and they are not compared (two nearly blank pages) |
+
+**Why a share of the marked bits, why 65 × 64 with a blur, and why 0.3.** Measured on synthetic review
+screenshots (same header, stars and margins, only the words changing — the hard case). A coarse 17 × 16 or
+33 × 32 hash sees layout, not words, and a screenshot is mostly white, so raw bit counts made a different
+review in the same template as close as one screenshot saved at two JPEG qualities. Counting differing bits
+as a share of the bits that are marked in either image, at 65 × 64 with a light blur: JPEG (quality 25–50),
+WebP, resizing (300–1200 px) and blur of ONE screenshot differ in 13–21% of the marked bits; different reviews
+in the same template in 43–61%. 0.3 sits between the two. Two pages with almost no marks (a nearly blank
+screenshot) are not compared, and a near-blank template with only a few words changed can still read as
+similar — one more reason a match is a *possible* duplicate for a person to judge. Combination: the strongest single signal wins; a name added to
+a moderate signal, or text and image both moderate, makes it strong.
+
+A match whose only reason is the name is **weak**: it is recorded and shown, but not counted as awaiting
+a decision.
+
+### 24.3 Limitations
+
+* Text similarity is lexical: a translation or genuine paraphrase is not seen; typos, case and punctuation are.
+* The image hash survives re-encoding, resizing and light compression — not a crop to another region,
+  rotation, mirroring, or a large overlay. An identical file is always caught by the SHA-256.
+* Names are compared whole: "A. Sharma" and "Amit Sharma" differ.
+* Two screenshots of the same website look alike; that is why the image threshold is small and the result
+  is always worded **possible**.
+* Reviews submitted **before** this feature have no name, text or image hash. Until the backfill script
+  has run only an identical screenshot can match them, and their detail says *no duplicate check on record*.
+* Candidates are read server-side (newest 5,000 reviews). Text and image scoring happens in the route, not
+  in SQL. At BOE's volume this is milliseconds; a much larger table would need a prefilter.
+* No paid or AI service is used and none should be added without approval.
+
+### 24.4 What the employee sees
+
+On **Submit**, **Save** and **Reapply** the server checks first. If something matches — or the check could
+not run — nothing is saved and the form shows, inline (no notification): an amber icon, **Possible
+duplicate review** (or **Duplicate check unavailable**), the reasons — *Same reviewer name*, *Similar review
+text*, *Similar image* — and three choices: **Edit review**, **Cancel**, **Submit anyway**.
+
+An unavailable check is never shown or stored as clean. **Submit anyway** resends the request with a token
+bound to the exact matches that were shown; if the matches change in between, the employee is warned again.
+The database refuses a flagged or unavailable result the employee did not acknowledge, and stores that they
+proceeded.
+
+**What the employee is told is cut down** (`employeeView`): the reason categories, and — only for their
+**own** earlier review — its reference. Never another employee's review id, reference, name, text, image,
+date, or whether a deleted one exists. The evidence tables have one SELECT policy, for `verify` holders.
+
+### 24.5 What the reviewer sees and does
+
+**Custom Submissions:** a badge in the list and the detail — *Possible duplicate review · awaiting decision*,
+*Marked duplicate*, *Duplicate check unavailable*, *Checked · different review*, *Weak name match*. **Compare &
+decide** opens both reviews side by side (screenshots, submitter, dates, status, name, text), the evidence in
+words, whether the employee saw the warning and proceeded, and two decisions: **Duplicate** and **Different
+review**, with an optional note. Every check, flag and decision is kept in the review's **History**.
+
+* A decision is a database function: verifier only, **never on your own review**, only on the review's
+  **current** check. It changes no status and no credit.
+* **A changed review is checked again.** Each check carries a content fingerprint (screenshot, normalized name,
+  normalized text). Editing the content produces new, undecided flags; an earlier *Different review* stays as
+  history and does not clear the new ones. Editing only the remark or date re-raises nothing.
+* A **deleted** review stays comparison evidence: reposting it is flagged against the deleted record.
+
+### 24.6 Unresolved: what a confirmed duplicate should do
+
+A warning, and a *Duplicate* decision, deliberately **do not** reject a review or remove a reward. Approval
+and reward eligibility follow the existing rules (§4, §10, §23). A verifier who has marked a review a duplicate
+is shown a note when approving; approving remains their decision. **Decision needed from the owner:** whether a
+review marked *Duplicate* should be blocked from approval, and whether an approved review later marked
+*Duplicate* should have its credit reversed. Neither is changed here.
+
+### 24.7 Release note
+
+Apply `20270223000000` then `20270224000000` **before** the application code (the routes call the new
+functions). After the code is live, run `scripts/backfill-review-image-hashes.ts` once (dry run first).
+
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
 Kept as a record of what exists and is paused. See the migrations and tests for

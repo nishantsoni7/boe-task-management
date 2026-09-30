@@ -1058,6 +1058,7 @@ describe('the applied migrations are frozen', () => {
       '20270221000000_orders_dashboard_factory_focus.sql',
       '20270222000000_attendance_request_live_uniqueness.sql',
       '20270223000000_customer_review_custom_edit_delete.sql',
+      '20270224000000_customer_review_custom_duplicate_detection.sql',
     ])
   })
 
@@ -1367,6 +1368,7 @@ describe('the applied migrations are frozen', () => {
       '20270221000000_orders_dashboard_factory_focus.sql',
       '20270222000000_attendance_request_live_uniqueness.sql',
       '20270223000000_customer_review_custom_edit_delete.sql',
+      '20270224000000_customer_review_custom_duplicate_detection.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

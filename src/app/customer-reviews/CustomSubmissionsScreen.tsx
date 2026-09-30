@@ -14,6 +14,12 @@ import {
   CustomSubmissionProof,
   CustomSubmissionTrail,
 } from '@/components/customerReviews/CustomSubmissionPieces'
+import {
+  DuplicateBadge,
+  DuplicatePanel,
+  loadDuplicateSummaries,
+  type DuplicateSummary,
+} from '@/components/customerReviews/DuplicateReview'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { CUSTOM_REVIEW_PENDING_COUNT_KEY } from '@/hooks/queries/useCustomReviewPendingCount'
 import { istDateOf } from '@/lib/istDate'
@@ -73,6 +79,8 @@ export function CustomSubmissionsScreen() {
   const [names, setNames] = useState<Map<string, string>>(new Map())
   const [pendingCount, setPendingCount] = useState<number | null>(null)
   const [rewards, setRewards] = useState<Rewards | null>(null)
+  // Possible-duplicate state for the rows on screen. A failed read leaves it null: no badge, never a "clear".
+  const [duplicates, setDuplicates] = useState<Map<string, DuplicateSummary> | null>(null)
   const [opened, setOpened] = useState<CustomReviewSubmission | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // A response for a tab somebody already left must not overwrite the one they are on.
@@ -129,6 +137,8 @@ export function CustomSubmissionsScreen() {
     setLoadedStatus(which)
     setPendingCount(pending.error ? null : pending.count ?? null)
     await rememberNames(found)
+    const summaries = await loadDuplicateSummaries(supabase, found.map(r => r.id))
+    if (ticket === loadTicket.current) setDuplicates(summaries)
   }, [supabase, rememberNames])
 
   useEffect(() => {
@@ -262,6 +272,7 @@ export function CustomSubmissionsScreen() {
                       {CUSTOM_REVIEW_TYPE_LABELS[row.review_type]}
                     </span>
                     <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
+                    <DuplicateBadge summary={duplicates?.get(row.id)} />
                     {row.reward_held && !row.deleted_at && (
                       <span style={{
                         fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
@@ -322,6 +333,8 @@ export function CustomSubmissionsScreen() {
           isAdmin={profile?.role === 'admin'}
           names={names}
           rewards={rewards}
+          duplicate={duplicates?.get(opened.id)}
+          onDuplicateChanged={() => { void load(status) }}
           onClose={() => setOpened(null)}
           onDecided={async message => {
             setOpened(null)
@@ -337,7 +350,7 @@ export function CustomSubmissionsScreen() {
 }
 
 function DecisionSheet({
-  row, supabase, viewerId, isAdmin, names, rewards, onClose, onDecided,
+  row, supabase, viewerId, isAdmin, names, rewards, duplicate, onDuplicateChanged, onClose, onDecided,
 }: {
   row: CustomReviewSubmission
   supabase: SupabaseClient
@@ -346,6 +359,9 @@ function DecisionSheet({
   isAdmin: boolean
   names: Map<string, string>
   rewards: Rewards | null
+  /** The list's possible-duplicate summary for this review, when it could be read. */
+  duplicate: DuplicateSummary | undefined
+  onDuplicateChanged: () => void
   onClose: () => void
   onDecided: (message: string) => Promise<void>
 }) {
@@ -546,6 +562,23 @@ function DecisionSheet({
         />
 
         <CustomSubmissionFacts row={row} names={names} />
+
+        <DuplicatePanel
+          supabase={supabase}
+          submission={row}
+          viewerId={viewerId}
+          names={names}
+          onChanged={onDuplicateChanged}
+        />
+
+        {pending && !own && duplicate && duplicate.decided_duplicate > 0 && (
+          <p role="note" style={{
+            margin: 0, padding: '9px 12px', borderRadius: '9px', fontSize: '12.5px', lineHeight: 1.5,
+            border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+          }}>
+            A reviewer marked this review a duplicate. Approving it is still your decision; nothing was rejected automatically.
+          </p>
+        )}
 
         <CustomSubmissionTrail supabase={supabase} submissionId={row.id} viewerId={viewerId} names={names} />
 
