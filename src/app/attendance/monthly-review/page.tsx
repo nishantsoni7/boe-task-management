@@ -116,7 +116,12 @@ function MonthlyReviewScreen() {
     if (v === 'decisions') qs.set('view', 'decisions')
     qs.set('year', String(next.year ?? year))
     qs.set('month', String(next.month ?? month))
-    router.replace(`/attendance/monthly-review?${qs}`, { scroll: false })
+    // Changing the VIEW is a step in history (Back returns to the other view);
+    // changing the month just refines the page you are on, so it does not stack
+    // an entry per month picked.
+    const url = `/attendance/monthly-review?${qs}`
+    if (next.view) router.push(url, { scroll: false })
+    else router.replace(url, { scroll: false })
   }
 
   const handleSignOut = async () => {

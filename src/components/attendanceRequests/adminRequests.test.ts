@@ -94,3 +94,23 @@ describe('the requests page and its old deep link', () => {
     assert.match(page, /<PayrollAttendanceReview getToken=\{getToken\} year=\{year\} month=\{month\} \/>/)
   })
 })
+
+describe('review fixes found in verification', () => {
+  test('Reject with no reason says so next to the field instead of disabling the button', () => {
+    assert.match(drawer, /setNoteMissing\(true\)/)
+    assert.match(drawer, /id="review-note-error"/)
+    assert.equal(/disabled=\{saving \|\| \(noteRequired/.test(drawer), false)
+  })
+
+  test('changing the Monthly Review view is a history step; changing the month is not', () => {
+    const page = read('src/app/attendance/monthly-review/page.tsx')
+    assert.match(page, /if \(next\.view\) router\.push\(url, \{ scroll: false \}\)/)
+    assert.match(page, /else router\.replace\(url, \{ scroll: false \}\)/)
+  })
+
+  test('the phone ledger and salary report fit the screen (globals rules exist)', () => {
+    const css = read('src/app/globals.css')
+    assert.match(css, /\.payroll-ledger,\s*\n\s*\.salary-report-table \{ min-width: 0 !important; \}/)
+    assert.match(read('src/app/payroll/results/[periodId]/salary-report/page.tsx'), /className="salary-report-table"/)
+  })
+})

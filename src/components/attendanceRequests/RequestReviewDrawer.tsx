@@ -67,6 +67,7 @@ export function RequestReviewDrawer({
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [noteMissing, setNoteMissing] = useState(false)
   const inFlight = useRef(false)
 
   useScrollLock()
@@ -110,7 +111,12 @@ export function RequestReviewDrawer({
 
   const confirm = async () => {
     if (!mode || inFlight.current) return
-    if (noteRequired && !note.trim()) { setError('Add a reason — it is kept in the audit history.'); return }
+    if (noteRequired && !note.trim()) {
+      // Say so next to the field, and put the cursor there.
+      setNoteMissing(true)
+      document.getElementById('review-note')?.focus()
+      return
+    }
     inFlight.current = true
     setSaving(true)
     setError(null)
@@ -209,8 +215,15 @@ export function RequestReviewDrawer({
               </label>
               <textarea
                 id="review-note" className={styles.input} rows={4} maxLength={500} value={note} autoFocus
-                onChange={e => setNote(e.target.value)} style={{ marginTop: 6 }}
+                aria-invalid={noteMissing || undefined}
+                aria-describedby={noteMissing ? 'review-note-error' : undefined}
+                onChange={e => { setNote(e.target.value); setNoteMissing(false) }} style={{ marginTop: 6 }}
               />
+              {noteMissing && (
+                <div id="review-note-error" role="alert" style={{ color: '#B91C1C', fontSize: 12.5, marginTop: 6 }}>
+                  Add a reason — it is kept in the audit history.
+                </div>
+              )}
               <p className={styles.footnote} style={{ margin: '8px 0 0' }}>
                 This records permission only. Whether any missed time is paid is decided in the
                 payroll review, and pay changes only through an attendance correction.
@@ -235,13 +248,13 @@ export function RequestReviewDrawer({
             <>
               <button
                 type="button" className="boe-btn boe-btn-ghost" style={{ minHeight: 44, padding: '0 18px', fontSize: 14 }}
-                disabled={saving} onClick={() => { setMode(null); setError(null) }}
+                disabled={saving} onClick={() => { setMode(null); setError(null); setNoteMissing(false) }}
               >
                 Back
               </button>
               <button
                 type="button" className="boe-btn boe-btn-primary" style={{ minHeight: 44, padding: '0 20px', fontSize: 14 }}
-                disabled={saving || (noteRequired && !note.trim())}
+                disabled={saving}
                 onClick={() => void confirm()}
               >
                 {saving ? 'Saving…' : actionLabel}
