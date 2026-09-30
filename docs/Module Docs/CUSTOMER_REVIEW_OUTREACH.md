@@ -678,6 +678,84 @@ review marked *Duplicate* should be blocked from approval, and whether an approv
 Apply `20270223000000` then `20270224000000` **before** the application code (the routes call the new
 functions). After the code is live, run `scripts/backfill-review-image-hashes.ts` once (dry run first).
 
+## 25. Reports and the shared leaderboard (`20270225000000`, in the repository — NOT applied)
+
+Read-only: no table is changed and no credit moves.
+
+| | |
+| --- | --- |
+| Admin dashboard | **Reports** — `/customer-reviews/reports` (`verify` holders), `ReportsScreen.tsx`, `ReviewCharts.tsx` |
+| Leaderboard | `/my-credits/leaderboard` — **every signed-in employee** (no Review permission needed), `ReviewLeaderboardScreen.tsx` |
+| Dashboard card | `ReviewLeaderCard.tsx`, one card on `/dashboard` linking to the leaderboard |
+| Database | `customer_review_report()`, `customer_review_report_list()`, `customer_review_leaderboard()`, `customer_review_leader_card()`, `customer_review_points_per_credit()`; internal `customer_review_report_rows()`, `customer_review_month_standings()` |
+| Pure code | `src/lib/customerReviews/reviewReport.ts` |
+| Tests | `reviewReport.test.ts`; `supabase/tests/custom_review_reporting_assertions.sql` (executed twice on PostgreSQL) |
+
+### 25.1 The definitions — one place, every screen
+
+* **Month** — the Asia/Kolkata calendar month of `submitted_at`, the **first** submission: the same date the credit is
+  attributed to. An edit or reapplication never moves a review to a later month. Daily bars use the same IST date.
+* **Submitted** — every review of the month that is **not deleted** (pending, approved, rejected). Deleted reviews are out
+  of every total and stay in the admin history (§23).
+* **Text / Image** — the stored `review_type`. A review is **exactly one**, so text + image = submitted. **Counting rule
+  for a review that "has both":** there is no such review — the form asks for one type, every custom review carries a
+  screenshot, and that does not make it an Image Review. The type is the employee's stated review type, the one that decides
+  the reward and the monthly image requirement (§5, §12). No change to that rule was needed.
+* **Category** — custom reviews carry no category beyond their type (the generated-review "test categories" belong to a
+  different workflow). The **By type and status** table is the category breakdown, and the Type filter is the category
+  filter. **Decision needed from the owner** if a separate category (project, city, source) is wanted: it would be a new field.
+* **Reward-eligible** — a submitted review whose credit is **live**: a posted credit that nothing has reversed (the ledger
+  has no reversal row for it — an employee's delete, a rejected edit, or an administrator's reversal), in a review month that
+  has not lapsed. An edited approved review waiting for re-approval still holds its posted credit and counts (§23.3).
+  Eligible ≤ submitted always; both are shown wherever they differ.
+* **Credits** — the credits on the eligible reviews (the same numbers the ledger holds). **No rate was invented**: Text
+  and Image rewards, caps and approval rules are the existing ones (§14).
+* **Points** — review-earned points = **credits × 10** (`customer_review_points_per_credit()`; `POINTS_PER_CREDIT`
+  pinned to it by a test). Points are per month and **start again each month**: nothing is carried over. They are a view of
+  review credits — not the Performance-module score, which nothing here reads or changes. Credits and points are always
+  shown separately.
+  *The brief said "Credits = review-earned points × 10" in one place and "Points = Credits × 10" in the reply that chose the
+  rule; the second was followed. If the first was meant, change the constant to 0.1 (or 1/10) in one place.*
+* **Possible duplicates awaiting a decision** — reviews of the month whose latest check has an undecided strong or moderate
+  flag (§24).
+
+### 25.2 The admin dashboard
+
+Default: the **current month**; the previous eleven are selectable. Filters: month, employee, type, status (the existing
+statuses). Everything comes from **one server-side aggregate**; no review text or screenshot is downloaded.
+
+* **Cards** — Total submitted, Text, Image, Possible duplicates awaiting a decision; a second panel with Reward-eligible
+  ("11 of 15 submitted"), Review credits and Review points.
+* **Daily** stacked bars (text vs image) for every day of the month; **Monthly history** for the last twelve months (with
+  eligible counts under it). Both have a table alternative for accessibility.
+* **By type and status** — pending / approved / rejected / submitted / eligible / credits.
+* **Contributors** — the highest and lowest by submitted reviews, **all of those tied on the count**, and the employee table
+  (submitted, text, image, eligible, credits, points) including **every active employee who may use the workflow, with zeros**,
+  so the lowest activity is visible.
+* **Clicking** a card or an employee opens the matching list — one **page of 25** (references, status, type, dates,
+  credits, points; never text or proof), with a link to the review in Custom Submissions.
+* The page checks that its own parts **reconcile** (employee rows, daily bars, breakdown, history and cards) and shows an
+  error instead of a dashboard whose parts disagree. The same reconciliation is asserted in SQL.
+
+### 25.3 The leaderboard
+
+Visible to **every signed-in employee** at `/my-credits/leaderboard` (linked from BOE Credits and from a card on the
+dashboard). Ranked by **reward-eligible review count** for the month; **equal counts share a rank** (1, 2, 2, 4) and are
+marked *tied*; display order (count, then name) is stable and does not hide a tie. Columns: rank, employee, reviews, points,
+credits. **Your own row is highlighted and always shown**, even outside the top ten.
+
+**"You need X more reviews to take first place"** — X = leader count − your count + 1, while you are behind. A sole leader
+sees *You're leading*; joint leaders *You're joint first with N others*; while nobody has an eligible review the
+target is 1. It is labelled as **additional eligible reviews — a target, not a guaranteed award.**
+
+### 25.4 Performance and safety
+
+* Aggregates run in the database (`generate_series` days and months, one row set per call); the list is paged (≤ 50).
+* The report functions check `customer_review_requests.verify` inside the function; the leaderboard needs only an active
+  account and returns names and counts, never review content. The two internal functions are callable by nobody.
+* Known limit: the report scans the month's reviews and the twelve-month history in one call; at BOE's volume that is
+  milliseconds, and `customer_review_custom_submissions (submitted_at)` is indexed.
+
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
 Kept as a record of what exists and is paused. See the migrations and tests for

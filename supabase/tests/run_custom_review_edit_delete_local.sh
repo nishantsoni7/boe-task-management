@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# TEST-ONLY RUNNER — the custom-review migrations through 20270224000000
-# (employee edit / delete, duplicate detection), on an isolated bare PostgreSQL container
+# TEST-ONLY RUNNER — the custom-review migrations through 20270225000000
+# (employee edit / delete, duplicate detection, reporting and the leaderboard), on an isolated bare PostgreSQL container
 # ═════════════════════════════════════════════════════════════════════════════
 #
 # The sibling of run_boe_credits_phase_1d_local.sh: the same bare target, the
@@ -56,12 +56,14 @@ PENDING=(
   "20261207000000_customer_review_reapplied_event_attempt_number.sql"
   "20270223000000_customer_review_custom_edit_delete.sql"
   "20270224000000_customer_review_custom_duplicate_detection.sql"
+  "20270225000000_customer_review_reporting_and_leaderboard.sql"
 )
 ASSERTION_FILES=(
   "$REPO/supabase/tests/custom_review_submissions_assertions.sql"
   "$REPO/supabase/tests/custom_review_phase_assertions.sql"
   "$REPO/supabase/tests/custom_review_edit_delete_assertions.sql"
   "$REPO/supabase/tests/custom_review_duplicate_assertions.sql"
+  "$REPO/supabase/tests/custom_review_reporting_assertions.sql"
 )
 
 # shellcheck source=supabase/tests/lib/disposable_stack_guard.sh

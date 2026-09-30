@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, CalendarCheck, ChevronRight, Coins, MessageSquareHeart, Wallet } from 'lucide-react'
+import { BookOpen, CalendarCheck, ChevronRight, Coins, MessageSquareHeart, Trophy, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -127,9 +127,14 @@ export default function MyCreditsPage() {
       subtitle="Earned from verified review work. Use them on your payslip."
       onSignOut={handleSignOut}
       actions={
-        <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <BookOpen size={14} strokeWidth={1.9} /> How credits work
-        </Link>
+        <>
+          <Link href="/my-credits/leaderboard" className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Trophy size={14} strokeWidth={1.9} /> Review leaderboard
+          </Link>
+          <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <BookOpen size={14} strokeWidth={1.9} /> How credits work
+          </Link>
+        </>
       }
     >
       <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 16 }}>

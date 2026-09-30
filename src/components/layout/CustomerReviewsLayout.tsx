@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { BadgeCheck, BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, Sparkles } from 'lucide-react'
+import { BadgeCheck, BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, PieChart, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -17,7 +17,7 @@ import { useCustomReviewPendingCount } from '@/hooks/queries/useCustomReviewPend
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// SIX DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
+// SEVEN DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
 //
 //   Overview       what needs attention right now. The verifier's landing page.
 //   Reviews        the operational queue. The four workflow states live inside
@@ -29,6 +29,8 @@ import { useCustomReviewPendingCount } from '@/hooks/queries/useCustomReviewPend
 //   Batches        generate → review → approve → assign, in one workspace.
 //   Image Library  the project image groups an image review draws from.
 //   Progress       assigned / posted / verified / remaining, per employee.
+//   Reports        custom reviews submitted by month, type and employee; the
+//                  monthly text / image split, eligible totals, credits and points.
 //
 //   My Reviews     the candidate's single screen, and their only entry. During
 //                  the Custom Review phase it is the Custom Review workspace.
@@ -117,6 +119,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Progress',
     path: '/customer-reviews/progress',
     icon: <BarChart3 size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
+  {
+    label: 'Reports',
+    path: '/customer-reviews/reports',
+    icon: <PieChart size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
 ]

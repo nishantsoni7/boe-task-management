@@ -549,6 +549,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270222000000_attendance_request_live_uniqueness.sql',
       '20270223000000_customer_review_custom_edit_delete.sql',
       '20270224000000_customer_review_custom_duplicate_detection.sql',
+      '20270225000000_customer_review_reporting_and_leaderboard.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

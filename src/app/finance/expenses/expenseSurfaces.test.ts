@@ -714,7 +714,7 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql') continue
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
-      if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_custom_/.test(f)) continue
+      if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2441,9 +2441,19 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/api/boe-credits/review-months/route.ts',
     'src/app/api/customer-reviews/custom-submissions/route.ts',
     'src/app/customer-reviews/CustomSubmissionsScreen.tsx',
+    'src/app/customer-reviews/ReportsScreen.tsx',
+    'src/app/customer-reviews/reports.module.css',
+    'src/app/customer-reviews/reports/page.tsx',
+    'src/app/dashboard/page.tsx',
+    'src/app/my-credits/leaderboard/page.tsx',
+    'src/app/my-credits/page.tsx',
     'src/components/customerReviews/CustomReviewSubmissions.tsx',
     'src/components/customerReviews/CustomSubmissionPieces.tsx',
     'src/components/customerReviews/DuplicateReview.tsx',
+    'src/components/customerReviews/ReviewCharts.tsx',
+    'src/components/customerReviews/ReviewLeaderCard.tsx',
+    'src/components/customerReviews/ReviewLeaderboardScreen.tsx',
+    'src/components/layout/CustomerReviewsLayout.tsx',
     'src/hooks/queries/useCustomReviewPendingCount.ts',
     'src/lib/announcementsMigration.test.ts',
     'src/lib/boeCredits/reviewReward.test.ts',
@@ -2455,6 +2465,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/customerReviews/duplicateDetection.ts',
     'src/lib/customerReviews/imageHash.ts',
     'src/lib/customerReviews/migration.test.ts',
+    'src/lib/customerReviews/reviewReport.test.ts',
+    'src/lib/customerReviews/reviewReport.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/modules/moduleOrderStorage.test.ts',
     'src/lib/notifications/activityLinkMigration.test.ts',
@@ -2462,13 +2474,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderFinanceTestReset.test.ts',
     'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
     'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/permissions/customerReviewOutreach.test.ts',
     'src/lib/tasks/assignmentWriteAuthority.test.ts',
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
     'supabase/migrations/20270223000000_customer_review_custom_edit_delete.sql',
     'supabase/migrations/20270224000000_customer_review_custom_duplicate_detection.sql',
+    'supabase/migrations/20270225000000_customer_review_reporting_and_leaderboard.sql',
     'supabase/tests/custom_review_duplicate_assertions.sql',
     'supabase/tests/custom_review_edit_delete_assertions.sql',
+    'supabase/tests/custom_review_reporting_assertions.sql',
     'supabase/tests/run_custom_review_edit_delete_local.sh',
     'supabase/tests/run_custom_review_edit_delete_race.sh',
   ])

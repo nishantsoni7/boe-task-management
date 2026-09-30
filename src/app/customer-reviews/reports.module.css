@@ -1,0 +1,44 @@
+/* The Reports page draws its two wide tables as a table on a desktop and as one
+   card per row on a phone, so nothing has to be scrolled sideways to be read.
+   Both are in the markup; the breakpoint decides which is shown. Rules for the
+   phone are at 560px (see globals.css: a max-width block placed after a 768px
+   one makes tablet rules dead). */
+
+.wideOnly { display: block; }
+.narrowOnly { display: none; }
+
+.narrowList { display: none; flex-direction: column; gap: 8px; margin: 0; padding: 0; }
+
+@media (max-width: 560px) {
+  .wideOnly { display: none; }
+  .narrowOnly { display: block; }
+  .narrowList { display: flex; }
+}
+
+.rowCard {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.13);
+  background: #FFFFFF;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.facts > div { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.facts dt { color: #4A5261; }
+.facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
