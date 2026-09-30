@@ -22,16 +22,55 @@ export const PAYROLL_MODAL_OVERLAY_Z = 200
 export const PAYROLL_MODAL_DIALOG_Z  = 201
 
 export function PayrollModal({
-  title, subtitle, onClose, children, width = 520,
+  title, subtitle, onClose, children, width = 520, sheet = false, footer,
 }: {
   title: string
   subtitle?: string
   onClose: () => void
   children: React.ReactNode
   width?: number
+  /**
+   * Phone-first form sheet: a compact centred dialog from 561px up, and a
+   * full-screen sheet on a phone, with a fixed header, ONE scrolling body and
+   * `footer` pinned to the bottom (safe-area and keyboard aware). Everything
+   * else — focus trap, Escape, scroll lock, no backdrop dismissal — is the same
+   * code path as the default dialog. The default (false) is unchanged.
+   */
+  sheet?: boolean
+  footer?: React.ReactNode
 }) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
+
+  // On a phone the on-screen keyboard shrinks the VISUAL viewport but not the
+  // layout viewport, so a fixed full-height sheet would slide its footer under
+  // the keyboard. Track the visual viewport and size the sheet to it; the CSS
+  // falls back to 100dvh where visualViewport is missing.
+  useEffect(() => {
+    if (!sheet) return
+    const el = dialogRef.current
+    const vv = window.visualViewport
+    if (!el || !vv) return
+    const apply = () => {
+      el.style.setProperty('--boe-sheet-h', `${vv.height}px`)
+      el.style.setProperty('--boe-sheet-top', `${vv.offsetTop}px`)
+    }
+    const keepFocusVisible = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) {
+        window.setTimeout(() => t.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250)
+      }
+    }
+    apply()
+    vv.addEventListener('resize', apply)
+    vv.addEventListener('scroll', apply)
+    el.addEventListener('focusin', keepFocusVisible)
+    return () => {
+      vv.removeEventListener('resize', apply)
+      vv.removeEventListener('scroll', apply)
+      el.removeEventListener('focusin', keepFocusVisible)
+    }
+  }, [sheet])
 
   // Scroll locking goes through the shared counter rather than being remembered
   // here. A dialog is not always the only thing covering the page — Payroll
@@ -73,6 +112,38 @@ export function PayrollModal({
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
+
+  if (sheet) {
+    return (
+      <>
+        <div className="boe-sheet-overlay" style={{ zIndex: PAYROLL_MODAL_OVERLAY_Z }} />
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="boe-sheet"
+          style={{ zIndex: PAYROLL_MODAL_DIALOG_Z, ['--boe-sheet-w' as string]: `${width}px` }}
+        >
+          <div className="boe-sheet-head">
+            <div style={{ minWidth: 0 }}>
+              <div id={titleId} className="boe-sheet-title">{title}</div>
+              {subtitle && <div className="boe-sheet-subtitle">{subtitle}</div>}
+            </div>
+            <button
+              type="button"
+              onClick={() => { if (shouldCloseFormModal('close-icon')) onClose() }}
+              aria-label="Close"
+              className="boe-btn boe-btn-ghost boe-sheet-close"
+            >✕</button>
+          </div>
+          <div className="boe-sheet-body">{children}</div>
+          {footer && <div className="boe-sheet-foot">{footer}</div>}
+        </div>
+      </>
+    )
+  }
 
   return (
     <>

@@ -14,11 +14,13 @@ import {
   REQUEST_STATUS_LABEL,
   REASON_LABEL,
   requestSummary,
+  submissionTiming,
+  SUBMISSION_TIMING_LABEL,
   canEmployeeCancel,
   canEmployeeCorrect,
   type AttendanceRequestRow,
 } from '@/lib/attendance/requests'
-import { AttendanceRequestModal, type RequestPayload } from './AttendanceRequestModal'
+import { AttendanceRequestFlow, MY_REQUESTS_ANCHOR } from './AttendanceRequestFlow'
 import { RequestHistoryModal } from './RequestHistoryModal'
 import { formatIstDateTime, statusTone } from './format'
 
@@ -50,21 +52,15 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
     void run()
   }, [load])
 
-  const submit = async (payload: RequestPayload): Promise<string | null> => {
-    const token = await getToken()
-    const res = await fetch('/api/attendance-requests', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token ?? ''}` },
-      body: JSON.stringify(payload),
-    })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) return json.error ?? 'Could not submit your request.'
-    await load()
-    return null
-  }
+  // "View my requests" from another page arrives with #my-requests; the section
+  // only exists once this component has mounted, so scroll to it here.
+  useEffect(() => {
+    if (window.location.hash === `#${MY_REQUESTS_ANCHOR}`)
+      document.getElementById(MY_REQUESTS_ANCHOR)?.scrollIntoView({ block: 'start' })
+  }, [])
 
   const cancel = async (r: Row) => {
-    if (!window.confirm(`Cancel your ${REQUEST_TYPE_LABEL[r.request_type].toLowerCase()} request for ${r.start_date}?`)) return
+    if (!window.confirm(`Withdraw your ${REQUEST_TYPE_LABEL[r.request_type].toLowerCase()} request for ${r.start_date}? It stays in your history as cancelled.`)) return
     setBusyId(r.id)
     const token = await getToken()
     const res = await fetch(`/api/attendance-requests/${r.id}/cancel`, {
@@ -74,7 +70,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
     })
     const json = await res.json().catch(() => ({}))
     setBusyId(null)
-    if (!res.ok) { setError(json.error ?? 'Could not cancel the request.'); return }
+    if (!res.ok) { setError(json.error ?? 'Could not withdraw the request.'); return }
     await load()
   }
 
@@ -82,7 +78,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
   const visible = showAll ? rows : rows.slice(0, COLLAPSED)
 
   return (
-    <section aria-labelledby="my-requests-heading" style={{
+    <section id={MY_REQUESTS_ANCHOR} aria-labelledby="my-requests-heading" style={{
       border: `1px solid ${colors.border}`, borderRadius: 12, background: colors.base,
       padding: 14, marginBottom: 16,
     }}>
@@ -92,7 +88,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
             My requests
           </div>
           <div style={{ fontSize: 12, color: colors.tertiary }}>
-            Late, early, time out, half day or leave
+            Leave, coming late, leaving early or going out
           </div>
         </div>
         <button
@@ -139,7 +135,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                 </div>
                 <div style={{ fontSize: 11.5, color: colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)}
-                  {' · '}{r.informed_before_shift ? 'before shift start' : 'after shift start'}
+                  {' · '}{SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
                   <div style={{ fontSize: 11.5, color: colors.muted }}>
@@ -157,7 +153,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                   )}
                   {canEmployeeCancel(r, now) && (
                     <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
-                      disabled={busyId === r.id} onClick={() => void cancel(r)}>Cancel</button>
+                      disabled={busyId === r.id} onClick={() => void cancel(r)}>Withdraw</button>
                   )}
                   <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
                     onClick={() => setHistoryId(r.id)}>History</button>
@@ -176,10 +172,11 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       )}
 
       {formFor && (
-        <AttendanceRequestModal
+        <AttendanceRequestFlow
           original={formFor === 'new' ? null : formFor}
           onClose={() => setFormFor(null)}
-          onSubmit={submit}
+          onSent={() => { void load() }}
+          getToken={getToken}
         />
       )}
       {historyId && (

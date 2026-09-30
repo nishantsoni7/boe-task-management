@@ -10,7 +10,7 @@
 // Kept free of Supabase and React so the API routes, the screens and the tests
 // agree on what a valid request is without any of them owning the definition.
 
-import { istClockToUtc, istAddDays, istDateRange } from '../istDate'
+import { istClockToUtc, istAddDays, istDateRange, istDateOf } from '../istDate'
 
 export const REQUEST_TYPES = [
   'late_arrival',
@@ -290,6 +290,32 @@ export function informedForCorrection(
   return isInformedBeforeShift(basis, shiftStart)
 }
 
+/**
+ * How a request's timing should be described to a reviewer.
+ *
+ *   before_shift   sent before the shift began on its first date
+ *   after_shift    sent on the day, after the shift had begun
+ *   after_date     sent on a LATER IST date than the request's first date — an
+ *                  after-the-event (retrospective) submission
+ *
+ * Purely descriptive: it records what happened and decides nothing about pay.
+ * Retrospective requests remain allowed within MAX_DAYS_BACK, as before.
+ */
+export type SubmissionTiming = 'before_shift' | 'after_shift' | 'after_date'
+
+export function submissionTiming(
+  r: Pick<AttendanceRequestRow, 'submitted_at' | 'start_date' | 'informed_before_shift'>,
+): SubmissionTiming {
+  if (istDateOf(r.submitted_at) > r.start_date) return 'after_date'
+  return r.informed_before_shift ? 'before_shift' : 'after_shift'
+}
+
+export const SUBMISSION_TIMING_LABEL: Record<SubmissionTiming, string> = {
+  before_shift: 'Sent before shift start',
+  after_shift:  'Sent after shift start',
+  after_date:   'Sent after the date (after the event)',
+}
+
 // ─── Duplicates and overlaps ─────────────────────────────────────────────────
 
 /** Only a live request can conflict with a new one. */
@@ -330,6 +356,48 @@ export function findConflict(
     if (b0 == null || b1 == null || (a0 < b1 && b0 < a1)) return r
   }
   return null
+}
+
+/**
+ * A repeat of a request the employee sent moments ago — a double tap, or a
+ * retry after the answer was lost on a bad connection. It is answered with the
+ * request that already exists rather than refused or saved twice.
+ */
+export const RETRY_WINDOW_MS = 10 * 60 * 1000
+const CLOCK_SKEW_MS = 60 * 1000
+
+const norm = (v: string | null | undefined) => (v == null || v === '' ? null : v)
+
+export function isSameSubmission(
+  candidate: RequestInput,
+  existing: Pick<AttendanceRequestRow,
+    'request_type' | 'start_date' | 'end_date' | 'expected_arrival_time' | 'departure_time' | 'return_time' |
+    'half_session' | 'work_kind' | 'reason_code' | 'reason_note'>,
+): boolean {
+  return candidate.request_type === existing.request_type &&
+    candidate.start_date === existing.start_date &&
+    candidate.end_date === existing.end_date &&
+    norm(toClock(candidate.expected_arrival_time)) === norm(toClock(existing.expected_arrival_time)) &&
+    norm(toClock(candidate.departure_time)) === norm(toClock(existing.departure_time)) &&
+    norm(toClock(candidate.return_time)) === norm(toClock(existing.return_time)) &&
+    norm(candidate.half_session) === norm(existing.half_session) &&
+    norm(candidate.work_kind) === norm(existing.work_kind) &&
+    candidate.reason_code === existing.reason_code &&
+    norm(candidate.reason_note?.trim()) === norm(existing.reason_note?.trim())
+}
+
+/** True when `existing` is a still-pending, identical, just-sent copy of `candidate`. */
+export function isRecentTwin(
+  candidate: RequestInput,
+  existing: Pick<AttendanceRequestRow,
+    'status' | 'submitted_at' | 'request_type' | 'start_date' | 'end_date' | 'expected_arrival_time' |
+    'departure_time' | 'return_time' | 'half_session' | 'work_kind' | 'reason_code' | 'reason_note'>,
+  now: string,
+): boolean {
+  // The stored time is the database's clock at insert; `now` is the handler's,
+  // read a moment earlier. A double tap can therefore look slightly "negative".
+  const age = Date.parse(now) - Date.parse(existing.submitted_at)
+  return existing.status === 'pending' && age >= -CLOCK_SKEW_MS && age <= RETRY_WINDOW_MS && isSameSubmission(candidate, existing)
 }
 
 export function conflictMessage(r: Pick<AttendanceRequestRow, 'request_type' | 'start_date' | 'status'>): string {

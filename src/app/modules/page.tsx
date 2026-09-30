@@ -309,12 +309,18 @@ export default function BoeOsHomePage() {
   )
   const canQuickAddExpense = permsReady && financeCaps.canCreatePaymentRecord
 
+  // Attendance request is for the SIGNED-IN person's own request, so it reads the
+  // real profile, not the display subject, and is off while previewing somebody
+  // else (a request sent then would be the admin's, not the viewed employee's).
+  // It is not module access — see QuickActionGates.
+  const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false
+
   // ONE LIST, BOTH PLACEMENTS. The gate above is the only authorization
   // decision; buildQuickActions turns the flags into the definitions that the
   // desktop sidebar and the small-screen page both render, so a second action
   // is an entry in QuickActions.tsx and no layout work here. An unauthorized
   // viewer gets an empty list and therefore no section in either place.
-  const quickActions = buildQuickActions({ canQuickAddExpense })
+  const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance })
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves

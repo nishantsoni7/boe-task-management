@@ -53,11 +53,11 @@ function AccountPageInner() {
     subjectRole,
     subjectPermissionsByModule.get('finance') ?? [],
   )
+  const [profile,         setProfile]         = useState<UserProfile | null>(null)
   const quickActions = buildQuickActions({
     canQuickAddExpense: permsReady && financeCaps.canCreatePaymentRecord,
+    canRequestAttendance: !!profile && profile.is_active !== false,
   })
-
-  const [profile,         setProfile]         = useState<UserProfile | null>(null)
   const [loading,         setLoading]         = useState(true)
   const [newPassword,     setNewPassword]     = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')

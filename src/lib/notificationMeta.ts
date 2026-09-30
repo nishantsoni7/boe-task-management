@@ -263,9 +263,10 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   }
 
   // ── Attendance requests ────────────────────────────────────────────────────
-  // The admin lands on the queue; the employee on their own attendance page,
-  // where their requests are listed. No id travels in either link: the queue
-  // shows every pending request and the employee's list is already their own.
+  // The admin lands on the queue and the employee on their own requests, each
+  // with the request's id so the page can scroll to and highlight it. The id
+  // grants nothing: the queue is admin-only and the employee's list is pinned
+  // to their own rows by the API, whatever id the link carries.
   if (type === 'attendance_request_submitted' || type === 'attendance_request_decided') {
     const toAdmin = type === 'attendance_request_submitted'
     return {
@@ -273,7 +274,9 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       heading: 'Attendance',
       headingIsActor: false,
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
-      href: toAdmin ? '/attendance/requests' : '/my-attendance',
+      href: toAdmin
+        ? (n.entity_id ? `/attendance/requests?request=${n.entity_id}` : '/attendance/requests')
+        : (n.entity_id ? `/my-attendance?request=${n.entity_id}#my-requests` : '/my-attendance#my-requests'),
       actionLabel: toAdmin ? 'Review request' : 'View request',
     }
   }

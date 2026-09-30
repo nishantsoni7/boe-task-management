@@ -14,6 +14,8 @@ import {
   REQUEST_STATUS_LABEL,
   REASON_LABEL,
   requestSummary,
+  submissionTiming,
+  SUBMISSION_TIMING_LABEL,
   type AttendanceRequestRow,
 } from '@/lib/attendance/requests'
 import { formatMinutesOfDay, istClockOf } from '@/lib/istDate'
@@ -35,8 +37,12 @@ const FILTERS = [
   { key: 'all', label: 'All' },
 ] as const
 
-export function RequestQueue({ getToken }: { getToken: () => Promise<string | null> }) {
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('pending')
+export function RequestQueue({ getToken, focusId = null }: {
+  getToken: () => Promise<string | null>
+  /** A request opened from a notification: listed under All and highlighted. */
+  focusId?: string | null
+}) {
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>(focusId ? 'all' : 'pending')
   const [rows, setRows] = useState<QueueRow[]>([])
   const [punches, setPunches] = useState<Record<string, Punch>>({})
   const [shift, setShift] = useState<Shift | null>(null)
@@ -66,6 +72,12 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
     const run = async () => { await load(filter) }
     void run()
   }, [filter, load])
+
+  // Bring the request a notification pointed at into view once it is listed.
+  useEffect(() => {
+    if (!focusId || loading) return
+    document.getElementById(`request-${focusId}`)?.scrollIntoView({ block: 'center' })
+  }, [focusId, loading, rows])
 
   const decide = async (note: string): Promise<string | null> => {
     if (!deciding) return null
@@ -110,7 +122,10 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
           // Nobody decides their own request; another admin must.
           const own = r.employee_id === viewerId
           return (
-            <li key={r.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 12, background: colors.base }}>
+            <li key={r.id} id={`request-${r.id}`} style={{
+              border: r.id === focusId ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`,
+              borderRadius: 10, padding: r.id === focusId ? 11 : 12, background: colors.base,
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: colors.primary }}>
                   {r.employee?.full_name ?? 'Employee'}
@@ -129,8 +144,8 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
               </div>
               <div style={{ fontSize: 12, color: colors.muted, marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <span>Submitted {formatIstDateTime(r.submitted_at)}</span>
-                <span style={{ color: r.informed_before_shift ? '#059669' : '#B45309', fontWeight: 600 }}>
-                  {r.informed_before_shift ? 'Informed before shift' : 'After shift start'}
+                <span style={{ color: submissionTiming(r) === 'before_shift' ? '#059669' : '#B45309', fontWeight: 600 }}>
+                  {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                 </span>
                 <span>
                   Actual: {p
