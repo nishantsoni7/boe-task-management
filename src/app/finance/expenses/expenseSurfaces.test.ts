@@ -701,6 +701,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/attendance/requests*.test.ts. Not Finance or Orders.
       if (f === 'supabase/migrations/20270215000000_attendance_requests.sql') continue
       if (f === 'supabase/migrations/20270215000100_attendance_request_notification_types.sql') continue
+      // Attendance requests: one LIVE copy of an identical request (20270222000000) —
+      // five partial unique indexes, held by supabase/tests/attendance_request_live_uniqueness.sql.
+      if (f === 'supabase/migrations/20270222000000_attendance_request_live_uniqueness.sql') continue
       // The managed asset catalogue (20270220000000), held by
       // src/lib/permissions/manageAssetCatalogue.test.ts and
       // supabase/tests/asset_catalogue_assertions.sql.
@@ -2275,6 +2278,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/attendance/monthly-review/[userId]/page.tsx',
     'supabase/migrations/20270215000000_attendance_requests.sql',
     'supabase/migrations/20270215000100_attendance_request_notification_types.sql',
+    // Live-uniqueness migration and the migration-inventory pins that name it.
+    'supabase/migrations/20270222000000_attendance_request_live_uniqueness.sql',
+    'supabase/tests/attendance_request_live_uniqueness.sql',
   ])
 
   /**
@@ -2745,7 +2751,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard/.test(f),
+      assert.ok(/attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.

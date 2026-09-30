@@ -63,6 +63,8 @@ export function requestDbError(message: string): { status: number; error: string
     return { status: 409, error: 'A submitted request cannot be edited. Submit a correction instead.' }
   if (message.includes('ATTENDANCE_REQUEST_NOTE_REQUIRED'))
     return { status: 400, error: 'Give a reason for changing the decision.' }
+  if (message.includes('attendance_requests_live_'))
+    return { status: 409, error: 'You already have a live request for this date. Withdraw or correct that one instead.' }
   if (message.includes('attendance_requests_replaced_once'))
     return { status: 409, error: 'This request was already corrected. Correct the newest version.' }
   return { status: 500, error: message }
