@@ -11,7 +11,7 @@ import { test, describe, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { MemorySupabase } from './testing/memorySupabase'
 import { submitRequest, cancelRequest, decideRequest, listRequests, requestHistory } from './requestHandlers'
-import { loadMonthRequests } from './requestsServer'
+import { loadMonthRequests, requestDbError } from './requestsServer'
 import { submissionTiming, RETRY_WINDOW_MS } from './requests'
 import type { Caller } from '@/lib/security/attendancePayrollApiAuth'
 import { istToday, istAddDays } from '@/lib/istDate'
@@ -312,5 +312,13 @@ describe('after-the-event submissions are identified', () => {
     const res = await submitRequest(asEmployee(), body({ start_date: yesterday }), NOW)
     assert.equal(res.status, 201)
     assert.match(String(notificationsOf('attendance_request_submitted')[0].body), /after the date/i)
+  })
+})
+
+describe('the database backstop (20270222000000) speaks plainly', () => {
+  test('a unique-index refusal on a decision or a submit becomes a 409 a person can act on', () => {
+    const r = requestDbError('duplicate key value violates unique constraint "attendance_requests_live_half_day"')
+    assert.equal(r.status, 409)
+    assert.match(r.error, /already have a live request/)
   })
 })
