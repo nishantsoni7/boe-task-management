@@ -80,7 +80,7 @@ function AttendanceRequestsScreen() {
           className={tab === 'review' ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
           style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => switchTab('review')}>Payroll review</button>
       </div>
-      {tab === 'queue' ? <RequestQueue getToken={getToken} /> : <PayrollAttendanceReview getToken={getToken} />}
+      {tab === 'queue' ? <RequestQueue getToken={getToken} focusId={params.get('request')} /> : <PayrollAttendanceReview getToken={getToken} />}
     </AttendancePayrollLayout>
   )
 }

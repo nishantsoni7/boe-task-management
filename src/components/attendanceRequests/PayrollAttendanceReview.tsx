@@ -25,7 +25,7 @@ import {
   type PayDecision,
   type SalaryStatus,
 } from '@/lib/attendance/requestReconciliation'
-import { REQUEST_STATUS_LABEL } from '@/lib/attendance/requests'
+import { REQUEST_STATUS_LABEL, SUBMISSION_TIMING_LABEL, submissionTiming } from '@/lib/attendance/requests'
 import { istCurrentYearMonth, selectableMonthsInYear, selectableYears } from '@/lib/attendance/monthAvailability'
 import { PayrollModal, PayrollModalActions, PayrollModalError, PayrollField } from '@/components/payroll/PayrollModal'
 import { formatShortDate, formatIstDateTime } from './format'
@@ -249,7 +249,12 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         <div style={{ fontSize: 12, color: colors.tertiary }}>
           Request: {ev.request.summary} · {ev.request.reason_label}{ev.request.reason_note ? ` — ${ev.request.reason_note}` : ''}
           {' · '}{REQUEST_STATUS_LABEL[ev.request.status]} · submitted {formatIstDateTime(ev.request.submitted_at)}
-          {ev.request.informed_before_shift ? ' (before shift)' : ' (after shift start)'}
+          {' · '}{SUBMISSION_TIMING_LABEL[submissionTiming({ ...ev.request, start_date: ev.date })]}
+          {ev.request.decided_at && (ev.request.status === 'approved' || ev.request.status === 'rejected') && (
+            <> · {REQUEST_STATUS_LABEL[ev.request.status]} by {(ev.request.decided_by && names[ev.request.decided_by]) || 'an admin'} on {formatIstDateTime(ev.request.decided_at)}
+              {ev.request.decision_note ? ` — ${ev.request.decision_note}` : ''}</>
+          )}
+          {' · '}<Link href={`/attendance/requests?request=${ev.request.id}`} style={{ color: colors.primary, fontWeight: 600 }}>Full request and history</Link>
         </div>
       )}
       {ev.excused && ev.excuse_reason && (

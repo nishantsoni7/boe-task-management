@@ -14,6 +14,8 @@ import {
   REQUEST_STATUS_LABEL,
   REASON_LABEL,
   requestSummary,
+  submissionTiming,
+  SUBMISSION_TIMING_LABEL,
   canEmployeeCancel,
   canEmployeeCorrect,
   type AttendanceRequestRow,
@@ -133,7 +135,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                 </div>
                 <div style={{ fontSize: 11.5, color: colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)}
-                  {' · '}{r.informed_before_shift ? 'before shift start' : 'after shift start'}
+                  {' · '}{SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
                   <div style={{ fontSize: 11.5, color: colors.muted }}>

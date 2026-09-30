@@ -9,6 +9,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,8 @@ export default function EmployeeMonthlyDetailPage() {
   const [fetching, setFetching] = useState(false)
   const [employee, setEmployee] = useState<EmployeeDetail | null>(null)
   const [records,  setRecords]  = useState<DayRecord[]>([])
+  const [monthRequests, setMonthRequests] = useState<MonthRequest[]>([])
+  const [requestsError, setRequestsError] = useState<string | null>(null)
   const [error,    setError]    = useState('')
   const [token,    setToken]    = useState('')
 
@@ -133,6 +136,8 @@ export default function EmployeeMonthlyDetailPage() {
       if (res.ok) {
         setEmployee(json.employee)
         setRecords(json.records)
+        setMonthRequests(json.requests ?? [])
+        setRequestsError(json.requests_error ?? null)
       } else {
         setError(json.error ?? 'Failed to load records')
       }
@@ -148,6 +153,7 @@ export default function EmployeeMonthlyDetailPage() {
 
   if (loading) return <LoadingScreen />
 
+  const requestsOnDate = requestsByDate(monthRequests)
   const monthLabel = year && month ? `${MONTH_NAMES[month - 1]} ${year}` : ''
   const backHref   = year && month
     ? `/attendance/monthly-review?year=${year}&month=${month}`
@@ -303,6 +309,7 @@ export default function EmployeeMonthlyDetailPage() {
                     >
                       <td style={{ padding: '11px 16px', color: colors.primary, whiteSpace: 'nowrap' }}>
                         {formatDate(rec.attendance_date)}
+                        <DayRequestChips items={requestsOnDate.get(rec.attendance_date)} />
                       </td>
                       <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap', textAlign: 'center' }}>
                         {formatTime(rec.check_in_at)}
@@ -343,6 +350,18 @@ export default function EmployeeMonthlyDetailPage() {
           }}>
             No attendance records found for this employee in {monthLabel}.
           </div>
+        )}
+
+        {/* What the employee asked for and what was decided — with the full
+            record one tap away, and independent of the attendance import. */}
+        {!fetching && (
+          <MonthRequestsPanel
+            requests={monthRequests}
+            error={requestsError}
+            monthLabel={monthLabel}
+            getToken={async () => token}
+            audience="admin"
+          />
         )}
 
       </div>

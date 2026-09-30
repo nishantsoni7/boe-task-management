@@ -2228,6 +2228,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/payroll/PayrollModal.tsx',
     'src/app/account/page.tsx',
     'src/app/globals.css',
+    // Part 2: requests reach the employee's and the admin's attendance views;
+    // a repeat submission is answered with the first; notifications link to it.
+    'src/components/attendanceRequests/MonthRequests.tsx',
+    'src/lib/attendance/requestWorkflow.test.ts',
+    'src/app/api/attendance/employee-monthly-detail/route.ts',
+    'src/app/attendance/monthly-review/[userId]/page.tsx',
     'supabase/migrations/20270215000000_attendance_requests.sql',
     'supabase/migrations/20270215000100_attendance_request_notification_types.sql',
   ])

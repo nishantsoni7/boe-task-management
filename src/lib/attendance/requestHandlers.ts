@@ -23,6 +23,7 @@ import {
   informedForCorrection,
   findConflict,
   conflictMessage,
+  isRecentTwin,
   canEmployeeCancel,
   canEmployeeCorrect,
   type AttendanceRequestRow,
@@ -145,19 +146,35 @@ export async function submitRequest(caller: Caller, body: Record<string, unknown
     // Same answer whether it is a colleague's request or nobody's.
     if (!data) return fail(404, 'Request not found.')
     original = data as unknown as AttendanceRequestRow
+
+    // A retry of a correction that already went through: the original is now
+    // closed, so look for the replacement it produced.
+    const { data: replacement } = await caller.svc.from('attendance_requests').select(REQUEST_COLUMNS)
+      .eq('replaces_request_id', replacesId).eq('employee_id', caller.id).maybeSingle()
+    if (replacement && isRecentTwin(input, replacement as unknown as AttendanceRequestRow, now))
+      return ok({ request: replacement, duplicate: true })
+
     if (!canEmployeeCorrect(original, now)) return fail(409, 'This request can no longer be corrected. Ask an admin.')
   }
 
   // Duplicates and overlaps against the employee's own live requests.
   const { data: existing, error: exErr } = await caller.svc
     .from('attendance_requests')
-    .select('id, request_type, start_date, end_date, departure_time, return_time, status')
+    .select(REQUEST_COLUMNS)
     .eq('employee_id', caller.id)
     .in('status', ['pending', 'approved'])
     .lte('start_date', input.end_date)
     .gte('end_date', input.start_date)
   if (exErr) return fail(500, exErr.message)
-  const conflict = findConflict(input, (existing ?? []) as unknown as AttendanceRequestRow[], replacesId)
+  const live = (existing ?? []) as unknown as AttendanceRequestRow[]
+
+  // Double tap, or a retry after a lost response: the same request, sent moments
+  // ago and still pending, is answered with itself — no second row, no second
+  // notification.
+  const twin = replacesId ? null : live.find(r => isRecentTwin(input, r, now))
+  if (twin) return ok({ request: twin, duplicate: true })
+
+  const conflict = findConflict(input, live, replacesId)
   if (conflict) return fail(409, conflictMessage(conflict as AttendanceRequestRow), { conflict_id: conflict.id })
 
   const shiftStartAt = shiftStartUtc(input.start_date, shift)
@@ -177,6 +194,19 @@ export async function submitRequest(caller: Caller, body: Record<string, unknown
     })
     .select(REQUEST_COLUMNS)
     .single()
+
+  if (error?.code === '23505' && !replacesId) {
+    // Two identical requests raced past the check above; the database refused
+    // the second (attendance_requests_live_* indexes). Answer with the winner.
+    const { data: winners } = await caller.svc.from('attendance_requests').select(REQUEST_COLUMNS)
+      .eq('employee_id', caller.id).in('status', ['pending', 'approved'])
+      .lte('start_date', input.end_date).gte('end_date', input.start_date)
+    const rows = (winners ?? []) as unknown as AttendanceRequestRow[]
+    const raced = rows.find(r => isRecentTwin(input, r, now))
+    if (raced) return ok({ request: raced, duplicate: true })
+    const other = findConflict(input, rows, null)
+    if (other) return fail(409, conflictMessage(other as AttendanceRequestRow), { conflict_id: other.id })
+  }
 
   if (error || !data) {
     const mapped = requestDbError(error?.message ?? 'unknown error')
