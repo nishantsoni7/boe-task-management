@@ -7,7 +7,7 @@ import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { reviewMonthLabel } from '@/lib/boeCredits/ledger'
-import { firstPlaceMessage, parseLeaderCard, type LeaderCard } from '@/lib/customerReviews/reviewReport'
+import { REVIEW_LEADER_CARD_KEY, firstPlaceMessage, parseLeaderCard, type LeaderCard } from '@/lib/customerReviews/reviewReport'
 
 // A small card on the shared dashboard: who leads this month's reviews and where the
 // signed-in employee stands, with a link to the full leaderboard. One database call
@@ -18,7 +18,7 @@ import { firstPlaceMessage, parseLeaderCard, type LeaderCard } from '@/lib/custo
 export function ReviewLeaderCard({ isMobile = false }: { isMobile?: boolean }) {
   const supabase = useMemo(() => createClient(), [])
   const card = useQuery({
-    queryKey: ['review-leader-card'],
+    queryKey: [...REVIEW_LEADER_CARD_KEY],
     queryFn: async (): Promise<LeaderCard> => {
       const { data, error } = await supabase.rpc('customer_review_leader_card')
       if (error) throw new Error('unavailable')

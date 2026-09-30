@@ -35,6 +35,10 @@ export function formatPoints(points: number): string {
   return String(Math.round(points * 1000) / 1000)
 }
 
+/** Query keys of the leaderboard reads. The month is appended, so invalidating this prefix refreshes every month. */
+export const REVIEW_LEADERBOARD_KEY = ['review-leaderboard'] as const
+export const REVIEW_LEADER_CARD_KEY = ['review-leader-card'] as const
+
 export const REPORT_PAGE_SIZE = 25
 
 export type ReportFilters = {

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { arrangeLanding, LANDING_LIST_ROWS } from './leaderboardLanding'
+import { submitAvailability } from './submitAvailability'
 import type { Leaderboard, LeaderboardRow } from './reviewReport'
 
 const row = (n: string, rank: number, reviews: number, is_me = false): LeaderboardRow => ({
@@ -57,6 +58,53 @@ describe('arrangeLanding', () => {
     if (inside.kind !== 'ranked') throw new Error('expected ranked')
     assert.equal(inside.meOutside, false)
     assert.equal(inside.list.length, LANDING_LIST_ROWS)
+  })
+})
+
+describe('zero-count viewer', () => {
+  test('appears once, highlighted, below the list, with the database rank', () => {
+    const r = arrangeLanding(board([row('a', 1, 5), row('b', 2, 3), row('me', 3, 0, true), row('z', 3, 0)]))
+    if (r.kind !== 'ranked') throw new Error('expected ranked')
+    assert.deepEqual(r.list.map(x => x.name), ['a', 'b', 'me'])
+    assert.equal(r.list.filter(x => x.is_me).length, 1)
+    assert.equal(r.list[2].rank, 3)
+    assert.equal(r.meOutside, true)
+  })
+  test('all-zero board is still the empty state, even for a participant', () => {
+    assert.equal(arrangeLanding(board([row('me', 1, 0, true), row('z', 1, 0)])).kind, 'empty')
+  })
+  test('a viewer with reviews inside the top rows is not repeated', () => {
+    const r = arrangeLanding(board([row('a', 1, 5), row('me', 2, 3, true)]))
+    if (r.kind !== 'ranked') throw new Error('expected ranked')
+    assert.equal(r.list.filter(x => x.is_me).length, 1)
+    assert.equal(r.meOutside, false)
+  })
+})
+
+describe('submit availability (shared by both entry points)', () => {
+  test('loading, failed, limit and ready', () => {
+    assert.equal(submitAvailability({ loaded: false, loadError: null, canSubmitAny: true, limitMessage: null }).status, 'loading')
+    const failed = submitAvailability({ loaded: true, loadError: 'load failed', canSubmitAny: true, limitMessage: null })
+    assert.deepEqual([failed.status, failed.reason], ['error', 'load failed'])
+    const limit = submitAvailability({ loaded: true, loadError: null, canSubmitAny: false, limitMessage: 'Monthly limit reached' })
+    assert.deepEqual([limit.status, limit.reason], ['limit', 'Monthly limit reached'])
+    assert.equal(submitAvailability({ loaded: true, loadError: null, canSubmitAny: true, limitMessage: null }).status, 'ready')
+  })
+  test('the header and the section use one availability and one open action, with no DOM forwarding', () => {
+    const screen = read('src/app/customer-reviews/CustomReviewsScreen.tsx')
+    const control = read('src/components/customerReviews/CustomReviewSubmitControl.tsx')
+    const section = read('src/components/customerReviews/CustomReviewSubmissions.tsx')
+    const all = screen + control + section
+    assert.equal(all.includes('getElementById') || all.includes('.click' + '()'), false)
+    assert.ok(section.includes("disabled={availability.status !== 'ready'}") && section.includes('onClick={openNew}'))
+    assert.ok(control.includes("disabled={!ready}") && control.includes('onClick={open}'))
+    assert.ok(section.includes('usePublishSubmitControl(availability, openNew)'))
+  })
+  test('every change refreshes the mounted leaderboards through the existing keys', () => {
+    const section = read('src/components/customerReviews/CustomReviewSubmissions.tsx')
+    assert.ok(section.includes('invalidateQueries({ queryKey: REVIEW_LEADERBOARD_KEY })'))
+    assert.ok(section.includes('invalidateQueries({ queryKey: REVIEW_LEADER_CARD_KEY })'))
+    assert.ok(read('src/components/customerReviews/ReviewsLeaderboardPanel.tsx').includes('[...REVIEW_LEADERBOARD_KEY, null]'))
   })
 })
 

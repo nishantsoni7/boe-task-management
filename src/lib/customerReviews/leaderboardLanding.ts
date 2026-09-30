@@ -22,7 +22,7 @@ export type LandingBoard =
       leaders: LeaderboardRow[]
       joint: boolean
       runnersUp: LeaderboardRow[]
-      /** The compact list: top rows with an eligible review, plus the viewer if outside them. */
+      /** The compact list: top rows with an eligible review, plus the viewer (even with none) if outside them. */
       list: LeaderboardRow[]
       /** True when the viewer was appended below the top rows. */
       meOutside: boolean
@@ -39,7 +39,10 @@ export function arrangeLanding(board: Leaderboard): LandingBoard {
   const runnersUp = joint || nextRank === null ? [] : below.filter(r => r.rank === nextRank)
 
   const top = ranked.slice(0, LANDING_LIST_ROWS)
-  const me = ranked.find(r => r.is_me)
+  // THE VIEWER IS LOOKED UP IN ALL ROWS, before the positive-count filter: an employee
+  // with no eligible review is a participant too, and is shown once, highlighted, with
+  // the database's rank, below the list.
+  const me = board.rows.find(r => r.is_me)
   const meOutside = !!me && !top.some(r => r.employee_id === me.employee_id)
   return { kind: 'ranked', leaders, joint, runnersUp, list: meOutside && me ? [...top, me] : top, meOutside }
 }

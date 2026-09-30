@@ -4,6 +4,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { CustomReviewSubmissions } from '@/components/customerReviews/CustomReviewSubmissions'
 import { ReviewsLeaderboardPanel } from '@/components/customerReviews/ReviewsLeaderboardPanel'
+import { SubmitControlProvider, SubmitReviewHeaderButton } from '@/components/customerReviews/CustomReviewSubmitControl'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 
 // The Reviews landing page for everyone with access: the monthly leaderboard, then
@@ -15,6 +16,14 @@ import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 // workflow is read or offered here: no assigned cards, no Book.
 
 export function CustomReviewsScreen() {
+  return (
+    <SubmitControlProvider>
+      <LandingScreen />
+    </SubmitControlProvider>
+  )
+}
+
+function LandingScreen() {
   const { supabase, profile, caps, loading, signOut } = useCustomerReviews()
 
   if (loading) return <LoadingScreen />
@@ -25,16 +34,7 @@ export function CustomReviewsScreen() {
       title="My Reviews"
       subtitle="Leaderboard, submit review and your reviews"
       canVerify={caps.canVerify}
-      actions={caps.canUse ? (
-        <button
-          type="button"
-          className="boe-btn boe-btn-primary"
-          onClick={() => document.getElementById('submit-custom-review')?.click()}
-          style={{ minHeight: '44px', padding: '8px 14px', fontSize: '13px' }}
-        >
-          Submit review
-        </button>
-      ) : undefined}
+      actions={caps.canUse ? <SubmitReviewHeaderButton /> : undefined}
       onSignOut={signOut}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px', minWidth: 0 }}>

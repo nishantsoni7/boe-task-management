@@ -2506,6 +2506,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/customerReviews/leaderboardLanding.ts',
     'src/lib/customerReviews/testCardPurge.test.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/components/customerReviews/CustomReviewSubmitControl.tsx',
+    'src/lib/customerReviews/submitAvailability.ts',
   ])
   // MARKER-END
 

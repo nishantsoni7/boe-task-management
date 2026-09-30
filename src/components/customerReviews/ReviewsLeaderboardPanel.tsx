@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/atoms'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
 import {
   FIRST_PLACE_FOOTNOTE,
+  REVIEW_LEADERBOARD_KEY,
   firstPlaceMessage,
   formatPoints,
   parseLeaderboard,
@@ -37,7 +38,7 @@ const count = (n: number) => `${n} eligible ${n === 1 ? 'review' : 'reviews'}`
 export function ReviewsLeaderboardPanel() {
   const supabase = useMemo(() => createClient(), [])
   const board = useQuery({
-    queryKey: ['review-leaderboard', null],
+    queryKey: [...REVIEW_LEADERBOARD_KEY, null],
     queryFn: async (): Promise<Leaderboard> => {
       const { data, error } = await supabase.rpc('customer_review_leaderboard', { p_month: null })
       if (error) throw new Error('The leaderboard could not be loaded.')
