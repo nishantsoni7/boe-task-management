@@ -1,77 +1,53 @@
 'use client'
 
-// The Attendance & Payroll notification bell, in one place for both shells.
+// The Attendance & Payroll notification bell — one place, in the page header.
 //
-// WHAT WAS WRONG
-// --------------
-// Every other module shows its bell in two states: the large alert block while
-// something is unread, and a quiet sidebar entry when nothing is (Samples,
-// Finance, Orders, Dashboard all do exactly this). Attendance and Payroll had
-// only the quiet entry, and only for admins — so from an employee's side the
-// bell never moved, never counted anything and looked broken, which is what it
-// effectively was: no notification of this category was ever addressed to them.
+// It used to be a sidebar entry that swelled into a large "N unread" block. With
+// the sidebar reduced to six sections it moved up beside the page actions,
+// where every BOE module's bell already lives (the Modules launcher's
+// announcement bell, for one), and where an unread count is visible on every
+// page of the module without opening the menu on a phone.
 //
-// The count itself is not this component's business. It comes from the one
-// shared hook, against the one shared category, so the Attendance sidebar and
-// the Payroll sidebar cannot show different numbers. This is presentation only.
+// NOTHING ABOUT THE FEED CHANGED. The destination is the same page as before —
+// /attendance/notifications for an admin, /my-issues/notifications for an
+// employee — which renders the shared NotificationsView. Read / unread,
+// mark-all-read and delete still belong to the existing notification
+// infrastructure.
 //
-// Nothing here is a second notification system: the destination is a page that
-// renders the shared NotificationsView, and read/unread, mark-all-read and
-// delete all still belong to the existing notification infrastructure.
+// The count is not this component's business either. It comes from the one
+// shared hook against the one shared category (useUnread…Notifications), so the
+// number cannot differ between pages, and TanStack dedupes it to one request.
+// This file is presentation only.
 
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
-import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import styles from './attendancePayrollShell.module.css'
 
 export function IssueNotificationBell({
-  unread, href, onNavigate,
+  unread, href,
 }: {
   unread: number
   /** Where this role reads the feed — the admin queue, or the employee's own. */
   href: string
-  /** Closes the mobile sidebar. Navigation is this component's own job. */
-  onNavigate?: () => void
 }) {
-  const router = useRouter()
+  const pathname = usePathname()
+  // Both admin addresses of the shared feed light the bell; it is the same page.
+  const active = pathname === href || pathname === '/payroll/notifications'
+  const label = unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'
 
-  if (unread > 0) {
-    return (
-      <div style={{ padding: '0 10px 14px' }}>
-        <button
-          type="button"
-          onClick={() => { router.push(href); onNavigate?.() }}
-          className="boe-notif-alert"
-          aria-label={`Notifications, ${unread} unread`}
-        >
-          <div className="boe-notif-alert-bell">
-            <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1 }}>
-            {unread > 99 ? '99+' : unread}
-          </div>
-          <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
-            unread {unread === 1 ? 'notification' : 'notifications'}
-          </div>
-          <div style={{
-            fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
-            letterSpacing: '0.05em', textTransform: 'uppercase',
-          }}>
-            Tap to review →
-          </div>
-        </button>
-      </div>
-    )
-  }
-
-  // Nothing unread: the same permanent entry every module keeps, so the feed is
-  // never hidden by its own count.
   return (
-    <div style={{ padding: '0 10px 8px' }}>
-      <NotificationsNavItem
-        href={href}
-        count={unread}
-        onNavigate={onNavigate}
-      />
-    </div>
+    <Link
+      href={href}
+      className={`${styles.iconBtn}${active ? ` ${styles.iconBtnActive}` : ''}`}
+      aria-label={label}
+      title="Notifications"
+      aria-current={active ? 'page' : undefined}
+    >
+      <Bell size={16} strokeWidth={1.9} aria-hidden="true" />
+      {unread > 0 && (
+        <span className={styles.bellBadge} aria-hidden="true">{unread > 99 ? '99+' : unread}</span>
+      )}
+    </Link>
   )
 }

@@ -184,7 +184,7 @@ describe('the employee surface', () => {
     assert.match(read('src/app/my-payroll/page.tsx'), /<CreditsSummaryCard token=\{token\} \/>/)
     assert.match(read('src/components/layout/attendancePayrollNav.tsx'), /path: '\/payroll\/credits'/)
     const nav = read('src/components/layout/attendancePayrollNav.tsx')
-    const adminStart = nav.indexOf('ATTENDANCE_PAYROLL_ADMIN_NAV')
+    const adminStart = nav.indexOf('ATTENDANCE_PAYROLL_ADMIN_SECTIONS')
     const employeeStart = nav.indexOf('ATTENDANCE_PAYROLL_EMPLOYEE_NAV')
     const entry = nav.indexOf("path: '/payroll/credits'")
     assert.ok(adminStart < entry && entry < employeeStart, 'the entry is in the ADMIN nav, not the employee one')

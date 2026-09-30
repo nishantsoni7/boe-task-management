@@ -36,7 +36,7 @@ import { canReadNotificationCategory } from './notificationAccess'
 import { getNotificationMeta } from './notificationMeta'
 import { ISSUE_PARAM } from './objections'
 import {
-  ATTENDANCE_PAYROLL_ADMIN_NAV,
+  ATTENDANCE_PAYROLL_ADMIN_SECTIONS,
   ATTENDANCE_PAYROLL_EMPLOYEE_NAV,
 } from '@/components/layout/attendancePayrollNav'
 
@@ -344,11 +344,13 @@ describe('11. the feed is row-scoped, not category-gated', () => {
     // /my-attendance, /my-payroll and /my-issues. /attendance/notifications is
     // behind AttendanceGuard, so an employee pointed there would just be bounced.
     const layout = read('src/components/layout/AttendancePayrollLayout.tsx')
-    assert.ok(layout.includes("isAdmin ? '/attendance/notifications' : '/my-issues/notifications'"),
-      'the destination must branch on role')
+    assert.ok(layout.includes('notificationsPathFor(!!isAdmin)'), 'the destination must branch on role')
+    assert.ok(read('src/components/layout/attendancePayrollNav.tsx')
+      .includes("isAdmin ? ADMIN_NOTIFICATIONS_PATH : EMPLOYEE_NOTIFICATIONS_PATH"),
+      'and the role decides which of the two doors it is')
     assert.ok(layout.includes('useUnreadAttendancePayrollNotifications()'),
       'and the count is now requested for everyone, because everyone can have rows')
-    assert.ok(layout.includes('<IssueNotificationBell'), 'the module sidebar must offer the feed')
+    assert.ok(layout.includes('<IssueNotificationBell'), 'the module header must offer the feed')
   })
 
   test('the employee door renders the same shared feed, not a second one', () => {
@@ -448,8 +450,10 @@ describe('Attendance and Payroll open the same feed, not two of them', () => {
   test('the sidebar offers exactly one door onto the feed', () => {
     // /payroll/notifications stays reachable for old links, but it is no longer
     // a second entry point in the navigation — see attendancePayrollNav.tsx.
-    const navPaths = [...ATTENDANCE_PAYROLL_ADMIN_NAV, ...ATTENDANCE_PAYROLL_EMPLOYEE_NAV]
-      .map(i => i.path)
+    const navPaths = [
+      ...ATTENDANCE_PAYROLL_ADMIN_SECTIONS.flatMap(s => [s.path, ...(s.tabs ?? []).map(t => t.path), ...(s.help ? [s.help.path] : [])]),
+      ...ATTENDANCE_PAYROLL_EMPLOYEE_NAV.map(i => i.path),
+    ]
     for (const feed of ['/attendance/notifications', '/payroll/notifications', '/my-issues/notifications']) {
       assert.equal(navPaths.includes(feed), false,
         `${feed} is a nav item as well as the bell — that is the duplicate door`)
