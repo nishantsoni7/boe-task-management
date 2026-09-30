@@ -1087,7 +1087,7 @@ begin
     raise exception 'CUSTOMER_REVIEW_CUSTOM_DECIDED: This review was already approved' using errcode = '55000';
   end if;
   if s.reward_reversal_transaction_id is not null then
-    raise exception 'CUSTOMER_REVIEW_CUSTOM_DECIDED: The credit for this review was withdrawn when its edit was rejected. Submit it again as a new review.'
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_DECIDED: The credit for this review was already withdrawn (its edit was rejected, or it was confirmed a duplicate), and a review is paid only once. Submit it again as a new review.'
       using errcode = '55000';
   end if;
 

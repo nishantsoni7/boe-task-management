@@ -307,6 +307,7 @@ function DuplicateCompareSheet({
   const [error, setError] = useState<string | null>(null)
   // "Duplicate" is binding (it rejects the review and reverses its credit), so it asks first.
   const [confirmingDuplicate, setConfirmingDuplicate] = useState(false)
+  const rewarded = Number(submission.credits_awarded ?? 0) > 0 && !submission.reward_reversal_transaction_id && submission.status !== 'rejected'
   const acting = useRef(false)
 
   useEffect(() => {
@@ -456,11 +457,16 @@ function DuplicateCompareSheet({
                 border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: '12.5px', lineHeight: 1.55,
               }}>
                 <strong>Mark {submission.submission_ref} as a duplicate?</strong>
-                <span>
-                  This rejects the review and reverses its credit once{submission.status === 'approved' || submission.reward_held ? ' (it currently holds a credit)' : ' (it has none yet)'}.
-                  It is counted as submitted, never as eligible, and cannot be approved while this decision stands.
-                  Changing it to Different review later does not bring back a reversed credit — the ledger pays a review only once.
-                </span>
+                {rewarded ? (
+                  <span>
+                    This review has already been paid. Confirming reverses its reward once, and changing the decision to Different
+                    review later will <strong>not</strong> restore it. It is rejected, counted as submitted, never as eligible, and cannot be approved while this decision stands.
+                  </span>
+                ) : (
+                  <span>
+                    This rejects the review. It has no reward on the ledger, so nothing is reversed. It is counted as submitted, never as eligible, and cannot be approved while this decision stands.
+                  </span>
+                )}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { void decide('duplicate') }}
                     style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}>
@@ -497,7 +503,7 @@ function DuplicateCompareSheet({
               </div>
             )}
             <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
-              <strong>Duplicate</strong> rejects the review and reverses its credit once. <strong>Different review</strong> changes nothing
+              <strong>Duplicate</strong> rejects the review and reverses its credit once. <strong>Different review</strong>{' '}changes nothing
               about the review&apos;s status or credit; if it follows a Duplicate decision it removes the duplicate mark but restores no credit.
               A shared name alone cannot be confirmed as a duplicate. If the employee edits the review it is checked again and this decision does not carry over.
             </p>

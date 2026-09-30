@@ -558,8 +558,8 @@ Deleted**, with who deleted it, when, and whether a credit was reversed.
 
 ### 23.5 Repeated and concurrent requests
 
-* Delete is idempotent: the second call answers `already_deleted`, adds no history and
-  reverses nothing.
+* Delete is idempotent in the database: a second call answers `already_deleted`, adds no history and reverses nothing. Through the
+  route the employee's second delete answers "not found" (404), because a deleted review is hidden from them; still one reversal.
 * Edit carries the `edit_count` the form was opened on. An identical repeat (double click,
   retry) answers `unchanged`; a stale counter with different content is refused (409).
 * Locks are taken in one order — the employee's month lock, then the row, then the credits
