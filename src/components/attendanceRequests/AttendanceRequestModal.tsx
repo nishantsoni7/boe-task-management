@@ -441,17 +441,6 @@ export function AttendanceRequestModal({
                 />
               </Field>
             </div>
-            <ChoiceGroup<'personal' | 'company'>
-              label="What is it for?"
-              name={`${uid}-kind`}
-              value={form.kind}
-              onChange={v => set('kind', v)}
-              options={[{ value: 'personal', label: 'Personal' }, { value: 'company', label: 'Company work' }]}
-              columns={2}
-              required
-              error={errors.kind}
-              field="kind"
-            />
           </>
         )}
 

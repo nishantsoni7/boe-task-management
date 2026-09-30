@@ -9,6 +9,7 @@ import {
   requestTypeFor,
   tileForType,
   validateForm,
+  workKindFor,
   type FormState,
 } from './requestForm'
 import { REQUEST_TYPES, validateRequestInput } from './requests'
@@ -53,7 +54,7 @@ describe('Today / Tomorrow in IST', () => {
 
 describe('what is sent', () => {
   test('a tile switch never leaks the previous tile’s values', () => {
-    const filled = base({ tile: 'out', depart: '14:00', back: '15:00', kind: 'company', expected: '10:45', half: 'first_half', endDate: '2026-10-08' })
+    const filled = base({ tile: 'out', depart: '14:00', back: '15:00', reason: 'company_work', expected: '10:45', half: 'first_half', endDate: '2026-10-08' })
     const late = buildPayload({ ...filled, tile: 'late' })
     assert.equal(late.request_type, 'late_arrival')
     assert.equal(late.departure_time, null)
@@ -83,12 +84,28 @@ describe('what is sent', () => {
       base({ tile: 'late' }),
       base({ tile: 'late', expected: '10:45' }),
       base({ tile: 'early', depart: '17:00' }),
-      base({ tile: 'out', depart: '14:00', back: '15:30', kind: 'personal' }),
+      base({ tile: 'out', depart: '14:00', back: '15:30' }),
     ]
     for (const c of cases) {
       assert.deepEqual(validateForm(c), {}, JSON.stringify(c))
       const v = validateRequestInput(buildPayload(c), '2026-10-05', SHIFT)
       assert.equal(v.ok, true, JSON.stringify(v))
+    }
+  })
+})
+
+describe('going out: purpose comes from the reason', () => {
+  test('company reasons mean company work; everything else personal', () => {
+    assert.equal(workKindFor('company_work'), 'company')
+    assert.equal(workKindFor('company_vehicle'), 'company')
+    for (const r of ['personal', 'medical', 'family_emergency', 'traffic', 'other'] as const) assert.equal(workKindFor(r), 'personal', r)
+  })
+  test('the payload carries the derived kind and passes server validation', () => {
+    for (const [reason, kind] of [['company_work', 'company'], ['medical', 'personal']] as const) {
+      const s = base({ tile: 'out', depart: '14:00', back: '15:00', reason })
+      const p = buildPayload(s)
+      assert.equal(p.work_kind, kind)
+      assert.equal(validateRequestInput(p, '2026-10-05', SHIFT).ok, true)
     }
   })
 })
@@ -107,11 +124,12 @@ describe('validation before sending', () => {
     assert.ok(validateForm(base({ tile: 'early', depart: '' })).depart)
     assert.ok(validateForm(base({ tile: 'leave', leave: 'half', half: '' })).half)
     const out = validateForm(base({ tile: 'out' }))
-    assert.ok(out.depart && out.back && out.kind)
+    assert.ok(out.depart && out.back)
+    assert.equal('kind' in out, false, 'purpose is not asked')
   })
   test('going out: the return must be after the departure', () => {
-    assert.ok(validateForm(base({ tile: 'out', depart: '15:00', back: '14:00', kind: 'personal' })).back)
-    assert.ok(validateForm(base({ tile: 'out', depart: '15:00', back: '15:00', kind: 'personal' })).back)
+    assert.ok(validateForm(base({ tile: 'out', depart: '15:00', back: '14:00' })).back)
+    assert.ok(validateForm(base({ tile: 'out', depart: '15:00', back: '15:00' })).back)
   })
   test('a multi-day leave cannot end before it starts', () => {
     assert.ok(validateForm(base({ tile: 'leave', leave: 'full', date: '2026-10-08', endDate: '2026-10-07' })).endDate)
@@ -125,7 +143,6 @@ describe('validation before sending', () => {
     assert.equal(s.tile, 'out')
     assert.equal(s.depart, '14:00')
     assert.equal(s.back, '15:30')
-    assert.equal(s.kind, 'company')
     assert.equal(s.reason, 'company_work')
   })
 })

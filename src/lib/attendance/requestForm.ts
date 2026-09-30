@@ -81,7 +81,6 @@ export type FormState = {
   depart: string
   back: string
   half: 'first_half' | 'second_half' | ''
-  kind: 'personal' | 'company' | ''
   reason: ReasonCode | ''
   note: string
 }
@@ -98,7 +97,6 @@ export function initialFormState(now: Date = new Date(), original?: AttendanceRe
       depart: clock(original.departure_time),
       back: clock(original.return_time),
       half: original.half_session ?? '',
-      kind: original.work_kind ?? '',
       reason: original.reason_code,
       note: original.reason_note ?? '',
     }
@@ -106,7 +104,7 @@ export function initialFormState(now: Date = new Date(), original?: AttendanceRe
   return {
     tile: 'late', leave: 'full',
     date: istToday(now),
-    endDate: '', expected: '', depart: '', back: '', half: '', kind: '',
+    endDate: '', expected: '', depart: '', back: '', half: '',
     reason: '', note: '',
   }
 }
@@ -125,18 +123,27 @@ export function buildPayload(s: FormState, replacesId: string | null = null): Re
     departure_time: type === 'early_departure' || type === 'time_out' ? s.depart : null,
     return_time: type === 'time_out' ? s.back : null,
     half_session: type === 'half_day' ? s.half : null,
-    work_kind: type === 'time_out' ? s.kind : null,
+    work_kind: type === 'time_out' ? workKindFor(s.reason) : null,
     reason_code: s.reason,
     reason_note: s.note.trim() || null,
     replaces_request_id: replacesId,
   }
 }
 
-export type FormField = 'date' | 'endDate' | 'half' | 'expected' | 'depart' | 'back' | 'kind' | 'reason' | 'note'
+/**
+ * Going out briefly is stored as personal or company work (a required column).
+ * It is not asked separately: company reasons (Company work, Company vehicle
+ * delay) mean company; every other reason means personal.
+ */
+export function workKindFor(reason: ReasonCode | ''): 'personal' | 'company' {
+  return reason === 'company_work' || reason === 'company_vehicle' ? 'company' : 'personal'
+}
+
+export type FormField = 'date' | 'endDate' | 'half' | 'expected' | 'depart' | 'back' | 'reason' | 'note'
 export type FormErrors = Partial<Record<FormField, string>>
 
 /** Field order as shown, so the first error is the first thing on screen. */
-export const FIELD_ORDER: FormField[] = ['date', 'endDate', 'half', 'expected', 'depart', 'back', 'kind', 'reason', 'note']
+export const FIELD_ORDER: FormField[] = ['date', 'endDate', 'half', 'expected', 'depart', 'back', 'reason', 'note']
 
 /**
  * Missing or obviously wrong entries, per field. The server's validation stays
@@ -154,7 +161,6 @@ export function validateForm(s: FormState): FormErrors {
     if (!s.depart) e.depart = 'Enter the time you will leave.'
     if (!s.back) e.back = 'Enter the time you expect to be back.'
     else if (s.depart && s.back <= s.depart) e.back = 'The return time must be after the time you leave.'
-    if (!s.kind) e.kind = 'Say whether this is personal or company work.'
   }
   if (!s.reason) e.reason = 'Choose a reason.'
   if (s.reason === 'other' && !s.note.trim()) e.note = 'Add a short explanation for “Other”.'
