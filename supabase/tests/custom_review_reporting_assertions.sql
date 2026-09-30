@@ -14,7 +14,7 @@
 --   §7  filters         employee, type, status, month; an impossible month refused
 --   §8  lists           paginated, focus-narrowed, no text or proof, limit clamped
 --   §9  the leaderboard ranks share on ties (1, 1, 3), X = leader - mine + 1, leading / joint / not taking part
---   §10 a closed month  a lapsed month's reviews are submitted but not eligible
+--   §10 a closed month  a lapsed month keeps its earned reviews; the credits show as EXPIRED, not rejected
 --   §11 no writes       the report changed no row and posted no credit
 --
 -- ONE TRANSACTION, ROLLED BACK. Refuses to run if public.users holds anybody.
@@ -169,7 +169,8 @@ begin
   perform pg_temp.approve_as(V, pg_temp.put('11000000-0000-4000-8000-000000000004', E1, 'image', t));
   perform pg_temp.put('11000000-0000-4000-8000-000000000005', E1, 'image', t);
 
-  -- E2: 3 approved text (the third then edited: back to approval, credit held), 1 rejected text
+  -- E2: 4 approved text (one then edited: back to Pending Approval, credit on hold), 1 rejected text
+  perform pg_temp.approve_as(V, pg_temp.put('22000000-0000-4000-8000-000000000005', E2, 'text', t));
   for i in 1..3 loop
     perform pg_temp.approve_as(V, pg_temp.put(('22000000-0000-4000-8000-00000000000' || i)::uuid, E2, 'text', t));
   end loop;
@@ -198,6 +199,18 @@ begin
   perform pg_temp.approve_as(V, sid);
   select s.credit_transaction_id into tx from public.customer_review_custom_submissions s where s.id = sid;
   perform public.post_boe_credit_transaction(E5, 'reversal', -1, 'boe_credit_transaction', tx, 'Fixture: admin reversal', A);
+
+  -- E4: an approved review later CONFIRMED as a duplicate: rejected, credit reversed, still submitted
+  perform pg_temp.approve_as(V, pg_temp.put('44000000-0000-4000-8000-000000000005', E4, 'text', t));
+  insert into public.customer_review_custom_duplicate_checks (submission_id, content_fingerprint, status, employee_proceeded, trigger_event, match_count)
+  values ('44000000-0000-4000-8000-000000000005', repeat('3', 64), 'flagged', true, 'submitted', 1);
+  insert into public.customer_review_custom_duplicate_flags (submission_id, matched_submission_id, check_id, content_fingerprint, reasons, strength, employee_proceeded)
+  select '44000000-0000-4000-8000-000000000005', '33000000-0000-4000-8000-000000000001', c.id, repeat('3', 64), array['image', 'review_text'], 'strong', true
+    from public.customer_review_custom_duplicate_checks c where c.submission_id = '44000000-0000-4000-8000-000000000005';
+  perform pg_temp.act_as(V);
+  perform public.decide_customer_review_custom_duplicate(
+    (select id from public.customer_review_custom_duplicate_flags where submission_id = '44000000-0000-4000-8000-000000000005'), 'duplicate', 'Fixture');
+  perform pg_temp.act_as_service();
 
   -- a strong, undecided duplicate flag on E1's pending review; a weak one on E4's boundary review
   insert into public.customer_review_custom_duplicate_checks (submission_id, content_fingerprint, status, employee_proceeded, trigger_event, match_count)
@@ -241,18 +254,25 @@ declare
   s jsonb := r -> 'summary';
 begin
   assert (r ->> 'month')::date = (select m from cal), '§3 defaults to the current IST month';
-  assert (s ->> 'submitted')::int = 15, format('§3 submitted 15, got %s', s ->> 'submitted');
-  assert (s ->> 'text')::int = 13 and (s ->> 'image')::int = 2, format('§3 text 13 + image 2, got %s + %s', s ->> 'text', s ->> 'image');
+  assert (s ->> 'submitted')::int = 17, format('§3 submitted 17, got %s', s ->> 'submitted');
+  assert (s ->> 'text')::int = 15 and (s ->> 'image')::int = 2, format('§3 text 15 + image 2, got %s + %s', s ->> 'text', s ->> 'image');
   assert (s ->> 'text')::int + (s ->> 'image')::int = (s ->> 'submitted')::int, '§3 text + image = submitted';
-  assert (s ->> 'pending')::int = 3 and (s ->> 'approved')::int = 11 and (s ->> 'rejected')::int = 1, '§3 by status: 3 pending, 11 approved, 1 rejected';
-  assert (s ->> 'eligible')::int = 11, format('§3 eligible 11 (submitted 15: 1 rejected, 1 pending image, 1 pending boundary, 1 reversed), got %s', s ->> 'eligible');
+  assert (s ->> 'pending')::int = 3 and (s ->> 'approved')::int = 12 and (s ->> 'rejected')::int = 2, '§3 by status: 3 pending, 12 approved, 2 rejected';
+  assert (s ->> 'eligible')::int = 11, format('§3 eligible 11 (submitted 17: 2 rejected, 3 pending incl. 1 edited on hold, 1 approved-but-reversed), got %s', s ->> 'eligible');
   assert (s ->> 'eligible')::int < (s ->> 'submitted')::int, '§3 eligible and submitted differ and are both shown';
   assert (s ->> 'eligible_text')::int = 10 and (s ->> 'eligible_image')::int = 1, '§3 eligible by type';
   assert (s ->> 'credits')::numeric = 11.5, format('§3 credits 11.5, got %s', s ->> 'credits');
-  assert (s ->> 'points')::numeric = 115 and (r ->> 'points_per_credit')::numeric = 10, '§3 points = credits x 10';
+  assert (s ->> 'points')::numeric = 1.15 and (r ->> 'credits_per_point')::numeric = 10, '§3 points = credits / 10 (11.5 credits = 1.15 points)';
+  assert (s ->> 'held')::int = 1 and (s ->> 'held_credits')::numeric = 1, '§3 one edited review is on hold with its 1 credit, and is NOT in eligible';
+  assert (s ->> 'confirmed_duplicates')::int = 1, '§3 one confirmed duplicate: submitted, rejected, not eligible';
+  assert (s ->> 'reversed')::int = 2, '§3 two credits were reversed (the administrator''s, and the confirmed duplicate''s)';
+  assert (s ->> 'expired_credits')::numeric = 0, '§3 nothing expired in the current month';
+  assert public.customer_review_credits_per_point() = 10, '§3 the conversion lives in one function';
+  -- fractional credits: 1.5 credits is 0.15 points; 0.01 credit is 0.001 point, exactly
+  assert round(1.5 / public.customer_review_credits_per_point(), 3) = 0.15 and round(0.01 / public.customer_review_credits_per_point(), 3) = 0.001,
+    '§3 fractional conversion is exact to three decimals';
   assert (s ->> 'duplicates_open')::int = 1, format('§3 one possible duplicate awaits a decision (the weak name match is not queued), got %s', s ->> 'duplicates_open');
-  assert public.customer_review_points_per_credit() = 10, '§3 the multiplier lives in one function';
-  raise notice 'PASS  §3 summary: 15 submitted = 13 text + 2 image; 11 eligible; 11.5 credits = 115 points; 1 duplicate awaiting';
+  raise notice 'PASS  §3 summary: 17 submitted = 15 text + 2 image; 11 eligible; 11.5 credits = 1.15 points; held, reversed, confirmed duplicates counted apart';
 end $$;
 
 -- ═══ §4. Reconciliation ══════════════════════════════════════════════════════
@@ -311,7 +331,7 @@ begin
   assert (pg_temp.emp(prev, 'e4000000-0000-4000-8000-0000000000e4') ->> 'submitted')::int = 1, '§5 the review at 23:59:59 IST on the last day is LAST month''s';
   assert (prev -> 'daily' -> ((select extract(day from (l + interval '1 month' - interval '1 day'))::int from cal) - 1) ->> 'text')::int = 1,
     '§5 and it sits on last month''s final bar';
-  assert (pg_temp.emp(cur, 'e4000000-0000-4000-8000-0000000000e4') ->> 'submitted')::int = 2, '§5 this month keeps only its own (E4: one approved + the first-instant review; the deleted one is out)';
+  assert (pg_temp.emp(cur, 'e4000000-0000-4000-8000-0000000000e4') ->> 'submitted')::int = 3, '§5 this month keeps only its own (E4: one approved + the first-instant review + the confirmed duplicate; the deleted one is out)';
   raise notice 'PASS  §5 IST boundaries: 23:59:59 stays in the old month, 00:00:00 starts the new one';
 end $$;
 
@@ -330,11 +350,13 @@ begin
      and (pg_temp.emp(r, 'e1000000-0000-4000-8000-0000000000e1') ->> 'image')::int = 2
      and (pg_temp.emp(r, 'e1000000-0000-4000-8000-0000000000e1') ->> 'eligible')::int = 4
      and (pg_temp.emp(r, 'e1000000-0000-4000-8000-0000000000e1') ->> 'credits')::numeric = 4.5
-     and (pg_temp.emp(r, 'e1000000-0000-4000-8000-0000000000e1') ->> 'points')::numeric = 45, '§6 E1: 5 submitted (3 text, 2 image), 4 eligible, 4.5 credits, 45 points';
-  assert (pg_temp.emp(r, 'e2000000-0000-4000-8000-0000000000e2') ->> 'eligible')::int = 3, '§6 E2: the edited review still holds its credit and counts';
+     and (pg_temp.emp(r, 'e1000000-0000-4000-8000-0000000000e1') ->> 'points')::numeric = 0.45, '§6 E1: 5 submitted (3 text, 2 image), 4 eligible, 4.5 credits, 0.45 points';
+  assert (pg_temp.emp(r, 'e2000000-0000-4000-8000-0000000000e2') ->> 'eligible')::int = 3, '§6 E2: 5 submitted, 3 eligible — the edited review is pending, so it is excluded until re-approved';
+  assert (pg_temp.emp(r, 'e2000000-0000-4000-8000-0000000000e2') ->> 'submitted')::int = 5, '§6 E2 submitted 5';
   assert (pg_temp.emp(r, 'e5000000-0000-4000-8000-0000000000e5') ->> 'submitted')::int = 1
      and (pg_temp.emp(r, 'e5000000-0000-4000-8000-0000000000e5') ->> 'eligible')::int = 0, '§6 E5: submitted 1, eligible 0 (an administrator reversed the credit)';
-  assert (pg_temp.emp(r, 'e4000000-0000-4000-8000-0000000000e4') ->> 'eligible')::int = 1, '§6 E4: the deleted review is neither submitted nor eligible';
+  assert (pg_temp.emp(r, 'e4000000-0000-4000-8000-0000000000e4') ->> 'eligible')::int = 1 and (pg_temp.emp(r, 'e4000000-0000-4000-8000-0000000000e4') ->> 'submitted')::int = 3,
+    '§6 E4: 3 submitted (deleted one excluded, the confirmed duplicate kept), 1 eligible';
   -- E2 and E3 tie on 3 eligible; the report says so by giving both the same figures
   assert (pg_temp.emp(r, 'e2000000-0000-4000-8000-0000000000e2') ->> 'eligible')::int = (pg_temp.emp(r, 'e3000000-0000-4000-8000-0000000000e3') ->> 'eligible')::int,
     '§6 ties are visible: E2 and E3 both have 3';
@@ -352,7 +374,7 @@ declare
 begin
   assert (byemp -> 'summary' ->> 'submitted')::int = 5 and jsonb_array_length(byemp -> 'employees') = 1, '§7 the employee filter';
   assert (bytype -> 'summary' ->> 'submitted')::int = 2 and (bytype -> 'summary' ->> 'text')::int = 0, '§7 the type filter';
-  assert (bystat -> 'summary' ->> 'submitted')::int = 1 and (bystat -> 'summary' ->> 'eligible')::int = 0, '§7 the status filter';
+  assert (bystat -> 'summary' ->> 'submitted')::int = 2 and (bystat -> 'summary' ->> 'eligible')::int = 0, '§7 the status filter (2 rejected: one ordinary, one confirmed duplicate)';
   assert jsonb_array_length(bystat -> 'employees') >= 7, '§7 a filter keeps zero-row employees visible';
   assert (bytype -> 'summary' ->> 'submitted')::int = (select coalesce(sum((e ->> 'submitted')::int), 0) from jsonb_array_elements(bytype -> 'employees') e),
     '§7 filtered cards still reconcile with filtered rows';
@@ -376,12 +398,14 @@ declare
 begin
   perform pg_temp.act_as(V);
   l := public.customer_review_report_list(null, null, null, null, 'all', 5, 0);
-  assert (l ->> 'total')::int = 15 and jsonb_array_length(l -> 'rows') = 5, '§8 total 15, a page of 5';
-  assert jsonb_array_length((public.customer_review_report_list(null, null, null, null, 'all', 5, 10)) -> 'rows') = 5, '§8 the last page has the last 5';
-  assert jsonb_array_length((public.customer_review_report_list(null, null, null, null, 'all', 5, 15)) -> 'rows') = 0, '§8 nothing beyond';
+  assert (l ->> 'total')::int = 17 and jsonb_array_length(l -> 'rows') = 5, '§8 total 17, a page of 5';
+  assert jsonb_array_length((public.customer_review_report_list(null, null, null, null, 'all', 5, 15)) -> 'rows') = 2, '§8 the last page has the last 2';
+  assert jsonb_array_length((public.customer_review_report_list(null, null, null, null, 'all', 5, 17)) -> 'rows') = 0, '§8 nothing beyond';
   assert (public.customer_review_report_list(null, null, null, null, 'all', 500, 0) ->> 'limit')::int = 50, '§8 the page size is clamped to 50';
   assert (public.customer_review_report_list(null, null, null, null, 'eligible', 50, 0) ->> 'total')::int = 11, '§8 the Eligible card lists the 11';
   assert (public.customer_review_report_list(null, null, null, null, 'duplicates', 50, 0) ->> 'total')::int = 1, '§8 the Duplicates card lists the 1';
+  assert (public.customer_review_report_list(null, null, null, null, 'confirmed_duplicates', 50, 0) ->> 'total')::int = 1, '§8 the Confirmed duplicates card lists the 1';
+  assert (public.customer_review_report_list(null, null, null, null, 'held', 50, 0) ->> 'total')::int = 1, '§8 the On hold card lists the 1';
   assert (public.customer_review_report_list(null, null, null, null, 'image', 50, 0) ->> 'total')::int = 2, '§8 the Image card lists the 2';
   assert (public.customer_review_report_list(null, null, 'text', null, 'image', 50, 0) ->> 'total')::int = 0, '§8 contradictory filters list nothing';
   assert (public.customer_review_report_list(null, 'e1000000-0000-4000-8000-0000000000e1', null, null, 'all', 50, 0) ->> 'total')::int = 5, '§8 an employee row lists their 5';
@@ -423,6 +447,8 @@ begin
   perform pg_temp.approve_as('b0000000-0000-4000-8000-00000000000b', pg_temp.put('33000000-0000-4000-8000-000000000004', 'e3000000-0000-4000-8000-0000000000e3', 'text', now()));
   assert pg_temp.board('e1000000-0000-4000-8000-0000000000e1') ->> 'state' = 'joint' and (pg_temp.board('e1000000-0000-4000-8000-0000000000e1') ->> 'leaders')::int = 2,
     '§9 two on the top count are joint leaders';
+  assert (pg_temp.board('e1000000-0000-4000-8000-0000000000e1') ->> 'need')::int = 1 and (pg_temp.board('e3000000-0000-4000-8000-0000000000e3') ->> 'need')::int = 1,
+    '§9 a joint leader needs 1 more eligible review to be the sole leader';
   assert pg_temp.board('e3000000-0000-4000-8000-0000000000e3') ->> 'state' = 'joint', '§9 both are told so';
   assert (pg_temp.board('e2000000-0000-4000-8000-0000000000e2') ->> 'need')::int = 2, '§9 a chaser''s target does not move with a tie at the top';
   -- ordering is stable and does not hide the tie
@@ -453,9 +479,14 @@ begin
   v := public.finalize_boe_credit_review_month(E3, (select l from cal), 'a0000000-0000-4000-8000-00000000000a');
   assert v ->> 'status' = 'lapsed', '§10 last month lapsed for E3 (1 of 3)';
   r := pg_temp.report('b0000000-0000-4000-8000-00000000000b', (select l from cal));
-  assert (pg_temp.emp(r, E3) ->> 'submitted')::int = 1 and (pg_temp.emp(r, E3) ->> 'eligible')::int = 0
-     and (pg_temp.emp(r, E3) ->> 'credits')::numeric = 0, '§10 submitted, but not eligible and no credits, in a lapsed month';
-  raise notice 'PASS  §10 a lapsed month''s reviews are submitted, not eligible';
+  assert (pg_temp.emp(r, E3) ->> 'submitted')::int = 1 and (pg_temp.emp(r, E3) ->> 'eligible')::int = 1
+     and (pg_temp.emp(r, E3) ->> 'credits')::numeric = 1, '§10 the closed month keeps its earned result: 1 eligible review, 1 credit';
+  assert (r -> 'summary' ->> 'expired_reviews')::int = 1 and (r -> 'summary' ->> 'expired_credits')::numeric = 1,
+    '§10 …reported as EXPIRED (the ledger lapsed it), not rejected and not reversed';
+  assert (r -> 'summary' ->> 'rejected')::int = 0 and (r -> 'summary' ->> 'reversed')::int = 0, '§10 expiry is neither a rejection nor a reversal';
+  assert (select (row ->> 'reviews')::int from jsonb_array_elements(pg_temp.board('e1000000-0000-4000-8000-0000000000e1', (select l from cal)) -> 'rows') row
+           where (row ->> 'employee_id') = 'e3000000-0000-4000-8000-0000000000e3') = 1, '§10 the closed month still ranks E3 on the review they earned';
+  raise notice 'PASS  §10 a closed month expires credits but keeps the historical earned result';
 end $$;
 
 -- ═══ §11. Nothing was written by reading ═════════════════════════════════════

@@ -14,7 +14,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
 import {
   FIRST_PLACE_FOOTNOTE,
-  POINTS_PER_CREDIT,
+  CREDITS_PER_POINT,
+  formatPoints,
   firstPlaceMessage,
   monthChoices,
   parseLeaderboard,
@@ -29,7 +30,7 @@ import {
 // whatever order the names display in. Your own row is highlighted and always
 // shown, even when you are outside the top rows.
 //
-// Points are review-earned credits x 10 for the month and start again each month;
+// Points are review-earned credits / 10 (credits = points x 10) for the month and start again each month;
 // they are not the performance score. Credits are shown separately.
 //
 // The data is one database function (customer_review_leaderboard): names, counts,
@@ -138,7 +139,7 @@ export function ReviewLeaderboardScreen() {
                 )}
                 {data.me && (
                   <div style={{ fontSize: 12.5, color: colors.secondary, marginTop: 4 }}>
-                    Rank {data.me.rank} · {data.me.reviews} eligible {data.me.reviews === 1 ? 'review' : 'reviews'} · {formatCredits(data.me.credits)} · {data.me.points} points
+                    Rank {data.me.rank} · {data.me.reviews} eligible {data.me.reviews === 1 ? 'review' : 'reviews'} · {formatCredits(data.me.credits)} · {formatPoints(data.me.points)} points
                   </div>
                 )}
               </div>
@@ -153,8 +154,8 @@ export function ReviewLeaderboardScreen() {
             )}
 
             <p style={{ margin: 0, fontSize: 11.5, color: colors.muted, lineHeight: 1.55 }}>
-              Ranked by reward-eligible reviews in {label}: approved reviews with a live credit. Equal counts share a rank.
-              Review credits are shown separately from points; points are review credits × {POINTS_PER_CREDIT} for the month and
+              Ranked by reward-eligible reviews in {label}: approved reviews with a credit the ledger has not reversed — not deleted, rejected, confirmed duplicates, or edited reviews still awaiting re-approval. Equal counts share a rank.
+              Review credits are shown separately from points; points are review credits ÷ {CREDITS_PER_POINT} for the month (10 credits = 1 point) and
               start again each month. They are not your performance score.
               {' '}<Link href="/my-credits" style={{ color: colors.secondary }}>Your BOE Credits</Link>
             </p>
@@ -219,7 +220,7 @@ function Row({ row }: { row: LeaderboardRow }) {
         {row.name}{row.is_me ? ' (you)' : ''}
       </td>
       <td style={td}>{row.reviews}</td>
-      <td style={td}>{row.points}</td>
+      <td style={td}>{formatPoints(row.points)}</td>
       <td style={td}>{formatCredits(row.credits)}</td>
     </tr>
   )

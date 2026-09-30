@@ -27,6 +27,7 @@ import {
   NO_REPORT_FILTERS,
   REPORT_PAGE_SIZE,
   contributors,
+  formatPoints,
   monthChoices,
   parseReportList,
   parseReviewReport,
@@ -258,11 +259,26 @@ function ReportBody({
             {s.eligible} <span style={{ fontSize: '12.5px', fontWeight: 500, color: colors.muted }}>of {s.submitted} submitted</span>
           </div>
         </button>
-        <Figure label="Review credits" value={formatCredits(s.credits)} />
-        <Figure label={`Review points (credits × ${report.points_per_credit})`} value={String(s.points)} />
+        <Figure label="Review credits earned" value={formatCredits(s.credits)} />
+        <Figure label={`Review points (credits ÷ ${report.credits_per_point})`} value={formatPoints(s.points)} />
         <p style={{ margin: 0, flex: '1 1 260px', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
-          Eligible means approved with a live credit: not deleted, reversed or lost to a closed month. Points are for {monthLabel} only and start again next month.
+          Eligible means approved, with a credit the ledger has not reversed, and not a confirmed duplicate. Deleted, rejected and pending reviews are not eligible. Points are for {monthLabel} only and start again next month.
         </p>
+      </section>
+
+      <section aria-label="What happened to the credits" style={{
+        display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+      }}>
+        <MetricCard label="Expired with a closed month" value={s.expired_reviews}
+          note={s.expired_reviews === 0 ? 'None' : `${formatCredits(s.expired_credits)} — earned, then expired (not rejected)`}
+          onClick={() => onOpen('eligible')} />
+        <MetricCard label="Credit reversed" value={s.reversed}
+          note="Deleted, edit rejected, duplicate or admin reversal" onClick={() => onOpen('all')} />
+        <MetricCard label="Edited, awaiting re-approval" value={s.held}
+          note={s.held === 0 ? 'None' : `${formatCredits(s.held_credits)} still in the balance, not counted as eligible`}
+          tone={s.held > 0 ? 'amber' : undefined} onClick={() => onOpen('held')} />
+        <MetricCard label="Confirmed duplicates" value={s.confirmed_duplicates}
+          note="Rejected, credit reversed, still submitted" onClick={() => onOpen('confirmed_duplicates')} />
       </section>
 
       {empty && (
@@ -375,7 +391,7 @@ function ReportBody({
                 <div><dt>Text</dt><dd>{e.text}</dd></div>
                 <div><dt>Image</dt><dd>{e.image}</dd></div>
                 <div><dt>Credits</dt><dd>{formatCredits(e.credits)}</dd></div>
-                <div><dt>Points</dt><dd>{e.points}</dd></div>
+                <div><dt>Points</dt><dd>{formatPoints(e.points)}</dd></div>
               </dl>
             </li>
           ))}
@@ -387,7 +403,7 @@ function ReportBody({
               <div><dt>Text</dt><dd>{s.text}</dd></div>
               <div><dt>Image</dt><dd>{s.image}</dd></div>
               <div><dt>Credits</dt><dd>{formatCredits(s.credits)}</dd></div>
-              <div><dt>Points</dt><dd>{s.points}</dd></div>
+              <div><dt>Points</dt><dd>{formatPoints(s.points)}</dd></div>
             </dl>
           </li>
         </ul>
@@ -421,7 +437,7 @@ function ReportBody({
                   <td style={td(false)}>{e.image}</td>
                   <td style={td(false)}>{e.eligible}</td>
                   <td style={td(false)}>{formatCredits(e.credits)}</td>
-                  <td style={td(false)}>{e.points}</td>
+                  <td style={td(false)}>{formatPoints(e.points)}</td>
                 </tr>
               ))}
             </tbody>
@@ -433,7 +449,7 @@ function ReportBody({
                 <td style={{ ...td(false), fontWeight: 700 }}>{s.image}</td>
                 <td style={{ ...td(false), fontWeight: 700 }}>{s.eligible}</td>
                 <td style={{ ...td(false), fontWeight: 700 }}>{formatCredits(s.credits)}</td>
-                <td style={{ ...td(false), fontWeight: 700 }}>{s.points}</td>
+                <td style={{ ...td(false), fontWeight: 700 }}>{formatPoints(s.points)}</td>
               </tr>
             </tfoot>
           </table>
@@ -573,13 +589,14 @@ function ReviewListSheet({
                   <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[r.status]} />
                   {r.duplicate_open && <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400E' }}>Possible duplicate</span>}
                   {r.reward_held && <span style={{ fontSize: '11px', fontWeight: 600, color: '#3B5BC0' }}>Edited · awaiting re-approval</span>}
+                  {r.confirmed_duplicate && <span style={{ fontSize: '11px', fontWeight: 700, color: '#B91C1C' }}>Confirmed duplicate</span>}
                 </div>
                 <div style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                   {r.submission_ref} · Submitted {formatSubmissionDay(istDateOf(r.submitted_at))} · Published {formatSubmissionDay(r.published_on)}
                 </div>
               </div>
               <div style={{ fontSize: '12px', color: r.eligible ? '#047857' : colors.muted, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                {r.eligible ? `Eligible · ${formatCredits(r.credits)} · ${r.points} pts` : 'Not eligible'}
+                {r.eligible ? `Eligible · ${formatCredits(r.credits)} · ${formatPoints(r.points)} pts${r.expired ? ' · expired with the closed month' : ''}` : r.held ? `Not eligible while pending · ${formatCredits(r.held_credits)} on hold` : r.confirmed_duplicate ? 'Not eligible · confirmed duplicate' : r.reversed ? 'Not eligible · credit reversed' : 'Not eligible'}
               </div>
               <Link href={`/customer-reviews/custom?submission=${r.id}`} className="boe-btn boe-btn-ghost"
                 style={{ minHeight: '44px', padding: '7px 14px', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center' }}>

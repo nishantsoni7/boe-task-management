@@ -2463,6 +2463,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/customerReviews/duplicateCheck.server.ts',
     'src/lib/customerReviews/duplicateDetection.test.ts',
     'src/lib/customerReviews/duplicateDetection.ts',
+    'src/lib/customerReviews/historicalMatching.test.ts',
+    'src/lib/customerReviews/historicalPairs.ts',
     'src/lib/customerReviews/imageHash.ts',
     'src/lib/customerReviews/migration.test.ts',
     'src/lib/customerReviews/reviewReport.test.ts',

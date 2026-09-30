@@ -15,7 +15,9 @@ import { join } from 'node:path'
 import {
   FIRST_PLACE_FOOTNOTE,
   FOCUS_LABELS,
-  POINTS_PER_CREDIT,
+  CREDITS_PER_POINT,
+  formatPoints,
+  pointsFromCredits,
   axisMax,
   barSegments,
   contributors,
@@ -55,10 +57,11 @@ const emp = (over: Partial<EmployeeRow> & { name: string; submitted: number }): 
 })
 
 const report = (over: Partial<ReviewReport> = {}): ReviewReport => ({
-  month: '2027-02-01', current_month: '2027-02-01', points_per_credit: 10,
+  month: '2027-02-01', current_month: '2027-02-01', credits_per_point: 10,
   summary: {
     submitted: 5, text: 3, image: 2, pending: 1, approved: 3, rejected: 1,
-    eligible: 3, eligible_text: 2, eligible_image: 1, credits: 3.5, points: 35, duplicates_open: 0,
+    eligible: 3, eligible_text: 2, eligible_image: 1, credits: 3.5, points: 0.35, duplicates_open: 0,
+    expired_reviews: 0, expired_credits: 0, reversed: 0, held: 0, held_credits: 0, confirmed_duplicates: 0,
   },
   daily: [{ day: '2027-02-01', text: 2, image: 1 }, { day: '2027-02-02', text: 1, image: 1 }],
   history: [{ month: '2027-01-01', text: 0, image: 0, submitted: 0, eligible: 0, credits: 0 }, { month: '2027-02-01', text: 3, image: 2, submitted: 5, eligible: 3, credits: 3.5 }],
@@ -67,18 +70,36 @@ const report = (over: Partial<ReviewReport> = {}): ReviewReport => ({
     { type: 'image', pending: 0, approved: 1, rejected: 1, submitted: 2, eligible: 1, credits: 1.5 },
   ],
   employees: [
-    emp({ name: 'A', submitted: 3, text: 2, image: 1, eligible: 2, eligible_text: 1, eligible_image: 1, credits: 2.5, points: 25 }),
-    emp({ name: 'B', submitted: 2, text: 1, image: 1, eligible: 1, eligible_text: 1, credits: 1, points: 10 }),
+    emp({ name: 'A', submitted: 3, text: 2, image: 1, eligible: 2, eligible_text: 1, eligible_image: 1, credits: 2.5, points: 0.25 }),
+    emp({ name: 'B', submitted: 2, text: 1, image: 1, eligible: 1, eligible_text: 1, credits: 1, points: 0.1 }),
     emp({ name: 'Zero', submitted: 0, text: 0 }),
   ],
   ...over,
 })
 
 describe('the points rule', () => {
-  test('points = credits x 10, and the multiplier is the database\'s', () => {
-    assert.equal(POINTS_PER_CREDIT, 10)
-    assert.match(code, /create or replace function public\.customer_review_points_per_credit\(\)\s+returns numeric\s+language sql\s+immutable\s+as \$\$ select 10::numeric \$\$;/)
-    assert.match(code, /coalesce\(sum\(credits\), 0\) \* v_ppc/)
+  test('credits = points x 10, so points = credits / 10 — in the database and in the screens', () => {
+    assert.equal(CREDITS_PER_POINT, 10)
+    assert.match(code, /create or replace function public\.customer_review_credits_per_point\(\)\s+returns numeric\s+language sql\s+immutable\s+as \$\$ select 10::numeric \$\$;/)
+    assert.match(code, /round\(coalesce\(sum\(credits\), 0\) \/ v_cpp, 3\)/)
+    assert.doesNotMatch(code, /\* v_cpp|\* v_ppc|points_per_credit/, 'no multiplication by the factor anywhere')
+  })
+  test('fractional credits give exact three-decimal points, computed in hundredths (no float drift)', () => {
+    assert.equal(pointsFromCredits(1), 0.1)      // a Text Review
+    assert.equal(pointsFromCredits(1.5), 0.15)   // an Image Review
+    assert.equal(pointsFromCredits(0.01), 0.001) // the smallest ledger unit
+    assert.equal(pointsFromCredits(1.15), 0.115)
+    assert.equal(pointsFromCredits(12.34), 1.234)
+    assert.equal(pointsFromCredits(0), 0)
+    assert.equal(pointsFromCredits(0.3 + 0.6 + 0.15), pointsFromCredits(1.05)) // a sum that is 1.0499999… in floats
+    assert.equal(formatPoints(0.1), '0.1')
+    assert.equal(formatPoints(0.15), '0.15')
+    assert.equal(formatPoints(1.234), '1.234')
+    assert.equal(formatPoints(12), '12')
+    assert.equal(formatPoints(pointsFromCredits(11.5)), '1.15')
+  })
+  test('the ledger is not touched: no credit row is written or re-priced by reporting', () => {
+    assert.doesNotMatch(code, /insert into public\.boe_credit|update public\.boe_credit|post_boe_credit/)
   })
   test('points are per month and never carried: the rows are one IST month', () => {
     assert.match(fn('customer_review_report_rows'), /s\.submitted_at >= \(p_from::timestamp at time zone 'Asia\/Kolkata'\)/)
@@ -99,8 +120,8 @@ describe('reading and reconciling the report', () => {
   })
   test('numbers arriving as strings (numeric columns) are read', () => {
     const raw = JSON.parse(JSON.stringify(report()))
-    raw.summary.credits = '3.50'; raw.summary.points = '35.00'; raw.employees[0].credits = '2.50'; raw.employees[0].points = '25.00'
-    raw.employees[1].credits = '1.00'; raw.employees[1].points = '10.00'
+    raw.summary.credits = '3.50'; raw.summary.points = '0.350'; raw.employees[0].credits = '2.50'; raw.employees[0].points = '0.250'
+    raw.employees[1].credits = '1.00'; raw.employees[1].points = '0.100'
     const parsed = parseReviewReport(raw)!
     assert.equal(parsed.summary.credits, 3.5)
     assert.deepEqual(reconciliationProblems(parsed), [])
@@ -110,7 +131,7 @@ describe('reading and reconciling the report', () => {
     assert.match(reconciliationProblems(report({ summary: { ...report().summary, eligible: 9, eligible_text: 9, eligible_image: 0 } })).join(' '), /eligible exceeds submitted/)
     assert.match(reconciliationProblems(report({ employees: report().employees.slice(0, 2).map(e => ({ ...e, submitted: e.submitted + 1 })) })).join(' '), /employee rows do not add up to submitted/)
     assert.match(reconciliationProblems(report({ daily: [{ day: '2027-02-01', text: 9, image: 9 }] })).join(' '), /daily bars/)
-    assert.match(reconciliationProblems(report({ summary: { ...report().summary, points: 99 } })).join(' '), /points are not credits/)
+    assert.match(reconciliationProblems(report({ summary: { ...report().summary, points: 99 } })).join(' '), /points are not credits \/ 10/)
     assert.match(reconciliationProblems(report({ history: [{ month: '2027-02-01', text: 0, image: 0, submitted: 0, eligible: 0, credits: 0 }] })).join(' '), /history/)
   })
 })
@@ -146,8 +167,8 @@ describe('the first-place target', () => {
   })
   test('the message: leading, joint, behind (singular and plural), nobody has a review yet', () => {
     assert.equal(firstPlaceMessage('leading', null), "You're leading")
-    assert.equal(firstPlaceMessage('joint', null, 2), "You're joint first with 1 other")
-    assert.equal(firstPlaceMessage('joint', null, 3), "You're joint first with 2 others")
+    assert.equal(firstPlaceMessage('joint', 1, 2), "You're joint first with 1 other — 1 more review makes you the sole leader")
+    assert.equal(firstPlaceMessage('joint', 1, 3), "You're joint first with 2 others — 1 more review makes you the sole leader")
     assert.equal(firstPlaceMessage('behind', 2), 'You need 2 more reviews to take first place')
     assert.equal(firstPlaceMessage('behind', 1), 'You need 1 more review to take first place')
     assert.equal(firstPlaceMessage('no_activity', 1), 'You need 1 more review to take first place')
@@ -171,17 +192,17 @@ describe('the first-place target', () => {
 describe('parsing the leaderboard, the card and the list', () => {
   const board = {
     month: '2027-02-01', current_month: '2027-02-01', leader_reviews: 4, leaders: 1, state: 'behind', need: 2,
-    me: { rank: 2, reviews: 3, credits: '3.00', points: '30.00' }, participants: 2,
+    me: { rank: 2, reviews: 3, credits: '3.00', points: '0.300' }, participants: 2,
     rows: [
-      { rank: 1, employee_id: 'a', name: 'Asha', reviews: 4, credits: '4.50', points: '45.00', is_me: false, tied: false },
-      { rank: 2, employee_id: 'b', name: 'Bina', reviews: 3, credits: '3.00', points: '30.00', is_me: true, tied: false },
+      { rank: 1, employee_id: 'a', name: 'Asha', reviews: 4, credits: '4.50', points: '0.450', is_me: false, tied: false },
+      { rank: 2, employee_id: 'b', name: 'Bina', reviews: 3, credits: '3.00', points: '0.300', is_me: true, tied: false },
     ],
   }
   test('a leaderboard reads, with numeric strings', () => {
     const b = parseLeaderboard(board)!
     assert.equal(b.rows[1].is_me, true)
     assert.equal(b.rows[0].credits, 4.5)
-    assert.equal(b.me?.points, 30)
+    assert.equal(b.me?.points, 0.3)
     assert.equal(b.need, 2)
   })
   test('an unknown state or shape is refused', () => {
@@ -241,12 +262,39 @@ describe('the database definitions the screens rely on', () => {
     assert.doesNotMatch(fn('customer_review_leaderboard'), /resolve_permission\(v_uid, 'customer_review_requests', 'verify'\)/)
     assert.match(fn('customer_review_leaderboard'), /u\.is_active and coalesce\(u\.is_deleted, false\) = false/)
   })
-  test('deleted reviews are out of every total; eligibility follows the ledger and the month', () => {
+  test('deleted reviews are out of every total', () => {
+    assert.match(fn('customer_review_report_rows'), /where s\.deleted_at is null/)
+  })
+  test('ELIGIBLE = approved, credited, not reversed, not a confirmed duplicate — and nothing about month closure or a pending edit', () => {
     const rows = fn('customer_review_report_rows')
-    assert.match(rows, /where s\.deleted_at is null/)
-    assert.match(rows, /rv\.transaction_type = 'reversal'/)
+    const earned = rows.slice(rows.indexOf("( s.status = 'approved'"), rows.indexOf(') as earned'))
+    assert.match(earned, /s\.status = 'approved'/)
+    assert.match(earned, /s\.credit_transaction_id is not null/)
+    assert.match(earned, /s\.reward_reversal_transaction_id is null/)
+    assert.match(earned, /rv\.transaction_type = 'reversal'/)
+    assert.match(earned, /coalesce\(d\.decided_duplicate, 0\) = 0/)
+    assert.doesNotMatch(earned, /lapsed|reward_held|pending_verification/, 'a closed month or a pending edit is not part of the eligibility test')
+  })
+  test('a closed month EXPIRES earned credits: reported as expired, never as rejected or reversed', () => {
+    const rows = fn('customer_review_report_rows')
+    assert.match(rows, /\(x\.earned and x\.lapsed\)\s+as expired/)
     assert.match(rows, /m\.status = 'lapsed'/)
-    assert.match(rows, /\(s\.status = 'approved' or s\.reward_held\)/)
+    const report = fn('customer_review_report')
+    assert.match(report, /'expired_credits',\s+coalesce\(sum\(credits\) filter \(where expired\), 0\)/)
+    assert.match(report, /'reversed',\s+count\(\*\) filter \(where reversed\)/)
+  })
+  test('an edited approved review is HELD: pending, not eligible, its credit still on the ledger and counted apart', () => {
+    const rows = fn('customer_review_report_rows')
+    const held = rows.slice(rows.indexOf("( s.status = 'pending_verification'"), rows.indexOf(') as is_held'))
+    assert.match(held, /s\.status = 'pending_verification' and s\.reward_held/)
+    assert.match(fn('customer_review_report'), /'held_credits',\s+coalesce\(sum\(held_credits\), 0\)/)
+  })
+  test('a confirmed duplicate stays in submitted, with its status, and is counted apart', () => {
+    assert.match(fn('customer_review_report'), /'confirmed_duplicates', count\(\*\) filter \(where confirmed_duplicate\)/)
+    assert.match(fn('customer_review_report_list'), /r\.confirmed_duplicate, r\.expired, r\.reversed, r\.held, r\.held_credits/)
+  })
+  test('a joint leader needs one more eligible review to be the sole leader', () => {
+    assert.match(fn('customer_review_leaderboard'), /v_need := 1; v_state := 'joint'/)
   })
   test('the internal functions are callable by no client role; the public ones by authenticated only', () => {
     assert.match(code, /revoke execute on function public\.customer_review_report_rows\(date, date, uuid, text, text\) from public, anon, authenticated, service_role;/)
@@ -312,7 +360,8 @@ describe('the screens', () => {
   test('submitted and eligible are shown apart, credits and points separately', () => {
     assert.match(REPORTS, /of \{s\.submitted\} submitted/)
     assert.match(REPORTS, /Review credits/)
-    assert.match(REPORTS, /Review points \(credits × \$\{report\.points_per_credit\}\)/)
+    assert.match(REPORTS, /Review points \(credits ÷ \$\{report\.credits_per_point\}\)/)
+    for (const s of ['Expired with a closed month', 'Credit reversed', 'Edited, awaiting re-approval', 'Confirmed duplicates']) assert.ok(REPORTS.includes(s), s)
   })
   test('phone layout: cards and filters wrap, tables scroll inside their card, nothing widens the page', () => {
     assert.match(REPORTS, /repeat\(auto-fit, minmax\(min\(100%, 170px\), 1fr\)\)/)

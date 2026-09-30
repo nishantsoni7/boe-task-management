@@ -2,14 +2,14 @@
 -- Review Workflow — admin reporting and the shared monthly leaderboard.
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- WHAT THIS ADDS (read-only: no table is changed, no credit moves)
+-- WHAT THIS ADDS (read-only: no table is changed, no credit moves, no ledger row rewritten)
 -- ----------------------------------------------------------------
 --   customer_review_report(month, employee, type, status)              verifier: the whole dashboard, one call
 --   customer_review_report_list(month, employee, type, status, focus, limit, offset)
 --                                                                      verifier: one page of the matching reviews
 --   customer_review_leaderboard(month)                                 every signed-in employee
 --   customer_review_leader_card()                                      every signed-in employee: the dashboard card
---   customer_review_points_per_credit()                                the one place the points multiplier lives
+--   customer_review_credits_per_point()                                the one place the conversion lives (10 credits = 1 point)
 --   customer_review_report_rows(...)                                   internal: the single definition of a row
 --   customer_review_month_standings(month)                             internal: one month's ranking input
 --
@@ -34,22 +34,45 @@
 --   "test categories" belong to a different workflow). The category breakdown is
 --   therefore type by status, and the category filter is the type filter.
 --
---   REWARD-ELIGIBLE. A submitted review whose credit is LIVE: it has a posted credit,
---   nothing has reversed that credit (the ledger has no reversal row for it — whether
---   an employee's delete, a rejected edit or an administrator's reversal posted it),
---   and its review month has not lapsed (a lapse removes the month's provisional
---   credits). An edited approved review waiting for re-approval still holds its
---   posted credit and counts. Eligible <= submitted, always; both are shown wherever
---   they differ.
+--   REWARD-ELIGIBLE ("earned"). A submitted review that is APPROVED, has a posted credit,
+--   whose credit nothing has reversed (no ledger reversal row: an employee's delete, a
+--   rejected edit, a confirmed duplicate or an administrator's reversal all post one),
+--   and that is not a confirmed duplicate. It does NOT depend on whether the review
+--   month was later closed: a closed month EXPIRES the month's provisional credits (a
+--   ledger review_month_lapse row), it does not reject or reverse the reviews, so the
+--   historical result stays (see EXPIRED below). Excluded from eligible, and only from
+--   eligible: deleted reviews (out of every total), rejected ones, confirmed duplicates,
+--   reviews still Pending Approval — including an APPROVED REVIEW EDITED AND WAITING FOR
+--   RE-APPROVAL (see HELD) — and reversed credits. Eligible <= submitted, always.
 --
---   CREDITS. The credits on those eligible reviews (credits_awarded, the same numbers
---   the ledger holds). No rate is invented: text and image rewards, caps and approval
---   rules are the existing ones.
+--   CREDITS. The credits on the eligible reviews (credits_awarded, the numbers the ledger
+--   holds). No rate is invented: Text and Image rewards, caps and approval rules are the
+--   existing ones.
 --
---   POINTS. Review-earned points = credits x customer_review_points_per_credit() (10).
---   They are recomputed for each month and never carried over: a new month starts at
---   zero. Points are a view of review credits; they are not the performance-module
---   score and nothing here reads or changes it.
+--   EXPIRED. Of the eligible credits, those whose review month was closed below the
+--   monthly minimum (boe_credit_review_months.status = 'lapsed'). Shown as expired, never
+--   as rejected, and never subtracted from earned.
+--
+--   REVERSED. A review that had a credit the ledger has since reversed. It is submitted,
+--   not eligible, and counted here so a later reversal is visible. A reversal after the
+--   month was reported changes that month's report retroactively: reports always show the
+--   ledger as it stands, and a month's qualification (already recorded) is not reopened.
+--
+--   HELD. An APPROVED review the employee edited: back to Pending Approval, its posted
+--   credit still on the ledger untouched (the ledger cannot pay it twice or re-price it),
+--   but NOT eligible and NOT ranked while pending. Re-approval posts nothing and makes it
+--   eligible again; rejection or deletion reverses the credit once. Reported as held.
+--
+--   CONFIRMED DUPLICATE. A review with a 'duplicate' decision on its current check. It is
+--   rejected and its credit reversed (20270224000000), so it is submitted, shown with its
+--   status and a "confirmed duplicate" mark, and excluded from eligible and the leaderboard.
+--
+--   POINTS. Review-earned points = credits / customer_review_credits_per_point() (10):
+--   credits = points x 10. Credits are numeric(12,2), so points are exact to three
+--   decimals (round(…, 3) only tidies the trailing zeros of the division; it never changes a value) (1 credit = 0.1 point, 1.5 credits = 0.15, 0.01 credit = 0.001) and are never
+--   rounded in SQL. They are recomputed for each month and never carried over. Points are a
+--   view of review credits; the performance-module score is neither read nor changed, and
+--   no ledger row is rewritten.
 --
 --   POSSIBLE DUPLICATES AWAITING A DECISION. Reviews of the month whose latest
 --   duplicate check has an undecided strong or moderate flag.
@@ -60,7 +83,9 @@
 --
 --   LEADERBOARD. Ranked by eligible review count for the month; equal counts SHARE a
 --   rank (1, 1, 3). Display order (count, then name) is stable and does not hide a tie.
---   "You need X more reviews to take first place": X = leader count - your count + 1.
+--   "You need X more reviews to take first place": X = leader count - your count + 1, which
+--   is also what a JOINT leader needs to become sole leader (1); with no eligible review
+--   anywhere it is 1.
 --
 -- WHO MAY CALL. The report functions need customer_review_requests.verify (checked in
 -- the function; the caller's identity is auth.uid()). The leaderboard functions need only
@@ -76,7 +101,7 @@
 --   drop function if exists public.customer_review_report(date, uuid, text, text);
 --   drop function if exists public.customer_review_month_standings(date);
 --   drop function if exists public.customer_review_report_rows(date, date, uuid, text, text);
---   drop function if exists public.customer_review_points_per_credit();
+--   drop function if exists public.customer_review_credits_per_point();
 --   drop index    if exists public.customer_review_custom_submissions_submitted_at_idx;
 
 create index if not exists customer_review_custom_submissions_submitted_at_idx
@@ -84,14 +109,14 @@ create index if not exists customer_review_custom_submissions_submitted_at_idx
 
 -- ═══ 1. The points multiplier ═════════════════════════════════════════════
 
-create or replace function public.customer_review_points_per_credit()
+create or replace function public.customer_review_credits_per_point()
 returns numeric
 language sql
 immutable
 as $$ select 10::numeric $$;
 
-revoke execute on function public.customer_review_points_per_credit() from public, anon;
-grant  execute on function public.customer_review_points_per_credit() to authenticated, service_role;
+revoke execute on function public.customer_review_credits_per_point() from public, anon;
+grant  execute on function public.customer_review_credits_per_point() to authenticated, service_role;
 
 -- ═══ 2. One definition of a review row ════════════════════════════════════
 --
@@ -106,20 +131,25 @@ create or replace function public.customer_review_report_rows(
   p_status   text default null
 )
 returns table (
-  id              uuid,
-  submitted_by    uuid,
-  submission_ref  text,
-  review_type     text,
-  status          text,
-  submitted_at    timestamptz,
-  published_on    date,
-  reward_held     boolean,
-  edit_count      integer,
-  day             date,
-  month           date,
-  eligible        boolean,
-  credits         numeric,
-  dup_open        boolean
+  id                   uuid,
+  submitted_by         uuid,
+  submission_ref       text,
+  review_type          text,
+  status               text,
+  submitted_at         timestamptz,
+  published_on         date,
+  reward_held          boolean,
+  edit_count           integer,
+  day                  date,
+  month                date,
+  eligible             boolean,
+  credits              numeric,
+  expired              boolean,
+  reversed             boolean,
+  held                 boolean,
+  held_credits         numeric,
+  confirmed_duplicate  boolean,
+  dup_open             boolean
 )
 language sql
 stable
@@ -130,30 +160,51 @@ as $$
          s.reward_held, s.edit_count,
          (s.submitted_at at time zone 'Asia/Kolkata')::date                                        as day,
          date_trunc('month', (s.submitted_at at time zone 'Asia/Kolkata')::date)::date             as month,
-         live.ok                                                                                    as eligible,
-         case when live.ok then s.credits_awarded else 0 end                                        as credits,
+         x.earned                                                                                   as eligible,
+         case when x.earned then s.credits_awarded else 0 end                                       as credits,
+         (x.earned and x.lapsed)                                                                    as expired,
+         x.was_reversed                                                                             as reversed,
+         x.is_held                                                                                  as held,
+         case when x.is_held then s.credits_awarded else 0 end                                      as held_credits,
+         x.confirmed                                                                                as confirmed_duplicate,
          coalesce(d.flags_open, 0) > 0                                                              as dup_open
     from public.customer_review_custom_submissions s
     left join public.customer_review_custom_duplicate_summary d on d.submission_id = s.id
     cross join lateral (
-      select (
-        s.credit_transaction_id is not null
-        and coalesce(s.credits_awarded, 0) > 0
-        and (s.status = 'approved' or s.reward_held)
-        -- nothing has reversed the credit …
-        and not exists (
-          select 1 from public.boe_credit_transactions rv
-           where rv.transaction_type = 'reversal'
-             and rv.source_type = 'boe_credit_transaction'
-             and rv.source_id = s.credit_transaction_id)
-        -- … and its review month has not lapsed
-        and not exists (
+      select
+        coalesce(d.decided_duplicate, 0) > 0 as confirmed,
+        -- a credit the ledger has reversed (a delete, a rejected edit, a confirmed duplicate, an admin reversal)
+        ( s.reward_reversal_transaction_id is not null
+          or (s.credit_transaction_id is not null and exists (
+                select 1 from public.boe_credit_transactions rv
+                 where rv.transaction_type = 'reversal'
+                   and rv.source_type = 'boe_credit_transaction'
+                   and rv.source_id = s.credit_transaction_id)) ) as was_reversed,
+        exists (
           select 1 from public.boe_credit_review_months m
            where m.employee_id = s.submitted_by
              and m.review_month = date_trunc('month', (s.submitted_at at time zone 'Asia/Kolkata')::date)::date
-             and m.status = 'lapsed')
-      ) as ok
-    ) live
+             and m.status = 'lapsed') as lapsed,
+        -- earned: approved, credited, not reversed, not a confirmed duplicate
+        ( s.status = 'approved'
+          and s.credit_transaction_id is not null
+          and coalesce(s.credits_awarded, 0) > 0
+          and s.reward_reversal_transaction_id is null
+          and not exists (
+                select 1 from public.boe_credit_transactions rv
+                 where rv.transaction_type = 'reversal'
+                   and rv.source_type = 'boe_credit_transaction'
+                   and rv.source_id = s.credit_transaction_id)
+          and coalesce(d.decided_duplicate, 0) = 0 ) as earned,
+        -- held: an approved review edited and waiting; its credit is still on the ledger
+        ( s.status = 'pending_verification' and s.reward_held
+          and s.credit_transaction_id is not null
+          and not exists (
+                select 1 from public.boe_credit_transactions rv
+                 where rv.transaction_type = 'reversal'
+                   and rv.source_type = 'boe_credit_transaction'
+                   and rv.source_id = s.credit_transaction_id) ) as is_held
+    ) x
    where s.deleted_at is null
      and s.submitted_at >= (p_from::timestamp at time zone 'Asia/Kolkata')
      and s.submitted_at <  (p_to::timestamp   at time zone 'Asia/Kolkata')
@@ -185,7 +236,7 @@ declare
   v_month   date := coalesce(date_trunc('month', p_month)::date, v_current);
   v_to      date;
   v_hist_from date;
-  v_ppc     numeric := public.customer_review_points_per_credit();
+  v_cpp     numeric := public.customer_review_credits_per_point();
   v_result  jsonb;
 begin
   if v_uid is null or not exists (
@@ -243,7 +294,7 @@ begin
   select jsonb_build_object(
     'month', v_month,
     'current_month', v_current,
-    'points_per_credit', v_ppc,
+    'credits_per_point', v_cpp,
     'filters', jsonb_build_object('employee', p_employee, 'type', p_type, 'status', p_status),
     'summary', (
       select jsonb_build_object(
@@ -257,7 +308,13 @@ begin
         'eligible_text',    count(*) filter (where eligible and review_type = 'text'),
         'eligible_image',   count(*) filter (where eligible and review_type = 'image'),
         'credits',          coalesce(sum(credits), 0),
-        'points',           coalesce(sum(credits), 0) * v_ppc,
+        'points',           round(coalesce(sum(credits), 0) / v_cpp, 3),
+        'expired_reviews',  count(*) filter (where expired),
+        'expired_credits',  coalesce(sum(credits) filter (where expired), 0),
+        'reversed',         count(*) filter (where reversed),
+        'held',             count(*) filter (where held),
+        'held_credits',     coalesce(sum(held_credits), 0),
+        'confirmed_duplicates', count(*) filter (where confirmed_duplicate),
         'duplicates_open',  count(*) filter (where dup_open)
       ) from r
     ),
@@ -329,7 +386,7 @@ begin
                'eligible_text', e.eligible_text,
                'eligible_image', e.eligible_image,
                'credits', e.credits,
-               'points', e.credits * v_ppc
+               'points', round(e.credits / v_cpp, 3)
              ) order by e.submitted desc, e.name, e.employee_id), '[]'::jsonb)
         from emp e
     )
@@ -391,7 +448,7 @@ begin
   if p_status is not null and p_status not in ('pending_verification', 'approved', 'rejected') then
     raise exception 'CUSTOMER_REVIEW_REPORT_INVALID: Choose a review status' using errcode = '22023';
   end if;
-  if p_focus is null or p_focus not in ('all', 'text', 'image', 'eligible', 'duplicates') then
+  if p_focus is null or p_focus not in ('all', 'text', 'image', 'eligible', 'duplicates', 'confirmed_duplicates', 'held') then
     raise exception 'CUSTOMER_REVIEW_REPORT_INVALID: Choose what to list' using errcode = '22023';
   end if;
   if v_month > v_current then
@@ -410,19 +467,24 @@ begin
   select count(*) into v_total
     from public.customer_review_report_rows(v_month, v_to, p_employee, v_type, p_status) r
    where (p_focus <> 'eligible' or r.eligible)
-     and (p_focus <> 'duplicates' or r.dup_open);
+     and (p_focus <> 'duplicates' or r.dup_open)
+     and (p_focus <> 'confirmed_duplicates' or r.confirmed_duplicate)
+     and (p_focus <> 'held' or r.held);
 
   select coalesce(jsonb_agg(to_jsonb(page) order by page.submitted_at desc, page.id), '[]'::jsonb) into v_rows
     from (
       select r.id, r.submission_ref, r.submitted_by,
              coalesce(nullif(btrim(u.full_name), ''), 'Unknown') as employee_name,
              r.review_type, r.status, r.submitted_at, r.published_on,
-             r.eligible, r.credits, r.credits * public.customer_review_points_per_credit() as points,
-             r.dup_open as duplicate_open, r.reward_held, r.edit_count
+             r.eligible, r.credits, round(r.credits / public.customer_review_credits_per_point(), 3) as points,
+             r.dup_open as duplicate_open, r.reward_held, r.edit_count,
+             r.confirmed_duplicate, r.expired, r.reversed, r.held, r.held_credits
         from public.customer_review_report_rows(v_month, v_to, p_employee, v_type, p_status) r
         left join public.users u on u.id = r.submitted_by
        where (p_focus <> 'eligible' or r.eligible)
          and (p_focus <> 'duplicates' or r.dup_open)
+         and (p_focus <> 'confirmed_duplicates' or r.confirmed_duplicate)
+         and (p_focus <> 'held' or r.held)
        order by r.submitted_at desc, r.id
        limit v_limit offset v_offset
     ) page;
@@ -481,7 +543,7 @@ declare
   v_uid       uuid := auth.uid();
   v_current   date := date_trunc('month', (now() at time zone 'Asia/Kolkata')::date)::date;
   v_month     date := coalesce(date_trunc('month', p_month)::date, v_current);
-  v_ppc       numeric := public.customer_review_points_per_credit();
+  v_cpp       numeric := public.customer_review_credits_per_point();
   v_leader    integer;
   v_leaders   integer;
   v_rows      jsonb;
@@ -512,11 +574,11 @@ begin
       where reviews = (select max(reviews) from ranked) and (select max(reviews) from ranked) > 0),
     (select coalesce(jsonb_agg(jsonb_build_object(
               'rank', t.rank, 'employee_id', t.employee_id, 'name', t.name,
-              'reviews', t.reviews, 'credits', t.credits, 'points', t.credits * v_ppc,
+              'reviews', t.reviews, 'credits', t.credits, 'points', round(t.credits / v_cpp, 3),
               'is_me', t.employee_id = v_uid,
               'tied', (select count(*) from ranked x where x.rank = t.rank) > 1
             ) order by t.reviews desc, t.name, t.employee_id), '[]'::jsonb) from ranked t),
-    (select jsonb_build_object('rank', m.rank, 'reviews', m.reviews, 'credits', m.credits, 'points', m.credits * v_ppc)
+    (select jsonb_build_object('rank', m.rank, 'reviews', m.reviews, 'credits', m.credits, 'points', round(m.credits / v_cpp, 3))
        from ranked m where m.employee_id = v_uid),
     (select count(*) from ranked)
   into v_leader, v_leaders, v_rows, v_me, v_count;
@@ -530,7 +592,7 @@ begin
   elsif v_my_reviews = v_leader and v_leaders = 1 then
     v_need := null; v_state := 'leading';
   elsif v_my_reviews = v_leader then
-    v_need := null; v_state := 'joint';
+    v_need := 1; v_state := 'joint';   -- one more eligible review makes a joint leader the sole leader
   else
     v_need := v_leader - v_my_reviews + 1; v_state := 'behind';
   end if;
@@ -538,7 +600,7 @@ begin
   return jsonb_build_object(
     'month', v_month,
     'current_month', v_current,
-    'points_per_credit', v_ppc,
+    'credits_per_point', v_cpp,
     'leader_reviews', v_leader,
     'leaders', v_leaders,
     'state', v_state,

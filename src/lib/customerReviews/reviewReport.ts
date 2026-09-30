@@ -13,13 +13,27 @@
 //   submitted   every review of the month that is not deleted
 //   text/image  the stored review_type; a review is exactly one, so they sum to submitted
 //   eligible    a live credit: posted, not reversed, its month not lapsed
-//   points      review credits x POINTS_PER_CREDIT, per month, never carried over
+//   points      review credits / CREDITS_PER_POINT (credits = points x 10), per month, never carried over
 
 export type ReviewTypeKey = 'text' | 'image'
 export type ReviewStatusKey = 'pending_verification' | 'approved' | 'rejected'
 
-/** Review-earned points per credit. Pinned to customer_review_points_per_credit() by a test. */
-export const POINTS_PER_CREDIT = 10
+/**
+ * Credits = points x 10, so points = credits / 10. Pinned to customer_review_credits_per_point()
+ * by a test. Credits are numeric(12,2), so points are exact to three decimals: 1 credit = 0.1
+ * point, 1.5 credits = 0.15, 0.01 credit = 0.001.
+ */
+export const CREDITS_PER_POINT = 10
+
+/** Points for a number of credits, computed in hundredths so 1.15 credits is exactly 0.115. */
+export function pointsFromCredits(credits: number): number {
+  return Math.round(credits * 100) / (CREDITS_PER_POINT * 100)
+}
+
+/** "0.1", "0.15", "0.125", "12" — up to three decimals, no trailing zeros. */
+export function formatPoints(points: number): string {
+  return String(Math.round(points * 1000) / 1000)
+}
 
 export const REPORT_PAGE_SIZE = 25
 
@@ -45,6 +59,16 @@ export type ReportSummary = {
   eligible_image: number
   credits: number
   points: number
+  /** Of the eligible: reviews / credits whose month was closed below target (expired, not rejected). */
+  expired_reviews: number
+  expired_credits: number
+  /** Reviews whose credit the ledger has since reversed. */
+  reversed: number
+  /** Approved reviews edited and waiting for re-approval: credit still on the ledger, not eligible. */
+  held: number
+  held_credits: number
+  /** Reviews with a "Duplicate" decision: rejected, credit reversed, still submitted. */
+  confirmed_duplicates: number
   duplicates_open: number
 }
 
@@ -67,7 +91,7 @@ export type EmployeeRow = {
 export type ReviewReport = {
   month: string
   current_month: string
-  points_per_credit: number
+  credits_per_point: number
   summary: ReportSummary
   daily: DailyBar[]
   history: MonthBar[]
@@ -91,12 +115,15 @@ export function parseReviewReport(raw: unknown): ReviewReport | null {
   return {
     month: str(r.month),
     current_month: str(r.current_month),
-    points_per_credit: num(r.points_per_credit),
+    credits_per_point: num(r.credits_per_point),
     summary: {
       submitted: num(s.submitted), text: num(s.text), image: num(s.image),
       pending: num(s.pending), approved: num(s.approved), rejected: num(s.rejected),
       eligible: num(s.eligible), eligible_text: num(s.eligible_text), eligible_image: num(s.eligible_image),
-      credits: num(s.credits), points: num(s.points), duplicates_open: num(s.duplicates_open),
+      credits: num(s.credits), points: num(s.points),
+      expired_reviews: num(s.expired_reviews), expired_credits: num(s.expired_credits), reversed: num(s.reversed),
+      held: num(s.held), held_credits: num(s.held_credits), confirmed_duplicates: num(s.confirmed_duplicates),
+      duplicates_open: num(s.duplicates_open),
     },
     daily: arr(r.daily).map(d => ({ day: str(d.day), text: num(d.text), image: num(d.image) })),
     history: arr(r.history).map(m => ({
@@ -140,7 +167,9 @@ export function reconciliationProblems(report: ReviewReport): string[] {
   if (report.categories.reduce((t, c) => t + c.submitted, 0) !== s.submitted) problems.push('the category breakdown does not add up to submitted')
   const last = report.history[report.history.length - 1]
   if (last && (last.submitted !== s.submitted || last.eligible !== s.eligible)) problems.push('the current month of the history differs from the cards')
-  if (!near(s.points, s.credits * (report.points_per_credit || POINTS_PER_CREDIT))) problems.push('points are not credits x the multiplier')
+  if (!near(s.points, pointsFromCredits(s.credits))) problems.push('points are not credits / 10')
+  if (report.employees.some(e => !near(e.points, pointsFromCredits(e.credits)))) problems.push('an employee\'s points are not credits / 10')
+  if (s.expired_credits > s.credits + 0.005) problems.push('expired credits exceed earned credits')
   return problems
 }
 
@@ -253,7 +282,7 @@ export function firstPlaceMessage(state: LeaderboardState, need: number | null, 
     case 'leading':
       return "You're leading"
     case 'joint':
-      return `You're joint first${leaders > 1 ? ` with ${leaders - 1} ${plural(leaders - 1, 'other', 'others')}` : ''}`
+      return `You're joint first${leaders > 1 ? ` with ${leaders - 1} ${plural(leaders - 1, 'other', 'others')}` : ''} — 1 more review makes you the sole leader`
     case 'behind':
     case 'no_activity': {
       const n = need ?? 1
@@ -298,7 +327,7 @@ export function parseLeaderCard(raw: unknown): LeaderCard | null {
 
 // ─── The list behind a card or a row ──────────────────────────────────────────
 
-export type ReportFocus = 'all' | 'text' | 'image' | 'eligible' | 'duplicates'
+export type ReportFocus = 'all' | 'text' | 'image' | 'eligible' | 'duplicates' | 'confirmed_duplicates' | 'held'
 
 export type ReportListRow = {
   id: string
@@ -315,6 +344,11 @@ export type ReportListRow = {
   duplicate_open: boolean
   reward_held: boolean
   edit_count: number
+  confirmed_duplicate: boolean
+  expired: boolean
+  reversed: boolean
+  held: boolean
+  held_credits: number
 }
 
 export type ReportList = { total: number; limit: number; offset: number; rows: ReportListRow[] }
@@ -333,6 +367,8 @@ export function parseReportList(raw: unknown): ReportList | null {
       submitted_at: str(x.submitted_at), published_on: str(x.published_on),
       eligible: x.eligible === true, credits: num(x.credits), points: num(x.points),
       duplicate_open: x.duplicate_open === true, reward_held: x.reward_held === true, edit_count: num(x.edit_count),
+      confirmed_duplicate: x.confirmed_duplicate === true, expired: x.expired === true, reversed: x.reversed === true,
+      held: x.held === true, held_credits: num(x.held_credits),
     })),
   }
 }
@@ -343,6 +379,8 @@ export const FOCUS_LABELS: Record<ReportFocus, string> = {
   image: 'Image reviews',
   eligible: 'Reward-eligible reviews',
   duplicates: 'Possible duplicates awaiting a decision',
+  confirmed_duplicates: 'Confirmed duplicates (rejected, credit reversed)',
+  held: 'Edited approved reviews awaiting re-approval',
 }
 
 /** Months a verifier can pick: the current one and the previous eleven, newest first. */

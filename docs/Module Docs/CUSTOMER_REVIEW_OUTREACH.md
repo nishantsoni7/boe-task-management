@@ -506,7 +506,7 @@ functions, so hiding the buttons is not what protects a review.
 | --- | --- | --- |
 | Pending Approval | in place | stays pending; queue position, submission date and month do not move; history row |
 | Rejected | not here | corrected through **Edit & Reapply** (§7), as before |
-| Approved | in place | **goes back to Pending Approval**; the credit is **held** (§23.3); the type cannot change; reviewers are notified |
+| Approved | in place | **goes back to Pending Approval**; the existing credit **stays on the ledger** but the review is **not eligible** until re-approved (§23.3); the type cannot change; reviewers are notified |
 
 The submission date (`submitted_at`) and reference never change, so an old review does
 not move into the current month. A published date may be corrected but never set in the
@@ -515,25 +515,37 @@ A review in a **closed** (lapsed) month cannot be edited.
 
 ### 23.3 Points and credits when a review is edited or deleted
 
-The ledger allows one `review_reward` per source and one reversal per row; "re-awarding
-after a reversal is deliberately not possible" (`20261101000000`). So *reverse on edit,
-pay again on approval* cannot work. Instead:
+The ledger allows one `review_reward` per source and one reversal per row; a reversal cannot itself be
+reversed, and "re-awarding after a reversal is deliberately not possible" (`20261101000000`). So *reverse on
+edit, pay again on approval* cannot work. Instead:
 
-* **Edit of an approved review** — nothing is posted. `credits_awarded` and
-  `credit_transaction_id` stay on the row, `reward_held` marks them as held.
-* **A verifier approves it again** — nothing is posted; the same credit stands.
-* **A verifier rejects it** — the held credit is **reversed once** and the review is
-  Rejected. Because a second reward for the same source is impossible, such a review
-  cannot be reapplied (*submit it again as a new review*).
-* **The employee deletes it** (any status) — an approved or held credit is reversed once,
-  in the same transaction; a pending or rejected review has nothing on the ledger.
-  A month that already **lapsed** is not reversed a second time.
+* **Edit of an approved review** — nothing is posted. `credits_awarded` and `credit_transaction_id` stay on the
+  row, `reward_held` marks that the review is waiting for a decision. **The credit is still in the employee's BOE
+  Credits balance** — that balance is the ledger, and it is unchanged — but the review is **Pending Approval**, so
+  it is **not eligible**: it does not count in the leaderboard or in "eligible" totals. Reports show its credit
+  separately as **awaiting re-approval**, never inside "eligible credits".
+* **A verifier approves it again** — nothing is posted; the same credit stands and the review is eligible again.
+  Re-approval can never pay a second time (the ledger has one reward per source, and the function refuses to post one
+  for a review that already has one).
+* **A verifier rejects it** — the credit is **reversed once** and the review is Rejected.
+* **The employee deletes it** (any status) — an approved or held credit is reversed once, in the same transaction;
+  a pending or rejected review has nothing on the ledger. A month that already **lapsed** is not reversed a second
+  time (its credit was already taken by the month's expiry).
+* **A review whose credit was reversed cannot be approved again** (`CUSTOMER_REVIEW_CUSTOM_DECIDED` refusal from the approve
+  function): the ledger would have to pay a second time. The employee submits a new review, or an administrator posts an
+  ordinary adjustment.
 
-However often a review is edited, it has at most one reward and at most one reversal.
-The reversal is an ordinary ledger row (`reversal`, negating the reward), posted for the
-employee by `reverse_customer_review_custom_reward()` — the ledger's own triggers
-recount the review month. Note the existing rule that a month that already
-**qualified** stays qualified after an individual reversal.
+**Type is locked** for an approved or held review, because the held credit cannot be re-priced. So an edit can never leave
+a Text credit on an Image review or the reverse; a Pending review may change type and is priced when first approved.
+
+However often a review is edited, it has at most one reward and at most one reversal. The reversal is an ordinary
+ledger row (`reversal`, negating the reward), posted for the employee by `reverse_customer_review_custom_reward()`.
+Note the existing rule that a month that already **qualified** stays qualified after an individual reversal.
+
+**"Pending approval" vs "actual credit balance."** *Pending approval* is a review status: it decides whether the review
+is counted (eligible, leaderboard). The *balance* is the ledger: it changes only when a reward or a reversal is posted.
+An edited approved review is pending approval **and** its credit is in the balance, until a verifier rejects it (reversed)
+or approves it (unchanged). The screens say both things in those words.
 
 ### 23.4 Delete
 
@@ -576,7 +588,7 @@ never rejects a review and never touches a reward.
 | Server | `duplicateCheck.server.ts` (fetch candidates, compare, token), `imageHash.ts` (difference hash, sharp) |
 | Database | columns `reviewer_name`, `review_text`, `reviewer_name_norm`, `review_text_norm`, `proof_phash`; tables `customer_review_custom_duplicate_checks` and `…_flags`; view `…_duplicate_summary`; `decide_customer_review_custom_duplicate()`; `customer_review_custom_duplicate_candidates()` |
 | Tests | `duplicateDetection.test.ts`, `customReviewDuplicates.test.ts`, `supabase/tests/custom_review_duplicate_assertions.sql` |
-| Backfill | `scripts/backfill-review-image-hashes.ts` (dry run by default; `--apply` writes null hashes only) |
+| Backfill | `scripts/backfill-review-image-hashes.ts` (§24.8): dry run by default, `--apply [--limit=N]` fills NULL hashes only, `--verify` is read-only |
 
 ### 24.1 What is compared
 
@@ -603,16 +615,16 @@ A filename or upload URL is never compared.
 | `TEXT_NEAR_MIN` | 0.8 | trigram similarity from which text is "similar" (moderate) |
 | `TEXT_NEAR_STRONG` | 0.92 | similarity from which it is strong |
 | `IMAGE_STRONG_MAX_RATIO` | 0.12 | differing bits ÷ marked bits: at most this is a strong image match |
-| `IMAGE_SIMILAR_MAX_RATIO` | 0.3 | differing bits ÷ marked bits: at most this is "similar" (moderate) |
+| `IMAGE_SIMILAR_MAX_RATIO` | 0.38 | differing bits ÷ marked bits: at most this is "similar" (moderate) |
 | `IMAGE_MIN_MARKED_BITS` | 60 | fewer marked bits between two hashes and they are not compared (two nearly blank pages) |
 
-**Why a share of the marked bits, why 65 × 64 with a blur, and why 0.3.** Measured on synthetic review
+**Why a share of the marked bits, why 65 × 64 with a blur, and why 0.38.** Measured on synthetic review
 screenshots (same header, stars and margins, only the words changing — the hard case). A coarse 17 × 16 or
 33 × 32 hash sees layout, not words, and a screenshot is mostly white, so raw bit counts made a different
 review in the same template as close as one screenshot saved at two JPEG qualities. Counting differing bits
 as a share of the bits that are marked in either image, at 65 × 64 with a light blur: JPEG (quality 25–50),
-WebP, resizing (300–1200 px) and blur of ONE screenshot differ in 13–21% of the marked bits; different reviews
-in the same template in 43–61%. 0.3 sits between the two. Two pages with almost no marks (a nearly blank
+resizing (400–1440 px) and blur of ONE screenshot differ in 20–28% of the marked bits; different reviews
+in the same template in 54–66%. 0.38 sits between the two. Two pages with almost no marks (a nearly blank
 screenshot) are not compared, and a near-blank template with only a few words changed can still read as
 similar — one more reason a match is a *possible* duplicate for a person to judge. Combination: the strongest single signal wins; a name added to
 a moderate signal, or text and image both moderate, makes it strong.
@@ -630,6 +642,10 @@ a decision.
   is always worded **possible**.
 * Reviews submitted **before** this feature have no name, text or image hash. Until the backfill script
   has run only an identical screenshot can match them, and their detail says *no duplicate check on record*.
+  After it has run they can match by screenshot only — **never** by name or text (§24.8).
+* Known image misses (asserted in `historicalMatching.test.ts`): a crop, a small rotation and an inverted (dark-mode)
+  copy of the same screenshot are **not** found; two near-blank pages are not compared; a near-blank template with a
+  few words changed can read as similar (a possible false positive).
 * Candidates are read server-side (newest 5,000 reviews). Text and image scoring happens in the route, not
   in SQL. At BOE's volume this is milliseconds; a much larger table would need a prefilter.
 * No paid or AI service is used and none should be added without approval.
@@ -655,39 +671,77 @@ date, or whether a deleted one exists. The evidence tables have one SELECT polic
 **Custom Submissions:** a badge in the list and the detail — *Possible duplicate review · awaiting decision*,
 *Marked duplicate*, *Duplicate check unavailable*, *Checked · different review*, *Weak name match*. **Compare &
 decide** opens both reviews side by side (screenshots, submitter, dates, status, name, text), the evidence in
-words, whether the employee saw the warning and proceeded, and two decisions: **Duplicate** and **Different
+words, whether the employee saw the warning and proceeded, and two decisions: **Duplicate** (asks for a second confirmation, and is not offered for a name-only flag) and **Different
 review**, with an optional note. Every check, flag and decision is kept in the review's **History**.
 
 * A decision is a database function: verifier only, **never on your own review**, only on the review's
-  **current** check. It changes no status and no credit.
+  **current** check. **Different review** changes nothing. **Duplicate** is binding (§24.6).
 * **A changed review is checked again.** Each check carries a content fingerprint (screenshot, normalized name,
   normalized text). Editing the content produces new, undecided flags; an earlier *Different review* stays as
   history and does not clear the new ones. Editing only the remark or date re-raises nothing.
 * A **deleted** review stays comparison evidence: reposting it is flagged against the deleted record.
 
-### 24.6 Unresolved: what a confirmed duplicate should do
+### 24.6 A confirmed duplicate is binding
 
-A warning, and a *Duplicate* decision, deliberately **do not** reject a review or remove a reward. Approval
-and reward eligibility follow the existing rules (§4, §10, §23). A verifier who has marked a review a duplicate
-is shown a note when approving; approving remains their decision. **Decision needed from the owner:** whether a
-review marked *Duplicate* should be blocked from approval, and whether an approved review later marked
-*Duplicate* should have its credit reversed. Neither is changed here.
+A **possible** duplicate is only a warning and never blocks anything. An administrator's **Duplicate** decision does:
+
+* The review is **Rejected** ("Confirmed duplicate of an earlier review") — by the same database function, in the same
+  transaction, so a decision and an approval cannot both win: both lock the review row first, and **approve refuses a
+  confirmed duplicate** (`CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED`, HTTP 409). This is enforced in the database, not
+  only in the UI (proved under two concurrent sessions: decision-vs-approve, approve-vs-decision).
+* If the review was **already rewarded**, the credit is **reversed once** through the ledger helper. A month that already
+  lapsed is not reversed again.
+* A weak (name-only) flag can never be confirmed as a duplicate.
+* The review **stays in submitted reporting** with its status visible and is counted as *confirmed duplicates*; it is
+  **excluded from eligible counts, credits and the leaderboard**.
+
+**Duplicate → Different review afterwards.** The decision is recorded as changed in the history, and the review is no
+longer a confirmed duplicate, so it is not excluded *because of the flag*. But the ledger cannot un-reverse: the review
+stays **Rejected**, and a reversed credit is **not restored**. If no credit had been reversed, the employee can use **Edit
+& Reapply**. If one had, approval is refused (one reward, one reversal — §23.3): the employee submits a new review, or an
+administrator posts an adjustment. No screen promises a restored reward.
 
 ### 24.7 Release note
 
-Apply `20270223000000` then `20270224000000` **before** the application code (the routes call the new
-functions). After the code is live, run `scripts/backfill-review-image-hashes.ts` once (dry run first).
+Apply `20270223000000`, then `20270224000000`, then `20270225000000` **before** the application code (the routes call the
+new functions). After the code is live, run the backfill (§24.8).
+
+### 24.8 Backfill of older reviews — exactly what it provides
+
+**Provides:** `proof_phash` only (the screenshot's difference hash), for reviews that have none. **Does not provide:** the
+reviewer name, the review text or their fingerprints — a hash cannot recover words, and older reviews never had them.
+**Consequences:**
+
+* An older review can match a new submission **only by its screenshot** (same file, or a look-alike).
+* Older reviews become **candidates** for new submissions. They are **not flagged retroactively** — flags are written only
+  when a review is submitted, edited or reapplied. `--verify` lists the older look-alike pairs for a person to look at.
+* Measured on real pictures (`historicalMatching.test.ts`): the same file matches by SHA-256; JPEG 25/50, resizing to 400 and
+  1440 px and a light blur match (20–28% of marked bits differ, limit 38%); different reviews in one template do not (54–66%).
+  **False negatives:** a crop, a rotation, an inverted copy. **False positive risk:** two near-blank screenshots with a few
+  words changed.
+
+**Runbook** (never run by CI or by a migration; **not run on production**; needs `.env.local` with the service key):
+
+```
+npx tsx scripts/backfill-review-image-hashes.ts                       # 1. dry run: how many, first 20 references; writes nothing
+npx tsx scripts/backfill-review-image-hashes.ts --apply --limit=200   # 2. hash the next 200 (oldest first), then stop
+npx tsx scripts/backfill-review-image-hashes.ts --apply               # 3. repeat / finish; safe to interrupt and re-run
+npx tsx scripts/backfill-review-image-hashes.ts --verify              # 4. read-only: coverage + look-alike pairs
+```
+
+Resumable because only NULL hashes are selected and the write function fills a NULL and nothing else; a second run does
+nothing. Exit 1 means some proofs could not be read (they are named and skipped). `--verify` refuses above 3,000 reviews.
 
 ## 25. Reports and the shared leaderboard (`20270225000000`, in the repository — NOT applied)
 
-Read-only: no table is changed and no credit moves.
+Read-only: no table is changed and no credit moves. Rules are in §25.1; the corrected rules for duplicates and edits are in §23.3 and §24.6.
 
 | | |
 | --- | --- |
 | Admin dashboard | **Reports** — `/customer-reviews/reports` (`verify` holders), `ReportsScreen.tsx`, `ReviewCharts.tsx` |
 | Leaderboard | `/my-credits/leaderboard` — **every signed-in employee** (no Review permission needed), `ReviewLeaderboardScreen.tsx` |
 | Dashboard card | `ReviewLeaderCard.tsx`, one card on `/dashboard` linking to the leaderboard |
-| Database | `customer_review_report()`, `customer_review_report_list()`, `customer_review_leaderboard()`, `customer_review_leader_card()`, `customer_review_points_per_credit()`; internal `customer_review_report_rows()`, `customer_review_month_standings()` |
+| Database | `customer_review_report()`, `customer_review_report_list()`, `customer_review_leaderboard()`, `customer_review_leader_card()`, `customer_review_credits_per_point()`; internal `customer_review_report_rows()`, `customer_review_month_standings()` |
 | Pure code | `src/lib/customerReviews/reviewReport.ts` |
 | Tests | `reviewReport.test.ts`; `supabase/tests/custom_review_reporting_assertions.sql` (executed twice on PostgreSQL) |
 
@@ -704,18 +758,26 @@ Read-only: no table is changed and no credit moves.
 * **Category** — custom reviews carry no category beyond their type (the generated-review "test categories" belong to a
   different workflow). The **By type and status** table is the category breakdown, and the Type filter is the category
   filter. **Decision needed from the owner** if a separate category (project, city, source) is wanted: it would be a new field.
-* **Reward-eligible** — a submitted review whose credit is **live**: a posted credit that nothing has reversed (the ledger
-  has no reversal row for it — an employee's delete, a rejected edit, or an administrator's reversal), in a review month that
-  has not lapsed. An edited approved review waiting for re-approval still holds its posted credit and counts (§23.3).
-  Eligible ≤ submitted always; both are shown wherever they differ.
-* **Credits** — the credits on the eligible reviews (the same numbers the ledger holds). **No rate was invented**: Text
-  and Image rewards, caps and approval rules are the existing ones (§14).
-* **Points** — review-earned points = **credits × 10** (`customer_review_points_per_credit()`; `POINTS_PER_CREDIT`
-  pinned to it by a test). Points are per month and **start again each month**: nothing is carried over. They are a view of
-  review credits — not the Performance-module score, which nothing here reads or changes. Credits and points are always
-  shown separately.
-  *The brief said "Credits = review-earned points × 10" in one place and "Points = Credits × 10" in the reply that chose the
-  rule; the second was followed. If the first was meant, change the constant to 0.1 (or 1/10) in one place.*
+* **Reward-eligible** — an **approved** review (not deleted) with a posted credit that nothing has reversed, and **not a
+  confirmed duplicate**. Deleted, rejected, confirmed-duplicate and **pending** reviews (including an edited approved review
+  awaiting re-approval) are **not** eligible. Eligible ≤ submitted always; both are shown wherever they differ.
+* **Expired** — a review whose month closed (`boe_credit_review_months.status = 'lapsed'`): its credit was **earned**, then
+  expired. **Expiry is not rejection**: the review stays eligible in history (the count and the reward earned that month), and
+  is reported separately as *Expired with a closed month*. Month closure never erases an earned result.
+* **Awaiting re-approval** — edited approved reviews: submitted, **not** eligible, their credit still in the balance, shown
+  apart as `held`.
+* **Confirmed duplicates / Reversed** — counted apart; both stay in submitted with their status visible.
+* **Credits** — the credits on the eligible reviews (the ledger's own numbers, numeric(12,2)). **No rate was invented**:
+  Text and Image rewards, caps and approval rules are the existing ones (§14). Existing awards are never rewritten.
+* **Points** — review-earned points = **credits ÷ 10** (Credits = points × 10; `customer_review_credits_per_point()`,
+  `CREDITS_PER_POINT` pinned to it by a test). Exact to **three decimals**, computed in hundredths (no float drift): a Text
+  review at 1 credit = 0.1 point, an Image review at 1.5 credits = 0.15 point, the smallest ledger unit 0.01 credit = 0.001
+  point. Points are per month and **start again each month**. They are a view of review credits — not the Performance-module
+  score, which nothing here reads or changes. Credits and points are always shown separately.
+* **Historical reports are live, not snapshots.** A later reversal (a delete, a rejected edit, a confirmed duplicate) removes
+  the review from its **original submission month's** eligible figures the next time that month is opened; that month's
+  *submitted* count does not move (except a delete, which leaves submitted). A review keeps its original submission month
+  through every edit and reapplication.
 * **Possible duplicates awaiting a decision** — reviews of the month whose latest check has an undecided strong or moderate
   flag (§24).
 
@@ -740,13 +802,14 @@ statuses). Everything comes from **one server-side aggregate**; no review text o
 ### 25.3 The leaderboard
 
 Visible to **every signed-in employee** at `/my-credits/leaderboard` (linked from BOE Credits and from a card on the
-dashboard). Ranked by **reward-eligible review count** for the month; **equal counts share a rank** (1, 2, 2, 4) and are
+dashboard). Ranked by **reward-eligible review count** for the month (Asia/Kolkata boundaries); **equal counts share a rank** (1, 2, 2, 4) and are
 marked *tied*; display order (count, then name) is stable and does not hide a tie. Columns: rank, employee, reviews, points,
 credits. **Your own row is highlighted and always shown**, even outside the top ten.
 
 **"You need X more reviews to take first place"** — X = leader count − your count + 1, while you are behind. A sole leader
-sees *You're leading*; joint leaders *You're joint first with N others*; while nobody has an eligible review the
-target is 1. It is labelled as **additional eligible reviews — a target, not a guaranteed award.**
+sees *You're leading*; **joint leaders need 1 more review to become the sole leader** (*You're joint first with N others — 1 more
+review makes you the sole leader*); while nobody has an eligible review the target is 1. Employees who may use the workflow are
+included with **zero** eligible reviews in the admin comparison. It is labelled as **additional eligible reviews — a target, not a guaranteed award.**
 
 ### 25.4 Performance and safety
 
@@ -755,6 +818,22 @@ target is 1. It is labelled as **additional eligible reviews — a target, not a
   account and returns names and counts, never review content. The two internal functions are callable by nobody.
 * Known limit: the report scans the month's reviews and the twelve-month history in one call; at BOE's volume that is
   milliseconds, and `customer_review_custom_submissions (submitted_at)` is indexed.
+
+## 26. Release review — PR #269 (draft)
+
+**Migration order (all NOT applied to production):** `20270223000000` → `20270224000000` → `20270225000000`, then the app code,
+then the backfill (§24.8). Never the reverse; the routes call the new functions.
+
+**Final rules:** credits = points × 10 (points = credits ÷ 10, 3 decimals); confirmed Duplicate is binding and reversed once
+(§24.6); an edited approved review is Pending, not eligible, credit stays on the ledger (§23.3); expiry is not rejection (§25.1);
+leaderboard ranks by eligible count, ties share a rank, joint leaders need 1.
+
+**Ledger limits (unchanged, by design):** one reward and one reversal per source; a reversal cannot be reversed; a reversed
+review cannot be approved again; a held credit cannot be re-priced (so type is locked); a Duplicate decision on a review whose
+month lapsed cannot reverse a second time; Duplicate → Different restores no reward.
+
+**Remaining verification gaps:** the real `/dashboard` integration of the leader card was verified only in a throwaway page, not
+on a real dashboard in a non-production environment; production backfill and production-scale timing are unmeasured.
 
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
