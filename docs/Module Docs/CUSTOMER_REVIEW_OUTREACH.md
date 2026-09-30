@@ -524,9 +524,12 @@ edit, pay again on approval* cannot work. Instead:
   Credits balance** — that balance is the ledger, and it is unchanged — but the review is **Pending Approval**, so
   it is **not eligible**: it does not count in the leaderboard or in "eligible" totals. Reports show its credit
   separately as **awaiting re-approval**, never inside "eligible credits".
-* **A verifier approves it again** — nothing is posted; the same credit stands and the review is eligible again.
-  Re-approval can never pay a second time (the ledger has one reward per source, and the function refuses to post one
-  for a review that already has one).
+* **A verifier approves it again** — **no ledger row is written and no credits are added.** The review keeps the one
+  `review_reward` row it received at its first approval — the only reward row it can ever have in its lifetime — and
+  becomes eligible again. (The ledger allows one reward per source, and the function refuses to post one for a review that
+  already has one.) Proven on the real ledger: three edits and three re-approvals leave one ledger row and the same balance
+  (`custom_review_edit_delete_assertions.sql` §4), and through the routes the review's reward-row count stays 1 and the
+  employee's balance is unchanged.
 * **A verifier rejects it** — the credit is **reversed once** and the review is Rejected.
 * **The employee deletes it** (any status) — an approved or held credit is reversed once, in the same transaction;
   a pending or rejected review has nothing on the ledger. A month that already **lapsed** is not reversed a second
@@ -834,7 +837,7 @@ month lapsed cannot reverse a second time; Duplicate → Different restores no r
 
 **Verified on a disposable local Supabase stack** (all three migrations applied, real routes, real `/dashboard`): submit; duplicate
 warning (409) and Submit anyway (forged token refused); edit of an approved review (Pending, balance unchanged, off the leaderboard);
-re-approval (one reward); delete and reject (one reversal each, delete idempotent); ownership denial (stranger, other employee,
+re-approval (no credits added; the review's lifetime reward rows stay at exactly 1); delete and reject (one reversal each, delete idempotent); ownership denial (stranger, other employee,
 verifier); confirmed Duplicate on a paid review (rejected, one reversal, approval refused, out of eligible, still in submitted);
 Duplicate → Different (no reward restored, still Rejected, cannot be approved or reapplied); ties and zero-review employees; an expired
 month (earned result kept, shown as expired); cards, employee rows and click-through lists reconcile.
@@ -848,42 +851,85 @@ migration history (25 unrelated migrations do not apply locally), so it proves t
 ## 27. Production runbook — PREPARED, NOT EXECUTED
 
 Order: `20270223000000_customer_review_custom_edit_delete.sql` → `20270224000000_customer_review_custom_duplicate_detection.sql` →
-`20270225000000_customer_review_reporting_and_leaderboard.sql`. The migrations post **no** ledger row and change **no** existing award.
+`20270225000000_customer_review_reporting_and_leaderboard.sql`. The migrations post **no** ledger row and change **no** existing award;
+re-approving an edited review adds no credits and leaves the review's single lifetime `review_reward` row as it is.
 
-**Pre-check (read-only SQL, run first, keep the output):**
+**Stop rule.** The pending set must be exactly those three files. If anything else is pending, or the check below prints STOP, do not push — report it.
 
-```sql
--- 1. none of the three is applied yet
-select version from supabase_migrations.schema_migrations where version >= '20270223000000' order by 1;
--- 2. baseline the ledger and the reviews (must be identical after)
-select count(*) as tx, coalesce(sum(credits),0) as net from public.boe_credit_transactions;
-select status, count(*) from public.customer_review_custom_submissions group by 1 order by 1;
--- 3. the invariants the new code relies on already hold
-select count(*) from (select source_id from public.boe_credit_transactions where transaction_type='review_reward' group by 1 having count(*)>1) t;   -- 0
-select count(*) from public.customer_review_custom_submissions where status='approved' and credit_transaction_id is null;                          -- 0 expected
-```
+**0. Right code.** From the repository root on `feat/customer-reviews-edit-dup-reporting`: `git rev-parse HEAD` must equal the PR's head SHA.
 
-**Dry run:** `supabase db push --linked --dry-run` lists the pending files and must show exactly the three above (never run it with
-`[db.migrations] enabled = false` — it then reports "up to date"). Rehearse the SQL on a local copy of production history first.
-
-**Apply** (owner, in a quiet window; the app code is deployed AFTER the migrations): `supabase db push --linked`.
-
-**Post-check (read-only):**
+**1. Pre-check (read-only; save the output).** Save this as `precheck.sql`, then `supabase db query --linked -f precheck.sql > precheck.out`
+(the CLI prints only the last result set, hence one statement). `reviews_migrations_already_applied` must be `[]`,
+`sources_with_more_than_one_review_reward` and `approved_reviews_without_a_credit` must be 0.
 
 ```sql
-select version from supabase_migrations.schema_migrations where version >= '20270223000000' order by 1;   -- the three
-select count(*) as tx, coalesce(sum(credits),0) as net from public.boe_credit_transactions;                -- unchanged from the pre-check
-select status, count(*) from public.customer_review_custom_submissions group by 1 order by 1;               -- unchanged
--- new functions are not callable by anon, and the two internal ones by nobody
-select p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') as anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') as authed
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname='public' and p.proname in ('customer_review_report_rows','customer_review_month_standings','reverse_customer_review_custom_reward',
-   'edit_customer_review_custom_submission','delete_customer_review_custom_submission','backfill_customer_review_custom_proof_phash');   -- anon false everywhere; authed false everywhere
+-- READ-ONLY. One result set (the CLI returns only the last one). Save the output; the post-check must match it.
+select jsonb_pretty(jsonb_build_object(
+  'reviews_migrations_already_applied', (select coalesce(jsonb_agg(version order by version), '[]'::jsonb) from supabase_migrations.schema_migrations where version >= '20270223000000'),
+  'ledger_rows', (select count(*) from public.boe_credit_transactions),
+  'ledger_net_credits', (select coalesce(sum(credits), 0) from public.boe_credit_transactions),
+  'reviews_by_status', (select coalesce(jsonb_object_agg(s.status, s.n), '{}'::jsonb) from (select status::text as status, count(*) as n from public.customer_review_custom_submissions group by 1) s),
+  'sources_with_more_than_one_review_reward', (select count(*) from (select source_id from public.boe_credit_transactions where transaction_type = 'review_reward' group by source_id having count(*) > 1) d),
+  'approved_reviews_without_a_credit', (select count(*) from public.customer_review_custom_submissions where status = 'approved' and credit_transaction_id is null),
+  'new_columns_already_present', (select coalesce(jsonb_agg(column_name order by column_name), '[]'::jsonb) from information_schema.columns where table_schema = 'public' and table_name = 'customer_review_custom_submissions' and column_name in ('deleted_at', 'reward_held', 'proof_phash', 'reviewer_name'))
+)) as precheck;
 ```
 
-Then, signed in as an administrator: open Reports (the cards must reconcile with the employee table) and the leaderboard as any employee.
-**Backfill** only after the app code is live, and only as in §24.8 (dry run → `--apply --limit=200` → `--verify`). Rollback of the migrations is
-by the generated down scripts only if no new-format data exists; once employees have edited or deleted reviews, prefer a forward fix.
+**2. Dry run that touches nothing.** `supabase db push --linked --dry-run` first "initialises a login role" on the remote (a small production
+write), so the read-only route is: list the applied versions, then compare with the repository.
+
+```bash
+supabase db query --linked "select version from supabase_migrations.schema_migrations order by 1" > applied.json
+node pending-check.mjs applied.json      # exit 0 and "OK: exactly the three Reviews migrations, in order." — anything else: STOP
+```
+
+```js
+// pending-check.mjs
+// Read-only. Usage: node pending-check.mjs applied.json   (run from the repository root)
+// Lists the repo migrations that are NOT in production's applied list and fails unless they are exactly the three Reviews migrations.
+import fs from 'node:fs'
+const EXPECTED = [
+  '20270223000000_customer_review_custom_edit_delete.sql',
+  '20270224000000_customer_review_custom_duplicate_detection.sql',
+  '20270225000000_customer_review_reporting_and_leaderboard.sql',
+]
+const applied = new Set((fs.readFileSync(process.argv[2], 'utf8').match(/\b\d{8,14}\b/g) ?? []))
+if (applied.size < 200) { console.error(`STOP: only ${applied.size} applied versions were read — the file is not production's full list.`); process.exit(2) }
+const pending = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql')).sort().filter(f => !applied.has(f.split('_')[0]))
+console.log('Pending (in repo, not applied in production):'); pending.forEach(f => console.log('  ' + f))
+const same = pending.length === EXPECTED.length && EXPECTED.every((f, i) => pending[i] === f)
+console.log(same ? '\nOK: exactly the three Reviews migrations, in order.' : '\nSTOP: the pending set is not exactly the three Reviews migrations. Do not push. Report the list above.')
+process.exit(same ? 0 : 1)
+```
+
+(Optionally, once the read-only check says OK, the official `supabase db push --linked --dry-run` may be run; it must list the same three files.)
+
+**3. Apply** (owner, quiet window; the app code is deployed AFTER the migrations): `supabase db push --linked`.
+
+**4. Post-check (read-only).** Save as `postcheck.sql`, run `supabase db query --linked -f postcheck.sql > postcheck.out`. `reviews_migrations_applied` must list the
+three versions; `ledger_rows`, `ledger_net_credits` and `reviews_by_status` must equal the pre-check; `functions_callable_by_anon_or_authenticated_that_must_not_be`
+must be `[]`; `functions_that_must_exist` must list all five.
+
+```sql
+-- READ-ONLY. One result set. ledger_rows, ledger_net_credits and reviews_by_status must equal the pre-check; the migrations add no ledger row.
+select jsonb_pretty(jsonb_build_object(
+  'reviews_migrations_applied', (select coalesce(jsonb_agg(version order by version), '[]'::jsonb) from supabase_migrations.schema_migrations where version >= '20270223000000'),
+  'ledger_rows', (select count(*) from public.boe_credit_transactions),
+  'ledger_net_credits', (select coalesce(sum(credits), 0) from public.boe_credit_transactions),
+  'reviews_by_status', (select coalesce(jsonb_object_agg(s.status, s.n), '{}'::jsonb) from (select status::text as status, count(*) as n from public.customer_review_custom_submissions group by 1) s),
+  'sources_with_more_than_one_review_reward', (select count(*) from (select source_id from public.boe_credit_transactions where transaction_type = 'review_reward' group by source_id having count(*) > 1) d),
+  'new_columns_present', (select coalesce(jsonb_agg(column_name order by column_name), '[]'::jsonb) from information_schema.columns where table_schema = 'public' and table_name = 'customer_review_custom_submissions' and column_name in ('deleted_at', 'reward_held', 'proof_phash', 'reviewer_name')),
+  'functions_callable_by_anon_or_authenticated_that_must_not_be', (select coalesce(jsonb_agg(p.proname order by p.proname), '[]'::jsonb) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('customer_review_report_rows', 'customer_review_month_standings', 'reverse_customer_review_custom_reward', 'edit_customer_review_custom_submission', 'delete_customer_review_custom_submission', 'backfill_customer_review_custom_proof_phash')
+        and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))),
+  'functions_that_must_exist', (select coalesce(jsonb_agg(p.proname order by p.proname), '[]'::jsonb) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('customer_review_report', 'customer_review_report_list', 'customer_review_leaderboard', 'customer_review_leader_card', 'decide_customer_review_custom_duplicate'))
+)) as postcheck;
+```
+
+**5. Then** deploy the app code; sign in as an administrator and open Reports (cards must reconcile with the employee table), and open the
+leaderboard as any employee. **Backfill** only after the code is live, as in §24.8 (dry run → `--apply --limit=200` → `--verify`). Prefer a forward fix to a rollback once employees
+have edited or deleted reviews.
 
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 
