@@ -2201,6 +2201,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/payroll/periodCompletion.test.ts',
     'src/app/api/payroll/generate/route.ts',
     'src/app/api/payroll/monthly-review/route.ts',
+    // The preview's engine call gained its ninth argument, { calendarThrough }; its consistency test says so.
+    'src/app/api/payroll/monthlyReviewConsistency.test.ts',
     // Navigation redesign: six sections with page tabs, a request page and review drawer,
     // and the shared layout on every module page. UI only; named one by one.
     'src/app/payroll/results/[periodId]/salary-report/page.tsx',
