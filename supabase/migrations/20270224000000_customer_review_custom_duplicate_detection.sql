@@ -19,10 +19,34 @@
 --
 -- THE RULES, STATED ONCE
 -- ----------------------
---   A WARNING IS NOT A DECISION. Nothing here rejects a review, holds a review
---   back, or touches a credit. Approval and reward eligibility are unchanged; a
---   verifier sees the flag and decides. What a verifier decides ('duplicate' or
---   'different') is recorded and shown; it changes no status.
+--   A WARNING IS NOT A DECISION. A possible duplicate never rejects a review,
+--   holds it back or touches a credit: it is a non-blocking flag a verifier looks at.
+--
+--   A DECISION OF "DUPLICATE" IS BINDING. A verifier who records 'duplicate' on a
+--   non-weak flag of a review's CURRENT check, in one transaction:
+--     * REJECTS the review ("Confirmed duplicate of an earlier review") — a review
+--       that is pending, or approved, or edited and waiting;
+--     * REVERSES its credit ONCE through the ledger (an approved or held credit;
+--       a credit already expired with a closed month is not reversed a second time);
+--     * and from then on approve_customer_review_custom_submission() REFUSES it
+--       while that decision stands (also under a concurrent approval: both lock the
+--       review row first, so one runs after the other and the second sees the first).
+--   The review stays in submitted totals with its status (Rejected) and a
+--   "Confirmed duplicate" mark; it is excluded from reward-eligible counts and the
+--   leaderboard because it is no longer approved.
+--
+--   "DIFFERENT" AFTER "DUPLICATE" — WHAT IT DOES AND DOES NOT DO. Changing the flag
+--   to 'different' removes the "confirmed duplicate" mark. It does NOT restore a
+--   reversed credit and does not un-reject the review: the ledger allows one reward
+--   per source and one reversal per row, and a reversal cannot be reversed. So:
+--     * a review that had NO credit (it was pending) is Rejected and the employee
+--       may Edit & Reapply it as usual;
+--     * a review whose credit WAS reversed stays Rejected and cannot be reapplied
+--       ("submit it again as a new review" — a new review earns a new reward), or
+--       an administrator may post an admin_adjustment with a reason in BOE Credits.
+--   Nothing promises a restored reward.
+--
+--   A weak (name-only) flag can never be decided 'duplicate'.
 --
 --   WHO CHECKS. The route compares a submission with every earlier review of every
 --   employee — deleted ones included, so deleting and reposting is seen — and hands
@@ -50,8 +74,8 @@
 --   A DECISION NEEDS THE CURRENT RUN. A flag can be decided only while its
 --   fingerprint is the review's latest; and never by the review's own submitter.
 --
---   A WEAK MATCH (a shared name and nothing else) is stored and shown, and is not
---   queued for a decision (strength 'weak').
+--   A WEAK MATCH (a shared name and nothing else) is stored and shown, is not queued
+--   for a decision (strength 'weak') and cannot be confirmed as a duplicate.
 --
 -- PRODUCTION SAFETY. Additive columns, two tables, one view, functions. Three
 -- functions are re-created with new trailing parameters that have DEFAULTS, so an
@@ -452,6 +476,8 @@ declare
   s       public.customer_review_custom_submissions%rowtype;
   v_latest text;
   v_previous text;
+  v_reversal uuid;
+  v_rejected boolean := false;
 begin
   if v_uid is null then
     raise exception 'CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED: Sign in to continue' using errcode = '42501';
@@ -474,7 +500,9 @@ begin
   if not found then
     raise exception 'CUSTOMER_REVIEW_CUSTOM_NOT_FOUND: That duplicate flag no longer exists' using errcode = 'P0002';
   end if;
-  select * into s from public.customer_review_custom_submissions where id = f.submission_id;
+  -- THE REVIEW ROW IS LOCKED before anything is read or changed, exactly as approve does,
+  -- so a decision and an approval of the same review run one after the other.
+  select * into s from public.customer_review_custom_submissions where id = f.submission_id for update;
 
   -- Nobody decides on their own review.
   if s.submitted_by = v_uid then
@@ -492,7 +520,12 @@ begin
   end if;
 
   if f.decision = p_decision and f.decided_by = v_uid and f.decision_note is not distinct from v_note then
-    return jsonb_build_object('flag_id', f.id, 'decision', f.decision, 'unchanged', true);
+    return jsonb_build_object('flag_id', f.id, 'decision', f.decision, 'unchanged', true, 'review_rejected', false, 'credit_reversed', false);
+  end if;
+
+  if p_decision = 'duplicate' and f.strength = 'weak' then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_INVALID: A shared name alone is not enough to confirm a duplicate'
+      using errcode = '22023';
   end if;
 
   v_previous := f.decision;
@@ -501,13 +534,37 @@ begin
    where id = f.id
    returning * into f;
 
+  -- CONFIRMED DUPLICATE: reject the review and reverse its credit once (ledger; the
+  -- credits lock is taken inside the helper, after the row lock — the same order as
+  -- approve). A deleted or already-rejected review needs no status change.
+  if p_decision = 'duplicate' and s.deleted_at is null and s.status in ('pending_verification', 'approved') then
+    if s.credit_transaction_id is not null and s.reward_reversal_transaction_id is null then
+      v_reversal := public.reverse_customer_review_custom_reward(s.id, v_uid, 'Confirmed duplicate review');
+    end if;
+    update public.customer_review_custom_submissions
+       set status                         = 'rejected',
+           rejected_by                    = v_uid,
+           rejected_at                    = now(),
+           rejection_reason               = 'Confirmed duplicate of an earlier review',
+           approved_by                    = null,
+           approved_at                    = null,
+           credits_awarded                = null,
+           credit_transaction_id          = null,
+           reward_held                    = false,
+           reward_reversal_transaction_id = coalesce(v_reversal, reward_reversal_transaction_id)
+     where id = s.id;
+    v_rejected := true;
+  end if;
+
   insert into public.customer_review_custom_submission_events (submission_id, event_type, actor_id, note, details)
   values (f.submission_id, 'duplicate_decided', v_uid, v_note,
           jsonb_build_object('flag_id', f.id, 'matched_submission_id', f.matched_submission_id,
                              'decision', p_decision, 'previous_decision', v_previous,
-                             'reasons', to_jsonb(f.reasons), 'strength', f.strength));
+                             'reasons', to_jsonb(f.reasons), 'strength', f.strength,
+                             'review_rejected', v_rejected, 'credit_reversed', v_reversal is not null));
 
-  return jsonb_build_object('flag_id', f.id, 'decision', f.decision, 'unchanged', false);
+  return jsonb_build_object('flag_id', f.id, 'decision', f.decision, 'unchanged', false,
+                            'review_rejected', v_rejected, 'credit_reversed', v_reversal is not null);
 end;
 $$;
 
@@ -515,7 +572,7 @@ revoke execute on function public.decide_customer_review_custom_duplicate(uuid, 
 grant  execute on function public.decide_customer_review_custom_duplicate(uuid, text, text) to authenticated;
 
 comment on function public.decide_customer_review_custom_duplicate(uuid, text, text) is
-  'A verifier records "duplicate" or "different" on one possible-duplicate flag of a review''s CURRENT check. Never the review''s own submitter. Changes no review status and no credit; the decision and any change of mind are kept in the history.';
+  'A verifier records "duplicate" or "different" on one possible-duplicate flag of a review''s CURRENT check. Never the review''s own submitter. "Duplicate" (never on a weak flag) rejects the review and reverses its credit once; "different" changes no status and restores no credit. Decisions and any change of mind are kept in the history.';
 
 -- ═══ 8. The guard, re-created with the new columns ════════════════════════
 
@@ -604,6 +661,25 @@ begin
        or new.last_reapplied_at is null
        or new.last_reapplied_at is not distinct from old.last_reapplied_at then
       raise exception 'CUSTOMER_REVIEW_CUSTOM_APPEND_ONLY: a reapplication is counted exactly once'
+        using errcode = '42501';
+    end if;
+    new.updated_at := now();
+    return new;
+  end if;
+
+  -- CONFIRMED DUPLICATE: an approved review may be rejected, and only by
+  -- decide_customer_review_custom_duplicate() — proved by a 'duplicate' decision on
+  -- one of its flags recorded in THIS transaction.
+  if old.status = 'approved' and new.status = 'rejected' then
+    if not exists (
+      select 1 from public.customer_review_custom_duplicate_flags fl
+       where fl.submission_id = old.id and fl.decision = 'duplicate' and fl.decided_at = now()
+    ) then
+      raise exception 'CUSTOMER_REVIEW_CUSTOM_APPEND_ONLY: a decided custom review submission is final'
+        using errcode = '42501';
+    end if;
+    if (to_jsonb(new) - v_decision) <> (to_jsonb(old) - v_decision) then
+      raise exception 'CUSTOMER_REVIEW_CUSTOM_APPEND_ONLY: only the decision on a custom review submission may change'
         using errcode = '42501';
     end if;
     new.updated_at := now();
@@ -722,7 +798,7 @@ begin
             coalesce(new.approved_at, now()));
     return null;
 
-  elsif old.status = 'pending_verification' and new.status = 'rejected' then
+  elsif old.status in ('pending_verification', 'approved') and new.status = 'rejected' then
     insert into public.customer_review_custom_submission_events (submission_id, event_type, actor_id, reason, details, created_at)
     values (new.id, 'rejected', new.rejected_by, new.rejection_reason,
             jsonb_build_object(
@@ -1273,6 +1349,140 @@ revoke execute on function public.edit_customer_review_custom_submission(uuid, u
   from public, anon, authenticated;
 grant  execute on function public.edit_customer_review_custom_submission(uuid, uuid, text, date, text, integer, text, text, text, integer, text, text, text, text, text, text, jsonb)
   to service_role;
+
+-- ═══ 12b. Approve, re-created: a held credit is not paid again, a confirmed duplicate is refused ══
+
+create or replace function public.approve_customer_review_custom_submission(
+  p_submission_id uuid,
+  p_credits       numeric
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  s          public.customer_review_custom_submissions%rowtype;
+  v_uid      uuid := auth.uid();
+  v_settings public.boe_credit_settings%rowtype;
+  v_default  numeric;
+  v_reward   jsonb;
+  v_month    date;
+begin
+  if v_uid is null then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED: Sign in to continue' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.users u where u.id = v_uid and u.is_active and coalesce(u.is_deleted, false) = false
+  ) then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED: Your account is not active' using errcode = '42501';
+  end if;
+  if not public.resolve_permission(v_uid, 'customer_review_requests', 'verify') then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED: Approving a custom review needs the Verify permission'
+      using errcode = '42501';
+  end if;
+
+  select * into s from public.customer_review_custom_submissions where id = p_submission_id for update;
+  if not found or s.deleted_at is not null then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_NOT_FOUND: That submission no longer exists' using errcode = 'P0002';
+  end if;
+
+  if s.submitted_by = v_uid then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_SELF: You cannot approve or reject your own submission'
+      using errcode = '42501';
+  end if;
+
+  if s.status = 'approved' then
+    return jsonb_build_object('submission', to_jsonb(s), 'reward', null, 'already_decided', true);
+  end if;
+  if s.status = 'rejected' then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_DECIDED: This submission was already rejected' using errcode = '55000';
+  end if;
+
+  -- A CONFIRMED DUPLICATE CANNOT BE APPROVED. The review row is locked (above), and a
+  -- duplicate decision locks it too, so this reads either the committed decision or
+  -- waits for it. A review whose credit was already reversed cannot be paid again.
+  if exists (
+    select 1 from public.customer_review_custom_duplicate_summary d
+     where d.submission_id = s.id and d.decided_duplicate > 0
+  ) then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED: A reviewer marked this review a duplicate, so it cannot be approved. Change the decision to Different review first, or reject it.'
+      using errcode = '55000';
+  end if;
+  if s.reward_reversal_transaction_id is not null then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_DECIDED: The credit for this review was already withdrawn, and the ledger pays a review only once. Ask the employee to submit it again as a new review.'
+      using errcode = '55000';
+  end if;
+
+  -- AN EDITED REVIEW WHOSE CREDIT IS HELD: approve it again, post nothing. The
+  -- credit already on the ledger stands; the ledger would refuse a second
+  -- review_reward for this source anyway.
+  if s.reward_held then
+    update public.customer_review_custom_submissions
+       set status      = 'approved',
+           approved_by = v_uid,
+           approved_at = now(),
+           reward_held = false
+     where id = s.id
+     returning * into s;
+    return jsonb_build_object('submission', to_jsonb(s), 'reward', null, 'already_decided', false, 'reaffirmed', true);
+  end if;
+
+  if p_credits is null or p_credits <= 0 then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_CREDITS: Enter a credit amount above 0' using errcode = '22023';
+  end if;
+  if p_credits <> round(p_credits, 2) then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_CREDITS: Credits have at most two decimal places' using errcode = '22023';
+  end if;
+  if p_credits > 100000 then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_CREDITS: That is more credits than one review can earn' using errcode = '22023';
+  end if;
+
+  select * into v_settings from public.boe_credit_settings order by created_at desc limit 1;
+  if not found then
+    raise exception 'BOE_CREDITS_SETTINGS: no active credit settings row' using errcode = 'P0002';
+  end if;
+  v_default := case s.review_type
+    when 'image' then v_settings.image_review_reward_credits
+    else v_settings.review_reward_credits
+  end;
+
+  if p_credits <> v_default and not public.can_manage_boe_credits() then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_CREDITS: Only a BOE Credits administrator can change the amount. The configured reward for this review type is % credits', v_default
+      using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('boe_credits'), hashtext(s.submitted_by::text));
+  v_month := date_trunc('month', (s.submitted_at at time zone 'Asia/Kolkata')::date)::date;
+  if exists (
+    select 1 from public.boe_credit_review_months m
+     where m.employee_id = s.submitted_by and m.review_month = v_month and m.status = 'lapsed'
+  ) then
+    raise exception 'CUSTOMER_REVIEW_CUSTOM_MONTH_CLOSED: %',
+      format('%s was closed below the monthly minimum for this employee, so this review can no longer earn credits. Reject it with that reason instead.',
+        trim(to_char(v_month, 'Month')) || ' ' || to_char(v_month, 'YYYY'))
+      using errcode = '55000';
+  end if;
+
+  v_reward := public.post_boe_credit_custom_review_reward(
+    s.submitted_by, s.id, s.submission_ref, p_credits, s.submitted_at, v_uid
+  );
+
+  update public.customer_review_custom_submissions
+     set status                = 'approved',
+         approved_by           = v_uid,
+         approved_at           = now(),
+         credits_awarded       = p_credits,
+         credit_transaction_id = (v_reward ->> 'transaction_id')::uuid
+   where id = s.id
+   returning * into s;
+
+  return jsonb_build_object('submission', to_jsonb(s), 'reward', v_reward, 'already_decided', false);
+end;
+$$;
+
+revoke execute on function public.approve_customer_review_custom_submission(uuid, numeric) from public, anon;
+grant  execute on function public.approve_customer_review_custom_submission(uuid, numeric) to authenticated;
 
 -- ═══ 13. Assertions ═══════════════════════════════════════════════════════
 

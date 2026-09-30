@@ -202,10 +202,30 @@ describe('decisions', () => {
     assert.match(decide, /v_latest is distinct from f\.content_fingerprint/)
     assert.match(decide, /CUSTOMER_REVIEW_CUSTOM_STALE/)
   })
-  test('it changes no status and no credit, and the history keeps each decision', () => {
-    assert.doesNotMatch(decide, /update public\.customer_review_custom_submissions|boe_credit|status\s*=\s*'(approved|rejected)'/)
+  test('"Duplicate" rejects the review and reverses its credit once, through the ledger helper; "Different" does neither', () => {
+    assert.match(decide, /p_decision = 'duplicate' and s\.deleted_at is null and s\.status in \('pending_verification', 'approved'\)/)
+    assert.match(decide, /reverse_customer_review_custom_reward\(s\.id, v_uid, 'Confirmed duplicate review'\)/)
+    assert.match(decide, /s\.credit_transaction_id is not null and s\.reward_reversal_transaction_id is null/)
+    assert.match(decide, /rejection_reason\s+= 'Confirmed duplicate of an earlier review'/)
+    // the reversal sits inside the 'duplicate' branch only
+    const branch = decide.slice(decide.indexOf("if p_decision = 'duplicate' and s.deleted_at is null"), decide.indexOf('insert into public.customer_review_custom_submission_events'))
+    assert.match(branch, /reverse_customer_review_custom_reward/)
+    assert.doesNotMatch(decide.slice(0, decide.indexOf("if p_decision = 'duplicate' and s.deleted_at is null")), /reverse_customer_review_custom_reward|update public\.customer_review_custom_submissions/)
     assert.match(decide, /'duplicate_decided'/)
     assert.match(decide, /'previous_decision', v_previous/)
+  })
+  test('the review row is locked before anything is decided, so a decision and an approval serialise', () => {
+    assert.match(decide, /from public\.customer_review_custom_submissions where id = f\.submission_id for update/)
+    assert.ok(decide.indexOf('for update') < decide.indexOf("update public.customer_review_custom_duplicate_flags"))
+  })
+  test('a weak (name-only) flag can never be confirmed as a duplicate', () => {
+    assert.match(decide, /p_decision = 'duplicate' and f\.strength = 'weak'/)
+    assert.match(decide, /A shared name alone is not enough to confirm a duplicate/)
+  })
+  test('the guard lets an approved review be rejected ONLY through a duplicate decision recorded in the same transaction', () => {
+    const guard = fn('customer_review_custom_submissions_guard')
+    assert.match(guard, /if old\.status = 'approved' and new\.status = 'rejected' then/)
+    assert.match(guard, /fl\.decision = 'duplicate' and fl\.decided_at = now\(\)/)
   })
   test('a flag can change only its decision, and nothing is deleted', () => {
     const guard = fn('customer_review_custom_duplicate_flags_guard')
@@ -220,10 +240,18 @@ describe('decisions', () => {
     assert.match(code, /fl\.content_fingerprint = c\.content_fingerprint/)
     assert.match(code, /on conflict \(submission_id, matched_submission_id, content_fingerprint\) do nothing/)
   })
-  test('the approval and reward functions are not touched by this migration', () => {
-    assert.doesNotMatch(code, /create or replace function public\.approve_customer_review_custom_submission/)
+  test('approval refuses a confirmed duplicate and a review whose credit was already withdrawn — before any reward', () => {
+    const approve = fn('approve_customer_review_custom_submission')
+    assert.match(approve, /d\.decided_duplicate > 0/)
+    assert.match(approve, /CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED/)
+    assert.match(approve, /s\.reward_reversal_transaction_id is not null/)
+    assert.ok(approve.indexOf('DUPLICATE_CONFIRMED') < approve.indexOf('post_boe_credit_custom_review_reward'), 'the refusal comes before any reward')
+    assert.ok(approve.indexOf('DUPLICATE_CONFIRMED') < approve.indexOf('if s.reward_held then'), 'and before a held review is re-approved')
+    assert.equal(customSubmissionFailureStatus('CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED: x'), 409)
+  })
+  test('the reject function is untouched; the ledger is written only through the existing helpers', () => {
     assert.doesNotMatch(code, /create or replace function public\.reject_customer_review_custom_submission/)
-    assert.doesNotMatch(code, /post_boe_credit/)
+    assert.doesNotMatch(code, /insert into public\.boe_credit_transactions/)
   })
 })
 
@@ -272,7 +300,10 @@ describe('the screens', () => {
     assert.match(REVIEW, /decide_customer_review_custom_duplicate/)
     assert.match(REVIEW, />\s*Duplicate\s*</)
     assert.match(REVIEW, />\s*Different review\s*</)
-    assert.match(REVIEW, /Recording a decision does not approve, reject or change any credit/)
+    assert.match(REVIEW, /rejects the review and reverses its credit once/)
+    assert.match(REVIEW, /Changing it to Different review later does not bring back a reversed credit/)
+    assert.match(REVIEW, /setConfirmingDuplicate\(true\)/)
+    assert.match(REVIEW, /flag\.strength !== 'weak' &&/)
   })
   test('a failed read is "unavailable", never "clear"', () => {
     assert.match(REVIEW, /if \(error\) return null/)

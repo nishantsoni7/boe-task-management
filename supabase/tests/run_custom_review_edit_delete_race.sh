@@ -107,5 +107,59 @@ wait
   || { echo "FAIL R3: the balance is not zero" >&2; exit 1; }
 echo "PASS  R3 a re-approval racing a delete never pays twice and never reverses without a reward"
 
+# ── R4 / R5 confirmed duplicates ──────────────────────────────────────────────
+mk_flagged() { # $1 = submission id : a pending review with one strong flag on its current run
+  qf >/dev/null <<SQL
+select public.create_customer_review_custom_submission('$1', '$E1', 'text', (now() at time zone 'Asia/Kolkata')::date, null,
+  '$1/proof/a.png', 'a.png', 'image/png', 100, md5('$1') || md5('$1x'));
+insert into public.customer_review_custom_duplicate_checks (submission_id, content_fingerprint, status, employee_proceeded, trigger_event, match_count)
+values ('$1', md5('$1f') || md5('$1g'), 'flagged', true, 'submitted', 1);
+insert into public.customer_review_custom_duplicate_flags (submission_id, matched_submission_id, check_id, content_fingerprint, reasons, strength, employee_proceeded)
+select '$1', '$R1', c.id, c.content_fingerprint, array['review_text'], 'strong', true from public.customer_review_custom_duplicate_checks c where c.submission_id = '$1';
+SQL
+}
+flag_of() { q "select id from public.customer_review_custom_duplicate_flags where submission_id = '$1'"; }
+asver() { echo "select set_config('request.jwt.claims', json_build_object('sub', '$VER', 'role', 'authenticated')::text, true);"; }
+state_of() { q "select status || '|' || coalesce(credits_awarded::text, '-') from public.customer_review_custom_submissions where id = '$1'"; }
+net_of()   { q "select coalesce(sum(t.credits), 0)::numeric(12,2) from public.boe_credit_transactions t where t.employee_id = '$E1' and (t.source_id = '$1' or t.source_id in (select id from public.boe_credit_transactions where source_id = '$1'))"; }
+
+# R4a: the decision starts first; the approval waits, then finds the review rejected
+R4A=f1100000-0000-4000-8000-000000000041; mk_flagged "$R4A"; FA=$(flag_of "$R4A")
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.decide_customer_review_custom_duplicate('$FA', 'duplicate'); select pg_sleep(2); commit;" > /tmp/r4a.out 2>&1 &
+sleep 0.5
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.approve_customer_review_custom_submission('$R4A', 1); commit;" > /tmp/r4b.out 2>&1 &
+wait_blocked
+wait
+[ "$(state_of "$R4A")" = "rejected|-" ] || { echo "FAIL R4a: state $(state_of "$R4A")" >&2; cat /tmp/r4b.out >&2; exit 1; }
+[ "$(net_of "$R4A")" = "0.00" ] || { echo "FAIL R4a: net credit $(net_of "$R4A")" >&2; exit 1; }
+echo "PASS  R4a a Duplicate decision that starts first wins: rejected, nothing paid"
+
+# R4b: the approval starts first; the decision waits, then reverses what was just paid
+R4B=f1100000-0000-4000-8000-000000000042; mk_flagged "$R4B"; FB=$(flag_of "$R4B")
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.approve_customer_review_custom_submission('$R4B', 1); select pg_sleep(2); commit;" > /tmp/r4c.out 2>&1 &
+sleep 0.5
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.decide_customer_review_custom_duplicate('$FB', 'duplicate'); commit;" > /tmp/r4d.out 2>&1 &
+wait_blocked
+wait
+[ "$(state_of "$R4B")" = "rejected|-" ] || { echo "FAIL R4b: state $(state_of "$R4B")" >&2; cat /tmp/r4d.out >&2; exit 1; }
+[ "$(net_of "$R4B")" = "0.00" ] || { echo "FAIL R4b: net credit $(net_of "$R4B")" >&2; exit 1; }
+[ "$(q "select count(*) from public.boe_credit_transactions where transaction_type = 'reversal' and source_id in (select transaction_id from public.boe_credit_review_rewards where card_id = '$R4B')")" = "1" ] || { echo 'FAIL R4b: not exactly one reversal' >&2; exit 1; }
+echo "PASS  R4b an approval that starts first is paid once and then reversed once by the decision: net zero, rejected"
+
+# R5: two Duplicate decisions at once on a PAID review: one reversal
+R5=f1100000-0000-4000-8000-000000000051; mk_flagged "$R5"; F5=$(flag_of "$R5")
+qf >/dev/null <<SQL
+select set_config('request.jwt.claims', json_build_object('sub', '$VER', 'role', 'authenticated')::text, false);
+select public.approve_customer_review_custom_submission('$R5', 1);
+SQL
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.decide_customer_review_custom_duplicate('$F5', 'duplicate', 'one'); select pg_sleep(2); commit;" > /tmp/r5a.out 2>&1 &
+sleep 0.5
+docker exec -i "$C" psql -U postgres -d postgres -q -t -A -c "begin; $(asver) select public.decide_customer_review_custom_duplicate('$F5', 'duplicate', 'two'); commit;" > /tmp/r5b.out 2>&1 &
+wait_blocked
+wait
+[ "$(net_of "$R5")" = "0.00" ] || { echo "FAIL R5: net credit $(net_of "$R5")" >&2; exit 1; }
+[ "$(q "select count(*) from public.boe_credit_transactions where transaction_type = 'reversal' and source_id in (select transaction_id from public.boe_credit_review_rewards where card_id = '$R5')")" = "1" ] || { echo 'FAIL R5: not exactly one reversal' >&2; exit 1; }
+echo "PASS  R5 two concurrent Duplicate decisions on a paid review reverse it once"
+
 echo
 echo "OK: races held. This container now holds committed fixtures — drop it: docker rm -f $C"

@@ -288,6 +288,38 @@ begin
   raise notice 'PASS  §4 an edited approved review holds its credit, is never paid twice, and keeps its date';
 end $$;
 
+-- ═══ §4b. A type change cannot leave the wrong reward amount ═════════════════
+do $$
+declare
+  e1 uuid := 'e1000000-0000-4000-8000-0000000000e1';
+  t  uuid := 'fb000000-0000-4000-8000-0000000000b1';
+  res jsonb;
+  bal numeric := public.boe_credit_balance('e1000000-0000-4000-8000-0000000000e1');
+begin
+  -- A PENDING review may change type: the reward is decided at approval, from the type it has THEN
+  perform pg_temp.sub(e1, 'text', t);
+  perform pg_temp.edit(e1, t, 'image', 'changed to an image review', 0);
+  perform pg_temp.approve_as('b0000000-0000-4000-8000-00000000000b', t);
+  assert public.boe_credit_balance(e1) = bal + 1.5, '§4b a pending text review edited to an image review is paid the IMAGE reward (1.5), once';
+
+  -- An APPROVED review cannot change type (its posted amount is fixed and the ledger cannot re-price it)
+  begin
+    perform pg_temp.edit(e1, t, 'text', 'try to become text', 1);
+    raise exception '§4b the type of an approved review changed';
+  exception when sqlstate '22023' then null;
+  end;
+  -- and the same after it is edited and waiting (held)
+  perform pg_temp.edit(e1, t, 'image', 'still an image review', 1);
+  assert (select reward_held from public.customer_review_custom_submissions where id = t), '§4b held';
+  begin
+    perform pg_temp.edit(e1, t, 'text', 'try to become text while held', 2);
+    raise exception '§4b the type of a held review changed';
+  exception when sqlstate '22023' then null;
+  end;
+  assert public.boe_credit_balance(e1) = bal + 1.5, '§4b the posted 1.5 stands, unchanged, while held';
+  raise notice 'PASS  §4b a type change cannot leave the wrong amount: pending re-prices at approval; approved and held are locked';
+end $$;
+
 -- ═══ §5. Rejecting an edit withdraws the held credit ═════════════════════════
 
 do $$

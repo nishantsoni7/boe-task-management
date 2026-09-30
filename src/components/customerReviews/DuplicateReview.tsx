@@ -305,6 +305,8 @@ function DuplicateCompareSheet({
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // "Duplicate" is binding (it rejects the review and reverses its credit), so it asks first.
+  const [confirmingDuplicate, setConfirmingDuplicate] = useState(false)
   const acting = useRef(false)
 
   useEffect(() => {
@@ -332,6 +334,7 @@ function DuplicateCompareSheet({
   }, [supabase, flag.matched_submission_id, names])
 
   const own = submission.submitted_by === viewerId
+  const rejectedForDuplicate = submission.status === 'rejected' && submission.rejection_reason === 'Confirmed duplicate of an earlier review'
 
   const decide = useCallback(async (decision: 'duplicate' | 'different') => {
     if (acting.current) return
@@ -407,6 +410,12 @@ function DuplicateCompareSheet({
           )}
         </div>
 
+        {rejectedForDuplicate && flag.decision === 'different' ? (
+          <p role="note" style={{ margin: 0, fontSize: '12.5px', color: '#92400E', lineHeight: 1.5 }}>
+            This review was rejected when it was first marked a duplicate. Changing the decision to Different review did not restore it or any credit: the employee can Edit &amp; Reapply it if it earned no credit, otherwise they submit it again as a new review (or an administrator posts a BOE Credits adjustment).
+          </p>
+        ) : null}
+
         {flag.decision ? (
           <p style={{ margin: 0, fontSize: '12.5px', color: colors.primary, fontWeight: 600 }}>
             {decisionText(flag, names)}{flag.decision_note ? ` — ${flag.decision_note}` : ''}
@@ -441,29 +450,56 @@ function DuplicateCompareSheet({
                 }}
               />
             </label>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="boe-btn boe-btn-primary"
-                disabled={busy}
-                onClick={() => { void decide('duplicate') }}
-                style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}
-              >
-                Duplicate
-              </button>
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost"
-                disabled={busy}
-                onClick={() => { void decide('different') }}
-                style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
-              >
-                Different review
-              </button>
-            </div>
+            {confirmingDuplicate ? (
+              <div role="alert" style={{
+                display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', borderRadius: '9px',
+                border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: '12.5px', lineHeight: 1.55,
+              }}>
+                <strong>Mark {submission.submission_ref} as a duplicate?</strong>
+                <span>
+                  This rejects the review and reverses its credit once{submission.status === 'approved' || submission.reward_held ? ' (it currently holds a credit)' : ' (it has none yet)'}.
+                  It is counted as submitted, never as eligible, and cannot be approved while this decision stands.
+                  Changing it to Different review later does not bring back a reversed credit — the ledger pays a review only once.
+                </span>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => { void decide('duplicate') }}
+                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}>
+                    {busy ? 'Recording…' : 'Yes, mark as duplicate'}
+                  </button>
+                  <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => setConfirmingDuplicate(false)}
+                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}>
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {flag.strength !== 'weak' && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-primary"
+                    disabled={busy}
+                    onClick={() => setConfirmingDuplicate(true)}
+                    style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}
+                  >
+                    Duplicate
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="boe-btn boe-btn-ghost"
+                  disabled={busy}
+                  onClick={() => { void decide('different') }}
+                  style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
+                >
+                  Different review
+                </button>
+              </div>
+            )}
             <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
-              Recording a decision does not approve, reject or change any credit. Approve or reject the review as usual.
-              If the employee edits the review, it is checked again and this decision does not carry over.
+              <strong>Duplicate</strong> rejects the review and reverses its credit once. <strong>Different review</strong> changes nothing
+              about the review&apos;s status or credit; if it follows a Duplicate decision it removes the duplicate mark but restores no credit.
+              A shared name alone cannot be confirmed as a duplicate. If the employee edits the review it is checked again and this decision does not carry over.
             </p>
           </section>
         )}

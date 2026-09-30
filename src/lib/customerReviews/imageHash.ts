@@ -22,9 +22,9 @@ import sharp from 'sharp'
 // one template with only the words changing): a coarse 17 × 16 or 33 × 32 grid
 // sees a screenshot's layout but not its words, so a different review in the same
 // template came out as close as one review saved at two JPEG qualities. At 65 × 64
-// with a sigma-1 blur, JPEG (quality 25–50), WebP, resizing (300–1200 px) and blur
-// of ONE screenshot differ in 13–21% of the marked bits; different reviews in the
-// same template in 43–61%.
+// with a sigma-1 blur, JPEG (quality 25–50), resizing (400–1440 px) and blur of ONE
+// screenshot differ in 20–28% of the marked bits; different reviews in the same
+// template in 54–66%.
 //
 // WHAT IT DOES NOT SURVIVE: cropping to a different region, rotation, mirroring,
 // an overlay that covers a large part of the image. Those are documented

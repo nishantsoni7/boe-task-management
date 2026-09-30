@@ -264,13 +264,13 @@ export function editSendsBackForApproval(row: Pick<CustomReviewSubmission, 'stat
 
 /** What the employee is told before editing an approved review. */
 export const APPROVED_EDIT_NOTICE =
-  'This review is approved. Saving your changes sends it back for approval. Your credits stay as they are meanwhile and are not paid twice; if the reviewer rejects the edit they are withdrawn. The review type cannot change.'
+  'This review is approved. Saving your changes puts it back to Pending Approval. Its credit stays in your BOE Credits balance while it waits — nothing is added or taken away yet — but the review does not count in the leaderboard or eligible totals until it is approved again. Approving it again pays nothing more; if the edit is rejected, or you delete the review, the credit is withdrawn once. The review type cannot change.'
 
 /** What the employee is told before deleting a review. */
 export function deleteConfirmationText(row: Pick<CustomReviewSubmission, 'status' | 'credits_awarded' | 'submission_ref'>): string {
   const paid = row.credits_awarded != null && Number(row.credits_awarded) > 0 && row.status !== 'rejected'
   return paid
-    ? `Delete ${row.submission_ref}? The ${formatCredits(Number(row.credits_awarded))} it earned will be taken back. Reviewers keep a record of the deletion.`
+    ? `Delete ${row.submission_ref}? Its ${formatCredits(Number(row.credits_awarded))} will be taken back from your balance. Reviewers keep a record of the deletion.`
     : `Delete ${row.submission_ref}? It leaves your list. Reviewers keep a record of the deletion.`
 }
 
@@ -315,6 +315,7 @@ export function customSubmissionFailureStatus(message: string | null | undefined
     ['CUSTOMER_REVIEW_CUSTOM_NOT_EDITABLE', 409],
     ['CUSTOMER_REVIEW_CUSTOM_STALE', 409],
     ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE_WARNING', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_MONTH_CLOSED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_INVALID', 422],
     ['CUSTOMER_REVIEW_CUSTOM_MONTHLY_LIMIT', 422],

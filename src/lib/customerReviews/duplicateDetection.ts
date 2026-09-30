@@ -22,10 +22,11 @@
 //     thousands of customers and identical short reviews are not evidence;
 //   * two screenshots of the same website look alike (measured on synthetic
 //     review screenshots, 4096 bits, lightly blurred, counting differing bits as
-//     a share of the marked bits: re-encodes, blur and resizes of ONE screenshot
-//     differ by 13–21%; different reviews in one template by 43–61%), so the
-//     perceptual threshold sits between them at 30%, with 12% for a strong
-//     match. Two nearly blank pages are not comparable at all.
+//     a share of the marked bits, on full-size phone screenshots put through the
+//     same re-encode the app stores: JPEG 25/50, resizing to 400 and 1440 px and a
+//     light blur of ONE screenshot differ by 20–28%; a different review in the same
+//     template by 54–66%), so the perceptual threshold sits between them at 38%,
+//     with 12% for a strong match. Two nearly blank pages are not comparable at all.
 //
 // LIMITATIONS (also documented)
 //   * Text similarity is lexical: a translation or a genuine paraphrase is not
@@ -69,7 +70,7 @@ export const DUPLICATE_THRESHOLDS = {
    * compared: two nearly blank pages have nothing to be similar about.
    */
   IMAGE_STRONG_MAX_RATIO: 0.12,
-  IMAGE_SIMILAR_MAX_RATIO: 0.3,
+  IMAGE_SIMILAR_MAX_RATIO: 0.38,
   IMAGE_MIN_MARKED_BITS: 60,
 } as const
 

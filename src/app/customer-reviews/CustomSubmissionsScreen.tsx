@@ -305,9 +305,14 @@ export function CustomSubmissionsScreen() {
                     </div>
                   )}
                 </div>
-                {(row.status === 'approved' || row.reward_held) && row.credits_awarded != null && (
+                {row.status === 'approved' && row.credits_awarded != null && (
                   <span style={{ fontSize: '14px', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
                     {formatCredits(Number(row.credits_awarded), { signed: true })}
+                  </span>
+                )}
+                {row.reward_held && !row.deleted_at && row.credits_awarded != null && (
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#92400E' }}>
+                    {formatCredits(Number(row.credits_awarded))} on hold
                   </span>
                 )}
                 <button
@@ -534,8 +539,8 @@ function DecisionSheet({
             fontSize: '12.5px', color: '#92400E', lineHeight: 1.55,
           }}>
             <strong>Edited after approval.</strong> {employee} changed an approved review.
-            {' '}Its {formatCredits(Number(row.credits_awarded ?? 0))} is still on the ledger, held for this check.
-            Approving again pays nothing more; rejecting withdraws that credit.
+            {' '}Its {formatCredits(Number(row.credits_awarded ?? 0))} is still in {employee}&rsquo;s balance (the ledger is unchanged) but the review is not counted as eligible or ranked while it is pending.
+            Approving again pays nothing more; rejecting it, or the employee deleting it, withdraws that credit once.
           </section>
         )}
 

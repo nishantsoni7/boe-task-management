@@ -362,7 +362,7 @@ function SubmissionRow({
           )}
           {row.edit_count > 0 && (
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#3B5BC0' }}>
-              {row.reward_held ? 'Edited · waiting for re-approval' : 'Edited'}
+              {row.reward_held ? 'Edited · Pending Approval again · credit on hold' : 'Edited'}
             </span>
           )}
         </div>
@@ -376,9 +376,17 @@ function SubmissionRow({
           </div>
         )}
       </div>
-      {(row.status === 'approved' || row.reward_held) && row.credits_awarded != null && (
+      {row.status === 'approved' && row.credits_awarded != null && (
         <span style={{ fontSize: '14px', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
           {formatCredits(Number(row.credits_awarded), { signed: true })}
+        </span>
+      )}
+      {row.reward_held && row.credits_awarded != null && (
+        <span
+          title="Still in your BOE Credits balance. It does not count towards the leaderboard while the review is pending."
+          style={{ fontSize: '12px', fontWeight: 600, color: '#92400E', maxWidth: '190px', lineHeight: 1.4 }}
+        >
+          {formatCredits(Number(row.credits_awarded))} on hold — still in your balance until it is decided
         </span>
       )}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

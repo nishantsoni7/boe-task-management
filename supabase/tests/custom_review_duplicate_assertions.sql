@@ -12,6 +12,8 @@
 --   §4  malformed results    refused (inconsistent status, self match, unknown match, bad reason, bad hash)
 --   §5  private evidence     an employee reads no check and no flag; a verifier reads both
 --   §6  decisions            verifier only, never the review's submitter, never stale; history keeps a change of mind;
+--   §6b a confirmed duplicate  "Duplicate" REJECTS the review and reverses its credit once; a weak flag cannot be confirmed;
+--                            approval is refused while it stands; "Different" after "Duplicate" restores no credit
 --                            no status or credit moves
 --   §7  a changed review     new fingerprint = new undecided flags; the old decision stays as history
 --   §8  a weak match         stored, shown, not queued
@@ -87,6 +89,47 @@ begin
     md5(p_id::text) || md5(p_id::text || 'x'),
     p_name, p_text, lower(p_name), lower(p_text), p_phash, p_dup);
   return p_id;
+end $$;
+
+create or replace function pg_temp.approve_as(p_verifier uuid, p_id uuid)
+returns jsonb language plpgsql as $$
+declare
+  v_type text;
+  v_amount numeric;
+  v jsonb;
+begin
+  select review_type into v_type from public.customer_review_custom_submissions where id = p_id;
+  select case v_type when 'image' then image_review_reward_credits else review_reward_credits end
+    into v_amount from public.boe_credit_settings order by created_at desc limit 1;
+  perform pg_temp.act_as(p_verifier);
+  v := public.approve_customer_review_custom_submission(p_id, v_amount);
+  perform pg_temp.act_as_service();
+  return v;
+end $$;
+
+-- A run and one flag on the review's CURRENT content (what the route would have recorded).
+create or replace function pg_temp.flag_on(p_sub uuid, p_matched uuid, p_strength text default 'strong', p_reasons text[] default array['review_text'])
+returns uuid language plpgsql as $$
+declare
+  v_fp text := md5(p_sub::text || clock_timestamp()::text) || md5(p_sub::text);
+  v_check uuid;
+  v_flag uuid;
+begin
+  insert into public.customer_review_custom_duplicate_checks (submission_id, content_fingerprint, status, employee_proceeded, trigger_event, match_count)
+  values (p_sub, v_fp, 'flagged', true, 'submitted', 1) returning id into v_check;
+  insert into public.customer_review_custom_duplicate_flags (submission_id, matched_submission_id, check_id, content_fingerprint, reasons, strength, employee_proceeded)
+  values (p_sub, p_matched, v_check, v_fp, p_reasons, p_strength, true) returning id into v_flag;
+  return v_flag;
+end $$;
+
+create or replace function pg_temp.decide_as(p_verifier uuid, p_flag uuid, p_decision text, p_note text default null)
+returns jsonb language plpgsql as $$
+declare v jsonb;
+begin
+  perform pg_temp.act_as(p_verifier);
+  v := public.decide_customer_review_custom_duplicate(p_flag, p_decision, p_note);
+  perform pg_temp.act_as_service();
+  return v;
 end $$;
 
 do $$
@@ -254,12 +297,12 @@ begin
   select status into st from public.customer_review_custom_submissions where id = 'd2000000-0000-4000-8000-0000000000d4';
 
   perform pg_temp.act_as('b0000000-0000-4000-8000-00000000000b');
-  v := public.decide_customer_review_custom_duplicate(fl, 'duplicate', 'Same words as CR before');
-  assert v ->> 'decision' = 'duplicate' and (v ->> 'unchanged')::boolean = false, '§6 recorded as duplicate';
-  v := public.decide_customer_review_custom_duplicate(fl, 'duplicate', 'Same words as CR before');
+  v := public.decide_customer_review_custom_duplicate(fl, 'different', 'Looks alike, but a different customer');
+  assert v ->> 'decision' = 'different' and (v ->> 'unchanged')::boolean = false, '§6 recorded as different';
+  v := public.decide_customer_review_custom_duplicate(fl, 'different', 'Looks alike, but a different customer');
   assert (v ->> 'unchanged')::boolean, '§6 a repeat is unchanged';
-  v := public.decide_customer_review_custom_duplicate(fl, 'different', 'Checked again — a different customer');
-  assert v ->> 'decision' = 'different', '§6 a change of mind is allowed';
+  v := public.decide_customer_review_custom_duplicate(fl, 'different', 'Checked again — still a different customer');
+  assert v ->> 'decision' = 'different', '§6 the note can change';
   perform pg_temp.act_as_service();
 
   assert (select count(*) from public.customer_review_custom_submission_events
@@ -267,10 +310,10 @@ begin
     '§6 both decisions are in the history';
   assert exists (select 1 from public.customer_review_custom_submission_events
            where submission_id = 'd2000000-0000-4000-8000-0000000000d4' and event_type = 'duplicate_decided'
-             and details ->> 'decision' = 'different' and details ->> 'previous_decision' = 'duplicate'), '§6 the second says what it replaced';
+             and details ->> 'decision' = 'different' and details ->> 'previous_decision' = 'different'), '§6 the second says what it replaced';
   assert (select status from public.customer_review_custom_submissions where id = 'd2000000-0000-4000-8000-0000000000d4') = st,
-    '§6 no decision moved the review''s status';
-  assert (select count(*) from public.boe_credit_transactions) = 0, '§6 and no credit moved';
+    '§6 "different" moved no status';
+  assert (select count(*) from public.boe_credit_transactions) = 0, '§6 and no credit';
   assert (select flags_open from public.customer_review_custom_duplicate_summary where submission_id = 'd2000000-0000-4000-8000-0000000000d4') = 0
      and (select decided_different from public.customer_review_custom_duplicate_summary where submission_id = 'd2000000-0000-4000-8000-0000000000d4') = 1,
     '§6 the summary follows the decision';
@@ -295,6 +338,111 @@ select pg_temp.must_refuse(
   '22023', 'Choose Duplicate or Different review', '§6 only the two decisions exist');
 select pg_temp.act_as_service();
 delete from public.test_permission_grants where user_id = 'e2000000-0000-4000-8000-0000000000e2' and action_key = 'verify';
+
+
+-- ═══ §6b. A confirmed duplicate is binding ═══════════════════════════════════
+
+do $$
+declare
+  V  uuid := 'b0000000-0000-4000-8000-00000000000b';
+  E1 uuid := 'e1000000-0000-4000-8000-0000000000e1';
+  ref uuid := 'd1000000-0000-4000-8000-0000000000d1';
+  p1 uuid := 'dd000000-0000-4000-8000-0000000000a1';
+  p2 uuid := 'dd000000-0000-4000-8000-0000000000a2';
+  p3 uuid := 'dd000000-0000-4000-8000-0000000000a3';
+  p4 uuid := 'dd000000-0000-4000-8000-0000000000a4';
+  f  uuid;
+  weak uuid;
+  res jsonb;
+  bal0 numeric;
+  n_rev integer;
+begin
+  bal0 := public.boe_credit_balance(E1);
+
+  -- A. a PENDING review marked Duplicate is rejected; nothing was paid, nothing reversed
+  perform pg_temp.sub(E1, p1, 'Copy Cat', 'Some words that were written once and copied by someone else afterwards.');
+  weak := pg_temp.flag_on(p1, ref, 'weak', array['reviewer_name']);
+  begin
+    perform pg_temp.decide_as(V, weak, 'duplicate');
+    raise exception '§6b a weak flag was confirmed as a duplicate';
+  exception when sqlstate '22023' then null;
+  end;
+  f := pg_temp.flag_on(p1, ref);   -- a later run: this is the current one
+  res := pg_temp.decide_as(V, f, 'duplicate', 'Same review');
+  assert (res ->> 'review_rejected')::boolean and not (res ->> 'credit_reversed')::boolean, '§6b a pending duplicate is rejected, no credit to reverse';
+  assert (select status from public.customer_review_custom_submissions where id = p1) = 'rejected'
+     and (select rejection_reason from public.customer_review_custom_submissions where id = p1) = 'Confirmed duplicate of an earlier review',
+    '§6b status Rejected with the reason';
+  assert exists (select 1 from public.customer_review_custom_submission_events where submission_id = p1 and event_type = 'rejected' and reason like 'Confirmed duplicate%'),
+    '§6b the rejection is in the history';
+  assert (select decided_duplicate from public.customer_review_custom_duplicate_summary where submission_id = p1) >= 1, '§6b the summary shows the confirmed duplicate';
+  res := pg_temp.decide_as(V, f, 'duplicate', 'Same review');
+  assert (res ->> 'unchanged')::boolean, '§6b a repeat changes nothing';
+
+  -- "Different" afterwards: the mark goes, the review stays Rejected, no credit appears
+  res := pg_temp.decide_as(V, f, 'different', 'On reflection, a different customer');
+  assert (select status from public.customer_review_custom_submissions where id = p1) = 'rejected', '§6b Different does not un-reject the review';
+  assert (select decided_duplicate from public.customer_review_custom_duplicate_summary where submission_id = p1) = 0, '§6b the confirmed-duplicate mark is gone';
+  assert public.boe_credit_balance(E1) = bal0, '§6b and no credit was created';
+  -- it earned nothing, so the employee may Edit & Reapply it, and then it can be approved (one reward, first time)
+  perform public.reapply_customer_review_custom_submission(p1, E1, 'text', (now() at time zone 'Asia/Kolkata')::date, null, 'Not a duplicate', null, null, null, null, null);
+  perform pg_temp.approve_as(V, p1);
+  assert public.boe_credit_balance(E1) = bal0 + 1, '§6b after Different and a reapplication the review earns its ONE reward';
+
+  -- B. Duplicate, reapplied unchanged: still confirmed, so approval is REFUSED
+  perform pg_temp.sub(E1, p2, 'Copy Cat Two', 'Another sentence written once and reproduced word for word by a second employee.');
+  f := pg_temp.flag_on(p2, ref);
+  perform pg_temp.decide_as(V, f, 'duplicate');
+  perform public.reapply_customer_review_custom_submission(p2, E1, 'text', (now() at time zone 'Asia/Kolkata')::date, null, null, null, null, null, null, null);
+  perform pg_temp.act_as(V);
+  begin
+    perform public.approve_customer_review_custom_submission(p2, 1);
+    raise exception '§6b a confirmed duplicate was approved';
+  exception when sqlstate '55000' then
+    if position('DUPLICATE_CONFIRMED' in sqlerrm) = 0 then raise; end if;
+  end;
+  perform pg_temp.act_as_service();
+  assert public.boe_credit_balance(E1) = bal0 + 1, '§6b nothing was paid for it';
+
+  -- C. an APPROVED review marked Duplicate: rejected, credit reversed ONCE
+  perform pg_temp.sub(E1, p3, 'Copy Cat Three', 'A third sentence, approved first and only later recognised as a copy of another review.');
+  perform pg_temp.approve_as(V, p3);
+  assert public.boe_credit_balance(E1) = bal0 + 2, '§6b approved: +1';
+  f := pg_temp.flag_on(p3, ref);
+  res := pg_temp.decide_as(V, f, 'duplicate', 'Recognised later');
+  assert (res ->> 'review_rejected')::boolean and (res ->> 'credit_reversed')::boolean, '§6b the credit is reversed with the rejection';
+  assert public.boe_credit_balance(E1) = bal0 + 1, '§6b net: the reward is taken back';
+  select count(*) into n_rev from public.boe_credit_transactions where employee_id = E1 and transaction_type = 'reversal';
+  res := pg_temp.decide_as(V, f, 'duplicate', 'Recorded again with another note');
+  assert (select count(*) from public.boe_credit_transactions where employee_id = E1 and transaction_type = 'reversal') = n_rev, '§6b a second decision reverses nothing more';
+  res := pg_temp.decide_as(V, f, 'different', 'Changed my mind');
+  assert public.boe_credit_balance(E1) = bal0 + 1, '§6b Different restores NO credit';
+  assert (select status from public.customer_review_custom_submissions where id = p3) = 'rejected', '§6b and does not un-reject it';
+  begin
+    perform public.reapply_customer_review_custom_submission(p3, E1, 'text', (now() at time zone 'Asia/Kolkata')::date, null, null, null, null, null, null, null);
+    raise exception '§6b a review whose credit was reversed was reapplied';
+  exception when sqlstate '55000' then null;
+  end;
+  assert (select reward_reversal_transaction_id from public.customer_review_custom_submissions where id = p3) is not null, '§6b the reversal is linked to the review';
+
+  -- D. an EDITED approved review (credit held) marked Duplicate: reversed and rejected
+  perform pg_temp.sub(E1, p4, 'Copy Cat Four', 'A fourth sentence that was approved, then edited, then found to be a copy of a review.');
+  perform pg_temp.approve_as(V, p4);
+  perform public.edit_customer_review_custom_submission(p4, E1, 'text', (now() at time zone 'Asia/Kolkata')::date, 'edited', 0, null, null, null, null, null);
+  assert (select reward_held from public.customer_review_custom_submissions where id = p4), '§6b D: held';
+  f := pg_temp.flag_on(p4, ref);
+  res := pg_temp.decide_as(V, f, 'duplicate');
+  assert (res ->> 'credit_reversed')::boolean and (select status from public.customer_review_custom_submissions where id = p4) = 'rejected'
+     and not (select reward_held from public.customer_review_custom_submissions where id = p4), '§6b D: a held credit is reversed and the review rejected';
+  assert public.boe_credit_balance(E1) = bal0 + 1, '§6b D: net unchanged from C';
+
+  -- E. a POSSIBLE duplicate (undecided flag) never blocks approval
+  perform pg_temp.sub(E1, 'dd000000-0000-4000-8000-0000000000a5', 'Merely Similar', 'A fifth sentence that only resembles another review, which a verifier has not decided about at all.');
+  perform pg_temp.flag_on('dd000000-0000-4000-8000-0000000000a5', ref);
+  perform pg_temp.approve_as(V, 'dd000000-0000-4000-8000-0000000000a5');
+  assert (select status from public.customer_review_custom_submissions where id = 'dd000000-0000-4000-8000-0000000000a5') = 'approved', '§6b E: an undecided possible duplicate is a non-blocking warning';
+  raise notice 'PASS  §6b Duplicate rejects and reverses once, blocks approval, a weak flag cannot be confirmed, Different restores nothing, a possible duplicate never blocks';
+end $$;
 
 -- ═══ §7. A changed review is checked again ═══════════════════════════════════
 

@@ -89,9 +89,13 @@ describe('what the employee is told', () => {
     assert.doesNotMatch(deleteConfirmationText(row({ status: 'rejected', credits_awarded: null })), /taken back/)
   })
   test('the approved-edit notice states the status, the hold, the no-double-pay and the type lock', () => {
-    assert.match(APPROVED_EDIT_NOTICE, /sends it back for approval/)
-    assert.match(APPROVED_EDIT_NOTICE, /not paid twice/)
+    assert.match(APPROVED_EDIT_NOTICE, /Pending Approval/)
+    assert.match(APPROVED_EDIT_NOTICE, /stays in your BOE Credits balance/)
+    assert.match(APPROVED_EDIT_NOTICE, /does not count in the leaderboard or eligible totals/)
+    assert.match(APPROVED_EDIT_NOTICE, /pays nothing more/)
     assert.match(APPROVED_EDIT_NOTICE, /type cannot change/)
+    // one unambiguous story: a balance, not a promise of ranking
+    assert.doesNotMatch(APPROVED_EDIT_NOTICE, /credits are held|held for/i)
   })
   test('the new refusals map to a 409, and the new history events are labelled', () => {
     assert.equal(customSubmissionFailureStatus('CUSTOMER_REVIEW_CUSTOM_STALE: x'), 409)
