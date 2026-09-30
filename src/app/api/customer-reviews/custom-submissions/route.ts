@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash, randomUUID } from 'node:crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
@@ -16,7 +17,21 @@ import {
   customSubmissionFailureStatus,
   parseCustomReapplicationInput,
   parseCustomSubmissionInput,
+  parseMatchFields,
 } from '@/lib/customerReviews/customSubmissions'
+import { differenceHash } from '@/lib/customerReviews/imageHash'
+import {
+  DUPLICATE_UNAVAILABLE_TITLE,
+  DUPLICATE_WARNING_TITLE,
+} from '@/lib/customerReviews/duplicateDetection'
+import {
+  contentFingerprint,
+  normalizedFields,
+  runDuplicateCheck,
+  toDatabaseArgument,
+  toEmployeeView,
+  type DuplicateOutcome,
+} from '@/lib/customerReviews/duplicateCheck.server'
 import {
   istMonthBoundsUtc,
   istMonthOf,
@@ -69,6 +84,7 @@ const MESSAGES = {
   failed:          'That submission could not be saved. Try again.',
   not_found:       'That review could not be found.',
   not_rejected:    'Only a rejected review can be reapplied.',
+  not_editable:    'A rejected review is corrected with Edit & Reapply.',
 } as const
 
 const NO_STORE = { 'Cache-Control': 'no-store, private' }
@@ -141,6 +157,134 @@ async function processProof(proof: File): Promise<
   }
 }
 
+// ── The duplicate check ───────────────────────────────────────────────────────
+//
+// Runs on every save that changes what a review says or shows — the server is
+// what decides, whatever the browser already showed. A possible duplicate (or a
+// check that could not run) is answered 409 with the reason CATEGORIES and a
+// token, BEFORE anything is uploaded or stored; the employee then edits, cancels
+// or resends with `acknowledgeDuplicate` = that token ("Submit anyway"). The
+// token binds the choice to the warning that was shown: if the matches changed in
+// between, the employee is warned again. The database refuses a flagged or
+// unavailable result the employee did not acknowledge, and stores the matches,
+// the reasons and that the employee proceeded.
+//
+// A warning never rejects a review and never touches a reward.
+
+type SavedRow = { sha256: string; phash: string | null }
+
+type DuplicateGate =
+  | { block: NextResponse }
+  | {
+      /** The database argument, or null when the content is the same as the last check. */
+      argument: ReturnType<typeof toDatabaseArgument> | null
+      phash: string | null
+      nameNorm: string | null
+      textNorm: string | null
+    }
+
+async function duplicateGate(args: {
+  service: SupabaseClient
+  actorId: string
+  /** The review being edited or reapplied. */
+  submissionId: string | null
+  reviewerName: string | null
+  reviewText: string | null
+  /** A newly chosen screenshot, or null to keep the saved one. */
+  image: { digest: string; bytes: Uint8Array } | null
+  acknowledged: string | null
+}): Promise<DuplicateGate> {
+  const { nameNorm, textNorm } = normalizedFields(args.reviewerName, args.reviewText)
+
+  let saved: SavedRow | null = null
+  let lastFingerprint: string | null = null
+  if (args.submissionId) {
+    const { data: row } = await args.service
+      .from('customer_review_custom_submissions')
+      .select('proof_content_sha256, proof_phash')
+      .eq('id', args.submissionId)
+      .maybeSingle()
+    const r = row as { proof_content_sha256: string; proof_phash: string | null } | null
+    if (r) saved = { sha256: r.proof_content_sha256, phash: r.proof_phash }
+    const { data: last } = await args.service
+      .from('customer_review_custom_duplicate_checks')
+      .select('content_fingerprint')
+      .eq('submission_id', args.submissionId)
+      .order('seq', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    lastFingerprint = (last as { content_fingerprint: string } | null)?.content_fingerprint ?? null
+  }
+
+  let phash: string | null = saved?.phash ?? null
+  let hashFailed = false
+  let sha256 = saved?.sha256 ?? ''
+  if (args.image) {
+    sha256 = args.image.digest
+    try {
+      phash = await differenceHash(args.image.bytes)
+    } catch {
+      phash = null
+      hashFailed = true
+    }
+  }
+  if (!sha256) hashFailed = true
+
+  // Content the last check already covered: nothing new to warn about.
+  const fingerprint = contentFingerprint(sha256, nameNorm, textNorm)
+  if (!hashFailed && lastFingerprint === fingerprint) {
+    return { argument: null, phash: args.image ? phash : null, nameNorm, textNorm }
+  }
+
+  const outcome: DuplicateOutcome = hashFailed
+    ? { status: 'unavailable', matches: [], fingerprint, token: 'unavailable', refs: new Map() }
+    : await runDuplicateCheck({
+        service: args.service,
+        actorId: args.actorId,
+        excludeId: args.submissionId,
+        reviewerName: args.reviewerName,
+        reviewText: args.reviewText,
+        sha256,
+        phash,
+      })
+
+  if (outcome.status !== 'clear' && args.acknowledged !== outcome.token) {
+    return {
+      block: NextResponse.json(
+        {
+          error: outcome.status === 'unavailable' ? DUPLICATE_UNAVAILABLE_TITLE : DUPLICATE_WARNING_TITLE,
+          code: 'possible_duplicate',
+          duplicate: toEmployeeView(outcome, args.actorId),
+          token: outcome.token,
+        },
+        { status: 409, headers: NO_STORE },
+      ),
+    }
+  }
+
+  return {
+    argument: toDatabaseArgument(outcome, outcome.status !== 'clear'),
+    phash: args.image ? phash : null,
+    nameNorm,
+    textNorm,
+  }
+}
+
+/** The fields every save reads besides the ones each verb already parses. */
+function readMatchFields(form: FormData):
+  | { ok: true; reviewerName: string | null; reviewText: string | null; acknowledged: string | null }
+  | { ok: false; response: NextResponse } {
+  const parsed = parseMatchFields({ reviewerName: form.get('reviewerName'), reviewText: form.get('reviewText') })
+  if (!parsed.ok) return { ok: false, response: fail(422, parsed.message) }
+  const ack = form.get('acknowledgeDuplicate')
+  return {
+    ok: true,
+    reviewerName: parsed.value.reviewerName,
+    reviewText: parsed.value.reviewText,
+    acknowledged: typeof ack === 'string' && ack !== '' ? ack : null,
+  }
+}
+
 export async function POST(req: NextRequest) {
   // ── 1–2. Who is calling, and do they hold `use` ───────────────────────────
   const caller = await createClient()
@@ -202,17 +346,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const match = readMatchFields(form)
+  if (!match.ok) return match.response
+
   // ── 4. What the bytes actually are ────────────────────────────────────────
   const image = await processProof(proof)
   if (!image.ok) return image.response
 
-  // ── 5. The privileged client, and the path generated HERE ─────────────────
+  // ── 5. The privileged client, the duplicate check, and the path generated HERE
   const admin = adminClient()
   if (!admin.ok) {
     console.error('[customer-reviews:custom-submissions] missing env:', admin.missing.join(', '))
     return fail(503, MESSAGES.unavailable)
   }
   const service = admin.client
+
+  const gate = await duplicateGate({
+    service, actorId: user.id, submissionId: null,
+    reviewerName: match.reviewerName, reviewText: match.reviewText,
+    image: { digest: image.digest, bytes: image.bytes }, acknowledged: match.acknowledged,
+  })
+  if ('block' in gate) return gate.block
 
   const submissionId = randomUUID()
   // The submission id first: the bucket's SELECT policy reads it, and the
@@ -236,6 +390,12 @@ export async function POST(req: NextRequest) {
     p_proof_mime_type:      image.mime,
     p_proof_byte_size:      image.bytes.length,
     p_proof_content_sha256: image.digest,
+    p_reviewer_name:        match.reviewerName,
+    p_review_text:          match.reviewText,
+    p_reviewer_name_norm:   gate.nameNorm,
+    p_review_text_norm:     gate.textNorm,
+    p_proof_phash:          gate.phash,
+    p_duplicate:            gate.argument,
   })
 
   if (error || !data) {
@@ -295,6 +455,9 @@ export async function PATCH(req: NextRequest) {
   if (!row || row.submitted_by !== actorId) return fail(404, MESSAGES.not_found)
   if (row.status === 'approved') return fail(409, MESSAGES.not_rejected)
 
+  const match = readMatchFields(form)
+  if (!match.ok) return match.response
+
   const file = form.get('file')
   const proof = file && typeof file !== 'string' && (file as File).size > 0 ? (file as File) : null
   const image = proof ? await processProof(proof) : null
@@ -306,6 +469,13 @@ export async function PATCH(req: NextRequest) {
     return fail(503, MESSAGES.unavailable)
   }
   const service = admin.client
+
+  const gate = await duplicateGate({
+    service, actorId, submissionId,
+    reviewerName: match.reviewerName, reviewText: match.reviewText,
+    image: image && image.ok ? { digest: image.digest, bytes: image.bytes } : null, acknowledged: match.acknowledged,
+  })
+  if ('block' in gate) return gate.block
 
   // Under this review's own id, so the bucket policy and the table CHECK agree.
   const newPath = image && image.ok ? `${submissionId}/proof/${randomUUID()}.${image.extension}` : null
@@ -328,6 +498,12 @@ export async function PATCH(req: NextRequest) {
     p_proof_mime_type:      image && image.ok ? image.mime : null,
     p_proof_byte_size:      image && image.ok ? image.bytes.length : null,
     p_proof_content_sha256: image && image.ok ? image.digest : null,
+    p_reviewer_name:        match.reviewerName,
+    p_review_text:          match.reviewText,
+    p_reviewer_name_norm:   gate.nameNorm,
+    p_review_text_norm:     gate.textNorm,
+    p_proof_phash:          gate.phash,
+    p_duplicate:            gate.argument,
   })
 
   const result = data as { submission?: unknown; already_pending?: boolean } | null
@@ -342,6 +518,175 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json(
     { submission: result.submission, already_pending: result.already_pending === true },
+    { status: 200, headers: NO_STORE },
+  )
+}
+
+// ── Edit your own review ──────────────────────────────────────────────────────
+//
+// PUT edits a PENDING or APPROVED review in place: the same row, the same
+// submission date and month, an incremented edit counter and a history row. An
+// approved review goes back to Pending Approval with its credit HELD — never
+// paid twice; rejecting the edit reverses it. A rejected review is corrected
+// through PATCH (Edit & Reapply), so this route refuses it.
+//
+// OWNERSHIP IS ENFORCED THREE TIMES: the caller reads the row under their own
+// RLS (a row that is not theirs is answered like one that does not exist), the
+// route compares submitted_by with the session user, and the database function
+// compares again with the actor the route passes — no client role can write the
+// table, so there is no other way in. The screenshot, when replaced, is
+// re-encoded like every other proof and the old object is KEPT (history names it).
+//
+// REPEATS. `expectedEditCount` is the counter the employee opened the form on.
+// A repeat of an edit that already went through answers `unchanged`; a stale
+// counter with different content is refused (409).
+
+export async function PUT(req: NextRequest) {
+  const caller = await createClient()
+  const auth = await authorize(caller)
+  if (auth instanceof NextResponse) return auth
+  const actorId = auth.userId
+
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch {
+    return fail(400, MESSAGES.bad_request)
+  }
+
+  const submissionId = form.get('submissionId')
+  if (typeof submissionId !== 'string' || !UUID_RE.test(submissionId)) return fail(400, MESSAGES.bad_request)
+
+  const expectedRaw = form.get('expectedEditCount')
+  const expectedEditCount = typeof expectedRaw === 'string' && /^\d{1,6}$/.test(expectedRaw) ? Number(expectedRaw) : null
+  if (expectedEditCount === null) return fail(400, MESSAGES.bad_request)
+
+  const parsed = parseCustomSubmissionInput({
+    reviewType:  form.get('reviewType'),
+    publishedOn: form.get('publishedOn'),
+    remark:      form.get('remark'),
+    hasProof:    true,
+  }, istToday())
+  if (!parsed.ok) return fail(422, parsed.issues[0].message)
+
+  const { data: current } = await caller
+    .from('customer_review_custom_submissions')
+    .select('id, submitted_by, status, deleted_at')
+    .eq('id', submissionId)
+    .maybeSingle()
+  const row = current as { id: string; submitted_by: string; status: string; deleted_at: string | null } | null
+  if (!row || row.submitted_by !== actorId || row.deleted_at) return fail(404, MESSAGES.not_found)
+  if (row.status === 'rejected') return fail(409, MESSAGES.not_editable)
+
+  const match = readMatchFields(form)
+  if (!match.ok) return match.response
+
+  const file = form.get('file')
+  const proof = file && typeof file !== 'string' && (file as File).size > 0 ? (file as File) : null
+  const image = proof ? await processProof(proof) : null
+  if (image && !image.ok) return image.response
+
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[customer-reviews:custom-submissions] missing env:', admin.missing.join(', '))
+    return fail(503, MESSAGES.unavailable)
+  }
+  const service = admin.client
+
+  const gate = await duplicateGate({
+    service, actorId, submissionId,
+    reviewerName: match.reviewerName, reviewText: match.reviewText,
+    image: image && image.ok ? { digest: image.digest, bytes: image.bytes } : null, acknowledged: match.acknowledged,
+  })
+  if ('block' in gate) return gate.block
+
+  const newPath = image && image.ok ? `${submissionId}/proof/${randomUUID()}.${image.extension}` : null
+  if (image && image.ok && newPath) {
+    const { error: uploadError } = await service.storage
+      .from(CUSTOM_PROOF_BUCKET)
+      .upload(newPath, image.bytes, { contentType: image.mime, upsert: false })
+    if (uploadError) return fail(500, MESSAGES.upload_failed)
+  }
+
+  const { data, error } = await service.rpc('edit_customer_review_custom_submission', {
+    p_submission_id:        submissionId,
+    p_actor_id:             actorId,
+    p_review_type:          parsed.value.reviewType,
+    p_published_on:         parsed.value.publishedOn,
+    p_remark:               parsed.value.remark,
+    p_expected_edit_count:  expectedEditCount,
+    p_proof_storage_path:   newPath,
+    p_proof_file_name:      image && image.ok ? image.displayName : null,
+    p_proof_mime_type:      image && image.ok ? image.mime : null,
+    p_proof_byte_size:      image && image.ok ? image.bytes.length : null,
+    p_proof_content_sha256: image && image.ok ? image.digest : null,
+    p_reviewer_name:        match.reviewerName,
+    p_review_text:          match.reviewText,
+    p_reviewer_name_norm:   gate.nameNorm,
+    p_review_text_norm:     gate.textNorm,
+    p_proof_phash:          gate.phash,
+    p_duplicate:            gate.argument,
+  })
+
+  const result = data as { submission?: unknown; unchanged?: boolean; sent_back_for_approval?: boolean } | null
+  if (error || !result) {
+    if (newPath) await service.storage.from(CUSTOM_PROOF_BUCKET).remove([newPath])
+    return failFromDatabase(error?.message ?? '')
+  }
+  // An unchanged answer did not use the new object.
+  if (result.unchanged && newPath) {
+    await service.storage.from(CUSTOM_PROOF_BUCKET).remove([newPath])
+  }
+
+  return NextResponse.json(
+    {
+      submission: result.submission,
+      unchanged: result.unchanged === true,
+      sent_back_for_approval: result.sent_back_for_approval === true,
+    },
+    { status: 200, headers: NO_STORE },
+  )
+}
+
+// ── Delete your own review ────────────────────────────────────────────────────
+//
+// A SOFT delete. The row, its proof and its history stay for verifiers (and as
+// duplicate-check evidence); the employee no longer sees it. A posted credit is
+// reversed once, in the same transaction. Repeats answer `already_deleted`.
+
+export async function DELETE(req: NextRequest) {
+  const caller = await createClient()
+  const auth = await authorize(caller)
+  if (auth instanceof NextResponse) return auth
+  const actorId = auth.userId
+
+  const body = await req.json().catch(() => null) as { submissionId?: unknown } | null
+  const submissionId = body?.submissionId
+  if (typeof submissionId !== 'string' || !UUID_RE.test(submissionId)) return fail(400, MESSAGES.bad_request)
+
+  const { data: current } = await caller
+    .from('customer_review_custom_submissions')
+    .select('id, submitted_by')
+    .eq('id', submissionId)
+    .maybeSingle()
+  const row = current as { id: string; submitted_by: string } | null
+  if (!row || row.submitted_by !== actorId) return fail(404, MESSAGES.not_found)
+
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[customer-reviews:custom-submissions] missing env:', admin.missing.join(', '))
+    return fail(503, MESSAGES.unavailable)
+  }
+
+  const { data, error } = await admin.client.rpc('delete_customer_review_custom_submission', {
+    p_submission_id: submissionId,
+    p_actor_id:      actorId,
+  })
+  const result = data as { already_deleted?: boolean; credits_reversed?: number | string } | null
+  if (error || !result) return failFromDatabase(error?.message ?? '')
+
+  return NextResponse.json(
+    { deleted: true, already_deleted: result.already_deleted === true, credits_reversed: Number(result.credits_reversed ?? 0) },
     { status: 200, headers: NO_STORE },
   )
 }

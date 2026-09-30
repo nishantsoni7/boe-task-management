@@ -115,7 +115,8 @@ The stored value `pending_verification` is displayed as **Pending Approval**;
 it keeps its stored name because it is the audit history's word. The guard
 trigger `customer_review_custom_submissions_guard` enforces the moves: a pending
 row may be decided once; a rejected row may only be reapplied (its corrections,
-counted once); an approved row never changes; nothing is deleted.
+counted once); an approved row changes only through an employee edit (§23), which
+keeps its credit on the ledger; nothing is ever hard-deleted (an employee's delete is a soft delete, §23).
 
 ## 7. Reapply
 
@@ -477,6 +478,458 @@ reward to be handled first. A batch that lost a draft to a purge can no longer b
 assigned whole, exactly as after a verifier's Delete.
 
 ---
+
+## 23. Employee edit and delete (`20270223000000`, in the repository — NOT applied)
+
+An employee may edit or delete **their own** custom review from **My Reviews**.
+
+| | |
+| --- | --- |
+| Routes | `PUT` (edit) and `DELETE` on `/api/customer-reviews/custom-submissions` |
+| RPCs | `edit_customer_review_custom_submission()`, `delete_customer_review_custom_submission()` — **service role only**; `reverse_customer_review_custom_reward()` — owner-only helper, callable by nobody |
+| Columns | `deleted_at`, `deleted_by`, `edit_count`, `last_edited_at`, `reward_held`, `reward_reversal_transaction_id` |
+| History | two new events, `edited` and `deleted`, written by the trail trigger |
+| Tests | `src/lib/customerReviews/customReviewEditDelete.test.ts`; `supabase/tests/custom_review_edit_delete_assertions.sql` via `run_custom_review_edit_delete_local.sh`; two-session races in `run_custom_review_edit_delete_race.sh` |
+
+### 23.1 Who, and how it is enforced
+
+Only the submitter. The route reads the review under the caller's own RLS (a review
+that is not theirs reads as *not found*), compares `submitted_by` with the session user,
+and passes that user as the actor; the database function compares again and refuses
+anyone else — administrators and verifiers included — with
+`CUSTOMER_REVIEW_CUSTOM_NOT_OWNER`. No client role can write the table or call the
+functions, so hiding the buttons is not what protects a review.
+
+### 23.2 What an edit does to each status
+
+| Status | Edit | Effect |
+| --- | --- | --- |
+| Pending Approval | in place | stays pending; queue position, submission date and month do not move; history row |
+| Rejected | not here | corrected through **Edit & Reapply** (§7), as before |
+| Approved | in place | **goes back to Pending Approval**; the existing credit **stays on the ledger** but the review is **not eligible** until re-approved (§23.3); the type cannot change; reviewers are notified |
+
+The submission date (`submitted_at`) and reference never change, so an old review does
+not move into the current month. A published date may be corrected but never set in the
+future. A screenshot may be replaced; the old object is kept and the history names it.
+A review in a **closed** (lapsed) month cannot be edited.
+
+### 23.3 Points and credits when a review is edited or deleted
+
+The ledger allows one `review_reward` per source and one reversal per row; a reversal cannot itself be
+reversed, and "re-awarding after a reversal is deliberately not possible" (`20261101000000`). So *reverse on
+edit, pay again on approval* cannot work. Instead:
+
+* **Edit of an approved review** — nothing is posted. `credits_awarded` and `credit_transaction_id` stay on the
+  row, `reward_held` marks that the review is waiting for a decision. **The credit is still in the employee's BOE
+  Credits balance** — that balance is the ledger, and it is unchanged — but the review is **Pending Approval**, so
+  it is **not eligible**: it does not count in the leaderboard or in "eligible" totals. Reports show its credit
+  separately as **awaiting re-approval**, never inside "eligible credits".
+* **A verifier approves it again** — **no ledger row is written and no credits are added.** The review keeps the one
+  `review_reward` row it received at its first approval — the only reward row it can ever have in its lifetime — and
+  becomes eligible again. (The ledger allows one reward per source, and the function refuses to post one for a review that
+  already has one.) Proven on the real ledger: three edits and three re-approvals leave one ledger row and the same balance
+  (`custom_review_edit_delete_assertions.sql` §4), and through the routes the review's reward-row count stays 1 and the
+  employee's balance is unchanged.
+* **A verifier rejects it** — the credit is **reversed once** and the review is Rejected.
+* **The employee deletes it** (any status) — an approved or held credit is reversed once, in the same transaction;
+  a pending or rejected review has nothing on the ledger. A month that already **lapsed** is not reversed a second
+  time (its credit was already taken by the month's expiry).
+* **A review whose credit was reversed cannot be approved again** (`CUSTOMER_REVIEW_CUSTOM_DECIDED` refusal from the approve
+  function): the ledger would have to pay a second time. The employee submits a new review, or an administrator posts an
+  ordinary adjustment.
+
+**Type is locked** for an approved or held review, because the held credit cannot be re-priced. So an edit can never leave
+a Text credit on an Image review or the reverse; a Pending review may change type and is priced when first approved.
+
+However often a review is edited, it has at most one reward and at most one reversal. The reversal is an ordinary
+ledger row (`reversal`, negating the reward), posted for the employee by `reverse_customer_review_custom_reward()`.
+Note the existing rule that a month that already **qualified** stays qualified after an individual reversal.
+
+**"Pending approval" vs "actual credit balance."** *Pending approval* is a review status: it decides whether the review
+is counted (eligible, leaderboard). The *balance* is the ledger: it changes only when a reward or a reversal is posted.
+An edited approved review is pending approval **and** its credit is in the balance, until a verifier rejects it (reversed)
+or approves it (unchanged). The screens say both things in those words.
+
+### 23.4 Delete
+
+A soft delete: `deleted_at` / `deleted_by` are stamped and the row, proof and history
+stay. The employee no longer sees it (the SELECT policy hides it; verifiers still read
+it). It leaves every list, count and total, **frees its monthly slot**, and no longer
+blocks the same screenshot (the duplicate check keeps it as evidence — see the next
+migration). A deleted row is frozen. Verifiers see it under **Custom Submissions →
+Deleted**, with who deleted it, when, and whether a credit was reversed.
+
+### 23.5 Repeated and concurrent requests
+
+* Delete is idempotent in the database: a second call answers `already_deleted`, adds no history and reverses nothing. Through the
+  route the employee's second delete answers "not found" (404), because a deleted review is hidden from them; still one reversal.
+* Edit carries the `edit_count` the form was opened on. An identical repeat (double click,
+  retry) answers `unchanged`; a stale counter with different content is refused (409).
+* Locks are taken in one order — the employee's month lock, then the row, then the credits
+  lock — so edit, delete, approval and rejection serialise on the row. The two-session
+  races in `run_custom_review_edit_delete_race.sh` cover delete-vs-delete, delete-vs-edit
+  and re-approval-vs-delete.
+
+### 23.6 Screens
+
+**My Reviews:** *Edit* (pending and approved) and *Delete* (any) beside *View Proof*; the
+form is the submission form with the current values and a notice when the review is
+approved; Delete asks first and says if a credit will be taken back.
+**Custom Submissions:** an *Edited after approval* badge, **Approve again** (no amount
+field — nothing more is paid), and the **Deleted** tab.
+
+## 24. Possible-duplicate detection (`20270224000000`, in the repository — NOT applied)
+
+Every new submission, edit and reapplication is checked against **every earlier custom
+review of every employee — deleted ones included** — so submitting the same review twice, or
+deleting one and reposting it, is seen. A check produces *possible* duplicates with reasons; it
+never rejects a review and never touches a reward.
+
+| | |
+| --- | --- |
+| Pure rules | `src/lib/customerReviews/duplicateDetection.ts` (normalization, thresholds, matching, what an employee may see) |
+| Server | `duplicateCheck.server.ts` (fetch candidates, compare, token), `imageHash.ts` (difference hash, sharp) |
+| Database | columns `reviewer_name`, `review_text`, `reviewer_name_norm`, `review_text_norm`, `proof_phash`; tables `customer_review_custom_duplicate_checks` and `…_flags`; view `…_duplicate_summary`; `decide_customer_review_custom_duplicate()`; `customer_review_custom_duplicate_candidates()` |
+| Tests | `duplicateDetection.test.ts`, `customReviewDuplicates.test.ts`, `supabase/tests/custom_review_duplicate_assertions.sql` |
+| Backfill | `scripts/backfill-review-image-hashes.ts` (§24.8): dry run by default, `--apply [--limit=N]` fills NULL hashes only, `--verify` is read-only |
+
+### 24.1 What is compared
+
+The submit and edit form gained two **optional** fields: **Reviewer name** and **Review text**
+(the words as published). Custom reviews had neither before, so a name or text signal exists only
+where the employee filled them in.
+
+| Signal | How | Strength on its own |
+| --- | --- | --- |
+| Reviewer name | normalized (case, spacing, punctuation, word order) and equal as a whole name | **weak**, always |
+| Review text | normalized; identical, or character-trigram (Dice) similarity | moderate or strong |
+| Image, identical | SHA-256 of the stored (re-encoded) bytes | strong |
+| Image, similar | 4096-bit difference hash (65 × 64, lightly blurred); differing bits as a share of the marked bits | moderate or strong |
+
+A filename or upload URL is never compared.
+
+### 24.2 Thresholds (all in `DUPLICATE_THRESHOLDS`)
+
+| Setting | Value | Meaning |
+| --- | ---: | --- |
+| `NAME_MIN_CHARS` | 4 | a shorter normalized name is not compared |
+| `TEXT_MIN_CHARS` / `TEXT_MIN_TOKENS` | 30 / 6 | shorter text carries **no** text signal, identical or not — "Great service, thank you" is written by thousands of customers |
+| `TEXT_EXACT_STRONG_CHARS` | 60 | an exact match at or above this is strong; between 30 and 60 it is moderate |
+| `TEXT_NEAR_MIN` | 0.8 | trigram similarity from which text is "similar" (moderate) |
+| `TEXT_NEAR_STRONG` | 0.92 | similarity from which it is strong |
+| `IMAGE_STRONG_MAX_RATIO` | 0.12 | differing bits ÷ marked bits: at most this is a strong image match |
+| `IMAGE_SIMILAR_MAX_RATIO` | 0.38 | differing bits ÷ marked bits: at most this is "similar" (moderate) |
+| `IMAGE_MIN_MARKED_BITS` | 60 | fewer marked bits between two hashes and they are not compared (two nearly blank pages) |
+
+**Why a share of the marked bits, why 65 × 64 with a blur, and why 0.38.** Measured on synthetic review
+screenshots (same header, stars and margins, only the words changing — the hard case). A coarse 17 × 16 or
+33 × 32 hash sees layout, not words, and a screenshot is mostly white, so raw bit counts made a different
+review in the same template as close as one screenshot saved at two JPEG qualities. Counting differing bits
+as a share of the bits that are marked in either image, at 65 × 64 with a light blur: JPEG (quality 25–50),
+resizing (400–1440 px) and blur of ONE screenshot differ in 20–28% of the marked bits; different reviews
+in the same template in 54–66%. 0.38 sits between the two. Two pages with almost no marks (a nearly blank
+screenshot) are not compared, and a near-blank template with only a few words changed can still read as
+similar — one more reason a match is a *possible* duplicate for a person to judge. Combination: the strongest single signal wins; a name added to
+a moderate signal, or text and image both moderate, makes it strong.
+
+A match whose only reason is the name is **weak**: it is recorded and shown, but not counted as awaiting
+a decision.
+
+### 24.3 Limitations
+
+* Text similarity is lexical: a translation or genuine paraphrase is not seen; typos, case and punctuation are.
+* The image hash survives re-encoding, resizing and light compression — not a crop to another region,
+  rotation, mirroring, or a large overlay. An identical file is always caught by the SHA-256.
+* Names are compared whole: "A. Sharma" and "Amit Sharma" differ.
+* Two screenshots of the same website look alike; that is why the image threshold is small and the result
+  is always worded **possible**.
+* Reviews submitted **before** this feature have no name, text or image hash. Until the backfill script
+  has run only an identical screenshot can match them, and their detail says *no duplicate check on record*.
+  After it has run they can match by screenshot only — **never** by name or text (§24.8).
+* Known image misses (asserted in `historicalMatching.test.ts`): a crop, a small rotation and an inverted (dark-mode)
+  copy of the same screenshot are **not** found; two near-blank pages are not compared; a near-blank template with a
+  few words changed can read as similar (a possible false positive).
+* Candidates are read server-side (newest 5,000 reviews). Text and image scoring happens in the route, not
+  in SQL. At BOE's volume this is milliseconds; a much larger table would need a prefilter.
+* No paid or AI service is used and none should be added without approval.
+
+### 24.4 What the employee sees
+
+On **Submit**, **Save** and **Reapply** the server checks first. If something matches — or the check could
+not run — nothing is saved and the form shows, inline (no notification): an amber icon, **Possible
+duplicate review** (or **Duplicate check unavailable**), the reasons — *Same reviewer name*, *Similar review
+text*, *Similar image* — and three choices: **Edit review**, **Cancel**, **Submit anyway**.
+
+An unavailable check is never shown or stored as clean. **Submit anyway** resends the request with a token
+bound to the exact matches that were shown; if the matches change in between, the employee is warned again.
+The database refuses a flagged or unavailable result the employee did not acknowledge, and stores that they
+proceeded.
+
+**What the employee is told is cut down** (`employeeView`): the reason categories, and — only for their
+**own** earlier review — its reference. Never another employee's review id, reference, name, text, image,
+date, or whether a deleted one exists. The evidence tables have one SELECT policy, for `verify` holders.
+
+### 24.5 What the reviewer sees and does
+
+**Custom Submissions:** a badge in the list and the detail — *Possible duplicate review · awaiting decision*,
+*Marked duplicate*, *Duplicate check unavailable*, *Checked · different review*, *Weak name match*. **Compare &
+decide** opens both reviews side by side (screenshots, submitter, dates, status, name, text), the evidence in
+words, whether the employee saw the warning and proceeded, and two decisions: **Duplicate** (asks for a second confirmation, and is not offered for a name-only flag) and **Different
+review**, with an optional note. Every check, flag and decision is kept in the review's **History**.
+
+* A decision is a database function: verifier only, **never on your own review**, only on the review's
+  **current** check. **Different review** changes nothing. **Duplicate** is binding (§24.6).
+* **A changed review is checked again.** Each check carries a content fingerprint (screenshot, normalized name,
+  normalized text). Editing the content produces new, undecided flags; an earlier *Different review* stays as
+  history and does not clear the new ones. Editing only the remark or date re-raises nothing.
+* A **deleted** review stays comparison evidence: reposting it is flagged against the deleted record.
+
+### 24.6 A confirmed duplicate is binding
+
+A **possible** duplicate is only a warning and never blocks anything. An administrator's **Duplicate** decision does:
+
+* The review is **Rejected** ("Confirmed duplicate of an earlier review") — by the same database function, in the same
+  transaction, so a decision and an approval cannot both win: both lock the review row first, and **approve refuses a
+  confirmed duplicate** (`CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED`, HTTP 409). This is enforced in the database, not
+  only in the UI (proved under two concurrent sessions: decision-vs-approve, approve-vs-decision).
+* If the review was **already rewarded**, the credit is **reversed once** through the ledger helper. A month that already
+  lapsed is not reversed again.
+* A weak (name-only) flag can never be confirmed as a duplicate.
+* The review **stays in submitted reporting** with its status visible and is counted as *confirmed duplicates*; it is
+  **excluded from eligible counts, credits and the leaderboard**.
+
+**Duplicate → Different review afterwards.** The decision is recorded as changed in the history, and the review is no
+longer a confirmed duplicate, so it is not excluded *because of the flag*. But the ledger cannot un-reverse: the review
+stays **Rejected**, and a reversed credit is **not restored**. If no credit had been reversed, the employee can use **Edit
+& Reapply**. If one had, approval is refused (one reward, one reversal — §23.3): the employee submits a new review, or an
+administrator posts an adjustment. No screen promises a restored reward.
+
+### 24.7 Release note
+
+Apply `20270223000000`, then `20270224000000`, then `20270225000000` **before** the application code (the routes call the
+new functions). After the code is live, run the backfill (§24.8).
+
+### 24.8 Backfill of older reviews — exactly what it provides
+
+**Provides:** `proof_phash` only (the screenshot's difference hash), for reviews that have none. **Does not provide:** the
+reviewer name, the review text or their fingerprints — a hash cannot recover words, and older reviews never had them.
+**Consequences:**
+
+* An older review can match a new submission **only by its screenshot** (same file, or a look-alike).
+* Older reviews become **candidates** for new submissions. They are **not flagged retroactively** — flags are written only
+  when a review is submitted, edited or reapplied. `--verify` lists the older look-alike pairs for a person to look at.
+* Measured on real pictures (`historicalMatching.test.ts`): the same file matches by SHA-256; JPEG 25/50, resizing to 400 and
+  1440 px and a light blur match (20–28% of marked bits differ, limit 38%); different reviews in one template do not (54–66%).
+  **False negatives:** a crop, a rotation, an inverted copy. **False positive risk:** two near-blank screenshots with a few
+  words changed.
+
+**Runbook** (never run by CI or by a migration; **not run on production**; needs `.env.local` with the service key):
+
+```
+npx tsx scripts/backfill-review-image-hashes.ts                       # 1. dry run: how many, first 20 references; writes nothing
+npx tsx scripts/backfill-review-image-hashes.ts --apply --limit=200   # 2. hash the next 200 (oldest first), then stop
+npx tsx scripts/backfill-review-image-hashes.ts --apply               # 3. repeat / finish; safe to interrupt and re-run
+npx tsx scripts/backfill-review-image-hashes.ts --verify              # 4. read-only: coverage + look-alike pairs
+```
+
+Resumable because only NULL hashes are selected and the write function fills a NULL and nothing else; a second run does
+nothing. Exit 1 means some proofs could not be read (they are named and skipped). `--verify` refuses above 3,000 reviews.
+
+## 25. Reports and the shared leaderboard (`20270225000000`, in the repository — NOT applied)
+
+Read-only: no table is changed and no credit moves. Rules are in §25.1; the corrected rules for duplicates and edits are in §23.3 and §24.6.
+
+| | |
+| --- | --- |
+| Admin dashboard | **Reports** — `/customer-reviews/reports` (`verify` holders), `ReportsScreen.tsx`, `ReviewCharts.tsx` |
+| Leaderboard | `/my-credits/leaderboard` — **every signed-in employee** (no Review permission needed), `ReviewLeaderboardScreen.tsx` |
+| Dashboard card | `ReviewLeaderCard.tsx`, one card on `/dashboard` linking to the leaderboard |
+| Database | `customer_review_report()`, `customer_review_report_list()`, `customer_review_leaderboard()`, `customer_review_leader_card()`, `customer_review_credits_per_point()`; internal `customer_review_report_rows()`, `customer_review_month_standings()` |
+| Pure code | `src/lib/customerReviews/reviewReport.ts` |
+| Tests | `reviewReport.test.ts`; `supabase/tests/custom_review_reporting_assertions.sql` (executed twice on PostgreSQL) |
+
+### 25.1 The definitions — one place, every screen
+
+* **Month** — the Asia/Kolkata calendar month of `submitted_at`, the **first** submission: the same date the credit is
+  attributed to. An edit or reapplication never moves a review to a later month. Daily bars use the same IST date.
+* **Submitted** — every review of the month that is **not deleted** (pending, approved, rejected). Deleted reviews are out
+  of every total and stay in the admin history (§23).
+* **Text / Image** — the stored `review_type`. A review is **exactly one**, so text + image = submitted. **Counting rule
+  for a review that "has both":** there is no such review — the form asks for one type, every custom review carries a
+  screenshot, and that does not make it an Image Review. The type is the employee's stated review type, the one that decides
+  the reward and the monthly image requirement (§5, §12). No change to that rule was needed.
+* **Category** — custom reviews carry no category beyond their type (the generated-review "test categories" belong to a
+  different workflow). The **By type and status** table is the category breakdown, and the Type filter is the category
+  filter. **Decision needed from the owner** if a separate category (project, city, source) is wanted: it would be a new field.
+* **Reward-eligible** — an **approved** review (not deleted) with a posted credit that nothing has reversed, and **not a
+  confirmed duplicate**. Deleted, rejected, confirmed-duplicate and **pending** reviews (including an edited approved review
+  awaiting re-approval) are **not** eligible. Eligible ≤ submitted always; both are shown wherever they differ.
+* **Expired** — a review whose month closed (`boe_credit_review_months.status = 'lapsed'`): its credit was **earned**, then
+  expired. **Expiry is not rejection**: the review stays eligible in history (the count and the reward earned that month), and
+  is reported separately as *Expired with a closed month*. Month closure never erases an earned result.
+* **Awaiting re-approval** — edited approved reviews: submitted, **not** eligible, their credit still in the balance, shown
+  apart as `held`.
+* **Confirmed duplicates / Reversed** — counted apart; both stay in submitted with their status visible.
+* **Credits** — the credits on the eligible reviews (the ledger's own numbers, numeric(12,2)). **No rate was invented**:
+  Text and Image rewards, caps and approval rules are the existing ones (§14). Existing awards are never rewritten.
+* **Points** — review-earned points = **credits ÷ 10** (Credits = points × 10; `customer_review_credits_per_point()`,
+  `CREDITS_PER_POINT` pinned to it by a test). Exact to **three decimals**, computed in hundredths (no float drift): a Text
+  review at 1 credit = 0.1 point, an Image review at 1.5 credits = 0.15 point, the smallest ledger unit 0.01 credit = 0.001
+  point. Points are per month and **start again each month**. They are a view of review credits — not the Performance-module
+  score, which nothing here reads or changes. Credits and points are always shown separately.
+* **Historical reports are live, not snapshots.** A later reversal (a delete, a rejected edit, a confirmed duplicate) removes
+  the review from its **original submission month's** eligible figures the next time that month is opened; that month's
+  *submitted* count does not move (except a delete, which leaves submitted). A review keeps its original submission month
+  through every edit and reapplication.
+* **Possible duplicates awaiting a decision** — reviews of the month whose latest check has an undecided strong or moderate
+  flag (§24).
+
+### 25.2 The admin dashboard
+
+Default: the **current month**; the previous eleven are selectable. Filters: month, employee, type, status (the existing
+statuses). Everything comes from **one server-side aggregate**; no review text or screenshot is downloaded.
+
+* **Cards** — Total submitted, Text, Image, Possible duplicates awaiting a decision; a second panel with Reward-eligible
+  ("11 of 15 submitted"), Review credits and Review points.
+* **Daily** stacked bars (text vs image) for every day of the month; **Monthly history** for the last twelve months (with
+  eligible counts under it). Both have a table alternative for accessibility.
+* **By type and status** — pending / approved / rejected / submitted / eligible / credits.
+* **Contributors** — the highest and lowest by submitted reviews, **all of those tied on the count**, and the employee table
+  (submitted, text, image, eligible, credits, points) including **every active employee who may use the workflow, with zeros**,
+  so the lowest activity is visible.
+* **Clicking** a card or an employee opens the matching list — one **page of 25** (references, status, type, dates,
+  credits, points; never text or proof), with a link to the review in Custom Submissions.
+* The page checks that its own parts **reconcile** (employee rows, daily bars, breakdown, history and cards) and shows an
+  error instead of a dashboard whose parts disagree. The same reconciliation is asserted in SQL.
+
+### 25.3 The leaderboard
+
+Visible to **every signed-in employee** at `/my-credits/leaderboard` (linked from BOE Credits and from a card on the
+dashboard). Ranked by **reward-eligible review count** for the month (Asia/Kolkata boundaries); **equal counts share a rank** (1, 2, 2, 4) and are
+marked *tied*; display order (count, then name) is stable and does not hide a tie. Columns: rank, employee, reviews, points,
+credits. **Your own row is highlighted and always shown**, even outside the top ten.
+
+**"You need X more reviews to take first place"** — X = leader count − your count + 1, while you are behind. A sole leader
+sees *You're leading*; **joint leaders need 1 more review to become the sole leader** (*You're joint first with N others — 1 more
+review makes you the sole leader*); while nobody has an eligible review the target is 1. Employees who may use the workflow are
+included with **zero** eligible reviews in the admin comparison. It is labelled as **additional eligible reviews — a target, not a guaranteed award.**
+
+### 25.4 Performance and safety
+
+* Aggregates run in the database (`generate_series` days and months, one row set per call); the list is paged (≤ 50).
+* The report functions check `customer_review_requests.verify` inside the function; the leaderboard needs only an active
+  account and returns names and counts, never review content. The two internal functions are callable by nobody.
+* Known limit: the report scans the month's reviews and the twelve-month history in one call; at BOE's volume that is
+  milliseconds, and `customer_review_custom_submissions (submitted_at)` is indexed.
+
+## 26. Release review — PR #269 (draft)
+
+**Migration order (all NOT applied to production):** `20270223000000` → `20270224000000` → `20270225000000`, then the app code,
+then the backfill (§24.8). Never the reverse; the routes call the new functions.
+
+**Final rules:** credits = points × 10 (points = credits ÷ 10, 3 decimals); confirmed Duplicate is binding and reversed once
+(§24.6); an edited approved review is Pending, not eligible, credit stays on the ledger (§23.3); expiry is not rejection (§25.1);
+leaderboard ranks by eligible count, ties share a rank, joint leaders need 1.
+
+**Ledger limits (unchanged, by design):** one reward and one reversal per source; a reversal cannot be reversed; a reversed
+review cannot be approved again; a held credit cannot be re-priced (so type is locked); a Duplicate decision on a review whose
+month lapsed cannot reverse a second time; Duplicate → Different restores no reward.
+
+**Verified on a disposable local Supabase stack** (all three migrations applied, real routes, real `/dashboard`): submit; duplicate
+warning (409) and Submit anyway (forged token refused); edit of an approved review (Pending, balance unchanged, off the leaderboard);
+re-approval (no credits added; the review's lifetime reward rows stay at exactly 1); delete and reject (one reversal each, delete idempotent); ownership denial (stranger, other employee,
+verifier); confirmed Duplicate on a paid review (rejected, one reversal, approval refused, out of eligible, still in submitted);
+Duplicate → Different (no reward restored, still Rejected, cannot be approved or reapplied); ties and zero-review employees; an expired
+month (earned result kept, shown as expired); cards, employee rows and click-through lists reconcile.
+
+**Confirmation before Duplicate:** on a paid review the admin is told it "has already been paid", that confirming reverses the reward
+once and that changing the decision to Different later will not restore it; on an unpaid review that nothing is reversed.
+
+**Remaining limitations:** production backfill and production-scale timing are unmeasured; the local stack is a partial replay of the
+migration history (25 unrelated migrations do not apply locally), so it proves this module, not the whole schema.
+
+## 27. Production runbook — PREPARED, NOT EXECUTED
+
+Order: `20270223000000_customer_review_custom_edit_delete.sql` → `20270224000000_customer_review_custom_duplicate_detection.sql` →
+`20270225000000_customer_review_reporting_and_leaderboard.sql`. The migrations post **no** ledger row and change **no** existing award;
+re-approving an edited review adds no credits and leaves the review's single lifetime `review_reward` row as it is.
+
+**Stop rule.** The pending set must be exactly those three files. If anything else is pending, or the check below prints STOP, do not push — report it.
+
+**0. Right code.** From the repository root on `feat/customer-reviews-edit-dup-reporting`: `git rev-parse HEAD` must equal the PR's head SHA.
+
+**1. Pre-check (read-only; save the output).** Save this as `precheck.sql`, then `supabase db query --linked -f precheck.sql > precheck.out`
+(the CLI prints only the last result set, hence one statement). `reviews_migrations_already_applied` must be `[]`,
+`sources_with_more_than_one_review_reward` and `approved_reviews_without_a_credit` must be 0.
+
+```sql
+-- READ-ONLY. One result set (the CLI returns only the last one). Save the output; the post-check must match it.
+select jsonb_pretty(jsonb_build_object(
+  'reviews_migrations_already_applied', (select coalesce(jsonb_agg(version order by version), '[]'::jsonb) from supabase_migrations.schema_migrations where version >= '20270223000000'),
+  'ledger_rows', (select count(*) from public.boe_credit_transactions),
+  'ledger_net_credits', (select coalesce(sum(credits), 0) from public.boe_credit_transactions),
+  'reviews_by_status', (select coalesce(jsonb_object_agg(s.status, s.n), '{}'::jsonb) from (select status::text as status, count(*) as n from public.customer_review_custom_submissions group by 1) s),
+  'sources_with_more_than_one_review_reward', (select count(*) from (select source_id from public.boe_credit_transactions where transaction_type = 'review_reward' group by source_id having count(*) > 1) d),
+  'approved_reviews_without_a_credit', (select count(*) from public.customer_review_custom_submissions where status = 'approved' and credit_transaction_id is null),
+  'new_columns_already_present', (select coalesce(jsonb_agg(column_name order by column_name), '[]'::jsonb) from information_schema.columns where table_schema = 'public' and table_name = 'customer_review_custom_submissions' and column_name in ('deleted_at', 'reward_held', 'proof_phash', 'reviewer_name'))
+)) as precheck;
+```
+
+**2. Dry run that touches nothing.** `supabase db push --linked --dry-run` first "initialises a login role" on the remote (a small production
+write), so the read-only route is: list the applied versions, then compare with the repository.
+
+```bash
+supabase db query --linked "select version from supabase_migrations.schema_migrations order by 1" > applied.json
+node pending-check.mjs applied.json      # exit 0 and "OK: exactly the three Reviews migrations, in order." — anything else: STOP
+```
+
+```js
+// pending-check.mjs
+// Read-only. Usage: node pending-check.mjs applied.json   (run from the repository root)
+// Lists the repo migrations that are NOT in production's applied list and fails unless they are exactly the three Reviews migrations.
+import fs from 'node:fs'
+const EXPECTED = [
+  '20270223000000_customer_review_custom_edit_delete.sql',
+  '20270224000000_customer_review_custom_duplicate_detection.sql',
+  '20270225000000_customer_review_reporting_and_leaderboard.sql',
+]
+const applied = new Set((fs.readFileSync(process.argv[2], 'utf8').match(/\b\d{8,14}\b/g) ?? []))
+if (applied.size < 200) { console.error(`STOP: only ${applied.size} applied versions were read — the file is not production's full list.`); process.exit(2) }
+const pending = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql')).sort().filter(f => !applied.has(f.split('_')[0]))
+console.log('Pending (in repo, not applied in production):'); pending.forEach(f => console.log('  ' + f))
+const same = pending.length === EXPECTED.length && EXPECTED.every((f, i) => pending[i] === f)
+console.log(same ? '\nOK: exactly the three Reviews migrations, in order.' : '\nSTOP: the pending set is not exactly the three Reviews migrations. Do not push. Report the list above.')
+process.exit(same ? 0 : 1)
+```
+
+(Optionally, once the read-only check says OK, the official `supabase db push --linked --dry-run` may be run; it must list the same three files.)
+
+**3. Apply** (owner, quiet window; the app code is deployed AFTER the migrations): `supabase db push --linked`.
+
+**4. Post-check (read-only).** Save as `postcheck.sql`, run `supabase db query --linked -f postcheck.sql > postcheck.out`. `reviews_migrations_applied` must list the
+three versions; `ledger_rows`, `ledger_net_credits` and `reviews_by_status` must equal the pre-check; `functions_callable_by_anon_or_authenticated_that_must_not_be`
+must be `[]`; `functions_that_must_exist` must list all five.
+
+```sql
+-- READ-ONLY. One result set. ledger_rows, ledger_net_credits and reviews_by_status must equal the pre-check; the migrations add no ledger row.
+select jsonb_pretty(jsonb_build_object(
+  'reviews_migrations_applied', (select coalesce(jsonb_agg(version order by version), '[]'::jsonb) from supabase_migrations.schema_migrations where version >= '20270223000000'),
+  'ledger_rows', (select count(*) from public.boe_credit_transactions),
+  'ledger_net_credits', (select coalesce(sum(credits), 0) from public.boe_credit_transactions),
+  'reviews_by_status', (select coalesce(jsonb_object_agg(s.status, s.n), '{}'::jsonb) from (select status::text as status, count(*) as n from public.customer_review_custom_submissions group by 1) s),
+  'sources_with_more_than_one_review_reward', (select count(*) from (select source_id from public.boe_credit_transactions where transaction_type = 'review_reward' group by source_id having count(*) > 1) d),
+  'new_columns_present', (select coalesce(jsonb_agg(column_name order by column_name), '[]'::jsonb) from information_schema.columns where table_schema = 'public' and table_name = 'customer_review_custom_submissions' and column_name in ('deleted_at', 'reward_held', 'proof_phash', 'reviewer_name')),
+  'functions_callable_by_anon_or_authenticated_that_must_not_be', (select coalesce(jsonb_agg(p.proname order by p.proname), '[]'::jsonb) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('customer_review_report_rows', 'customer_review_month_standings', 'reverse_customer_review_custom_reward', 'edit_customer_review_custom_submission', 'delete_customer_review_custom_submission', 'backfill_customer_review_custom_proof_phash')
+        and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))),
+  'functions_that_must_exist', (select coalesce(jsonb_agg(p.proname order by p.proname), '[]'::jsonb) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('customer_review_report', 'customer_review_report_list', 'customer_review_leaderboard', 'customer_review_leader_card', 'decide_customer_review_custom_duplicate'))
+)) as postcheck;
+```
+
+**5. Then** deploy the app code; sign in as an administrator and open Reports (cards must reconcile with the employee table), and open the
+leaderboard as any employee. **Backfill** only after the code is live, as in §24.8 (dry run → `--apply --limit=200` → `--verify`). Prefer a forward fix to a rollback once employees
+have edited or deleted reviews.
 
 ## Appendix — Historical: the generated-review workflow (paused for candidates)
 

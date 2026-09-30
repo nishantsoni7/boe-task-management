@@ -13,7 +13,7 @@
 // a form refuses before a five-megabyte upload and so the refusals can be
 // tested without a database.
 
-import { hasCreditPrecision } from '../boeCredits/ledger'
+import { formatCredits, hasCreditPrecision } from '../boeCredits/ledger'
 import { MAX_REVIEW_REWARD_CREDITS } from '../boeCredits/settings'
 import type { BadgeMeta, ReviewType } from './types'
 
@@ -30,6 +30,8 @@ export type CustomSubmissionStatus = (typeof CUSTOM_SUBMISSION_STATUSES)[number]
 export const MAX_CUSTOM_REMARK_LENGTH = 300
 export const MAX_REJECTION_REASON_LENGTH = 300
 export const MAX_CANDIDATE_NOTE_LENGTH = 500
+export const MAX_REVIEWER_NAME_LENGTH = 80
+export const MAX_REVIEW_TEXT_LENGTH = 2000
 
 /** The review types, in this workflow's words. The stored values are the Review Workflow's own. */
 export const CUSTOM_REVIEW_TYPE_LABELS: Record<ReviewType, string> = {
@@ -69,10 +71,23 @@ export type CustomReviewSubmission = {
   /** How many times this review was reapplied. Still one slot. */
   reapplication_count: number
   last_reapplied_at: string | null
+  /** How many times the employee edited it in place. The submission date never moves. */
+  edit_count: number
+  last_edited_at: string | null
+  /** An edited approved review: waiting for re-approval, its credit still on the ledger. */
+  reward_held: boolean
+  /** Set when the employee deleted it. Only verifiers can still read a deleted row. */
+  deleted_at: string | null
+  deleted_by: string | null
+  /** The ledger reversal, when a paid review was deleted or its edit was rejected. */
+  reward_reversal_transaction_id: string | null
+  /** The customer or reviewer name and the review text, as the employee typed them. Optional. */
+  reviewer_name: string | null
+  review_text: string | null
 }
 
 export const CUSTOM_SUBMISSION_COLUMNS =
-  'id, submission_ref, submitted_by, review_type, published_on, remark, proof_storage_path, proof_file_name, status, submitted_at, approved_by, approved_at, credits_awarded, rejected_by, rejected_at, rejection_reason, candidate_note, reapplication_count, last_reapplied_at'
+  'id, submission_ref, submitted_by, review_type, published_on, remark, proof_storage_path, proof_file_name, status, submitted_at, approved_by, approved_at, credits_awarded, rejected_by, rejected_at, rejection_reason, candidate_note, reapplication_count, last_reapplied_at, edit_count, last_edited_at, reward_held, deleted_at, deleted_by, reward_reversal_transaction_id, reviewer_name, review_text'
 
 export function isCustomSubmissionStatus(value: unknown): value is CustomSubmissionStatus {
   return typeof value === 'string' && (CUSTOM_SUBMISSION_STATUSES as readonly string[]).includes(value)
@@ -80,7 +95,9 @@ export function isCustomSubmissionStatus(value: unknown): value is CustomSubmiss
 
 // ─── The history ──────────────────────────────────────────────────────────────
 
-export const CUSTOM_SUBMISSION_EVENT_TYPES = ['submitted', 'rejected', 'reapplied', 'approved'] as const
+export const CUSTOM_SUBMISSION_EVENT_TYPES = [
+  'submitted', 'rejected', 'reapplied', 'approved', 'edited', 'deleted', 'duplicate_flagged', 'duplicate_decided',
+] as const
 export type CustomSubmissionEventType = (typeof CUSTOM_SUBMISSION_EVENT_TYPES)[number]
 
 /** One row of public.customer_review_custom_submission_events. Append-only. */
@@ -105,6 +122,10 @@ export const CUSTOM_SUBMISSION_EVENT_LABELS: Record<CustomSubmissionEventType, s
   rejected:  'Rejected',
   reapplied: 'Reapplied for approval',
   approved:  'Approved',
+  edited:    'Edited',
+  deleted:   'Deleted by the employee',
+  duplicate_flagged: 'Possible duplicate flagged',
+  duplicate_decided: 'Duplicate decision recorded',
 }
 
 // ─── The submission form ──────────────────────────────────────────────────────
@@ -190,12 +211,67 @@ export function parseCustomReapplicationInput(input: CustomReapplicationInput, t
   return { ok: true, value: { ...base.value, note: noteRaw === '' ? null : noteRaw } }
 }
 
+// ─── The optional name and text the duplicate check compares ──────────────────
+
+export type ParsedMatchFields =
+  | { ok: true; value: { reviewerName: string | null; reviewText: string | null } }
+  | { ok: false; message: string }
+
+/** Trim, empty → null, and the length limits the database restates. */
+export function parseMatchFields(input: { reviewerName: unknown; reviewText: unknown }): ParsedMatchFields {
+  const name = typeof input.reviewerName === 'string' ? input.reviewerName.trim() : ''
+  const text = typeof input.reviewText === 'string' ? input.reviewText.trim() : ''
+  if (name.length > MAX_REVIEWER_NAME_LENGTH) {
+    return { ok: false, message: `Keep the reviewer name under ${MAX_REVIEWER_NAME_LENGTH} characters.` }
+  }
+  if (text.length > MAX_REVIEW_TEXT_LENGTH) {
+    return { ok: false, message: `Keep the review text under ${MAX_REVIEW_TEXT_LENGTH} characters.` }
+  }
+  return { ok: true, value: { reviewerName: name === '' ? null : name, reviewText: text === '' ? null : text } }
+}
+
 /** Only the submitter, only a rejected review. The database asks again. */
 export function canReapplySubmission(
   row: Pick<CustomReviewSubmission, 'status' | 'submitted_by'>,
   viewerId: string | null,
 ): boolean {
   return viewerId != null && row.submitted_by === viewerId && row.status === 'rejected'
+}
+
+// ─── Editing and deleting your own review ─────────────────────────────────────
+
+/** A review the employee may still change in place: pending, or approved (which goes back to approval). */
+export function canEditSubmission(
+  row: Pick<CustomReviewSubmission, 'status' | 'submitted_by' | 'deleted_at'>,
+  viewerId: string | null,
+): boolean {
+  return viewerId != null && row.submitted_by === viewerId && row.deleted_at == null
+    && (row.status === 'pending_verification' || row.status === 'approved')
+}
+
+/** Any review of the employee's own that is not already deleted. */
+export function canDeleteSubmission(
+  row: Pick<CustomReviewSubmission, 'submitted_by' | 'deleted_at'>,
+  viewerId: string | null,
+): boolean {
+  return viewerId != null && row.submitted_by === viewerId && row.deleted_at == null
+}
+
+/** True while the review's credit is held for re-approval, or it is approved (editing sends it back). */
+export function editSendsBackForApproval(row: Pick<CustomReviewSubmission, 'status'>): boolean {
+  return row.status === 'approved'
+}
+
+/** What the employee is told before editing an approved review. */
+export const APPROVED_EDIT_NOTICE =
+  'This review is approved. Saving your changes puts it back to Pending Approval. Its credit stays in your BOE Credits balance while it waits — nothing is added or taken away yet — but the review does not count in the leaderboard or eligible totals until it is approved again. Approving it again pays nothing more; if the edit is rejected, or you delete the review, the credit is withdrawn once. The review type cannot change.'
+
+/** What the employee is told before deleting a review. */
+export function deleteConfirmationText(row: Pick<CustomReviewSubmission, 'status' | 'credits_awarded' | 'submission_ref'>): string {
+  const paid = row.credits_awarded != null && Number(row.credits_awarded) > 0 && row.status !== 'rejected'
+  return paid
+    ? `Delete ${row.submission_ref}? Its ${formatCredits(Number(row.credits_awarded))} will be taken back from your balance. Reviewers keep a record of the deletion.`
+    : `Delete ${row.submission_ref}? It leaves your list. Reviewers keep a record of the deletion.`
 }
 
 // ─── The decision ─────────────────────────────────────────────────────────────
@@ -236,6 +312,10 @@ export function customSubmissionFailureStatus(message: string | null | undefined
     ['CUSTOMER_REVIEW_CUSTOM_NOT_FOUND', 404],
     ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE', 409],
     ['CUSTOMER_REVIEW_CUSTOM_DECIDED', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_NOT_EDITABLE', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_STALE', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE_WARNING', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE_CONFIRMED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_MONTH_CLOSED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_INVALID', 422],
     ['CUSTOMER_REVIEW_CUSTOM_MONTHLY_LIMIT', 422],

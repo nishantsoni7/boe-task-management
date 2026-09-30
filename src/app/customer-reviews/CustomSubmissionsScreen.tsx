@@ -14,6 +14,12 @@ import {
   CustomSubmissionProof,
   CustomSubmissionTrail,
 } from '@/components/customerReviews/CustomSubmissionPieces'
+import {
+  DuplicateBadge,
+  DuplicatePanel,
+  loadDuplicateSummaries,
+  type DuplicateSummary,
+} from '@/components/customerReviews/DuplicateReview'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { CUSTOM_REVIEW_PENDING_COUNT_KEY } from '@/hooks/queries/useCustomReviewPendingCount'
 import { istDateOf } from '@/lib/istDate'
@@ -57,19 +63,24 @@ import {
 
 type Rewards = { text: number; image: number }
 
+/** The three decision queues, plus the employees' deletions (history — read-only). */
+type QueueView = CustomSubmissionStatus | 'deleted'
+
 export function CustomSubmissionsScreen() {
   const { supabase, profile, caps, loading, signOut } = useCustomerReviews()
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
 
-  const [status, setStatus] = useState<CustomSubmissionStatus>('pending_verification')
+  const [status, setStatus] = useState<QueueView>('pending_verification')
   const [rows, setRows] = useState<CustomReviewSubmission[]>([])
-  const [loadedStatus, setLoadedStatus] = useState<CustomSubmissionStatus | null>(null)
+  const [loadedStatus, setLoadedStatus] = useState<QueueView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [names, setNames] = useState<Map<string, string>>(new Map())
   const [pendingCount, setPendingCount] = useState<number | null>(null)
   const [rewards, setRewards] = useState<Rewards | null>(null)
+  // Possible-duplicate state for the rows on screen. A failed read leaves it null: no badge, never a "clear".
+  const [duplicates, setDuplicates] = useState<Map<string, DuplicateSummary> | null>(null)
   const [opened, setOpened] = useState<CustomReviewSubmission | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // A response for a tab somebody already left must not overwrite the one they are on.
@@ -94,20 +105,24 @@ export function CustomSubmissionsScreen() {
     })
   }, [supabase])
 
-  const load = useCallback(async (which: CustomSubmissionStatus) => {
+  const load = useCallback(async (which: QueueView) => {
     const ticket = ++loadTicket.current
+    // A deleted review is kept for verifiers (RLS) but is not in any queue: it
+    // has its own tab, and the pending count leaves it out.
+    const base = supabase
+      .from('customer_review_custom_submissions')
+      .select(CUSTOM_SUBMISSION_COLUMNS)
     const [list, pending] = await Promise.all([
-      supabase
-        .from('customer_review_custom_submissions')
-        .select(CUSTOM_SUBMISSION_COLUMNS)
-        .eq('status', which)
+      (which === 'deleted'
+        ? base.not('deleted_at', 'is', null).order('deleted_at', { ascending: false })
         // Oldest pending first — the queue is worked in order; decided ones newest first.
-        .order('submitted_at', { ascending: which === 'pending_verification' })
-        .limit(200),
+        : base.eq('status', which).is('deleted_at', null).order('submitted_at', { ascending: which === 'pending_verification' })
+      ).limit(200),
       supabase
         .from('customer_review_custom_submissions')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending_verification'),
+        .eq('status', 'pending_verification')
+        .is('deleted_at', null),
     ])
     if (ticket !== loadTicket.current) return
     if (list.error) {
@@ -122,6 +137,8 @@ export function CustomSubmissionsScreen() {
     setLoadedStatus(which)
     setPendingCount(pending.error ? null : pending.count ?? null)
     await rememberNames(found)
+    const summaries = await loadDuplicateSummaries(supabase, found.map(r => r.id))
+    if (ticket === loadTicket.current) setDuplicates(summaries)
   }, [supabase, rememberNames])
 
   useEffect(() => {
@@ -145,7 +162,7 @@ export function CustomSubmissionsScreen() {
         const row = data as unknown as CustomReviewSubmission | null
         if (!row) { setNotice('That custom review could not be found.'); return }
         await rememberNames([row])
-        setStatus(row.status)
+        setStatus(row.deleted_at ? 'deleted' : row.status)
         setOpened(row)
       })()
     }
@@ -193,9 +210,11 @@ export function CustomSubmissionsScreen() {
         )}
 
         <div role="tablist" aria-label="Submission status" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {CUSTOM_SUBMISSION_STATUSES.map(s => {
+          {([...CUSTOM_SUBMISSION_STATUSES, 'deleted'] as QueueView[]).map(s => {
             const active = s === status
-            const meta = CUSTOM_SUBMISSION_STATUS_META[s]
+            const meta = s === 'deleted'
+              ? { label: 'Deleted', bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' }
+              : CUSTOM_SUBMISSION_STATUS_META[s]
             return (
               <button
                 key={s}
@@ -230,7 +249,9 @@ export function CustomSubmissionsScreen() {
           }}>
             {status === 'pending_verification'
               ? 'Nothing is waiting for approval.'
-              : status === 'approved' ? 'No custom review has been approved yet.' : 'No custom review is rejected right now.'}
+              : status === 'approved' ? 'No custom review has been approved yet.'
+              : status === 'deleted' ? 'No employee has deleted a custom review.'
+              : 'No custom review is rejected right now.'}
           </p>
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -251,6 +272,15 @@ export function CustomSubmissionsScreen() {
                       {CUSTOM_REVIEW_TYPE_LABELS[row.review_type]}
                     </span>
                     <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
+                    <DuplicateBadge summary={duplicates?.get(row.id)} />
+                    {row.reward_held && !row.deleted_at && (
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+                        background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A',
+                      }}>
+                        Edited after approval
+                      </span>
+                    )}
                     {row.reapplication_count > 0 && row.status === 'pending_verification' && (
                       <span style={{
                         fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
@@ -263,6 +293,8 @@ export function CustomSubmissionsScreen() {
                   <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
                     {row.submission_ref} · Published {formatSubmissionDay(row.published_on)} · Submitted {formatSubmissionDay(istDateOf(row.submitted_at))}
                     {row.last_reapplied_at ? ` · Reapplied ${formatSubmissionDay(istDateOf(row.last_reapplied_at))}` : ''}
+                    {row.last_edited_at ? ` · Edited ${formatSubmissionDay(istDateOf(row.last_edited_at))}` : ''}
+                    {row.deleted_at ? ` · Deleted ${formatSubmissionDay(istDateOf(row.deleted_at))}` : ''}
                   </div>
                   {(row.candidate_note ?? row.remark) && (
                     <div style={{
@@ -276,6 +308,11 @@ export function CustomSubmissionsScreen() {
                 {row.status === 'approved' && row.credits_awarded != null && (
                   <span style={{ fontSize: '14px', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
                     {formatCredits(Number(row.credits_awarded), { signed: true })}
+                  </span>
+                )}
+                {row.reward_held && !row.deleted_at && row.credits_awarded != null && (
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#92400E' }}>
+                    {formatCredits(Number(row.credits_awarded))} on hold
                   </span>
                 )}
                 <button
@@ -301,6 +338,8 @@ export function CustomSubmissionsScreen() {
           isAdmin={profile?.role === 'admin'}
           names={names}
           rewards={rewards}
+          duplicate={duplicates?.get(opened.id)}
+          onDuplicateChanged={() => { void load(status) }}
           onClose={() => setOpened(null)}
           onDecided={async message => {
             setOpened(null)
@@ -316,7 +355,7 @@ export function CustomSubmissionsScreen() {
 }
 
 function DecisionSheet({
-  row, supabase, viewerId, isAdmin, names, rewards, onClose, onDecided,
+  row, supabase, viewerId, isAdmin, names, rewards, duplicate, onDuplicateChanged, onClose, onDecided,
 }: {
   row: CustomReviewSubmission
   supabase: SupabaseClient
@@ -325,6 +364,9 @@ function DecisionSheet({
   isAdmin: boolean
   names: Map<string, string>
   rewards: Rewards | null
+  /** The list's possible-duplicate summary for this review, when it could be read. */
+  duplicate: DuplicateSummary | undefined
+  onDuplicateChanged: () => void
   onClose: () => void
   onDecided: (message: string) => Promise<void>
 }) {
@@ -339,13 +381,14 @@ function DecisionSheet({
   const acting = useRef(false)
 
   const own = row.submitted_by === viewerId
-  const pending = row.status === 'pending_verification'
+  const pending = row.status === 'pending_verification' && row.deleted_at == null
+  const held = row.reward_held
   const employee = names.get(row.submitted_by) ?? 'the employee'
   const typeMeta = REVIEW_TYPE_META[row.review_type]
 
   // A verifier confirms the configured amount; an administrator may type another.
-  const credits = isAdmin ? Number(creditsText.trim()) : configured
-  const creditsIssue = isAdmin
+  const credits = held ? Number(row.credits_awarded ?? 0) : isAdmin ? Number(creditsText.trim()) : configured
+  const creditsIssue = held ? null : isAdmin
     ? approvalCreditsIssue(creditsText)
     : configured == null ? 'The configured reward could not be read. Reload the page to try again.' : null
 
@@ -364,11 +407,13 @@ function DecisionSheet({
         setError(customSubmissionErrorMessage(rpcError.message, 'That submission could not be approved.'))
         return
       }
-      const result = data as { already_decided?: boolean; submission?: { credits_awarded?: unknown } } | null
+      const result = data as { already_decided?: boolean; reaffirmed?: boolean; submission?: { credits_awarded?: unknown } } | null
       const awarded = Number(result?.submission?.credits_awarded ?? credits)
       await onDecided(result?.already_decided
         ? `${row.submission_ref} was already approved. Nothing more was awarded.`
-        : `${row.submission_ref} approved · ${formatCredits(awarded, { signed: true })} awarded to ${employee}.`)
+        : result?.reaffirmed
+          ? `${row.submission_ref} approved again. Its ${formatCredits(awarded)} stands; nothing more was awarded.`
+          : `${row.submission_ref} approved · ${formatCredits(awarded, { signed: true })} awarded to ${employee}.`)
     } catch {
       setError('That submission could not be approved. Check your connection and try again.')
     } finally {
@@ -393,10 +438,12 @@ function DecisionSheet({
         setError(customSubmissionErrorMessage(rpcError.message, 'That submission could not be rejected.'))
         return
       }
-      const result = data as { already_decided?: boolean } | null
+      const result = data as { already_decided?: boolean; credit_reversed?: boolean } | null
       await onDecided(result?.already_decided
         ? `${row.submission_ref} was already rejected.`
-        : `${row.submission_ref} rejected. No credits were awarded; ${employee} can correct it and reapply.`)
+        : result?.credit_reversed
+          ? `${row.submission_ref} rejected. The credit it was holding was withdrawn; ${employee} can submit it again as a new review.`
+          : `${row.submission_ref} rejected. No credits were awarded; ${employee} can correct it and reapply.`)
     } catch {
       setError('That submission could not be rejected. Check your connection and try again.')
     } finally {
@@ -450,9 +497,11 @@ function DecisionSheet({
           >
             {busy
               ? 'Approving…'
-              : creditsIssue == null && credits != null
-                ? `Approve · ${formatCredits(credits, { signed: true })}`
-                : 'Approve'}
+              : held
+                ? 'Approve again'
+                : creditsIssue == null && credits != null
+                  ? `Approve · ${formatCredits(credits, { signed: true })}`
+                  : 'Approve'}
           </button>
         </>
       )}
@@ -471,6 +520,28 @@ function DecisionSheet({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {error && (
           <p role="alert" style={{ fontSize: '12.5px', color: colors.red, margin: 0 }}>{error}</p>
+        )}
+
+        {row.deleted_at && (
+          <section style={{
+            padding: '10px 12px', borderRadius: '9px', border: '1px solid #D1D5DB', background: '#F3F4F6',
+            fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
+          }}>
+            <strong>Deleted by {names.get(row.deleted_by ?? '') ?? 'the employee'} on {formatSubmissionDay(istDateOf(row.deleted_at))}.</strong>{' '}
+            The record is kept as history and as duplicate-check evidence.
+            {row.reward_reversal_transaction_id ? ' Its credit was reversed.' : ''}
+          </section>
+        )}
+
+        {pending && held && (
+          <section style={{
+            padding: '10px 12px', borderRadius: '9px', border: '1px solid #FDE68A', background: '#FFFBEB',
+            fontSize: '12.5px', color: '#92400E', lineHeight: 1.55,
+          }}>
+            <strong>Edited after approval.</strong> {employee} changed an approved review.
+            {' '}Its {formatCredits(Number(row.credits_awarded ?? 0))} is still in {employee}&rsquo;s balance (the ledger is unchanged) but the review is not counted as eligible or ranked while it is pending.
+            Approving again pays nothing more; rejecting it, or the employee deleting it, withdraws that credit once.
+          </section>
         )}
 
         {pending && row.reapplication_count > 0 && (
@@ -497,6 +568,23 @@ function DecisionSheet({
 
         <CustomSubmissionFacts row={row} names={names} />
 
+        <DuplicatePanel
+          supabase={supabase}
+          submission={row}
+          viewerId={viewerId}
+          names={names}
+          onChanged={onDuplicateChanged}
+        />
+
+        {pending && !own && duplicate && duplicate.decided_duplicate > 0 && (
+          <p role="note" style={{
+            margin: 0, padding: '9px 12px', borderRadius: '9px', fontSize: '12.5px', lineHeight: 1.5,
+            border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+          }}>
+            A reviewer marked this review a duplicate. Approving it is still your decision; nothing was rejected automatically.
+          </p>
+        )}
+
         <CustomSubmissionTrail supabase={supabase} submissionId={row.id} viewerId={viewerId} names={names} />
 
         {pending && own && (
@@ -505,7 +593,7 @@ function DecisionSheet({
           </p>
         )}
 
-        {pending && !own && !rejecting && (
+        {pending && !own && !rejecting && !held && (
           <section style={{
             display: 'flex', flexDirection: 'column', gap: '6px',
             padding: '11px 13px', borderRadius: '9px', border: `1px solid ${typeMeta.border}`, background: typeMeta.bg,

@@ -704,7 +704,7 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // workflow states, every entry pointing at `?tab=` on one route, while the
     // page rendered the same five as tabs — two controls for one parameter.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress'])
+    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress', 'Reports'])
 
     // AND NO ENTRY CARRIES A QUERY ANY MORE: each is a route of its own, so
     // the sidebar cannot duplicate an in-page tab by construction.

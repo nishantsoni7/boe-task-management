@@ -19,6 +19,7 @@ import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
 import { TaskCreationReportCard } from '@/components/tasks/TaskCreationReport'
+import { ReviewLeaderCard } from '@/components/customerReviews/ReviewLeaderCard'
 import { useRefresh } from '@/contexts/RefreshContext'
 
 const TASK_COLUMNS = [
@@ -606,6 +607,9 @@ export default function DashboardPage() {
             )}
           </div>
         </section>
+
+        {/* ── Review leader: this month, with a link to the shared leaderboard ── */}
+        <ReviewLeaderCard isMobile={isMobile} />
 
         {/* ── Operational counters ── */}
         <OperationalStatusPanel

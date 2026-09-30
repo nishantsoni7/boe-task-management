@@ -413,6 +413,9 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20270220000000_asset_catalogue.sql',
       '20270221000000_orders_dashboard_factory_focus.sql',
       '20270222000000_attendance_request_live_uniqueness.sql',
+      '20270223000000_customer_review_custom_edit_delete.sql',
+      '20270224000000_customer_review_custom_duplicate_detection.sql',
+      '20270225000000_customer_review_reporting_and_leaderboard.sql',
     ])
   })
 

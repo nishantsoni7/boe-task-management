@@ -120,6 +120,8 @@ export function CustomSubmissionFacts({
     { label: 'Review Type',  value: CUSTOM_REVIEW_TYPE_LABELS[row.review_type] },
     { label: 'Published On', value: formatSubmissionDay(row.published_on) },
     { label: 'Submitted On', value: formatSubmissionMoment(row.submitted_at) },
+    { label: 'Reviewer Name', value: row.reviewer_name ?? '—' },
+    { label: 'Review Text',  value: row.review_text ?? '—' },
     { label: 'Remark',       value: row.remark ?? '—' },
     { label: 'Status',       value: CUSTOM_SUBMISSION_STATUS_META[row.status].label },
   )
@@ -129,6 +131,12 @@ export function CustomSubmissionFacts({
       value: `${row.reapplication_count} ${row.reapplication_count === 1 ? 'time' : 'times'} · last ${formatSubmissionMoment(row.last_reapplied_at)}`,
     })
     facts.push({ label: 'Employee Note', value: row.candidate_note ?? '—' })
+  }
+  if (row.edit_count > 0) {
+    facts.push({
+      label: 'Edited',
+      value: `${row.edit_count} ${row.edit_count === 1 ? 'time' : 'times'} · last ${formatSubmissionMoment(row.last_edited_at)}`,
+    })
   }
   if (row.status === 'approved') {
     facts.push({ label: 'Credits Awarded', value: formatCredits(Number(row.credits_awarded ?? 0)) })
@@ -161,6 +169,10 @@ const EVENT_TONE: Record<CustomSubmissionEvent['event_type'], string> = {
   reapplied: '#4F6FD0',
   rejected:  '#B91C1C',
   approved:  '#047857',
+  edited:    '#4F6FD0',
+  deleted:   '#6B7280',
+  duplicate_flagged: '#B45309',
+  duplicate_decided: '#6B7280',
 }
 
 function typeLabel(value: unknown): string | null {
@@ -236,6 +248,36 @@ export function CustomSubmissionTrail({
                 {e.note && <div style={{ color: colors.secondary, overflowWrap: 'anywhere' }}>Note: {e.note}</div>}
                 {typeChange && <div style={{ color: colors.secondary }}>Type changed: {typeChange}</div>}
                 {e.details?.proof_replaced === true && <div style={{ color: colors.secondary }}>Screenshot replaced</div>}
+                {e.event_type === 'edited' && e.details?.sent_back_for_approval === true && (
+                  <div style={{ color: '#92400E' }}>Sent back for approval · credit stays in balance, not paid again</div>
+                )}
+                {e.event_type === 'approved' && e.details?.reaffirmed_after_edit === true && (
+                  <div style={{ color: colors.secondary }}>Approved again after an edit · nothing more awarded</div>
+                )}
+                {e.event_type === 'rejected' && e.details?.credit_reversed === true && (
+                  <div style={{ color: '#B91C1C' }}>Credit withdrawn</div>
+                )}
+                {e.event_type === 'duplicate_flagged' && (
+                  <div style={{ color: '#92400E' }}>
+                    {Number(e.details?.matches ?? 0)} possible {Number(e.details?.matches ?? 0) === 1 ? 'match' : 'matches'}
+                    {e.details?.status === 'unavailable' ? ' · check unavailable' : ''}
+                    {e.details?.employee_proceeded === true ? ' · the employee proceeded after the warning' : ''}
+                  </div>
+                )}
+                {e.event_type === 'duplicate_decided' && (
+                  <div style={{ color: colors.secondary }}>
+                    Marked {e.details?.decision === 'duplicate' ? 'Duplicate' : 'Different review'}
+                    {typeof e.details?.previous_decision === 'string'
+                      ? ` (was ${e.details.previous_decision === 'duplicate' ? 'Duplicate' : 'Different review'})`
+                      : ''}
+                  </div>
+                )}
+                {e.event_type === 'deleted' && (
+                  <div style={{ color: colors.secondary }}>
+                    Was {typeof e.details?.status_at_delete === 'string' ? String(e.details.status_at_delete).replace('pending_verification', 'pending approval') : 'submitted'}
+                    {e.details?.credits_reversed === true ? ' · credit reversed' : ''}
+                  </div>
+                )}
                 {e.event_type === 'approved' && e.details?.credits_awarded != null && (
                   <div style={{ color: '#047857' }}>{formatCredits(Number(e.details.credits_awarded), { signed: true })}</div>
                 )}
