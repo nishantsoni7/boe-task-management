@@ -200,6 +200,13 @@ describe('23. Monthly Review and generation agree when a correction exists', () 
     // hands it. Omitting an argument here does not fail — it silently previews
     // a DIFFERENT calculation, which is exactly how the corrections divergence
     // happened.
+    //
+    // Updated a third time for the ninth argument, `{ calendarThrough }`: a
+    // month still in progress is previewed only up to yesterday (IST), so days
+    // that have not happened are never charged as absences (see
+    // src/lib/payroll/periodCompletion.ts). It is a PREVIEW-ONLY option — every
+    // write path leaves it off — so it is pinned here on its own, and the eight
+    // arguments generation shares are still required in this exact order.
     const src = await readFile('src/app/api/payroll/monthly-review/route.ts', 'utf8')
 
     assert.match(src, /fetchCurrentCorrectionsByEmployee/, 'the route must load the correction layer')
@@ -207,9 +214,16 @@ describe('23. Monthly Review and generation agree when a correction exists', () 
     assert.match(src, /settingsForPeriod/, 'the route must resolve which settings the month is previewed under')
     assert.match(
       src,
-      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections,\s*settings,\s*redemptions\s*\)/,
+      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections,\s*settings,\s*redemptions\s*(?:,\s*\{ calendarThrough \}\s*)?\)/,
       'the engine call must pass all eight arguments, corrections, settings and redemptions included',
     )
+    assert.match(
+      src,
+      /redemptions,\s*\{ calendarThrough \}\s*\)/,
+      'the preview must trim a month in progress to yesterday: the ninth argument is { calendarThrough }',
+    )
+    assert.match(src, /const calendarThrough = calendarThroughFor\(year, month\)/,
+      'and calendarThrough must come from the shared month-completion rule')
   })
 
   test('the preview and generation resolve settings through the same helper', async () => {
