@@ -476,7 +476,7 @@ five backend types (`src/lib/attendance/requestForm.ts`):
 | Leave → Half day | `half_day` | date + first / second half |
 | Coming late | `late_arrival` | date + expected arrival (optional) |
 | Leaving early | `early_departure` | date + planned departure |
-| Going out briefly | `time_out` | date + leaving / expected return + Personal or Company work |
+| Going out briefly | `time_out` | date + leaving / expected return; purpose derived from the reason (Company work or Company vehicle delay → company, otherwise personal) |
 
 Only the chosen tile's fields are sent. The reason is one dropdown with no
 default (the same seven categories); a note is optional except for **Other**.
