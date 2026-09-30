@@ -158,7 +158,7 @@ describe('Quick Add Expense on the launcher', () => {
     // the launcher still computes the gate, the shared list only draws it.
     assert.ok(modules.includes('deriveFinanceCapabilities('))
     assert.ok(modules.includes('financeCaps.canCreatePaymentRecord'))
-    assert.ok(/buildQuickActions\(\{ canQuickAddExpense \}\)/.test(modules),
+    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canAttendanceRequest: canSeeAttendance \}\)/.test(modules),
       'the list is built from the gate and from nothing else')
     assert.ok(/if \(gates\.canQuickAddExpense\)/.test(quickActions),
       'the definition enters the list only when its gate is true')

@@ -390,3 +390,22 @@ describe('the regrouping is user-interface only', () => {
     }
   })
 })
+
+// ─── 8. The Modules shortcut ─────────────────────────────────────────────────
+
+describe('the "Attendance request" shortcut on the Modules page', () => {
+  const QUICK = read('src/components/layout/QuickActions.tsx')
+
+  test('goes through the existing quick-action system, to the request page', () => {
+    assert.match(QUICK, /if \(gates\.canAttendanceRequest\)/)
+    assert.match(QUICK, /label: 'Attendance request'/)
+    assert.match(QUICK, /href: '\/my-attendance\/request'/)
+    assert.ok(existsSync(join(ROOT, 'src/app/my-attendance/request/page.tsx')))
+  })
+
+  test('is shown to exactly whoever sees the Attendance & Payroll card', () => {
+    assert.match(LAUNCHER, /canAttendanceRequest: canSeeAttendance/)
+    // The gate is computed before the list is built.
+    assert.ok(LAUNCHER.indexOf('const canSeeAttendance') < LAUNCHER.indexOf('buildQuickActions({'))
+  })
+})

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Receipt as ReceiptIcon } from 'lucide-react'
+import { Receipt as ReceiptIcon, CalendarClock as AttendanceRequestIcon } from 'lucide-react'
 
 // ── QUICK ACTIONS — ONE DEFINITION LIST, TWO PLACEMENTS ──────────────────────
 //
@@ -45,6 +45,13 @@ export type QuickAction = {
  */
 export type QuickActionGates = {
   canQuickAddExpense: boolean
+  /**
+   * May open the employee attendance request page — the same visibility the
+   * Attendance & Payroll card uses. Optional so a screen that cannot answer it
+   * (Account) simply omits the action. It grants nothing: the page and the API
+   * take the employee from the session.
+   */
+  canAttendanceRequest?: boolean
 }
 
 /**
@@ -60,6 +67,15 @@ export function buildQuickActions(gates: QuickActionGates): QuickAction[] {
       label: 'Quick Add Expense',
       href: '/finance/expenses/new',
       icon: <ReceiptIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
+    })
+  }
+
+  if (gates.canAttendanceRequest) {
+    actions.push({
+      key: 'attendance-request',
+      label: 'Attendance request',
+      href: '/my-attendance/request',
+      icon: <AttendanceRequestIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
     })
   }
 
