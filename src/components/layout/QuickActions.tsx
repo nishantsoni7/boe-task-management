@@ -1,14 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Receipt as ReceiptIcon } from 'lucide-react'
+import { CalendarClock, Receipt as ReceiptIcon } from 'lucide-react'
+import { AttendanceRequestFlow } from '@/components/attendanceRequests/AttendanceRequestFlow'
 
 // ── QUICK ACTIONS — ONE DEFINITION LIST, TWO PLACEMENTS ──────────────────────
 //
 // A quick action is the handful of things somebody must be able to start from
 // the first screen after signing in, without opening a module and finding a
-// list first. Today there is exactly one; the shape below exists so the second
-// one is a single entry in buildQuickActions and nothing else.
+// list first. An entry is a link to an existing route (`href`) or opens a shared
+// form in place (`opens`); a new one is a single entry in buildQuickActions.
 //
 // WHERE IT IS DRAWN depends only on whether the permanent sidebar is on screen,
 // and that question is answered by CSS at the sidebar's own 767px breakpoint
@@ -35,7 +37,9 @@ export type QuickAction = {
   /** Full button label. Never abbreviated — it is the same on both surfaces. */
   label: string
   /** Existing route. Unchanged by this file. */
-  href: string
+  href?: string
+  /** Opens a shared form in place instead of navigating. */
+  opens?: 'attendance-request'
   icon: React.ReactNode
 }
 
@@ -45,6 +49,12 @@ export type QuickAction = {
  */
 export type QuickActionGates = {
   canQuickAddExpense: boolean
+  /**
+   * Any signed-in, active employee may send their OWN attendance request. This
+   * is not module access: the API pins the request to the caller's token and
+   * grants nothing about anybody else's attendance, approvals or payroll.
+   */
+  canRequestAttendance: boolean
 }
 
 /**
@@ -53,6 +63,15 @@ export type QuickActionGates = {
  */
 export function buildQuickActions(gates: QuickActionGates): QuickAction[] {
   const actions: QuickAction[] = []
+
+  if (gates.canRequestAttendance) {
+    actions.push({
+      key: 'attendance-request',
+      label: 'Attendance request',
+      opens: 'attendance-request',
+      icon: <CalendarClock size={16} strokeWidth={1.9} aria-hidden="true" />,
+    })
+  }
 
   if (gates.canQuickAddExpense) {
     actions.push({
@@ -81,6 +100,9 @@ export function QuickActionList({
   variant: 'sidebar' | 'page'
 }) {
   const router = useRouter()
+  // Each placement owns its own open state; CSS shows exactly one of them, so
+  // only one can ever be tapped.
+  const [openForm, setOpenForm] = useState<QuickAction['opens'] | null>(null)
 
   if (actions.length === 0) return null
 
@@ -102,13 +124,14 @@ export function QuickActionList({
             key={action.key}
             type="button"
             className="boe-btn boe-quick-action"
-            onClick={() => router.push(action.href)}
+            onClick={() => (action.opens ? setOpenForm(action.opens) : router.push(action.href!))}
           >
             {action.icon}
             {action.label}
           </button>
         ))}
       </div>
+      {openForm === 'attendance-request' && <AttendanceRequestFlow onClose={() => setOpenForm(null)} />}
     </section>
   )
 }
