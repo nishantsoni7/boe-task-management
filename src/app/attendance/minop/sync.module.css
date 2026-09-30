@@ -1,0 +1,72 @@
+.legendList { list-style: none; margin: 0; padding: 0; }
+.legendList li {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: start;
+  padding: 10px 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+  color: #4A5261;
+  line-height: 1.5;
+}
+.legendList li:first-child { border-top: 0; }
+
+.disclosure { border-bottom: 0; }
+.disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 18px;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #111318;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::before { content: '›'; font-size: 18px; line-height: 1; color: #6B7384; transition: transform 0.15s; }
+.disclosure[open] > summary::before { transform: rotate(90deg); }
+.disclosure > summary:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; border-radius: 10px; }
+
+.resultCell { min-width: 0; }
+.explain { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: #4A5261; max-width: 60ch; }
+.next { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: #111318; max-width: 60ch; }
+.next a { color: #1D4ED8; font-weight: 600; }
+
+.tech { margin-top: 8px; }
+.tech > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #6B7384;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+}
+.tech > summary:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+.techBody {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: #F8F9FB;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  font-size: 12px;
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 4px 12px;
+}
+.techBody dt { color: #6B7384; }
+.techBody dd { margin: 0; color: #111318; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.actionCell { white-space: nowrap; }
+.refreshBtn { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 767px) {
+  .legendList li { grid-template-columns: minmax(0, 1fr); padding: 10px 14px; }
+  .disclosure > summary { padding: 12px 14px; }
+  .techBody { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .techBody dd { margin-bottom: 6px; }
+  .cardActions button { width: 100%; }
+}

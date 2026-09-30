@@ -1,19 +1,20 @@
 /**
  * The combined Attendance & Payroll module: one launcher card, one shell, one
- * navigation.
+ * navigation of six sections.
  *
- * What these pin, and why each mattered before it was merged:
+ * What these pin, and why each mattered:
  *
  *   1. ONE card. Two cards for what is one job ("did they turn up" → "what are
- *      they paid") sent people to the wrong half and then made them go back to
- *      /modules to reach the other.
- *   2. ONE nav definition, used by desktop and mobile alike. Two hand-copied
- *      arrays in two near-identical shells is how /attendance/monthly-review
- *      ended up navigable from neither sidebar.
- *   3. Every nav path is a route that EXISTS. Checked against the filesystem,
+ *      they paid") sent people to the wrong half.
+ *   2. ONE nav definition, used by desktop and mobile alike.
+ *   3. SIX admin sections — the sidebar had grown to 14 entries and nobody could
+ *      tell where related work lived. Pages that belong together are tabs.
+ *   4. EVERY old destination is still reachable (the old→new map below is an
+ *      executable assertion, not just documentation).
+ *   5. Every nav path is a route that EXISTS. Checked against the filesystem,
  *      because a nav is the one place a typo produces a 404 rather than a build
  *      error.
- *   4. The employee list contains no management route, and hiding a link is
+ *   6. The employee list contains no management route, and hiding a link is
  *      never what stops anybody — the guards are still there and still
  *      admin-only.
  *
@@ -30,25 +31,26 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  ATTENDANCE_PAYROLL_ADMIN_NAV,
+  ATTENDANCE_PAYROLL_ADMIN_SECTIONS,
   ATTENDANCE_PAYROLL_EMPLOYEE_NAV,
   ATTENDANCE_PAYROLL_MODULE_NAME,
+  ADMIN_NOTIFICATIONS_PATH,
+  EMPLOYEE_NOTIFICATIONS_PATH,
+  activeTabFor,
+  adminSectionFor,
   attendancePayrollNavFor,
   isAttendancePayrollNavItemActive,
+  notificationsPathFor,
   type AttendancePayrollNavItem,
 } from './attendancePayrollNav'
 
 const ROOT = process.cwd()
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+// \r is stripped on read: a checkout under core.autocrlf can hand these files
+// back with CRLF endings, and multi-line assertions would then miss.
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '')
 
 const LAUNCHER = read('src/app/modules/page.tsx')
 const SHELL    = read('src/components/layout/AttendancePayrollLayout.tsx')
-
-const byPath = (nav: AttendancePayrollNavItem[], path: string) => {
-  const item = nav.find(i => i.path === path)
-  assert.ok(item, `no nav item for ${path}`)
-  return item
-}
 
 // ─── 1. The launcher shows one card ──────────────────────────────────────────
 
@@ -64,9 +66,6 @@ describe('the module launcher', () => {
   })
 
   test('the card is admitted by EITHER module row, so nobody loses access', () => {
-    // Union, not intersection: whoever could open an Attendance card or a
-    // Payroll card before still gets in. Both rows survive in app_modules and
-    // Control Center still configures them independently — no migration.
     assert.match(LAUNCHER, /canSeeModule\('attendance',/)
     assert.match(LAUNCHER, /canSeeModule\('payroll',\s+/)
     assert.match(LAUNCHER, /\(canSeeAttendance \|\| canSeePayroll\)/)
@@ -78,8 +77,6 @@ describe('the module launcher', () => {
   })
 
   test('the destination is decided by the same resolver the guards use', () => {
-    // canSeeModule delegates to resolveModuleAccess; a launcher with its own
-    // idea of visibility is a launcher that shows cards the route bounces.
     assert.match(LAUNCHER, /import \{ resolveModuleAccess \} from '@\/lib\/moduleAccess'/)
   })
 })
@@ -95,77 +92,154 @@ describe('one navigation definition', () => {
   })
 
   test('desktop and mobile are the same element, so they cannot drift', () => {
-    // The mobile menu is this <aside> with `.open` toggled — not a second menu.
     assert.equal((SHELL.match(/<aside className/g) ?? []).length, 1, 'a second sidebar appeared')
     assert.equal((SHELL.match(/navItems\.map/g) ?? []).length, 1, 'the list is rendered twice')
   })
 
-  test('the shell renders one header and one notification bell', () => {
+  test('the shell renders one header, one tab row and one notification bell', () => {
     assert.equal((SHELL.match(/boe-page-header/g) ?? []).length, 1)
+    assert.equal((SHELL.match(/<ModuleSectionTabs/g) ?? []).length, 1)
     assert.equal((SHELL.match(/<IssueNotificationBell/g) ?? []).length, 1)
+  })
+
+  test('the bell is in the header, not the sidebar', () => {
+    const header = SHELL.slice(SHELL.indexOf('{/* Page header */}'))
+    const sidebar = SHELL.slice(SHELL.indexOf('<aside className'), SHELL.indexOf('</aside>'))
+    assert.ok(header.includes('<IssueNotificationBell'))
+    assert.equal(sidebar.includes('IssueNotificationBell'), false)
   })
 
   test('the module has one name, used by the shell', () => {
     assert.equal(ATTENDANCE_PAYROLL_MODULE_NAME, 'Attendance & Payroll')
     assert.match(SHELL, /\{ATTENDANCE_PAYROLL_MODULE_NAME\}/)
-    // The old per-half branding is gone.
     assert.equal(SHELL.includes('Attendance & Salary'), false)
   })
 
   test('the role picks the list, and there are only two', () => {
-    assert.equal(attendancePayrollNavFor(true), ATTENDANCE_PAYROLL_ADMIN_NAV)
+    assert.equal(attendancePayrollNavFor(true), ATTENDANCE_PAYROLL_ADMIN_SECTIONS)
     assert.equal(attendancePayrollNavFor(false), ATTENDANCE_PAYROLL_EMPLOYEE_NAV)
+  })
+
+  test('the shell fetches no notification count of its own besides the shared hook', () => {
+    assert.equal((SHELL.match(/useUnreadAttendancePayrollNotifications\(\)/g) ?? []).length, 1)
   })
 })
 
-// ─── 3. Every link goes somewhere that exists ────────────────────────────────
+// ─── 3. Six sections ─────────────────────────────────────────────────────────
+
+describe('the admin sidebar is exactly six sections', () => {
+  test('in this order, with these names', () => {
+    assert.deepEqual(
+      ATTENDANCE_PAYROLL_ADMIN_SECTIONS.map(s => s.label),
+      ['Overview', 'Employees', 'Attendance', 'Payroll', 'Issues', 'Settings'],
+    )
+  })
+
+  test('the grouped sections carry the agreed tabs', () => {
+    const tabs = (key: string) =>
+      ATTENDANCE_PAYROLL_ADMIN_SECTIONS.find(s => s.key === key)?.tabs?.map(t => t.label)
+    assert.deepEqual(tabs('attendance'), ['Records', 'Upload', 'Monthly Review', 'Requests'])
+    assert.deepEqual(tabs('payroll'), ['Monthly Preview', 'Payroll Runs', 'BOE Credits'])
+    assert.deepEqual(tabs('settings'), ['Payroll Rules', 'Holidays'])
+    for (const key of ['overview', 'employees', 'issues']) assert.equal(tabs(key), undefined, key)
+  })
+
+  test('How Payroll Works is Payroll\'s Help link, not a tab and not a section', () => {
+    const payroll = ATTENDANCE_PAYROLL_ADMIN_SECTIONS.find(s => s.key === 'payroll')
+    assert.equal(payroll?.help?.path, '/payroll/how-it-works')
+    assert.equal(payroll?.tabs?.some(t => t.path === '/payroll/how-it-works'), false)
+  })
+
+  test('Notifications is not a section or a tab — it is the header bell', () => {
+    const all = ATTENDANCE_PAYROLL_ADMIN_SECTIONS.flatMap(s => [s.path, ...(s.tabs ?? []).map(t => t.path)])
+    for (const p of [ADMIN_NOTIFICATIONS_PATH, '/payroll/notifications', EMPLOYEE_NOTIFICATIONS_PATH]) {
+      assert.equal(all.includes(p), false, p)
+    }
+    assert.equal(notificationsPathFor(true), '/attendance/notifications')
+    assert.equal(notificationsPathFor(false), '/my-issues/notifications')
+  })
+
+  test('within one section no destination repeats', () => {
+    for (const s of ATTENDANCE_PAYROLL_ADMIN_SECTIONS) {
+      const paths = (s.tabs ?? []).map(t => t.path)
+      assert.equal(new Set(paths).size, paths.length, `${s.key} repeats a tab`)
+    }
+    const sectionPaths = ATTENDANCE_PAYROLL_ADMIN_SECTIONS.map(s => s.path)
+    assert.equal(new Set(sectionPaths).size, sectionPaths.length)
+  })
+
+  test('a section\'s landing page is its first useful tab or itself', () => {
+    for (const s of ATTENDANCE_PAYROLL_ADMIN_SECTIONS.filter(s => s.tabs)) {
+      assert.ok(s.tabs!.some(t => t.path === s.path), `${s.key} lands on a page that is not one of its tabs`)
+    }
+  })
+})
+
+// ─── 4. Every old destination is still reachable ─────────────────────────────
+
+/**
+ * The OLD sidebar, by route, and where each one lives now. Also the route map
+ * delivered with the change. Bell = the header notification bell.
+ */
+const OLD_TO_NEW: Array<{ old: string; oldLabel: string; section: string; tab?: string }> = [
+  { old: '/attendance',                oldLabel: 'Overview',                  section: 'Overview' },
+  { old: '/attendance/employees',      oldLabel: 'Employee Master',           section: 'Employees' },
+  { old: '/attendance/upload',         oldLabel: 'Attendance Upload',         section: 'Attendance', tab: 'Upload' },
+  { old: '/attendance/records',        oldLabel: 'Attendance Records',        section: 'Attendance', tab: 'Records' },
+  { old: '/attendance/monthly-review', oldLabel: 'Monthly Attendance Review', section: 'Attendance', tab: 'Monthly Review' },
+  { old: '/attendance/requests',       oldLabel: 'Attendance Requests',       section: 'Attendance', tab: 'Requests' },
+  { old: '/attendance/minop',          oldLabel: 'Minop Diagnostics',         section: 'Issues' },
+  { old: '/payroll',                   oldLabel: 'Payroll Runs',              section: 'Payroll',    tab: 'Payroll Runs' },
+  { old: '/payroll/monthly-review',    oldLabel: 'Payroll Monthly Preview',   section: 'Payroll',    tab: 'Monthly Preview' },
+  { old: '/payroll/how-it-works',      oldLabel: 'How Payroll Works',         section: 'Payroll' },
+  { old: '/payroll/settings',          oldLabel: 'Payroll Settings',          section: 'Settings',   tab: 'Payroll Rules' },
+  { old: '/payroll/credits',           oldLabel: 'BOE Credits',               section: 'Payroll',    tab: 'BOE Credits' },
+  { old: '/attendance/holidays',       oldLabel: 'Holiday Management',        section: 'Settings',   tab: 'Holidays' },
+]
+
+describe('all 14 old destinations are reachable through the new structure', () => {
+  test('the old sidebar had 13 links plus the notification feed = 14', () => {
+    assert.equal(OLD_TO_NEW.length + 1, 14)
+  })
+
+  for (const m of OLD_TO_NEW) {
+    test(`${m.oldLabel} (${m.old}) → ${m.section}${m.tab ? ` › ${m.tab}` : ''}`, () => {
+      const section = adminSectionFor(m.old)
+      assert.equal(section?.label, m.section, `${m.old} lands in the wrong section`)
+      if (m.tab) assert.equal(activeTabFor(m.old, section!)?.label, m.tab, `${m.old} lights the wrong tab`)
+      // And it is a LINK the person can click, not merely a URL that resolves.
+      const linked = [section!.path, ...(section!.tabs ?? []).map(t => t.path), ...(section!.help ? [section!.help.path] : [])]
+      assert.ok(linked.includes(m.old) || m.old === '/attendance/employees' && section!.path === m.old,
+        `${m.old} has no link in the ${m.section} section`)
+    })
+  }
+
+  test('the notification feed is reachable through the bell, at its old address', () => {
+    assert.equal(notificationsPathFor(true), '/attendance/notifications')
+    assert.ok(existsSync(join(ROOT, 'src/app/attendance/notifications/page.tsx')))
+    assert.ok(existsSync(join(ROOT, 'src/app/payroll/notifications/page.tsx')))
+  })
+})
 
 describe('every navigation path is a real route', () => {
   const pageFor = (path: string) => join(ROOT, 'src', 'app', ...path.split('/').filter(Boolean), 'page.tsx')
+  const allAdminPaths = ATTENDANCE_PAYROLL_ADMIN_SECTIONS.flatMap(s => [
+    { label: s.label, path: s.path },
+    ...(s.tabs ?? []).map(t => ({ label: `${s.label} › ${t.label}`, path: t.path })),
+    ...(s.help ? [{ label: `${s.label} › ${s.help.label}`, path: s.help.path }] : []),
+  ])
 
-  for (const item of [...ATTENDANCE_PAYROLL_ADMIN_NAV, ...ATTENDANCE_PAYROLL_EMPLOYEE_NAV]) {
+  for (const item of [...allAdminPaths, ...ATTENDANCE_PAYROLL_EMPLOYEE_NAV]) {
     test(`${item.label} → ${item.path}`, () => {
       assert.ok(existsSync(pageFor(item.path)), `${item.path} has no page.tsx — a nav link to nowhere`)
     })
   }
-
-  test('no duplicate destinations within a list', () => {
-    for (const [name, nav] of [
-      ['admin', ATTENDANCE_PAYROLL_ADMIN_NAV],
-      ['employee', ATTENDANCE_PAYROLL_EMPLOYEE_NAV],
-    ] as const) {
-      const paths = nav.map(i => i.path)
-      assert.equal(new Set(paths).size, paths.length, `${name} nav repeats a destination`)
-    }
-  })
-
-  test('the admin list still reaches both halves of the module', () => {
-    const paths = ATTENDANCE_PAYROLL_ADMIN_NAV.map(i => i.path)
-    for (const required of [
-      '/attendance', '/attendance/employees', '/attendance/upload', '/attendance/records',
-      '/attendance/monthly-review', '/attendance/minop', '/attendance/holidays',
-      '/payroll', '/payroll/monthly-review', '/payroll/how-it-works', '/payroll/settings',
-    ]) {
-      assert.ok(paths.includes(required), `the admin nav dropped ${required}`)
-    }
-  })
-
-  test('the two monthly reviews are two links, because they are two screens', () => {
-    // /attendance/monthly-review is the attendance summary; /payroll/monthly-review
-    // is the engine's payroll preview. One label for both would be a link that
-    // lies about where it goes.
-    const attendance = byPath(ATTENDANCE_PAYROLL_ADMIN_NAV, '/attendance/monthly-review')
-    const payroll    = byPath(ATTENDANCE_PAYROLL_ADMIN_NAV, '/payroll/monthly-review')
-    assert.notEqual(attendance.label, payroll.label)
-  })
 })
 
-// ─── 4. The employee list is self-service only ───────────────────────────────
+// ─── 5. The employee list is self-service only ───────────────────────────────
 
 describe('the employee navigation', () => {
   test('is exactly the five self-service destinations', () => {
-    // /my-credits (BOE Credits Phase 1D) sits beside My Payroll: every read
-    // behind it derives the employee from the bearer token.
     assert.deepEqual(
       ATTENDANCE_PAYROLL_EMPLOYEE_NAV.map(i => i.path),
       ['/my-attendance', '/my-payroll', '/my-credits', '/my-issues', '/payroll/how-it-works'],
@@ -180,9 +254,12 @@ describe('the employee navigation', () => {
     }
   })
 
+  test('an employee never gets a tab row', () => {
+    // The shell resolves a section only for an admin.
+    assert.match(SHELL, /const section = isAdmin \? adminSectionFor\(pathname\) : null/)
+  })
+
   test('and hiding the admin links is NOT what stops an employee', () => {
-    // The nav is a convenience. These two guards are the control, and both
-    // resolve management access as admin-only whatever visibility says.
     const attendanceGuard = read('src/app/attendance/layout.tsx')
     const payrollGuard    = read('src/app/payroll/layout.tsx')
     for (const [name, guard] of [['attendance', attendanceGuard], ['payroll', payrollGuard]] as const) {
@@ -192,41 +269,64 @@ describe('the employee navigation', () => {
   })
 })
 
-// ─── 5. Active state ─────────────────────────────────────────────────────────
+// ─── 6. Active state ─────────────────────────────────────────────────────────
 
 describe('active state', () => {
   const activeLabels = (pathname: string, nav: AttendancePayrollNavItem[]) =>
     nav.filter(i => isAttendancePayrollNavItemActive(pathname, i)).map(i => i.label)
 
-  test('a module root does not claim the pages beneath it', () => {
-    assert.deepEqual(activeLabels('/attendance', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Overview'])
-    assert.deepEqual(activeLabels('/payroll', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Runs'])
-    assert.deepEqual(activeLabels('/attendance/records', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Attendance Records'])
-    assert.deepEqual(activeLabels('/payroll/settings', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Settings'])
-  })
-
-  test('exactly one item is ever active on an admin route', () => {
+  test('exactly one section owns every admin route', () => {
     for (const pathname of [
       '/attendance', '/attendance/employees', '/attendance/employees/abc',
       '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
-      '/attendance/monthly-review/user-1', '/attendance/minop', '/attendance/holidays', '/attendance/correction-log',
+      '/attendance/monthly-review/user-1', '/attendance/requests', '/attendance/minop',
+      '/attendance/holidays', '/attendance/correction-log',
       '/payroll', '/payroll/monthly-review', '/payroll/monthly-review/user-1',
-      '/payroll/how-it-works', '/payroll/settings',
+      '/payroll/how-it-works', '/payroll/settings', '/payroll/credits',
       '/payroll/results/p1', '/payroll/results/p1/e1', '/payroll/results/p1/salary-report',
     ]) {
-      assert.equal(activeLabels(pathname, ATTENDANCE_PAYROLL_ADMIN_NAV).length, 1,
-        `${pathname} lights ${activeLabels(pathname, ATTENDANCE_PAYROLL_ADMIN_NAV).length} items`)
+      const owners = ATTENDANCE_PAYROLL_ADMIN_SECTIONS.filter(s => adminSectionFor(pathname)?.key === s.key)
+      assert.equal(owners.length, 1, `${pathname} is owned by ${owners.length} sections`)
     }
+  })
+
+  test('a section root does not claim the pages beneath it', () => {
+    assert.equal(adminSectionFor('/attendance')?.label, 'Overview')
+    assert.equal(adminSectionFor('/attendance/records')?.label, 'Attendance')
+    assert.equal(adminSectionFor('/payroll')?.label, 'Payroll')
+    assert.equal(adminSectionFor('/payroll/settings')?.label, 'Settings')
   })
 
   test('a payroll run and its payslips keep Payroll Runs lit', () => {
     for (const p of ['/payroll/results/p1', '/payroll/results/p1/e1', '/payroll/results/p1/salary-report']) {
-      assert.deepEqual(activeLabels(p, ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Runs'], p)
+      const s = adminSectionFor(p)!
+      assert.equal(s.label, 'Payroll', p)
+      assert.equal(activeTabFor(p, s)?.label, 'Payroll Runs', p)
     }
   })
 
+  test('the payroll guide is Payroll\'s Help: section lit, no tab lit', () => {
+    const s = adminSectionFor('/payroll/how-it-works')!
+    assert.equal(s.label, 'Payroll')
+    assert.equal(activeTabFor('/payroll/how-it-works', s), null)
+  })
+
+  test('the employee record and the monthly detail keep their parent lit', () => {
+    assert.equal(adminSectionFor('/attendance/employees/abc')?.label, 'Employees')
+    const s = adminSectionFor('/attendance/monthly-review/user-1')!
+    assert.equal(activeTabFor('/attendance/monthly-review/user-1', s)?.label, 'Monthly Review')
+    const p = adminSectionFor('/payroll/monthly-review/user-1')!
+    assert.equal(activeTabFor('/payroll/monthly-review/user-1', p)?.label, 'Monthly Preview')
+  })
+
   test('the correction log keeps Overview lit, since that is where it is reached from', () => {
-    assert.deepEqual(activeLabels('/attendance/correction-log', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Overview'])
+    assert.equal(adminSectionFor('/attendance/correction-log')?.label, 'Overview')
+  })
+
+  test('the notification feeds belong to the bell, not to any section', () => {
+    for (const p of ['/attendance/notifications', '/payroll/notifications']) {
+      assert.equal(adminSectionFor(p), null, p)
+    }
   })
 
   test('employee routes light exactly one item each', () => {
@@ -237,38 +337,33 @@ describe('active state', () => {
     assert.deepEqual(activeLabels('/payroll/how-it-works', ATTENDANCE_PAYROLL_EMPLOYEE_NAV), ['How Payroll Works'])
   })
 
-  test('the notification feed belongs to the bell, not to My Issues', () => {
-    // Both would light otherwise — /my-issues/notifications is under /my-issues.
+  test('the employee notification feed belongs to the bell, not to My Issues', () => {
     assert.deepEqual(activeLabels('/my-issues/notifications', ATTENDANCE_PAYROLL_EMPLOYEE_NAV), [])
   })
 
   test('prefix matching is segment-aware, not string-prefix', () => {
-    // The old shells used startsWith(path), which lit "Attendance Records" for
-    // any route merely beginning with those characters.
-    assert.deepEqual(activeLabels('/attendance/records-archive', ATTENDANCE_PAYROLL_ADMIN_NAV), [])
+    assert.equal(adminSectionFor('/attendance/records-archive'), null)
     assert.deepEqual(activeLabels('/my-attendance-summary', ATTENDANCE_PAYROLL_EMPLOYEE_NAV), [])
   })
 
   test('an unrelated route lights nothing', () => {
     for (const p of ['/modules', '/dashboard', '/finance']) {
-      assert.deepEqual(activeLabels(p, ATTENDANCE_PAYROLL_ADMIN_NAV), [], p)
+      assert.equal(adminSectionFor(p), null, p)
       assert.deepEqual(activeLabels(p, ATTENDANCE_PAYROLL_EMPLOYEE_NAV), [], p)
     }
   })
 })
 
-// ─── 6. Nothing structural moved ─────────────────────────────────────────────
+// ─── 7. Nothing structural moved ─────────────────────────────────────────────
 
-describe('the merge is user-interface only', () => {
+describe('the regrouping is user-interface only', () => {
   test('both URL trees still exist, unmoved', () => {
     for (const p of [
       'src/app/attendance/page.tsx', 'src/app/attendance/layout.tsx',
       'src/app/payroll/page.tsx', 'src/app/payroll/layout.tsx',
       'src/app/my-attendance/page.tsx', 'src/app/my-payroll/page.tsx',
       'src/app/my-issues/page.tsx',
-      // Kept for existing links even though the sidebar now offers one door.
       'src/app/attendance/notifications/page.tsx', 'src/app/payroll/notifications/page.tsx',
-      // Reached from a payroll run, where the period is known.
       'src/app/payroll/results/[periodId]/salary-report/page.tsx',
     ]) {
       assert.ok(existsSync(join(ROOT, p)), `${p} was moved or removed`)
@@ -281,10 +376,33 @@ describe('the merge is user-interface only', () => {
     }
   })
 
+  test('the tab row fetches nothing, so an unopened tab costs nothing', () => {
+    const tabs = read('src/components/layout/ModuleSectionTabs.tsx')
+    for (const forbidden of ['fetch(', 'createClient', 'useQuery', 'router.prefetch']) {
+      assert.equal(tabs.includes(forbidden), false, `the tab row reaches for ${forbidden}`)
+    }
+  })
+
   test('the nav definition is data, not a second access rule', () => {
     const nav = read('src/components/layout/attendancePayrollNav.tsx')
     for (const forbidden of ['role ===', 'resolveModuleAccess', 'resolveManagementAccess', 'createClient']) {
       assert.equal(nav.includes(forbidden), false, `the nav decides access via ${forbidden}`)
     }
+  })
+})
+
+// ─── 8. The Modules shortcut ─────────────────────────────────────────────────
+
+describe('the "Attendance request" shortcut on the Modules page', () => {
+  const QUICK = read('src/components/layout/QuickActions.tsx')
+
+  test('goes through the existing quick-action system and opens the shared request form', () => {
+    assert.match(QUICK, /if \(gates\.canRequestAttendance\)/)
+    assert.match(QUICK, /label: 'Attendance request'/)
+    assert.match(QUICK, /opens: 'attendance-request'/)
+  })
+
+  test('is offered to the signed-in active person only, and not while viewing as somebody else', () => {
+    assert.match(LAUNCHER, /const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false/)
   })
 })

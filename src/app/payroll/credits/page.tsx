@@ -21,9 +21,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
-import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
+import { LoadingScreen } from '@/components/ui/atoms'
+import { Badge, Notice, ui, type Tone } from '@/components/attendancePayroll/ui'
+import styles from './credits.module.css'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatCredits, reviewMonthLabel } from '@/lib/boeCredits/ledger'
 import { DEFAULT_BOE_CREDIT_SETTINGS, formatCreditValue } from '@/lib/boeCredits/settings'
@@ -72,44 +73,15 @@ function stamp(at: string | null): string {
   return Number.isNaN(d.getTime()) ? at : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const TH: React.CSSProperties = {
-  padding: '11px 16px', textAlign: 'left',
-  fontSize: 11.5, fontWeight: 700,
-  color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em',
-  whiteSpace: 'nowrap',
-}
-
-const actionButton: React.CSSProperties = {
-  fontSize: 12.5, fontWeight: 600,
-  color: '#4F6FD0', cursor: 'pointer',
-  padding: '5px 10px', borderRadius: 6,
-  border: '1px solid rgba(79,111,208,0.3)',
-  background: 'none', whiteSpace: 'nowrap', minHeight: 32,
-}
-
-const card: React.CSSProperties = {
-  border: `1px solid ${colors.border}`, borderRadius: 12,
-  background: colors.base, overflow: 'hidden',
-}
-
-const cardHead: React.CSSProperties = {
-  padding: '12px 16px', borderBottom: `1px solid ${colors.border}`,
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
-}
-
 function monthStatusBadge(m: CreditReviewMonth | null) {
-  const meta = !m
-    ? { label: 'No reviews', bg: 'rgba(140,148,166,0.14)', fg: '#4B5563' }
+  const meta: { label: string; tone: Tone } = !m
+    ? { label: 'No reviews', tone: 'neutral' }
     : m.status === 'qualified'
-      ? { label: m.finalized_at ? 'Qualified · closed' : 'Qualified', bg: 'rgba(5,150,105,0.12)', fg: '#047857' }
+      ? { label: m.finalized_at ? 'Qualified · closed' : 'Qualified', tone: 'good' }
       : m.status === 'lapsed'
-        ? { label: 'Lapsed · closed', bg: 'rgba(220,38,38,0.10)', fg: '#B91C1C' }
-        : { label: 'Below target', bg: 'rgba(232,160,48,0.14)', fg: '#92400E' }
-  return (
-    <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, background: meta.bg, color: meta.fg, whiteSpace: 'nowrap' }}>
-      {meta.label}
-    </span>
-  )
+        ? { label: 'Lapsed · closed', tone: 'bad' }
+        : { label: 'Below target', tone: 'warn' }
+  return <Badge tone={meta.tone}>{meta.label}</Badge>
 }
 
 /** The months an admin can choose: the last twelve, newest first. */
@@ -214,6 +186,18 @@ export default function BoeCreditsPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // "Try again" after a failed read: the same three reads the page makes on load.
+  const reloadAll = async () => {
+    setError('')
+    const results = await Promise.allSettled([
+      loadBalances(token),
+      loadSettings(token),
+      loadMonthClose(token, monthParam),
+    ])
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failed) setError(failed.reason instanceof Error ? failed.reason.message : String(failed.reason))
+  }
 
   const changeMonth = async (value: string) => {
     setMonthParam(value)
@@ -341,12 +325,16 @@ export default function BoeCreditsPage() {
 
   const openRows = monthClose?.rows.filter(r => r.month?.status === 'open') ?? []
   const closedRows = monthClose?.rows.filter(r => r.month && r.month.status !== 'open') ?? []
+  const closeRows = monthClose
+    ? [...openRows, ...closedRows, ...monthClose.rows.filter(r => !r.month)]
+    : []
+  const belowTargetCount = openRows.filter(r => r.month && r.month.qualifying_review_count < r.month.minimum_reviews_snapshot).length
 
   return (
     <AttendancePayrollLayout
       profile={profile}
       title="BOE Credits"
-      subtitle="Settings, month close, and every employee's credits"
+      subtitle="Credit settings, month close and every employee's balance."
       onSignOut={handleSignOut}
       actions={
         <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }}>
@@ -354,15 +342,26 @@ export default function BoeCreditsPage() {
         </Link>
       }
     >
-      {error && <div style={{ marginBottom: 12 }}><AlertBanner variant="red">{error}</AlertBanner></div>}
-      {okMsg && <div style={{ marginBottom: 12 }}><AlertBanner variant="green">{okMsg}</AlertBanner></div>}
-      {usingDefaults && (
-        <div style={{ marginBottom: 12 }}>
-          <AlertBanner variant="amber">Showing built-in defaults — no settings row could be read. Saving will create one.</AlertBanner>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className={ui.stack}>
+        {error && (
+          <Notice
+            kind="error"
+            action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => void reloadAll()}>Try again</button>}
+          >
+            {error}
+          </Notice>
+        )}
+        {okMsg && (
+          <Notice
+            kind="success"
+            action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => setOkMsg('')}>Dismiss</button>}
+          >
+            {okMsg}
+          </Notice>
+        )}
+        {usingDefaults && (
+          <Notice kind="warning">Showing built-in defaults — no settings row could be read. Saving will create one.</Notice>
+        )}
 
         {/* ── 1. Settings ─────────────────────────────────────────────────── */}
         <CreditSettingsForm
@@ -374,108 +373,128 @@ export default function BoeCreditsPage() {
         />
 
         {/* ── 2. Month close ──────────────────────────────────────────────── */}
-        <section aria-labelledby="month-close-heading" style={card}>
-          <div style={cardHead}>
+        <section aria-labelledby="month-close-heading" className={ui.surface}>
+          <div className={ui.surfaceHead}>
             <div>
-              <div id="month-close-heading" style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Month close</div>
-              <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
+              <h2 id="month-close-heading" className={ui.surfaceTitle}>Month close</h2>
+              <p className={ui.surfaceSub}>
                 Review months below the target of {monthClose?.minimum_monthly_reviews ?? settings.minimum_monthly_reviews} verified reviews lapse when closed. Closing twice changes nothing.
-              </div>
+              </p>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#3D4455' }}>
-              Month
+            <div className={ui.row}>
+              <label htmlFor="close-month" className={ui.label}>Month</label>
               <select
+                id="close-month"
                 value={monthParam}
                 onChange={e => void changeMonth(e.target.value)}
-                className="boe-input"
-                style={{ minHeight: 36, fontSize: 13 }}
+                className={ui.input}
+                style={{ width: 'auto', minWidth: 150 }}
               >
                 {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </label>
+            </div>
           </div>
 
-          <div style={{ padding: '12px 16px 14px' }}>
+          <div className={ui.surfaceBody}>
             {monthLoading || !monthClose ? (
-              <div style={{ fontSize: 13, color: colors.muted }} aria-busy="true">Loading…</div>
+              <div className={styles.inlineNote} role="status" aria-busy="true">Loading…</div>
             ) : monthClose.rows.length === 0 ? (
-              <div style={{ fontSize: 13, color: colors.muted }}>
+              <div className={styles.inlineNote}>
                 Nobody earned review credits in {reviewMonthLabel(monthClose.review_month)}. There is nothing to close.
               </div>
             ) : (
               <>
                 {monthClose.unresolved_count > 0 && (
                   <div style={{ marginBottom: 12 }}>
-                    <AlertBanner variant="amber">
+                    <Notice kind="warning">
                       {monthClose.unresolved_count} review{monthClose.unresolved_count === 1 ? '' : 's'} submitted in{' '}
                       {reviewMonthLabel(monthClose.review_month)} {monthClose.unresolved_count === 1 ? 'is' : 'are'} still waiting to be verified.
                       Verify or return them first — closing now would lapse credits those employees may still earn.
-                    </AlertBanner>
+                    </Notice>
                   </div>
                 )}
 
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                        <th style={TH}>Employee</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Verified</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Credits</th>
-                        <th style={TH}>Status</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Awaiting verification</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...openRows, ...closedRows, ...monthClose.rows.filter(r => !r.month)].map((r, i, all) => (
-                        <tr key={r.employee_id} style={{ borderBottom: i < all.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                          <td style={{ padding: '10px 16px' }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 500, color: '#111318' }}>{r.full_name}</div>
-                            {r.employee_code && <div style={{ fontSize: 11.5, color: '#8C94A6' }}>{r.employee_code}</div>}
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', color: '#3D4455' }}>
-                            {r.month ? `${r.month.qualifying_review_count} of ${r.month.minimum_reviews_snapshot}` : '—'}
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', color: '#3D4455' }}>
-                            {r.month ? r.month.earned_review_credits : '—'}
-                          </td>
-                          <td style={{ padding: '10px 16px' }}>{monthStatusBadge(r.month)}</td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', color: r.unresolved_reviews > 0 ? '#92400E' : '#8C94A6', fontWeight: r.unresolved_reviews > 0 ? 600 : 400 }}>
-                            {r.unresolved_reviews}
-                          </td>
+                <div className={ui.desktopOnly}>
+                  <div className={ui.tableWrap}>
+                    <table className={ui.table}>
+                      <thead>
+                        <tr>
+                          <th>Employee</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Verified</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Credits</th>
+                          <th>Status</th>
+                          <th className={ui.num} style={{ textAlign: 'right' }}>Awaiting verification</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {closeRows.map(r => (
+                          <tr key={r.employee_id}>
+                            <td>
+                              <div className={ui.strong}>{r.full_name}</div>
+                              {r.employee_code && <div className={ui.sub}>{r.employee_code}</div>}
+                            </td>
+                            <td className={ui.num}>
+                              {r.month ? `${r.month.qualifying_review_count} of ${r.month.minimum_reviews_snapshot}` : '—'}
+                            </td>
+                            <td className={ui.num}>{r.month ? r.month.earned_review_credits : '—'}</td>
+                            <td>{monthStatusBadge(r.month)}</td>
+                            <td className={`${ui.num} ${r.unresolved_reviews > 0 ? styles.warnStrong : ui.muted}`}>
+                              {r.unresolved_reviews}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
-                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {/* Phone: one card per employee. */}
+                <ul className={ui.cards}>
+                  {closeRows.map(r => (
+                    <li key={r.employee_id} className={`${ui.surface} ${ui.card}`}>
+                      <div className={ui.cardHead}>
+                        <div>
+                          <div className={ui.strong}>{r.full_name}</div>
+                          {r.employee_code && <div className={ui.sub}>{r.employee_code}</div>}
+                        </div>
+                        {monthStatusBadge(r.month)}
+                      </div>
+                      <div className={ui.sub}>
+                        Verified {r.month ? `${r.month.qualifying_review_count} of ${r.month.minimum_reviews_snapshot}` : '—'}
+                        {' · '}Credits {r.month ? r.month.earned_review_credits : '—'}
+                        {' · '}Awaiting verification {r.unresolved_reviews}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className={styles.closeBar}>
                   {!monthClose.can_finalize ? (
-                    <span style={{ fontSize: 12.5, color: colors.muted }}>This month has not ended yet.</span>
+                    <span className={ui.muted} style={{ fontSize: 13 }}>This month has not ended yet.</span>
                   ) : monthClose.open_count === 0 ? (
-                    <span style={{ fontSize: 12.5, color: '#047857', fontWeight: 600 }}>
+                    <span className={styles.closedText}>
                       {reviewMonthLabel(monthClose.review_month)} is closed for everyone.
                     </span>
                   ) : !confirmClose ? (
                     <button
                       type="button"
                       onClick={() => setConfirmClose(true)}
-                      className="boe-btn boe-btn-primary"
-                      style={{ padding: '8px 16px', fontSize: 13, minHeight: 40 }}
+                      className={`boe-btn boe-btn-primary ${ui.btn}`}
                     >
                       Close {reviewMonthLabel(monthClose.review_month)} ({monthClose.open_count} open)
                     </button>
                   ) : (
                     <>
-                      <span style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.5 }}>
-                        {openRows.filter(r => r.month && r.month.qualifying_review_count < r.month.minimum_reviews_snapshot).length > 0
-                          ? `${openRows.filter(r => r.month && r.month.qualifying_review_count < r.month.minimum_reviews_snapshot).length} employee(s) are below target: their ${reviewMonthLabel(monthClose.review_month, { year: false })} review credits will lapse. Older credits are not affected.`
+                      <span className={styles.confirmText}>
+                        {belowTargetCount > 0
+                          ? `${belowTargetCount} employee(s) are below target: their ${reviewMonthLabel(monthClose.review_month, { year: false })} review credits will lapse. Older credits are not affected.`
                           : 'Every open month reached the target. Closing records that; nothing lapses.'}
                         {monthClose.unresolved_count > 0 ? ' Reviews still awaiting verification will NOT count.' : ''}
                       </span>
-                      <button type="button" onClick={() => void closeMonth()} disabled={closing} className="boe-btn boe-btn-primary" style={{ padding: '8px 16px', fontSize: 13, minHeight: 40 }}>
+                      <button type="button" onClick={() => void closeMonth()} disabled={closing} className={`boe-btn boe-btn-primary ${ui.btn}`}>
                         {closing ? 'Closing…' : 'Yes, close the month'}
                       </button>
-                      <button type="button" onClick={() => setConfirmClose(false)} disabled={closing} className="boe-btn boe-btn-ghost" style={{ padding: '8px 14px', fontSize: 13, minHeight: 40 }}>
+                      <button type="button" onClick={() => setConfirmClose(false)} disabled={closing} className={`boe-btn boe-btn-ghost ${ui.btn}`}>
                         Cancel
                       </button>
                     </>
@@ -487,15 +506,15 @@ export default function BoeCreditsPage() {
         </section>
 
         {/* ── 3. Balances ─────────────────────────────────────────────────── */}
-        <section aria-labelledby="balances-heading" style={card}>
-          <div style={cardHead}>
+        <section aria-labelledby="balances-heading" className={ui.surface}>
+          <div className={ui.surfaceHead}>
             <div>
-              <div id="balances-heading" style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Employee credits</div>
-              <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+              <h2 id="balances-heading" className={ui.surfaceTitle}>Employee credits</h2>
+              <p className={ui.surfaceSub} style={{ fontVariantNumeric: 'tabular-nums' }}>
                 {balances.length} {balances.length === 1 ? 'employee' : 'employees'} · {formatCredits(totalSpendable)} spendable
                 {totalProvisional > 0 ? ` · ${formatCredits(totalProvisional)} pending this month's target` : ''}
                 {' · '}1 credit = {formatCreditValue(settings.credit_value)}
-              </div>
+              </p>
             </div>
             <input
               type="search"
@@ -503,88 +522,106 @@ export default function BoeCreditsPage() {
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by name or code"
               aria-label="Search employees"
-              className="boe-input"
-              style={{ maxWidth: 240, minHeight: 36, fontSize: 13 }}
+              className={ui.input}
+              style={{ maxWidth: 260 }}
             />
           </div>
 
           {!balancesLoaded ? (
-            <div style={{ padding: '24px', fontSize: 13, color: colors.muted }} aria-busy="true">Loading…</div>
+            <div className={styles.inlineNote} style={{ padding: "16px 18px" }} role="status" aria-busy="true">Loading…</div>
           ) : shown.length === 0 ? (
-            <div style={{ padding: '32px 24px', textAlign: 'center', color: colors.muted, fontSize: 13.5 }}>
+            <div className={styles.inlineNote} style={{ textAlign: 'center', padding: '32px 18px' }}>
               {needle ? 'Nobody matches that search.' : 'No employees to show.'}
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                    <th style={TH}>Employee</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Spendable</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Pending target</th>
-                    <th style={{ ...TH, textAlign: 'right' }}>Recorded</th>
-                    <th style={TH}>Last activity</th>
-                    <th style={TH}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((b, i) => (
-                    <tr
-                      key={b.employee_id}
-                      style={{ borderBottom: i < shown.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
-                    >
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 500, color: '#111318' }}>{b.full_name}</div>
-                        {b.employee_code && (
-                          <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 1 }}>{b.employee_code}</div>
-                        )}
-                      </td>
-                      <td style={{
-                        padding: '12px 16px', textAlign: 'right', fontSize: 13.5, fontWeight: 700,
-                        color: b.spendable_credits < 0 ? '#DC2626' : '#111318', fontVariantNumeric: 'tabular-nums',
-                      }}>
-                        {b.spendable_credits.toLocaleString('en-IN')}
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13.5, color: b.provisional_credits > 0 ? '#92400E' : '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
-                        {b.provisional_credits > 0 ? b.provisional_credits.toLocaleString('en-IN') : '—'}
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13.5, color: '#3D4455', fontVariantNumeric: 'tabular-nums' }}>
-                        {b.available_credits.toLocaleString('en-IN')}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12.5, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                        {stamp(b.last_transaction_at)}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <button onClick={() => void openHistory(b)} style={actionButton}>History</button>
-                          <button onClick={() => { setOkMsg(''); setAdjusting(b) }} style={actionButton}>Adjust</button>
-                        </div>
-                      </td>
+            <>
+              <div className={`${ui.tableWrap} ${ui.desktopOnly}`}>
+                <table className={ui.table}>
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Spendable</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Pending target</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Recorded</th>
+                      <th>Last activity</th>
+                      <th><span className={ui.srOnly}>Actions</span></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {shown.map(b => (
+                      <tr key={b.employee_id}>
+                        <td>
+                          <div className={ui.strong}>{b.full_name}</div>
+                          {b.employee_code && <div className={ui.sub}>{b.employee_code}</div>}
+                        </td>
+                        <td className={`${ui.num} ${ui.strong} ${b.spendable_credits < 0 ? styles.neg : ''}`}>
+                          {b.spendable_credits.toLocaleString('en-IN')}
+                        </td>
+                        <td className={`${ui.num} ${b.provisional_credits > 0 ? styles.warnText : ui.muted}`}>
+                          {b.provisional_credits > 0 ? b.provisional_credits.toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className={ui.num}>{b.available_credits.toLocaleString('en-IN')}</td>
+                        <td className={ui.nowrap}>{stamp(b.last_transaction_at)}</td>
+                        <td>
+                          <div className={styles.rowActions}>
+                            <button type="button" onClick={() => void openHistory(b)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>History</button>
+                            <button type="button" onClick={() => { setOkMsg(''); setAdjusting(b) }} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>Adjust</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Phone: one card per employee. */}
+              <ul className={ui.cards} style={{ padding: 12 }}>
+                {shown.map(b => (
+                  <li key={b.employee_id} className={`${ui.surface} ${ui.card}`}>
+                    <div className={ui.cardHead}>
+                      <div>
+                        <div className={ui.strong}>{b.full_name}</div>
+                        {b.employee_code && <div className={ui.sub}>{b.employee_code}</div>}
+                      </div>
+                      <div className={styles.cardBalance}>
+                        <div className={`${ui.strong} ${b.spendable_credits < 0 ? styles.neg : ''}`}>{b.spendable_credits.toLocaleString('en-IN')}</div>
+                        <div className={ui.sub}>Spendable</div>
+                      </div>
+                    </div>
+                    <div className={ui.sub}>
+                      Pending target {b.provisional_credits > 0 ? b.provisional_credits.toLocaleString('en-IN') : '—'}
+                      {' · '}Recorded {b.available_credits.toLocaleString('en-IN')}
+                      {' · '}Last activity {stamp(b.last_transaction_at)}
+                    </div>
+                    <div className={styles.rowActions}>
+                      <button type="button" onClick={() => void openHistory(b)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>History</button>
+                      <button type="button" onClick={() => { setOkMsg(''); setAdjusting(b) }} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>Adjust</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </section>
 
         {/* ── 4. Settings history ─────────────────────────────────────────── */}
         {settingsHistory.length > 0 && (
-          <section style={card}>
+          <section className={ui.surface}>
             <button
               type="button"
               onClick={() => setShowSettingsHistory(v => !v)}
               aria-expanded={showSettingsHistory}
-              style={{ ...cardHead, width: '100%', background: 'none', border: 'none', borderBottom: showSettingsHistory ? `1px solid ${colors.border}` : 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+              className={`${ui.surfaceHead} ${styles.historyToggle}`}
+              style={{ borderBottom: showSettingsHistory ? undefined : 'none' }}
             >
-              <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Settings history</span>
-              <span style={{ fontSize: 12, color: colors.muted }}>{showSettingsHistory ? 'Hide' : `Show ${settingsHistory.length}`}</span>
+              <span className={ui.surfaceTitle}>Settings history</span>
+              <span className={ui.surfaceSub} style={{ margin: 0 }}>{showSettingsHistory ? 'Hide' : `Show ${settingsHistory.length}`}</span>
             </button>
             {showSettingsHistory && (
-              <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className={styles.historyList}>
                 {settingsHistory.map(h => (
-                  <div key={h.id} style={{ fontSize: 12, color: colors.tertiary, lineHeight: 1.55 }}>
-                    <strong style={{ color: colors.primary }}>{stamp(h.created_at)}</strong>
+                  <div key={h.id} className={styles.historyRow}>
+                    <strong>{stamp(h.created_at)}</strong>
                     {' — '}{h.created_by_name ?? 'System'}
                     {/*
                       BOTH REWARDS, because the history is the audit record of

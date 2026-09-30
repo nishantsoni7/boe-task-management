@@ -4,11 +4,12 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import Link from 'next/link'
+import styles from './detail.module.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,50 +44,20 @@ function fmt(val: string | null | undefined) {
   return val && val.trim() ? val : '—'
 }
 
-function statusBadge(status: string) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    present:    { bg: 'rgba(16,185,129,0.1)',  color: '#059669', label: 'Present' },
-    checked_in: { bg: 'rgba(59,130,246,0.1)',  color: '#2563EB', label: 'Checked In' },
-    absent:     { bg: 'rgba(239,68,68,0.1)',   color: '#DC2626', label: 'Absent' },
-    half_day:   { bg: 'rgba(245,158,11,0.1)',  color: '#D97706', label: 'Half Day' },
-    late:       { bg: 'rgba(249,115,22,0.1)',  color: '#EA580C', label: 'Late' },
-  }
-  const s = map[status] ?? { bg: 'rgba(140,148,166,0.1)', color: '#8C94A6', label: status }
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 9px', borderRadius: 20,
-      fontSize: 11.5, fontWeight: 600,
-      background: s.bg, color: s.color, textTransform: 'capitalize',
-    }}>
-      {s.label}
-    </span>
-  )
+const STATUS_BADGES: Record<string, { tone: Tone; label: string }> = {
+  present:    { tone: 'good',    label: 'Present' },
+  checked_in: { tone: 'info',    label: 'Checked In' },
+  absent:     { tone: 'bad',     label: 'Absent' },
+  half_day:   { tone: 'warn',    label: 'Half Day' },
+  late:       { tone: 'warn',    label: 'Late' },
 }
 
-const inputStyle: React.CSSProperties = {
-  fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
-  background: colors.base, color: colors.primary, outline: 'none',
-  padding: '8px 12px', boxSizing: 'border-box',
+function statusBadge(status: string) {
+  const s = STATUS_BADGES[status] ?? { tone: 'neutral' as Tone, label: status }
+  return <Badge tone={s.tone}>{s.label}</Badge>
 }
 
 const PAGE_SIZE = 50
-
-// ─── Summary card ─────────────────────────────────────────────────────────────
-
-function SummaryCard({ label, value, accent, sub }: { label: string; value: string | number; accent: string; sub?: string }) {
-  return (
-    <div style={{
-      background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: 10, padding: '16px 20px', flex: 1, minWidth: 130,
-    }}>
-      <div style={{ fontSize: 24, fontWeight: 700, color: accent, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 11, color: accent, marginTop: 3, opacity: 0.75 }}>{sub}</div>}
-      <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 6, fontWeight: 500 }}>{label}</div>
-    </div>
-  )
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -97,6 +68,7 @@ export default function EmployeeDetailPage() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
   const [employee,  setEmployee]  = useState<EmployeeDetail | null>(null)
   const [records,   setRecords]   = useState<AttendanceRecord[]>([])
+  const [recordsFailed, setRecordsFailed] = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [notFound,  setNotFound]  = useState(false)
   const [fromDate,  setFromDate]  = useState('')
@@ -141,6 +113,8 @@ export default function EmployeeDetailPage() {
       if (recsRes.ok) {
         const json = await recsRes.json()
         setRecords(json.records as AttendanceRecord[])
+      } else {
+        setRecordsFailed(true)
       }
 
       setLoading(false)
@@ -168,7 +142,7 @@ export default function EmployeeDetailPage() {
     onFilterChange()
   }, [fromDate, toDate])
 
-  // ── Summary cards ──
+  // ── Totals ──
   const summary = useMemo(() => {
     const total    = filtered.length
     const present  = filtered.filter(r => r.status === 'present').length
@@ -185,247 +159,183 @@ export default function EmployeeDetailPage() {
 
   if (loading) return <LoadingScreen />
 
+  const backLink = (
+    <Link href="/attendance/employees" className={styles.back}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+      </svg>
+      Employee directory
+    </Link>
+  )
+
   if (notFound) {
     return (
-      <AttendancePayrollLayout profile={profile} title="Employee Not Found" subtitle="" onSignOut={handleSignOut}>
-        <div style={{ maxWidth: 600, padding: '48px 0', color: colors.tertiary, fontSize: 14 }}>
-          Employee not found. <Link href="/attendance/employees" style={{ color: colors.blue }}>Back to Employee Master</Link>
+      <AttendancePayrollLayout profile={profile} title="Employee not found" subtitle="This record does not exist or you cannot open it." onSignOut={handleSignOut}>
+        <div className={ui.stack}>
+          {backLink}
+          <StateBlock kind="empty" title="Employee not found">
+            The link may be out of date, or the employee record may have been removed.
+          </StateBlock>
         </div>
       </AttendancePayrollLayout>
     )
   }
 
   const emp = employee!
+  const hasFilter = Boolean(fromDate || toDate)
 
   return (
     <AttendancePayrollLayout
       profile={profile}
       title={emp.full_name}
-      subtitle="Attendance Detail"
+      subtitle={`${fmt(emp.position)}${emp.team ? ` · ${emp.team}` : ''} — employee record and attendance history.`}
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 960, padding: '24px 0' }}>
+      <div className={`${ui.stack} ${ui.wide}`}>
 
-        <Link
-          href="/attendance/employees"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-          onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back to Employee Master
-        </Link>
+        {backLink}
 
-        {/* ── Employee profile card ── */}
-        <div style={{
-          background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: 10, padding: '20px 24px', marginBottom: 20,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: colors.primary }}>{emp.full_name}</div>
-              <div style={{ fontSize: 13, color: colors.secondary, marginTop: 4 }}>
-                {fmt(emp.position)}{emp.team ? ` · ${emp.team}` : ''}
-              </div>
+        {/* ── Details, grouped ── */}
+        <div className={styles.sections}>
+          <section className={ui.surface} aria-labelledby="sec-profile">
+            <div className={ui.surfaceHead}><h2 id="sec-profile" className={ui.surfaceTitle}>Profile</h2></div>
+            <div className={ui.surfaceBody}>
+              <dl className={ui.facts}>
+                <dt>Name</dt><dd>{emp.full_name}</dd>
+                <dt>Status</dt><dd><Badge tone={emp.is_active ? 'good' : 'neutral'}>{emp.is_active ? 'Active' : 'Inactive'}</Badge></dd>
+                <dt>Team</dt><dd className={styles.cap}>{fmt(emp.team)}</dd>
+                <dt>Position</dt><dd>{fmt(emp.position)}</dd>
+                <dt>Role</dt><dd className={styles.cap}>{fmt(emp.role)}</dd>
+              </dl>
             </div>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: emp.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(156,163,175,0.15)',
-              color: emp.is_active ? '#059669' : '#6B7280',
-              alignSelf: 'flex-start',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: emp.is_active ? '#10B981' : '#9CA3AF' }} />
-              {emp.is_active ? 'Active' : 'Inactive'}
-            </span>
+          </section>
+
+          <section className={ui.surface} aria-labelledby="sec-employment">
+            <div className={ui.surfaceHead}><h2 id="sec-employment" className={ui.surfaceTitle}>Employment</h2></div>
+            <div className={ui.surfaceBody}>
+              <dl className={ui.facts}>
+                <dt>HR employee code</dt><dd className={styles.mono}>{fmt(emp.employee_code)}</dd>
+                <dt>Joining date</dt>
+                <dd>
+                  {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                </dd>
+                <dt>Employment type</dt><dd className={styles.cap}>{fmt(emp.employment_type)}</dd>
+              </dl>
+            </div>
+          </section>
+
+          <section className={ui.surface} aria-labelledby="sec-payroll">
+            <div className={ui.surfaceHead}><h2 id="sec-payroll" className={ui.surfaceTitle}>Payroll settings</h2></div>
+            <div className={ui.surfaceBody}>
+              <dl className={ui.facts}>
+                <dt>Monthly salary</dt>
+                <dd>{emp.monthly_salary != null ? '₹' + Number(emp.monthly_salary).toLocaleString('en-IN') : '—'}</dd>
+                <dt>Payroll active</dt>
+                <dd><Badge tone={emp.payroll_active ? 'good' : 'neutral'}>{emp.payroll_active ? 'Yes' : 'No'}</Badge></dd>
+                {emp.payroll_notes && (<><dt>Payroll notes</dt><dd className={styles.notes}>{emp.payroll_notes}</dd></>)}
+              </dl>
+            </div>
+          </section>
+
+          <section className={ui.surface} aria-labelledby="sec-fp">
+            <div className={ui.surfaceHead}><h2 id="sec-fp" className={ui.surfaceTitle}>Fingerprint mapping</h2></div>
+            <div className={ui.surfaceBody}>
+              <dl className={ui.facts}>
+                <dt>Fingerprint code</dt><dd className={styles.mono}>{fmt(emp.fingerprint_employee_code)}</dd>
+              </dl>
+              <p className={ui.hint} style={{ margin: '10px 0 0' }}>
+                The machine code that links this person to fingerprint exports. Change it from the directory&rsquo;s Edit action.
+              </p>
+            </div>
+          </section>
+        </div>
+
+        {/* ── Attendance history ── */}
+        <section className={ui.stack} aria-labelledby="sec-records">
+          <h2 id="sec-records" className={ui.surfaceTitle}>Attendance history</h2>
+
+          {recordsFailed && (
+            <Notice kind="error" action={<button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => window.location.reload()}>Try again</button>}>
+              Attendance records could not be loaded.
+            </Notice>
+          )}
+
+          <div className={`${ui.surface} ${ui.surfaceBody}`}>
+            <div className={styles.dates}>
+              <div className={`${ui.field} ${styles.dateField}`}>
+                <label className={ui.label} htmlFor="from-date">From date</label>
+                <input id="from-date" type="date" className={ui.input} value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              </div>
+              <div className={`${ui.field} ${styles.dateField}`}>
+                <label className={ui.label} htmlFor="to-date">To date</label>
+                <input id="to-date" type="date" className={ui.input} value={toDate} onChange={e => setToDate(e.target.value)} />
+              </div>
+              {hasFilter && (
+                <button type="button" className={`boe-btn boe-btn-ghost ${ui.btn}`} onClick={() => { setFromDate(''); setToDate('') }}>
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginTop: 16 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>HR Employee Code</div>
-              <div style={{ fontSize: 13, fontFamily: 'monospace', color: colors.primary }}>{fmt(emp.employee_code)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Fingerprint Code</div>
-              <div style={{ fontSize: 13, fontFamily: 'monospace', color: colors.primary }}>{fmt(emp.fingerprint_employee_code)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Team</div>
-              <div style={{ fontSize: 13, color: colors.primary, textTransform: 'capitalize' }}>{fmt(emp.team)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Role</div>
-              <div style={{ fontSize: 13, color: colors.primary, textTransform: 'capitalize' }}>{fmt(emp.role)}</div>
-            </div>
-          </div>
-
-          {/* Payroll config row */}
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Joining Date</div>
-              <div style={{ fontSize: 13, color: colors.primary }}>
-                {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Monthly Salary</div>
-              <div style={{ fontSize: 13, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-                {emp.monthly_salary != null ? '₹' + Number(emp.monthly_salary).toLocaleString('en-IN') : '—'}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Employment Type</div>
-              <div style={{ fontSize: 13, color: colors.primary, textTransform: 'capitalize' }}>{fmt(emp.employment_type)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Payroll Active</div>
-              <div style={{ fontSize: 13, color: emp.payroll_active ? '#059669' : '#6B7280', fontWeight: 600 }}>
-                {emp.payroll_active ? 'Yes' : 'No'}
-              </div>
-            </div>
-            {emp.payroll_notes && (
-              <div style={{ flexBasis: '100%' }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Payroll Notes</div>
-                <div style={{ fontSize: 13, color: colors.secondary }}>{emp.payroll_notes}</div>
-              </div>
+          <p className={styles.total} aria-live="polite">
+            {summary.total} record{summary.total !== 1 ? 's' : ''} · {summary.present} present · {summary.late} late
+            {summary.earliest && (
+              <> · {formatDate(summary.earliest)}{summary.latest && summary.latest !== summary.earliest ? ` to ${formatDate(summary.latest)}` : ''}</>
             )}
-          </div>
-        </div>
+          </p>
 
-        {/* ── Date filter ── */}
-        <div style={{
-          background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: 10, padding: '16px 20px', marginBottom: 20,
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-            Filter Records
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ flex: '1 1 150px' }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-                From Date
-              </label>
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
-            </div>
-            <div style={{ flex: '1 1 150px' }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-                To Date
-              </label>
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
-            </div>
-            {(fromDate || toDate) && (
-              <button
-                onClick={() => { setFromDate(''); setToDate('') }}
-                style={{
-                  padding: '8px 16px', fontSize: 12, fontWeight: 500, borderRadius: 7,
-                  border: `1px solid ${colors.border}`, cursor: 'pointer',
-                  background: 'transparent', color: colors.secondary,
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Summary cards ── */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-          <SummaryCard label="Total Records"  value={summary.total}   accent={colors.primary} />
-          <SummaryCard label="Present Days"   value={summary.present} accent="#10B981" />
-          <SummaryCard label="Late"           value={summary.late}    accent="#F97316" />
-          <SummaryCard
-            label="Date Range"
-            value={summary.earliest ? formatDate(summary.earliest) : '—'}
-            sub={summary.latest && summary.latest !== summary.earliest ? `to ${formatDate(summary.latest)}` : undefined}
-            accent="#8B5CF6"
-          />
-        </div>
-
-        {/* ── Records table ── */}
-        {filtered.length > 0 ? (
-          <div style={{
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, overflow: 'hidden',
-          }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
-                    {['Date', 'Check In', 'Check Out', 'Status'].map(col => (
-                      <th key={col} style={{
-                        padding: '10px 16px', textAlign: 'left',
-                        fontSize: 11, fontWeight: 600, color: colors.tertiary,
-                        textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      }}>
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageRecords.map((rec, i) => (
-                    <tr
-                      key={rec.id}
-                      style={{ borderBottom: i < pageRecords.length - 1 ? `1px solid ${colors.border}` : 'none' }}
-                    >
-                      <td style={{ padding: '11px 16px', color: colors.primary, whiteSpace: 'nowrap' }}>
-                        {formatDate(rec.attendance_date)}
-                      </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {formatTime(rec.check_in_at)}
-                      </td>
-                      <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                        {formatTime(rec.check_out_at)}
-                      </td>
-                      <td style={{ padding: '11px 16px' }}>
-                        {statusBadge(rec.status)}
-                      </td>
+          {filtered.length > 0 ? (
+            <div className={ui.surface}>
+              <div className={`${ui.tableWrap} ${ui.desktopOnly}`}>
+                <table className={ui.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Check in</th>
+                      <th scope="col">Check out</th>
+                      <th scope="col">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {pageRecords.map(rec => (
+                      <tr key={rec.id}>
+                        <td className={ui.nowrap}>{formatDate(rec.attendance_date)}</td>
+                        <td className={ui.nowrap}>{formatTime(rec.check_in_at)}</td>
+                        <td className={ui.nowrap}>{formatTime(rec.check_out_at)}</td>
+                        <td>{statusBadge(rec.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Pagination footer */}
-            <div style={{
-              padding: '12px 16px', borderTop: `1px solid ${colors.border}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              fontSize: 12, color: colors.tertiary,
-            }}>
-              <span>Page {page} of {totalPages} · {filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => setPage(p => p - 1)}
-                  disabled={page <= 1}
-                  style={{
-                    padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
-                    border: `1px solid ${colors.border}`, cursor: page <= 1 ? 'not-allowed' : 'pointer',
-                    background: colors.base, color: colors.primary, opacity: page <= 1 ? 0.4 : 1,
-                  }}
-                >Previous</button>
-                <button
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={page >= totalPages}
-                  style={{
-                    padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
-                    border: `1px solid ${colors.border}`, cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-                    background: colors.base, color: colors.primary, opacity: page >= totalPages ? 0.4 : 1,
-                  }}
-                >Next</button>
+              <ul className={ui.cards} style={{ padding: 10 }}>
+                {pageRecords.map(rec => (
+                  <li key={rec.id} className={`${ui.surface} ${ui.card}`}>
+                    <div className={ui.cardHead}>
+                      <div className={ui.strong}>{formatDate(rec.attendance_date)}</div>
+                      {statusBadge(rec.status)}
+                    </div>
+                    <div className={ui.sub}>In {formatTime(rec.check_in_at)} · Out {formatTime(rec.check_out_at)}</div>
+                  </li>
+                ))}
+              </ul>
+
+              <div className={styles.pager}>
+                <span>Page {page} of {totalPages} · {filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
+                <div className={styles.pagerBtns}>
+                  <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => setPage(p => p - 1)} disabled={page <= 1}>Previous</button>
+                  <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>Next</button>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div style={{
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, padding: '48px 24px', textAlign: 'center',
-            color: colors.tertiary, fontSize: 13,
-          }}>
-            No attendance records found{fromDate || toDate ? ' for the selected date range' : ''}.
-          </div>
-        )}
+          ) : (
+            <StateBlock kind="empty" title="No attendance records found">
+              {hasFilter ? 'Nothing falls inside the selected date range.' : 'No attendance has been recorded for this employee yet.'}
+            </StateBlock>
+          )}
+        </section>
 
       </div>
     </AttendancePayrollLayout>

@@ -5,12 +5,18 @@
 // This replaces AttendanceLayout and PayrollLayout, which were two copies of
 // the same component differing only in the brand sub-label and the sidebar
 // array. Anything fixed in one of them had to be remembered in the other, and
-// twice it was not: the Payroll sidebar never gained the role branch, and the
-// Attendance sidebar never gained the Monthly Review link.
+// twice it was not.
 //
 // One shell, one nav definition (attendancePayrollNav.tsx), one brand. The
 // mobile menu is this same <aside> with `.open` toggled, so desktop and mobile
 // render the identical list — there is no second menu to keep in step.
+//
+// Page anatomy, top to bottom, the same on every page of the module:
+//
+//   header       title · one-line description · the page's primary action ·
+//                notification bell · refresh
+//   section tabs one row, only for a section that groups several pages
+//   body         the page (status filters, tables and forms live here)
 //
 // What this does NOT merge: the guards. /attendance is still behind
 // AttendanceGuard and /payroll behind PayrollGuard, both of which resolve
@@ -19,6 +25,7 @@
 // src/lib/moduleAccess.ts.
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -26,12 +33,16 @@ import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { IssueNotificationBell } from '@/components/layout/IssueNotificationBell'
+import { ModuleSectionTabs } from '@/components/layout/ModuleSectionTabs'
 import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 import {
   ATTENDANCE_PAYROLL_MODULE_NAME,
+  adminSectionFor,
   attendancePayrollNavFor,
   isAttendancePayrollNavItemActive,
+  notificationsPathFor,
 } from './attendancePayrollNav'
+import styles from './attendancePayrollShell.module.css'
 
 type AttendancePayrollLayoutProps = {
   profile: UserProfile | null
@@ -50,10 +61,15 @@ export function AttendancePayrollLayout({
   onSignOut,
   children,
 }: AttendancePayrollLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [refreshing,  setRefreshing]  = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
+  // The drawer is open only for the page it was opened on, so it closes on ANY
+  // route change — a sidebar link, a tab, the bell, the browser's Back button —
+  // without an effect to reset it.
+  const [drawerOpenedAt, setDrawerOpenedAt] = useState<string | null>(null)
+  const sidebarOpen = drawerOpenedAt === pathname
+  const setSidebarOpen = (open: boolean) => setDrawerOpenedAt(open ? pathname : null)
+  const [refreshing,  setRefreshing]  = useState(false)
   const { triggerRefresh } = useRefresh()
 
   const handleRefresh = useCallback(() => {
@@ -71,11 +87,6 @@ export function AttendancePayrollLayout({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const navTo = (path: string) => {
-    router.push(path)
-    setSidebarOpen(false)
-  }
-
   // This shell renders both the management screens (/attendance/*, /payroll/*)
   // and the self-service ones (/my-attendance, /my-payroll, /my-issues). Every
   // management destination is admin-only, so showing them to a non-admin only
@@ -85,6 +96,11 @@ export function AttendancePayrollLayout({
   const isAdmin = profile?.role === 'admin'
 
   const navItems = attendancePayrollNavFor(!!isAdmin)
+
+  // The tab row belongs to the admin section the URL is in. An employee's
+  // sidebar is flat, and a page outside every section (notifications, the
+  // account page) has no row.
+  const section = isAdmin ? adminSectionFor(pathname) : null
 
   // Employee-raised attendance and payroll issues: one category, one query key,
   // one count, whichever page of the module you are on.
@@ -99,13 +115,10 @@ export function AttendancePayrollLayout({
   const unreadIssues = useUnreadAttendancePayrollNotifications()
 
   // Admins review the whole company's issues at /attendance/notifications, which
-  // is behind AttendanceGuard. An employee's door onto the same feed sits beside
-  // their own issue list instead.
-  //
-  // ONE door per role. /payroll/notifications still resolves — it is the same
-  // shared feed and old links must keep working — but the sidebar no longer
-  // offers a second entry to the identical queue.
-  const notificationsHref = isAdmin ? '/attendance/notifications' : '/my-issues/notifications'
+  // is behind AttendanceGuard. An employee's door onto the same feed is their
+  // own page. ONE door per role; /payroll/notifications still resolves — it is
+  // the same shared feed and old links must keep working.
+  const notificationsHref = notificationsPathFor(!!isAdmin)
 
   return (
     <div className="boe-app-shell">
@@ -131,6 +144,7 @@ export function AttendancePayrollLayout({
           <button
             onClick={() => router.push('/modules')}
             title="BOE OS Home"
+            aria-label="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
@@ -145,36 +159,31 @@ export function AttendancePayrollLayout({
           </button>
         </div>
 
-        {/* Nav */}
-        <div className="boe-sidebar-section">
+        {/* Nav — real links, so each one prefetches, opens in a new tab and
+            announces itself with aria-current. */}
+        <nav className="boe-sidebar-section" aria-label={`${ATTENDANCE_PAYROLL_MODULE_NAME} sections`}>
           {navItems.map(item => {
-            const active = isAttendancePayrollNavItemActive(pathname, item)
+            // Admin sections light for every page inside them (a tab's page, a
+            // payslip, an employee record). Employee entries use the path rules.
+            const active = isAdmin
+              ? section?.path === item.path
+              : isAttendancePayrollNavItemActive(pathname, item)
             return (
-              <button
+              <Link
                 key={item.path}
+                href={item.path}
                 className={`boe-nav-item${active ? ' active' : ''}`}
-                onClick={() => navTo(item.path)}
                 aria-current={active ? 'page' : undefined}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
-                <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <span aria-hidden="true" style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
                 {item.label}
-              </button>
+              </Link>
             )
           })}
-        </div>
-
-        {/* The issue feed, in the shape every other module uses: the large alert
-            while something is unread, the plain nav entry otherwise. This is the
-            module's only door onto the feed — same rows, same count, same query
-            cache for admins and employees; only the destination differs by role. */}
-        <IssueNotificationBell
-          unread={unreadIssues}
-          href={notificationsHref}
-          onNavigate={() => setSidebarOpen(false)}
-        />
+        </nav>
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection
@@ -199,36 +208,35 @@ export function AttendancePayrollLayout({
           >
             ☰
           </button>
-          <div className="boe-page-title-group">
-            <div className="boe-page-title">{title}</div>
+          <div className={`boe-page-title-group ${styles.titleGroup}`}>
+            <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          <div className="boe-header-actions">
+          <div className={`boe-header-actions ${styles.headerActions}`}>
             {actions}
+            {/* The module's one door onto the notification feed, with its
+                unread count — see IssueNotificationBell. */}
+            <IssueNotificationBell unread={unreadIssues} href={notificationsHref} />
             <button
+              type="button"
               onClick={handleRefresh}
               disabled={refreshing}
               title="Refresh"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
-                border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#DC1F2E' : '#6B7384',
-                cursor: refreshing ? 'default' : 'pointer',
-                flexShrink: 0, transition: 'background 0.15s, color 0.15s',
-              }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
-              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
+              aria-label="Refresh"
+              className={`${styles.iconBtn}${refreshing ? ` ${styles.iconBtnActive}` : ''}`}
             >
               <RefreshCw
                 size={14}
                 strokeWidth={2}
-                style={refreshing ? { animation: 'boe-spin 0.7s linear infinite' } : undefined}
+                className={refreshing ? styles.spin : undefined}
+                aria-hidden="true"
               />
             </button>
           </div>
         </div>
+
+        {/* Section tabs — one row, beneath the header */}
+        {section && <ModuleSectionTabs section={section} pathname={pathname} />}
 
         {/* Page body */}
         <div className="boe-page-body">

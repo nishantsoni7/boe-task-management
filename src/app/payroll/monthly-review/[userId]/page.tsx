@@ -22,6 +22,7 @@ import { Avatar, LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { periodLabel } from '@/lib/payroll/months'
+import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import {
   fmt,
   fmtHours,
@@ -253,17 +254,6 @@ function AdjustmentsPanel({
     setDeleting(null)
   }
 
-  const inputStyle: React.CSSProperties = {
-    fontSize: 13, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8,
-    background: '#fff', color: '#111318', outline: 'none',
-    padding: '8px 11px', boxSizing: 'border-box',
-  }
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: 10.5, fontWeight: 700, color: '#8C94A6',
-    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5,
-  }
-
   const netAdj = adjustments.reduce((s, a) => s + (a.adjustment_type === 'addition' ? a.amount : -a.amount), 0)
 
   return (
@@ -272,21 +262,21 @@ function AdjustmentsPanel({
 
       {/* Add form */}
       <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div>
-            <label htmlFor="adj-type" style={labelStyle}>Type</label>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className={ui.field} style={{ flex: '1 1 130px' }}>
+            <label htmlFor="adj-type" className={ui.label}>Type</label>
             <select
               id="adj-type"
               value={adjType}
               onChange={e => setAdjType(e.target.value as 'addition' | 'deduction')}
-              style={{ ...inputStyle, width: 132 }}
+              className={ui.input}
             >
               <option value="addition">Addition</option>
               <option value="deduction">Deduction</option>
             </select>
           </div>
-          <div>
-            <label htmlFor="adj-amount" style={labelStyle}>Amount (₹)</label>
+          <div className={ui.field} style={{ flex: '1 1 130px' }}>
+            <label htmlFor="adj-amount" className={ui.label}>Amount (₹)</label>
             <input
               id="adj-amount"
               type="number"
@@ -295,31 +285,31 @@ function AdjustmentsPanel({
               placeholder="0.00"
               value={adjAmount}
               onChange={e => setAdjAmount(e.target.value)}
-              style={{ ...inputStyle, width: 124 }}
+              className={ui.input}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label htmlFor="adj-note" style={labelStyle}>Note (required)</label>
+          <div className={ui.field} style={{ flex: '3 1 220px' }}>
+            <label htmlFor="adj-note" className={ui.label}>Note (required)</label>
             <input
               id="adj-note"
               type="text"
               placeholder="Reason for adjustment…"
               value={adjNote}
               onChange={e => setAdjNote(e.target.value)}
-              style={{ ...inputStyle, width: '100%' }}
+              className={ui.input}
             />
           </div>
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: 13, flexShrink: 0 }}
+            className={`boe-btn boe-btn-primary ${ui.btn}`}
+            style={{ flexShrink: 0 }}
           >
             {saving ? 'Saving…' : adjType === 'addition' ? 'Add' : 'Deduct'}
           </button>
         </div>
         {formErr && (
-          <div style={{ marginTop: 8, fontSize: 12.5, color: '#DC2626' }}>{formErr}</div>
+          <div style={{ marginTop: 10 }}><Notice kind="error">{formErr}</Notice></div>
         )}
       </div>
 
@@ -353,8 +343,7 @@ function AdjustmentsPanel({
                   <button
                     onClick={() => handleDelete(a.id)}
                     disabled={deleting === a.id}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '2px 10px', fontSize: 12 }}
+                    className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
                   >
                     {deleting === a.id ? '…' : 'Delete'}
                   </button>
@@ -492,34 +481,36 @@ export default function PayrollMonthlyReviewDetailPage() {
     <AttendancePayrollLayout
       profile={profile}
       title={data && !data.skipped ? `${data.employee.full_name} — ${monthLabel}` : 'Payroll Preview Detail'}
-      subtitle="Engine-computed payroll breakdown"
+      subtitle={monthLabel ? `${monthLabel} — preview calculated now from attendance, not saved.` : 'Preview calculated now from attendance, not saved.'}
       onSignOut={handleSignOut}
     >
       {/* Back link — secondary, and kept to a single tight line, as on Payroll
           Result Detail. */}
       <div style={{ marginBottom: 12 }}>
-        <Link
-          href={backHref}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 12.5, color: '#8C94A6', textDecoration: 'none',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#111318')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#8C94A6')}
-        >
-          ← Back to Monthly Preview
+        <Link href={backHref} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>
+          ← Monthly Preview{monthLabel ? ` · ${monthLabel}` : ''}
         </Link>
       </div>
 
       <div className="payroll-detail-page">
 
         {error && (
-          <div style={{
-            marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-            background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-            border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
-          }}>
-            {error}
+          <div style={{ marginBottom: 16 }}>
+            <Notice
+              kind="error"
+              action={year && month ? (
+                <button
+                  type="button"
+                  className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
+                  disabled={fetching}
+                  onClick={() => { setError(''); void loadDetail(token) }}
+                >
+                  Try again
+                </button>
+              ) : undefined}
+            >
+              {error}
+            </Notice>
           </div>
         )}
 
@@ -558,26 +549,19 @@ export default function PayrollMonthlyReviewDetailPage() {
         )}
 
         {!year || !month ? (
-          <div style={{ ...CARD, padding: '28px 20px', fontSize: 13, color: '#8C94A6' }}>
-            No payroll month selected. Open this employee from the Monthly Preview list.
-          </div>
+          <StateBlock kind="empty" title="No payroll month selected">
+            Open this employee from the Monthly Preview list.
+          </StateBlock>
         ) : null}
 
         {fetching && (
-          <div style={{ ...CARD, padding: '32px 20px', fontSize: 13, color: '#8C94A6' }}>
-            Computing payroll…
-          </div>
+          <StateBlock kind="loading" title="Computing payroll…" />
         )}
 
         {!fetching && data?.skipped && (
-          <div style={{ ...CARD, padding: '22px 20px' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#B45309', marginBottom: 5 }}>
-              Skipped
-            </div>
-            <div style={{ fontSize: 13, color: '#6B7280' }}>
-              {SKIP_LABELS[data.skip_reason] ?? data.skip_reason}
-            </div>
-          </div>
+          <StateBlock kind="empty" title="Skipped">
+            {SKIP_LABELS[data.skip_reason] ?? data.skip_reason}
+          </StateBlock>
         )}
 
         {/* Calculation (left) + payroll summary rail (right).

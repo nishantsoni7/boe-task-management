@@ -1,0 +1,105 @@
+/* Upload page only: the step strip, inline totals, mapping rows, employee picker.
+ * Everything else comes from the shared ui.module.css. */
+
+.narrow { max-width: 760px; }
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12.5px;
+  color: #6B7384;
+}
+.step { display: inline-flex; align-items: center; gap: 6px; }
+.step + .step::before { content: '›'; color: #9CA3AF; margin-right: 2px; }
+.stepNum {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: #EEF0F4; color: #4A5261;
+}
+.stepDone .stepNum { background: rgba(16, 185, 129, 0.15); color: #047857; }
+.stepCurrent { color: #111318; font-weight: 700; }
+.stepCurrent .stepNum { background: #111318; color: #fff; }
+
+.expected {
+  list-style: disc;
+  margin: 0;
+  padding: 10px 14px 10px 30px;
+  background: #F8F9FB;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4A5261;
+}
+
+.fileMeta { font-size: 12.5px; color: #6B7384; overflow-wrap: anywhere; }
+
+/* Inline totals: a value and its label, not tiles. */
+.stats { display: flex; flex-wrap: wrap; gap: 6px 26px; margin: 0; }
+.stat { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: #6B7384; }
+.statValue { font-size: 18px; font-weight: 700; color: #111318; font-variant-numeric: tabular-nums; }
+
+.sectionLabel {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+  color: #4A5261; margin: 0 0 8px;
+}
+
+.mapRow {
+  display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap;
+  padding: 9px 12px; border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+  font-size: 13px; color: #111318;
+}
+.mapRowGood { background: rgba(16, 185, 129, 0.06); border-color: rgba(16, 185, 129, 0.3); }
+.mapRowWarn { background: rgba(232, 160, 48, 0.07); border-color: rgba(232, 160, 48, 0.35); flex-direction: column; align-items: stretch; }
+.mapLine { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
+.mapEnd { margin-left: auto; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.confirmBox {
+  margin-top: 10px; padding: 12px; border-radius: 8px;
+  background: #fff; border: 1px solid rgba(0, 0, 0, 0.14);
+  font-size: 13px; line-height: 1.55; color: #111318;
+}
+
+.picker {
+  margin-top: 6px; max-height: 220px; overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 8px; background: #fff;
+}
+.pickerItem {
+  display: block; width: 100%; text-align: left;
+  min-height: 40px; padding: 8px 12px; font-size: 13px; font-family: inherit;
+  background: transparent; border: 0; border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #111318; cursor: pointer;
+}
+.pickerItem:last-child { border-bottom: 0; }
+.pickerItem:hover { background: #F4F5F7; }
+.pickerItem:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+
+.errList { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.errItem {
+  font-size: 12.5px; color: #991B1B; padding: 5px 10px; border-radius: 6px;
+  background: rgba(239, 68, 68, 0.06); font-family: ui-monospace, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+.oldVal { color: #6B7384; }
+.newVal { color: #111318; font-weight: 600; }
+
+@media (max-width: 560px) {
+  .step + .step::before { display: none; }
+}
+
+@media (max-width: 767px) {
+  .pickerItem { min-height: 44px; }
+  .mapEnd { margin-left: 0; }
+  .actions > * { flex: 1 1 100%; }
+}

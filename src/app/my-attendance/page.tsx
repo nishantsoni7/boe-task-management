@@ -20,8 +20,9 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
-import { colors } from '@/lib/tokens'
 import { RefreshCw } from 'lucide-react'
+import { MonthPicker, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
+import styles from './myAttendance.module.css'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import { MyAttendanceRequests } from '@/components/attendanceRequests/MyAttendanceRequests'
@@ -39,7 +40,6 @@ import {
 import {
   istCurrentYearMonth,
   selectableMonthsInYear,
-  selectableYears,
   MONTH_NOT_IMPORTED_TITLE,
   monthNotImportedMessage,
   coverageNoticeMessage,
@@ -301,265 +301,221 @@ export default function MyAttendancePage() {
   const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
   const partiallyUploaded = monthImported && coverageThrough != null && coverageThrough < monthEnd
 
+  const statusPill = (effective: string) => {
+    const tone = statusTone(effective)
+    return (
+      <span className={ui.badge} style={{ background: tone.bg, color: tone.fg }}>
+        {statusLabel(effective)}
+      </span>
+    )
+  }
+
+  /** Status of an issue already raised, plus the actions that remain for that day. */
+  const issueControls = (r: MyDayRow) => {
+    const objection = objectionByDate.get(r.attendance_date)
+    return (
+      <div className={styles.issueControls}>
+        {objection && (
+          <>
+            <span
+              title={objection.review_note ?? undefined}
+              className={ui.badge}
+              style={{ background: objectionTone(objection.status).bg, color: objectionTone(objection.status).fg }}
+            >
+              {employeeStatusLabel(objection.status)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHistoryDate(r.attendance_date)}
+              className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
+            >
+              History
+            </button>
+          </>
+        )}
+        {canRaiseIssue(objection) && (
+          <button
+            type="button"
+            onClick={() => setIssueDay(r)}
+            className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
+          >
+            {raiseActionLabel(objection)}
+          </button>
+        )}
+      </div>
+    )
+  }
+
   return (
     <AttendancePayrollLayout
       profile={profile}
       title="My Attendance"
-      subtitle="Your own attendance record, month by month"
+      subtitle="Your own attendance record, month by month. Something look wrong? Raise an issue on that day."
       onSignOut={handleSignOut}
-      actions={
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <select
-            aria-label="Month"
-            value={month}
-            onChange={e => changeMonth(year, Number(e.target.value))}
-            className="boe-input"
-            style={{ padding: '8px 10px', fontSize: 13 }}
+    >
+      <div className={ui.stack}>
+        {error && (
+          <Notice
+            kind="error"
+            action={
+              <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => void load(year, month)} disabled={busy}>
+                Try again
+              </button>
+            }
           >
-            {/* Only months that have started. A future month holds no
-                attendance, so offering one just invites a wrong answer. */}
-            {selectableMonthsInYear(year).map(m => (
-              <option key={m} value={m}>{MONTHS[m - 1]}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Year"
-            value={year}
-            onChange={e => changeMonth(Number(e.target.value), month)}
-            className="boe-input"
-            style={{ padding: '8px 10px', fontSize: 13 }}
-          >
-            {selectableYears().map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
+            {error}
+          </Notice>
+        )}
+
+        {/* Late, early, time out, half day, leave — the one entry point. */}
+        <MyAttendanceRequests getToken={getToken} />
+
+        <div className={ui.toolbar} style={{ marginBottom: 0 }}>
+          {/* Only months that have started. A future month holds no
+              attendance, so offering one just invites a wrong answer. */}
+          <MonthPicker year={year} month={month} onChange={changeMonth} idPrefix="my-att" />
           <button
             type="button"
             onClick={() => void load(year, month)}
             disabled={busy}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '8px 10px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            className={`boe-btn boe-btn-ghost ${ui.btnSm} ${styles.refresh}`}
           >
             <RefreshCw size={13} className={busy ? 'boe-spin' : undefined} /> Refresh
           </button>
+          <span className={ui.muted} style={{ fontSize: 13 }} aria-live="polite">
+            {MONTHS[month - 1]} {year}
+            {busy && <span style={{ marginLeft: 8 }}>· Loading…</span>}
+          </span>
         </div>
-      }
-    >
-      {error && (
-        <div role="alert" style={{
-          marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
-        }}>
-          {error}
-        </div>
-      )}
 
-      {/* Late, early, time out, half day, leave — the one entry point. */}
-      <MyAttendanceRequests getToken={getToken} />
-
-      <div style={{ fontSize: 13, color: colors.tertiary, marginBottom: 12 }}>
-        {MONTHS[month - 1]} {year}
-        {busy && <span style={{ marginLeft: 8 }}>· Loading…</span>}
-      </div>
-
-      {/* Nothing uploaded for this month. Shown INSTEAD of the table, not as an
-          empty row inside it: a table of dates with no data still reads as a
-          statement about those dates, and there is no statement to make yet. */}
-      {!monthImported && !busy && (
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: 12,
-          background: colors.base, padding: '34px 24px', textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111318', marginBottom: 6 }}>
-            {MONTH_NOT_IMPORTED_TITLE}
-          </div>
-          <div style={{ fontSize: 13, color: colors.tertiary, lineHeight: 1.55 }}>
+        {/* Nothing uploaded for this month. Shown INSTEAD of the table, not as an
+            empty row inside it: a table of dates with no data still reads as a
+            statement about those dates, and there is no statement to make yet. */}
+        {!monthImported && !busy && (
+          <StateBlock kind="empty" title={MONTH_NOT_IMPORTED_TITLE}>
             {monthNotImportedMessage(`${MONTHS[month - 1]} ${year}`)}
-          </div>
-          <div style={{ fontSize: 12.5, color: colors.muted, marginTop: 10 }}>
-            Nothing here counts as an absence — pick an earlier month to see your record.
-          </div>
-        </div>
-      )}
+            <div style={{ marginTop: 8 }}>
+              Nothing here counts as an absence — pick an earlier month to see your record.
+            </div>
+          </StateBlock>
+        )}
 
-      {/* The current month, uploaded only part-way. The days after the cut-off
-          are not in the table at all — they have not been processed, and some
-          have not happened, so neither one is something to be absent on. */}
-      {partiallyUploaded && !busy && (
-        <div style={{
-          marginBottom: 12, padding: '10px 14px', borderRadius: 10,
-          background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.30)',
-          fontSize: 12.5, color: '#8A5A12', lineHeight: 1.55,
-        }}>
-          {coverageNoticeMessage(dayLabel(coverageThrough!))}
-        </div>
-      )}
+        {/* The current month, uploaded only part-way. The days after the cut-off
+            are not in the table at all — they have not been processed, and some
+            have not happened, so neither one is something to be absent on. */}
+        {partiallyUploaded && !busy && (
+          <Notice kind="warning">{coverageNoticeMessage(dayLabel(coverageThrough!))}</Notice>
+        )}
 
-      {/* Wide content scrolls inside its own box, so the page itself never does. */}
-      {monthImported && (
-      <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: 12,
-        background: colors.base, overflowX: 'auto',
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Date', 'In', 'Out', 'Hours', 'Status', ''].map((h, i) => (
-                <th key={h || 'issue'} style={{
-                  textAlign: i === 0 || i >= 4 ? 'left' : 'right',
-                  padding: '10px 14px', fontSize: 11, fontWeight: 600,
-                  color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !busy && (
-              <tr>
-                <td colSpan={6} style={{ padding: '28px 14px', textAlign: 'center', fontSize: 13, color: colors.muted }}>
-                  No attendance recorded for this month yet.
-                </td>
-              </tr>
-            )}
-            {rows.map(r => {
-              const tone = statusTone(r.effective_status)
-              const objection = objectionByDate.get(r.attendance_date)
-              return (
-                <tr key={r.id} style={{ borderTop: `1px solid ${colors.border}` }}>
-                  <td style={{
-                    padding: '10px 14px', fontSize: 13, color: '#111318',
-                    whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {dayLabel(r.attendance_date)}
-                    {r.is_corrected && (
-                      <span style={{ marginLeft: 8, fontSize: 11, color: '#3B63B8', fontWeight: 600 }}>
-                        Corrected
-                      </span>
-                    )}
-                    <DayRequestChips items={requestsOnDate.get(r.attendance_date)} />
-                  </td>
-                  <td style={{
-                    padding: '10px 14px', fontSize: 13, textAlign: 'right',
-                    fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                    color: r.check_in_at ? '#3D4455' : colors.muted,
-                  }}>
-                    {clock(r.check_in_at)}
-                  </td>
-                  <td style={{
-                    padding: '10px 14px', fontSize: 13, textAlign: 'right',
-                    fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                    color: r.check_out_at ? '#3D4455' : colors.muted,
-                  }}>
-                    {clock(r.check_out_at)}
-                  </td>
-                  <td style={{
-                    padding: '10px 14px', fontSize: 13, textAlign: 'right',
-                    fontVariantNumeric: 'tabular-nums', color: '#3D4455',
-                  }}>
-                    {r.hours_worked != null && r.hours_worked > 0 ? r.hours_worked.toFixed(2) : '—'}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <span style={{
-                      display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-                      fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
-                      background: tone.bg, color: tone.fg,
-                    }}>
-                      {statusLabel(r.effective_status)}
-                    </span>
-                    {r.is_late && r.late_minutes != null && r.late_minutes > 0 && (
-                      <span style={{ marginLeft: 8, fontSize: 11.5, color: '#B45309' }}>
-                        {r.late_minutes}m late
-                      </span>
-                    )}
-                  </td>
-                  {/* Quiet by design: reporting a problem is rare, so the
-                      control should not compete with the day's own figures.
+        {monthImported && rows.length === 0 && !busy && (
+          <StateBlock kind="empty" title="No attendance recorded for this month yet" />
+        )}
 
-                      The status and the action are shown TOGETHER once a day
-                      has been reported. Showing only the badge is what left an
-                      employee with no way back after a decision — a rejected
-                      issue looked like a permanent verdict on the row. */}
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {objection && (
-                        <>
-                          <span
-                            title={objection.review_note ?? undefined}
-                            style={{
-                              display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-                              fontSize: 11.5, fontWeight: 600,
-                              background: objectionTone(objection.status).bg,
-                              color: objectionTone(objection.status).fg,
-                            }}
-                          >
-                            {employeeStatusLabel(objection.status)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setHistoryDate(r.attendance_date)}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 10px', fontSize: 12 }}
-                          >
-                            History
-                          </button>
-                        </>
-                      )}
-                      {canRaiseIssue(objection) && (
-                        <button
-                          type="button"
-                          onClick={() => setIssueDay(r)}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 10px', fontSize: 12 }}
-                        >
-                          {raiseActionLabel(objection)}
-                        </button>
-                      )}
+        {monthImported && rows.length > 0 && (
+          <>
+            {/* Desktop and tablet: the table. */}
+            <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }}>
+              <div className={ui.tableWrap}>
+                <table className={ui.table}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col" className={ui.num}>In</th>
+                      <th scope="col" className={ui.num}>Out</th>
+                      <th scope="col" className={ui.num}>Hours</th>
+                      <th scope="col">Status</th>
+                      <th scope="col"><span className={ui.srOnly}>Issue</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(r => (
+                      <tr key={r.id}>
+                        <td className={ui.nowrap}>
+                          {dayLabel(r.attendance_date)}
+                          {r.is_corrected && <span className={styles.corrected}>Corrected</span>}
+                          <DayRequestChips items={requestsOnDate.get(r.attendance_date)} />
+                        </td>
+                        <td className={`${ui.num} ${r.check_in_at ? '' : ui.muted}`}>{clock(r.check_in_at)}</td>
+                        <td className={`${ui.num} ${r.check_out_at ? '' : ui.muted}`}>{clock(r.check_out_at)}</td>
+                        <td className={ui.num}>
+                          {r.hours_worked != null && r.hours_worked > 0 ? r.hours_worked.toFixed(2) : '—'}
+                        </td>
+                        <td>
+                          {statusPill(r.effective_status)}
+                          {r.is_late && r.late_minutes != null && r.late_minutes > 0 && (
+                            <span className={styles.late}>{r.late_minutes}m late</span>
+                          )}
+                        </td>
+                        {/* Quiet by design: reporting a problem is rare, so the
+                            control should not compete with the day's own figures.
+
+                            The status and the action are shown TOGETHER once a day
+                            has been reported. Showing only the badge is what left an
+                            employee with no way back after a decision — a rejected
+                            issue looked like a permanent verdict on the row. */}
+                        <td>{issueControls(r)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Phone: one card per day, so nothing scrolls sideways. */}
+            <ul className={ui.cards} aria-label="Days this month">
+              {rows.map(r => (
+                <li key={r.id} className={`${ui.surface} ${ui.card}`}>
+                  <div className={ui.cardHead}>
+                    <div className={ui.strong}>
+                      {dayLabel(r.attendance_date)}
+                      {r.is_corrected && <span className={styles.corrected}>Corrected</span>}
                     </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      )}
+                    <div>{statusPill(r.effective_status)}</div>
+                  </div>
+                  <div className={ui.sub}>
+                    {clock(r.check_in_at)} → {clock(r.check_out_at)}
+                    {r.hours_worked != null && r.hours_worked > 0 && ` · ${r.hours_worked.toFixed(2)} h`}
+                    {r.is_late && r.late_minutes != null && r.late_minutes > 0 && (
+                      <span className={styles.late}>{r.late_minutes}m late</span>
+                    )}
+                  </div>
+                  <DayRequestChips items={requestsOnDate.get(r.attendance_date)} />
+                  {issueControls(r)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
-      {/* Requests and their decisions — shown whether or not this month's
-          attendance has been imported, and kept apart from the punches. */}
-      {!busy && (
-        <MonthRequestsPanel
-          requests={monthRequests}
-          error={requestsError}
-          monthLabel={`${MONTHS[month - 1]} ${year}`}
-          getToken={getToken}
-          audience="employee"
-        />
-      )}
+        {/* Requests and their decisions — shown whether or not this month's
+            attendance has been imported, and kept apart from the punches. */}
+        {!busy && (
+          <MonthRequestsPanel
+            requests={monthRequests}
+            error={requestsError}
+            monthLabel={`${MONTHS[month - 1]} ${year}`}
+            getToken={getToken}
+            audience="employee"
+          />
+        )}
 
-      {/* There is no employee-facing correction request in this system — the
-          only correction workflow is the admin one. Rather than invent a second
-          one, say who to go to. */}
-      {monthImported && (
-      <div style={{
-        marginTop: 14, padding: '11px 14px', borderRadius: 10,
-        background: '#F4F6F9', border: `1px solid ${colors.border}`,
-        fontSize: 12.5, color: '#4B5563', lineHeight: 1.55,
-      }}>
-        {anyCorrected
-          ? 'Days marked “Corrected” were adjusted by an admin after the machine import. '
-          : ''}
-        Something look wrong? Use <strong>Raise Issue</strong> on that day. An admin
-        reviews it — raising an issue does not change your attendance or salary by
-        itself. Applied corrections show as <strong>Corrected</strong>. Once an admin
-        has resolved or rejected an issue you can raise it again; every earlier
-        submission and reply stays under <strong>History</strong>, and all of them are
-        listed on <strong>My Issues</strong>.
+        {/* There is no employee-facing correction request in this system — the
+            only correction workflow is the admin one. Rather than invent a second
+            one, say who to go to. */}
+        {monthImported && (
+          <Notice kind="info">
+            {anyCorrected
+              ? 'Days marked “Corrected” were adjusted by an admin after the machine import. '
+              : ''}
+            Something look wrong? Use <strong>Raise Issue</strong> on that day. An admin
+            reviews it — raising an issue does not change your attendance or salary by
+            itself. Applied corrections show as <strong>Corrected</strong>. Once an admin
+            has resolved or rejected an issue you can raise it again; every earlier
+            submission and reply stays under <strong>History</strong>, and all of them are
+            listed on <strong>My Issues</strong>.
+          </Notice>
+        )}
       </div>
-      )}
 
       {issueDay && (
         <RaiseIssueModal

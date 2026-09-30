@@ -1,0 +1,137 @@
+/* Attendance & Payroll shell — header controls and the section tab row.
+ *
+ * Colours are the app's existing tokens (see src/lib/tokens.ts): the #F4F5F7
+ * page ground, white surfaces, #111318 text, rgba(0,0,0,.08) borders and BOE
+ * red #DC1F2E for the single active/attention accent. No amber: amber in this
+ * module means "warning" on a status badge, never "you are here".
+ */
+
+/* ── Header icon buttons (bell + refresh) ─────────────────────────────────── */
+
+.iconBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: #fff;
+  color: #4A5261;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.iconBtn:hover:not(:disabled) {
+  background: rgba(220, 31, 46, 0.06);
+  color: #DC1F2E;
+  border-color: rgba(220, 31, 46, 0.25);
+}
+.iconBtn:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+}
+.iconBtn:disabled { cursor: default; }
+.iconBtnActive {
+  background: rgba(220, 31, 46, 0.08);
+  color: #DC1F2E;
+  border-color: rgba(220, 31, 46, 0.25);
+}
+
+.bellBadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #DC1F2E;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-sizing: border-box;
+  border: 2px solid #F4F5F7;
+}
+
+.spin { animation: boe-spin 0.7s linear infinite; }
+
+/* ── Section tabs ─────────────────────────────────────────────────────────── */
+
+.tabsRow {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 22px;
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  /* One row. On a phone it scrolls sideways inside itself, never the page. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+.tabsRow::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4A5261;
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.tab:hover { color: #111318; background: rgba(0, 0, 0, 0.035); }
+.tab:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.tabActive,
+.tabActive:hover {
+  color: #111318;
+  font-weight: 700;
+  border-bottom-color: #DC1F2E;
+  background: transparent;
+}
+
+/* Help sits at the far end, visibly a link and not a tab. */
+.tabHelp {
+  margin-left: auto;
+  padding-left: 18px;
+  gap: 6px;
+  color: #6B7384;
+}
+.tabHelpActive { color: #111318; font-weight: 700; }
+
+@media (max-width: 767px) {
+  .iconBtn { width: 44px; height: 44px; }
+  .tabsRow { padding: 0 6px; }
+  .tab { padding: 0 12px; }
+  .tabHelp { margin-left: 0; padding-left: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+  .tab, .iconBtn { transition: none; }
+}
+
+/* Header layout: title takes the room beside the menu button; the actions sit
+   on their own line beneath it on a phone instead of pushing the title around. */
+.titleGroup { flex: 1 1 220px; min-width: 0; }
+.headerActions { flex-wrap: wrap; }
+@media (max-width: 767px) {
+  .headerActions { flex: 1 1 100%; justify-content: flex-end; }
+}

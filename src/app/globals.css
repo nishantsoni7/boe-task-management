@@ -2043,6 +2043,26 @@ body {
   box-shadow: inset 2px 0 0 rgba(79,111,208,0.55);
 }
 
+/* On a phone the ledger and the salary report fit the screen instead of
+   scrolling sideways: the money column and the Edit action used to sit
+   off-screen to the right of a 620px minimum. Tighter cells, text wraps. */
+@media (max-width: 560px) {
+  .payroll-ledger,
+  .salary-report-table { min-width: 0 !important; }
+  .payroll-ledger th, .payroll-ledger td,
+  .salary-report-table th, .salary-report-table td { padding: 8px 4px !important; font-size: 12px !important; }
+  /* The text columns wrap; the money and action columns stay on one line. */
+  .payroll-ledger th, .payroll-ledger td:nth-child(-n+3) { white-space: normal !important; }
+  /* The whole row already opens the calculation on tap, so the round "?" is redundant here. */
+  .payroll-ledger td:last-child button[title="How was this calculated?"] { display: none !important; }
+  .payroll-ledger th { letter-spacing: 0 !important; }
+}
+
+@media (max-width: 380px) {
+  .payroll-ledger th, .payroll-ledger td,
+  .salary-report-table th, .salary-report-table td { padding: 8px 3px !important; font-size: 11.5px !important; }
+}
+
 /* ── Showroom product catalog toolbar: search/status/sort/clear ──
    Desktop proportions ≈ 35% / 25% / 40% search/status/sort so full sort
    labels ("Product code A–Z", "MRP high to low") never truncate. */

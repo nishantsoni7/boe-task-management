@@ -24,6 +24,8 @@ import { ParticipationModal, type ParticipationMember } from './ParticipationMod
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
+import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
+import styles from './page.module.css'
 import { isPayrollMonthComplete, payrollMonthOpensOn } from '@/lib/payroll/periodCompletion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -90,24 +92,6 @@ function lastActivity(p: PayrollPeriodRow): { label: string; at: string } | null
   return new Date(finalised.at).getTime() >= new Date(generated.at).getTime() ? finalised : generated
 }
 
-function StatusBadge({ status }: { status: PayrollPeriodRow['status'] }) {
-  const map = {
-    draft:     { bg: 'rgba(140,148,166,0.12)', color: '#6B7280', label: 'Draft' },
-    generated: { bg: 'rgba(16,185,129,0.12)',  color: '#059669', label: 'Generated' },
-    locked:    { bg: 'rgba(232,160,48,0.15)',  color: '#B45309', label: 'Locked' },
-  }
-  const s = map[status]
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-      fontSize: 11.5, fontWeight: 600, background: s.bg, color: s.color,
-      whiteSpace: 'nowrap',
-    }}>
-      {s.label}
-    </span>
-  )
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 // `?issue=<objection id>` arrives here from a Payroll-issue notification, so the
@@ -129,6 +113,7 @@ function PayrollPeriodsPage() {
   const [busy,         setBusy]         = useState<Record<string, boolean>>({})
   const [error,        setError]        = useState<string | null>(null)
   const [success,      setSuccess]      = useState<string | null>(null)
+  const [loadFailed,   setLoadFailed]   = useState(false)
 
   const [createOpen,   setCreateOpen]   = useState(false)
   const [creating,     setCreating]     = useState(false)
@@ -215,9 +200,16 @@ function PayrollPeriodsPage() {
     const res = await fetch('/api/payroll/periods', {
       headers: { authorization: `Bearer ${accessToken}` },
     })
-    if (!res.ok) { setError('Failed to load payroll periods'); return }
+    if (!res.ok) { setError('Failed to load payroll periods'); setLoadFailed(true); return }
     const json = await res.json()
+    setLoadFailed(false)
     setPeriods(json.periods ?? [])
+  }
+
+  // Same request as the first load, run again on demand.
+  const retryLoad = async () => {
+    setError(null)
+    await loadPeriods(token)
   }
 
   useEffect(() => {
@@ -548,22 +540,48 @@ function PayrollPeriodsPage() {
   // Every figure below is derived from the list already fetched above — no
   // extra query, no extra round trip.
   const summary = useMemo(() => {
-    // The API returns periods newest-first, so the first row is the current one.
-    const current = periods[0] ?? null
     const latestGenerated = periods.find(p => p.last_generated_at != null) ?? null
     const attention = periods.filter(p => p.out_of_date).length
-    return { current, latestGenerated, attention }
+    return { latestGenerated, attention }
   }, [periods])
 
   if (loading) return <LoadingScreen />
 
+  const rowActions = (p: PayrollPeriodRow) => (
+    <>
+      <PayrollRowActionBar
+        status={p.status}
+        isBusy={!!busy[p.id]}
+        canManage={isPayrollAdmin}
+        onGenerate={() => handleGenerate(p)}
+        onLock={() => handleLock(p)}
+        onUnlock={() => { setUnlockError(null); setUnlockTarget(p) }}
+        onViewResults={() => router.push(`/payroll/results/${p.id}`)}
+        // Admins only. PayrollRowActionBar drops the control
+        // when no handler is given, so a Control Center member
+        // with Payroll visibility never sees it.
+        onDelete={isPayrollAdmin ? () => openDelete(p) : undefined}
+      />
+      {/* The server refuses to generate or lock a month that has
+          not ended (src/lib/payroll/periodCompletion.ts); say
+          so before anyone presses the button. */}
+      {inProgress(p) && (
+        <div className={styles.progressNote}>
+          Month in progress — payroll can be generated and locked from{' '}
+          {formatOpensOn(payrollMonthOpensOn(p.payroll_year, p.payroll_month))} (IST).
+          Use Monthly Preview for the month so far.
+        </div>
+      )}
+    </>
+  )
+
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Payroll"
+      title="Payroll Runs"
       subtitle={isPayrollAdmin
-        ? 'Manage monthly payroll generation, review, locking, and corrections.'
-        : 'Review monthly payroll results.'}
+        ? 'Saved payroll for each month — generate, review, lock and correct it here.'
+        : 'Saved payroll results for each month.'}
       onSignOut={handleSignOut}
       actions={isPayrollAdmin ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -584,184 +602,165 @@ function PayrollPeriodsPage() {
         </div>
       ) : undefined}
     >
-      {error && (
-        <div role="alert" style={{
-          marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
-        }}>
-          {error}
-        </div>
-      )}
+      <div className={ui.stack}>
+        {error && (
+          <Notice
+            kind="error"
+            action={loadFailed ? (
+              <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={retryLoad}>Try again</button>
+            ) : undefined}
+          >
+            {error}
+          </Notice>
+        )}
 
-      {success && (
-        <div role="status" style={{
-          marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(69,168,112,0.10)', color: '#2E8A58',
-          border: '1px solid rgba(69,168,112,0.28)', fontSize: 13,
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-        }}>
-          <span>{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            aria-label="Dismiss"
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: '#2E8A58', fontSize: 14, lineHeight: 1, padding: 0, flexShrink: 0,
-            }}
-          >✕</button>
-        </div>
-      )}
+        {success && (
+          <Notice
+            kind="success"
+            action={
+              <button
+                type="button"
+                onClick={() => setSuccess(null)}
+                aria-label="Dismiss"
+                className={styles.dismiss}
+              >✕</button>
+            }
+          >
+            {success}
+          </Notice>
+        )}
 
-      {/* Row hover, the Attention icon and the no-wrap action cell — colocated
-          with the components they style, rendered once for the whole table. */}
-      <style>{PAYROLL_ROW_CSS}</style>
+        {/* Row hover, the Attention icon and the no-wrap action cell — colocated
+            with the components they style, rendered once for the whole table. */}
+        <style>{PAYROLL_ROW_CSS}</style>
 
-      {/* Operational summary */}
-      <div className="boe-kpi-grid" style={{ marginBottom: 12 }}>
-        <SummaryTile
-          label="Current Period"
-          value={summary.current ? periodLabel(summary.current.payroll_month, summary.current.payroll_year) : '—'}
-          meta={summary.current ? statusWord(summary.current.status) : 'No periods yet'}
-        />
-        <SummaryTile
-          label="Latest Generated"
-          value={summary.latestGenerated
-            ? periodLabel(summary.latestGenerated.payroll_month, summary.latestGenerated.payroll_year)
-            : '—'}
-          meta={summary.latestGenerated
-            ? formatDateTime(summary.latestGenerated.last_generated_at)
-            : 'Not generated yet'}
-        />
-        <SummaryTile
-          label="Employees Included"
-          value={summary.latestGenerated ? String(summary.latestGenerated.employee_count) : '—'}
-          meta={summary.latestGenerated
-            ? `In ${periodLabel(summary.latestGenerated.payroll_month, summary.latestGenerated.payroll_year)}`
-            : 'Not generated yet'}
-        />
-        <SummaryTile
-          label="Attention Needed"
-          value={String(summary.attention)}
-          meta={summary.attention === 0
-            ? 'No period is out of date'
-            : `${summary.attention} period${summary.attention === 1 ? '' : 's'} need regeneration`}
-          tone={summary.attention > 0 ? 'amber' : undefined}
-        />
-      </div>
+        {periods.length > 0 && (
+          <p className={styles.totals}>
+            <strong>{periods.length}</strong> saved run{periods.length === 1 ? '' : 's'}
+            {summary.latestGenerated && (
+              <>
+                {' · '}latest generated{' '}
+                <strong>{periodLabel(summary.latestGenerated.payroll_month, summary.latestGenerated.payroll_year)}</strong>
+                {' '}({formatDateTime(summary.latestGenerated.last_generated_at)},{' '}
+                {summary.latestGenerated.employee_count} employee{summary.latestGenerated.employee_count === 1 ? '' : 's'})
+              </>
+            )}
+            {' · '}
+            {summary.attention === 0
+              ? 'no run is out of date'
+              : <strong className={styles.warnText}>{summary.attention} run{summary.attention === 1 ? '' : 's'} need regeneration</strong>}
+          </p>
+        )}
 
-      {/* Table card */}
-      <div style={{
-        background: '#fff', borderRadius: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        overflow: 'hidden',
-      }}>
         {periods.length === 0 ? (
-          <div style={{
-            padding: '48px 24px', textAlign: 'center',
-            color: '#8C94A6', fontSize: 14,
-          }}>
-            No payroll periods found.
-          </div>
+          loadFailed ? null : (
+            <StateBlock kind="empty" title="No payroll runs yet">
+              {isPayrollAdmin
+                ? 'Create a payroll period to generate and save payroll for a month.'
+                : 'Payroll results will appear here once a month has been generated.'}
+            </StateBlock>
+          )
         ) : (
-          // Horizontal overflow is contained here, so the page itself never
-          // scrolls sideways on a narrow screen.
-          <div style={{ overflowX: 'auto' }}>
-            {/* Narrower than before: the Attention column is now one icon wide,
-                so the table reaches a phone without the card scrolling. */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                  {/* "Employees", not "Employees Included": the long header was
-                      setting the column's width, so a two-digit number sat in a
-                      column wide enough for a sentence. */}
-                  {['Payroll Period', 'Status', 'Employees', 'Last Activity', 'Attention', 'Actions'].map(h => (
-                    <th key={h} style={{
-                      padding: '11px 16px', textAlign: 'left',
-                      fontSize: 11.5, fontWeight: 700,
-                      color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em',
-                      whiteSpace: 'nowrap',
-                      ...(h === 'Employees' ? { width: 96 } : null),
-                    }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {periods.map((p, i) => {
-                  const activity = lastActivity(p)
-                  return (
-                    <tr
-                      key={p.id}
-                      className="boe-payroll-row"
-                      style={{
-                        borderBottom: i < periods.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                        // Inline wins over the hover rule, which is what keeps a
-                        // freshly created row highlighted while the cursor is on it.
-                        ...(p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : null),
-                      }}
-                    >
-                      <td style={{ padding: '12px 16px', fontSize: 13.5, fontWeight: 500, color: '#111318', whiteSpace: 'nowrap' }}>
-                        {periodLabel(p.payroll_month, p.payroll_year)}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <StatusBadge status={p.status} />
-                      </td>
-                      {/* Tabular figures so the column reads as a column. A
-                          period with no results yet shows an em dash rather
-                          than a zero, which would look like a failed run. */}
-                      <td style={{
-                        padding: '12px 16px', fontSize: 13.5, color: '#3D4455',
-                        fontVariantNumeric: 'tabular-nums', width: 96,
-                      }}>
-                        {p.employee_count > 0 ? p.employee_count : '—'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12.5, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                        {activity ? (
-                          <>
-                            <div style={{ color: '#3D4455' }}>{formatDateTime(activity.at)}</div>
-                            <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>{activity.label}</div>
-                          </>
-                        ) : '—'}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
+          <>
+            <div className={`${ui.surface} ${ui.desktopOnly}`} style={{ overflow: 'hidden' }}>
+              <div className={ui.surfaceHead}>
+                <div>
+                  <h2 className={ui.surfaceTitle}>Saved payroll runs</h2>
+                  <p className={ui.surfaceSub}>Each row is a saved month. Figures are the saved results, not a preview.</p>
+                </div>
+              </div>
+              {/* Horizontal overflow is contained here, so the page itself never
+                  scrolls sideways on a narrow screen. */}
+              <div className={ui.tableWrap}>
+                <table className={ui.table}>
+                  <thead>
+                    <tr>
+                      <th>Payroll period</th>
+                      <th>Status</th>
+                      <th className={ui.num} style={{ textAlign: 'right' }}>Employees</th>
+                      <th>Last activity</th>
+                      <th>Attention</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periods.map(p => {
+                      const activity = lastActivity(p)
+                      return (
+                        <tr
+                          key={p.id}
+                          className="boe-payroll-row"
+                          // Inline wins over the hover rule, which is what keeps a
+                          // freshly created row highlighted while the cursor is on it.
+                          style={p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : undefined}
+                        >
+                          <td className={`${ui.strong} ${ui.nowrap}`}>
+                            {periodLabel(p.payroll_month, p.payroll_year)}
+                          </td>
+                          <td>
+                            <StatusBadges p={p} />
+                          </td>
+                          {/* A period with no results yet shows an em dash rather
+                              than a zero, which would look like a failed run. */}
+                          <td className={ui.num}>
+                            {p.employee_count > 0 ? p.employee_count : '—'}
+                          </td>
+                          <td className={ui.nowrap}>
+                            {activity ? (
+                              <>
+                                <div>{formatDateTime(activity.at)}</div>
+                                <div className={ui.sub}>{activity.label}</div>
+                              </>
+                            ) : '—'}
+                          </td>
+                          <td>
+                            <PayrollAttentionIndicator
+                              detail={attentionOf(p)}
+                              onOpen={() => setAttentionTarget(p)}
+                            />
+                          </td>
+                          <td>{rowActions(p)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Phone: one card per saved run. */}
+            <ul className={ui.cards} aria-label="Saved payroll runs">
+              {periods.map(p => {
+                const activity = lastActivity(p)
+                return (
+                  <li
+                    key={p.id}
+                    className={`${ui.surface} ${ui.card}`}
+                    style={p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : undefined}
+                  >
+                    <div className={ui.cardHead}>
+                      <span className={ui.strong}>{periodLabel(p.payroll_month, p.payroll_year)}</span>
+                      <StatusBadges p={p} />
+                    </div>
+                    <div className={ui.sub}>
+                      {p.employee_count > 0 ? `${p.employee_count} employee${p.employee_count === 1 ? '' : 's'}` : 'No results yet'}
+                      {activity && <> · {activity.label} {formatDateTime(activity.at)}</>}
+                    </div>
+                    {attentionOf(p) && (
+                      <div className={ui.row}>
                         <PayrollAttentionIndicator
                           detail={attentionOf(p)}
                           onOpen={() => setAttentionTarget(p)}
                         />
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <PayrollRowActionBar
-                          status={p.status}
-                          isBusy={!!busy[p.id]}
-                          canManage={isPayrollAdmin}
-                          onGenerate={() => handleGenerate(p)}
-                          onLock={() => handleLock(p)}
-                          onUnlock={() => { setUnlockError(null); setUnlockTarget(p) }}
-                          onViewResults={() => router.push(`/payroll/results/${p.id}`)}
-                          // Admins only. PayrollRowActionBar drops the control
-                          // when no handler is given, so a Control Center member
-                          // with Payroll visibility never sees it.
-                          onDelete={isPayrollAdmin ? () => openDelete(p) : undefined}
-                        />
-                        {/* The server refuses to generate or lock a month that has
-                            not ended (src/lib/payroll/periodCompletion.ts); say
-                            so before anyone presses the button. */}
-                        {p.status !== 'locked' && !isPayrollMonthComplete(p.payroll_year, p.payroll_month) && (
-                          <div style={{ fontSize: 11.5, color: '#B45309', marginTop: 6, maxWidth: 260, lineHeight: 1.4 }}>
-                            Month in progress — payroll can be generated and locked from{' '}
-                            {formatOpensOn(payrollMonthOpensOn(p.payroll_year, p.payroll_month))} (IST).
-                            Use Payroll Monthly Preview for the month so far.
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className={ui.sub} style={{ margin: 0 }}>{attentionOf(p)!.title}</span>
+                      </div>
+                    )}
+                    <div className={styles.cardActions}>{rowActions(p)}</div>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
         )}
       </div>
 
@@ -831,52 +830,26 @@ function PayrollPeriodsPage() {
   )
 }
 
-// ─── Summary tile ─────────────────────────────────────────────────────────────
+// ─── Status ───────────────────────────────────────────────────────────────────
+
+/** A month that has not ended yet cannot be generated or locked (server rule). */
+function inProgress(p: PayrollPeriodRow): boolean {
+  return p.status !== 'locked' && !isPayrollMonthComplete(p.payroll_year, p.payroll_month)
+}
+
+/** Saved state first (Draft / Generated / Locked), then whether the month is still running. */
+function StatusBadges({ p }: { p: PayrollPeriodRow }) {
+  const tone: Tone = p.status === 'locked' ? 'info' : p.status === 'generated' ? 'good' : 'neutral'
+  return (
+    <span className={styles.badges}>
+      <Badge tone={tone}>{statusWord(p.status)}</Badge>
+      {inProgress(p) && <Badge tone="warn">In progress</Badge>}
+    </span>
+  )
+}
 
 function statusWord(status: PayrollPeriodRow['status']): string {
   return status === 'draft' ? 'Draft' : status === 'generated' ? 'Generated' : 'Locked'
-}
-
-/**
- * The KPI value, in the body face rather than the display face.
- *
- * `.boe-kpi-value` is Syne at 28/700 — a display type meant for a headline
- * number. Three of the four values on this page are not headline numbers: two
- * are month labels ("August 2026") and one is a headcount, and Syne's wide,
- * rounded figures made a two-digit count read as decorative while the long month
- * labels had to be shrunk to 16px to fit, so the row never sat on one baseline.
- *
- * Overridden here, on this page, rather than in .boe-kpi-value — that class is
- * every module's KPI card and this page is not entitled to restyle them all.
- * The existing BOE body stack is inherited (no new font), tabular figures keep
- * the numbers aligned as they change, and one size serves both a count and a
- * month so the four cards share a baseline.
- */
-const KPI_VALUE: React.CSSProperties = {
-  fontFamily: 'inherit',
-  fontSize: 19,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-  lineHeight: 1.15,
-  fontVariantNumeric: 'tabular-nums',
-}
-
-function SummaryTile({
-  label, value, meta, tone,
-}: { label: string; value: string; meta: string; tone?: 'amber' }) {
-  return (
-    // Tightened here rather than in .boe-kpi: that class is every module's KPI
-    // card, and this page is not entitled to shorten them all. The grid still
-    // stretches its rows, so the four cards stay equal height.
-    <div
-      className={`boe-kpi${tone === 'amber' ? ' boe-kpi-amber' : ''}`}
-      style={{ padding: '9px 12px' }}
-    >
-      <span className="boe-kpi-label">{label}</span>
-      <span className="boe-kpi-value" style={KPI_VALUE}>{value}</span>
-      <span className="boe-kpi-meta" style={{ marginTop: 4 }}>{meta}</span>
-    </div>
-  )
 }
 
 // ─── Attention ────────────────────────────────────────────────────────────────

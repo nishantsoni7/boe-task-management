@@ -19,9 +19,9 @@ This document records what the code does. Where it says "not built", it is not.
 1. **Employee** opens **My Attendance** → **Attendance request**, picks a type,
    a reason and submits. The server records the time.
 2. **Another admin** (any active `admin` other than the requester) approves or
-   rejects it under **Attendance & Payroll → Attendance Requests → Requests**.
+   rejects it under **Attendance & Payroll → Attendance → Requests**.
    The employee is notified. **Approval records permission only.**
-3. At payroll time an admin opens **Payroll review** for the month and records a
+3. At payroll time an admin opens **Attendance → Monthly Review → Salary decisions** for the month and records a
    salary treatment per event. For late arrivals, early departures and missing
    punches, saving **applies it to the draft** through the attendance
    correction. Other events are marked **Action required in payroll** with a

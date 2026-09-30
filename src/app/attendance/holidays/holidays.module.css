@@ -1,0 +1,8 @@
+.formActions { margin-top: 16px; display: flex; }
+.danger { color: #B91C1C; }
+ul.cardList { padding: 12px; }
+.cardList > li { box-shadow: none; }
+
+@media (max-width: 767px) {
+  .formActions > button { width: 100%; }
+}

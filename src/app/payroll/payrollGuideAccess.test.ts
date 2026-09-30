@@ -28,7 +28,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import {
-  ATTENDANCE_PAYROLL_ADMIN_NAV,
+  ATTENDANCE_PAYROLL_ADMIN_SECTIONS,
   ATTENDANCE_PAYROLL_EMPLOYEE_NAV,
 } from '@/components/layout/attendancePayrollNav'
 
@@ -71,9 +71,10 @@ describe('Payroll Result Detail', () => {
 // ─── 2 + 3. The guide is in both navigations, via the shared constant ─────────
 
 describe('navigation', () => {
-  test('the admin navigation offers "How Payroll Works"', () => {
+  test('the admin navigation offers "How Payroll Works" as the Payroll Help link', () => {
     assert.ok(
-      ATTENDANCE_PAYROLL_ADMIN_NAV.some(i => i.label === 'How Payroll Works' && i.path === PAYROLL_GUIDE_PATH),
+      ATTENDANCE_PAYROLL_ADMIN_SECTIONS.some(s =>
+        s.key === 'payroll' && s.help?.label === 'How Payroll Works' && s.help.path === PAYROLL_GUIDE_PATH),
       'the admin list must reach the guide',
     )
   })

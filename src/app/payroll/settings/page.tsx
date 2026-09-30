@@ -16,9 +16,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
-import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
+import { LoadingScreen } from '@/components/ui/atoms'
+import { Badge, Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
+import styles from './settings.module.css'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   SETTINGS_FIELDS,
@@ -107,9 +108,36 @@ export default function PayrollSettingsPage() {
   const [note,    setNote]    = useState('')
   const [usingDefaults, setUsingDefaults] = useState(false)
   const [history, setHistory] = useState<HistoryRow[]>([])
+  const [loaded,  setLoaded]  = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [retrying, setRetrying] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  // The same request the page always made, kept in a function so a failed load
+  // can be tried again without leaving the page.
+  const loadSettings = async (accessToken: string) => {
+    setLoadError('')
+    try {
+      const res  = await fetch('/api/payroll/settings', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const json = await res.json()
+      if (res.ok) {
+        const d = draftFromSettings(json.settings as PayrollSettings)
+        setDraft(d)
+        setSaved(d)
+        setUsingDefaults(json.using_defaults === true)
+        setHistory(json.history ?? [])
+        setLoaded(true)
+      } else {
+        setLoadError(json.error ?? 'Could not load payroll settings.')
+      }
+    } catch {
+      setLoadError('Could not reach the server. Check your connection and try again.')
+    }
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -125,19 +153,7 @@ export default function PayrollSettingsPage() {
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
 
-      const res  = await fetch('/api/payroll/settings', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      const json = await res.json()
-      if (res.ok) {
-        const d = draftFromSettings(json.settings as PayrollSettings)
-        setDraft(d)
-        setSaved(d)
-        setUsingDefaults(json.using_defaults === true)
-        setHistory(json.history ?? [])
-      } else {
-        setError(json.error ?? 'Could not load payroll settings.')
-      }
+      await loadSettings(session.access_token)
       setLoading(false)
     }
     init()
@@ -218,247 +234,207 @@ export default function PayrollSettingsPage() {
     setOkMsg('')
   }
 
+  const retryLoad = async () => {
+    setRetrying(true)
+    await loadSettings(token)
+    setRetrying(false)
+  }
+
   if (loading || !profile) return <LoadingScreen />
 
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Payroll Settings"
-      subtitle="The numbers every salary calculation uses"
+      title="Payroll rules"
+      subtitle="The numbers every salary calculation uses. Changes apply to new payroll only."
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
     >
-      <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {!loaded ? (
+        <StateBlock
+          kind="error"
+          title="Could not load payroll rules"
+          action={
+            <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`} onClick={() => void retryLoad()} disabled={retrying}>
+              {retrying ? 'Trying…' : 'Try again'}
+            </button>
+          }
+        >
+          {loadError}
+        </StateBlock>
+      ) : (
+      <div className={styles.page}>
 
         {/* The one thing an admin must understand before changing anything. */}
-        <AlertBanner variant="amber">
+        <Notice kind="warning">
           Changes apply to newly generated payroll and periods intentionally recalculated
           after unlocking. Existing generated payroll remains unchanged.
-        </AlertBanner>
+        </Notice>
 
         {usingDefaults && (
-          <AlertBanner variant="amber">
+          <Notice kind="warning">
             No saved settings were found, so the built-in defaults are shown. Saving will
             record them as your settings.
-          </AlertBanner>
+          </Notice>
         )}
 
-        {error  && <AlertBanner variant="red">{error}</AlertBanner>}
-        {okMsg  && <AlertBanner variant="green">{okMsg}</AlertBanner>}
+        {error && <Notice kind="error">{error}</Notice>}
 
         {SETTINGS_GROUP_ORDER.map(group => {
           const fields = SETTINGS_FIELDS.filter(f => f.group === group)
           if (fields.length === 0) return null
           return (
-            <section
-              key={group}
-              style={{
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                padding: '16px 18px',
-                background: colors.base,
-              }}
-            >
-              <h2 style={{ fontSize: 14, fontWeight: 650, margin: '0 0 14px', color: colors.primary }}>
-                {SETTINGS_GROUP_LABELS[group]}
-              </h2>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                  gap: 16,
-                }}
-              >
-                {fields.map(field => {
-                  const problem = issueFor(field.key)
-                  return (
-                    <label key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 600, color: colors.primary }}>
-                        {field.label}
-                        {field.unit && field.kind === 'number' && (
-                          <span style={{ fontWeight: 400, color: colors.tertiary }}> ({field.unit})</span>
-                        )}
-                        {/* A stored setting that no calculation reads. Labelled
-                            rather than hidden: it is pinned inside every period
-                            snapshot already written, so an admin comparing a
-                            historical period against this page must still find
-                            it — but must not believe editing it does anything. */}
-                        {field.inactive && (
-                          <span
-                            style={{
-                              marginLeft: 6, padding: '1px 6px', borderRadius: 999,
-                              fontSize: 10, fontWeight: 700, letterSpacing: '0.03em',
-                              color: colors.tertiary, background: colors.float,
-                              border: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {field.inactive.badge}
-                          </span>
-                        )}
-                      </span>
-
-                      {field.kind === 'day_of_week' ? (
-                        <select
-                          value={draft[field.key] ?? ''}
-                          onChange={e => set(field.key, e.target.value)}
-                          disabled={!!field.inactive}
-                          style={inputStyle(!!problem)}
-                        >
-                          {DAY_OF_WEEK_LABELS.map((label, i) => (
-                            <option key={label} value={String(i)}>{label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type={field.kind === 'time' ? 'time' : 'number'}
-                          value={draft[field.key] ?? ''}
-                          min={field.kind === 'number' ? field.min : undefined}
-                          max={field.kind === 'number' ? field.max : undefined}
-                          step={field.kind === 'number' ? field.step : undefined}
-                          onChange={e => set(field.key, e.target.value)}
-                          readOnly={!!field.inactive}
-                          aria-describedby={field.inactive ? `${field.key}-inactive` : undefined}
-                          style={{
-                            ...inputStyle(!!problem),
-                            ...(field.inactive
-                              ? { background: colors.raised, color: colors.tertiary, cursor: 'not-allowed' }
-                              : null),
-                          }}
-                        />
-                      )}
-
-                      <span
-                        id={field.inactive ? `${field.key}-inactive` : undefined}
-                        style={{ fontSize: 11.5, lineHeight: 1.45, color: colors.tertiary }}
-                      >
-                        {field.help}
-                      </span>
-
-                      {problem && (
-                        <span style={{ fontSize: 11.5, fontWeight: 600, color: colors.red }}>
-                          {problem}
-                        </span>
-                      )}
-                    </label>
-                  )
-                })}
+            <section key={group} className={ui.surface} aria-labelledby={`grp-${group}`}>
+              <div className={ui.surfaceHead}>
+                <h2 className={ui.surfaceTitle} id={`grp-${group}`}>{SETTINGS_GROUP_LABELS[group]}</h2>
               </div>
+              <div className={ui.surfaceBody}>
+                <div className={styles.groupFields}>
+                  {fields.map(field => {
+                    const problem = issueFor(field.key)
+                    return (
+                      <label key={field.key} className={ui.field}>
+                        <span className={ui.label}>
+                          {field.label}
+                          {field.unit && field.kind === 'number' && (
+                            <span className={ui.optional}> ({field.unit})</span>
+                          )}
+                          {/* A stored setting that no calculation reads. Labelled
+                              rather than hidden: it is pinned inside every period
+                              snapshot already written, so an admin comparing a
+                              historical period against this page must still find
+                              it — but must not believe editing it does anything. */}
+                          {field.inactive && (
+                            <span className={styles.inactiveTag}><Badge tone="neutral">{field.inactive.badge}</Badge></span>
+                          )}
+                        </span>
 
-              {group === 'leave' && (
-                <PaidLeaveTiers
-                  draft={draft}
-                  issues={issuesFor('paid_leave_tiers')}
-                  onChange={next => set('paid_leave_tiers', JSON.stringify(next))}
-                />
-              )}
+                        {field.kind === 'day_of_week' ? (
+                          <select
+                            className={ui.input}
+                            value={draft[field.key] ?? ''}
+                            onChange={e => set(field.key, e.target.value)}
+                            disabled={!!field.inactive}
+                            aria-invalid={problem ? true : undefined}
+                          >
+                            {DAY_OF_WEEK_LABELS.map((label, i) => (
+                              <option key={label} value={String(i)}>{label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            className={`${ui.input}${field.inactive ? ` ${styles.readonly}` : ''}`}
+                            type={field.kind === 'time' ? 'time' : 'number'}
+                            value={draft[field.key] ?? ''}
+                            min={field.kind === 'number' ? field.min : undefined}
+                            max={field.kind === 'number' ? field.max : undefined}
+                            step={field.kind === 'number' ? field.step : undefined}
+                            onChange={e => set(field.key, e.target.value)}
+                            readOnly={!!field.inactive}
+                            aria-describedby={field.inactive ? `${field.key}-inactive` : undefined}
+                            aria-invalid={problem ? true : undefined}
+                          />
+                        )}
+
+                        <span
+                          id={field.inactive ? `${field.key}-inactive` : undefined}
+                          className={styles.help}
+                        >
+                          {field.help}
+                        </span>
+
+                        {problem && <span className={styles.problem}>{problem}</span>}
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {group === 'leave' && (
+                  <PaidLeaveTiers
+                    draft={draft}
+                    issues={issuesFor('paid_leave_tiers')}
+                    onChange={next => set('paid_leave_tiers', JSON.stringify(next))}
+                  />
+                )}
+              </div>
             </section>
           )
         })}
 
-        {/* Save */}
-        <section
-          style={{
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            padding: '16px 18px',
-            background: colors.base,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: colors.primary }}>
-              Note <span style={{ fontWeight: 400, color: colors.tertiary }}>(optional)</span>
-            </span>
-            <input
-              type="text"
-              value={note}
-              maxLength={500}
-              placeholder="Why this changed — kept with the saved version"
-              onChange={e => setNote(e.target.value)}
-              style={inputStyle(false)}
-            />
-          </label>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              style={{
-                padding: '9px 18px',
-                borderRadius: 8,
-                border: 'none',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: saving || !dirty ? 'not-allowed' : 'pointer',
-                background: saving || !dirty ? colors.borderMed : colors.primary,
-                color: '#fff',
-              }}
-            >
-              {saving ? 'Saving…' : 'Save settings'}
-            </button>
-
-            <button
-              onClick={handleReset}
-              disabled={saving || !dirty}
-              style={{
-                padding: '9px 18px',
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: saving || !dirty ? 'not-allowed' : 'pointer',
-                background: 'transparent',
-                color: colors.primary,
-              }}
-            >
-              Discard changes
-            </button>
+        {/* Note kept with the saved version */}
+        <section className={ui.surface}>
+          <div className={ui.surfaceBody}>
+            <label className={ui.field}>
+              <span className={ui.label}>
+                Note <span className={ui.optional}>(optional)</span>
+              </span>
+              <input
+                className={ui.input}
+                type="text"
+                value={note}
+                maxLength={500}
+                placeholder="Why this changed — kept with the saved version"
+                onChange={e => setNote(e.target.value)}
+              />
+            </label>
           </div>
         </section>
 
         {history.length > 0 && (
-          <section
-            style={{
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              background: colors.base,
-            }}
-          >
-            <h2 style={{ fontSize: 14, fontWeight: 650, margin: '0 0 10px', color: colors.primary }}>
-              Change history
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {history.map(h => (
-                <div key={h.id} style={{ fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>
-                  <strong style={{ color: colors.primary }}>
-                    {new Date(h.created_at).toLocaleString('en-IN')}
-                  </strong>
-                  {' — '}
-                  {h.created_by_name ?? 'System'}
-                  {h.note ? ` · ${h.note}` : ''}
-                </div>
-              ))}
+          <section className={ui.surface}>
+            <div className={ui.surfaceHead}>
+              <h2 className={ui.surfaceTitle}>Change history</h2>
+            </div>
+            <div className={ui.surfaceBody}>
+              <ul className={styles.historyList}>
+                {history.map(h => (
+                  <li key={h.id}>
+                    <strong>{new Date(h.created_at).toLocaleString('en-IN')}</strong>
+                    {' — '}
+                    {h.created_by_name ?? 'System'}
+                    {h.note ? ` · ${h.note}` : ''}
+                  </li>
+                ))}
+              </ul>
             </div>
           </section>
         )}
+
+        {/* Save: always at hand, and says what happened. */}
+        <div className={styles.saveBar}>
+          <div className={styles.saveStatus} role="status" aria-live="polite">
+            {error ? (
+              <span className={styles.problem}>Not saved. {error}</span>
+            ) : okMsg && !dirty ? (
+              <span style={{ color: '#065F46', fontWeight: 600 }}>{okMsg}</span>
+            ) : dirty ? (
+              <span className={styles.saveStatusDirty}>You have unsaved changes.</span>
+            ) : (
+              <span>No changes to save.</span>
+            )}
+          </div>
+          <div className={styles.saveActions}>
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={saving || !dirty}
+              className={`boe-btn boe-btn-ghost ${ui.btn}`}
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className={`boe-btn boe-btn-primary ${ui.btn}`}
+            >
+              {saving ? 'Saving…' : 'Save settings'}
+            </button>
+          </div>
+        </div>
       </div>
+      )}
     </AttendancePayrollLayout>
   )
-}
-
-function inputStyle(hasError: boolean): React.CSSProperties {
-  return {
-    padding: '8px 10px',
-    borderRadius: 7,
-    border: `1px solid ${hasError ? colors.red : colors.border}`,
-    fontSize: 13,
-    color: colors.primary,
-    background: colors.base,
-    width: '100%',
-  }
 }
 
 type DraftTier = { min_days_present: number; leave: number }
@@ -518,13 +494,11 @@ function PaidLeaveTiers({
   const atLimit = !canAddBand(ordered)
 
   return (
-    <div style={{ marginTop: 18, borderTop: `1px solid ${colors.border}`, paddingTop: 14 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4, color: colors.primary }}>
-        Paid leave earned by attendance
-      </div>
+    <div className={styles.tiers}>
+      <h3 className={styles.tiersTitle}>Paid leave earned by attendance</h3>
 
       {/* Plain language, next to the editor rather than in a help page. */}
-      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: colors.tertiary, margin: '0 0 10px' }}>
+      <p className={styles.tiersHelp}>
         Each band says: an employee present at least this many days in the month earns
         this much paid leave. Payroll checks the bands from the highest days-present
         downwards and uses the <strong>first one the employee reaches</strong>, so the
@@ -532,62 +506,37 @@ function PaidLeaveTiers({
         everybody falls into one. More days present can never earn less leave.
       </p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className={styles.bands}>
         {ordered.map((tier, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'flex-end',
-              gap: 8,
-              padding: '8px 10px',
-              border: `1px solid ${colors.border}`,
-              borderRadius: 8,
-              background: colors.raised,
-            }}
-          >
-            <span
-              title="The order payroll checks the bands in"
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: colors.tertiary,
-                minWidth: 18,
-                paddingBottom: 8,
-              }}
-            >
+          <div key={i} className={styles.band}>
+            <span className={styles.bandNo} title="The order payroll checks the bands in">
               {i + 1}
             </span>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 130px', minWidth: 120 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: colors.secondary }}>
-                Days present (at least)
-              </span>
+            <label className={ui.field}>
+              <span className={ui.label}>Days present (at least)</span>
               <input
+                className={ui.input}
                 type="number"
                 min={0}
                 max={31}
                 step={1}
                 value={String(tier.min_days_present)}
                 onChange={e => update(i, { min_days_present: e.target.value === '' ? NaN : Number(e.target.value) })}
-                style={inputStyle(false)}
                 aria-label={`Band ${i + 1} days present`}
               />
             </label>
 
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 130px', minWidth: 120 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: colors.secondary }}>
-                Paid leave earned (days)
-              </span>
+            <label className={ui.field}>
+              <span className={ui.label}>Paid leave earned (days)</span>
               <input
+                className={ui.input}
                 type="number"
                 min={0}
                 max={31}
                 step={0.5}
                 value={String(tier.leave)}
                 onChange={e => update(i, { leave: e.target.value === '' ? NaN : Number(e.target.value) })}
-                style={inputStyle(false)}
                 aria-label={`Band ${i + 1} leave earned`}
               />
             </label>
@@ -602,16 +551,7 @@ function PaidLeaveTiers({
                   : 'Remove this band'
               }
               aria-label={`Remove band ${i + 1}`}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 7,
-                border: `1px solid ${colors.border}`,
-                background: 'transparent',
-                fontSize: 12,
-                fontWeight: 600,
-                color: canRemoveBand(ordered) ? colors.red : colors.muted,
-                cursor: canRemoveBand(ordered) ? 'pointer' : 'not-allowed',
-              }}
+              className={`boe-btn boe-btn-ghost ${ui.btnSm}${canRemoveBand(ordered) ? ` ${styles.danger}` : ''}`}
             >
               Remove
             </button>
@@ -619,36 +559,25 @@ function PaidLeaveTiers({
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+      <div className={styles.tiersFoot}>
         <button
           type="button"
           onClick={add}
           disabled={atLimit}
-          style={{
-            padding: '7px 13px',
-            borderRadius: 7,
-            border: `1px solid ${colors.border}`,
-            background: 'transparent',
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: atLimit ? colors.muted : colors.primary,
-            cursor: atLimit ? 'not-allowed' : 'pointer',
-          }}
+          className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
         >
           Add band
         </button>
-        <span style={{ fontSize: 11.5, color: colors.tertiary }}>
+        <span className={ui.hint}>
           {ordered.length} of {MAX_PAID_LEAVE_BANDS}
         </span>
       </div>
 
       {/* Every problem, not just the first — the bands can carry several at once. */}
       {issues.length > 0 && (
-        <ul style={{ margin: '10px 0 0', paddingLeft: 18 }}>
+        <ul className={styles.tierIssues}>
           {issues.map((message, i) => (
-            <li key={i} style={{ fontSize: 11.5, fontWeight: 600, color: colors.red, lineHeight: 1.5 }}>
-              {message}
-            </li>
+            <li key={i}>{message}</li>
           ))}
         </ul>
       )}

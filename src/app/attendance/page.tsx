@@ -1,17 +1,19 @@
 'use client'
 
+// Overview: where an admin starts. It holds no numbers of its own; it groups the
+// module's pages by the job they do, in the order the month's work happens.
+
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
-import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-
-// ─── Module cards ─────────────────────────────────────────────────────────────
+import { ui } from '@/components/attendancePayroll/ui'
+import styles from './overview.module.css'
 
 // Importing the machine export WRITES raw attendance, so /api/attendance/import
 // and /api/attendance/preview both admit `admin` and nothing else
@@ -21,53 +23,86 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 // exactly; widen both together or neither.
 const IMPORT_ROLES = ['admin']
 
-const UPLOAD_CARD = {
-  title: 'Upload Monthly Attendance',
-  description: 'Import monthly attendance data from fingerprint machine Excel export.',
-  dotColor: '#8B5CF6',
-  href: '/attendance/upload',
-}
+type Shortcut = { title: string; description: string; href: string; adminOnly?: boolean; importOnly?: boolean }
+type Group = { title: string; subtitle: string; items: Shortcut[]; wide?: boolean }
 
-const ACTIVE_CARDS = [
+const GROUPS: Group[] = [
   {
-    title: 'Monthly Attendance Review',
-    description: 'Per-employee attendance summary: present, half-day, absent, late, and missing punch counts.',
-    dotColor: '#F59E0B',
-    href: '/attendance/monthly-review',
+    title: 'Each month',
+    subtitle: 'Bring the month in, check it, then move on to pay.',
+    items: [
+      {
+        title: 'Upload Monthly Attendance',
+        description: 'Import monthly attendance data from the fingerprint machine Excel export.',
+        href: '/attendance/upload',
+        importOnly: true,
+      },
+      {
+        title: 'View Imported Records',
+        description: 'Browse and verify attendance records imported from Excel.',
+        href: '/attendance/records',
+      },
+      {
+        title: 'Monthly Attendance Review',
+        description: 'Per-employee summary: present, half-day, absent, late, and missing punch counts.',
+        href: '/attendance/monthly-review',
+      },
+      {
+        title: 'Attendance Requests',
+        description: 'Approve or reject employees’ requests about their attendance.',
+        href: '/attendance/requests',
+        adminOnly: true,
+      },
+      {
+        title: 'Payroll',
+        description: 'Preview the month’s pay, generate payroll runs and read each payslip.',
+        href: '/payroll',
+        adminOnly: true,
+      },
+    ],
   },
   {
-    title: 'View Imported Records',
-    description: 'Browse and verify attendance records imported from Excel.',
-    dotColor: colors.blue,
-    href: '/attendance/records',
+    title: 'Keep an eye on',
+    subtitle: 'Checks and history behind the numbers.',
+    items: [
+      {
+        title: 'Attendance Sync',
+        description: 'Punches the fingerprint machine sent, and any that need an admin’s attention.',
+        href: '/attendance/minop',
+        adminOnly: true,
+      },
+      {
+        title: 'Correction Log',
+        description: 'Audit trail of attendance records created or modified during import.',
+        href: '/attendance/correction-log',
+        adminOnly: true,
+      },
+    ],
   },
   {
-    title: 'Employee Fingerprint Mapping',
-    description: 'Map employee codes to fingerprint device IDs.',
-    dotColor: colors.green,
-    href: '/attendance/employees',
+    title: 'Set up',
+    subtitle: 'People and rules the calculations rely on.',
+    items: [
+      {
+        title: 'Employee Fingerprint Mapping',
+        description: 'Map employee codes to fingerprint device IDs.',
+        href: '/attendance/employees',
+      },
+      {
+        title: 'Holiday Management',
+        description: 'Add or remove public holidays excluded from working days.',
+        href: '/attendance/holidays',
+        adminOnly: true,
+      },
+      {
+        title: 'Payroll Rules',
+        description: 'Working hours, lateness and deduction rules used to calculate pay.',
+        href: '/payroll/settings',
+        adminOnly: true,
+      },
+    ],
   },
 ]
-
-const FUTURE_CARDS = [
-  {
-    title: 'Gate Pass / Outside Movement',
-    description: 'Track employee movements and outside-office approvals.',
-    dotColor: '#F59E0B',
-  },
-  {
-    title: 'Payroll Linkage',
-    description: 'Connect attendance records to monthly payroll calculation.',
-    dotColor: '#EC4899',
-  },
-  {
-    title: 'Leave / Adjustment Rules',
-    description: 'Define leave types, half-day rules, and attendance adjustments.',
-    dotColor: '#EF4444',
-  },
-]
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AttendancePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -102,134 +137,50 @@ export default function AttendancePage() {
 
   if (loading) return <LoadingScreen />
 
+  const isAdmin = profile?.role === 'admin'
+  const canImport = IMPORT_ROLES.includes(profile?.role ?? '')
+  const visible = (s: Shortcut) => (!s.adminOnly || isAdmin) && (!s.importOnly || canImport)
+
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Attendance"
-      subtitle="Managed through monthly fingerprint Excel import"
+      title="Overview"
+      subtitle="Attendance is managed through a monthly fingerprint Excel import; start here and follow the month."
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: 820, padding: '24px 0' }}>
+      <p className={styles.intro}>
+        Upload the export from your fingerprint device software each month to record employee attendance,
+        review it, then move on to payroll.
+      </p>
 
-        <Link
-          href="/"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-          onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back to Home
-        </Link>
-
-        {/* ── Info banner ── */}
-        <div style={{
-          background: colors.raised,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 10,
-          padding: '14px 18px',
-          marginBottom: 28,
-          fontSize: 13,
-          color: colors.secondary,
-          lineHeight: 1.6,
-        }}>
-          Attendance is managed through monthly fingerprint Excel import. Upload the export from your fingerprint device software each month to record employee attendance.
-        </div>
-
-        {/* ── Active modules ── */}
-        <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Modules
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 28 }}>
-          {(IMPORT_ROLES.includes(profile?.role ?? '') ? [UPLOAD_CARD, ...ACTIVE_CARDS] : ACTIVE_CARDS).map(card => (
-            <Link key={card.title} href={card.href} style={{ textDecoration: 'none' }}>
-              <div style={{
-                background: colors.base,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                padding: '18px 20px',
-                cursor: 'pointer',
-                height: '100%',
-                boxSizing: 'border-box',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: card.dotColor, flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>{card.title}</span>
+      <div className={styles.groups}>
+        {GROUPS.map(group => {
+          const items = group.items.filter(visible)
+          if (items.length === 0) return null
+          return (
+            <section key={group.title} className={`${ui.surface} ${group.wide ? styles.wideGroup : ''}`} aria-labelledby={`ov-${group.title}`}>
+              <div className={ui.surfaceHead}>
+                <div>
+                  <h2 className={ui.surfaceTitle} id={`ov-${group.title}`}>{group.title}</h2>
+                  <p className={ui.surfaceSub}>{group.subtitle}</p>
                 </div>
-                <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>{card.description}</p>
               </div>
-            </Link>
-          ))}
-        </div>
-
-        {/* ── Admin utilities ── */}
-        {profile?.role === 'admin' && (
-          <>
-            <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-              Admin
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 28 }}>
-              <Link href="/attendance/holidays" style={{ textDecoration: 'none' }}>
-                <div style={{
-                  background: colors.base,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 10,
-                  padding: '18px 20px',
-                  cursor: 'pointer',
-                  height: '100%',
-                  boxSizing: 'border-box',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#6366F1', flexShrink: 0 }} />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>Holiday Management</span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>Add or remove public holidays excluded from working days.</p>
-                </div>
-              </Link>
-              <Link href="/attendance/correction-log" style={{ textDecoration: 'none' }}>
-                <div style={{
-                  background: colors.base,
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 10,
-                  padding: '18px 20px',
-                  cursor: 'pointer',
-                  height: '100%',
-                  boxSizing: 'border-box',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>Correction Log</span>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>Audit trail of attendance records created or modified during import.</p>
-                </div>
-              </Link>
-            </div>
-          </>
-        )}
-
-        {/* ── Future modules ── */}
-        <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Coming Soon
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          {FUTURE_CARDS.map(card => (
-            <div key={card.title} style={{
-              background: colors.base,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10,
-              padding: '18px 20px',
-              opacity: 0.45,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: card.dotColor, flexShrink: 0 }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>{card.title}</span>
-              </div>
-              <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>{card.description}</p>
-            </div>
-          ))}
-        </div>
-
+              <ul className={styles.list}>
+                {items.map(item => (
+                  <li key={item.href}>
+                    <Link href={item.href} className={styles.item}>
+                      <span className={styles.itemText}>
+                        <span className={styles.itemTitle}>{item.title}</span>
+                        <span className={styles.itemDesc} style={{ display: 'block' }}>{item.description}</span>
+                      </span>
+                      <span className={styles.chevron} aria-hidden="true">›</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
       </div>
     </AttendancePayrollLayout>
   )
