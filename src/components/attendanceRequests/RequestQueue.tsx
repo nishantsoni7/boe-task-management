@@ -19,6 +19,8 @@ import {
   REQUEST_STATUS_LABEL,
   REASON_LABEL,
   requestSummary,
+  submissionTiming,
+  SUBMISSION_TIMING_LABEL,
 } from '@/lib/attendance/requests'
 import { formatMinutesOfDay } from '@/lib/istDate'
 import { RequestReviewDrawer, actualPunchText, type Punch, type QueueRow, type Shift } from './RequestReviewDrawer'
@@ -34,8 +36,12 @@ const FILTERS = [
 ] as const
 type FilterKey = (typeof FILTERS)[number]['key']
 
-export function RequestQueue({ getToken }: { getToken: () => Promise<string | null> }) {
-  const [filter, setFilter] = useState<FilterKey>('pending')
+export function RequestQueue({ getToken, focusId = null }: {
+  getToken: () => Promise<string | null>
+  /** A request opened from a notification: listed under All, highlighted and opened. */
+  focusId?: string | null
+}) {
+  const [filter, setFilter] = useState<FilterKey>(focusId ? 'all' : 'pending')
   const [rows, setRows] = useState<QueueRow[]>([])
   const [punches, setPunches] = useState<Record<string, Punch>>({})
   const [shift, setShift] = useState<Shift | null>(null)
@@ -43,7 +49,10 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [reviewing, setReviewing] = useState<QueueRow | null>(null)
+  // The request the admin opened, and whether the notification's request has
+  // already been dealt with (closed or decided), so it opens only once.
+  const [picked, setPicked] = useState<QueueRow | null>(null)
+  const [focusDone, setFocusDone] = useState(false)
   const latest = useRef(0)
 
   const load = useCallback(async (f: FilterKey) => {
@@ -85,7 +94,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
     })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) return json.error ?? 'Could not save the decision.'
-    setReviewing(null)
+    closeReview()
     setNotice(`${target.employee?.full_name ?? 'Employee'}’s ${REQUEST_TYPE_LABEL[target.request_type].toLowerCase()} request was ${status}.`)
     await load(filter)
     return null
@@ -95,7 +104,21 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
   const showEmpty = !loading && rows.length === 0 && !error
   const showRows = rows.length > 0
 
-  const openReview = (r: QueueRow) => { setNotice(null); setReviewing(r) }
+  const openReview = (r: QueueRow) => { setNotice(null); setPicked(r) }
+  const closeReview = () => { setPicked(null); setFocusDone(true) }
+
+  // A request a notification (or the salary review) pointed at: once it is
+  // listed, bring it into view and open it once. Closing the drawer leaves the
+  // list where it is; the highlight stays so the admin can see which one it was.
+  // Opened by derivation, not by an effect: nothing to set once the row is listed.
+  const focusRow = focusId && !focusDone && !loading ? rows.find(r => r.id === focusId) ?? null : null
+  const reviewing = picked ?? focusRow
+  useEffect(() => {
+    if (!focusId || loading || !rows.some(r => r.id === focusId)) return
+    const anchor = document.getElementById(`request-${focusId}`)
+    const visible = anchor && anchor.offsetParent !== null ? anchor : document.getElementById(`request-mobile-${focusId}`)
+    visible?.scrollIntoView({ block: 'center' })
+  }, [focusId, loading, rows])
 
   return (
     <div>
@@ -154,7 +177,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
                   {rows.map(r => {
                     const tone = statusTone(r.status)
                     return (
-                      <tr key={r.id}>
+                      <tr key={r.id} id={`request-${r.id}`} className={r.id === focusId ? styles.focusRow : undefined}>
                         <td>
                           <div className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</div>
                           <div className={styles.cellSub}>
@@ -171,8 +194,8 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
                         </td>
                         <td>
                           <div>{formatIstDateTime(r.submitted_at)}</div>
-                          <div className={styles.cellSub} style={{ color: r.informed_before_shift ? '#047857' : '#B45309', fontWeight: 600 }}>
-                            {r.informed_before_shift ? 'Informed before shift' : 'After shift start'}
+                          <div className={styles.cellSub} style={{ color: submissionTiming(r) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+                            {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                           </div>
                         </td>
                         <td>
@@ -201,7 +224,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
             {rows.map(r => {
               const tone = statusTone(r.status)
               return (
-                <li key={r.id} className={`${styles.surface} ${styles.card}`}>
+                <li key={r.id} id={`request-mobile-${r.id}`} className={`${styles.surface} ${styles.card}${r.id === focusId ? ` ${styles.focusCard}` : ''}`}>
                   <div className={styles.cardHead}>
                     <div style={{ minWidth: 0 }}>
                       <div className={styles.cellName}>{r.employee?.full_name ?? 'Employee'}</div>
@@ -220,8 +243,8 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
                   </div>
                   <div className={styles.cellSub}>
                     Submitted {formatIstDateTime(r.submitted_at)} ·{' '}
-                    <span style={{ color: r.informed_before_shift ? '#047857' : '#B45309', fontWeight: 600 }}>
-                      {r.informed_before_shift ? 'Informed before shift' : 'After shift start'}
+                    <span style={{ color: submissionTiming(r) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+                      {SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                     </span>
                   </div>
                   <div className={styles.cellSub}>Actual: {actualPunchText(punches[`${r.employee_id}|${r.start_date}`])}</div>
@@ -247,7 +270,7 @@ export function RequestQueue({ getToken }: { getToken: () => Promise<string | nu
           shift={shift}
           own={reviewing.employee_id === viewerId}
           getToken={getToken}
-          onClose={() => setReviewing(null)}
+          onClose={closeReview}
           onDecide={decide}
         />
       )}

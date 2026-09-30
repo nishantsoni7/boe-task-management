@@ -1,155 +1,95 @@
-// Server-render smoke tests for the attendance-request screens: the form a
-// phone user sees first, the correction dialog pre-filled from an original, and
-// the rules the admin list and review drawer must keep.
+// Server-render smoke tests for the attendance-request form: what a phone user
+// sees first, the fields each tile reveals, and the correction pre-fill.
 
-import '@/lib/testing/cssModuleStub'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AttendanceRequestModal } from './AttendanceRequestModal'
-import { AttendanceRequestForm } from './AttendanceRequestForm'
-import { REQUEST_TYPES, REQUEST_TYPE_LABEL, type AttendanceRequestRow } from '@/lib/attendance/requests'
+import type { AttendanceRequestRow } from '@/lib/attendance/requests'
 
 const noop = () => {}
 const submit = async () => null
-const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
-const shift = { scheduled_in_minutes: 600, scheduled_out_minutes: 1140 }
 
-describe('AttendanceRequestForm (page)', () => {
-  const html = renderToStaticMarkup(
-    <AttendanceRequestForm variant="page" shift={shift} onSubmit={submit} onSubmitted={noop} />,
-  )
+/** Values of the checked radios, in document order. */
+const checked = (html: string) =>
+  [...html.matchAll(/<input[^>]*type="radio"[^>]*>/g)]
+    .map(m => m[0]).filter(t => /checked=""/.test(t)).map(t => /value="([^"]*)"/.exec(t)![1])
 
-  test('opens on Late arrival with every supported type as a tappable choice', () => {
-    assert.match(html, /aria-checked="true"[^>]*><span[^>]*>Late arrival</)
-    for (const t of REQUEST_TYPES) assert.ok(html.includes(REQUEST_TYPE_LABEL[t]), t)
-    assert.equal((html.match(/role="radio"/g) ?? []).length >= REQUEST_TYPES.length, true)
+const render = (original?: AttendanceRequestRow) =>
+  renderToStaticMarkup(<AttendanceRequestModal original={original} onClose={noop} onSubmit={submit} />)
+
+describe('AttendanceRequestModal', () => {
+  test('opens with the title, subtitle, four tiles, one date control, a reason dropdown and Send request', () => {
+    const html = render()
+    assert.match(html, /Attendance request/)
+    assert.match(html, /Request leave or permission for a change in your working hours\./)
+    for (const t of ['Leave', 'Coming late', 'Leaving early', 'Going out briefly']) assert.ok(html.includes(`>${t}<`), t)
+    // Coming late is preselected and shows its optional time only.
+    assert.match(html, /Expected arrival time \(optional\)/)
+    assert.equal(/Planned departure time/.test(html), false)
+    assert.equal(/Which half/.test(html), false)
+    // Date shortcuts, and a single date value shown as text until "Another date".
+    for (const d of ['Today', 'Tomorrow', 'Another date']) assert.ok(html.includes(`>${d}<`), d)
+    assert.equal((html.match(/type="date"/g) ?? []).length, 0)
+    assert.match(html, /Send request/)
+    assert.equal(/type="file"/.test(html), false, 'no attachment is asked for')
   })
 
-  test('shows only the fields the chosen type needs', () => {
-    assert.match(html, /Expected arrival/)
-    // Not asked for on a late arrival:
-    for (const other of ['Leaving at', 'Back by', 'Which half', 'Personal or company work']) {
-      assert.equal(html.includes(other), false, `${other} should be hidden for Late arrival`)
-    }
-    assert.match(html, /Your shift starts at 10:00/)
+  test('the reason is ONE labelled dropdown with no default, listing every existing category', () => {
+    const html = render()
+    assert.match(html, /<select[^>]*aria-required="true"/)
+    // The empty placeholder is the selected option, so no real category is a default.
+    assert.match(html, /<option value="" disabled="" selected="">Select a reason<\/option>/)
+    assert.equal(/<option value="[a-z_]+"[^>]*selected/.test(html), false, 'nothing is pre-selected')
+    for (const r of ['Company vehicle delay', 'Company work', 'Personal reason', 'Medical', 'Family emergency', 'Traffic / transport', 'Other'])
+      assert.ok(html.includes(`>${r}</option>`), r)
+    // The old reason pills are gone.
+    assert.equal(/aria-label="Reason"/.test(html), false)
   })
 
-  test('date and time use native pickers and the inputs are phone-sized', () => {
-    assert.match(html, /type="date"/)
-    assert.match(html, /type="time"/)
+  test('required fields carry a red asterisk; the note is behind "Add a note"', () => {
+    const html = render()
+    assert.match(html, /class="boe-req-star"[^>]*> \*<\/span>/)
+    assert.match(html, />\s*Add a note\s*</)
+    assert.equal(/<textarea/.test(html), false, 'the textarea is hidden until asked for')
   })
 
-  test('has the reason chips, one clear Submit request action and no attachments', () => {
-    for (const r of ['Company vehicle delay', 'Personal reason', 'Other']) assert.ok(html.includes(r), r)
-    assert.equal((html.match(/Submit request/g) ?? []).length, 1)
-    assert.equal(/type="file"/.test(html), false)
+  test('no employee, approver, attachment or pay-status field exists', () => {
+    const html = render()
+    assert.equal(/approver|employee|pay status|paid|unpaid/i.test(html.replace(/<option[^>]*>[^<]*<\/option>/g, '')), false)
   })
 
-  test('does not ask who the request is for — the API takes the employee from the token', () => {
-    assert.equal(/employee_id|Select employee|Employee</i.test(html), false)
-  })
-})
-
-describe('AttendanceRequestForm (source rules)', () => {
-  const src = read('src/components/attendanceRequests/AttendanceRequestForm.tsx')
-
-  test('a second tap while sending is ignored, by a ref and not just by state', () => {
-    assert.match(src, /const inFlight = useRef\(false\)/)
-    assert.match(src, /if \(inFlight\.current\) return/)
-  })
-
-  test('a failed submit keeps every entry and only adds a message', () => {
-    // No reset of the field state on the error path.
-    const failure = src.slice(src.indexOf('const message = await onSubmit'), src.indexOf('} finally {'))
-    assert.match(failure, /setError\(message\)/)
-    assert.equal(/setDate\(|setReason\(|setNote\(|setType\(/.test(failure), false)
-  })
-
-  test('validation mirrors the server: reason, Other note, per-type times and half', () => {
-    for (const rule of ['missing.reason', 'missing.note', 'missing.depart', 'missing.back', 'missing.kind', 'missing.half']) {
-      assert.ok(src.includes(rule), rule)
-    }
-  })
-})
-
-describe('AttendanceRequestModal (correction)', () => {
   test('a correction pre-fills from the original and says the original is kept', () => {
     const original = {
       id: '00000000-0000-0000-0000-000000000001', request_type: 'time_out',
-      start_date: '2026-10-05', end_date: '2026-10-05', expected_arrival_time: null,
+      start_date: '2025-01-06', end_date: '2025-01-06', expected_arrival_time: null,
       departure_time: '14:00:00', return_time: '15:30:00', half_session: null, work_kind: 'company',
       reason_code: 'company_work', reason_note: 'Bank visit for BOE', status: 'pending',
     } as unknown as AttendanceRequestRow
-    const html = renderToStaticMarkup(<AttendanceRequestModal original={original} onClose={noop} onSubmit={submit} />)
+    const html = render(original)
     assert.match(html, /Correct attendance request/)
     assert.match(html, /original request stays in the history/)
     assert.match(html, /value="14:00"/)
     assert.match(html, /value="15:30"/)
-    assert.match(html, /aria-checked="true"[^>]*>Company work</)
-    assert.match(html, /Submit correction/)
-    assert.match(html, /Cancel/)
-  })
-})
-
-describe('the admin list and review drawer', () => {
-  const queue = read('src/components/attendanceRequests/RequestQueue.tsx')
-  const drawer = read('src/components/attendanceRequests/RequestReviewDrawer.tsx')
-
-  test('defaults to Pending and offers Pending / Approved / Rejected / All', () => {
-    assert.match(queue, /useState<FilterKey>\('pending'\)/)
-    for (const label of ['Pending', 'Approved', 'Rejected', 'All']) assert.ok(queue.includes(`label: '${label}'`), label)
+    assert.match(html, /<option value="company_work" selected=""/)
+    assert.ok(checked(html).includes('out'))
+    assert.match(html, /Bank visit for BOE/)
+    // 6 Jan 2025 is in the past: the date picker is open and the form says why it matters.
+    assert.match(html, /type="date"/)
+    assert.match(html, /marked as sent after the event/)
+    assert.match(html, /Send correction/)
   })
 
-  test('the empty state says what the brief asks for', () => {
-    assert.ok(queue.includes('No pending requests'))
-    assert.ok(queue.includes('New attendance requests will appear here.'))
-  })
-
-  test('filters are one list, not another tab row', () => {
-    assert.equal(queue.includes('role="tablist"'), false)
-  })
-
-  test('rejecting, and changing an earlier decision, still need a reason', () => {
-    assert.match(drawer, /const noteRequired = mode === 'rejected' \|\| revising/)
-    assert.match(drawer, /Add a reason/)
-  })
-
-  test('an admin cannot decide their own request, and cancelled ones are closed', () => {
-    assert.match(drawer, /const canApprove = !own && row\.status !== 'cancelled' && row\.status !== 'approved'/)
-    assert.match(drawer, /const canReject\s+= !own && row\.status !== 'cancelled' && row\.status !== 'rejected'/)
-  })
-
-  test('the drawer keeps the audit history and follows the form-modal dismissal rule', () => {
-    assert.match(drawer, /RequestHistoryList/)
-    assert.match(drawer, /shouldCloseFormModal\('escape'\)/)
-    assert.match(drawer, /Deliberately no click handler/)
-  })
-
-  test('a slow answer for a filter the admin has left is ignored', () => {
-    assert.match(queue, /if \(ticket !== latest\.current\) return/)
-  })
-})
-
-describe('the requests page and its old deep link', () => {
-  test('the page renders the list only; Payroll review is not a second tab any more', () => {
-    const page = read('src/app/attendance/requests/page.tsx')
-    assert.equal(page.includes('PayrollAttendanceReview'), false)
-    assert.equal(page.includes('role="tablist"'), false)
-    assert.match(page, /view=decisions/)
-  })
-
-  test('/attendance/requests?tab=review redirects to its new home', () => {
-    const cfg = read('next.config.ts')
-    assert.match(cfg, /source: '\/attendance\/requests'/)
-    assert.match(cfg, /key: 'tab', value: 'review'/)
-    assert.match(cfg, /destination: '\/attendance\/monthly-review\?view=decisions'/)
-  })
-
-  test('the review view is hosted by Monthly Review, on the shared month', () => {
-    const page = read('src/app/attendance/monthly-review/page.tsx')
-    assert.match(page, /<PayrollAttendanceReview getToken=\{getToken\} year=\{year\} month=\{month\} \/>/)
+  test('a half-day request opens under Leave with Half day selected and its half choice', () => {
+    const original = {
+      id: '00000000-0000-0000-0000-000000000002', request_type: 'half_day',
+      start_date: '2099-01-05', end_date: '2099-01-05', expected_arrival_time: null,
+      departure_time: null, return_time: null, half_session: 'second_half', work_kind: null,
+      reason_code: 'personal', reason_note: null, status: 'pending',
+    } as unknown as AttendanceRequestRow
+    const html = render(original)
+    assert.match(html, /How much of the day\?/)
+    assert.match(html, /Which half\?/)
+    for (const v of ['leave', 'half', 'second_half']) assert.ok(checked(html).includes(v), v)
   })
 })

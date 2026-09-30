@@ -24,6 +24,8 @@ import {
   REQUEST_STATUS_LABEL,
   REASON_LABEL,
   requestSummary,
+  submissionTiming,
+  SUBMISSION_TIMING_LABEL,
   type AttendanceRequestRow,
 } from '@/lib/attendance/requests'
 import { formatMinutesOfDay, istClockOf } from '@/lib/istDate'
@@ -177,8 +179,8 @@ export function RequestReviewDrawer({
             <dd>
               {formatIstDateTime(row.submitted_at)}
               {' · '}
-              <span style={{ color: row.informed_before_shift ? '#047857' : '#B45309', fontWeight: 600 }}>
-                {row.informed_before_shift ? 'Informed before shift' : 'After shift start'}
+              <span style={{ color: submissionTiming(row) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+                {SUBMISSION_TIMING_LABEL[submissionTiming(row)]}
               </span>
             </dd>
             {shift && (

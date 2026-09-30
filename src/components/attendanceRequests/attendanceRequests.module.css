@@ -1,17 +1,12 @@
-/* Attendance request screens — the employee form and the admin queue.
+/* Admin attendance requests — the list and its review drawer.
  *
  * App colours only: white surfaces on the #F4F5F7 ground, #111318 text,
- * rgba(0,0,0,.08) borders, the amber the app already uses for a selected chip
- * and its primary button. Status badges keep the request status tones from
- * ./format.ts. Every tap target is 44px on a phone.
+ * rgba(0,0,0,.08) borders, the amber the app already uses for its primary
+ * button. Status badges keep the request status tones from ./format.ts. Shared
+ * pieces (filters, notices, state blocks) come from
+ * src/components/attendancePayroll/ui. The employee request form lives in
+ * AttendanceRequestModal and the global .boe-req-* rules.
  */
-
-/* ── Form ─────────────────────────────────────────────────────────────────── */
-
-.formPage {
-  /* A form reads best in a column; the page around it keeps the full width. */
-  max-width: 640px;
-}
 
 .surface {
   background: #fff;
@@ -20,106 +15,8 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.identity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: #4A5261;
-  margin-bottom: 12px;
-}
-.identity strong { color: #111318; font-weight: 600; }
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-}
-.pageForm { padding: 20px 20px 0; }
-
-.group { display: flex; flex-direction: column; gap: 8px; min-width: 0; border: 0; padding: 0; margin: 0; }
-
-.label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #4A5261;
-  letter-spacing: 0.01em;
-  padding: 0;
-}
+.label { font-size: 12px; font-weight: 600; color: #4A5261; letter-spacing: 0.01em; padding: 0; }
 .optional { font-weight: 400; color: #6B7384; }
-
-.typeGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.typeCard {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 60px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.13);
-  background: #fff;
-  color: #111318;
-  text-align: left;
-  cursor: pointer;
-  font-family: inherit;
-  transition: border-color 0.14s, background 0.14s, box-shadow 0.14s;
-}
-.typeCard:hover { border-color: rgba(0, 0, 0, 0.28); }
-.typeName { font-size: 14px; font-weight: 600; line-height: 1.25; }
-.typeHint { font-size: 12px; color: #6B7384; line-height: 1.3; }
-.typeCardActive,
-.typeCardActive:hover {
-  border-color: #E8A030;
-  background: rgba(232, 160, 48, 0.09);
-  box-shadow: inset 0 0 0 1px #E8A030;
-}
-
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.13);
-  background: #fff;
-  color: #111318;
-  font-size: 13.5px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: inherit;
-  transition: border-color 0.14s, background 0.14s;
-}
-.chip:hover { border-color: rgba(0, 0, 0, 0.28); }
-.chipActive,
-.chipActive:hover {
-  border-color: #E8A030;
-  background: rgba(232, 160, 48, 0.12);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px #E8A030;
-}
-
-.typeCard:focus-visible,
-.chip:focus-visible,
-.input:focus-visible {
-  outline: 2px solid #5585E8;
-  outline-offset: 2px;
-}
-
-.fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-.fieldFull { grid-column: 1 / -1; }
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-
-/* 16px: iOS zooms the page when a focused input is smaller. */
 .input {
   width: 100%;
   min-height: 44px;
@@ -131,130 +28,21 @@
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 8px;
   box-sizing: border-box;
-  /* A focused field is never left hidden under the sticky Submit bar. */
-  scroll-margin-bottom: 110px;
 }
-.input[aria-invalid='true'] { border-color: #DC2626; }
+.input:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
 textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
-.hint { font-size: 12px; color: #6B7384; line-height: 1.4; }
-
-.shiftNote {
-  font-size: 12.5px;
-  color: #4A5261;
-  background: #F8F9FB;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
-  padding: 8px 10px;
-  line-height: 1.4;
-}
-
-.alert {
-  font-size: 13px;
-  line-height: 1.45;
-  color: #991B1B;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.28);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
 .footnote { font-size: 12px; color: #6B7384; line-height: 1.5; }
-
-/* The bar stays in the flow (sticky, not fixed): it sits at the end of the form
-   and follows the screen edge while the form is taller than the screen, so it
-   never floats over the fields it belongs to or fights the keyboard. */
-.actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  margin: 0 -20px;
-  padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
-  background: #fff;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 0 0 12px 12px;
+.alert {
+  font-size: 13px; line-height: 1.45; color: #991B1B;
+  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 8px; padding: 10px 12px;
 }
-.submit { min-height: 44px; padding: 0 22px; font-size: 14px; font-weight: 600; }
-
-/* Success */
-.success {
-  padding: 22px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.successTitle { font-size: 16px; font-weight: 700; color: #111318; }
-.successBody { font-size: 13.5px; color: #4A5261; line-height: 1.5; }
-.summary {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: #F8F9FB;
-  border-radius: 10px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13.5px;
-  color: #111318;
-}
-.successActions { display: flex; gap: 10px; flex-wrap: wrap; }
-.linkBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 18px;
-  font-size: 14px;
-  text-decoration: none;
+.shiftNote {
+  font-size: 12.5px; color: #4A5261; background: #F8F9FB;
+  border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 8px; padding: 8px 10px; line-height: 1.4;
 }
 
 /* ── Admin queue ──────────────────────────────────────────────────────────── */
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-/* Status filters: compact segmented pills. Deliberately NOT the underline of the
-   section tabs above — a filter narrows this list, a tab changes page. */
-.filters {
-  display: inline-flex;
-  padding: 3px;
-  gap: 2px;
-  background: #EEF0F4;
-  border-radius: 9px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.filters::-webkit-scrollbar { display: none; }
-.filter {
-  min-height: 34px;
-  padding: 0 13px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #4A5261;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: inherit;
-}
-.filter:hover { color: #111318; }
-.filter:focus-visible { outline: 2px solid #5585E8; outline-offset: 1px; }
-.filterActive,
-.filterActive:hover {
-  background: #fff;
-  color: #111318;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-}
 
 .shiftLabel { font-size: 12px; color: #6B7384; margin-left: auto; }
 
@@ -310,18 +98,6 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   gap: 6px;
 }
 .cardHead { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
-
-/* State blocks */
-.state {
-  padding: 40px 20px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-.stateTitle { font-size: 14px; font-weight: 600; color: #111318; }
-.stateBody { font-size: 13px; color: #6B7384; }
 
 /* ── Drawer ───────────────────────────────────────────────────────────────── */
 
@@ -384,8 +160,6 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   letter-spacing: 0.05em;
   margin: 0 0 6px;
 }
-.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.timelineItem { font-size: 13px; color: #111318; line-height: 1.4; }
 .iconBtn {
   width: 44px;
   height: 44px;
@@ -426,27 +200,14 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   .typeCard, .chip { transition: none; }
 }
 
-/* ── My requests (employee list) ──────────────────────────────────────────── */
-
-.mine { padding: 14px 16px; margin-bottom: 16px; scroll-margin-top: 90px; }
-.mineHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.mineTitle { font-size: 14px; font-weight: 700; color: #111318; }
-.mineSub { font-size: 12px; color: #6B7384; }
-.mineList { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.mineItem {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.mineRow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.mineMeta { font-size: 12px; color: #6B7384; line-height: 1.45; }
-.rowActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.rowBtn { min-height: 36px; padding: 0 14px; font-size: 13px; }
-.newBtn { min-height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600; text-decoration: none; }
+/* The request a notification or the salary review linked to. */
+.focusRow { background: rgba(232, 160, 48, 0.10); box-shadow: inset 3px 0 0 #E8A030; }
+.focusCard { border-color: #E8A030; box-shadow: 0 0 0 1px #E8A030; }
 
 @media (max-width: 767px) {
-  .rowBtn { min-height: 44px; }
+  .desktopOnly { display: none; }
+  .cards { display: flex; }
+  .shiftLabel { margin-left: 0; width: 100%; }
+  .drawer { width: 100vw; border-left: 0; }
+  .facts { grid-template-columns: 96px minmax(0, 1fr); }
 }

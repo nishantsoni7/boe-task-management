@@ -8,7 +8,11 @@
 import type { ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
 import { fetchActiveSettings } from '@/lib/payroll/settingsStore'
 import type { ShiftWindow } from './requests'
-import { REQUEST_TYPE_LABEL, REQUEST_STATUS_LABEL, type AttendanceRequestRow } from './requests'
+import {
+  REQUEST_TYPE_LABEL, REQUEST_STATUS_LABEL, REQUEST_COLUMNS,
+  submissionTiming, SUBMISSION_TIMING_LABEL,
+  type AttendanceRequestRow,
+} from './requests'
 
 /**
  * The company working day used for "informed before shift start". There are no
@@ -22,6 +26,33 @@ export async function currentShiftWindow(svc: ServiceClient): Promise<ShiftWindo
     grace_end_minutes:     settings.grace_end_minutes,
     weekly_off_day:        settings.weekly_off_day,
   }
+}
+
+/** A request as the attendance views carry it, with the decider's name. */
+export type MonthRequest = AttendanceRequestRow & { decider?: { full_name: string | null } | null }
+
+/**
+ * Every request of ONE employee that touches [from, to] (IST dates), whatever
+ * its status, for the employee's and the admin's attendance views.
+ *
+ * Independent of the attendance import: a request is a record of what the
+ * employee asked and what an admin decided, so it is shown whether or not the
+ * machine punches for those dates have arrived. The caller has already
+ * authorised `employeeId` against the bearer token.
+ */
+export async function loadMonthRequests(
+  svc: ServiceClient, employeeId: string, from: string, to: string,
+): Promise<{ requests: MonthRequest[]; error: string | null }> {
+  const { data, error } = await svc
+    .from('attendance_requests')
+    .select(`${REQUEST_COLUMNS}, decider:users!attendance_requests_decided_by_fkey ( full_name )`)
+    .eq('employee_id', employeeId)
+    .lte('start_date', to)
+    .gte('end_date', from)
+    .order('start_date', { ascending: true })
+    .order('submitted_at', { ascending: true })
+  if (error) return { requests: [], error: error.message }
+  return { requests: (data ?? []) as unknown as MonthRequest[], error: null }
 }
 
 /** Map a Postgres guard error to something a person can act on. */
@@ -61,7 +92,7 @@ export async function notifyAdminsOfRequest(
       user_id:   id,
       type:      'attendance_request_submitted',
       title:     `${who} ${corrected ? 'corrected a' : 'submitted a'} ${what} request for ${when}`,
-      body:      row.informed_before_shift ? 'Submitted before the shift started.' : 'Submitted after the shift started.',
+      body:      `${SUBMISSION_TIMING_LABEL[submissionTiming(row)]}.`,
       entity_id: row.id,
     })))
     if (error) console.error('[attendance-requests] admin notification not delivered:', error.message)

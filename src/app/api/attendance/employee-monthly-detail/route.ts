@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
+import { loadMonthRequests } from '@/lib/attendance/requestsServer'
 import {
   isFutureMonth,
   attendanceCoverageThrough,
@@ -81,6 +82,14 @@ export async function GET(req: NextRequest) {
 
   const { from, to } = monthRange(year, month)
 
+  // This employee's attendance requests for the month. Read for the same
+  // employeeId the token authorised, and returned in EVERY answer below —
+  // including a month whose attendance has not been imported — because a
+  // request and its decision exist whether or not the punches have arrived.
+  // A failed read is reported, never turned into "no requests".
+  const monthRequests = await loadMonthRequests(svc, employeeId, from, to)
+  const requestsPart = { requests: monthRequests.requests, requests_error: monthRequests.error }
+
   // HOW FAR has the machine export for this month actually got, for ANYONE?
   //
   // The newest attendance_date in the month company-wide. It answers both
@@ -157,6 +166,7 @@ export async function GET(req: NextRequest) {
       month_imported: false,
       coverage_through: null,
       records: [],
+      ...requestsPart,
     })
   }
 
@@ -283,5 +293,6 @@ export async function GET(req: NextRequest) {
     // stops on the 5th reads as "uploaded this far" rather than as a gap.
     coverage_through: coverageThrough,
     records,
+    ...requestsPart,
   })
 }

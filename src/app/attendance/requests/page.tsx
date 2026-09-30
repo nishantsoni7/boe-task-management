@@ -12,9 +12,9 @@
 // Admins only: AttendanceGuard (./../layout.tsx) sends everyone else to
 // /my-attendance, and every API behind this page checks requireAdmin itself.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
@@ -22,7 +22,17 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RequestQueue } from '@/components/attendanceRequests/RequestQueue'
 
+// useSearchParams needs a Suspense boundary; same shape as /payroll.
 export default function AttendanceRequestsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <AttendanceRequestsScreen />
+    </Suspense>
+  )
+}
+
+function AttendanceRequestsScreen() {
+  const params = useSearchParams()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -68,7 +78,8 @@ export default function AttendanceRequestsPage() {
         </Link>
       }
     >
-      <RequestQueue getToken={getToken} />
+      {/* ?request=<id> is what a notification or the salary review links to. */}
+      <RequestQueue getToken={getToken} focusId={params.get('request')} />
     </AttendancePayrollLayout>
   )
 }

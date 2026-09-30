@@ -26,6 +26,7 @@ import styles from './myAttendance.module.css'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import { MyAttendanceRequests } from '@/components/attendanceRequests/MyAttendanceRequests'
+import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
 import {
   employeeStatusLabel,
   statusTone as objectionTone,
@@ -127,6 +128,9 @@ export default function MyAttendancePage() {
   // The last date the answer speaks for. Null for a finished month, where the
   // cut-off is the month end and there is nothing to explain.
   const [coverageThrough, setCoverageThrough] = useState<string | null>(null)
+  // The month's attendance requests, shown beside (never inside) the punches.
+  const [monthRequests, setMonthRequests] = useState<MonthRequest[]>([])
+  const [requestsError, setRequestsError] = useState<string | null>(null)
   const [objections, setObjections] = useState<ObjectionRow[]>([])
   const [issueDay,   setIssueDay]   = useState<MyDayRow | null>(null)
   const [historyDate, setHistoryDate] = useState<string | null>(null)
@@ -166,10 +170,14 @@ export default function MyAttendancePage() {
     if (!detailRes.ok) {
       setError(json.error ?? 'Failed to load your attendance')
       setRows([])
+      setMonthRequests([])
+      setRequestsError(null)
       setMonthImported(true)
       setCoverageThrough(null)
     } else {
       setRows(json.records ?? [])
+      setMonthRequests(json.requests ?? [])
+      setRequestsError(json.requests_error ?? null)
       // Absent from an older response shape means "imported"; only an explicit
       // false is the not-uploaded state.
       setMonthImported(json.month_imported !== false)
@@ -193,6 +201,9 @@ export default function MyAttendancePage() {
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token ?? null
   }, [supabase])
+
+  /** Live requests by the dates they cover, for the day chips. */
+  const requestsOnDate = useMemo(() => requestsByDate(monthRequests), [monthRequests])
 
   /** The newest objection per date — what the row badge reflects. */
   const objectionByDate = useMemo(() => objectionsByAttendanceDate(objections), [objections])
@@ -422,6 +433,7 @@ export default function MyAttendancePage() {
                         <td className={ui.nowrap}>
                           {dayLabel(r.attendance_date)}
                           {r.is_corrected && <span className={styles.corrected}>Corrected</span>}
+                          <DayRequestChips items={requestsOnDate.get(r.attendance_date)} />
                         </td>
                         <td className={`${ui.num} ${r.check_in_at ? '' : ui.muted}`}>{clock(r.check_in_at)}</td>
                         <td className={`${ui.num} ${r.check_out_at ? '' : ui.muted}`}>{clock(r.check_out_at)}</td>
@@ -467,11 +479,24 @@ export default function MyAttendancePage() {
                       <span className={styles.late}>{r.late_minutes}m late</span>
                     )}
                   </div>
+                  <DayRequestChips items={requestsOnDate.get(r.attendance_date)} />
                   {issueControls(r)}
                 </li>
               ))}
             </ul>
           </>
+        )}
+
+        {/* Requests and their decisions — shown whether or not this month's
+            attendance has been imported, and kept apart from the punches. */}
+        {!busy && (
+          <MonthRequestsPanel
+            requests={monthRequests}
+            error={requestsError}
+            monthLabel={`${MONTHS[month - 1]} ${year}`}
+            getToken={getToken}
+            audience="employee"
+          />
         )}
 
         {/* There is no employee-facing correction request in this system — the

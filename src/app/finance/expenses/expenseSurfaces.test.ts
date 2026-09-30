@@ -158,8 +158,8 @@ describe('Quick Add Expense on the launcher', () => {
     // the launcher still computes the gate, the shared list only draws it.
     assert.ok(modules.includes('deriveFinanceCapabilities('))
     assert.ok(modules.includes('financeCaps.canCreatePaymentRecord'))
-    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canAttendanceRequest: canSeeAttendance \}\)/.test(modules),
-      'the list is built from the gate and from nothing else')
+    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canRequestAttendance \}\)/.test(modules),
+      'the list is built from the two gates and from nothing else')
     assert.ok(/if \(gates\.canQuickAddExpense\)/.test(quickActions),
       'the definition enters the list only when its gate is true')
     assert.ok(/actions\.length === 0\) return null/.test(quickActions),
@@ -2217,7 +2217,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/attendance/upload/page.tsx',
     'src/app/attendance/upload/upload.module.css',
     'src/app/my-attendance/myAttendance.module.css',
-    'src/app/my-attendance/request/page.tsx',
     'src/app/payroll/credits/credits.module.css',
     'src/app/payroll/credits/page.tsx',
     'src/app/payroll/monthly-review/[userId]/page.tsx',
@@ -2229,7 +2228,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/payroll/settings/settings.module.css',
     'src/components/attendancePayroll/ui.module.css',
     'src/components/attendancePayroll/ui.tsx',
-    'src/components/attendanceRequests/AttendanceRequestForm.tsx',
+    'src/components/attendanceRequests/adminRequests.test.ts',
     'src/components/attendanceRequests/RequestReviewDrawer.tsx',
     'src/components/attendanceRequests/attendanceRequests.module.css',
     'src/components/layout/AttendancePayrollLayout.tsx',
@@ -2260,6 +2259,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/modules/moduleOrderStorage.test.ts',
     'src/lib/announcementsMigration.test.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
+    // Mobile-first Attendance request form (feat/attendance-request-mobile): the
+    // shared form, its quick-action entry points and the form-sheet shell.
+    'src/components/attendanceRequests/AttendanceRequestFlow.tsx',
+    'src/lib/attendance/requestForm.ts',
+    'src/lib/attendance/requestForm.test.ts',
+    'src/components/payroll/PayrollModal.tsx',
+    'src/app/account/page.tsx',
+    'src/app/globals.css',
+    // Part 2: requests reach the employee's and the admin's attendance views;
+    // a repeat submission is answered with the first; notifications link to it.
+    'src/components/attendanceRequests/MonthRequests.tsx',
+    'src/lib/attendance/requestWorkflow.test.ts',
+    'src/app/api/attendance/employee-monthly-detail/route.ts',
+    'src/app/attendance/monthly-review/[userId]/page.tsx',
     'supabase/migrations/20270215000000_attendance_requests.sql',
     'supabase/migrations/20270215000100_attendance_request_notification_types.sql',
   ])

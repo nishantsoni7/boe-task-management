@@ -396,16 +396,13 @@ describe('the regrouping is user-interface only', () => {
 describe('the "Attendance request" shortcut on the Modules page', () => {
   const QUICK = read('src/components/layout/QuickActions.tsx')
 
-  test('goes through the existing quick-action system, to the request page', () => {
-    assert.match(QUICK, /if \(gates\.canAttendanceRequest\)/)
+  test('goes through the existing quick-action system and opens the shared request form', () => {
+    assert.match(QUICK, /if \(gates\.canRequestAttendance\)/)
     assert.match(QUICK, /label: 'Attendance request'/)
-    assert.match(QUICK, /href: '\/my-attendance\/request'/)
-    assert.ok(existsSync(join(ROOT, 'src/app/my-attendance/request/page.tsx')))
+    assert.match(QUICK, /opens: 'attendance-request'/)
   })
 
-  test('is shown to exactly whoever sees the Attendance & Payroll card', () => {
-    assert.match(LAUNCHER, /canAttendanceRequest: canSeeAttendance/)
-    // The gate is computed before the list is built.
-    assert.ok(LAUNCHER.indexOf('const canSeeAttendance') < LAUNCHER.indexOf('buildQuickActions({'))
+  test('is offered to the signed-in active person only, and not while viewing as somebody else', () => {
+    assert.match(LAUNCHER, /const canRequestAttendance = !viewMode && !!userId && !!profile && profile.is_active !== false/)
   })
 })

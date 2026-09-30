@@ -460,3 +460,55 @@ same three roles and records.
 SQL behaviour was verified on private clones of a full local Supabase schema,
 which were dropped afterwards. It covered triggers, RLS, grants, the lock
 function and its refusals, the enum failure, period deletion and rollback.
+
+---
+
+## 12. Mobile form, entry points and attendance linkage (feat/attendance-request-mobile)
+
+**Form.** `AttendanceRequestModal` is now a phone-first sheet (full screen ≤ 560 px
+with a pinned "Send request" footer that follows the visual viewport when the
+keyboard opens; a 500 px centred dialog above that). Four tiles map onto the same
+five backend types (`src/lib/attendance/requestForm.ts`):
+
+| Tile | Backend type | Fields |
+|---|---|---|
+| Leave → Full day | `full_day_leave` | date (optional "more than one day" last day) |
+| Leave → Half day | `half_day` | date + first / second half |
+| Coming late | `late_arrival` | date + expected arrival (optional) |
+| Leaving early | `early_departure` | date + planned departure |
+| Going out briefly | `time_out` | date + leaving / expected return; purpose derived from the reason (Company work or Company vehicle delay → company, otherwise personal) |
+
+Only the chosen tile's fields are sent. The reason is one dropdown with no
+default (the same seven categories); a note is optional except for **Other**.
+Date is Today / Tomorrow (IST, re-read every 30 s so a form left open across IST
+midnight never relabels a chosen date silently) or **Another date**. The server
+validates exactly as before.
+
+**Entry points.** One `AttendanceRequestFlow` (form + POST + success screen) is
+opened from the Modules-page quick action (above the module tiles, ≤ 767 px), the
+desktop sidebar quick action, and My Attendance. It is available to every signed-in
+active employee (not module access; off while previewing with View As). The API
+pins each request to the caller's token, so it grants nothing about anyone else's
+attendance, approvals or payroll.
+
+**Duplicates.** An identical, still-pending request sent by the same employee in
+the last 10 minutes is answered with the existing request (`duplicate: true`) —
+no second row, no second notification. A race between two tabs is caught by the
+database backstop in the separate migration (`attendance_requests_live_*` unique
+indexes; not required for correctness of the retry path).
+
+**Notifications.** Unchanged recipients (every active admin except the requester;
+the employee for a decision). Links now carry the request id
+(`/attendance/requests?request=<id>`, `/my-attendance?request=<id>#my-requests`)
+and the page scrolls to and highlights it. Bodies say whether the request was
+sent before shift start, after shift start, or after the date.
+
+**Attendance linkage.** `/api/attendance/employee-monthly-detail` returns the
+month's requests (`requests`, `requests_error`) for the token-authorised employee
+in every answer — including a month whose attendance has not been imported. My
+Attendance and the admin employee-month page show them in a separate
+"Requests and permissions" panel (full details, decision, "Details and history")
+and as small chips on the affected days. Punches stay in the table; an approved
+request does not mark a day present, remove lateness, grant paid leave or change
+pay. The payroll review's request line now also shows who decided, when, the
+decision note, and links to the full request and its history.
