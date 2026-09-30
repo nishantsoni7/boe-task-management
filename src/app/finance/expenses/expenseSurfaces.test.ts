@@ -2471,6 +2471,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/customerReviews/reviewReport.ts',
     'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
     'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notificationSystemActivity.test.ts',
     'src/lib/notifications/activityLinkMigration.test.ts',
     'src/lib/notifications/groupMutations.test.ts',
     'src/lib/orders/orderFinanceTestReset.test.ts',

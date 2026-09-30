@@ -116,7 +116,7 @@ it keeps its stored name because it is the audit history's word. The guard
 trigger `customer_review_custom_submissions_guard` enforces the moves: a pending
 row may be decided once; a rejected row may only be reapplied (its corrections,
 counted once); an approved row changes only through an employee edit (§23), which
-keeps its credit held; nothing is ever hard-deleted (an employee's delete is a soft delete, §23).
+keeps its credit on the ledger; nothing is ever hard-deleted (an employee's delete is a soft delete, §23).
 
 ## 7. Reapply
 

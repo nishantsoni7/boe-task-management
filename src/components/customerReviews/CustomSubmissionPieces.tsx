@@ -249,7 +249,7 @@ export function CustomSubmissionTrail({
                 {typeChange && <div style={{ color: colors.secondary }}>Type changed: {typeChange}</div>}
                 {e.details?.proof_replaced === true && <div style={{ color: colors.secondary }}>Screenshot replaced</div>}
                 {e.event_type === 'edited' && e.details?.sent_back_for_approval === true && (
-                  <div style={{ color: '#92400E' }}>Sent back for approval · credit held, not paid again</div>
+                  <div style={{ color: '#92400E' }}>Sent back for approval · credit stays in balance, not paid again</div>
                 )}
                 {e.event_type === 'approved' && e.details?.reaffirmed_after_edit === true && (
                   <div style={{ color: colors.secondary }}>Approved again after an edit · nothing more awarded</div>

@@ -840,7 +840,7 @@ begin
     v_body  := new.submission_ref;
   elsif tg_op = 'UPDATE' and new.edit_count = old.edit_count + 1 then
     v_title := format('%s edited an approved custom %s Review; it needs approval again.', coalesce(nullif(btrim(v_name), ''), 'An employee'), v_type);
-    v_body  := format('%s · edit %s · credit held', new.submission_ref, new.edit_count);
+    v_body  := format('%s · edit %s · credit stays in balance', new.submission_ref, new.edit_count);
   else
     v_title := format('%s reapplied a rejected custom %s Review for approval.', coalesce(nullif(btrim(v_name), ''), 'An employee'), v_type);
     v_body  := format('%s · reapplication %s', new.submission_ref, new.reapplication_count);

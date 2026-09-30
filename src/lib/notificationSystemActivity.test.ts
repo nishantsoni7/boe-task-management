@@ -350,6 +350,13 @@ describe('the read side excludes system types too', () => {
     // information, that a payment was recorded and verified — a Finance type,
     // inside that person's own Record Payment action. No trigger, nothing scheduled.
     const ADMIN_DECISIONS = '20270120000000_order_submission_admin_decisions_ask_permissions.sql'
+    // A twelfth and thirteenth, 20270223000000 and 20270224000000, re-create the SAME review trail
+    // function as 20261206000000/20261207000000 (a trigger on customer_review_custom_submissions —
+    // not on notifications): a PERSON's own submit, reapply or edit-after-approval tells the
+    // reviewers, in that person's transaction, using the same two customer_review_* types. No new
+    // type, no trigger on notifications, nothing scheduled.
+    const REVIEW_EDIT = '20270223000000_customer_review_custom_edit_delete.sql'
+    const REVIEW_DUPLICATE = '20270224000000_customer_review_custom_duplicate_detection.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -362,7 +369,16 @@ describe('the read side excludes system types too', () => {
       REVISED_PI_PROMOTION,
       REVISION_IN_FORCE,
       ADMIN_DECISIONS,
+      REVIEW_EDIT,
+      REVIEW_DUPLICATE,
     ])
+    for (const f of [REVIEW_EDIT, REVIEW_DUPLICATE]) {
+      const sql = read(join(dir, f))
+      assert.equal((sql.match(/insert\s+into\s+(public\.)?notifications/gi) ?? []).length, 1, `${f}: exactly one notification write`)
+      assert.match(sql, /v_kind::notification_type/)
+      assert.equal(isSystemGeneratedNotificationType('customer_review_submitted'), false)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false)
+    }
     {
       const sql = read(join(dir, ADMIN_DECISIONS))
       const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(t => t.replace(/'|::notification_type/g, ''))
@@ -457,7 +473,7 @@ describe('the read side excludes system types too', () => {
         `${REVIEW_PHASE}: it fires on a submission or a status change, nothing scheduled`)
       assert.equal(/create\s+(or\s+replace\s+)?trigger/i.test(read(join(dir, REVIEW_TRAIL_REPAIR))), false,
         `${REVIEW_TRAIL_REPAIR}: it replaces the function only, and installs no trigger`)
-      for (const f of [REVIEW_PHASE, REVIEW_TRAIL_REPAIR]) {
+      for (const f of [REVIEW_PHASE, REVIEW_TRAIL_REPAIR, REVIEW_EDIT, REVIEW_DUPLICATE]) {
         const body = read(join(dir, f))
         assert.ok(body.includes("v_kind := 'customer_review_submitted';") && body.includes("v_kind := 'customer_review_reapplied';"),
           `${f}: it writes the two review types`)
@@ -466,7 +482,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)
