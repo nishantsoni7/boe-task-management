@@ -1,14 +1,14 @@
 'use client'
 
 // The employee's own attendance requests on /my-attendance: the one obvious
-// entry point ("Attendance request"), their recent requests with status,
-// reviewer and time, and Correct / Cancel / History.
+// entry point ("Attendance request", a link to its own page), their recent
+// requests with status, reviewer and time, and Correct / Cancel / History.
 //
 // Everything is read through /api/attendance-requests, which pins the list to
 // the caller's own rows whatever this component asks for.
 
 import { useCallback, useEffect, useState } from 'react'
-import { colors } from '@/lib/tokens'
+import Link from 'next/link'
 import {
   REQUEST_TYPE_LABEL,
   REQUEST_STATUS_LABEL,
@@ -19,8 +19,10 @@ import {
   type AttendanceRequestRow,
 } from '@/lib/attendance/requests'
 import { AttendanceRequestModal, type RequestPayload } from './AttendanceRequestModal'
+import type { ShiftContext } from './AttendanceRequestForm'
 import { RequestHistoryModal } from './RequestHistoryModal'
 import { formatIstDateTime, statusTone } from './format'
+import styles from './attendanceRequests.module.css'
 
 type Row = AttendanceRequestRow & { decider?: { full_name: string | null } | null }
 
@@ -30,7 +32,8 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
   const [rows, setRows] = useState<Row[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [formFor, setFormFor] = useState<Row | 'new' | null>(null)
+  const [shift, setShift] = useState<ShiftContext | null>(null)
+  const [correcting, setCorrecting] = useState<Row | null>(null)
   const [historyId, setHistoryId] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -41,7 +44,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
     const res = await fetch('/api/attendance-requests', { headers: { authorization: `Bearer ${token}` } })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) setError(json.error ?? 'Could not load your requests.')
-    else { setRows(json.requests ?? []); setError(null) }
+    else { setRows(json.requests ?? []); setShift(json.shift ?? null); setError(null) }
     setLoaded(true)
   }, [getToken])
 
@@ -50,6 +53,8 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
     void run()
   }, [load])
 
+  // Used by the correction dialog only; a NEW request is submitted from its own
+  // page (/my-attendance/request).
   const submit = async (payload: RequestPayload): Promise<string | null> => {
     const token = await getToken()
     const res = await fetch('/api/attendance-requests', {
@@ -82,84 +87,72 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
   const visible = showAll ? rows : rows.slice(0, COLLAPSED)
 
   return (
-    <section aria-labelledby="my-requests-heading" style={{
-      border: `1px solid ${colors.border}`, borderRadius: 12, background: colors.base,
-      padding: 14, marginBottom: 16,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+    <section id="my-requests" aria-labelledby="my-requests-heading" className={`${styles.surface} ${styles.mine}`}>
+      <div className={styles.mineHead}>
         <div>
-          <div id="my-requests-heading" style={{ fontSize: 14, fontWeight: 700, color: colors.primary }}>
-            My requests
-          </div>
-          <div style={{ fontSize: 12, color: colors.tertiary }}>
-            Late, early, time out, half day or leave
-          </div>
+          <div id="my-requests-heading" className={styles.mineTitle}>My requests</div>
+          <div className={styles.mineSub}>Late, early, time out, half day or leave</div>
         </div>
-        <button
-          type="button"
-          onClick={() => setFormFor('new')}
-          className="boe-btn boe-btn-primary"
-          style={{ padding: '10px 16px', fontSize: 14, fontWeight: 600, minHeight: 44 }}
-        >
+        <Link href="/my-attendance/request" className={`boe-btn boe-btn-primary ${styles.newBtn}`}>
           Attendance request
-        </button>
+        </Link>
       </div>
 
       {error && (
-        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#DC2626' }}>{error}</div>
+        <div role="alert" className={styles.alert} style={{ marginTop: 10 }}>{error}</div>
+      )}
+
+      {!loaded && !error && (
+        <div className={styles.mineMeta} style={{ marginTop: 10 }}>Loading your requests…</div>
       )}
 
       {loaded && rows.length === 0 && !error && (
-        <div style={{ marginTop: 10, fontSize: 12.5, color: colors.muted }}>No requests yet.</div>
+        <div className={styles.mineMeta} style={{ marginTop: 10 }}>
+          No requests yet. Use “Attendance request” to tell us about a late arrival, early departure, time out, half day or leave.
+        </div>
       )}
 
       {visible.length > 0 && (
-        <ul style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul className={styles.mineList}>
           {visible.map(r => {
             const tone = statusTone(r.status)
             return (
-              <li key={r.id} style={{
-                border: `1px solid ${colors.border}`, borderRadius: 10, padding: '10px 12px',
-                display: 'flex', flexDirection: 'column', gap: 4,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: colors.primary }}>
+              <li key={r.id} className={styles.mineItem}>
+                <div className={styles.mineRow}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111318' }}>
                     {REQUEST_TYPE_LABEL[r.request_type]}
                   </div>
-                  <span style={{
-                    fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                    background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
-                  }}>
+                  <span className={styles.badge} style={{ background: tone.bg, color: tone.fg }}>
                     {REQUEST_STATUS_LABEL[r.status]}
                   </span>
                 </div>
-                <div style={{ fontSize: 12.5, color: colors.primary }}>{requestSummary(r)}</div>
-                <div style={{ fontSize: 12, color: colors.tertiary }}>
+                <div style={{ fontSize: 12.5, color: '#111318' }}>{requestSummary(r)}</div>
+                <div className={styles.mineMeta}>
                   {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                 </div>
-                <div style={{ fontSize: 11.5, color: colors.muted }}>
+                <div className={styles.mineMeta}>
                   Submitted {formatIstDateTime(r.submitted_at)}
                   {' · '}{r.informed_before_shift ? 'before shift start' : 'after shift start'}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>
+                  <div className={styles.mineMeta}>
                     {REQUEST_STATUS_LABEL[r.status]} by {r.decider?.full_name ?? 'Admin'} · {formatIstDateTime(r.decided_at)}
                     {r.decision_note ? ` — ${r.decision_note}` : ''}
                   </div>
                 )}
                 {r.status === 'cancelled' && r.cancel_reason && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>{r.cancel_reason}</div>
+                  <div className={styles.mineMeta}>{r.cancel_reason}</div>
                 )}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                <div className={styles.rowActions}>
                   {canEmployeeCorrect(r, now) && (
-                    <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
-                      onClick={() => setFormFor(r)}>Correct</button>
+                    <button type="button" className={`boe-btn boe-btn-ghost ${styles.rowBtn}`}
+                      onClick={() => setCorrecting(r)}>Correct</button>
                   )}
                   {canEmployeeCancel(r, now) && (
-                    <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                    <button type="button" className={`boe-btn boe-btn-ghost ${styles.rowBtn}`}
                       disabled={busyId === r.id} onClick={() => void cancel(r)}>Cancel</button>
                   )}
-                  <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                  <button type="button" className={`boe-btn boe-btn-ghost ${styles.rowBtn}`}
                     onClick={() => setHistoryId(r.id)}>History</button>
                 </div>
               </li>
@@ -169,16 +162,17 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       )}
 
       {rows.length > COLLAPSED && (
-        <button type="button" className="boe-btn boe-btn-ghost" style={{ marginTop: 8, padding: '6px 12px', fontSize: 12.5 }}
+        <button type="button" className={`boe-btn boe-btn-ghost ${styles.rowBtn}`} style={{ marginTop: 8 }}
           onClick={() => setShowAll(v => !v)}>
           {showAll ? 'Show fewer' : `Show all ${rows.length}`}
         </button>
       )}
 
-      {formFor && (
+      {correcting && (
         <AttendanceRequestModal
-          original={formFor === 'new' ? null : formFor}
-          onClose={() => setFormFor(null)}
+          original={correcting}
+          shift={shift}
+          onClose={() => setCorrecting(null)}
           onSubmit={submit}
         />
       )}

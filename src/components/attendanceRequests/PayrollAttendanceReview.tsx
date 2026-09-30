@@ -50,10 +50,21 @@ const STATUS_CHIP: Record<SalaryStatus, { label: string; fg: string; bg: string 
   resolved:         { label: 'Matches payroll',             fg: '#059669', bg: 'rgba(16,185,129,0.12)' },
 }
 
-export function PayrollAttendanceReview({ getToken }: { getToken: () => Promise<string | null> }) {
+export function PayrollAttendanceReview({
+  getToken, year: controlledYear, month: controlledMonth,
+}: {
+  getToken: () => Promise<string | null>
+  /** When the page owns the month (Monthly Review does), pass both and the
+   *  component shows no month controls of its own. */
+  year?: number
+  month?: number
+}) {
   const now = istCurrentYearMonth()
-  const [year, setYear] = useState(now.year)
-  const [month, setMonth] = useState(now.month)
+  const [ownYear, setYear] = useState(now.year)
+  const [ownMonth, setMonth] = useState(now.month)
+  const controlled = controlledYear != null && controlledMonth != null
+  const year = controlled ? controlledYear : ownYear
+  const month = controlled ? controlledMonth : ownMonth
   const [data, setData] = useState<Loaded | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -103,11 +114,11 @@ export function PayrollAttendanceReview({ getToken }: { getToken: () => Promise<
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        <select aria-label="Month" className="boe-input" style={{ padding: '8px 10px', fontSize: 13 }}
+        {!controlled && <select aria-label="Month" className="boe-input" style={{ padding: '8px 10px', fontSize: 13 }}
           value={month} onChange={e => setMonth(Number(e.target.value))}>
           {selectableMonthsInYear(year).map(m => <option key={m} value={m}>{MONTHS[m - 1]}</option>)}
-        </select>
-        <select aria-label="Year" className="boe-input" style={{ padding: '8px 10px', fontSize: 13 }}
+        </select>}
+        {!controlled && <select aria-label="Year" className="boe-input" style={{ padding: '8px 10px', fontSize: 13 }}
           value={year} onChange={e => {
             const y = Number(e.target.value)
             const allowed = selectableMonthsInYear(y)
@@ -115,7 +126,7 @@ export function PayrollAttendanceReview({ getToken }: { getToken: () => Promise<
             if (!allowed.includes(month)) setMonth(allowed[allowed.length - 1])
           }}>
           {selectableYears().map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        </select>}
         <label style={{ fontSize: 12.5, color: colors.tertiary, display: 'flex', gap: 6, alignItems: 'center' }}>
           <input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} />
           Only employees needing review

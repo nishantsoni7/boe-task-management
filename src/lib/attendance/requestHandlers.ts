@@ -84,7 +84,12 @@ export async function listRequests(caller: Caller, scope: string | null, status:
       .order('submitted_at', { ascending: false })
       .limit(100)
     if (error) return fail(500, error.message)
-    return ok({ requests: data ?? [] })
+    // The company shift rides along so the request form can say when the day
+    // starts and ends beside the time the employee is asked for. It is the same
+    // window submitRequest validates against, and it is not private: it is the
+    // schedule every employee works to.
+    const shift = await currentShiftWindow(caller.svc)
+    return ok({ requests: data ?? [], shift })
   }
 
   if (!caller.isAdmin) return FORBIDDEN()

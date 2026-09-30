@@ -127,3 +127,11 @@
   .spin { animation: none; }
   .tab, .iconBtn { transition: none; }
 }
+
+/* Header layout: title takes the room beside the menu button; the actions sit
+   on their own line beneath it on a phone instead of pushing the title around. */
+.titleGroup { flex: 1 1 220px; min-width: 0; }
+.headerActions { flex-wrap: wrap; }
+@media (max-width: 767px) {
+  .headerActions { flex: 1 1 100%; justify-content: flex-end; }
+}

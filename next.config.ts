@@ -78,6 +78,26 @@ const nextConfig: NextConfig = {
     // returns on cache instead of re-downloading and re-encoding.
     minimumCacheTTL: 2678400,
   },
+
+  // Old addresses that must keep working after a page moved.
+  //
+  // Attendance Requests used to hold a second tab, "Payroll review", at
+  // /attendance/requests?tab=review. Those month-by-month salary decisions now
+  // live with the month's attendance summary, at Monthly Review → Salary
+  // decisions. Temporary (307) on purpose: this is a courtesy for old links, not
+  // a statement browsers should cache forever. The destination is still behind
+  // AttendanceGuard and its APIs still check the caller, so a redirect grants
+  // nothing.
+  async redirects() {
+    return [
+      {
+        source: '/attendance/requests',
+        has: [{ type: 'query', key: 'tab', value: 'review' }],
+        destination: '/attendance/monthly-review?view=decisions',
+        permanent: false,
+      },
+    ]
+  },
 };
 
 export default nextConfig;

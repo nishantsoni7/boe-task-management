@@ -1,40 +1,30 @@
 'use client'
 
-// Attendance Requests — the admin's two jobs over employee requests:
+// Attendance Requests — the admin list of what employees have asked for:
+// approve or reject each one.
 //
-//   Queue           approve or reject what employees submitted
-//   Payroll review  per employee, every salary-relevant attendance event of a
-//                   month, matched with requests, with a recorded decision
+// The month-by-month salary decisions that used to be a second tab here
+// ("Payroll review") now live in ONE place, Attendance → Monthly Review →
+// Salary decisions, beside the month's attendance summary they are made from.
+// /attendance/requests?tab=review still resolves — next.config.ts redirects it —
+// so old links and bookmarks land there.
 //
 // Admins only: AttendanceGuard (./../layout.tsx) sends everyone else to
 // /my-attendance, and every API behind this page checks requireAdmin itself.
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RequestQueue } from '@/components/attendanceRequests/RequestQueue'
-import { PayrollAttendanceReview } from '@/components/attendanceRequests/PayrollAttendanceReview'
 
-type Tab = 'queue' | 'review'
-
-// useSearchParams needs a Suspense boundary; same shape as /payroll.
 export default function AttendanceRequestsPage() {
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <AttendanceRequestsScreen />
-    </Suspense>
-  )
-}
-
-function AttendanceRequestsScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const router = useRouter()
-  const params = useSearchParams()
-  const [tab, setTab] = useState<Tab>(params.get('tab') === 'review' ? 'review' : 'queue')
   const supabase = useMemo(() => createClient(), [])
 
   const getToken = useCallback(async () => {
@@ -53,11 +43,6 @@ function AttendanceRequestsScreen() {
     void init()
   }, [supabase, router])
 
-  const switchTab = (t: Tab) => {
-    setTab(t)
-    router.replace(t === 'review' ? '/attendance/requests?tab=review' : '/attendance/requests')
-  }
-
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -68,19 +53,22 @@ function AttendanceRequestsScreen() {
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Attendance Requests"
-      subtitle="Approve employee requests, then review each month's attendance before payroll"
+      title="Attendance requests"
+      subtitle="Late arrivals, early departures, time out, half days and leave employees have asked for."
       onSignOut={handleSignOut}
+      actions={
+        // Salary treatment of an approved request is decided against the month's
+        // attendance, not here — one contextual link rather than a second copy.
+        <Link
+          href="/attendance/monthly-review?view=decisions"
+          className="boe-btn boe-btn-ghost"
+          style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}
+        >
+          Salary decisions
+        </Link>
+      }
     >
-      <div role="tablist" aria-label="Attendance requests" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <button role="tab" type="button" aria-selected={tab === 'queue'}
-          className={tab === 'queue' ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
-          style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => switchTab('queue')}>Requests</button>
-        <button role="tab" type="button" aria-selected={tab === 'review'}
-          className={tab === 'review' ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
-          style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => switchTab('review')}>Payroll review</button>
-      </div>
-      {tab === 'queue' ? <RequestQueue getToken={getToken} /> : <PayrollAttendanceReview getToken={getToken} />}
+      <RequestQueue getToken={getToken} />
     </AttendancePayrollLayout>
   )
 }

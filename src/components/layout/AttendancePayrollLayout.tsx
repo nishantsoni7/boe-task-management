@@ -208,11 +208,11 @@ export function AttendancePayrollLayout({
           >
             ☰
           </button>
-          <div className="boe-page-title-group">
+          <div className={`boe-page-title-group ${styles.titleGroup}`}>
             <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          <div className="boe-header-actions">
+          <div className={`boe-header-actions ${styles.headerActions}`}>
             {actions}
             {/* The module's one door onto the notification feed, with its
                 unread count — see IssueNotificationBell. */}
