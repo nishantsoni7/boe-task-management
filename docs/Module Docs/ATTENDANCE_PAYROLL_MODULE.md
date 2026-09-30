@@ -297,3 +297,34 @@ Deleting a payroll period is refused while credits are in use against it (an
 active attendance coverage or a payroll application); they have to be reversed
 or removed first, so the ledger cannot be left pointing at a month that no
 longer exists. Full reference: `BOE_CREDITS.md` §3.
+
+---
+
+## Navigation: six sections and page tabs (2026-09-30)
+
+The admin sidebar was 14 entries (13 pages plus the notification feed). It is now
+six sections; pages that belong together are one row of tabs under the page
+header. A tab is a plain link to the page's existing URL, so no route moved and
+an unopened tab fetches nothing. One definition:
+`src/components/layout/attendancePayrollNav.tsx`.
+
+| Section | Tabs | Pages |
+|---|---|---|
+| Overview | — | `/attendance`, `/attendance/correction-log` |
+| Employees | — | `/attendance/employees`, `/attendance/employees/[id]` |
+| Attendance | Records · Upload · Monthly Review · Requests | `/attendance/records`, `/upload`, `/monthly-review` (+`/[userId]`), `/requests` |
+| Payroll | Monthly Preview · Payroll Runs · BOE Credits · Help: How Payroll Works | `/payroll/monthly-review`, `/payroll` (+`/results/*`), `/payroll/credits`, `/payroll/how-it-works` |
+| Issues | — | `/attendance/minop` (titled Attendance Sync) |
+| Settings | Payroll Rules · Holidays | `/payroll/settings`, `/attendance/holidays` |
+
+- **Notifications** are the header bell (same feed, same unread count; admin
+  `/attendance/notifications`, employee `/my-issues/notifications`).
+- **Payroll review** (was a second tab on Requests) now lives once, at
+  Attendance → Monthly Review → *Salary decisions*
+  (`/attendance/monthly-review?view=decisions`). `/attendance/requests?tab=review`
+  redirects there (`next.config.ts`). The Requests page is the request list only.
+- **Employee request form** is its own page, `/my-attendance/request`, with an
+  "Attendance request" shortcut on the Modules page (same visibility as the
+  Attendance & Payroll card). Corrections still use a dialog over
+  `/my-attendance`. There is no on-behalf-of request flow in the code.
+- Employees keep their flat five-entry sidebar; the guards are unchanged.
