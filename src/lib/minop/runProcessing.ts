@@ -1,3 +1,7 @@
+// COLLECTION-ONLY: while ./collectionMode says so, the function below throws
+// before touching the database, so no caller can write attendance from Minop.
+// The rest of this header describes the behaviour for the later phase.
+//
 // Wires the pure decision in ./processDelivery to real reads and writes.
 //
 // Called two ways:
@@ -18,6 +22,7 @@
 // anything here.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { assertMinopAttendanceWritesAllowed } from './collectionMode'
 import { istDateOf } from '../istDate'
 import { parseMinopPunchEvent } from './punchEvent'
 import {
@@ -49,6 +54,9 @@ export async function runMinopAttendanceProcessing(
   svc: SupabaseClient,
   delivery: MinopDeliveryToProcess,
 ): Promise<ProcessingRunResult> {
+  // Collection-only phase: refuse before any read or write, for every caller.
+  assertMinopAttendanceWritesAllowed()
+
   const now = new Date().toISOString()
   const parsed = parseMinopPunchEvent(delivery.payload)
 

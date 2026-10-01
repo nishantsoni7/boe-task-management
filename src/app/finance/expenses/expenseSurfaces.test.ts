@@ -2219,6 +2219,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/attendance/employees/page.tsx',
     'src/app/attendance/holidays/holidays.module.css',
     'src/app/attendance/holidays/page.tsx',
+    'src/app/attendance/minop/incoming/incoming.module.css',
+    'src/app/attendance/minop/incoming/page.tsx',
     'src/app/attendance/minop/page.tsx',
     'src/app/attendance/minop/sync.module.css',
     'src/app/attendance/monthly-review/page.tsx',
@@ -2569,6 +2571,31 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql',
   ])
 
+  // Minop collection-only and the "Incoming Minop data" register (2026-10-01): Minop
+  // messages are stored and inspected but never turned into attendance. No
+  // migration, no Finance or Orders file; the Attendance admin pages, the Minop
+  // library and routes, the Issues tabs, and the suites that hold them.
+  const ALLOWED_MINOP_COLLECTION_ONLY = new Set([
+    'src/app/api/attendance/minop-deliveries/[id]/reprocess/route.ts',
+    'src/app/api/attendance/minop-incoming/[deliveryId]/route.ts',
+    'src/app/api/attendance/minop-incoming/export/route.ts',
+    'src/app/api/attendance/minop-incoming/route.ts',
+    'src/app/api/integrations/minop/webhook/route.ts',
+    'src/app/attendance/minop/incoming/incoming.module.css',
+    'src/app/attendance/minop/incoming/page.tsx',
+    'src/app/attendance/minop/page.tsx',
+    'src/components/layout/attendancePayrollNav.test.tsx',
+    'src/components/layout/attendancePayrollNav.tsx',
+    'src/lib/minop/collectionMode.ts',
+    'src/lib/minop/incomingCsv.ts',
+    'src/lib/minop/incomingQuery.ts',
+    'src/lib/minop/incomingRegister.test.ts',
+    'src/lib/minop/incomingRegister.ts',
+    'src/lib/minop/runProcessing.test.ts',
+    'src/lib/minop/runProcessing.ts',
+    'src/lib/minop/stage2Security.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2635,6 +2662,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_CLEANUP_NUMBER_CHOICE.has(f) &&
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
+    !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -2978,6 +3006,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
+        || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
