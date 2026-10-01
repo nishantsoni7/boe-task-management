@@ -115,7 +115,7 @@ describe('expanding stored messages', () => {
       delivery('d3', '2026-09-30T12:10:41+00:00', { trans: 'x' }),
       delivery('d4', '2026-09-30T12:10:42+00:00', [1, 2]),
     ])
-    assert.ok(rows.every(r => r.readStatus === 'unreadable'))
+    assert.deepEqual(rows.map(r => r.readStatus), ['unreadable', 'no_punches', 'unreadable', 'unreadable'])
     assert.match(rows[0].readReason ?? '', /Top-level fields: hello, world/)
     assert.match(rows[1].readReason ?? '', /empty "trans" list/)
     assert.match(rows[2].readReason ?? '', /not a list/)
@@ -127,6 +127,27 @@ describe('expanding stored messages', () => {
     assert.deepEqual(rows.map(r => r.readStatus), ['readable', 'unreadable', 'readable'])
     assert.match(rows[1].readReason ?? '', /Entry 2/)
     assert.equal(new Set(rows.map(r => r.rowId)).size, 3)
+  })
+})
+
+describe('a message with no punches is distinguishable from real punches', () => {
+  test('the synthetic self-test is labelled as such, apart from an empty list and from real punches', () => {
+    const rows = buildIncomingRows([
+      delivery('self', '2026-09-19T14:10:42+00:00', { boeSyntheticSelfTest: true, note: 'x', trans: [] }),
+      delivery('empty', '2026-09-19T14:11:42+00:00', { trans: [] }),
+      delivery('real', '2026-09-19T14:12:42+00:00', { trans: [txn()] }),
+    ])
+    const by = Object.fromEntries(rows.map(r => [r.deliveryId, r]))
+    assert.equal(by.self.readStatus, 'no_punches')
+    assert.match(by.self.readReason ?? '', /boeSyntheticSelfTest/)
+    assert.equal(by.empty.readStatus, 'no_punches')
+    assert.doesNotMatch(by.empty.readReason ?? '', /boeSyntheticSelfTest/)
+    assert.equal(by.real.readStatus, 'readable')
+    for (const r of [by.self, by.empty]) {
+      assert.equal(r.minopUserId, null)
+      assert.equal(r.entryNumber, null)
+      assert.equal(r.entryJson, null)
+    }
   })
 })
 
@@ -257,7 +278,8 @@ describe('CSV', () => {
     }
     assert.equal(records.length, 4)
     assert.ok(records.every(r => r.length === INCOMING_CSV_COLUMNS.length))
-    assert.equal(records[1][INCOMING_CSV_COLUMNS.findIndex(c => c.header === 'Minop user ID')], '="0012"')
+    assert.equal(records[1][INCOMING_CSV_COLUMNS.findIndex(c => c.header === 'Punch ID (punchId)')], '="0012"')
+    assert.deepEqual(['Punch ID (punchId)', 'Transaction ID (txnId)', 'Device ID (dvcId)', 'Mode (raw)'].filter(h => !INCOMING_CSV_COLUMNS.some(c => c.header === h)), [])
     assert.match(records[1][INCOMING_CSV_COLUMNS.length - 1], /"name":"A, \\"B\\""/)
     assert.equal(records[3][INCOMING_CSV_COLUMNS.findIndex(c => c.header === 'Data reading')], 'unreadable')
   })

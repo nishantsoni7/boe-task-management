@@ -33,7 +33,15 @@ export type MinopDeliveryRow = {
   raw_body: string
 }
 
-export type ReadStatus = 'readable' | 'partial' | 'unreadable'
+/**
+ * readable    every punch field the register needs is present
+ * partial     the message has a punch, but it lacks a field (reason says which)
+ * no_punches  the message was read but carries no punches (an empty "trans" list)
+ * unreadable  the message could not be read at all (invalid JSON, unknown shape)
+ */
+export type ReadStatus = 'readable' | 'partial' | 'no_punches' | 'unreadable'
+
+export type MessageFormat = 'device_trans' | 'realtime_punchlog' | 'unknown'
 
 export type DuplicateFlag = 'same_body_received_again' | 'same_device_event_id_seen_again'
 
@@ -45,9 +53,15 @@ export type IncomingRegisterRow = {
   entryNumber: number | null
   entryCount: number
   receivedAt: string
-  /** Minop user / fingerprint ID: `punchId` on the device callback, `PunchLog.UserId` on the real-time one. */
+  /** Which field set the punch was read from. */
+  format: MessageFormat
+  /**
+   * `punchId` on the device callback, `PunchLog.UserId` on the real-time one.
+   * Whether it is the person's fingerprint/employee ID is NOT confirmed by Minop;
+   * the register labels it by its field name.
+   */
   minopUserId: string | null
-  /** Event / transaction ID: `txnId` or `OperationID`. Separate from the user ID. */
+  /** `txnId` on the device callback, `OperationID` on the real-time one. Separate from the punch ID. */
   eventId: string | null
   /** Punch time exactly as sent. */
   punchTimeRaw: string | null
@@ -171,7 +185,7 @@ type Expanded = Omit<IncomingRegisterRow, 'duplicateFlags'>
 
 function baseRow(delivery: MinopDeliveryRow, entryCount: number): Omit<
   Expanded,
-  'rowId' | 'entryNumber' | 'minopUserId' | 'eventId' | 'punchTimeRaw' | 'punchTimeHasZone' | 'punchTimeInstant' |
+  'rowId' | 'format' | 'entryNumber' | 'minopUserId' | 'eventId' | 'punchTimeRaw' | 'punchTimeHasZone' | 'punchTimeInstant' |
   'punchTypeRaw' | 'punchTypeSource' | 'deviceId' | 'deviceIp' | 'deviceName' | 'nameSupplied' | 'readStatus' |
   'readReason' | 'entryJson'
 > {
@@ -184,10 +198,17 @@ function baseRow(delivery: MinopDeliveryRow, entryCount: number): Omit<
   }
 }
 
-function unreadableRow(delivery: MinopDeliveryRow, reason: string, entryCount = 0): Expanded {
+function unreadableRow(
+  delivery: MinopDeliveryRow,
+  reason: string,
+  entryCount = 0,
+  readStatus: ReadStatus = 'unreadable',
+  format: MessageFormat = 'unknown',
+): Expanded {
   return {
     ...baseRow(delivery, entryCount),
     rowId: `${delivery.id}#-`,
+    format,
     entryNumber: null,
     minopUserId: null,
     eventId: null,
@@ -200,7 +221,7 @@ function unreadableRow(delivery: MinopDeliveryRow, reason: string, entryCount = 
     deviceIp: null,
     deviceName: null,
     nameSupplied: null,
-    readStatus: 'unreadable',
+    readStatus,
     readReason: reason,
     entryJson: null,
   }
@@ -212,12 +233,14 @@ function entryRow(
   index: number,
   total: number,
   labels: { user: string; time: string },
+  format: MessageFormat,
 ): Expanded {
   const missing = missingFields(entry, labels)
   const zone = withZoneInstant(entry.punchTime)
   return {
     ...baseRow(delivery, total),
     rowId: `${delivery.id}#${index + 1}`,
+    format,
     entryNumber: index + 1,
     minopUserId: entry.userId,
     eventId: entry.eventId,
@@ -254,13 +277,20 @@ export function expandDelivery(delivery: MinopDeliveryRow): Expanded[] {
       return [unreadableRow(delivery, '"trans" is present but is not a list of punches')]
     }
     if (root.trans.length === 0) {
-      return [unreadableRow(delivery, 'The message has an empty "trans" list: it carried no punches')]
+      const selfTest = root.boeSyntheticSelfTest === true
+      return [unreadableRow(
+        delivery,
+        selfTest
+          ? 'The message body is flagged boeSyntheticSelfTest (a BOE receiver self-test) and its "trans" list is empty'
+          : 'The message has an empty "trans" list',
+        0, 'no_punches', 'device_trans',
+      )]
     }
     const total = root.trans.length
     return root.trans.map((raw, index) =>
       record(raw)
-        ? entryRow(delivery, readTransEntry(raw), index, total, { user: 'punchId', time: 'txnDateTime' })
-        : { ...unreadableRow(delivery, `Entry ${index + 1} of "trans" is not an object`, total),
+        ? entryRow(delivery, readTransEntry(raw), index, total, { user: 'punchId', time: 'txnDateTime' }, 'device_trans')
+        : { ...unreadableRow(delivery, `Entry ${index + 1} of "trans" is not an object`, total, 'unreadable', 'device_trans'),
             rowId: `${delivery.id}#${index + 1}`, entryNumber: index + 1,
             entryJson: redactSecrets(raw) },
     )
@@ -281,7 +311,7 @@ export function expandDelivery(delivery: MinopDeliveryRow): Expanded[] {
       name: firstScalar(punchLog, ['Name', 'UserName']),
       raw: punchLog,
     }
-    return [entryRow(delivery, entry, 0, 1, { user: 'PunchLog.UserId', time: 'PunchLog.LogTime' })]
+    return [entryRow(delivery, entry, 0, 1, { user: 'PunchLog.UserId', time: 'PunchLog.LogTime' }, 'realtime_punchlog')]
   }
 
   return [unreadableRow(

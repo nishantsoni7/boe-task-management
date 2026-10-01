@@ -59,8 +59,8 @@ function punchTime(row: IncomingRegisterRow): { main: string; note: string | nul
   return { main: row.punchTimeRaw, note: 'as sent, no time zone' }
 }
 
-const READ_TONE = { readable: 'good', partial: 'warn', unreadable: 'bad' } as const
-const READ_LABEL = { readable: 'Read', partial: 'Partly read', unreadable: 'Cannot read' } as const
+const READ_TONE = { readable: 'good', partial: 'warn', no_punches: 'info', unreadable: 'bad' } as const
+const READ_LABEL = { readable: 'Read', partial: 'Partly read', no_punches: 'No punches', unreadable: 'Cannot read' } as const
 
 function PayloadDetails({ row, token }: { row: IncomingRegisterRow; token: string }) {
   const [open, setOpen] = useState(false)
@@ -259,11 +259,11 @@ export default function IncomingMinopDataPage() {
 
         <div className={styles.controls}>
           <label className={styles.search}>
-            <span className={ui.srOnly}>Search by Minop user ID, punch ID, or device</span>
+            <span className={ui.srOnly}>Search by punch ID, transaction ID, or device</span>
             <input
               type="search"
               className={ui.input}
-              placeholder="Search user ID, punch ID or device"
+              placeholder="Search punch ID, transaction ID or device"
               value={q}
               onChange={e => { setQ(e.target.value); setPage(1) }}
             />
@@ -284,7 +284,7 @@ export default function IncomingMinopDataPage() {
               Clear filters
             </button>
           )}
-          <div className={ui.toolbarEnd}>
+          <div className={`${ui.toolbarEnd} ${styles.exports}`}>
             <button type="button" className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
               disabled={exporting !== null} onClick={() => void download('csv')}>
               <Download size={13} /> {exporting === 'csv' ? 'Preparing…' : 'Download CSV'}
@@ -323,12 +323,12 @@ export default function IncomingMinopDataPage() {
                   <thead>
                     <tr>
                       <th scope="col">Received (IST)</th>
-                      <th scope="col">Minop user ID</th>
-                      <th scope="col">Punch ID</th>
+                      <th scope="col">Punch ID (punchId)</th>
+                      <th scope="col">Transaction ID (txnId)</th>
                       <th scope="col">Punch time</th>
-                      <th scope="col">Punch type</th>
-                      <th scope="col">Device</th>
-                      <th scope="col">Name from Minop</th>
+                      <th scope="col">Mode (raw)</th>
+                      <th scope="col">Device ID (dvcId)</th>
+                      <th scope="col">Name in message</th>
                       <th scope="col">Data reading</th>
                       <th scope="col">Payload</th>
                     </tr>
@@ -344,12 +344,12 @@ export default function IncomingMinopDataPage() {
                           <td className={ui.nowrap}>{pt.main}{pt.note && <div className={ui.sub}>{pt.note}</div>}</td>
                           <td>
                             {row.punchTypeRaw ?? '—'}
-                            {row.punchTypeSource && <div className={ui.sub}>{row.punchTypeSource}</div>}
+                            {row.punchTypeSource === 'Type' && <div className={ui.sub}>field: Type</div>}
                           </td>
                           <td className={styles.mono}>
-                            {row.deviceName ?? row.deviceId ?? '—'}
-                            {row.deviceName && row.deviceId && <div className={ui.sub}>{row.deviceId}</div>}
-                            {row.deviceIp && <div className={ui.sub}>{row.deviceIp}</div>}
+                            {row.deviceId ?? '—'}
+                            {row.deviceName && <div className={ui.sub}>{row.deviceName}</div>}
+                            {row.deviceIp && <div className={ui.sub}>IP {row.deviceIp}</div>}
                           </td>
                           <td>{row.nameSupplied ?? <span className={ui.muted}>—</span>}</td>
                           <td>{reading(row)}</td>
@@ -368,17 +368,17 @@ export default function IncomingMinopDataPage() {
                 return (
                   <li key={row.rowId} className={`${ui.surface} ${ui.card}`}>
                     <div className={ui.cardHead}>
-                      <div className={ui.strong}>User <span className={styles.mono}>{row.minopUserId ?? '—'}</span></div>
+                      <div className={ui.strong}>Punch ID <span className={styles.mono}>{row.minopUserId ?? '—'}</span></div>
                       <div className={`${ui.sub} ${ui.nowrap}`} style={{ marginTop: 0 }}>{ref(row)}</div>
                     </div>
                     <dl className={styles.cardFacts}>
                       <dt>Received (IST)</dt><dd>{ist(row.receivedAt)}</dd>
-                      <dt>Punch ID</dt><dd className={styles.mono}>{row.eventId ?? '—'}</dd>
+                      <dt>Transaction ID (txnId)</dt><dd className={styles.mono}>{row.eventId ?? '—'}</dd>
                       <dt>Punch time</dt><dd>{pt.main}{pt.note ? ` (${pt.note})` : ''}</dd>
-                      <dt>Punch type</dt><dd>{row.punchTypeRaw ?? '—'}{row.punchTypeSource ? ` (${row.punchTypeSource})` : ''}</dd>
-                      <dt>Device</dt>
-                      <dd className={styles.mono}>{[row.deviceName, row.deviceId, row.deviceIp].filter(Boolean).join(' · ') || '—'}</dd>
-                      <dt>Name from Minop</dt><dd>{row.nameSupplied ?? '—'}</dd>
+                      <dt>Mode (raw)</dt><dd>{row.punchTypeRaw ?? '—'}{row.punchTypeSource === 'Type' ? ' (field: Type)' : ''}</dd>
+                      <dt>Device ID (dvcId)</dt>
+                      <dd className={styles.mono}>{[row.deviceId, row.deviceName, row.deviceIp && `IP ${row.deviceIp}`].filter(Boolean).join(' · ') || '—'}</dd>
+                      <dt>Name in message</dt><dd>{row.nameSupplied ?? '—'}</dd>
                     </dl>
                     {reading(row)}
                     <PayloadDetails row={row} token={token} />
