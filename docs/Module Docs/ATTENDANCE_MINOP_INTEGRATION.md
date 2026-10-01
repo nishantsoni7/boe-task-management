@@ -1,6 +1,25 @@
 # Attendance — Minop Live Integration
 
-Last Updated: 7 September 2026
+Last Updated: 1 October 2026
+
+## Current phase: collection-only (1 October 2026)
+
+**Minop data is stored and inspected, never used for attendance.** This overrides the Stage 2 sections below, which describe the processor that is now switched off.
+
+- `src/lib/minop/collectionMode.ts` holds `MINOP_COLLECTION_ONLY = true`, a code constant (not an environment variable, so `MINOP_ATTENDANCE_PROCESSING_ENABLED=true` changes nothing). `runMinopAttendanceProcessing` — the only code that can write attendance from a Minop delivery — calls the guard before its first read or write and throws.
+- The header-authenticated webhook no longer calls the processor; the retry route (`POST /api/attendance/minop-deliveries/[id]/reprocess`) is deleted. There is no cron, job or script that processes Minop deliveries. Both receivers still store every message and acknowledge it as before.
+- Other attendance sources (CSV import, check-in/out, corrections, requests) are untouched. Existing `attendance_records` rows with `source = 'minop'` stay as they are.
+- `/attendance/minop` ("Attendance Sync") lost its Retry action. A stored message with no attendance outcome now reads **Stored only** instead of the old, wrong "Set aside (invalid data)": that label was a fallback for any delivery with `attendance_status = NULL`, and the path-token receiver (which never processes) leaves it NULL for every valid message.
+- **Incoming Minop data** (`/attendance/minop/incoming`, second tab of the Issues section, admin only): one row per punch, newest first, 50 per page; search by Minop user ID, punch ID or device; received-date range (IST); total, latest received time, Refresh; **Download CSV** and **Download raw payloads** for every record matching the filters, across all pages.
+  - `GET /api/attendance/minop-incoming`, `…/export?format=csv|raw`, `…/[deliveryId]` — all `requireAdmin`, all read-only (select only).
+  - Shapes read: the device callback `{"trans":[{txnId, dvcId, dvcIP, punchId, txnDateTime, mode}]}` (what production receives) and the published `RealTime.PunchLog`. Columns are filled only from fields present and are labelled with the field names — **Punch ID (punchId)**, **Transaction ID (txnId)**, **Device ID (dvcId)**, **Mode (raw)** — because Minop has not confirmed what they mean. `punchId` is not presented as a confirmed employee or fingerprint ID, `mode` is shown as sent and never translated to IN/OUT, and the device behind a message (including `dvcIP`) is treated as unconfirmed.
+  - A message with an empty `trans` list shows **No punches** (a separate status from **Read** and **Cannot read**); one flagged `boeSyntheticSelfTest` says so in its reason.
+  - `txnDateTime` carries no time zone, so it is displayed exactly as sent and not converted. Received times are shown in Asia/Kolkata with seconds; originals are in the details and the CSV.
+  - Duplicates are flagged when the same body (SHA-256) arrived in more than one message, or the same device ID + event ID appears in more than one punch. Duplicate deliveries are never dropped.
+  - Credentials (`AuthToken`, `authorization`, `secret`, `password`, `api key`, `token` values) are blanked in the payload view, the CSV and the raw export.
+  - CSV: UTF-8 with BOM, CRLF. IDs and timestamps made only of digits/date characters are written as `="0012"` so Excel keeps leading zeros and seconds; any other cell starting with `= + - @` is prefixed with `'`.
+  - Reads up to 20,000 messages per request, newest first; hitting the ceiling shows a notice.
+- No migration and no configuration change is needed.
 
 ## Purpose
 

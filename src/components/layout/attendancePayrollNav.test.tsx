@@ -141,7 +141,8 @@ describe('the admin sidebar is exactly six sections', () => {
     assert.deepEqual(tabs('attendance'), ['Records', 'Upload', 'Monthly Review', 'Requests'])
     assert.deepEqual(tabs('payroll'), ['Monthly Preview', 'Payroll Runs', 'BOE Credits'])
     assert.deepEqual(tabs('settings'), ['Payroll Rules', 'Holidays'])
-    for (const key of ['overview', 'employees', 'issues']) assert.equal(tabs(key), undefined, key)
+    assert.deepEqual(tabs('issues'), ['Attendance Sync', 'Incoming Minop data'])
+    for (const key of ['overview', 'employees']) assert.equal(tabs(key), undefined, key)
   })
 
   test('How Payroll Works is Payroll\'s Help link, not a tab and not a section', () => {
@@ -279,7 +280,7 @@ describe('active state', () => {
     for (const pathname of [
       '/attendance', '/attendance/employees', '/attendance/employees/abc',
       '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
-      '/attendance/monthly-review/user-1', '/attendance/requests', '/attendance/minop',
+      '/attendance/monthly-review/user-1', '/attendance/requests', '/attendance/minop', '/attendance/minop/incoming',
       '/attendance/holidays', '/attendance/correction-log',
       '/payroll', '/payroll/monthly-review', '/payroll/monthly-review/user-1',
       '/payroll/how-it-works', '/payroll/settings', '/payroll/credits',

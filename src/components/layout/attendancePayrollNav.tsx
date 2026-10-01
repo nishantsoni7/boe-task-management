@@ -148,6 +148,10 @@ export const ATTENDANCE_PAYROLL_ADMIN_SECTIONS: AttendancePayrollSection[] = [
     // "Attendance Sync". The section is named for what an admin comes to do.
     path: '/attendance/minop',
     icon: <MessageSquareWarning size={15} strokeWidth={1.8} />,
+    tabs: [
+      { label: 'Attendance Sync',     path: '/attendance/minop', exact: true },
+      { label: 'Incoming Minop data', path: '/attendance/minop/incoming' },
+    ],
   },
   {
     key: 'settings',

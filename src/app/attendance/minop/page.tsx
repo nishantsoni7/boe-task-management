@@ -2,13 +2,13 @@
 
 // Attendance Sync (the "Issues" section) — the smallest useful admin view of
 // what the fingerprint system (Minop) sent and what BOE did with it. No
-// analytics, no charts: just the recent deliveries, whether each turned into
-// attendance, and a retry action for one that did not because a mapping was
-// missing at the time. Deliberately inside the existing Attendance admin surface
+// analytics, no charts. Minop is collection-only for now (see
+// src/lib/minop/collectionMode.ts), so there is no retry action here and new
+// messages are never turned into attendance; the full register is the
+// "Incoming Minop data" tab. Deliberately inside the existing Attendance admin surface
 // rather than a new module — see docs/Module Docs/ATTENDANCE_MINOP_INTEGRATION.md.
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -96,21 +96,25 @@ const STATUS_INFO: Record<string, StatusInfo> = {
   },
 }
 
+/** Valid JSON that BOE stored and has not processed — every message while Minop is collection-only. */
+const STORED_ONLY: StatusInfo = {
+  label: 'Stored only', tone: 'neutral',
+  meaning: 'BOE stored this message. Minop data is collection-only for now, so it is not used for attendance.',
+  next: 'See the Incoming Minop data tab to inspect it.',
+}
+
 const QUARANTINED: StatusInfo = {
   label: 'Set aside (invalid data)', tone: 'neutral',
   meaning: 'The message was not valid data, so it was kept aside and never became attendance.',
   next: 'No action is available here.',
 }
 
-function infoFor(status: string | null): StatusInfo {
-  if (!status) return QUARANTINED
+function infoFor(status: string | null, deliveryStatus: string): StatusInfo {
+  if (!status) return deliveryStatus === 'received' ? STORED_ONLY : QUARANTINED
   return STATUS_INFO[status] ?? {
     label: status, tone: 'neutral', meaning: 'BOE does not have a plain-language description for this result.', next: 'See the technical details.',
   }
 }
-
-/** Statuses worth an admin retrying, once whatever blocked them is fixed. */
-const RETRYABLE = new Set(['unmapped', 'mapping_conflict', 'error', 'payroll_locked'])
 
 /** Results that mean a punch did NOT become attendance and someone may need to act. */
 const NEEDS_ATTENTION = new Set([
@@ -119,6 +123,10 @@ const NEEDS_ATTENTION = new Set([
 
 type Filter = 'all' | 'attention' | 'processed'
 
+/** A stored-only message is not a problem; a message BOE could not read is. */
+const needsAttention = (d: Delivery) =>
+  d.attendance_status ? NEEDS_ATTENTION.has(d.attendance_status) : d.processing_status !== 'received'
+
 export default function MinopDiagnosticsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -126,8 +134,6 @@ export default function MinopDiagnosticsPage() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [error, setError] = useState('')
   const [loadFailed, setLoadFailed] = useState(false)
-  const [okMsg, setOkMsg] = useState('')
-  const [retryingId, setRetryingId] = useState<string | null>(null)
   const [token, setToken] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
 
@@ -167,20 +173,6 @@ export default function MinopDiagnosticsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const retry = async (id: string) => {
-    setRetryingId(id)
-    setOkMsg('')
-    const res = await fetch(`/api/attendance/minop-deliveries/${id}/reprocess`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok) setError(json.error ?? 'Retry failed')
-    else setOkMsg('Retried. The list below shows the new result.')
-    setRetryingId(null)
-    await load(token)
-  }
-
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -188,43 +180,25 @@ export default function MinopDiagnosticsPage() {
 
   const counts = useMemo(() => ({
     all: deliveries.length,
-    attention: deliveries.filter(d => !d.attendance_status || NEEDS_ATTENTION.has(d.attendance_status)).length,
+    attention: deliveries.filter(needsAttention).length,
     processed: deliveries.filter(d => d.attendance_status === 'processed').length,
   }), [deliveries])
 
   const shown = useMemo(() => deliveries.filter(d =>
     filter === 'all' ? true
       : filter === 'processed' ? d.attendance_status === 'processed'
-      : !d.attendance_status || NEEDS_ATTENTION.has(d.attendance_status),
+      : needsAttention(d),
   ), [deliveries, filter])
 
   if (loading) return <LoadingScreen />
 
-  const retryButton = (d: Delivery) =>
-    d.attendance_status && RETRYABLE.has(d.attendance_status) ? (
-      <button
-        type="button"
-        onClick={() => void retry(d.id)}
-        disabled={retryingId === d.id}
-        className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
-      >
-        {retryingId === d.id ? 'Retrying…' : 'Retry'}
-      </button>
-    ) : null
-
   /** The plain-language result: badge, what it means, what to do. */
   const result = (d: Delivery) => {
-    const info = infoFor(d.attendance_status)
+    const info = infoFor(d.attendance_status, d.processing_status)
     return (
       <div className={styles.resultCell}>
         <Badge tone={info.tone}>{info.label}</Badge>
         <p className={styles.explain}>{info.meaning}</p>
-        {d.attendance_status !== 'processed' && (
-          <p className={styles.next}>
-            <strong>What to do:</strong> {info.next}
-            {info.mapping && <> <Link href="/attendance/employees">Open fingerprint mapping</Link></>}
-          </p>
-        )}
         <details className={styles.tech}>
           <summary>Technical details</summary>
           <dl className={styles.techBody}>
@@ -277,17 +251,20 @@ export default function MinopDiagnosticsPage() {
             {error}
           </Notice>
         )}
-        {okMsg && !error && <Notice kind="success">{okMsg}</Notice>}
+        <Notice kind="info">
+          Minop is collection-only for now: new messages are stored and shown, and are not used for attendance.
+          Results below that mention attendance describe earlier behaviour.
+        </Notice>
 
         {/* Plain-language key, closed by default so the list stays the focus. */}
         <section className={ui.surface}>
           <details className={styles.disclosure}>
             <summary>What do these results mean?</summary>
             <ul className={styles.legendList}>
-              {[...Object.values(STATUS_INFO), QUARANTINED].map(info => (
+              {[...Object.values(STATUS_INFO), STORED_ONLY, QUARANTINED].map(info => (
                 <li key={info.label}>
                   <div><Badge tone={info.tone}>{info.label}</Badge></div>
-                  <div>{info.meaning} <strong>{info.next}</strong></div>
+                  <div>{info.meaning}</div>
                 </li>
               ))}
             </ul>
@@ -336,7 +313,6 @@ export default function MinopDiagnosticsPage() {
                       <th scope="col">Employee</th>
                       <th scope="col">Punch</th>
                       <th scope="col">Result</th>
-                      <th scope="col"><span className={ui.srOnly}>Action</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -349,7 +325,6 @@ export default function MinopDiagnosticsPage() {
                           <div className={ui.sub}>{fmtDateTime(d.punch_time_utc)}</div>
                         </td>
                         <td>{result(d)}</td>
-                        <td className={styles.actionCell}>{retryButton(d)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -368,7 +343,6 @@ export default function MinopDiagnosticsPage() {
                     {d.punch_type ?? '—'} · punch at {fmtDateTime(d.punch_time_utc)}
                   </div>
                   {result(d)}
-                  <div className={styles.cardActions}>{retryButton(d)}</div>
                 </li>
               ))}
             </ul>

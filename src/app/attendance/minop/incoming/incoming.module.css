@@ -1,0 +1,88 @@
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.search { flex: 1 1 240px; min-width: 0; }
+.date { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #6B7384; }
+.date input { min-width: 150px; }
+
+.summary { margin: 0; font-size: 12.5px; line-height: 1.5; color: #4A5261; }
+
+/* Nine columns have to fit a laptop without sideways scrolling: tighter cells,
+   headers allowed to wrap. Doubled class beats the shared table rule. */
+.table.table th { padding: 8px 8px; white-space: normal; letter-spacing: 0.02em; vertical-align: top; }
+.table.table td { padding: 8px 8px; vertical-align: top; font-size: 12.5px; }
+.table.table th:first-child, .table.table td:first-child { padding-left: 14px; }
+.table.table th:last-child, .table.table td:last-child { padding-right: 14px; }
+.mono { font-variant-numeric: tabular-nums; word-break: break-all; }
+.ref { font-size: 11.5px; color: #6B7384; font-variant-numeric: tabular-nums; }
+
+.reading { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.reason { margin: 0; font-size: 12px; line-height: 1.45; color: #4A5261; max-width: 32ch; }
+
+.payload > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1D4ED8;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+.payload > summary:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+.meta {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #F8F9FB;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  font-size: 12px;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 4px 12px;
+}
+.meta dt { color: #6B7384; }
+.meta dd { margin: 0; word-break: break-all; }
+.pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  max-height: 320px;
+  max-width: 520px;
+  overflow: auto;
+  background: #111318;
+  color: #E7EAF0;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cardFacts {
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 4px 10px;
+  font-size: 13px;
+}
+.cardFacts dt { color: #6B7384; }
+.cardFacts dd { margin: 0; min-width: 0; }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 13px;
+  color: #4A5261;
+}
+
+@media (max-width: 560px) {
+  .exports.exports { margin-left: 0; }
+  .date { flex: 1 1 130px; }
+  .date input { min-width: 0; width: 100%; }
+  .pre { max-width: 100%; }
+  .meta { grid-template-columns: 96px minmax(0, 1fr); }
+}
