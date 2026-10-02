@@ -6744,6 +6744,26 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   padding: 15px 18px 16px;
 }
 
+/* Product value and Total before GST across the top of the Finance card, one
+   thin rule between them and the payment position below. */
+.pi-detail-paystatus-worth {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 -18px;
+  padding: 0 18px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.pi-detail-paystatus-worth .pi-detail-figure {
+  padding: 0 0 0 0;
+}
+
+.pi-detail-paystatus-worth .pi-detail-figure + .pi-detail-figure {
+  border-top: none;
+  padding-left: 16px;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+
 .pi-detail-paystatus-head {
   display: flex;
   align-items: center;

@@ -119,8 +119,8 @@ describe('the two PI screens put the answer above the product table', () => {
     const firstPanel = s.findIndex(marks => marks.has('workflowPanel'))
     assert.ok(at(s, 'PiTopCard') < firstPanel,
       'who, when and how much paid — above the controls that act on them')
-    assert.ok(at(s, 'PiCommercialCard') === firstPanel && firstPanel < at(s, 'PiCompletionPanel'),
-      'Management review sits directly under Product value and Total before GST, above the Complete PI details area')
+    assert.ok(at(s, 'PiPaymentStatusCard') === firstPanel && firstPanel < at(s, 'PiCompletionPanel'),
+      'Management review sits beside the Finance card (figures + payment), above the Complete PI details area')
     assert.ok(at(s, 'PiCompletionPanel') < at(s, 'PiProductTableHead'),
       'the details a PI needs are completed above the products, not below them')
     assert.ok(at(s, 'PiTopCard') < at(s, 'PiProductTableHead'),

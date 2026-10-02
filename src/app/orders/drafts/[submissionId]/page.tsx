@@ -2524,17 +2524,16 @@ function PiDraftDetailPageInner() {
               onOpenDetails={filter => { setPaymentFilter(filter); setPaymentDialog('details') }}
               notice={paymentNotice}
               onDismissNotice={() => setPaymentNotice(null)}
+              /* Product value and Total before GST lead the Finance card. */
+              figures={summaryFigures}
             />
 
             {/* ── 2b. Product value, Total before GST, billing ──
                 The middleman commission is asked and shown once, in Internal
                 order details; it is not repeated here. */}
             <div className="pi-detail-split-stack">
-              <PiCommercialCard figures={summaryFigures} />
-              {/* ── 2c. Management review, directly under the figures ──
-                  Where the PI is worth is read first, then what management is
-                  asked to decide. Row 3 keeps the panel when the completion
-                  area is not drawn. */}
+              {/* ── 2b. Management review, beside Finance ──
+                  Row 3 keeps the panel when the completion area is not drawn. */}
               {showCompletion && workflowPanel}
             </div>
           </div>

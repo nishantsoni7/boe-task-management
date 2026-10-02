@@ -1043,7 +1043,7 @@ export function buildDateSummary(input: {
 
 // ── The payment status card ───────────────────────────────────────────────────
 
-export const PAYMENT_STATUS_TITLE = 'Payment status'
+export const PAYMENT_STATUS_TITLE = 'Finance'
 
 /**
  * What the closed card says instead of the figures.

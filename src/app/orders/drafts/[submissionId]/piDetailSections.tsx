@@ -590,6 +590,12 @@ type PiPaymentStatusCardProps = {
   onOpenDetails: (filter: PiPaymentFilter) => void
   notice: string | null
   onDismissNotice: () => void
+  /**
+   * Product value and Total before GST, drawn across the top of the card with a
+   * thin rule under them. Not part of the disclosure: closing the card hides the
+   * payment position, never what the PI is worth. Omitted, nothing is drawn.
+   */
+  figures?: readonly SummaryFigure[]
 }
 
 /**
@@ -602,7 +608,7 @@ type PiPaymentStatusCardProps = {
  */
 export function PiPaymentStatusCardView({
   status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
-  expanded, onToggleExpanded,
+  figures, expanded, onToggleExpanded,
 }: PiPaymentStatusCardProps & {
   expanded: boolean
   onToggleExpanded: () => void
@@ -611,6 +617,18 @@ export function PiPaymentStatusCardView({
   return (
     <PiCard>
       <section className="pi-detail-paystatus" aria-label={PAYMENT_STATUS_TITLE}>
+        {figures && figures.length > 0 && (
+          <div className="pi-detail-paystatus-worth">
+            {figures.map(figure => (
+              <div key={figure.key} className="pi-detail-figure">
+                <div className="pi-detail-figure-label">{figure.label}</div>
+                <div className={figure.kind === 'missing' ? 'pi-detail-figure-absent' : 'pi-detail-figure-value'}>
+                  {figure.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* THE WHOLE HEADER IS THE CONTROL — a real button, so Enter, Space,
             focus and the accessible name come from the element itself rather
             than from handlers bolted onto a div. The three actions are SIBLINGS

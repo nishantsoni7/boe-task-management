@@ -906,7 +906,8 @@ describe('the billing declaration is computed here and shown in Internal order d
 
   test('the summary card does not draw it, and the page hands the amount to Internal order details', () => {
     const page = read(PAGE)
-    assert.ok(page.includes('<PiCommercialCard figures={summaryFigures} />'))
+    assert.ok(page.includes('figures={summaryFigures}'), 'the figures lead the Finance card')
+    assert.ok(!page.includes('<PiCommercialCard'), 'and are not drawn a second time as a card of their own')
     assert.equal((page.match(/billingValue=\{billingValueText\}/g) ?? []).length, 2, 'either arrangement')
   })
 })
@@ -1000,7 +1001,7 @@ const metricTag = (html: string, key: 'confirmed' | 'awaiting'): string | null =
 describe('payment status: how much has been received, and what it is made of', () => {
   test('the headline is received — confirmed plus awaiting — as a share of the full PI total', () => {
     const t = text(statusHtml())
-    assert.ok(t.includes('Payment status'))
+    assert.ok(t.includes(PAYMENT_STATUS_TITLE))
     assert.ok(t.includes('41.94% received'))
     assert.ok(t.includes('₹4,95,000 received of ₹11,80,000 PI Total'))
     assert.ok(!t.includes('Required') && !t.includes('₹4,72,000'), 'the requirement is not a figure on this card')
@@ -2963,8 +2964,8 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.equal(rows.length, 2, 'exactly two split rows')
     const [money, decide] = rows
     const moneyRow = money.slice(0, money.indexOf('{/* ── 3.'))
-    assert.ok(moneyRow.indexOf('<PiPaymentStatusCard') > 0 && moneyRow.indexOf('<PiPaymentStatusCard') < moneyRow.indexOf('<PiCommercialCard'),
-      'payment on the left, which is also the order they stack in')
+    assert.ok(moneyRow.indexOf('<PiPaymentStatusCard') > 0 && moneyRow.indexOf('<PiPaymentStatusCard') < moneyRow.indexOf('{showCompletion && workflowPanel}'),
+      'Finance (figures, then payment) on the left, Management review on the right, which is also the order they stack in')
     const decideRow = decide.slice(0, decide.indexOf('{/* ── 4. What stops this being submitted'))
     const stack = decideRow.indexOf('<div className="pi-detail-split-stack">')
     assert.ok(stack > 0 && stack < decideRow.indexOf('{supportingDetails}')
@@ -3126,7 +3127,7 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('the payment position is answered in exactly one place on the page', () => {
     assert.equal((page.match(/<PiPaymentStatusCard/g) ?? []).length, 1)
     assert.equal((page.match(/<PiTopCard/g) ?? []).length, 1)
-    assert.equal((page.match(/<PiCommercialCard/g) ?? []).length, 1)
+    assert.equal((page.match(/figures={summaryFigures}/g) ?? []).length, 1)
     assert.ok(!page.includes('<PiPaymentCard'), 'the standalone payments section is gone')
     assert.equal((page.match(/<PiPaymentDetailsModal/g) ?? []).length, 1,
       'and the records open in the dialog the rest of the application uses')
@@ -3137,7 +3138,7 @@ describe('the page is assembled in the redesigned scan order', () => {
       '{justSaved && <PiSavedStrip />}',
       '<PiTopCard',
       '<PiPaymentStatusCard',
-      '<PiCommercialCard',
+      'figures={summaryFigures}',
       // Management review sits directly under the commercial figures, in the right column.
       'showCompletion && workflowPanel',
       '<PiCompletionPanel',
