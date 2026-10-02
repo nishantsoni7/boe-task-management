@@ -8258,24 +8258,9 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
    many columns as the width allows and never force a horizontal scroll, so no
    breakpoint is needed until the phone rules at 560px, where the action row
    becomes full-width buttons. */
-.pi-completion-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-
-.pi-completion-facts-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 12px;
-  align-items: start;
-  min-width: 0;
-}
-
 /* Locked: muted, never faded — every value stays fully legible. */
-.pi-completion[data-locked='true'] section {
-  background: #F7F8FA !important;
+.pi-completion[data-locked='true'] {
+  background: #F7F8FA;
 }
 
 /* A typed amount cannot be text-replaced, so an amount field is dotted out
@@ -8289,15 +8274,6 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
   white-space: nowrap;
 }
 
-@media (max-width: 560px) {
-  .pi-completion {
-    padding: 12px !important;
-  }
-  .pi-completion-actions > .boe-btn {
-    flex: 1 1 100%;
-    justify-content: center;
-  }
-}
 
 /* ── PI Draft forms: Supporting details and Internal order details ──
    A label sits above its control, the red star marks only what Submit for
@@ -8324,10 +8300,6 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
   display: flex;
   flex-direction: column;
   scroll-margin-top: 80px;
-}
-
-.pi-form-card > * {
-  max-width: 920px;
 }
 
 .pi-form-card-head {
@@ -8631,45 +8603,8 @@ textarea.pi-form-input,
   color: #8a4b12;
 }
 
-/* Supporting details: files as two compact rows, then highlight beside billing. */
-.pi-attach-list {
-  border: 1px solid rgba(0, 0, 0, 0.09);
-  border-radius: 8px;
-  min-width: 0;
-}
-
-.pi-attach {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) minmax(0, max-content);
-  grid-template-areas: 'label files add';
-  align-items: start;
-  gap: 6px 12px;
-  min-width: 0;
-  min-height: 48px;
-  box-sizing: border-box;
-  padding: 6px 8px 6px 12px;
-}
-
-.pi-attach + .pi-attach {
-  border-top: 1px solid rgba(0, 0, 0, 0.07);
-}
-
-.pi-attach > .pi-form-label { grid-area: label; }
-.pi-attach > .pi-attach-state,
-.pi-attach > .pi-attach-files { grid-area: files; }
-.pi-attach > .pi-attach-add { grid-area: add; }
-
-.pi-attach > .pi-form-label,
 .pi-attach-state {
-  line-height: 36px;
-}
-
-.pi-attach > .pi-attach-add {
-  min-height: 36px;
-}
-
-.pi-attach-state {
-  font-size: 13px;
+  font-size: 14px;
   color: #8c94a6;
 }
 
@@ -8684,19 +8619,33 @@ textarea.pi-form-input,
   min-width: 0;
 }
 
-.pi-attach-files li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 36px;
+.pi-attach-files {
+  width: 100%;
 }
 
+.pi-attach-files li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  padding-top: 6px;
+}
+
+.pi-attach-files li > svg {
+  margin-top: 2px;
+}
+
+.pi-attach-plain {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A long file name wraps instead of being cut off. */
 .pi-attach-files .pi-attach-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   text-align: left;
   background: none;
   border: 0;
@@ -8764,31 +8713,6 @@ textarea.pi-form-input,
   pointer-events: none;
 }
 
-/* The highlight takes a sentence's width; the billing percentage sits beside it,
-   and drops under it when the card is too narrow for both. */
-.pi-supporting-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 14px 32px;
-  min-width: 0;
-}
-
-.pi-supporting-highlight {
-  flex: 1 1 380px;
-  max-width: 580px;
-  min-width: 0;
-}
-
-.pi-supporting-highlight:empty {
-  display: none;
-}
-
-.pi-supporting-billing {
-  flex: 0 1 280px;
-  min-width: 0;
-}
-
 /* Narrower card (a tablet, or the split view beside the workflow panel):
    short fields take half the row, and the later/optional pair stacks. */
 @container (max-width: 720px) {
@@ -8801,16 +8725,6 @@ textarea.pi-form-input,
   }
 }
 
-/* Files: below 560px of card the name and Add share a line and the files get
-   the whole row beneath, so a file name is not squeezed to a few letters. */
-@container (max-width: 560px) {
-  .pi-attach {
-    grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
-    grid-template-areas: 'label add' 'files files';
-    padding: 6px 8px 8px 12px;
-  }
-}
-
 /* A phone: one clean column, full-width options and actions, 44px targets. */
 @container (max-width: 420px) {
   .pi-form-grid > .pi-span-3,
@@ -8820,11 +8734,6 @@ textarea.pi-form-input,
   .pi-form-grid > .pi-span-7 { grid-column: span 12; }
   .pi-form-choice {
     flex-basis: 100%;
-  }
-  .pi-supporting-highlight,
-  .pi-supporting-billing {
-    flex-basis: 100%;
-    max-width: none;
   }
   .pi-form-followup {
     padding-left: 12px;
@@ -9200,6 +9109,118 @@ select.boe-req-control {
   .boe-choice-grid--3 .boe-choice { font-size: 13.5px; padding-left: 4px; padding-right: 4px; }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPLETE PI DETAILS: one restrained container, sections divided by thin
+   rules. Client, Supporting details (40/30/30), Internal order details (four
+   columns over two rows), then the submission action. Each section answers to
+   its own width (container queries), so the same markup is right beside the
+   left navigation at 1440px and 1920px, on a tablet and on a phone.
+   ══════════════════════════════════════════════════════════════════════════ */
+.pi-completion {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: #fff;
+  scroll-margin-top: 80px;
+}
+
+.pi-completion-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+}
+
+.pi-completion-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-completion-groups {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pi-completion-groups > .pi-client-facts,
+.pi-completion .pi-form-card {
+  padding: 16px 24px 18px;
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0;
+  background: transparent;
+}
+
+.pi-completion .pi-form-card-head,
+.pi-section-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 34px;
+}
+
+.pi-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-completion .pi-form-card-title {
+  font-size: 16px;
+}
+
+.pi-section-action {
+  margin-left: auto;
+}
+
+.pi-completion-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 24px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pi-submit-reason {
+  margin-right: auto;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #8a4b12;
+}
+
+.pi-submit-reason-item {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pi-submit-reason-item:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+.pi-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* ── Confirmed Order: attention strip, activity and version strip (polish pass) ── */
 .order-attention-single { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
 .order-attention-title { font-size: 15px; font-weight: 700; color: #7A5510; }
@@ -9244,6 +9265,241 @@ select.boe-req-control {
   white-space: nowrap;
 }
 
+/* ── Client: label bold on the left, value regular beside it ── */
+.pi-client-facts {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.pi-client-body {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 4fr);
+}
+
+.pi-client-col {
+  margin: 0;
+  min-width: 0;
+  padding: 4px 24px;
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pi-client-col:first-child { padding-left: 0; border-left: 0; }
+.pi-client-col:last-child { padding-right: 0; }
+
+/* Details: label and value on one line, the values starting on one edge. */
+.pi-client-col--details .pi-client-fact {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 0 12px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.pi-client-col--details .pi-client-fact + .pi-client-fact {
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.pi-client-col--details .pi-client-fact:first-child { padding-top: 4px; }
+
+/* Addresses: the label as a small heading over the whole address. */
+.pi-client-col--address .pi-client-fact { padding: 4px 0; min-width: 0; }
+.pi-client-col--address dt { margin-bottom: 6px; }
+.pi-client-col--address dd { line-height: 1.55; }
+
+.pi-client-fact dt,
+.pi-od-cell dt,
+.pi-support-label {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #4a5261;
+}
+
+.pi-client-fact dd,
+.pi-od-cell dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #111318;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  min-width: 0;
+}
+
+.pi-client-fact dd[data-empty='true'],
+.pi-od-cell dd[data-empty='true'] {
+  color: #8c94a6;
+}
+
+/* A required value that is missing: the one place a value is drawn in red. */
+.pi-client-fact dd[data-required='true'],
+.pi-od-cell dd[data-empty='true'][data-required='true'] {
+  color: #c0392b;
+}
+
+/* Narrower section: the details take a full row, the two addresses share the next. */
+@container (max-width: 860px) {
+  .pi-client-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pi-client-col--details { grid-column: 1 / -1; padding: 0 0 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+  .pi-client-col--address { padding-top: 14px; }
+  .pi-client-col--address:nth-child(2) { padding-left: 0; padding-right: 20px; border-left: 0; }
+  .pi-client-col--address:nth-child(3) { padding-left: 20px; padding-right: 0; }
+}
+
+/* Phone: one column, each block under a thin rule. */
+@container (max-width: 560px) {
+  .pi-client-body { grid-template-columns: minmax(0, 1fr); }
+  .pi-client-col--address,
+  .pi-client-col--address:nth-child(2),
+  .pi-client-col--address:nth-child(3) {
+    padding: 12px 0 0;
+    margin-top: 12px;
+    border-left: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  .pi-client-col--details { padding-bottom: 0; border-bottom: 0; }
+  .pi-client-col--details .pi-client-fact { grid-template-columns: 96px minmax(0, 1fr); }
+}
+
+/* ── Supporting details: highlight 40%, Client PO 30%, Design files 30% ── */
+.pi-supporting {
+  container-type: inline-size;
+}
+
+.pi-support-row {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 3fr) minmax(0, 3fr);
+}
+
+.pi-support-row[data-files='off'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pi-support-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+}
+
+.pi-support-col:first-child { padding-left: 0; }
+.pi-support-col:last-child { padding-right: 0; }
+
+.pi-support-col + .pi-support-col {
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pi-support-col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.pi-support-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.pi-support-highlight .pi-detail-highlight--bare .pi-detail-highlight-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4a5261;
+}
+
+.pi-support-highlight .pi-detail-highlight--bare .pi-detail-highlight-input {
+  min-height: 76px;
+}
+
+.pi-support-highlight .pi-detail-highlight-foot {
+  justify-content: flex-end;
+}
+
+@container (max-width: 720px) {
+  .pi-support-row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .pi-support-col,
+  .pi-support-col:first-child,
+  .pi-support-col:last-child { padding: 0; }
+  .pi-support-col + .pi-support-col {
+    border-left: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    padding-top: 16px;
+  }
+}
+
+/* ── Internal order details: four columns, two rows ── */
+.pi-od-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pi-od-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pi-od-cell:nth-child(4n + 1) { border-left: 0; padding-left: 0; }
+.pi-od-cell:nth-child(n + 5) { border-top: 1px solid rgba(0, 0, 0, 0.1); }
+
+.pi-od-cell dt label { font: inherit; }
+
+.pi-od-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: #6b7384;
+}
+
+.pi-od-cell .pi-inline-save {
+  flex-wrap: wrap;
+}
+
+.pi-od-cell .pi-input-suffix {
+  flex: 0 1 88px;
+  min-width: 80px;
+}
+
+.pi-od-cell .pi-inline-save > .boe-btn {
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+
+@container (max-width: 880px) {
+  .pi-od-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pi-od-cell:nth-child(n + 3) { border-top: 1px solid rgba(0, 0, 0, 0.1); }
+  .pi-od-cell:nth-child(2n + 1) { border-left: 0; padding-left: 0; }
+}
+
+@container (max-width: 480px) {
+  .pi-od-grid { grid-template-columns: minmax(0, 1fr); }
+  .pi-od-cell,
+  .pi-od-cell:nth-child(n) { border-left: 0; padding-left: 0; padding-right: 0; }
+  .pi-od-cell:nth-child(n + 2) { border-top: 1px solid rgba(0, 0, 0, 0.1); }
+}
+
+@media (max-width: 560px) {
+  .pi-completion-head,
+  .pi-completion-actions { padding-left: 14px; padding-right: 14px; }
+  .pi-completion-groups > .pi-client-facts,
+  .pi-completion .pi-form-card { padding-left: 14px; padding-right: 14px; }
+  .pi-completion-actions > .boe-btn { flex: 1 1 100%; justify-content: center; min-height: 44px; }
+}
 /* PI history: one compact strip per version. */
 .pi-version-strip { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .pi-version-row {

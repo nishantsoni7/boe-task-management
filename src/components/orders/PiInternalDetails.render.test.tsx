@@ -19,8 +19,9 @@ describe('the middleman commission is asked, and shown, once', () => {
     const form = readFileSync(join(process.cwd(), 'src/components/orders/PiOrderDetailsSection.tsx'), 'utf8')
     assert.equal((form.match(/name="od-middleman"/g) ?? []).length, 1)
     // Asked with the other answers Submit needs, its follow-up directly beneath it.
-    const required = form.slice(form.indexOf('<FormGroup title={REQUIRED_TITLE}>'), form.lastIndexOf('<FormGroup title={LATER_TITLE}>'))
-    assert.ok(required.includes('name="od-middleman"') && required.includes('pi-form-followup'))
+    const body = form.slice(form.indexOf('<form'))
+    assert.ok(body.includes('name="od-middleman"') && body.includes('pi-form-followup'))
+    assert.ok(body.indexOf('name="od-middleman"') < body.indexOf('pi-form-followup'))
   })
 })
 

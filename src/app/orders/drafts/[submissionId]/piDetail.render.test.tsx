@@ -51,8 +51,6 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
-  BILLING_NOT_DECLARED_LABEL,
-  BILLING_VALUE_LABEL,
   CLIENT_CONTACT_LABEL,
   CLIENT_FACT_ABSENT,
   CLIENT_LOCATION_LABEL,
@@ -623,13 +621,7 @@ type FiguresOver = {
 
 /** THE COMMERCIAL CARD: Product value, Total before GST, billing, commission. */
 const figuresHtml = (over: FiguresOver = {}) => renderToStaticMarkup(
-  <PiCommercialCard
-    figures={over.figures ?? summaryCommercialFigures(COMMERCIAL_ROWS)}
-    billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
-    canEditBilling={over.canEditBilling ?? false}
-    onEditBilling={() => {}}
-    internal={over.internal}
-  />,
+  <PiCommercialCard figures={over.figures ?? summaryCommercialFigures(COMMERCIAL_ROWS)} />,
 )
 
 /** The two cards the old overview became, in page order. */
@@ -822,18 +814,13 @@ describe('the overview repeats two commercial figures, and only two', () => {
     }
   })
 
-  test('three figures, as three cells of one grid', () => {
+  test('two figures, as two cells of one grid — no billing, no middleman commission', () => {
     const html = figuresHtml()
     const grid = html.slice(html.indexOf('class="pi-detail-figures-grid"'))
-    assert.equal((grid.match(/class="pi-detail-figure"/g) ?? []).length, 3)
-  })
-
-  test('the internal middleman answer sits UNDER the three figures, never as a fourth cell', () => {
-    const html = figuresHtml({ internal: <section className="pi-detail-internal">Middleman commission</section> })
-    const figures = html.slice(html.indexOf('class="pi-detail-figures"'))
-    assert.ok(figures.indexOf('pi-detail-figures-grid') < figures.indexOf('pi-detail-internal'))
-    assert.equal((figures.match(/class="pi-detail-figure"/g) ?? []).length, 3)
-    assert.equal(figuresHtml().includes('pi-detail-internal'), false, 'nothing is drawn when the page passes nothing')
+    assert.equal((grid.match(/class="pi-detail-figure"/g) ?? []).length, 2)
+    const t = text(html)
+    assert.ok(!t.includes('Billing') && !t.includes('Middleman') && !t.includes('commission'), 'both are shown once, in Internal order details')
+    assert.ok(!html.includes('pi-detail-state-chip') && !html.includes('pi-detail-summary-billing-action'))
   })
 
   test('a workbook date the app disagrees with is said under the date band', () => {
@@ -889,128 +876,38 @@ describe('the card names the client, and holds the ADDRESSES behind that name', 
   })
 })
 
-describe('the billing declaration, as the third figure', () => {
+describe('the billing declaration is computed here and shown in Internal order details', () => {
   const billed = (raw: unknown, totalBeforeGst: number | null = 742850) =>
     buildBillingSummary({ raw, totalBeforeGst })
 
-  test('undeclared is a clear STATE, and offers Set to somebody who may declare one', () => {
-    const html = figuresHtml({ billing: billed(null), canEditBilling: true })
-    const t = text(html)
-    assert.ok(t.includes('Billing percentage'))
-    assert.ok(html.includes(`class="pi-detail-state-chip">${BILLING_NOT_DECLARED_LABEL}<`),
-      'a chip, not a muted word standing where a figure should be')
-    assert.ok(t.includes('Set'))
-    const block = t.slice(t.indexOf('Billing percentage'))
-    assert.ok(!/\b0%/.test(block), 'undeclared is not zero')
-    assert.ok(!/\b100%/.test(block), 'and it is not "bill everything" either')
-    assert.ok(!t.includes('Billing value'), 'and there is nothing to value yet')
+  test('undeclared is a state with no value, and never 0% or 100%', () => {
+    const b = billed(null)
+    assert.equal(b.declared, false)
+    assert.equal(b.value, null)
+    assert.equal(b.amount, null)
+    assert.equal(b.action, 'Set')
+    assert.ok(!/\b0%|\b100%/.test(b.percent), b.percent)
   })
 
-  test('declared shows the percentage as a figure, its value under it, and Edit', () => {
-    const html = text(figuresHtml({ billing: billed('65.00'), canEditBilling: true }))
-    assert.ok(html.includes('65%'))
-    assert.ok(html.includes('Billing value'))
-    assert.ok(html.includes('₹4,82,852.50'), '65% of ₹7,42,850')
-    assert.ok(html.includes('Edit') && !html.includes('>Set<'))
-  })
-
-  test('a read-only viewer sees the value and NO control', () => {
-    for (const raw of [null, '65.00']) {
-      const html = figuresHtml({ billing: billed(raw), canEditBilling: false })
-      assert.ok(!html.includes('pi-detail-summary-billing-action'),
-        'no Set and no Edit for somebody who may not change it')
-      assert.ok(text(html).includes(raw === null ? BILLING_NOT_DECLARED_LABEL : '65%'),
-        'but the fact itself is still readable')
-    }
-  })
-
-  test('the ends of the band, and a decimal, all render', () => {
-    assert.ok(text(figuresHtml({ billing: billed('35.00') })).includes('35%'))
-    assert.ok(text(figuresHtml({ billing: billed('100.00') })).includes('100%'))
-    const half = text(figuresHtml({ billing: billed('35.50') }))
-    assert.ok(half.includes('35.5%'))
-    assert.ok(half.includes('₹2,63,711.75'), '35.5% of ₹7,42,850')
+  test('declared gives the percentage, its billed value and Edit; the ends of the band and a decimal all work', () => {
+    const b = billed(60)
+    assert.equal(b.percent, '60%')
+    assert.equal(b.amount, formatInr(445710))
+    assert.equal(b.action, 'Edit')
+    for (const raw of [35, 100, 35.5]) assert.equal(billed(raw).declared, true)
   })
 
   test('a missing pre-GST total gives no billing value, and never ₹0', () => {
-    const html = text(figuresHtml({ billing: billed('65.00', null) }))
-    assert.ok(html.includes('65%'), 'the declaration still stands')
-    assert.ok(html.includes('Billing value'))
-    assert.ok(!html.includes('₹0'), 'a total the PI never stated is not zero')
-    assert.ok(html.includes('—'), 'it takes the card’s own missing treatment')
+    const b = billed(60, null)
+    assert.equal(b.declared, true)
+    assert.equal(b.amountMissing, true)
+    assert.notEqual(b.amount, formatInr(0))
   })
 
-  test('it changes no other figure on the card', () => {
-    const plain = text(figuresHtml({ billing: billed(null) }))
-    const declared = text(figuresHtml({ billing: billed('65.00') }))
-    const byKey = Object.fromEntries(COMMERCIAL_ROWS.map(r => [r.key, r.value]))
-    for (const untouched of [byKey.subtotal, byKey.beforeGst]) {
-      assert.ok(plain.includes(untouched), `${untouched} missing while undeclared`)
-      assert.ok(declared.includes(untouched), `${untouched} changed once declared`)
-    }
-  })
-
-  test('the control follows the DATABASE’s capability, in all eight cases', () => {
-    const cases = [
-      { who: 'owner, draft',                    editable: true },
-      { who: 'owner, needs_changes',            editable: true },
-      { who: 'non-owner active admin, draft',   editable: true },
-      { who: 'non-owner admin, needs_changes',  editable: true },
-      { who: 'owner, submitted',                editable: false },
-      { who: 'admin, submitted',                editable: false },
-      { who: 'unauthorised viewer',             editable: false },
-      { who: 'anyone, record has an Order',     editable: false },
-    ]
-    for (const c of cases) {
-      const html = figuresHtml({ billing: billed(null), canEditBilling: c.editable })
-      assert.equal(html.includes('pi-detail-summary-billing-action'), c.editable,
-        `${c.who}: the control should be ${c.editable ? 'visible' : 'hidden'}`)
-      assert.ok(text(html).includes(BILLING_NOT_DECLARED_LABEL), `${c.who}: the value is still shown`)
-    }
-  })
-
-  test('and that capability is asked, never restated in the browser', () => {
+  test('the summary card does not draw it, and the page hands the amount to Internal order details', () => {
     const page = read(PAGE)
-    assert.ok(page.includes("supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId })"),
-      'the authority is asked of the database')
-    assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
-      'and so is the admin authority, which the owner rule cannot answer')
-    // Since 20270115000000 the billing percentage is edited inside the one Edit
-    // PI, which both answers together open; the card's own control is off.
-    assert.ok(page.includes('const mayEditPi = (canEditSubmission || canAdminAmend) && !piIsOrder'),
-      'and both answers together are what opens Edit PI')
-    assert.ok(page.includes('canEditBilling={false}'), 'the per-field billing door is no longer drawn')
-    assert.ok(!/canEditBilling=\{actions\./.test(page),
-      'not describeSubmissionActions, which knows only about the owner')
-    const code = page
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
-    assert.ok(!/users\.role|role === ['"]admin['"]/.test(code),
-      'and no role is read on this page to decide an authority')
-    // The id-only group now starts together with the record itself
-    // (usability pass), so it is named rather than found by its await.
-    const inParallel = page.slice(page.indexOf('const detailReads = Promise.all(['), page.indexOf('itemsResult.error'))
-    assert.ok(inParallel.includes("supabase.rpc('can_edit_order_submission'"),
-      'resolved in the existing parallel load')
-    assert.ok(page.includes('editableResult.error ? false : editableResult.data === true'),
-      'and a capability that could not be resolved is not a capability')
-  })
-
-  test('the RPC refuses whenever that capability is false, whatever the UI did', () => {
-    const migration = readFileSync(join(process.cwd(),
-      'supabase/migrations/20260923000000_order_submission_billing_percentage.sql'), 'utf8')
-    const fn = migration.slice(
-      migration.indexOf('create or replace function public.set_order_submission_billing_percentage'))
-    assert.ok(fn.includes('if not public.can_edit_order_submission(p_submission_id) then'))
-    assert.ok(fn.includes('ORDER_SUBMISSION_BILLING_NOT_EDITABLE'))
-    assert.ok(fn.indexOf('for update') < fn.indexOf('can_edit_order_submission'),
-      'the row is locked before the authority is asked')
-  })
-
-  test('the state chip is a quiet state, not a warning and not a card', () => {
-    const css = pageCss()
-    assert.ok(/\.pi-detail-state-chip \{[^}]*border-radius: 6px/.test(css))
-    assert.ok(!/\.pi-detail-state-chip \{[^}]*(box-shadow|gradient|#d94f4f)/i.test(css))
+    assert.ok(page.includes('<PiCommercialCard figures={summaryFigures} />'))
+    assert.equal((page.match(/billingValue=\{billingValueText\}/g) ?? []).length, 2, 'either arrangement')
   })
 })
 
@@ -3787,37 +3684,16 @@ describe('each edit control sits beside what it edits', () => {
     assert.ok(!summaryHtml({ canEditDetails: false }).includes('pi-detail-dates-edit'))
   })
 
-  test('the billing control is the FIRST thing after its own label', () => {
-    const html = summaryHtml(editable)
-    const head = html.slice(html.indexOf('pi-detail-figure-head'))
-    const label = head.indexOf('Billing percentage')
-    const action = head.indexOf('pi-detail-summary-billing-action')
-    assert.ok(label !== -1 && action !== -1 && label < action)
-    const tag = head.lastIndexOf('<button', action)
-    assert.ok(tag > label, 'the billing control opens before its own label')
-    assert.ok(!head.slice(label, tag).includes('<button'),
-      'another control sits between the billing label and its own control')
-  })
-
   test('the billing control is absent where billing may not be declared', () => {
     const html = summaryHtml({ canEditDetails: true, canEditBilling: false })
     assert.ok(!html.includes('pi-detail-summary-billing-action'))
     assert.match(html, /aria-label="Edit dates and terms"/, 'the two authorities are separate')
   })
 
-  test('Billing value still reads below the percentage', () => {
-    const declared = buildBillingSummary({ raw: 60, totalBeforeGst: 742850 })
-    const html = summaryHtml({ ...editable, billing: declared })
-    const percentAt = html.indexOf('60%')
-    const valueAt = html.indexOf(BILLING_VALUE_LABEL)
-    assert.ok(percentAt !== -1 && valueAt !== -1 && percentAt < valueAt,
-      'the value must follow the percentage it is derived from')
-  })
-
-  test('exactly three edit controls, and no fourth', () => {
+  test('exactly two edit controls here, and none for billing', () => {
     const html = summaryHtml({ ...editable, onRequestCorrection: () => {} })
     assert.equal((html.match(/pi-detail-summary-inline-action/g) ?? []).length, 2, 'customer and dates')
-    assert.equal((html.match(/pi-detail-summary-billing-action/g) ?? []).length, 1, 'billing percentage')
+    assert.equal((html.match(/pi-detail-summary-billing-action/g) ?? []).length, 0, 'billing percentage moved to Internal order details')
   })
 })
 

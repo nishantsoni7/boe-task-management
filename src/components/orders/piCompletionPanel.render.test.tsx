@@ -20,9 +20,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   COMPLETION_LOCKED_HINT,
   COMPLETION_LOCKED_TITLE,
-  COMPLETION_READY_TEXT,
   COMPLETION_TITLE,
-  PiCompletionChecklist,
   PiCompletionFacts,
   PiCompletionPanel,
   PiLockedNotice,
@@ -33,9 +31,7 @@ import {
   describeLockedNotice,
   type LockedViewer,
   type CompletionItem,
-  type PiCompletion,
 } from '@/lib/orders/piCompletion'
-import { formatIsoDay } from '@/lib/orders/piInternalDetails'
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8').replace(/\r/g, '')
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ').trim()
@@ -43,82 +39,94 @@ const noop = () => {}
 
 const item = (over: Partial<CompletionItem> & { key: string; label: string }): CompletionItem =>
   ({ need: 'submission', where: 'client', ...over })
-const completion = (over: Partial<PiCompletion> = {}): PiCompletion => ({
-  requiredMissing: [], laterMissing: [], optionalMissing: [], readyToSubmit: true, ...over,
-})
-
-describe('the live checklist', () => {
-  const missing = completion({
-    requiredMissing: [
-      item({ key: 'client_city', label: 'Client city' }),
-      item({ key: 'order_details:due_date', label: 'Dispatch Date Finalized', where: 'internal', field: 'due_date' }),
-      item({ key: 'source_workbook', label: 'The uploaded PI workbook', where: 'workbook', needsReimport: true }),
-      item({ key: 'product_lines_incomplete', label: '2 product lines are missing a name', where: 'products' }),
-    ],
-    laterMissing: [item({ key: 'salesperson_id', label: 'Salesperson', need: 'later', where: 'internal' }), item({ key: 'lead_source', label: 'Lead source', need: 'later', where: 'internal' })],
-    optionalMissing: [item({ key: 'documents:client_po', label: 'Client PO', need: 'optional', where: 'documents' }), item({ key: 'order_highlight', label: 'Order highlight', need: 'optional', where: 'highlight' })],
-    readyToSubmit: false,
-  })
-  const html = renderToStaticMarkup(<PiCompletionChecklist completion={missing} onFix={noop} disabled={false} />)
-  const t = text(html)
-
-  test('names every required item, with a count, and says Submit waits for them', () => {
-    assert.ok(t.includes('4 required items left'))
-    assert.ok(t.includes('Submit for approval waits for these'))
-    for (const label of ['Client city', 'Dispatch Date Finalized', 'The uploaded PI workbook']) assert.ok(t.includes(label), label)
+describe('what stops Submit is named beside it — there is no banner and no checklist', () => {
+  const missing = [
+    item({ key: 'client_city', label: 'Client city' }),
+    item({ key: 'order_details:due_date', label: 'Dispatch Date Finalized', where: 'internal', field: 'due_date' }),
+    item({ key: 'source_workbook', label: 'The uploaded PI workbook', where: 'workbook', needsReimport: true }),
+    item({ key: 'product_lines_incomplete', label: '2 product lines are missing a name', where: 'products' }),
+  ]
+  const groups = <div data-testid="groups">fields</div>
+  const draw = (over: Partial<Parameters<typeof PiCompletionPanel>[0]> = {}) => renderToStaticMarkup(
+    <PiCompletionPanel completion={{ requiredMissing: [] }} locked={false} checklistDisabled={false} onFix={noop} groups={groups}
+      submit={{ label: 'Submit for Approval', disabled: false, reason: null, issues: false, onSubmit: noop }}
+      onChangePi={noop} requestChange={null} {...over} />)
+  const blocked = (over: Partial<Parameters<typeof PiCompletionPanel>[0]> = {}) => draw({
+    completion: { requiredMissing: missing },
+    submit: { label: 'Submit for Approval', disabled: true, reason: 'Needed to submit: Client city', issues: false, onSubmit: noop },
+    ...over,
   })
 
-  test('a required item a form can fix has Add; a workbook problem says so and offers Change PI; a counted product line has nothing to press', () => {
-    const buttons = [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => text(m[1]))
-    assert.deepEqual(buttons, ['Add', 'Add', 'Change PI'])
+  test('every missing required item is named beside Submit, and the ones a form can fix are pressable', () => {
+    const t = text(blocked())
+    assert.ok(t.includes('Needed to submit:'))
+    for (const label of ['Client city', 'Dispatch Date Finalized', 'The uploaded PI workbook', '2 product lines are missing a name']) assert.ok(t.includes(label), label)
     assert.ok(t.includes('a corrected workbook is needed'))
+    const reason = blocked().split('data-testid="pi-submit-reason"')[1]?.split('class="boe-btn')[0] ?? ''
+    // the counted product line has nothing to press: Edit PI owns those rows
+    assert.deepEqual([...reason.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => text(m[1])), ['Client city', 'Dispatch Date Finalized', 'The uploaded PI workbook'])
   })
 
-  test('later and optional items are named, and labelled as such — never as a demand', () => {
-    assert.ok(t.includes('Required later to create the Order') && t.includes('Not needed to submit: Salesperson and Lead source.'))
-    assert.ok(t.includes('Optional') && t.includes('Not filled: Client PO and Order highlight.'))
+  test('none of the old completion notices is drawn', () => {
+    const t = text(blocked())
+    for (const gone of ['required item left', 'Submit for approval waits for these', 'Required later to create the Order', 'Not needed to submit', 'Optional', 'Required to submit for approval', 'Needed when the Order is created']) {
+      assert.ok(!t.includes(gone), gone)
+    }
+    assert.ok(!blocked().includes('pi-completion-checklist'))
   })
 
-  test('nothing missing: one green line, and no list', () => {
-    const ready = text(renderToStaticMarkup(<PiCompletionChecklist completion={completion()} onFix={noop} disabled={false} />))
-    assert.ok(ready.includes(COMPLETION_READY_TEXT))
-    assert.ok(!ready.includes('required item'))
+  test('with no way to fix (a viewer who cannot edit) the names are plain text', () => {
+    const html = blocked({ onFix: null })
+    const reason = html.split('data-testid="pi-submit-reason"')[1]?.split('<button type="button" class="boe-btn')[0] ?? ''
+    assert.ok(!reason.includes('<button'))
+    assert.ok(text(reason).includes('Client city'))
   })
 
-  test('a single item reads in the singular', () => {
-    const one = text(renderToStaticMarkup(<PiCompletionChecklist completion={completion({ requiredMissing: [item({ key: 'client_city', label: 'Client city' })], readyToSubmit: false })} onFix={noop} disabled={false} />))
-    assert.ok(one.includes('1 required item left'))
+  test('while a write is in flight, the names are disabled', () => {
+    assert.ok(/<button[^>]*disabled=""[^>]*>Client city<\/button>/.test(blocked({ checklistDisabled: true })))
   })
 
-  test('with no way to fix (a viewer who cannot edit) nothing is offered to press', () => {
-    const none = renderToStaticMarkup(<PiCompletionChecklist completion={missing} onFix={null} disabled={false} />)
-    assert.ok(!none.includes('<button'))
+  test('issues in the PI are said beside Submit too', () => {
+    const html = draw({ submit: { label: 'Submit for Approval', disabled: true, reason: 'Fix the issues in the PI first', issues: true, onSubmit: noop } })
+    assert.ok(text(html).includes('Fix the issues in the PI first.'))
   })
 
-  test('while a write is in flight, Add is disabled', () => {
-    const busy = renderToStaticMarkup(<PiCompletionChecklist completion={missing} onFix={noop} disabled />)
-    assert.ok(/<button[^>]*disabled=""[^>]*>Add<\/button>/.test(busy))
+  test('a complete PI says nothing at all beside Submit', () => {
+    assert.ok(!draw().includes('pi-submit-reason'))
+  })
+
+  test('Submit is disabled with its reason while a required item is missing; optional and later items never disable it', () => {
+    assert.ok(/<button[^>]*disabled=""[^>]*>[\s\S]*?Submit for Approval<\/button>/.test(blocked()))
+    assert.ok(!/<button[^>]*disabled=""[^>]*>[\s\S]*?Submit for Approval<\/button>/.test(draw()))
   })
 })
 
-describe('the grouped facts', () => {
+describe('the client facts', () => {
   const facts = buildCompletionFacts({
-    client_name: 'Kalyan', client_city: null, contact_number: '9999999999', bill_to_phone: null,
-    creation_date: '2026-09-20', source_created_by: 'Dhruv', commercial_terms_note: 'Standard terms.',
-  }, formatIsoDay)
+    client_name: 'Kalyan', client_city: null, bill_to_phone: null,
+    billing_address: 'A very long billing address line that has to wrap inside its own value area, 12/B Some Road, Coimbatore',
+  })
   const render = (over: { canEdit?: boolean; locked?: boolean } = {}) =>
-    renderToStaticMarkup(<PiCompletionFacts title="Client" facts={facts.filter(f => f.group === 'client')} editLabel="Edit client details"
+    renderToStaticMarkup(<PiCompletionFacts title="Client" facts={facts} editLabel="Edit client details"
       canEdit={over.canEdit ?? true} locked={over.locked ?? false} onEdit={noop} />)
 
-  test('every field shows its current value; only the ones Submit needs carry a red star, and no pill repeats per field', () => {
+  test('five facts: name, city and phone, then the two addresses — no salesperson contact, no PI terms', () => {
+    const html = render()
+    assert.deepEqual([...html.matchAll(/data-fact="([a-z_]+)"/g)].map(m => m[1]), ['client_name', 'client_city', 'bill_to_phone', 'billing_address', 'shipping_address'])
+    const t = text(html)
+    for (const gone of ['Salesperson contact number', 'PI terms', 'Date of creation', 'Commercial terms']) assert.ok(!t.includes(gone), gone)
+  })
+
+  test('each fact is a label with its value beside it; only the ones Submit needs carry a red star', () => {
     const html = render()
     const t = text(html)
     assert.ok(t.includes('Client name') && t.includes('Kalyan'))
-    assert.ok(!t.includes('Required for submission') && !t.includes('Optional'), 'no per-field pill')
-    // client name, client city and the salesperson contact number are required; client phone is not.
-    assert.equal((html.match(/pi-form-req/g) ?? []).length, 3)
+    assert.ok(/<dt>Client name<span[^>]*pi-form-req/.test(html) && /<dt>Client city<span[^>]*pi-form-req/.test(html))
+    assert.equal((html.match(/pi-form-req/g) ?? []).length, 2)
     assert.ok(t.includes('Not added yet'), 'a missing required value is said in words, not left blank')
     assert.ok(t.includes('Not given'), 'a missing optional one is said too')
+    assert.ok(/<dd data-empty="true" data-required="true">Not added yet<\/dd>/.test(html))
+    assert.ok(t.includes('12/B Some Road, Coimbatore'), 'a long address is shown whole, to be wrapped by CSS')
   })
 
   test('one edit control, and it is live for somebody who may edit', () => {
@@ -139,47 +147,39 @@ describe('the grouped facts', () => {
   })
 })
 
-describe('the area: checklist above the fields, the action last', () => {
+describe('the area: fields, then the action last', () => {
   const groups = <div data-testid="groups">fields</div>
   const draw = (over: Partial<Parameters<typeof PiCompletionPanel>[0]> = {}) => renderToStaticMarkup(
-    <PiCompletionPanel completion={completion()} locked={false} checklistDisabled={false} onFix={noop} groups={groups}
-      submit={{ label: 'Submit for Approval', disabled: false, reason: null, onSubmit: noop }}
+    <PiCompletionPanel completion={{ requiredMissing: [] }} locked={false} checklistDisabled={false} onFix={noop} groups={groups}
+      submit={{ label: 'Submit for Approval', disabled: false, reason: null, issues: false, onSubmit: noop }}
       onChangePi={noop} requestChange={null} {...over} />)
 
-  test('open: titled, checklist first, fields, then Change PI and Submit — in that order', () => {
+  test('open: titled, fields, then Change PI and Submit — in that order', () => {
     const html = draw()
     assert.ok(html.includes(`aria-label="${COMPLETION_TITLE}"`) && html.includes('data-locked="false"'))
-    assert.ok(html.indexOf('pi-completion-checklist') < html.indexOf('data-testid="groups"'))
     assert.ok(html.indexOf('data-testid="groups"') < html.indexOf('pi-completion-actions'))
     const actions = [...html.slice(html.indexOf('pi-completion-actions')).matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => text(m[1]))
     assert.deepEqual(actions, ['Change PI', 'Submit for Approval'])
   })
 
-  test('Submit is blocked, with the reason beside it, while a required item is missing', () => {
-    const html = draw({
-      completion: completion({ requiredMissing: [item({ key: 'client_city', label: 'Client city' })], readyToSubmit: false }),
-      submit: { label: 'Submit for Approval', disabled: true, reason: '1 required item is still missing', onSubmit: noop },
-    })
-    assert.ok(/<button[^>]*disabled=""[^>]*>[\s\S]*?Submit for Approval<\/button>/.test(html))
-    assert.equal(html.match(/data-testid="pi-submit-reason"[^>]*>([^<]*)</)?.[1], '1 required item is still missing')
-  })
-
-  test('optional and later items never disable it', () => {
-    const html = draw({ completion: completion({ optionalMissing: [item({ key: 'order_highlight', label: 'Order highlight', need: 'optional', where: 'highlight' })], laterMissing: [item({ key: 'lead_source', label: 'Lead source', need: 'later' })] }) })
-    assert.ok(!/<button[^>]*disabled=""[^>]*>[\s\S]*?Submit for Approval<\/button>/.test(html))
-  })
-
   test('a resubmission is offered the same control under its own label', () => {
-    assert.ok(text(draw({ submit: { label: 'Resubmit for Approval', disabled: false, reason: null, onSubmit: noop } })).includes('Resubmit for Approval'))
+    assert.ok(text(draw({ submit: { label: 'Resubmit for Approval', disabled: false, reason: null, issues: false, onSubmit: noop } })).includes('Resubmit for Approval'))
   })
 
-  test('locked: retitled, no checklist, no Submit, no Change PI — and the fields are still there', () => {
+  test('locked: retitled, no Submit, no Change PI — and the fields are still there', () => {
     const html = draw({ locked: true, submit: null, onChangePi: null })
     assert.ok(html.includes(`aria-label="${COMPLETION_LOCKED_TITLE}"`) && html.includes('data-locked="true"'))
-    assert.ok(text(html).includes(COMPLETION_LOCKED_HINT))
-    assert.ok(!html.includes('pi-completion-checklist'))
     assert.ok(!html.includes('pi-completion-actions'), 'no edit, upload or save action of any kind')
     assert.ok(html.includes('data-testid="groups"'))
+  })
+
+  test('the page draws Client, Supporting details, then Internal order details inside the one container', () => {
+    const page = read('src/app/orders/drafts/[submissionId]/page.tsx')
+    const at = page.indexOf('<PiCompletionPanel')
+    const body = page.slice(at, at + 2600)
+    assert.ok(body.indexOf('title="Client"') < body.indexOf('{supportingDetails}'))
+    assert.ok(body.indexOf('{supportingDetails}') < body.indexOf('<PiOrderDetailsSection'))
+    assert.ok(!body.includes('PI terms') && !body.includes('Edit PI terms'))
   })
 })
 

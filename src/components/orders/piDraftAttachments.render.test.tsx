@@ -16,8 +16,7 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  DRAFT_ATTACHMENTS_NOTE,
-  DRAFT_ATTACHMENTS_TITLE,
+  DRAFT_ATTACHMENT_RESTRICTIONS,
   PiDraftAttachments,
   type StagedDocument,
   type SupportingState,
@@ -50,13 +49,14 @@ describe('the draft attachments card', () => {
 
   test('the owner sees both optional categories and an Add control for each', () => {
     const out = html(state())
-    assert.ok(out.includes(DRAFT_ATTACHMENTS_TITLE))
-    assert.ok(DRAFT_ATTACHMENTS_NOTE.includes('submit it for approval'), 'says when they are sent')
+    assert.ok(DRAFT_ATTACHMENT_RESTRICTIONS.includes('10 MB'), 'the limit is said')
     assert.ok(out.includes('Add Design Files') && out.includes('Add Client PO'))
     assert.equal((out.match(/None attached yet/g) ?? []).length, 2)
-    assert.ok(out.includes(DRAFT_ATTACHMENTS_NOTE))
-    // two balanced columns, Client PO first, and one short Add action each — no big empty upload boxes
-    assert.equal((out.match(/class="pi-attach"/g) ?? []).length, 2)
+    // the restrictions live on each Add control, not in a paragraph under the section
+    assert.equal((out.match(new RegExp(`title="${DRAFT_ATTACHMENT_RESTRICTIONS}"`, 'g')) ?? []).length, 2)
+    assert.ok(!/<p[^>]*>[^<]*10 MB/.test(out), 'no static upload paragraph')
+    // two columns, Client PO first, and one short Add action each — no big empty upload boxes
+    assert.equal((out.match(/class="pi-support-col"/g) ?? []).length, 2)
     assert.ok(out.indexOf('Client PO') < out.indexOf('Design Files'))
     assert.ok(out.includes('>Add file<') && out.includes('>Add files<'))
     assert.ok(/<input[^>]*type="file"[^>]*multiple=""/.test(out), 'several design files at once')
@@ -73,7 +73,7 @@ describe('the draft attachments card', () => {
     const out = html(state({ staged }), false)
     assert.ok(out.includes('Client PO 118.pdf'))
     assert.ok(!out.includes('Remove') && !out.includes('type="file"'))
-    assert.equal(html(state(), false), '', 'and nothing at all when there is nothing to see')
+    assert.ok(html(state(), false).includes('None attached yet') && !html(state(), false).includes('type="file"'), 'an empty state, and still no controls')
   })
 
   test('staged files are sent under the id they were uploaded with, through #202’s door', () => {

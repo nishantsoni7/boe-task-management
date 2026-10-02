@@ -25,7 +25,6 @@ import {
 } from './piCompletion'
 import { piReadiness } from './piReadiness'
 import { withOrderDetailsRequirements, type OrderDetailsRow } from './salesOrderDetails'
-import { formatIsoDay } from './piInternalDetails'
 
 const migration = (name: string) =>
   readFileSync(join(process.cwd(), 'supabase/migrations', name), 'utf8').replace(/\r\n/g, '\n')
@@ -256,23 +255,20 @@ describe('the Submit sequence: optional → advance → final', () => {
   })
 })
 
-describe('the client and PI-terms read-out', () => {
-  const facts = buildCompletionFacts({
-    client_name: 'Kalyan Interiors', client_city: '  ', contact_number: '9999999999',
-    creation_date: '2026-09-20', source_created_by: 'Dhruv', commercial_terms_note: null,
-  }, formatIsoDay)
+describe('the client read-out', () => {
+  const facts = buildCompletionFacts({ client_name: 'Kalyan Interiors', client_city: '  ' })
 
   test('required ones are labelled, optional ones are labelled, blanks are null', () => {
     const by = Object.fromEntries(facts.map(f => [f.key, f]))
     assert.equal(by.client_name.need, 'submission')
     assert.equal(by.client_city.value, null, 'whitespace is not a city')
-    assert.equal(by.creation_date.value, '20 Sep 2026')
-    assert.equal(by.commercial_terms_note.value, null)
+    assert.deepEqual(facts.map(f => f.key), ['client_name', 'client_city', 'bill_to_phone', 'billing_address', 'shipping_address'])
+    assert.ok(!('contact_number' in by) && !('creation_date' in by) && !('commercial_terms_note' in by), 'drawn elsewhere, or not at all')
     for (const key of ['bill_to_phone', 'billing_address', 'shipping_address']) assert.equal(by[key].need, 'optional')
   })
 
   test('the required labels are the readiness list\'s own, so the two never disagree', () => {
-    const ready = piReadiness('submission', { ...COMPLETE_ROW, client_city: null, commercial_terms_note: null }, LINES)
+    const ready = piReadiness('submission', { ...COMPLETE_ROW, client_city: null }, LINES)
     const names = new Set(facts.map(f => f.label))
     for (const gap of ready.missing) assert.ok(names.has(gap.label), `${gap.label} is a row in the area`)
   })

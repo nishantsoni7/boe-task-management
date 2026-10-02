@@ -118,6 +118,7 @@ import {
 import {
   PI_LOCKED_TITLE,
   buildCompletionFacts,
+  joinItemNames,
   describeLockedNotice,
   buildPiCompletion,
   type CompletionItem,
@@ -126,7 +127,7 @@ import { Pencil } from 'lucide-react'
 import { changesSinceReturn, type ResubmissionChanges } from '@/lib/orders/resubmissionChanges'
 import {
   PI_COMMISSION_COLUMNS,
-  formatIsoDay, internalDetailsStillOpen, submissionCommissionBlock,
+  internalDetailsStillOpen, submissionCommissionBlock,
   submitWithInternalDates, withCommission, workbookDateNotes, type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
@@ -2147,6 +2148,9 @@ function PiDraftDetailPageInner() {
     totalBeforeGst: toNumber(submission.total_before_gst),
   })
 
+  /** The billed amount for Internal order details, shown under a declared percentage. */
+  const billingValueText = billingSummary.declared && !billingSummary.amountMissing ? billingSummary.amount : null
+
   /**
    * The compact payment block. Every figure is the RPC's, already summed in
    * numeric; the only things derived here are how many rows are confirmed and
@@ -2252,11 +2256,11 @@ function PiDraftDetailPageInner() {
   })
   /** The area is drawn for whoever can submit, and — locked — for everybody. */
   const showCompletion = actions.canSubmit || isLocked
-  const completionFacts = buildCompletionFacts(submission, formatIsoDay)
+  const completionFacts = buildCompletionFacts(submission)
+  /** Said by name beside Submit (PiCompletionPanel); this is the button's tooltip. */
   const submitBlockedReason =
     draft.blocking.length > 0 ? 'Fix the issues in the PI first'
-    : completion.requiredMissing.length === 1 ? '1 required item is still missing'
-    : completion.requiredMissing.length > 1 ? `${completion.requiredMissing.length} required items are still missing`
+    : completion.requiredMissing.length > 0 ? `Needed to submit: ${joinItemNames(completion.requiredMissing)}`
     : null
   /** OPENS THE SEQUENCE; nothing is sent until its last step. */
   function openSubmit() {
@@ -2294,16 +2298,12 @@ function PiDraftDetailPageInner() {
     <PiSupportingDetails
       supabase={supabase}
       submissionId={submissionId}
-      row={detailsRow}
       rowVersion={rowVersion}
-      canEditBilling={canEditInternalDetails}
       canEditFiles={canEditInternalDetails}
       canEditHighlight={canEditSubmission}
       locked={isLocked}
       supporting={supporting}
       submittedAt={submission.submitted_at ?? null}
-      grandTotal={grandTotalValue}
-      focus={detailsFocus}
       onSaved={() => loadDraft({ quiet: true })}
       onHighlightRead={setHighlightRead}
     />
@@ -2529,15 +2529,7 @@ function PiDraftDetailPageInner() {
             {/* ── 2b. Product value, Total before GST, billing ──
                 The middleman commission is asked and shown once, in Internal
                 order details; it is not repeated here. */}
-            <PiCommercialCard
-              figures={summaryFigures}
-              billing={billingSummary}
-              /* THE DATABASE'S OWN ANSWER, not a second opinion. Edit PI edits
-                 the billing declaration now, so the inline control stays off;
-                 set_order_submission_billing_percentage re-derives it anyway. */
-              canEditBilling={false}
-              onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
-            />
+            <PiCommercialCard figures={summaryFigures} />
           </div>
         </div>
 
@@ -2557,24 +2549,14 @@ function PiDraftDetailPageInner() {
               checklistDisabled={acting}
               onFix={mayEditPi || canEditInternalDetails ? fixCompletionItem : null}
               groups={<>
-                <div className="pi-completion-facts-grid">
-                  <PiCompletionFacts
-                    title="Client"
-                    facts={completionFacts.filter(f => f.group === 'client')}
-                    editLabel="Edit client details"
-                    canEdit={canEditInternalDetails}
-                    locked={isLocked}
-                    onEdit={() => { setClientFailure(null); setEditSection('client') }}
-                  />
-                  <PiCompletionFacts
-                    title="PI terms"
-                    facts={completionFacts.filter(f => f.group === 'terms')}
-                    editLabel="Edit PI terms"
-                    canEdit={canEditInternalDetails}
-                    locked={isLocked}
-                    onEdit={() => { setClientFailure(null); setEditSection('terms') }}
-                  />
-                </div>
+                <PiCompletionFacts
+                  title="Client"
+                  facts={completionFacts}
+                  editLabel="Edit client details"
+                  canEdit={canEditInternalDetails}
+                  locked={isLocked}
+                  onEdit={() => { setClientFailure(null); setEditSection('client') }}
+                />
                 {supportingDetails}
                 <PiOrderDetailsSection
                   supabase={supabase}
@@ -2589,12 +2571,14 @@ function PiDraftDetailPageInner() {
                   fabricCost={toNumber(submission.fabric_cost)}
                   focus={detailsFocus}
                   onSaved={() => loadDraft({ quiet: true })}
+                  billingValue={billingValueText}
                 />
               </>}
               submit={actions.canSubmit ? {
                 label: submitButtonLabel(submission.status),
                 disabled: acting || submitBlockedReason !== null,
                 reason: submitBlockedReason,
+                issues: draft.blocking.length > 0,
                 onSubmit: openSubmit,
               } : null}
               onChangePi={actions.canChangePi ? () => router.push(changePiHref(submissionId)) : null}
@@ -2622,7 +2606,7 @@ function PiDraftDetailPageInner() {
                 fabricCost={toNumber(submission.fabric_cost)}
                 focus={detailsFocus}
                 onSaved={() => loadDraft({ quiet: true })}
-                showLegend
+                billingValue={billingValueText}
               />
             </div>
 

@@ -25,7 +25,7 @@ export function RequiredLegend() {
 
 /** The star itself. Hidden from a screen reader: `aria-required` on the control says it. */
 export function RequiredMark() {
-  return <span className="pi-form-req" aria-hidden="true">*</span>
+  return <span className="pi-form-req" aria-hidden="true" title="Required to submit">*</span>
 }
 
 /**

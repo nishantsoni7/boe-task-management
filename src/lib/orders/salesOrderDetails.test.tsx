@@ -240,7 +240,7 @@ describe('a save refused part-way', () => {
 
   test('the form keeps every edit and re-reads the record BEFORE Save is offered again', () => {
     const section = read('src/components/orders/PiOrderDetailsSection.tsx')
-    const body = section.slice(section.indexOf('const save = async () => {'), section.indexOf('const field = (key'))
+    const body = section.slice(section.lastIndexOf('const save = async () => {'), section.indexOf('const field = (key'))
     assert.ok(body.includes('if (result.saved.length > 0) await onSaved()'), 'the re-read is awaited')
     assert.ok(body.indexOf('await onSaved()') < body.indexOf('setSaving(false)'), 'before Save is re-enabled')
     assert.ok(!/setForm\(/.test(body), 'the form is not reset on a refusal')
@@ -258,13 +258,14 @@ describe('the section states what Sales has provided', () => {
     const html = render(COMPLETE)
     assert.match(html, /aria-label="Internal order details"/)
     assert.match(html, />Internal</)
-    for (const label of ['Date of Order Confirmation', 'Dispatch Date Finalized', 'BOE salesperson assigned to Order', 'Lead source',
+    for (const label of ['Confirmation date', 'Dispatch date', 'Assigned salesperson', 'Lead source',
       'Payment terms', 'Fabric responsibility', 'Middleman commission']) {
       assert.ok(html.includes(label), label)
     }
     assert.ok(html.includes('Dhruv Mehta') && html.includes('Website') && html.includes('Fabric will be provided by client'))
-    // Billing percentage lives in Supporting details; billing terms are not offered anywhere on this page.
-    assert.ok(!html.includes('Billing percentage') && !html.includes('Billing terms'))
+    // Billing percentage lives here, once; billing terms are not offered anywhere on this page.
+    assert.equal((html.match(/Billing percentage/g) ?? []).length, 1)
+    assert.ok(!html.includes('Billing terms'))
     // No per-field pill: a red star marks only what Submit for approval needs (dates, fabric, commission).
     assert.doesNotMatch(html, /data-need=|Needed to submit|Required for submission/)
     assert.equal((html.match(/pi-form-req/g) ?? []).length, 4)

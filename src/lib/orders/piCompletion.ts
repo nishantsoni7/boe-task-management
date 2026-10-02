@@ -29,7 +29,6 @@
 // about things they could have filled in and chose not to.
 
 import { readBillingPercentage } from './billingPercentage'
-import { WORKBOOK_SALESPERSON_LABEL } from './orderConfirmation'
 import { CATEGORY_LABEL, type DocumentCategory } from './orderDocumentSubmissions'
 import { HIGHLIGHT_REMARK_TITLE } from './highlightRemark'
 import { orderDetailsFieldOf, ORDER_DETAILS_FIELD, type OrderDetailsFieldKey, type OrderDetailsRow } from './salesOrderDetails'
@@ -167,11 +166,16 @@ export function stageAfter(stages: readonly SubmitStage[], current: SubmitStage)
   return stages.find(stage => STAGE_ORDER.indexOf(stage) > at) ?? 'final'
 }
 
-// ── The facts the area shows for the client and the PI's own terms ──────────
+// ── The facts the area shows for the client ─────────────────────────────────
 //
 // Read straight off the row, in the order the form asks for them. The labels for
 // the required ones are the readiness list's own, so the checklist and the row
 // beside it always name a field the same way.
+//
+// The salesperson contact number and the PI's own terms (creation date, workbook
+// salesperson, commercial terms) are not drawn here: they are still stored,
+// still required to submit, and still edited from Edit PI and the existing
+// client and terms editors. The Submit control names any of them that is missing.
 
 export type CompletionFact = {
   key: string
@@ -179,19 +183,15 @@ export type CompletionFact = {
   need: CompletionNeed
   /** The value as a reader reads it, or null when there is none. */
   value: string | null
-  group: 'client' | 'terms'
+  group: 'client'
 }
 
 export type CompletionFactsRow = {
   client_name?: string | null
   client_city?: string | null
-  contact_number?: string | null
   bill_to_phone?: string | null
   billing_address?: string | null
   shipping_address?: string | null
-  creation_date?: string | null
-  source_created_by?: string | null
-  commercial_terms_note?: string | null
 }
 
 const text = (value: unknown): string | null => {
@@ -199,17 +199,13 @@ const text = (value: unknown): string | null => {
   return t === '' ? null : t
 }
 
-export function buildCompletionFacts(row: CompletionFactsRow, formatDay: (iso: string | null | undefined) => string | null): CompletionFact[] {
+export function buildCompletionFacts(row: CompletionFactsRow): CompletionFact[] {
   return [
     { key: 'client_name', label: 'Client name', need: 'submission', value: text(row.client_name), group: 'client' },
     { key: 'client_city', label: 'Client city', need: 'submission', value: text(row.client_city), group: 'client' },
-    { key: 'contact_number', label: 'Salesperson contact number', need: 'submission', value: text(row.contact_number), group: 'client' },
     { key: 'bill_to_phone', label: 'Client phone', need: 'optional', value: text(row.bill_to_phone), group: 'client' },
     { key: 'billing_address', label: 'Billing address', need: 'optional', value: text(row.billing_address), group: 'client' },
     { key: 'shipping_address', label: 'Shipping address', need: 'optional', value: text(row.shipping_address), group: 'client' },
-    { key: 'creation_date', label: 'Date of creation', need: 'submission', value: formatDay(row.creation_date ?? null), group: 'terms' },
-    { key: 'source_created_by', label: WORKBOOK_SALESPERSON_LABEL, need: 'submission', value: text(row.source_created_by), group: 'terms' },
-    { key: 'commercial_terms_note', label: 'Commercial terms', need: 'submission', value: text(row.commercial_terms_note), group: 'terms' },
   ]
 }
 
