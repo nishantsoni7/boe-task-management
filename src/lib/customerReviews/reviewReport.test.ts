@@ -399,10 +399,9 @@ describe('the screens', () => {
     assert.ok(readFileSync(join(process.cwd(), 'src/app/my-credits/leaderboard/page.tsx'), 'utf8').includes('ReviewLeaderboardScreen'))
     assert.doesNotMatch(BOARD, /hasPermission|canVerify|customer_review_requests/)
   })
-  test('the dashboard card is small, self-contained, and links to the leaderboard', () => {
-    assert.match(DASHBOARD, /<ReviewLeaderCard isMobile=\{isMobile\} \/>/)
-    assert.equal((DASHBOARD.match(/<ReviewLeaderCard/g) ?? []).length, 1, 'one use')
-    assert.match(DASHBOARD, /import \{ ReviewLeaderCard \} from '@\/components\/customerReviews\/ReviewLeaderCard'/)
+  test('the leader card stays small and self-contained, and is not on the Task Management dashboard', () => {
+    // It belongs on the main modules page; the task dashboard does not render it.
+    assert.doesNotMatch(DASHBOARD, /ReviewLeaderCard/)
     assert.match(CARD, /href="\/my-credits\/leaderboard"/)
     assert.match(CARD, /Review leaderboard unavailable right now/)
     assert.match(CARD, /rpc\('customer_review_leader_card'\)/)
