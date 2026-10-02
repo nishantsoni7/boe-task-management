@@ -3115,7 +3115,7 @@ describe('the page is assembled in the redesigned scan order', () => {
   test('identity, summary, workflow, blocking — all ABOVE the products', () => {
     const order = [
       '<PiTopCard',
-      '{workflowPanel}',
+      'showCompletion && workflowPanel',
       '<PiBlockingPanel',
       '{/* Products */}',
     ].map(at)
@@ -3138,8 +3138,8 @@ describe('the page is assembled in the redesigned scan order', () => {
       '<PiTopCard',
       '<PiPaymentStatusCard',
       '<PiCommercialCard',
-      // The page builds the workflow panel once and places it with the Complete PI details area (#259).
-      '{workflowPanel}',
+      // Management review sits directly under the commercial figures, in the right column.
+      'showCompletion && workflowPanel',
       '<PiCompletionPanel',
       // Supporting details (Client PO, Design Files, highlight, billing percentage) come BEFORE Internal order details.
       '{supportingDetails}',

@@ -113,10 +113,14 @@ describe('the two PI screens put the answer above the product table', () => {
     // live inside the summary card now, so the page opens with the card itself.
     // The page builds the workflow panel once (`workflowPanel`) and places it in
     // the section that also holds the Complete PI details area.
-    assert.ok(at(s, 'PiTopCard') < at(s, 'workflowPanel'),
+    // The panel is drawn in the commercial row when the completion area shows, and
+    // in the decision row when it does not — so the EARLIEST section is the one the
+    // reader meets first.
+    const firstPanel = s.findIndex(marks => marks.has('workflowPanel'))
+    assert.ok(at(s, 'PiTopCard') < firstPanel,
       'who, when and how much paid — above the controls that act on them')
-    assert.equal(at(s, 'workflowPanel'), at(s, 'PiCompletionPanel'),
-      'the workflow panel and the Complete PI details area are one section, in one place')
+    assert.ok(at(s, 'PiCommercialCard') === firstPanel && firstPanel < at(s, 'PiCompletionPanel'),
+      'Management review sits directly under Product value and Total before GST, above the Complete PI details area')
     assert.ok(at(s, 'PiCompletionPanel') < at(s, 'PiProductTableHead'),
       'the details a PI needs are completed above the products, not below them')
     assert.ok(at(s, 'PiTopCard') < at(s, 'PiProductTableHead'),
