@@ -39,6 +39,20 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
   locked: boolean
   onEdit: () => void
 }) {
+  const isAddress = (f: CompletionFact) => f.key === 'billing_address' || f.key === 'shipping_address'
+  const details = facts.filter(f => !isAddress(f))
+  const addresses = facts.filter(isAddress)
+  const fact = (f: CompletionFact) => (
+    <div key={f.key} data-fact={f.key} className="pi-client-fact">
+      <dt>
+        {f.label}
+        {f.need === 'submission' && <RequiredMark />}
+      </dt>
+      <dd data-empty={f.value ? undefined : 'true'} data-required={!f.value && f.need === 'submission' ? 'true' : undefined}>
+        {f.value ?? (f.need === 'submission' ? 'Not added yet' : 'Not given')}
+      </dd>
+    </div>
+  )
   return (
     <section aria-label={title} className="pi-client-facts">
       <div className="pi-section-head">
@@ -57,19 +71,13 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
           </button>
         )}
       </div>
-      <dl className="pi-client-facts-grid">
-        {facts.map(fact => (
-          <div key={fact.key} data-fact={fact.key} className="pi-client-fact">
-            <dt>
-              {fact.label}
-              {fact.need === 'submission' && <RequiredMark />}
-            </dt>
-            <dd data-empty={fact.value ? undefined : 'true'} data-required={!fact.value && fact.need === 'submission' ? 'true' : undefined}>
-              {fact.value ?? (fact.need === 'submission' ? 'Not added yet' : 'Not given')}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {/* THREE BLOCKS, NOT ONE RAGGED GRID: the client's own details as aligned
+          label/value rows, then the billing address and the shipping address
+          each as a labelled block. Same five facts, same order, same words. */}
+      <div className="pi-client-body">
+        <dl className="pi-client-col pi-client-col--details">{details.map(fact)}</dl>
+        {addresses.map(a => <dl key={a.key} className="pi-client-col pi-client-col--address">{fact(a)}</dl>)}
+      </div>
     </section>
   )
 }

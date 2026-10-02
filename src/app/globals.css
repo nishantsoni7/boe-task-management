@@ -9271,27 +9271,42 @@ select.boe-req-control {
   min-width: 0;
 }
 
-.pi-client-facts-grid {
-  margin: 8px 0 0;
+.pi-client-body {
+  margin-top: 8px;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 4fr);
 }
 
-.pi-client-fact {
-  grid-column: span 2;
+.pi-client-col {
+  margin: 0;
+  min-width: 0;
+  padding: 4px 24px;
+  border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pi-client-col:first-child { padding-left: 0; border-left: 0; }
+.pi-client-col:last-child { padding-right: 0; }
+
+/* Details: label and value on one line, the values starting on one edge. */
+.pi-client-col--details .pi-client-fact {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   gap: 0 12px;
   align-items: baseline;
   min-width: 0;
-  padding: 10px 28px 10px 0;
+  padding: 8px 0;
 }
 
-/* The two addresses share the second row, under one hairline. */
-.pi-client-fact:nth-child(n + 4) {
-  grid-column: span 3;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+.pi-client-col--details .pi-client-fact + .pi-client-fact {
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
+
+.pi-client-col--details .pi-client-fact:first-child { padding-top: 4px; }
+
+/* Addresses: the label as a small heading over the whole address. */
+.pi-client-col--address .pi-client-fact { padding: 4px 0; min-width: 0; }
+.pi-client-col--address dt { margin-bottom: 6px; }
+.pi-client-col--address dd { line-height: 1.55; }
 
 .pi-client-fact dt,
 .pi-od-cell dt,
@@ -9325,20 +9340,28 @@ select.boe-req-control {
   color: #c0392b;
 }
 
+/* Narrower section: the details take a full row, the two addresses share the next. */
 @container (max-width: 860px) {
-  .pi-client-fact { grid-column: span 3; }
-  .pi-client-fact:nth-child(3) { border-top: 1px solid rgba(0, 0, 0, 0.08); }
-  .pi-client-fact:nth-child(n + 4) { grid-column: span 6; }
+  .pi-client-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pi-client-col--details { grid-column: 1 / -1; padding: 0 0 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+  .pi-client-col--address { padding-top: 14px; }
+  .pi-client-col--address:nth-child(2) { padding-left: 0; padding-right: 20px; border-left: 0; }
+  .pi-client-col--address:nth-child(3) { padding-left: 20px; padding-right: 0; }
 }
 
+/* Phone: one column, each block under a thin rule. */
 @container (max-width: 560px) {
-  .pi-client-fact,
-  .pi-client-fact:nth-child(n + 4) {
-    grid-column: span 6;
-    grid-template-columns: 104px minmax(0, 1fr);
-    padding-right: 0;
+  .pi-client-body { grid-template-columns: minmax(0, 1fr); }
+  .pi-client-col--address,
+  .pi-client-col--address:nth-child(2),
+  .pi-client-col--address:nth-child(3) {
+    padding: 12px 0 0;
+    margin-top: 12px;
+    border-left: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
   }
-  .pi-client-fact + .pi-client-fact { border-top: 1px solid rgba(0, 0, 0, 0.08); }
+  .pi-client-col--details { padding-bottom: 0; border-bottom: 0; }
+  .pi-client-col--details .pi-client-fact { grid-template-columns: 96px minmax(0, 1fr); }
 }
 
 /* ── Supporting details: highlight 40%, Client PO 30%, Design files 30% ── */
