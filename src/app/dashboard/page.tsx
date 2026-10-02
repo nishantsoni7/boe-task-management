@@ -11,6 +11,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
+import { previewFooterLabel, previewRows, type PreviewKind } from '@/lib/tasks/dashboardPreview'
 import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
@@ -1180,16 +1181,21 @@ function OperationalStatusPanel({
 // of the same header. One shell instead, so the cards beside each other agree on
 // padding, type and where "View all" sits. It decides nothing about contents.
 function AttentionPanel({
-  title, count, badgeTone = 'neutral', onViewAll, isMobile, children,
+  title, count, badgeTone = 'neutral', onViewAll, isMobile, kind, children,
 }: {
   title: string
   count: number
   badgeTone?: 'neutral' | 'alert'
   onViewAll: () => void
   isMobile: boolean
+  /** Which list this card previews; decides the footer wording once rows are hidden. */
+  kind: PreviewKind
   children: React.ReactNode
 }) {
-  const interactive = count > 0
+  // When rows are hidden the footer carries the full total and the one "view
+  // all" control, so the header drops its own to avoid two in one card.
+  const footerLabel = previewFooterLabel(kind, count)
+  const interactive = count > 0 && !footerLabel
   return (
     <div style={{
       background: '#fff',
@@ -1235,6 +1241,25 @@ function AttentionPanel({
         )}
       </div>
       {children}
+      {footerLabel && (
+        <button
+          type="button"
+          onClick={onViewAll}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+            width: '100%', minHeight: isMobile ? '44px' : '40px',
+            padding: isMobile ? '10px 14px' : '10px 16px',
+            background: 'transparent', border: 'none', borderTop: '1px solid #F0F1F4',
+            fontSize: '12.5px', fontWeight: 500, color: '#6B7280', textAlign: 'left',
+            cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#FAFBFC'; e.currentTarget.style.color = '#111318' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6B7280' }}
+        >
+          <span>{footerLabel}</span>
+          <span aria-hidden="true">→</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -1293,12 +1318,13 @@ function UnacknowledgedPanel({
       count={tasks.length}
       onViewAll={onViewAll}
       isMobile={isMobile}
+      kind="acknowledgement"
     >
       {tasks.length === 0 ? (
         <PanelEmptyState headline="All clear" detail="No tasks need acknowledgement" />
       ) : (
         <UnacknowledgedTasksSection
-          tasks={tasks}
+          tasks={previewRows(tasks)}
           userMap={userMap}
           now={now}
           onPreview={onPreview}
@@ -1334,11 +1360,12 @@ function QuotationPanel({
       count={tasks.length}
       onViewAll={onViewAll}
       isMobile={isMobile}
+      kind="quotation"
     >
       {tasks.length === 0 ? (
         <PanelEmptyState headline="No active requests" detail="Quotation requests will appear here" />
       ) : (
-        <QuotationRequestsSection tasks={tasks} userMap={userMap} onOpen={onOpen} />
+        <QuotationRequestsSection tasks={previewRows(tasks)} userMap={userMap} onOpen={onOpen} />
       )}
     </AttentionPanel>
   )
@@ -1368,11 +1395,12 @@ function OverdueTasksPanel({
       badgeTone="alert"
       onViewAll={onViewAll}
       isMobile={isMobile}
+      kind="overdue"
     >
       {tasks.length === 0 ? (
         <PanelEmptyState headline="All caught up" detail="No overdue tasks" />
       ) : (
-        <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onSelectTask} compact />
+        <UnacknowledgedTasksSection tasks={previewRows(tasks)} userMap={userMap} now={now} onPreview={onSelectTask} compact />
       )}
     </AttentionPanel>
   )
