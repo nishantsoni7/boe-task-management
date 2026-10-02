@@ -357,8 +357,8 @@ export function uncorrectedRejections(rows: readonly PersistedDocumentSubmission
 // review dialog and the history, where the distinction is the point.
 
 export const DOCUMENT_CURRENT_LABEL = 'Current'
-export const NO_DESIGN_FILES_ON_FILE = 'No design files on file'
-export const NO_CLIENT_PO_ON_FILE = 'No client PO on file'
+export const NO_DESIGN_FILES_ON_FILE = 'No design files'
+export const NO_CLIENT_PO_ON_FILE = 'No client PO'
 export const UPDATE_DOCUMENTS_LABEL = 'Update documents'
 export const DOCUMENT_CHANGES_TITLE = 'Document changes'
 export const NEEDS_YOUR_ACTION_TITLE = 'Needs your action'

@@ -50,7 +50,14 @@ export type OrderAttentionItem = {
     | 'advance_below'
     | 'advance_realign'
   label: string
-  /** Red only for a genuinely overdue Order; every other gap is amber. */
+  /**
+   * The strip's two parts, for the items that have a reason worth saying: a
+   * short title and one sentence. Absent for an item whose label already says it
+   * all ("Salesperson not set"); the label is then the title.
+   */
+  title?: string
+  detail?: string
+  /** Red only for a genuinely overdue Order or a flagged PI; every other gap is amber. */
   tone: 'amber' | 'red'
 }
 
@@ -91,12 +98,16 @@ export type OrderAttentionInput = {
    * aligned. Already in words (advanceAttentionLabel); null when fine.
    */
   advanceBelowLabel?: string | null
+  /** The same state as title + reason (advanceAttentionParts). */
+  advanceBelowParts?: { title: string; detail: string } | null
   /**
    * A held Order whose verified advance is back at 40% (or covered by an
    * approval) and is waiting to be aligned again (review W3). In words; null
    * otherwise.
    */
   advanceRealignLabel?: string | null
+  /** The same state as title + reason (advanceRealignParts). */
+  advanceRealignParts?: { title: string; detail: string } | null
 }
 
 const plural = (count: number, noun: string) =>
@@ -122,15 +133,20 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
     items.push({ key: 'overdue', label: 'Due date has passed', tone: 'red' })
   }
   // A SHORT ADVANCE BLOCKS PRODUCTION, and the database refuses the alignment
-  // until it is met or excepted — so it is red, and said with its figures.
+  // until it is met or excepted. It is a standing condition with a clear action
+  // (Finance verifies, or an administrator approves), not an emergency: amber,
+  // titled and reasoned, and the words carry it.
   if (open && input.advanceBelowLabel) {
-    items.push({ key: 'advance_below', label: input.advanceBelowLabel, tone: 'red' })
+    items.push({
+      key: 'advance_below', label: input.advanceBelowLabel, tone: 'amber',
+      ...(input.advanceBelowParts ?? {}),
+    })
   }
   // READY AGAIN, STILL HELD: nothing blocks it any more, but nobody has put it
   // back into production yet. Amber, and said, so the button beside the strip
   // is not the only clue.
   if (open && !input.advanceBelowLabel && input.advanceRealignLabel) {
-    items.push({ key: 'advance_realign', label: input.advanceRealignLabel, tone: 'amber' })
+    items.push({ key: 'advance_realign', label: input.advanceRealignLabel, tone: 'amber', ...(input.advanceRealignParts ?? {}) })
   }
   // ONE LINE ABOUT PRODUCTION. On an Order with an operations handoff the
   // alignment IS the handoff decision (20261229000000), so the handoff item
@@ -211,6 +227,11 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
 
 export function attentionHeading(count: number): string {
   return count === 1 ? '1 item needs attention' : `${count} items need attention`
+}
+
+/** What the strip is called to a screen reader: the item itself when there is one, the count otherwise. */
+export function attentionAriaLabel(items: readonly OrderAttentionItem[]): string {
+  return items.length === 1 ? (items[0].title ?? items[0].label) : attentionHeading(items.length)
 }
 
 // ── The Order Summary panel ───────────────────────────────────────────────────
@@ -518,7 +539,7 @@ export type OrderSummaryView = {
       label: string
       tone: WorkspaceTone
       aligned: boolean
-      /** "Aligned by X · date". NULL WHENEVER THE ORDER IS NOT ALIGNED. */
+      /** One short current-state line, or null when the page has none. */
       line: string | null
     }
     /** The lead source, then the salesperson. Production leads them as a badge. */
@@ -554,10 +575,7 @@ export function orderSummaryView(input: {
   /** The client's own number as the PI card prints it, or null. */
   clientContact: string | null
   productionAligned: boolean
-  /**
-   * An accepted version whose Order is on a production hold (20270116000000,
-   * review W2): its line says why it is not aligned, so it is drawn too.
-   */
+  /** Retained for callers; the summary line is drawn whenever one is given. */
   productionHeld?: boolean
 }): OrderSummaryView {
   const byKey = (key: OrderSummaryFieldKey): OrderSummaryField | null =>
@@ -616,10 +634,10 @@ export function orderSummaryView(input: {
         label: production?.value ?? SUMMARY_NOT_AVAILABLE,
         tone: production?.tone ?? 'neutral',
         aligned: input.productionAligned,
-        // The supporting line is shown for an aligned Order, and for a HELD
-        // one (its line is the reason it is not aligned). On any other
-        // unaligned Order it stays null, whatever the caller handed over.
-        line: input.productionAligned || input.productionHeld ? (production?.detail ?? null) : null,
+        // ONE SHORT CURRENT-STATE LINE ("Awaiting production alignment.", "On
+        // hold: ...", or who aligned it). The page hands over the handoff's
+        // summary, not its history; the history is in Activity and PI history.
+        line: production?.detail ?? null,
       },
       rows: [
         factByKey('lead_source'),

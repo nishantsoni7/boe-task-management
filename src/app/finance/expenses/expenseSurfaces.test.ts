@@ -1236,6 +1236,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/orders/[id]/orderWorkspace.render.test.tsx',
     'src/app/orders/[id]/orderStatusWorkspace.render.test.tsx',
     'src/app/orders/[id]/orderCurrentStatus.render.test.tsx',
+    'src/app/orders/[id]/orderDetailPolish.render.test.tsx',
     'src/app/orders/[id]/orderPiHandoff.render.test.tsx',
     'src/lib/finance/crossModuleLinks.test.ts',
     'src/lib/finance/orderFinancePosition.test.ts',

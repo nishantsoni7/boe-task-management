@@ -195,6 +195,44 @@ export function advanceAttentionLabel(r: AdvanceReadiness | null): string | null
   return `Production blocked: advance below ${percentText(r.threshold_percent)} — see Payment`
 }
 
+/**
+ * THE ATTENTION STRIP'S TWO PARTS — a title and one short reason — for the same
+ * states advanceAttentionLabel / advanceRealignLabel word as one line. The
+ * threshold is the one the database measured against, never a literal.
+ *
+ *   short, aligned-or-not, no cover   "Production on hold" / "Production blocked"
+ *                                      + "Verified advance is below 40%."
+ *   held, advance covered again       "Production on hold"
+ *                                      + "Advance restored to 40%. <what happens next>"
+ *                                      or, when an approval covers it, "Production is approved
+ *                                      below 40%. <what happens next>"
+ */
+export type AdvanceAttentionParts = { title: string; detail: string }
+
+export function advanceAttentionParts(r: AdvanceReadiness | null): AdvanceAttentionParts | null {
+  if (!r || !r.below || r.ready) return null
+  return {
+    title: r.hold ? 'Production on hold' : 'Production blocked',
+    detail: `Verified advance is below ${percentText(r.threshold_percent)}.`,
+  }
+}
+
+export function advanceRealignParts(
+  r: AdvanceReadiness | null,
+  action: 'realign' | 'recover' | null = null,
+): AdvanceAttentionParts | null {
+  if (!advanceHoldCovered(r) || !r) return null
+  const threshold = percentText(r.threshold_percent)
+  const next = action === 'realign' ? 'Align production again.'
+    : action === 'recover' ? 'An administrator can recover the alignment.'
+    : 'Production alignment pending.'
+  // An approval covering the Order is not "restored": the money is still short.
+  const lead = r.below && r.exception
+    ? `Production is approved below ${threshold}.`
+    : `Advance restored to ${threshold}.`
+  return { title: 'Production on hold', detail: `${lead} ${next}` }
+}
+
 /** The database's refusal, in the words a person reads. */
 export function describeAdvanceRefusal(message: string | null | undefined): string | null {
   const m = message ?? ''

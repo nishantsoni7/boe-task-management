@@ -101,7 +101,7 @@ describe('the Documents card', () => {
     assert.equal(/order-docs-grid/.test(html), false)
   })
 
-  test('PI history sits on the Main PI row; Edit PI is the Order header\'s, never a document button', () => {
+  test('PI history and Edit PI both sit on the Main PI row — one Edit PI, with its blocked state shown disabled', () => {
     const withVersions = (edit: { onEdit: () => void; blockedNote: string | null } | null, notice: string | null = null) =>
       renderToStaticMarkup(
         <OrderDocumentsPanel
@@ -115,17 +115,24 @@ describe('the Documents card', () => {
     const html = withVersions({ onEdit: noop, blockedNote: null })
     const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
     assert.ok(main.includes('PI history (2)'))
-    // EDIT PI LEFT THIS CARD: it is the Order page's header action, which
-    // opens the full-page editor. Even a reader allowed to edit sees none here.
-    assert.equal(main.includes('Edit PI'), false)
+    // EDIT PI IS ON THIS ROW (it left the header and the history popup): one
+    // control, among the Main PI's own actions.
+    assert.equal((main.match(/Edit PI/g) ?? []).length, 1)
+    assert.ok(/<button type="button" class="boe-btn boe-btn-ghost order-doc-action">[^]*?Edit PI<\/button>/.test(html.slice(html.indexOf('class="order-docs-main"'))))
+    // …disabled, with the reason beside it, while a revision waits for a decision.
+    const blocked = withVersions({ onEdit: noop, blockedNote: 'A revised PI is waiting for a decision; Edit PI is available again once it is decided.' })
+    assert.ok(/<button type="button" class="boe-btn boe-btn-ghost order-doc-action" disabled=""[^>]*>[^]*?Edit PI<\/button>/.test(blocked))
+    assert.ok(text(blocked).includes('A revised PI is waiting for a decision'))
     const head = text(html.slice(0, html.indexOf('class="order-docs-rows"')))
     assert.ok(head.includes('Document history') && !head.includes('PI history'),
       'the two histories are named apart, each in its own place')
 
     assert.ok(text(withVersions(null)).includes('PI history'))
     const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
-    assert.ok(page.includes('onClick={() => router.push(editPiPageHref(order.id))}'), 'the header opens the Edit PI page')
-    assert.ok(page.includes('title={piRevisionOpen ? EDIT_PI_BLOCKED_NOTE'), 'and says why it is held while a revision is open')
+    // The page hands the row the same handler the header had (the Edit PI page) and the same gate.
+    assert.ok(page.includes('onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) }'), 'the row opens the Edit PI page')
+    assert.ok(page.includes('blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null'), 'and is held, with the reason, while a revision is open')
+    assert.ok(!page.includes('EDIT_PI_LABEL'), 'the header no longer carries a second Edit PI button')
 
     // The outcome of the last proposal is said on the row.
     assert.ok(text(withVersions({ onEdit: noop, blockedNote: null }, 'PI V2 sent to an Admin.')).includes('PI V2 sent to an Admin.'))
@@ -165,8 +172,9 @@ describe('the Documents card', () => {
 
   test('an absent file says "on file", and never implies one was accepted', () => {
     const t = rowsOf(card([], viewer(), { absence: 'Not provided — Asha confirmed sending the PI without a client PO on 2026-09-20.' }))
-    assert.ok(t.includes('No client PO on file'))
-    assert.ok(t.includes('No design files on file'))
+    assert.ok(t.includes('No client PO'))
+    assert.ok(t.includes('No design files'))
+    assert.ok(!t.includes('on file'), 'compact: a short statement, not a sentence')
     assert.ok(t.includes('Not provided — Asha confirmed'))
   })
 
@@ -212,7 +220,7 @@ describe('the Documents card', () => {
 describe('proposed is never drawn as current', () => {
   test('a pending upload is only in the changes panel, with its stage and owner', () => {
     const html = card([sub({ status: 'pending_admin' })])
-    assert.ok(rowsOf(html).includes('No client PO on file'))
+    assert.ok(rowsOf(html).includes('No client PO'))
     assert.equal(rowsOf(html).includes('PO-771.pdf'), false, 'the proposed file is not a current row')
     const c = changesOf(html)
     assert.ok(c.includes('New Client PO Waiting for Admin'))
@@ -227,7 +235,7 @@ describe('proposed is never drawn as current', () => {
     assert.ok(c.includes('Waiting for Operations'))
     assert.ok(c.includes('With: Operations — Ravi'))
     assert.ok(c.includes('approved by Nishant, 2026-09-21'))
-    assert.ok(rowsOf(html).includes('No client PO on file'))
+    assert.ok(rowsOf(html).includes('No client PO'))
   })
 
   test('the accepted file stays current and usable while a newer proposal is reviewed', () => {

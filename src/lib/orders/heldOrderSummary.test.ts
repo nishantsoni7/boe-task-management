@@ -89,13 +89,17 @@ describe('W2: a held Order says why it is not aligned', () => {
     assert.equal(held.held, true)
     assert.equal(held.line, 'PI V1 accepted by Suite Factory · 09:57; production on hold — advance below 40%')
   })
-  test('the summary draws that line for a held Order…', () => {
-    const s = orderSummaryView({ fields: [], facts: facts(held.line), clientContact: null, productionAligned: false, productionHeld: true })
-    assert.equal(s.sales.production.line, 'PI V1 accepted by Suite Factory · 09:57; production on hold — advance below 40%')
+  test('the summary draws ONE short current-state line for a held Order — the history stays in "line"', () => {
+    assert.equal(held.summary, 'On hold: verified advance is below 40%.')
+    const s = orderSummaryView({ fields: [], facts: facts(held.summary), clientContact: null, productionAligned: false, productionHeld: true })
+    assert.equal(s.sales.production.line, 'On hold: verified advance is below 40%.')
+    assert.ok(!/accepted by/i.test(s.sales.production.line ?? ''), 'no acceptance or re-alignment history in the summary')
   })
-  test('…and still draws nothing for any other unaligned Order', () => {
-    const s = orderSummaryView({ fields: [], facts: facts('Awaiting operations acceptance of PI V1'), clientContact: null, productionAligned: false })
-    assert.equal(s.sales.production.line, null)
+  test('…an unaligned Order awaiting alignment says so briefly, and a summary with no line draws none', () => {
+    const awaiting = orderSummaryView({ fields: [], facts: facts('Awaiting production alignment.'), clientContact: null, productionAligned: false })
+    assert.equal(awaiting.sales.production.line, 'Awaiting production alignment.')
+    const none = orderSummaryView({ fields: [], facts: facts(null), clientContact: null, productionAligned: false })
+    assert.equal(none.sales.production.line, null)
   })
 })
 

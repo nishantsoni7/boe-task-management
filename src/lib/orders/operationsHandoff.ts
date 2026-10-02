@@ -232,7 +232,7 @@ export type OperationsHandoffView =
       /** Set when the Order was aligned for production before this version. */
       alignmentWarning: string | null
       /** What the Order's alignment says as a result of this handoff. */
-      alignment: { label: string; line: string | null; aligned: boolean; held: boolean }
+      alignment: { label: string; line: string | null; summary: string | null; aligned: boolean; held: boolean }
       /** Which control, if any, this reader is offered. */
       actions: { accept: boolean; cannotAccept: boolean; withdraw: boolean }
       /** Why no control is offered, for a reader who cannot decide. */
@@ -332,7 +332,9 @@ export function describeHandoffAlignment(input: {
    * The line must then not claim the advance is still below 40%.
    */
   holdCovered?: boolean
-}): { label: string; line: string | null; aligned: boolean; held: boolean } {
+  /** The advance threshold in words ("40%"), for the held summary. Defaults to the standing 40%. */
+  thresholdLabel?: string
+}): { label: string; line: string | null; summary: string | null; aligned: boolean; held: boolean } {
   const { live } = input
   const accepted = `Accepted by ${input.reviewerName ?? 'operations'} · ${input.formatWhen(live.accepted_at)}`
   const r = input.realignment
@@ -347,6 +349,11 @@ export function describeHandoffAlignment(input: {
       aligned: false,
       held: true,
       label: 'Not Aligned',
+      // THE SUMMARY IS ONE CURRENT STATE. The acceptance and any re-alignment
+      // are history: they stay in `line` (the Documents row) and in Activity.
+      summary: input.holdCovered
+        ? 'Advance restored. Awaiting production realignment.'
+        : `On hold: verified advance is below ${input.thresholdLabel ?? '40%'}.`,
       line: `${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
         + (realignedBy ? ` · last ${realignedBy}` : '')
         + (input.holdCovered
@@ -359,6 +366,9 @@ export function describeHandoffAlignment(input: {
       aligned: true,
       held: false,
       label: `Aligned · ${versionLabel(live.version_number)}`,
+      summary: realignedBy
+        ? `${realignedBy.charAt(0).toUpperCase()}${realignedBy.slice(1)}`
+        : accepted,
       line: realignedBy
         ? `${realignedBy.charAt(0).toUpperCase()}${realignedBy.slice(1)} · ${versionLabel(live.version_number)} ${accepted.charAt(0).toLowerCase()}${accepted.slice(1)}`
         : accepted,
@@ -368,6 +378,9 @@ export function describeHandoffAlignment(input: {
     aligned: false,
     held: false,
     label: 'Not Aligned',
+    summary: live.status === 'clarification_needed'
+      ? 'Flagged for clarification by operations.'
+      : 'Awaiting production alignment.',
     line: live.status === 'clarification_needed'
       ? `${versionLabel(live.version_number)} flagged for clarification`
       : `Awaiting operations acceptance of ${versionLabel(live.version_number)}`,
