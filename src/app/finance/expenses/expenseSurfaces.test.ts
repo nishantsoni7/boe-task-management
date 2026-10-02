@@ -2596,6 +2596,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/minop/stage2Security.test.ts',
   ])
 
+  // Dashboard attention-card preview (2026-10-02): each card draws five rows and a
+  // "view all" footer. One pure helper and its suite; the dashboard page itself is
+  // already accounted for above. No migration, no Finance or Orders file.
+  const ALLOWED_DASHBOARD_PREVIEW = new Set([
+    'src/lib/tasks/dashboardPreview.test.ts',
+    'src/lib/tasks/dashboardPreview.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2663,6 +2671,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
+    !ALLOWED_DASHBOARD_PREVIEW.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
@@ -3007,6 +3016,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_NEW_TASK_SILENT.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
+        || ALLOWED_DASHBOARD_PREVIEW.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
