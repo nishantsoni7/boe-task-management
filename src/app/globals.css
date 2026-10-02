@@ -9390,7 +9390,13 @@ select.boe-req-control {
 }
 
 .pi-od-cell .pi-input-suffix {
-  flex: 0 1 112px;
+  flex: 0 1 88px;
+  min-width: 80px;
+}
+
+.pi-od-cell .pi-inline-save > .boe-btn {
+  padding-inline: 10px;
+  white-space: nowrap;
 }
 
 @container (max-width: 880px) {
