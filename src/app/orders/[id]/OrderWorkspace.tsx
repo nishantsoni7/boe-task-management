@@ -42,6 +42,7 @@ import { OrderModalShell } from './OrderStatusWorkspace'
 import {
   activityToggleLabel,
   activityWindow,
+  attentionAriaLabel,
   attentionHeading,
   ORDER_PRODUCTION_LABEL,
   SUMMARY_GROUP_TITLE,
@@ -87,18 +88,33 @@ export function OrderAttentionBar({ items, actions, id }: {
   id?: string
 }) {
   if (items.length === 0) return null
+  const rowClass = (item: OrderAttentionItem) =>
+    item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'
   return (
-    <section id={id} className="order-attention" aria-label={attentionHeading(items.length)}>
+    <section id={id} className="order-attention" aria-label={attentionAriaLabel(items)}>
       <div className="order-attention-message">
-        <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
-        <span className="order-attention-heading">{attentionHeading(items.length)}</span>
-        <ul className="order-attention-list">
-          {items.map(item => (
-            <li key={item.key} className={item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'}>
-              {item.label}
-            </li>
-          ))}
-        </ul>
+        <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
+        {items.length === 1 ? (
+          // ONE ISSUE: its title, then its one reason. No count — "1 item needs
+          // attention" only restated what the strip already said.
+          <p className={rowClass(items[0]) + ' order-attention-single'}>
+            <strong className="order-attention-title">{items[0].title ?? items[0].label}</strong>
+            {items[0].detail && <span className="order-attention-detail">{items[0].detail}</span>}
+          </p>
+        ) : (
+          // SEVERAL: every one stays, as a compact row under a count.
+          <div className="order-attention-multi">
+            <p className="order-attention-heading">{attentionHeading(items.length)}</p>
+            <ul className="order-attention-list">
+              {items.map(item => (
+                <li key={item.key} className={rowClass(item)}>
+                  <strong className="order-attention-title">{item.title ?? item.label}</strong>
+                  {item.detail && <span className="order-attention-detail">{item.detail}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       {actions && <div className="order-attention-actions">{actions}</div>}
     </section>
@@ -174,7 +190,7 @@ function SummaryRow({ row }: { row: OrderFactRow }) {
     ].filter(Boolean).join(' ')}>
       <dt className="order-sum-label">{row.label}</dt>
       <dd className="order-sum-value">
-        <span style={{ color: row.missing ? colors.muted : tone.text, fontWeight: warning ? 700 : 600 }}>
+        <span style={{ color: row.missing ? colors.muted : tone.text, fontWeight: warning ? 700 : undefined }}>
           {row.value}
         </span>
         {row.detail && <span className="order-sum-detail" style={{ color: tone.text }}>{row.detail}</span>}
@@ -210,22 +226,20 @@ export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
             carries it, and the tint only agrees. */}
         <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.sales}>
           <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.sales}</h3>
+          {/* THE CURRENT STATUS LEADS, large, with ONE short line of what it is
+              waiting on. How production got here (who accepted which version,
+              every re-alignment) is Activity's and PI history's to tell. */}
+          <div className="order-sum-status" aria-label={ORDER_PRODUCTION_LABEL}>
+            <span className="order-sum-status-label">{ORDER_PRODUCTION_LABEL}</span>
+            <span
+              className="order-sum-badge"
+              style={{ background: productionTone.bg, color: productionTone.fg, borderColor: productionTone.border }}
+            >
+              {production.label}
+            </span>
+            {production.line && <p className="order-sum-production-line">{production.line}</p>}
+          </div>
           <dl className="order-sum-rows">
-            <div className="order-sum-row order-sum-row--production">
-              <dt className="order-sum-label">{ORDER_PRODUCTION_LABEL}</dt>
-              <dd className="order-sum-value">
-                <span
-                  className="order-sum-badge"
-                  style={{ background: productionTone.bg, color: productionTone.fg, borderColor: productionTone.border }}
-                >
-                  {production.label}
-                </span>
-                {/* ONLY WHEN ALIGNED. Never an empty date or an empty actor. */}
-                {production.line && (
-                  <span className="order-sum-production-line">{production.line}</span>
-                )}
-              </dd>
-            </div>
             {view.sales.rows.map(row => <SummaryRow key={row.key} row={row} />)}
           </dl>
         </section>
@@ -731,6 +745,17 @@ export const ACTIVITY_EMPTY = 'No activity recorded yet.'
 export const NEW_SINCE_LABEL = 'New since your last visit'
 
 /**
+ * An event type that reached the screen without a wording (snake_case) is read
+ * as a sentence rather than as a column name. A label that already is words is
+ * returned untouched.
+ */
+export function activityTitle(label: string): string {
+  if (!/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(label)) return label
+  const words = label.split('_').join(' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/**
  * The complete trail, newest first, showing the latest five until asked for
  * the rest. Every entry, timestamp and actor is exactly what the page handed
  * over; this only decides how many are on screen at once.
@@ -776,27 +801,27 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
                   {entry.dot}
                   {idx < visible.length - 1 && <span className="order-activity-line" aria-hidden="true" />}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
-                    {entry.label}
-                    {entry.fromPi && (
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, marginLeft: '6px' }}>PI</span>
-                    )}
-                    {/* The WORDS say it, not the tint: a reader who cannot see
-                        the background still reads "New". */}
+                <div className="order-activity-body">
+                  {/* TITLE FIRST, THEN DETAIL, THEN WHO AND WHEN. */}
+                  <div className="order-activity-title">
+                    {activityTitle(entry.label)}
+                    {entry.fromPi && <span className="order-activity-pi" title="From the source PI's trail">PI</span>}
+                    {/* UNREAD IS A SMALL MARK AND A WORD FOR A SCREEN READER, not a
+                        badge on every row: the count in the header says how many. */}
                     {entry.isNew && (
-                      <span className="order-activity-new" title={NEW_SINCE_LABEL}>New</span>
+                      <>
+                        <span className="order-activity-unread" aria-hidden="true" title={NEW_SINCE_LABEL} />
+                        <span className="order-sr-only">{NEW_SINCE_LABEL}</span>
+                      </>
                     )}
                   </div>
-                  {entry.detail && (
-                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>{entry.detail}</div>
-                  )}
+                  {entry.detail && <div className="order-activity-detail">{entry.detail}</div>}
                   {entry.lines.length > 0 && (
-                    <ul style={{ margin: '3px 0 0', paddingLeft: '16px', fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
+                    <ul className="order-activity-lines">
                       {entry.lines.map(line => <li key={line}>{line}</li>)}
                     </ul>
                   )}
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                  <div className="order-activity-meta">
                     {entry.actor ? `${entry.actor} · ` : ''}{entry.when}
                   </div>
                 </div>

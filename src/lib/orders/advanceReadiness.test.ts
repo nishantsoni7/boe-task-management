@@ -12,7 +12,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { advanceAttentionLabel, advanceGateView, describeAdvanceRefusal, holdCauseText, valueChangeWord, type AdvanceReadiness } from './advanceReadiness'
+import { advanceAttentionLabel, advanceAttentionParts, advanceRealignParts, advanceGateView, describeAdvanceRefusal, holdCauseText, valueChangeWord, type AdvanceReadiness } from './advanceReadiness'
 import { describeHandoffFailure, validateRecoveryReason } from './operationsHandoff'
 import { orderAttentionItems } from './orderWorkspace'
 
@@ -38,7 +38,7 @@ describe('below 40% on the amended value', () => {
     if (v.kind !== 'blocked') return
     assert.match(v.action, /^Operations can accept PI V3 for production once Finance verifies the payment, or an administrator approves production below 40%\.$/)
   })
-  test('the attention strip carries it in red', () => {
+  test('the attention strip carries it in amber, with a title and one reason', () => {
     const label = advanceAttentionLabel(short)
     assert.equal(label, 'Production blocked: advance below 40% — see Payment')
     const items = orderAttentionItems({
@@ -46,7 +46,34 @@ describe('below 40% on the amended value', () => {
       isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0, pendingPiRevision: false,
       documentsFailed: false, documentsOutdated: false, advanceBelowLabel: label,
     })
-    assert.deepEqual(items.find(i => i.key === 'advance_below'), { key: 'advance_below', label, tone: 'red' })
+    // Amber: a standing condition with a clear way out, said in words. Red stays
+    // for an overdue Order and a PI flagged by operations.
+    assert.deepEqual(items.find(i => i.key === 'advance_below'), { key: 'advance_below', label, tone: 'amber' })
+    const parts = advanceAttentionParts(short)
+    const withParts = orderAttentionItems({
+      status: 'running', productionAligned: false, hasSalesperson: true, hasDueDate: true, hasLeadSource: true,
+      isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0, pendingPiRevision: false,
+      documentsFailed: false, documentsOutdated: false, advanceBelowLabel: label, advanceBelowParts: parts,
+    })
+    assert.deepEqual(withParts.find(i => i.key === 'advance_below'), {
+      key: 'advance_below', label, tone: 'amber', title: 'Production blocked', detail: 'Verified advance is below 40%.',
+    })
+  })
+
+  test('title and reason follow the real state: held, restored, covered by an approval — never a literal 40%', () => {
+    assert.deepEqual(advanceAttentionParts({ ...short, hold: { id: 'h', cause: 'value_changed', held_at: null, order_value: '1', previous_order_value: '1', verified: '1', percent: '10', shortfall: '1' } }),
+      { title: 'Production on hold', detail: 'Verified advance is below 40%.' })
+    assert.equal(advanceAttentionParts({ ...short, below: false, ready: true }), null)
+    const held = { id: 'h', cause: 'value_changed', held_at: null, order_value: '1', previous_order_value: '1', verified: '1', percent: '10', shortfall: '1' }
+    const restored = { ...short, below: false, ready: true, hold: held }
+    assert.deepEqual(advanceRealignParts(restored, 'realign'), { title: 'Production on hold', detail: 'Advance restored to 40%. Align production again.' })
+    assert.deepEqual(advanceRealignParts(restored, 'recover'), { title: 'Production on hold', detail: 'Advance restored to 40%. An administrator can recover the alignment.' })
+    assert.deepEqual(advanceRealignParts(restored, null), { title: 'Production on hold', detail: 'Advance restored to 40%. Production alignment pending.' })
+    const excepted = { ...short, below: true, ready: true, hold: held, exception: { source: 'order' as const, approved_by: 'a', approved_at: null } }
+    assert.equal(advanceRealignParts(excepted, 'realign')?.detail, 'Production is approved below 40%. Align production again.', 'an approval is not "restored"')
+    assert.equal(advanceRealignParts({ ...restored, hold: null }, 'realign'), null, 'no hold, no hold wording')
+    // a different threshold is quoted, not assumed
+    assert.equal(advanceAttentionParts({ ...short, threshold_percent: '30' })?.detail, 'Verified advance is below 30%.')
   })
 })
 

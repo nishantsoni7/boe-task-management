@@ -22,7 +22,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { Pencil } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { OrderModalShell } from '@/app/orders/[id]/OrderStatusWorkspace'
 import { formatInr } from '@/lib/pi/previewView'
@@ -35,7 +34,7 @@ import {
   type PiContentImage,
   type PiContentItem,
 } from '@/lib/orders/piEdit'
-import { EDIT_PI_LABEL, PiDiffView, loadPiContentAsViewer } from './PiEditor'
+import { PiDiffView, loadPiContentAsViewer } from './PiEditor'
 import { PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from './PiLineReview'
 import { percentText, rupees, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import {
@@ -139,23 +138,23 @@ export const isOpenRevision = (status: string) => status === 'pending' || status
  * open and comes back when it closes, so two dialogs never compete for Escape.
  */
 export function PiVersionHistory({
-  supabase, orderId, submissionId, mayEdit, isAdmin, hasOpenRevision = false,
-  open, onClose, onEdit, notice, onNotice, onChanged, refreshKey,
+  supabase, orderId, submissionId, isAdmin,
+  open, onClose, notice, onNotice, onChanged, refreshKey,
 }: {
   supabase: SupabaseClient
   orderId: string
   submissionId: string
-  /** The PI's owner holding orders.create, or an admin (the database re-checks). */
-  mayEdit: boolean
+  /** Retained so existing callers type-check: Edit PI now lives on the Main PI row. */
+  mayEdit?: boolean
   /** An active admin, not under View As: may authorize or reject a pending version. */
   isAdmin: boolean
-  /** The page's own read says a revision is waiting for a decision. */
+  /** Retained for callers; the Main PI row shows the blocked state. */
   hasOpenRevision?: boolean
   open: boolean
   onClose: () => void
-  editing: boolean
-  onEdit: () => void
-  onEditClose: () => void
+  editing?: boolean
+  onEdit?: () => void
+  onEditClose?: () => void
   /** The last outcome (a proposal sent, a version decided), said in the popup too. */
   notice: string | null
   onNotice: (message: string) => void
@@ -192,24 +191,14 @@ export function PiVersionHistory({
     return () => { live = false }
   }, [supabase, orderId, open, reloadKey, refreshKey])
 
-  const blocked = hasOpenRevision || !!versions?.some(v => isOpenRevision(v.status))
   const refresh = useCallback(() => { setReloadKey(k => k + 1); onChanged() }, [onChanged])
 
   return (
     <>
       {open && !viewing && (
-        <OrderModalShell title={PI_VERSIONS_HISTORY_LABEL} onClose={onClose} wide>
-          <div className="pi-history-toolbar">
-            <p className="pi-history-intro">{PI_HISTORY_INTRO}</p>
-            {mayEdit && (
-              <button type="button" className="boe-btn boe-btn-ghost order-status-action" disabled={blocked}
-                title={blocked ? EDIT_PI_BLOCKED_NOTE : undefined}
-                onClick={onEdit}>
-                <Pencil size={13} aria-hidden="true" /> {EDIT_PI_LABEL}
-              </button>
-            )}
-          </div>
-          {mayEdit && blocked && <p className="order-doc-note">{EDIT_PI_BLOCKED_NOTE}</p>}
+        <OrderModalShell title={PI_VERSIONS_HISTORY_LABEL} onClose={onClose}>
+          {/* Edit PI is on the Main PI row now; this is the record of versions. */}
+          <p className="pi-history-intro">{PI_HISTORY_INTRO}</p>
           {notice && <p role="status" className="pi-history-notice">{notice}</p>}
 
           {readError ? (
@@ -219,42 +208,51 @@ export function PiVersionHistory({
           ) : versions.length === 0 ? (
             <p className="order-status-empty">{PI_HISTORY_EMPTY}</p>
           ) : (
-            <ol className="order-history-list">
-              {versions.map(v => (
-                <li key={v.id} aria-label={`PI V${v.version_number}`}
-                  className={v.status === 'approved' ? 'order-history-row order-history-row--current' : 'order-history-row'}>
-                  <div className="order-history-row-head">
-                    <span className="order-history-version">V{v.version_number}</span>
-                    <span className="pi-history-pill" style={{ background: TONE[v.status].bg, color: TONE[v.status].fg }}>
-                      {VERSION_STATUS_LABEL[v.status]}
-                    </span>
-                  </div>
-                  <div className="order-history-meta">
-                    {when(v.uploaded_at)}{v.uploaded_by && names[v.uploaded_by] ? ` · ${names[v.uploaded_by]}` : ''}
-                    {v.source_kind === 'edit' ? ' · edited in the app' : v.version_number > 1 ? ' · new workbook' : ''}
-                  </div>
-                  <div className="pi-history-summary">{versionSummary(v)}</div>
-                  {v.source_kind === 'edit' && v.status === 'approved' && (
-                    <div className="order-history-meta">{PI_EDITED_VERSION_WORKBOOK_NOTE(v.version_number)}</div>
-                  )}
-                  {v.revision_reason && v.version_number > 1 && (
-                    <div className="order-history-meta">Reason: {v.revision_reason}</div>
-                  )}
-                  {v.status === 'rejected' && (v.decision_reason || v.operations_reason) && (
-                    <div className="pi-history-rejected">Rejected: {v.operations_reason ?? v.decision_reason}</div>
-                  )}
-                  {v.decided_at && v.status !== 'pending' && (
-                    <div className="order-history-meta">
-                      Decided {when(v.decided_at)}{v.decided_by && names[v.decided_by] ? ` by ${names[v.decided_by]}` : ''}
+            // A COMPACT STRIP PER VERSION, oldest first as before: the version
+            // and its status together, the date it was decided (or uploaded)
+            // beside them, and the existing View door at the end. Reasons and
+            // notes take a second line only when there are any.
+            <ol className="pi-version-strip">
+              {versions.map(v => {
+                const decided = !!v.decided_at && v.status !== 'pending'
+                const byDecider = v.decided_by && names[v.decided_by] ? ` by ${names[v.decided_by]}` : ''
+                const byUploader = v.uploaded_by && names[v.uploaded_by] ? ` · ${names[v.uploaded_by]}` : ''
+                return (
+                  <li key={v.id} aria-label={`PI V${v.version_number}`}
+                    className={v.status === 'approved' ? 'pi-version-row pi-version-row--current' : 'pi-version-row'}>
+                    <div className="pi-version-id">
+                      <span className="pi-version-number">V{v.version_number}</span>
+                      <span className="pi-history-pill" style={{ background: TONE[v.status].bg, color: TONE[v.status].fg }}>
+                        {VERSION_STATUS_LABEL[v.status]}
+                      </span>
                     </div>
-                  )}
-                  <div className="order-history-actions">
-                    <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={() => setViewing(v)}>
-                      {isAdmin && v.status === 'pending' ? 'Review changes' : `View V${v.version_number}`}
-                    </button>
-                  </div>
-                </li>
-              ))}
+                    <div className="pi-version-when">
+                      {decided ? `Decided ${when(v.decided_at)}${byDecider}` : `Uploaded ${when(v.uploaded_at)}${byUploader}`}
+                      {v.source_kind === 'edit' ? ' · edited in the app' : v.version_number > 1 ? ' · new workbook' : ''}
+                    </div>
+                    <div className="pi-version-action">
+                      <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={() => setViewing(v)}>
+                        {isAdmin && v.status === 'pending' ? 'Review changes' : `View V${v.version_number}`}
+                      </button>
+                    </div>
+                    <div className="pi-version-detail">
+                      {v.version_number > 1 && <div className="pi-history-summary">{versionSummary(v)}</div>}
+                      {v.source_kind === 'edit' && v.status === 'approved' && (
+                        <div className="order-history-meta">{PI_EDITED_VERSION_WORKBOOK_NOTE(v.version_number)}</div>
+                      )}
+                      {v.revision_reason && v.version_number > 1 && (
+                        <div className="order-history-meta">Reason: {v.revision_reason}</div>
+                      )}
+                      {decided && (
+                        <div className="order-history-meta">Uploaded {when(v.uploaded_at)}{byUploader}</div>
+                      )}
+                      {v.status === 'rejected' && (v.decision_reason || v.operations_reason) && (
+                        <div className="pi-history-rejected">Rejected: {v.operations_reason ?? v.decision_reason}</div>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
             </ol>
           )}
         </OrderModalShell>
@@ -266,7 +264,6 @@ export function PiVersionHistory({
           onDecided={message => { setViewing(null); onNotice(message); refresh() }} />
       )}
 
-      {/* Edit PI is a page now (/orders/[id]/edit-pi); onEdit navigates there. */}
     </>
   )
 }

@@ -267,12 +267,12 @@ describe('the redundant surfaces are gone', () => {
     }
   })
 
-  test('the alignment date and actor are shown ONLY for an aligned Order — or the reason for a HELD one (walkthrough W2)', () => {
-    // describeProductionAlignment already nulls the line for an unaligned
-    // Order; the view refuses to draw it a second time rather than trusting a
-    // caller that hands over a stale one.
+  test('the summary draws ONE short current-state line; the long acceptance / recovery history is not in it', () => {
+    // The handoff hands over its short summary; its long line (who accepted which
+    // version, every re-alignment) stays on the Main PI row and in Activity.
     const ws = read('src/lib/orders/orderWorkspace.ts')
-    assert.ok(ws.includes('line: input.productionAligned || input.productionHeld ? (production?.detail ?? null) : null'))
+    assert.ok(ws.includes('line: production?.detail ?? null'))
+    assert.ok(page.includes('productionLine: handoffAlignment ? handoffAlignment.summary : (production?.line ?? null)'))
     assert.ok(page.includes('productionHeld: !!handoffAlignment?.held,'))
   })
 
@@ -433,6 +433,9 @@ describe('no Order fact is stated twice', () => {
       .replace("advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),", '')
       // …and whether a held Order is covered again, for its line (review N1).
       .replace('holdCovered: advanceHoldCovered(advance),', '')
+      // …and the same two states as a title and a reason for the strip: words only.
+      .replace('advanceBelowParts: advanceAttentionParts(advance),', '')
+      .replace("advanceRealignParts: advanceRealignParts(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),", '')
     assert.ok(!above.includes('<AdvanceGatePanel'), 'the advance panel is drawn in the Payment section')
     for (const figure of ['finance.verified', 'finance.received', 'finance.pendingBalance',
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
