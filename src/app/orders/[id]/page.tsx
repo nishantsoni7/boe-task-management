@@ -77,7 +77,7 @@ import {
 import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
-import { ChevronDown, Pencil } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
@@ -161,7 +161,7 @@ import { countDesignImages, type DesignImageSummary } from '@/lib/orders/orderCu
 import { DOC_DOWNLOAD_PI_PDF_LABEL, clientPoDocument } from '@/lib/orders/orderDocumentsPanel'
 import { piVersionPdfHref } from '@/lib/orders/piVersionPdf'
 import { AdvanceGatePanel } from '@/components/orders/AdvanceGatePanel'
-import { advanceAttentionLabel, advanceHoldCovered, advanceRealignLabel, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
+import { advanceAttentionLabel, advanceAttentionParts, advanceHoldCovered, advanceRealignLabel, advanceRealignParts, describeAdvanceRefusal, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 import { PI_LINE_REVIEW_TITLE, PiLineReview, requestPiRevisionApproval, type PiLineReviewData } from '@/components/orders/PiLineReview'
 import {
   APPROVAL_EVIDENCE_BUCKET,
@@ -238,7 +238,6 @@ import { clientContactText } from '@/app/orders/drafts/[submissionId]/piDetailVi
 // record_payment_with_allocations(); this page supplies a door and a seed.
 import { RecordSplitPaymentModal } from '@/app/finance/received/RecordSplitPaymentModal'
 import { EDIT_PI_BLOCKED_NOTE, PiVersionHistory, isOpenRevision } from '@/components/orders/PiVersionsPanel'
-import { EDIT_PI_LABEL } from '@/components/orders/PiEditor'
 import {
   EDIT_PI_OUTCOME_NOTICE,
   EDIT_PI_OUTCOME_PARAM,
@@ -879,7 +878,6 @@ export default function OrderDetailPage() {
   // The PI history popup and the Edit PI editor (PiVersionHistory), and the
   // last thing either did — said on the Main PI row and in the popup.
   const [piVersionsOpen, setPiVersionsOpen] = useState(false)
-  const [piEditing,      setPiEditing]      = useState(false)
   const [piNotice,       setPiNotice]       = useState<string | null>(null)
   // WHAT THE FULL-PAGE EDIT PI HANDED BACK (?edit_pi=…), and an upload step it
   // asked this page to open (?upload=documents|pi). Read once on arrival and
@@ -2640,7 +2638,9 @@ export default function OrderDetailPage() {
     leadSource,
     productionAligned,
     productionLabel: handoffAlignment?.label ?? production?.label ?? '—',
-    productionLine: handoffAlignment ? handoffAlignment.line : (production?.line ?? null),
+    // THE SUMMARY SAYS WHERE PRODUCTION STANDS NOW; who accepted which version
+    // and every re-alignment are in Activity and the Main PI row.
+    productionLine: handoffAlignment ? handoffAlignment.summary : (production?.line ?? null),
   })
 
   /**
@@ -2703,6 +2703,8 @@ export default function OrderDetailPage() {
     documentsOutdated: false,
     advanceBelowLabel: advanceAttentionLabel(advance),
     advanceRealignLabel: advanceRealignLabel(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),
+    advanceBelowParts: advanceAttentionParts(advance),
+    advanceRealignParts: advanceRealignParts(advance, operationsRealignOffered ? 'realign' : operationsRecoverOffered ? 'recover' : null),
   })
 
   // THE REVIEWER'S DECISION RIDES ON THE STRIP'S OWN ITEM: offered while the
@@ -2873,21 +2875,8 @@ export default function OrderDetailPage() {
                 onOutOfDate={() => { loadOrder() }}
               />
             )}
-            {/* EDIT PI: the page's main action on the PI, opening the
-                full-page editor. Disabled, with the reason, while a proposed
-                version is still open. */}
-            {mayEditPi && piVersionsSource && (
-              <button
-                type="button"
-                className="boe-record-action boe-record-action--primary"
-                onClick={() => router.push(editPiPageHref(order.id))}
-                disabled={piRevisionOpen}
-                title={piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : 'Change this PI and send it for approval'}
-              >
-                <Pencil size={14} strokeWidth={2} aria-hidden="true" />
-                {EDIT_PI_LABEL}
-              </button>
-            )}
+            {/* EDIT PI is on the Main PI row of the Documents card now (one
+                control, the same handler, gate and blocked state). */}
             {actions.secondary.map(key => (
               <button
                 key={key}
@@ -3053,7 +3042,7 @@ export default function OrderDetailPage() {
               count: piVersions.length,
               onOpen: () => setPiVersionsOpen(true),
               edit: mayEditPi ? {
-                onEdit: () => { setPiNotice(null); setPiEditing(true) },
+                onEdit: () => { setPiNotice(null); router.push(editPiPageHref(order.id)) },
                 blockedNote: piRevisionOpen ? EDIT_PI_BLOCKED_NOTE : null,
               } : null,
               notice: piNotice,
@@ -3106,14 +3095,9 @@ export default function OrderDetailPage() {
             supabase={supabase}
             orderId={order.id}
             submissionId={piVersionsSource}
-            mayEdit={mayEditPi}
             isAdmin={mayDecidePiAsAdmin}
-            hasOpenRevision={piRevisionOpen}
             open={piVersionsOpen}
             onClose={() => setPiVersionsOpen(false)}
-            editing={piEditing}
-            onEdit={() => { setPiNotice(null); setPiVersionsOpen(false); router.push(editPiPageHref(order.id)) }}
-            onEditClose={() => setPiEditing(false)}
             notice={piNotice}
             onNotice={setPiNotice}
             onChanged={() => { void loadOrder() }}

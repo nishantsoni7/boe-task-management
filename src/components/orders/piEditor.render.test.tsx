@@ -114,23 +114,33 @@ describe('what the editor promises', () => {
 describe('PI history — the versions popup that replaced the standalone strip', () => {
   const base = {
     supabase: {} as SupabaseClient, orderId: 'o1', submissionId: 's1', isAdmin: false,
-    onClose: () => {}, editing: false, onEdit: () => {}, onEditClose: () => {},
+    onClose: () => {},
     notice: null, onNotice: () => {}, onChanged: () => {},
   }
   test('closed: nothing on the page — no strip, no request', () => {
     assert.equal(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open={false} />), '')
   })
-  test('open: a labelled dialog with its close control, and Edit PI only for somebody allowed to propose', () => {
-    const html = renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open />)
+  test('open: a labelled dialog with its close control — and no Edit PI (it moved to the Main PI row)', () => {
+    const html = renderToStaticMarkup(<PiVersionHistory {...base} open />)
     assert.match(html, /role="dialog" aria-modal="true" aria-label="PI history"/)
     assert.match(html, /aria-label="Close"/)
-    assert.match(html, /Edit PI/)
-    assert.doesNotMatch(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit={false} open />), /Edit PI/)
+    assert.doesNotMatch(html, /Edit PI/)
+    assert.doesNotMatch(renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open hasOpenRevision />), /Edit PI/, 'not even for somebody allowed to propose')
   })
-  test('a revision waiting for a decision disables Edit PI and says why', () => {
-    const html = renderToStaticMarkup(<PiVersionHistory {...base} mayEdit open hasOpenRevision />)
-    assert.match(html, /<button type="button" class="boe-btn boe-btn-ghost order-status-action" disabled=""/)
-    assert.ok(html.includes(EDIT_PI_BLOCKED_NOTE))
+  test('each version is one compact strip: version and status together, the decision date beside them, View at the end', () => {
+    const source = readFileSync('src/components/orders/PiVersionsPanel.tsx', 'utf8')
+    assert.ok(source.includes('className="pi-version-strip"'))
+    const row = source.slice(source.indexOf('<li key={v.id}'), source.indexOf('</li>', source.indexOf('<li key={v.id}')))
+    assert.ok(row.indexOf('pi-version-id') < row.indexOf('pi-version-when') && row.indexOf('pi-version-when') < row.indexOf('pi-version-action'))
+    assert.ok(row.slice(row.indexOf('pi-version-id'), row.indexOf('pi-version-when')).includes('VERSION_STATUS_LABEL'), 'the version and its status are in one group')
+    assert.ok(row.includes('View V') && row.includes('Review changes'), 'the existing doors are kept')
+    const css = readFileSync('src/app/globals.css', 'utf8')
+    assert.match(css, /\.pi-version-row \{[^}]*grid-template-areas: 'id when action' 'detail detail detail';/)
+    assert.match(css, /@media \(max-width: 560px\) \{\s*\.pi-version-row \{[^}]*'id action' 'when when' 'detail detail'/, 'the metadata drops beneath on a phone')
+    assert.doesNotMatch(css, /\.pi-history-intro \{[^}]*flex: 1 1 240px/, 'no flex-basis that becomes a 240px-tall gap in a column')
+  })
+  test('the open-revision rule is unchanged (it now gates the Main PI row\'s Edit PI)', () => {
+    assert.ok(EDIT_PI_BLOCKED_NOTE.includes('waiting for a decision'))
     assert.ok(isOpenRevision('pending') && isOpenRevision('admin_approved'))
     assert.ok(!isOpenRevision('approved') && !isOpenRevision('rejected') && !isOpenRevision('superseded'))
   })

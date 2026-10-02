@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, History, Image as ImageIcon, Layers, Pencil, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -319,11 +319,29 @@ export function OrderDocumentsPanel({
       {PI_VERSIONS_HISTORY_LABEL}{piVersions.count > 0 ? ` (${piVersions.count})` : ''}
     </button>
   ) : null
-  // EDIT PI IS NOT A DOCUMENT ACTION. It is the Order page's own header action
-  // (it opens the full-page editor); this card only views and downloads.
-  const piVersionNotes = piVersions?.notice
-    ? <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>
-    : null
+  // EDIT PI sits with the Main PI's other actions: it opens the full-page
+  // editor, and an edit becomes a pending version. The page decides whether it
+  // is offered (the same gate the old header and history-popup buttons used);
+  // while a revision is waiting for a decision it is shown disabled, with the
+  // reason beside it, so an unavailable action never looks available.
+  const editPi = piVersions?.edit ? (
+    <button
+      type="button"
+      className="boe-btn boe-btn-ghost order-doc-action"
+      onClick={piVersions.edit.onEdit}
+      disabled={!!piVersions.edit.blockedNote}
+      title={piVersions.edit.blockedNote ?? undefined}
+    >
+      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
+      {EDIT_PI_ACTION_LABEL}
+    </button>
+  ) : null
+  const piVersionNotes = (piVersions?.notice || piVersions?.edit?.blockedNote) ? (
+    <>
+      {piVersions?.edit?.blockedNote && <p className="order-doc-note">{piVersions.edit.blockedNote}</p>}
+      {piVersions?.notice && <p className="order-doc-note order-doc-pi-notice" role="status">{piVersions.notice}</p>}
+    </>
+  ) : null
   const picturesBlock = pictures ? <ProductPicturesBlock {...pictures} /> : null
   const piChange: PiChange | null = mainPi.kind === 'ready' && mainPi.proposal
     ? { proposal: mainPi.proposal, stage: revisionStage(mainPi.proposal, revisionApproverInactive) }
@@ -541,6 +559,7 @@ export function OrderDocumentsPanel({
                     {downloading ? 'Preparing…' : MAIN_PI_ORIGINAL_EXCEL_LABEL}
                   </button>
                 )}
+                {editPi}
                 {piHistoryLink}
                 {mainPiMenu}
               </>
@@ -621,6 +640,9 @@ function SupportingBody({ row, onOpen, onDownload }: {
   }
   return <FileLinks files={row.files} onOpen={onOpen} onDownload={onDownload} />
 }
+
+/** The same words as PiEditor's EDIT_PI_LABEL (not imported: PiEditor sits above this file). */
+const EDIT_PI_ACTION_LABEL = 'Edit PI'
 
 const fileCountLabel = (n: number) => `${n} file${n === 1 ? '' : 's'}`
 

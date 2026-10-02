@@ -261,18 +261,30 @@ describe('the Order Summary panel: group 2, sales and production', () => {
     assert.equal(/aligned on/i.test(body), false)
   })
 
-  test('an alignment line is never drawn for an unaligned order EVEN IF one is passed', () => {
-    // The helper already nulls it; the view says so a second time rather than
-    // trusting a caller that hands over a stale line.
+  test('the one short line the page hands over is drawn under the status — whatever the state — and nothing else', () => {
+    // The page passes the handoff's SUMMARY (where production stands now), not
+    // its history, so the summary can draw it for an unaligned Order too.
     const html = summaryMarkup({
       productionAligned: false,
       fact: {
         productionAligned: false,
-        productionLabel: 'Not Aligned for Production',
-        productionLine: 'Aligned by Somebody · 1 Jan 2026',
+        productionLabel: 'Not Aligned',
+        productionLine: 'Awaiting production alignment.',
       },
     })
-    assert.equal(/Somebody/.test(text(html)), false)
+    assert.match(html, /<p class="order-sum-production-line">Awaiting production alignment\.<\/p>/)
+    const none = summaryMarkup({
+      productionAligned: false,
+      fact: { productionAligned: false, productionLabel: 'Not Aligned', productionLine: null },
+    })
+    assert.equal(/order-sum-production-line/.test(none), false, 'no empty line when there is none')
+  })
+
+  test('the status leads the group: label, large badge, then the line — before the label/value rows', () => {
+    const html = summaryMarkup()
+    const group = html.slice(html.indexOf('aria-label="Sales and production"'))
+    assert.ok(group.indexOf('order-sum-status') < group.indexOf('order-sum-rows'))
+    assert.ok(group.indexOf('order-sum-badge') < group.indexOf('Lead source'))
   })
 
   test('the lead source and the salesperson are shown, under their existing labels', () => {
@@ -331,7 +343,11 @@ describe('the Order Summary panel as a whole', () => {
     const label = css.slice(css.indexOf('.order-sum-label {'), css.indexOf('.order-sum-label {') + 260)
     assert.match(head, /font-weight: 700/, 'the heading is semibold or heavier')
     assert.match(head, /border-bottom/, 'and ruled off from the rows under it')
-    assert.match(label, /font-weight: 500/, 'the label is lighter')
+    assert.match(label, /font-weight: 700/, 'labels are bold…')
+    const value = css.slice(css.indexOf('.order-sum-value {'), css.indexOf('.order-sum-value {') + 360)
+    assert.match(value, /font-weight: 400/, '…and values are regular weight')
+    assert.match(head, /font-size: 16px/, 'the heading is the 16px section size')
+    assert.match(label, /font-size: 14px/, 'and the label is the 14px body size')
     // Darker heading, muted label — the two must not share a colour.
     const colour = (block: string) => (block.match(/color: (#[0-9A-Fa-f]{6})/) ?? [])[1]
     assert.ok(colour(head) && colour(label) && colour(head) !== colour(label),

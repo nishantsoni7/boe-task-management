@@ -2565,19 +2565,19 @@ body {
 }
 .order-sum-group {
   min-width: 0;
-  padding: 9px 14px 10px;
-  border-left: 1px solid rgba(0,0,0,0.07);
+  padding: 14px 18px 16px;
+  border-left: 1px solid rgba(0,0,0,0.08);
 }
 .order-sum-group:first-child { border-left: none; }
 
 .order-sum-group-head {
-  margin: 0 0 7px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(0,0,0,0.07);
-  font-size: 11.5px;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.01em;
-  color: #1B1F27;
+  letter-spacing: 0;
+  color: #111318;
 }
 
 /* ── One field, one line ──
@@ -2600,14 +2600,16 @@ body {
   align-items: baseline;
   column-gap: 14px;
   min-width: 0;
-  padding: 4px 0;
+  padding: 6px 0;
 }
-.order-sum-row + .order-sum-row { border-top: 1px solid rgba(0,0,0,0.045); }
+.order-sum-row + .order-sum-row {
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
 .order-sum-label {
   min-width: 0;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: #79808F;
+  font-size: 14px;
+  font-weight: 700;
+  color: #4A5261;
   overflow-wrap: anywhere;
 }
 .order-sum-value {
@@ -2619,10 +2621,10 @@ body {
   gap: 3px 7px;
   flex-wrap: wrap;
   text-align: right;
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.35;
-  color: #1B1F27;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #111318;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
@@ -2632,19 +2634,25 @@ body {
    second decides where the break goes. */
 .order-sum-value > span { min-width: 0; overflow-wrap: anywhere; }
 /* `Not available` is a statement, not a warning: one weight down and muted. */
-.order-sum-row--missing .order-sum-value { font-size: 12px; font-style: italic; }
+.order-sum-row--missing .order-sum-value {
+  font-size: 14px; font-style: normal; color: #6B7384;
+}
 /* THE ONE ROW THAT CARRIES MORE WEIGHT — the total product value, which lost
    its tinted panel when the group became a plain column of rows. A half-step
    in weight, not a second heading. */
 .order-sum-row--strong .order-sum-value {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-.order-sum-row--strong.order-sum-row--missing .order-sum-value { font-size: 12px; font-weight: 600; }
+.order-sum-row--strong.order-sum-row--missing .order-sum-value {
+  font-size: 14px; font-weight: 400;
+}
 /* A qualifier — `Overdue`, or who aligned production and when — sits under the
    value it qualifies, on its own line and on the same right edge. */
-.order-sum-detail { flex-basis: 100%; text-align: right; font-size: 11px; font-weight: 600; }
+.order-sum-detail {
+  flex-basis: 100%; text-align: right; font-size: 13px; font-weight: 600;
+}
 /* A gap on an open Order is marked by its rule as well as by its words. An
    inset shadow rather than a border, so the rule cannot disturb the two-column
    grid the row is built on. */
@@ -2655,19 +2663,20 @@ body {
    the line that says who aligned it and when. */
 .order-sum-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 4px 12px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.35;
 }
 .order-sum-production-line {
   display: block;
   flex-basis: 100%;
-  text-align: right;
-  font-size: 11px;
-  line-height: 1.4;
+  margin: 0;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.45;
   color: #4A5261;
   overflow-wrap: anywhere;
 }
@@ -2695,7 +2704,7 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 28px;
-  padding: 9px 14px;
+  padding: 10px 16px;
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
@@ -2703,11 +2712,11 @@ body {
 }
 .order-ff-title {
   margin: 0;
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6B7384;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #111318;
 }
 .order-ff-items {
   margin: 0;
@@ -2723,7 +2732,9 @@ body {
   gap: 8px;
   min-width: 0;
 }
-.order-ff-label { font-size: 12px; font-weight: 500; color: #6B7384; min-width: 40px; }
+.order-ff-label {
+  font-size: 14px; font-weight: 700; color: #4A5261; min-width: 40px;
+}
 .order-ff-value {
   margin: 0;
   display: flex;
@@ -2736,7 +2747,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #111318;
 }
@@ -2771,17 +2782,17 @@ body {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 6px 12px;
-  padding: 7px 14px;
-  border-bottom: 1px solid #F0F2F5;
+  padding: 10px 16px;
+  border-bottom: 1px solid #E8EBF0;
   min-width: 0;
 }
 .order-docs-title {
   margin: 0;
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6B7384;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #111318;
 }
 .order-docs-head-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 /* A QUIET LINK, not a fourth button: History, and the PI product pictures. */
@@ -2793,9 +2804,9 @@ body {
   background: none;
   border: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: #3A7ABE;
+  color: #2F6AAE;
   cursor: pointer;
 }
 .order-docs-link:hover { text-decoration: underline; text-underline-offset: 2px; }
@@ -2830,12 +2841,20 @@ body {
   gap: 4px 8px;
   min-width: 0;
 }
-.order-doc-row-title { font-size: 13.5px; font-weight: 700; color: #111318; }
+.order-doc-row-title {
+  font-size: 15px; font-weight: 700; color: #111318;
+}
 /* The Main PI leads: the document the Order runs on. */
-.order-doc-section--primary .order-doc-row-title { font-size: 15px; letter-spacing: -0.01em; }
-.order-doc-row-value { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #111318; }
+.order-doc-section--primary .order-doc-row-title {
+  font-size: 16px; letter-spacing: -0.01em;
+}
+.order-doc-row-value {
+  margin: 3px 0 0; font-size: 14px; font-weight: 400; color: #111318;
+}
 .order-doc-row-file { margin-top: 2px; }
-.order-doc-count { font-size: 12px; font-weight: 500; color: #6B7384; }
+.order-doc-count {
+  font-size: 13px; font-weight: 500; color: #4A5261;
+}
 .order-doc-row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2844,7 +2863,9 @@ body {
   gap: 6px;
   min-width: 0;
 }
-.order-doc-action { padding: 5px 11px; font-size: 12px; white-space: nowrap; }
+.order-doc-action {
+  padding: 6px 12px; font-size: 13px; white-space: nowrap;
+}
 .order-doc-action--icon { padding: 5px 8px; }
 
 /* THE TWO DATES: a small label above each value, side by side, never one
@@ -2852,16 +2873,16 @@ body {
 .order-doc-dates { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 22px; }
 .order-doc-dates-item { min-width: 0; }
 .order-doc-dates dt {
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8C94A6;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #4A5261;
 }
 .order-doc-dates dd {
   margin: 1px 0 0;
-  font-size: 12.5px;
-  color: #3A4150;
+  font-size: 14px;
+  color: #111318;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2887,7 +2908,7 @@ body {
   background: none;
   border: 0;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   color: #1F5FBF;
   text-align: left;
   cursor: pointer;
@@ -2899,20 +2920,22 @@ body {
 
 .order-doc-note {
   margin: 4px 0 0;
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1.45;
-  color: #8C94A6;
+  color: #5B6474;
   overflow-wrap: anywhere;
 }
 /* `No client PO on file` is a statement, not a warning: muted, and never a
    colour this page spends on a status. */
 .order-doc-empty {
   margin: 3px 0 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  color: #8C94A6;
+  color: #5B6474;
 }
-.order-doc-loading { margin: 3px 0 0; font-size: 13px; color: #8C94A6; }
+.order-doc-loading {
+  margin: 3px 0 0; font-size: 14px; color: #5B6474;
+}
 .order-doc-unavailable { margin: 3px 0 0; font-size: 13px; font-weight: 600; color: #B42318; }
 .order-docs-error { padding: 0 14px 12px; }
 
@@ -3052,8 +3075,12 @@ body {
 }
 .order-doc-pictures-icon { color: #8C94A6; flex: 0 0 auto; }
 .order-doc-pictures-main { flex: 1 1 220px; min-width: 0; }
-.order-doc-pictures-title { margin: 0; font-size: 12.5px; font-weight: 700; color: #111318; }
-.order-doc-pictures-line { margin: 1px 0 0; font-size: 12.5px; color: #3A4150; }
+.order-doc-pictures-title {
+  margin: 0; font-size: 14px; font-weight: 700; color: #111318;
+}
+.order-doc-pictures-line {
+  margin: 1px 0 0; font-size: 13.5px; color: #3A4150;
+}
 .order-doc-pictures-line--warn { color: #B42318; }
 .order-doc-pictures-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -3173,8 +3200,6 @@ body {
 }
 
 /* ── The PI history popup (PiVersionHistory) ── */
-.pi-history-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
-.pi-history-intro { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12px; color: #6B7384; line-height: 1.45; }
 .pi-history-notice { margin: 0; font-size: 12px; color: #166534; line-height: 1.45; }
 .pi-history-pill {
   display: inline-flex;
@@ -3995,7 +4020,7 @@ body {
   justify-content: space-between;
   gap: 8px 16px;
   flex-wrap: wrap;
-  padding: 8px 13px;
+  padding: 10px 16px;
   border-radius: 8px;
   background: rgba(232,160,48,0.10);
   border: 1px solid rgba(190,140,40,0.34);
@@ -4006,9 +4031,8 @@ body {
    actions wrap under the message rather than squeezing it. */
 .order-attention-message {
   display: flex;
-  align-items: baseline;
-  gap: 4px 12px;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
   flex: 1 1 320px;
   min-width: 0;
 }
@@ -4020,41 +4044,37 @@ body {
   margin-left: auto;
 }
 .order-attention-icon {
-  color: #B77A12;
+  color: #A86A0C;
   flex-shrink: 0;
-  align-self: center;
-  margin-right: -4px;
+  margin-top: 2px;
 }
 .order-attention-heading {
-  font-size: 12.5px;
+  margin: 0 0 2px;
+  font-size: 14px;
   font-weight: 700;
   color: #7A5510;
-  white-space: nowrap;
 }
 .order-attention-list {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 0;
+  flex-direction: column;
+  gap: 3px;
   margin: 0;
   padding: 0;
   list-style: none;
   min-width: 0;
 }
 .order-attention-item {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #4A3A16;
-  display: inline-flex;
+  font-size: 14px;
+  font-weight: 400;
+  color: #3F3213;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  gap: 0 8px;
 }
-.order-attention-item + .order-attention-item::before {
-  content: '·';
-  margin: 0 9px;
-  color: #B08A3A;
-  font-weight: 700;
+.order-attention-item--red {
+  color: #B42318;
 }
-.order-attention-item--red { color: #B42318; font-weight: 700; }
 
 /* ── Products ──
    FIXED LAYOUT so nine columns always fit the card: the prose columns wrap
@@ -4514,9 +4534,12 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
 .order-activity-item {
   display: flex;
   gap: 12px;
-  padding-bottom: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(0,0,0,0.07);
 }
-.order-activity-item:last-child { padding-bottom: 0; }
+.order-activity-item:last-child {
+  padding-bottom: 0;
+}
 .order-activity-rail {
   display: flex;
   flex-direction: column;
@@ -4532,10 +4555,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   margin-top: 5px;
 }
 .order-activity-line {
-  flex: 1;
-  width: 1px;
-  background: rgba(0,0,0,0.08);
-  margin-top: 4px;
+  display: none;
 }
 
 /* ── New since this reader's last visit ──
@@ -4543,25 +4563,19 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
    thing anybody has to dismiss: the trail is where the change history already
    is, so the unseen entries are marked where they already sit. */
 .order-activity-item--new {
-  background: rgba(58,122,190,0.06);
-  border-radius: 8px;
-  margin-left: -8px;
-  padding-left: 8px;
-  padding-right: 8px;
+  margin: 0;
 }
 .order-activity-new {
   display: inline-block;
-  margin-left: 7px;
-  padding: 1px 7px;
+  padding: 2px 9px;
   border-radius: 999px;
-  background: rgba(58,122,190,0.12);
-  color: #3A7ABE;
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.6;
-  vertical-align: 1px;
+  background: rgba(58,122,190,0.10);
+  color: #2F5F96;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -9207,6 +9221,50 @@ select.boe-req-control {
   white-space: nowrap;
 }
 
+/* ── Confirmed Order: attention strip, activity and version strip (polish pass) ── */
+.order-attention-single { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
+.order-attention-title { font-size: 15px; font-weight: 700; color: #7A5510; }
+.order-attention-item--red .order-attention-title { color: #B42318; }
+.order-attention-detail { font-size: 14px; color: #3F3213; }
+.order-attention-item--red .order-attention-detail { color: #B42318; }
+.order-attention-multi { min-width: 0; flex: 1 1 auto; }
+.order-attention-multi .order-attention-title { font-size: 14px; }
+
+.order-sum-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  min-width: 0;
+}
+.order-sum-status-label { font-size: 14px; font-weight: 700; color: #4A5261; }
+
+.order-activity-body { flex: 1; min-width: 0; }
+.order-activity-title { font-size: 14px; font-weight: 600; line-height: 1.4; color: #111318; overflow-wrap: anywhere; }
+.order-activity-detail { margin-top: 1px; font-size: 13.5px; line-height: 1.45; color: #3A4150; overflow-wrap: anywhere; }
+.order-activity-lines { margin: 3px 0 0; padding-left: 16px; font-size: 13px; line-height: 1.6; color: #3A4150; }
+.order-activity-meta { margin-top: 2px; font-size: 12.5px; color: #5B6474; }
+.order-activity-pi { margin-left: 6px; font-size: 11.5px; font-weight: 700; color: #5B6474; }
+.order-activity-unread {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: #3A7ABE;
+  vertical-align: 2px;
+}
+.order-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* ── Client: label bold on the left, value regular beside it ── */
 .pi-client-facts {
   container-type: inline-size;
@@ -9419,3 +9477,32 @@ select.boe-req-control {
   .pi-completion .pi-form-card { padding-left: 14px; padding-right: 14px; }
   .pi-completion-actions > .boe-btn { flex: 1 1 100%; justify-content: center; min-height: 44px; }
 }
+/* PI history: one compact strip per version. */
+.pi-version-strip { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pi-version-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'id when action' 'detail detail detail';
+  align-items: center;
+  gap: 4px 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  min-width: 0;
+}
+.pi-version-row--current { border-color: rgba(69,168,112,0.4); background: rgba(69,168,112,0.05); }
+.pi-version-id { grid-area: id; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pi-version-number { font-size: 15px; font-weight: 700; color: #111318; }
+.pi-version-when { grid-area: when; min-width: 0; font-size: 13.5px; color: #3A4150; overflow-wrap: anywhere; }
+.pi-version-action { grid-area: action; }
+.pi-version-detail { grid-area: detail; min-width: 0; }
+.pi-version-detail:empty { display: none; }
+.pi-version-detail > * { margin-top: 2px; }
+.pi-history-intro { margin: 0; font-size: 13px; color: #4A5261; line-height: 1.45; }
+@media (max-width: 560px) {
+  .pi-version-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'id action' 'when when' 'detail detail';
+  }
+}
+.order-activity-item:first-child { border-top: 0; padding-top: 0; }

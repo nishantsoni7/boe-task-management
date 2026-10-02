@@ -90,7 +90,7 @@ describe('the attention strip carries the decision, state by state', () => {
   test('awaiting, for the reviewer: the message on the left, BOTH controls on the right', () => {
     const html = strip(view(handoff(), NITISH))
     assert.match(html, /id="operations-review"/)
-    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
     assert.match(html, /<div class="order-attention-message">.*PI V1 awaiting operations review.*<\/div><div class="order-attention-actions">/)
     assert.match(html, /<div class="order-attention-actions"><button[^>]*>Cannot accept<\/button><button[^>]*>Accept for production<\/button><\/div>/)
     assert.doesNotMatch(html, /Withdraw acceptance/)
@@ -180,7 +180,7 @@ describe('after dispatch, and after cancellation', () => {
   test('dispatched, awaiting: the reviewer keeps the item AND both decisions', () => {
     const { html } = at('dispatched', handoff(), NITISH)
     assert.match(html, /id="operations-review"/)
-    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
     assert.match(html, /PI V1 awaiting operations review/)
     assert.match(html, /<button[^>]*>Cannot accept<\/button><button[^>]*>Accept for production<\/button>/)
   })
@@ -193,7 +193,7 @@ describe('after dispatch, and after cancellation', () => {
 
   test('dispatched: the open-Order gaps stay hidden, so the count is the review alone', () => {
     const { html } = at('dispatched', handoff(), NITISH, { hasDueDate: false, hasSalesperson: false, isOverdue: true })
-    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
     assert.doesNotMatch(html, /Due date|Salesperson/)
   })
 
@@ -227,7 +227,7 @@ describe('after dispatch, and after cancellation', () => {
 
   test('cancelled beside money: the other items and their count are untouched', () => {
     const { html } = at('cancelled', handoff(), NITISH, { awaitingVerificationCount: 1 })
-    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
     assert.match(html, /1 payment awaiting Finance verification/)
     assert.doesNotMatch(html, /operations review|<button/)
   })
@@ -303,7 +303,7 @@ describe('Order 0524: an approval from before handoffs, sent to operations later
 
   test('Nitish sees "PI V1 awaiting operations review" and BOTH decisions on the strip', () => {
     const html = strip(view(late, NITISH))
-    assert.match(html, /1 item needs attention/)
+    assert.doesNotMatch(html, /item needs attention/, 'one issue is its own title, not a count')
     assert.match(html, /PI V1 awaiting operations review/)
     assert.match(html, /<button[^>]*>Accept for production/)
     assert.match(html, /<button[^>]*>Cannot accept/)
@@ -364,9 +364,9 @@ describe('the page draws ONE production decision', () => {
     assert.match(page, /alignAction: operationsSplit\.live \? null : production\?\.action \? \(productionAligned \? 'unalign' : 'align'\) : null/)
   })
 
-  test('the Production summary row names the version and the acceptance behind the alignment', () => {
+  test('the Production summary row states where alignment stands in one short line (the acceptance is in Activity and the Main PI row)', () => {
     assert.match(page, /productionLabel: handoffAlignment\?\.label \?\? production\?\.label \?\? '—'/)
-    assert.match(page, /productionLine: handoffAlignment \? handoffAlignment\.line : \(production\?\.line \?\? null\)/)
+    assert.match(page, /productionLine: handoffAlignment \? handoffAlignment.summary : \(production\?\.line \?\? null\)/)
   })
 
   test('a decision re-reads the handoff AND the Order row, because acceptance moves the alignment columns', () => {
