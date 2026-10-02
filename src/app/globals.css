@@ -9185,3 +9185,68 @@ select.boe-req-control {
   .boe-req-send, .boe-req-secondary { width: 100%; }
   .boe-choice-grid--3 .boe-choice { font-size: 13.5px; padding-left: 4px; padding-right: 4px; }
 }
+
+/* ── Dashboard: lower grid ─────────────────────────────────────────────────
+   Left ~70% (attention cards, tasks created) and right ~30% (counters, review
+   leader) share one grid. Below 1200px the sidebar leaves too little room for
+   two columns, so the column wrappers dissolve (display: contents) and their
+   children become grid items in the mobile reading order: attention, counters,
+   review leader, tasks created. */
+.boe-dash-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.boe-dash-col { display: contents; }
+.boe-dash-attention { order: 1; }
+.boe-dash-counters  { order: 2; }
+.boe-dash-review    { order: 3; }
+.boe-dash-created   { order: 4; }
+.boe-dash-attention,
+.boe-dash-created,
+.boe-dash-counters,
+.boe-dash-review { min-width: 0; }
+
+@media (min-width: 1200px) {
+  .boe-dash-lower {
+    grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr);
+    gap: 24px;
+  }
+  .boe-dash-col {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+  }
+  .boe-dash-attention,
+  .boe-dash-counters,
+  .boe-dash-review,
+  .boe-dash-created { order: 0; }
+}
+
+/* Attention cards: side by side only when their own container is wide enough. */
+.boe-dash-attention { container-type: inline-size; }
+.boe-dash-attention-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@container (min-width: 640px) {
+  .boe-dash-attention-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Counters: stacked in the right column; in the single-column layout they sit
+   three across once there is room, one per row on phones. */
+.boe-dash-counters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+@media (min-width: 600px) and (max-width: 1199px) {
+  .boe-dash-counters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* The review card sets its own bottom margin inline; the grid gap owns spacing here. */
+.boe-dash-review > section[aria-label="Review leaderboard"] { margin-bottom: 0 !important; }

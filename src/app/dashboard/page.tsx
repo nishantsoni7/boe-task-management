@@ -95,6 +95,8 @@ export default function DashboardPage() {
   const [escalationPreview,  setEscalationPreview]  = useState(false)
   const [acknowledgingIds,   setAcknowledgingIds]   = useState<Set<string>>(new Set())
   const [isMobile,           setIsMobile]           = useState(false)
+  // Below 1024px the sidebar leaves no room for three Focus cards in a row.
+  const [focusStacked,       setFocusStacked]       = useState(false)
 
   const router      = useRouter()
   // Handed to Task Detail as `returnTo`, so Submit for Approval comes back here.
@@ -349,7 +351,10 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
+    const check = () => {
+      setIsMobile(window.innerWidth < 768)
+      setFocusStacked(window.innerWidth < 1024)
+    }
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
@@ -558,6 +563,7 @@ export default function DashboardPage() {
           tasks={top3Tasks}
           onSelectTask={setSelectedTask}
           isMobile={isMobile}
+          stacked={focusStacked}
           onGoToMyTasks={() => router.push('/tasks/my')}
           userMap={mergedUserMap}
           canReorder={!viewAsUserId}
@@ -565,17 +571,16 @@ export default function DashboardPage() {
           onReorder={handleReorderFocus}
         />
 
-        {/* ── Needs Your Attention ── */}
-        <section style={{ marginBottom: isMobile ? '18px' : '22px' }}>
+        {/* ── Lower grid: ~70% attention + tasks created, ~30% counters + review leader.
+            Below 1200px the column wrappers dissolve and the order is attention,
+            counters, review leader, tasks created (see .boe-dash-lower). ── */}
+        <div className="boe-dash-lower">
+          <div className="boe-dash-col">
+        <section className="boe-dash-attention">
           <SectionHeading title="Needs Your Attention" isMobile={isMobile} />
-          {/* align-items: start is what lets an empty acknowledgement card stay
-              short instead of stretching to the quotation card's height. */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-            gap: isMobile ? '10px' : '12px',
-            alignItems: 'start',
-          }}>
+          {/* align-items: start (in the class) is what lets an empty acknowledgement
+              card stay short instead of stretching to the quotation card's height. */}
+          <div className="boe-dash-attention-cards">
             <UnacknowledgedPanel
               tasks={unacknowledgedForMe}
               userMap={mergedUserMap}
@@ -608,23 +613,28 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ── Review leader: this month, with a link to the shared leaderboard ── */}
-        <ReviewLeaderCard isMobile={isMobile} />
+        {/* ── Tasks created — rolling 7 / 30 days ── */}
+        <section className="boe-dash-created">
+          <SectionHeading title="Tasks Created" hint="Rolling windows, up to now" isMobile={isMobile} />
+          <TaskCreationReportCard report={creationReport} isMobile={isMobile} />
+        </section>
+          </div>
 
+          <div className="boe-dash-col">
         {/* ── Operational counters ── */}
         <OperationalStatusPanel
           overdueTasks={overdueTasks}
           waitingTasks={waitingTasks}
           dueTodayTasks={dueTodayTasks}
           onShowList={setPreviewList}
-          isMobile={isMobile}
         />
 
-        {/* ── Tasks created — rolling 7 / 30 days ── */}
-        <section style={{ marginTop: isMobile ? '18px' : '22px' }}>
-          <SectionHeading title="Tasks Created" hint="Rolling windows, up to now" isMobile={isMobile} />
-          <TaskCreationReportCard report={creationReport} isMobile={isMobile} />
-        </section>
+        {/* ── Review leader: this month, with a link to the shared leaderboard ── */}
+        <div className="boe-dash-review">
+          <ReviewLeaderCard isMobile={isMobile} />
+        </div>
+          </div>
+        </div>
       </DashboardLayout>
 
       {previewList && !selectedTask && (
@@ -744,7 +754,7 @@ function SectionHeading({
       display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
       gap: '12px', marginBottom: '10px',
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: '10px', rowGap: '2px', minWidth: 0 }}>
         <h2 style={{
           margin: 0,
           fontSize: isMobile ? '15px' : '16px',
@@ -753,9 +763,9 @@ function SectionHeading({
         }}>
           {title}
         </h2>
-        {/* The hint is the first thing to go when the line is short — it is
-            context, never the heading itself. */}
-        {hint && !isMobile && (
+        {/* The hint is context, never the heading itself: on a short line it
+            wraps beneath the title rather than disappearing. */}
+        {hint && (
           <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
             {hint}
           </span>
@@ -855,6 +865,7 @@ function TodaysFocusPanel({
   tasks,
   onSelectTask,
   isMobile,
+  stacked,
   onGoToMyTasks,
   userMap,
   canReorder,
@@ -864,6 +875,7 @@ function TodaysFocusPanel({
   tasks: Task[]
   onSelectTask: (task: Task) => void
   isMobile: boolean
+  stacked: boolean
   onGoToMyTasks: () => void
   userMap: Record<string, string>
   canReorder: boolean
@@ -886,7 +898,7 @@ function TodaysFocusPanel({
           items by default, so a short task and a long one still line up. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gridTemplateColumns: stacked ? 'minmax(0, 1fr)' : 'repeat(3, minmax(0, 1fr))',
         gap: isMobile ? '10px' : '12px',
       }}>
         {[0, 1, 2].map(idx => {
@@ -1057,23 +1069,23 @@ function TodaysFocusPanel({
                   <span style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
                     {idx > 0 && (
                       <FocusReorderButton
-                        label={isMobile ? 'Move up' : 'Move left'}
-                        icon={isMobile
+                        label={stacked ? 'Move up' : 'Move left'}
+                        icon={stacked
                           ? <ChevronUp size={15} strokeWidth={2} />
                           : <ChevronLeft size={15} strokeWidth={2} />}
                         disabled={reordering}
-                        size={isMobile ? 32 : 24}
+                        size={stacked ? 32 : 24}
                         onActivate={() => onReorder(idx, -1)}
                       />
                     )}
                     {idx < tasks.length - 1 && (
                       <FocusReorderButton
-                        label={isMobile ? 'Move down' : 'Move right'}
-                        icon={isMobile
+                        label={stacked ? 'Move down' : 'Move right'}
+                        icon={stacked
                           ? <ChevronDown size={15} strokeWidth={2} />
                           : <ChevronRight size={15} strokeWidth={2} />}
                         disabled={reordering}
-                        size={isMobile ? 32 : 24}
+                        size={stacked ? 32 : 24}
                         onActivate={() => onReorder(idx, 1)}
                       />
                     )}
@@ -1095,13 +1107,11 @@ function OperationalStatusPanel({
   waitingTasks,
   dueTodayTasks,
   onShowList,
-  isMobile,
 }: {
   overdueTasks: Task[]
   waitingTasks: Task[]
   dueTodayTasks: Task[]
   onShowList: (list: { title: string; items: Task[] }) => void
-  isMobile: boolean
 }) {
   // Overdue keeps its red — it is the one counter that reports a problem.
   // Waiting and Due Today are states, not alarms, and stay neutral.
@@ -1111,11 +1121,7 @@ function OperationalStatusPanel({
     { label: 'Due Today', sub: 'Finish today',    count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',     countColor: '#111318' },
   ]
   return (
-    <section style={{
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-      gap: isMobile ? '10px' : '12px',
-    }}>
+    <section className="boe-dash-counters">
       {items.map(item => {
         // Unchanged rule: a counter opens its list only when it has one.
         const isInteractive = item.count > 0
