@@ -45,7 +45,7 @@ export function PiHighlightRemarkView({
   /** Drawn inside a card that already frames it: no border or padding of its own. */
   bare?: boolean
 }) {
-  if (!canEdit && remark === null) return null
+  if (!canEdit && remark === null && !bare) return null
   const problem = highlightRemarkProblem(draft)
   const dirty = normalizeHighlightRemark(draft) !== remark
   const id = 'pi-highlight-remark'
@@ -68,7 +68,7 @@ export function PiHighlightRemarkView({
           <textarea
             id={id}
             className="pi-detail-highlight-input"
-            rows={bare ? 2 : 3}
+            rows={3}
             value={draft}
             placeholder={HIGHLIGHT_REMARK_PLACEHOLDER}
             disabled={saving}
@@ -77,7 +77,8 @@ export function PiHighlightRemarkView({
             onChange={e => onDraftChange(e.target.value)}
           />
           <div className="pi-detail-highlight-foot">
-            <span id={`${id}-note`} className="pi-detail-highlight-note">{HIGHLIGHT_REMARK_NOTE}</span>
+            {/* Bare, the Internal tag carries the note; a screen reader still gets it. */}
+            <span id={`${id}-note`} className={bare ? 'pi-sr-only' : 'pi-detail-highlight-note'}>{HIGHLIGHT_REMARK_NOTE}</span>
             <span className="pi-detail-highlight-count" aria-hidden>
               {draft.trim().length}/{HIGHLIGHT_REMARK_MAX}
             </span>
@@ -98,8 +99,8 @@ export function PiHighlightRemarkView({
         </>
       ) : (
         <>
-          <p className="pi-detail-highlight-text">{remark ?? HIGHLIGHT_REMARK_EMPTY}</p>
-          <span className="pi-detail-highlight-note">{HIGHLIGHT_REMARK_NOTE}</span>
+          <p className="pi-detail-highlight-text">{remark ?? (bare ? 'None added' : HIGHLIGHT_REMARK_EMPTY)}</p>
+          {!bare && <span className="pi-detail-highlight-note">{HIGHLIGHT_REMARK_NOTE}</span>}
         </>
       )}
     </section>

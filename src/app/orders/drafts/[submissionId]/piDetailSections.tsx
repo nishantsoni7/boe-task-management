@@ -74,9 +74,6 @@ import {
 } from '@/lib/orders/resubmissionChanges'
 import {
   ADVANCE_BAND_TITLE,
-  BILLING_LABEL,
-  BILLING_NOT_DECLARED_LABEL,
-  BILLING_VALUE_LABEL,
   BLOCKING_INSTRUCTION,
   CLIENT_CONTACT_LABEL,
   CLIENT_FACT_ABSENT,
@@ -95,7 +92,6 @@ import {
   describeReceivedHeadline,
   describeRequestedException,
   type ApprovedOrderView,
-  type BillingSummary,
   type BreakdownView,
   type ClientDetails,
   type DateSummary,
@@ -507,24 +503,17 @@ const CONTEXT_DOT: Record<PiDetailTone, string> = {
 
 /**
  * WHAT THE PI IS WORTH, compact, beside Payment status: Product value (after the
- * discount), Total before GST, the billing declaration, and — when the page
- * passes it — the INTERNAL middleman answer (PiCommissionSummary), BOE-only.
+ * discount) and Total before GST.
  *
  * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
- * own strings (summaryCommercialFigures); billing is buildBillingSummary's.
- * Product value and Total before GST are always two cells, even when equal.
+ * own strings (summaryCommercialFigures). Product value and Total before GST are
+ * always two cells, even when equal. The billing percentage and the middleman
+ * commission are internal order details and are shown once, in Internal order
+ * details — not repeated in this summary.
  */
-export function PiCommercialCard({ figures, billing, canEditBilling, onEditBilling, internal = null }: {
+export function PiCommercialCard({ figures }: {
   /** The two commercial figures, picked out of the breakdown's own rows. */
   figures: readonly SummaryFigure[]
-  /** The billing declaration, and what it comes to. */
-  billing: BillingSummary
-  /** can_edit_order_submission OR can_admin_edit_order_submission, as the page
-      resolved them. set_order_submission_billing_percentage re-derives it. */
-  canEditBilling: boolean
-  onEditBilling: () => void
-  /** The internal middleman answer, drawn under the figures. BOE-only. */
-  internal?: React.ReactNode
 }) {
   return (
     <PiCard>
@@ -538,39 +527,7 @@ export function PiCommercialCard({ figures, billing, canEditBilling, onEditBilli
               </div>
             </div>
           ))}
-
-          <div className="pi-detail-figure">
-            <div className="pi-detail-figure-head">
-              <span className="pi-detail-figure-label">{BILLING_LABEL}</span>
-              {canEditBilling && (
-                <button
-                  type="button"
-                  onClick={onEditBilling}
-                  className="pi-detail-summary-billing-action"
-                  aria-haspopup="dialog"
-                  aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
-                >
-                  {billing.action}
-                </button>
-              )}
-            </div>
-            {/* DECLARED IS A FIGURE; UNDECLARED IS A STATE. Never 0%. */}
-            {billing.declared ? (
-              <>
-                <div className="pi-detail-figure-value">{billing.percent}</div>
-                <div className="pi-detail-figure-sub">
-                  {BILLING_VALUE_LABEL}{' '}
-                  <span className={billing.amountMissing ? 'pi-detail-figure-sub-absent' : 'pi-detail-figure-sub-value'}>
-                    {billing.amount}
-                  </span>
-                </div>
-              </>
-            ) : (
-              <span className="pi-detail-state-chip">{BILLING_NOT_DECLARED_LABEL}</span>
-            )}
-          </div>
         </div>
-        {internal}
       </div>
     </PiCard>
   )

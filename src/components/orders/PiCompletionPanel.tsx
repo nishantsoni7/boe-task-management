@@ -11,108 +11,26 @@
 // `canEdit` and `locked` come from the page's own answers and each RPC re-derives
 // them.
 
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Lock, Pencil, Send, Upload } from 'lucide-react'
+import { ClipboardCheck, Lock, Pencil, Send, Upload } from 'lucide-react'
 import { colors } from '@/lib/tokens'
-import { RequiredLegend, RequiredMark } from './PiFormParts'
+import { RequiredMark } from './PiFormParts'
 import {
-  COMPLETION_NEED_LABEL,
-  joinItemNames,
   type CompletionFact,
   type CompletionItem,
-  type CompletionNeed,
-  type PiCompletion,
 } from '@/lib/orders/piCompletion'
 
 export const COMPLETION_TITLE = 'Complete PI details'
 export const COMPLETION_LOCKED_TITLE = 'PI details'
 export const COMPLETION_LOCKED_HINT = 'Locked while this PI is with management.'
-export const COMPLETION_READY_TEXT = 'Every required detail is in. You can submit this PI for approval.'
-
-const HINT: React.CSSProperties = { fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45 }
-
-const NEED_TONE: Record<CompletionNeed, { color: string; background: string }> = {
-  submission: { color: '#9A6212', background: 'rgba(232,160,48,0.12)' },
-  later: { color: '#2F5BB7', background: 'rgba(85,133,232,0.10)' },
-  optional: { color: '#6b7384', background: '#eef0f4' },
-}
-
-/** The label beside every field: Required for submission, Required later…, or Optional. */
-export function NeedBadge({ need }: { need: CompletionNeed }) {
-  return (
-    <span data-need={need} style={{
-      display: 'inline-flex', alignItems: 'center', padding: '1px 7px', borderRadius: '999px',
-      fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap', ...NEED_TONE[need],
-    }}>
-      {COMPLETION_NEED_LABEL[need]}
-    </span>
-  )
-}
 
 /**
- * THE LIVE CHECKLIST: what blocks Submit, what is only needed later, and what is
- * optional and still empty. It is the same list the Submit sequence reads.
+ * One read-out group (the client) with its single edit control.
  *
- * Only a required item can hold the action, and only a required item has an
- * "Add" — the later and optional ones are listed so nobody is surprised by
- * them, never as a demand.
+ * Each fact is a label and its value on one line — the label bold on the left,
+ * the value regular beside it — so the values of a row start at the same place.
+ * The first three facts share the top row and the addresses the second; the
+ * grid answers to the section's own width (see .pi-client-facts in globals.css).
  */
-export function PiCompletionChecklist({ completion, onFix, disabled }: {
-  completion: PiCompletion
-  onFix: ((item: CompletionItem) => void) | null
-  disabled: boolean
-}) {
-  const { requiredMissing, laterMissing, optionalMissing } = completion
-  return (
-    <div data-testid="pi-completion-checklist" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {requiredMissing.length === 0 ? (
-        <div role="status" style={{ display: 'flex', gap: '7px', alignItems: 'center', fontSize: '12.5px', fontWeight: 600, color: '#166534' }}>
-          <CheckCircle2 size={14} aria-hidden="true" style={{ flexShrink: 0 }} />
-          {COMPLETION_READY_TEXT}
-        </div>
-      ) : (
-        <div style={{
-          padding: '9px 12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '5px',
-          border: '1px solid rgba(232,160,48,0.35)', background: colors.amberTint,
-        }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
-            {requiredMissing.length === 1 ? '1 required item left' : `${requiredMissing.length} required items left`}
-            <span style={{ fontWeight: 500, color: colors.secondary }}> — Submit for approval waits for these</span>
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {requiredMissing.map(item => (
-              <li key={item.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '12.5px', color: colors.primary }}>
-                <AlertTriangle size={12} aria-hidden="true" style={{ color: colors.amber, flexShrink: 0 }} />
-                <span>{item.label}{item.needsReimport ? ' — a corrected workbook is needed' : ''}</span>
-                {/* An incomplete product line is counted, not listed, so an
-                    "Add" would have to guess which row; the products section
-                    and Edit PI own those. */}
-                {onFix && item.where !== 'products' && (
-                  <button type="button" className="boe-btn boe-btn-ghost" style={{ padding: '2px 10px', fontSize: '11.5px' }}
-                    disabled={disabled} onClick={() => onFix(item)}>
-                    {item.needsReimport ? 'Change PI' : 'Add'}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {laterMissing.length > 0 && (
-        <div style={HINT}>
-          <NeedBadge need="later" /> <span>Not needed to submit: {joinItemNames(laterMissing)}.</span>
-        </div>
-      )}
-      {optionalMissing.length > 0 && (
-        <div style={HINT}>
-          <NeedBadge need="optional" /> <span>Not filled: {joinItemNames(optionalMissing)}.</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** One read-out group (client, or the PI's own terms) with its single edit control. */
 export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, onEdit }: {
   title: string
   facts: readonly CompletionFact[]
@@ -122,17 +40,14 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
   onEdit: () => void
 }) {
   return (
-    <section aria-label={title} style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.base,
-      padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: colors.primary }}>{title}</h3>
+    <section aria-label={title} className="pi-client-facts">
+      <div className="pi-section-head">
+        <h3 className="pi-section-title">{title}</h3>
         {(canEdit || locked) && (
           <button
             type="button"
-            className="boe-btn boe-btn-ghost"
-            style={{ marginLeft: 'auto', ...(locked ? { opacity: 0.55, cursor: 'not-allowed' } : null) }}
+            className="boe-btn boe-btn-ghost pi-section-action"
+            style={locked ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
             disabled={locked}
             title={locked ? COMPLETION_LOCKED_HINT : undefined}
             onClick={onEdit}
@@ -142,19 +57,14 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
           </button>
         )}
       </div>
-      <dl style={{ margin: 0, display: 'grid', gap: '9px 14px', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+      <dl className="pi-client-facts-grid">
         {facts.map(fact => (
-          <div key={fact.key} data-fact={fact.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-            <dt style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
+          <div key={fact.key} data-fact={fact.key} className="pi-client-fact">
+            <dt>
               {fact.label}
               {fact.need === 'submission' && <RequiredMark />}
             </dt>
-            <dd style={{
-              margin: 0, fontSize: '13px', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
-              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-              fontWeight: fact.value ? 600 : 500,
-              color: fact.value ? colors.primary : fact.need === 'submission' ? '#8a4b12' : colors.muted,
-            }}>
+            <dd data-empty={fact.value ? undefined : 'true'} data-required={!fact.value && fact.need === 'submission' ? 'true' : undefined}>
               {fact.value ?? (fact.need === 'submission' ? 'Not added yet' : 'Not given')}
             </dd>
           </div>
@@ -165,9 +75,13 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
 }
 
 /**
- * THE AREA. Header and checklist first, the grouped fields in the middle, and
+ * THE AREA. Header first, then the grouped sections separated by thin rules, and
  * the action last — directly under the last field, which on a phone is where the
  * thumb already is.
+ *
+ * What stops Submit is said beside the Submit control, by name, and each name
+ * takes the person to the editor that owns it. There is no banner and no
+ * checklist: the fields themselves show what is missing.
  *
  * Locked: the same fields, legible and read-only, the editing controls muted and
  * disabled, and the submit/upload actions replaced by the one route back —
@@ -176,53 +90,59 @@ export function PiCompletionFacts({ title, facts, editLabel, canEdit, locked, on
 export function PiCompletionPanel({
   completion, locked, checklistDisabled, onFix, groups, submit, onChangePi, requestChange,
 }: {
-  completion: PiCompletion
+  completion: { requiredMissing: readonly CompletionItem[] }
   locked: boolean
   checklistDisabled: boolean
   onFix: ((item: CompletionItem) => void) | null
-  /** The grouped fields: the facts, the internal order details, the documents, the highlight. */
+  /** The grouped fields: the facts, the supporting details and the internal order details. */
   groups: React.ReactNode
   /** The Submit control's state — omitted when the viewer cannot submit. */
-  submit: { label: string; disabled: boolean; reason: string | null; onSubmit: () => void } | null
+  submit: { label: string; disabled: boolean; reason: string | null; issues: boolean; onSubmit: () => void } | null
   onChangePi: (() => void) | null
   /** Request change, when this viewer may ask — locked PIs only. */
   requestChange: (() => void) | null
 }) {
   const title = locked ? COMPLETION_LOCKED_TITLE : COMPLETION_TITLE
+  const missing = locked ? [] : completion.requiredMissing
   return (
     <section
       id="pi-complete-details"
       aria-label={title}
       data-locked={locked ? 'true' : 'false'}
       className="pi-completion"
-      style={{
-        border: `1px solid ${locked ? colors.border : 'rgba(85,133,232,0.35)'}`, borderRadius: '12px',
-        background: locked ? colors.raised : colors.base,
-        padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0,
-        scrollMarginTop: '80px',
-      }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      <div className="pi-completion-head">
         {locked
-          ? <Lock size={15} aria-hidden="true" style={{ color: colors.secondary }} />
-          : <ClipboardCheck size={15} aria-hidden="true" style={{ color: colors.blue }} />}
-        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: colors.primary }}>{title}</h2>
-        {locked && <span style={HINT}>{COMPLETION_LOCKED_HINT}</span>}
+          ? <Lock size={16} aria-hidden="true" style={{ color: colors.secondary }} />
+          : <ClipboardCheck size={16} aria-hidden="true" style={{ color: colors.blue }} />}
+        <h2 className="pi-completion-title">{title}</h2>
       </div>
-
-      {!locked && <PiCompletionChecklist completion={completion} onFix={onFix} disabled={checklistDisabled} />}
-
-      <RequiredLegend />
 
       <div className="pi-completion-groups">{groups}</div>
 
       {(submit || requestChange) && (
-        <div className="pi-completion-actions" style={{
-          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end',
-          borderTop: `1px solid ${colors.border}`, paddingTop: '12px',
-        }}>
-          {submit?.reason && (
-            <span data-testid="pi-submit-reason" style={{ ...HINT, marginRight: 'auto', color: '#8a4b12' }}>{submit.reason}</span>
+        <div className="pi-completion-actions">
+          {(submit?.issues || missing.length > 0) && (
+            <span data-testid="pi-submit-reason" className="pi-submit-reason">
+              {submit?.issues && <>Fix the issues in the PI first.{missing.length > 0 ? ' ' : ''}</>}
+              {missing.length > 0 && (
+                <>
+                  Needed to submit:{' '}
+                  {missing.map((item, i) => (
+                    <span key={item.key}>
+                      {i > 0 && ', '}
+                      {onFix && item.where !== 'products' ? (
+                        <button type="button" className="pi-submit-reason-item" disabled={checklistDisabled} onClick={() => onFix(item)}>
+                          {item.label}
+                        </button>
+                      ) : item.label}
+                      {item.needsReimport ? ' (a corrected workbook is needed)' : ''}
+                    </span>
+                  ))}
+                  .
+                </>
+              )}
+            </span>
           )}
           {onChangePi && (
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onChangePi} disabled={checklistDisabled}>
@@ -245,6 +165,7 @@ export function PiCompletionPanel({
     </section>
   )
 }
+
 
 /**
  * THE STATUS NOTICE for a PI that is with management: prominent, plain, and with

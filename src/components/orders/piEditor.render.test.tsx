@@ -100,7 +100,8 @@ describe('what the editor promises', () => {
   })
   test('the draft page draws one Edit PI, and no per-field edit doors', () => {
     const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
-    assert.ok(page.includes('canEditBilling={false}') && page.includes('canEditDetails={false}'))
+    assert.ok(page.includes('canEditDetails={false}'))
+    assert.ok(!page.includes('canEditBilling'), 'the summary has no billing door at all any more')
     assert.ok(page.includes('onEditTerms={null}'))
     assert.ok(page.includes('const canEditProducts = false'))
     // The one editor is a page: every entry navigates to it.

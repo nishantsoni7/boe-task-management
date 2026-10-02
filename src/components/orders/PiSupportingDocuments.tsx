@@ -261,11 +261,7 @@ const LABEL: React.CSSProperties = {
  * Order exists, after which the Order page's Documents section takes over.
  * `refreshKey` is the PI's submitted_at, so a resubmission re-reads it.
  */
-export function PiSentDocuments({ supabase, piSubmissionId, refreshKey }: {
-  supabase: SupabaseClient
-  piSubmissionId: string
-  refreshKey: string | null
-}) {
+export function useSentWithPi(supabase: SupabaseClient, piSubmissionId: string, refreshKey: string | null) {
   const [rows, setRows] = useState<PersistedDocumentSubmission[]>([])
   useEffect(() => {
     let live = true
@@ -280,7 +276,15 @@ export function PiSentDocuments({ supabase, piSubmissionId, refreshKey }: {
     return () => { live = false }
   }, [supabase, piSubmissionId, refreshKey])
 
-  const shown = sentWithPi(rows)
+  return sentWithPi(rows)
+}
+
+export function PiSentDocuments({ supabase, piSubmissionId, refreshKey }: {
+  supabase: SupabaseClient
+  piSubmissionId: string
+  refreshKey: string | null
+}) {
+  const shown = useSentWithPi(supabase, piSubmissionId, refreshKey)
   if (!shown) return null
   const files = shown.submission.files ?? []
   return (
@@ -311,18 +315,20 @@ export function PiSentDocuments({ supabase, piSubmissionId, refreshKey }: {
 }
 
 export const DRAFT_ATTACHMENTS_TITLE = 'Client PO and Design Files'
-export const DRAFT_ATTACHMENTS_NOTE =
-  'Sent with the PI when you submit it for approval; private to the people who can open this PI.'
+/** Said where the person chooses a file, not as a paragraph under the section. */
+export const DRAFT_ATTACHMENT_RESTRICTIONS = 'PDF, PNG, JPEG or WebP, up to 10 MB each.'
 
 /** Client PO first: it is one document; Design Files may be many. */
 const ATTACH_ORDER = ['client_po', 'design_files'] as const
 
 /**
- * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270114000000).
+ * CLIENT PO AND DESIGN FILES ON THE DRAFT (20270114000000), as two columns of
+ * the Supporting details row.
  *
- * One compact row per category: its name, what is attached (file names, each
- * openable and removable), and one Add control at the row's end. No upload
- * boxes — an empty category is one quiet line. The parent supplies the card and heading.
+ * One column per category: its name with one Add control beside it, then what is
+ * attached (file names, each openable and removable) or one quiet line. No
+ * upload boxes. The file types and size limit live on the Add control itself,
+ * and a refused file says why in the column.
  *
  * Attached any time while the PI is a draft or returned, kept between visits,
  * and ticked by default in the "Submit for approval" dialog, which sends them.
@@ -336,9 +342,26 @@ export function PiDraftAttachments({ supabase, state, canEdit }: {
   state: SupportingState
   canEdit: boolean
 }) {
-  const [failure, setFailure] = useState<string | null>(null)
   if (!state.stagedReadable) return null
-  if (!canEdit && state.staged.length === 0) return null
+  return (
+    <>
+      {ATTACH_ORDER.map(category => (
+        <PiAttachmentColumn key={category} supabase={supabase} state={state} canEdit={canEdit} category={category} />
+      ))}
+    </>
+  )
+}
+
+function PiAttachmentColumn({ supabase, state, canEdit, category }: {
+  supabase: SupabaseClient
+  state: SupportingState
+  canEdit: boolean
+  category: (typeof ATTACH_ORDER)[number]
+}) {
+  const [failure, setFailure] = useState<string | null>(null)
+  const files = state.staged.filter(s => s.category === category)
+  const many = category === 'design_files'
+  const addLabel = files.length === 0 ? (many ? 'Add files' : 'Add file') : (many ? 'Add more' : 'Add another')
 
   const open = async (path: string) => {
     const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60)
@@ -347,54 +370,88 @@ export function PiDraftAttachments({ supabase, state, canEdit }: {
   }
 
   return (
-    <div id="pi-draft-attachments" aria-label={DRAFT_ATTACHMENTS_TITLE} role="group" style={{ minWidth: 0 }}>
-      <div className="pi-attach-list">
-        {ATTACH_ORDER.map(category => {
-          const files = state.staged.filter(s => s.category === category)
-          const many = category === 'design_files'
-          const addLabel = files.length === 0 ? (many ? 'Add files' : 'Add file') : (many ? 'Add more' : 'Add another')
-          return (
-            <div key={category} role="group" aria-label={CATEGORY_LABEL[category]} className="pi-attach">
-              <span className="pi-form-label">{CATEGORY_LABEL[category]}</span>
-              {files.length === 0 ? (
-                <span className="pi-attach-state">None attached yet</span>
-              ) : (
-                <ul className="pi-attach-files">
-                  {files.map(f => (
-                    <li key={f.storage_path}>
-                      <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
-                      <button type="button" className="pi-attach-name" title={f.file_name} onClick={() => void open(f.storage_path)}>
-                        {f.file_name}
-                      </button>
-                      {canEdit && (
-                        <button type="button" className="pi-attach-remove"
-                                disabled={state.staging}
-                                aria-label={`Remove ${f.file_name}`}
-                                onClick={() => void state.unstage(f.storage_path).then(setFailure)}>
-                          Remove
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {canEdit && (
-                <label className="boe-btn boe-btn-ghost pi-attach-add" style={{ cursor: state.staging ? 'default' : 'pointer' }}>
-                  {state.staging ? 'Uploading…' : addLabel}
-                  <input type="file" multiple={many} accept={DOCUMENT_ACCEPT_ATTR}
-                         disabled={state.staging}
-                         className="pi-attach-input"
-                         aria-label={`Add ${CATEGORY_LABEL[category]}`}
-                         onChange={e => { const list = e.target.files; void state.stage(list, category).then(setFailure); e.target.value = '' }} />
-                </label>
-              )}
-            </div>
-          )
-        })}
+    <div
+      id={category === 'client_po' ? 'pi-draft-attachments' : undefined}
+      role="group"
+      aria-label={CATEGORY_LABEL[category]}
+      className="pi-support-col"
+    >
+      <div className="pi-support-col-head">
+        <span className="pi-support-label">{CATEGORY_LABEL[category]}</span>
       </div>
-      {canEdit && <p className="pi-form-help" style={{ margin: '6px 0 0' }}>PDF, PNG, JPEG or WebP, up to 10 MB each. {DRAFT_ATTACHMENTS_NOTE}</p>}
-      {failure && <div role="alert" className="pi-form-error" style={{ marginTop: '6px' }}>{failure}</div>}
+      <div className="pi-support-panel">
+      {files.length === 0 ? (
+        <span className="pi-attach-state">None attached yet</span>
+      ) : (
+        <ul className="pi-attach-files">
+          {files.map(f => (
+            <li key={f.storage_path}>
+              <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
+              <button type="button" className="pi-attach-name" title={f.file_name} onClick={() => void open(f.storage_path)}>
+                {f.file_name}
+              </button>
+              {canEdit && (
+                <button type="button" className="pi-attach-remove"
+                        disabled={state.staging}
+                        aria-label={`Remove ${f.file_name}`}
+                        onClick={() => void state.unstage(f.storage_path).then(setFailure)}>
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <label className="boe-btn boe-btn-ghost pi-attach-add" title={DRAFT_ATTACHMENT_RESTRICTIONS}
+               style={{ cursor: state.staging ? 'default' : 'pointer' }}>
+          {state.staging ? 'Uploading…' : addLabel}
+          <input type="file" multiple={many} accept={DOCUMENT_ACCEPT_ATTR}
+                 disabled={state.staging}
+                 className="pi-attach-input"
+                 aria-label={`Add ${CATEGORY_LABEL[category]}. ${DRAFT_ATTACHMENT_RESTRICTIONS}`}
+                 onChange={e => { const list = e.target.files; void state.stage(list, category).then(setFailure); e.target.value = '' }} />
+        </label>
+      )}
+      </div>
+      {failure && <div role="alert" className="pi-form-error">{failure}</div>}
     </div>
+  )
+}
+
+/**
+ * The same two columns for a PI that is with management: what it was sent with,
+ * read-only. Nothing is offered to add or remove.
+ */
+export function PiSentColumns({ shown }: { shown: ReturnType<typeof sentWithPi> }) {
+  const files = shown?.submission.files ?? []
+  return (
+    <>
+      {ATTACH_ORDER.map(category => {
+        const inCategory = files.filter(f => f.category === category)
+        return (
+          <div key={category} role="group" aria-label={CATEGORY_LABEL[category]} className="pi-support-col">
+            <div className="pi-support-col-head">
+              <span className="pi-support-label">{CATEGORY_LABEL[category]}</span>
+            </div>
+            <div className="pi-support-panel">
+            {inCategory.length === 0 ? (
+              <span className="pi-attach-state">None attached</span>
+            ) : (
+              <ul className="pi-attach-files">
+                {inCategory.map(f => (
+                  <li key={f.storage_path}>
+                    <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
+                    <span className="pi-attach-plain">{f.file_name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            </div>
+          </div>
+        )
+      })}
+    </>
   )
 }
 
