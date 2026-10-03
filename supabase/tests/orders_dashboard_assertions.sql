@@ -142,18 +142,30 @@ create function pg_temp.mk_order(
   p_tag text, p_status text, p_confirm date,
   p_total numeric, p_product numeric,
   p_assigned uuid default null, p_test boolean default false,
-  p_requested_by uuid default null
+  p_requested_by uuid default null,
+  -- 20270226000000: the advance is of the TOTAL BEFORE GST, so an Order is given a source PI carrying
+  -- a pre-GST total beside its value as the grand total. Default: the same figure (no GST). Pass a
+  -- different figure for GST, or -1 for an Order with a value and NO derivable base. A NULL value has none.
+  p_base numeric default null
 ) returns uuid language plpgsql as $$
-declare v_id uuid := gen_random_uuid();
+declare v_id uuid := gen_random_uuid(); v_sub uuid := null;
+  v_base numeric := case when p_base = -1 then null else coalesce(p_base, p_total) end;
 begin
   perform set_config('request.jwt.claims', '', true);
+  if v_base is not null then
+    v_sub := gen_random_uuid();
+    insert into public.order_submissions (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount,
+                                          subtotal_after_discount, total_before_gst, grand_total)
+    values (v_sub, 'draft', current_setting('test.owner_id')::uuid, current_setting('test.owner_id')::uuid, 'DASH-' || p_tag,
+            v_base, 0, v_base, v_base, p_total);
+  end if;
   -- The flag is STAMPED at insert from the cleanup phase (stamp_test_data_flag) and is immutable, so a
   -- test-data fixture is inserted while the phase is on, and a real one while it is off.
   update public.test_data_cleanup_settings set enabled = p_test, permanently_disabled = false where id;
   insert into public.orders (id, client_name, status, confirm_date, total_value, total_product_value,
-                             created_by, assigned_to, requested_by)
+                             created_by, assigned_to, requested_by, source_order_submission_id)
   values (v_id, 'DASH-' || p_tag, p_status, p_confirm, p_total, p_product,
-          current_setting('test.owner_id')::uuid, p_assigned, p_requested_by);
+          current_setting('test.owner_id')::uuid, p_assigned, p_requested_by, v_sub);
   update public.test_data_cleanup_settings set enabled = false where id;
   return v_id;
 end $$;
@@ -257,6 +269,11 @@ begin
   o := pg_temp.mk_order('adv_zero',   'running', t, 1000000, 800000);
   o := pg_temp.mk_order('adv_noval',  'running', t, null,    null);
   o := pg_temp.mk_order('adv_disp',   'dispatched', t, 1000000, 800000);
+  -- 20270226000000: the percentage and the shortfall are of the TOTAL BEFORE GST (base 10,00,000, GST
+  -- 1,80,000, Grand Total 11,80,000); an Order with a value and no derivable base is not assessable.
+  o := pg_temp.mk_order('adv_gst_met',   'running', t, 1180000, 800000, null, false, null, 1000000);  perform pg_temp.pay(o, 400000.00);
+  o := pg_temp.mk_order('adv_gst_short', 'running', t, 1180000, 800000, null, false, null, 1000000);  perform pg_temp.pay(o, 399999.99);
+  o := pg_temp.mk_order('adv_nobase',    'running', t, 1000000, 800000, null, false, null, -1);       perform pg_temp.pay(o, 400000.00);
   -- An approved reduced-advance exception for THIS value basis and version.
   o := pg_temp.mk_order('adv_exc',    'running', t, 1000000, 800000);  perform pg_temp.pay(o, 100000);
   v := pg_temp.mk_version(o);
@@ -327,6 +344,15 @@ begin
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_noval') is null, 'no value is not called "below 40%"');
   perform pg_temp.check((s -> 'gaps' ->> 'advance_value_unknown')::int >= 1, 'and is COUNTED as unassessable');
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_disp') is null, 'a dispatched Order is not listed');
+  -- 20270226000000: the base is the total before GST.
+  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_gst_met') is null,
+                        'exactly 40.00% of the total before GST (4,00,000 of 10,00,000) is not listed, though it is 33.9% of the Grand Total');
+  r := pg_temp.row_of(s, 'advance_below_40', 'adv_gst_short');
+  perform pg_temp.check(r is not null and (r ->> 'shortfall')::numeric = 0.01 and (r ->> 'percent')::numeric = 39.99
+                        and (r ->> 'advance_base')::numeric = 1000000 and (r ->> 'order_value')::numeric = 1180000,
+                        'a paisa short of 40% of the pre-GST total: listed, 0.01 short, 39.99%, carrying advance_base beside order_value');
+  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_nobase') is null, 'an Order with a value and NO derivable base is not called below 40%');
+  perform pg_temp.check((s -> 'gaps' ->> 'advance_value_unknown')::int >= 2, 'it is COUNTED as unassessable, like an Order with no value');
   r := pg_temp.row_of(s, 'advance_below_40', 'adv_exc');
   perform pg_temp.check(r is not null, 'an order WITH an approved exception is STILL listed');
   perform pg_temp.check((r ->> 'exception_approved')::boolean and (r ->> 'percent')::numeric = 10 and (r ->> 'shortfall')::numeric = 300000,
@@ -466,13 +492,13 @@ declare
   a uuid; b uuid; c uuid; d uuid; e uuid; f uuid; g uuid;
   sel1 uuid; sel2 uuid; s jsonb; k jsonb;
 begin
-  a := pg_temp.mk_order('fo_a', 'running', t, 100, 100, current_setting('test.s1_id')::uuid);
-  b := pg_temp.mk_order('fo_b', 'running', t, 100, 100, current_setting('test.s2_id')::uuid);
-  c := pg_temp.mk_order('fo_c', 'running', t, 100, 100, current_setting('test.s3_id')::uuid);
-  d := pg_temp.mk_order('fo_d', 'dispatched', t, 100, 100, current_setting('test.s1_id')::uuid);
-  e := pg_temp.mk_order('fo_e', 'running', t, 100, 100, current_setting('test.s2_id')::uuid);
-  f := pg_temp.mk_order('fo_f', 'running', t, 100, 100, current_setting('test.s3_id')::uuid);
-  g := pg_temp.mk_order('fo_g', 'running', t, 100, 100, null);            -- no salesperson recorded
+  a := pg_temp.mk_order('fo_a', 'running', t, 100, 100, current_setting('test.s1_id')::uuid, false, null, -1);
+  b := pg_temp.mk_order('fo_b', 'running', t, 100, 100, current_setting('test.s2_id')::uuid, false, null, -1);
+  c := pg_temp.mk_order('fo_c', 'running', t, 100, 100, current_setting('test.s3_id')::uuid, false, null, -1);
+  d := pg_temp.mk_order('fo_d', 'dispatched', t, 100, 100, current_setting('test.s1_id')::uuid, false, null, -1);
+  e := pg_temp.mk_order('fo_e', 'running', t, 100, 100, current_setting('test.s2_id')::uuid, false, null, -1);
+  f := pg_temp.mk_order('fo_f', 'running', t, 100, 100, current_setting('test.s3_id')::uuid, false, null, -1);
+  g := pg_temp.mk_order('fo_g', 'running', t, 100, 100, null, false, null, -1);            -- no salesperson recorded
 
   -- Nobody but the owner may select.
   perform pg_temp.expect_error_as(current_setting('test.admin2_id')::uuid, format('select public.select_order_for_factory_focus(%L)', a), 'FACTORY_FOCUS_NOT_OWNER', 'another administrator');
@@ -597,17 +623,20 @@ end $$;
 do $$
 declare
   t date := pg_temp.today();
-  o1 uuid; o2 uuid; o3 uuid; on_ uuid; pay uuid;
+  o1 uuid; o2 uuid; o3 uuid; on_ uuid; pay uuid; oa uuid;
   s jsonb; alloc int; cnt int;
   s1 uuid := current_setting('test.s1_id')::uuid; s2 uuid := current_setting('test.s2_id')::uuid;
   own uuid := current_setting('test.owner_id')::uuid;
   n uuid := current_setting('test.n_id')::uuid;
 begin
   o1 := pg_temp.mk_order('sc_1', 'running', t, 1000, 1000, s1);
-  o2 := pg_temp.mk_order('sc_2', 'running', t, 1000, 1000, s2);
-  o3 := pg_temp.mk_order('sc_3', 'running', t, 1000, 1000, current_setting('test.s3_id')::uuid);
-  on_ := pg_temp.mk_order('sc_n', 'running', t, 1000, 1000, n);           -- belongs to a NON-candidate
+  o2 := pg_temp.mk_order('sc_2', 'running', t, 1000, 1000, s2, false, null, -1);
+  o3 := pg_temp.mk_order('sc_3', 'running', t, 1000, 1000, current_setting('test.s3_id')::uuid, false, null, -1);
+  on_ := pg_temp.mk_order('sc_n', 'running', t, 1000, 1000, n, false, null, -1);           -- belongs to a NON-candidate
   pay := pg_temp.pay(o2, 100);                                           -- verified money on S2's order: 10%, below 40%
+  -- 20270226000000: sc_2 has no source PI (so it has no advance base, and the document-generation
+  -- matrix below keeps asking about an Order with no PI). A colleague's order that DOES have a base:
+  oa := pg_temp.mk_order('adv_scope', 'running', t, 1000, 1000, s2);  perform pg_temp.pay(oa, 100);
 
   -- ── who may change it ──
   perform pg_temp.expect_error_as(s1, format('select public.set_order_visibility_scope(%L, ''all_sales'')', s1), 'ORDER_SCOPE_NOT_OWNER', 'a candidate widening their own scope');
@@ -683,12 +712,12 @@ begin
   s := pg_temp.summary(s1);
   perform pg_temp.check(s -> 'revenue' = 'null'::jsonb and not (s -> 'viewer' ->> 'can_view_revenue')::boolean, 'REVENUE: a scope never sends company revenue');
   -- Payment-derived figures follow the UNSCOPED rule: 10% verified on a colleague's order is not sent.
-  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'sc_2') is null, 'FINANCE: a colleague''s advance percentage and shortfall are not sent through a scope');
+  perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_scope') is null, 'FINANCE: a colleague''s advance percentage and shortfall are not sent through a scope');
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'sc_1') is not null, 'but their OWN order''s are');
   perform pg_temp.check((s -> 'gaps' ->> 'advance_outside_scope')::int >= 2, 'and the orders withheld are COUNTED, not silently dropped');
   perform pg_temp.check((select bool_or((x ->> 'advance_blocks')::boolean) from jsonb_array_elements(s -> 'groups' -> 'not_aligned') x where x ->> 'client_name' in ('DASH-sc_2', 'DASH-sc_3')) is not true,
                         'and the payment-derived "advance blocks alignment" flag is withheld for them too');
-  perform pg_temp.check(pg_temp.row_of(pg_temp.summary(own), 'advance_below_40', 'sc_2') is not null, 'while the owner sees it');
+  perform pg_temp.check(pg_temp.row_of(pg_temp.summary(own), 'advance_below_40', 'adv_scope') is not null, 'while the owner sees it');
   -- The rest of an order's satellite data, read directly as the widest-scope candidate.
   perform pg_temp.become(s1);
   perform pg_temp.check((select count(*) from public.order_activity_log where order_id = o2) = 0, 'ACTIVITY: a colleague''s order history is not opened by a scope');

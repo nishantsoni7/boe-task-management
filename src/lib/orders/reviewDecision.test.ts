@@ -295,13 +295,15 @@ describe('the approver sees the payment summary beside the PI', () => {
   })
 
   test('the tiles gain the attached pair only when the server reports it', () => {
+    // The Total before GST tile leads (it is the base every percentage is a share of).
     assert.deepEqual(piPaymentTiles(summary()).map(t => t.key),
-      ['grand', 'verified', 'unverified', 'percent', 'needed', 'balance'])
+      ['base', 'grand', 'verified', 'unverified', 'percent', 'needed', 'balance'])
     const tiles = piPaymentTiles(summary({ attached_amount: '40000.00', attached_percent: '40.00' }))
     assert.deepEqual(tiles.map(t => t.key),
-      ['grand', 'verified', 'unverified', 'percent', 'needed', 'balance', 'attached', 'attached_percent'])
-    assert.equal(tiles[6].value, '₹40,000.00')
-    assert.equal(tiles[7].value, '40%')
+      ['base', 'grand', 'verified', 'unverified', 'percent', 'needed', 'balance', 'attached', 'attached_percent'])
+    assert.equal(tiles[7].value, '₹40,000.00')
+    assert.equal(tiles[8].value, '40%')
+    assert.equal(tiles[8].hint, 'of Total before GST, attached')
   })
 
   test('the approval dialog prints THREE rows: client, product value, confirmed advance', () => {

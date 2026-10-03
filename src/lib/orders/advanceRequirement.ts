@@ -5,7 +5,7 @@
 // ---------------------------------------
 // A COMMERCIAL CONDITION. Not a payment.
 //
-// BOE requires 40% of the grand total as an advance before an order is worked.
+// BOE requires 40% of the Total before GST as an advance before an order is worked.
 // This module is about the employee DECLARING THE ADVANCE AMOUNT their PI is
 // being submitted under, and about management ACCEPTING or REFUSING a proposal
 // to start on less. Nothing here records, requests, verifies, links or
@@ -17,7 +17,7 @@
 // is a figure; "40%" is what that figure comes to. So the employee types rupees,
 // the screen shows the percentage they work out to, and whether the declaration
 // is standard or an exception is decided by comparing the AMOUNT with 40% of the
-// grand total — never by comparing a percentage that has been rounded for
+// Total before GST — never by comparing a percentage that has been rounded for
 // display.
 //
 // WHY A MODULE AND NOT INLINE CONDITIONS
@@ -36,7 +36,7 @@
 //   submit_order_submission_with_advance_amount
 //                                         owner (for an exception),
 //                                         orders.create, draft/needs_changes,
-//                                         a stored grand total, and the whole
+//                                         a stored Total before GST, and the whole
 //                                         amount and reason validation
 //   approve_pi_advance_exception          orders.approve_advance_exception,
 //                                         submitted, pending only
@@ -151,9 +151,9 @@ export const ADVANCE_CHOICE_LABEL: Record<AdvanceChoice, string> = {
 }
 
 export const ADVANCE_STANDARD_HINT =
-  `Declare the amount agreed. It must be at least ${ADVANCE_STANDARD_PERCENT}% of the grand total, and may be more.`
+  `Declare the amount agreed. It must be at least ${ADVANCE_STANDARD_PERCENT}% of the Total before GST, and may be more.`
 export const ADVANCE_REDUCED_HINT =
-  `Declare an amount above ₹0 and below ${ADVANCE_STANDARD_PERCENT}% of the grand total. Management decides before this PI can go further.`
+  `Declare an amount above ₹0 and below ${ADVANCE_STANDARD_PERCENT}% of the Total before GST. Management decides before this PI can go further.`
 /**
  * What choosing "No advance" actually commits somebody to.
  *
@@ -174,7 +174,7 @@ export const ADVANCE_AMOUNT_LABEL = 'Advance amount *'
 /** The same field where it is STATED rather than typed into. No asterisk. */
 export const ADVANCE_AMOUNT_READONLY_LABEL = 'Advance amount'
 /** The reference figure the standard choice is measured against. */
-export const ADVANCE_STANDARD_REFERENCE_LABEL = `Calculated ${ADVANCE_STANDARD_PERCENT}% of grand total`
+export const ADVANCE_STANDARD_REFERENCE_LABEL = `Calculated ${ADVANCE_STANDARD_PERCENT}% of Total before GST`
 export const ADVANCE_AMOUNT_PLACEHOLDER = 'e.g. 1014800.00'
 export const ADVANCE_REASON_LABEL = 'Reason for exception *'
 export const ADVANCE_REASON_PLACEHOLDER =
@@ -231,7 +231,7 @@ export const REJECT_EXCEPTION_REASON_REQUIRED =
  * rather than repeating the words above it.
  */
 export const ADVANCE_REJECTED_INSTRUCTION =
-  `Submit again declaring at least ${ADVANCE_STANDARD_PERCENT}% of the grand total, or propose a different exception with a new reason.`
+  `Submit again declaring at least ${ADVANCE_STANDARD_PERCENT}% of the Total before GST, or propose a different exception with a new reason.`
 
 // ── The persisted state, as the page reads it ─────────────────────────────────
 
@@ -242,7 +242,7 @@ export type PersistedAdvance = {
    * The AMOUNT the employee declared, in rupees.
    *
    * NULL IS NEVER ZERO. Null means no amount was declared — a record written
-   * before this column existed, or one whose grand total was replaced afterwards
+   * before this column existed, or one whose Total before GST was replaced afterwards
    * — and effectiveAdvanceAmount() reads it as whatever the record has always
    * meant. Zero is the "No advance" declaration and is a figure somebody chose.
    */
@@ -320,9 +320,9 @@ function toPaise(rupees: number): number {
  * ceiling is taken on an exact value rather than on a float a hair either side
  * of one.
  */
-export function standardAdvanceAmount(grandTotal: number | null): number | null {
-  if (grandTotal === null || !Number.isFinite(grandTotal) || grandTotal < 0) return null
-  const numerator = toPaise(grandTotal) * 2
+export function standardAdvanceAmount(totalBeforeGst: number | null): number | null {
+  if (totalBeforeGst === null || !Number.isFinite(totalBeforeGst) || totalBeforeGst < 0) return null
+  const numerator = toPaise(totalBeforeGst) * 2
   const paise = Math.floor(numerator / 5) + (numerator % 5 === 0 ? 0 : 1)
   return paise / 100
 }
@@ -330,7 +330,7 @@ export function standardAdvanceAmount(grandTotal: number | null): number | null 
 /**
  * The percentage an amount comes to, TRUNCATED to two decimal places.
  *
- * TRUNCATED AND NEVER ROUNDED, for one reason: ₹39,999.99 against a grand total
+ * TRUNCATED AND NEVER ROUNDED, for one reason: ₹39,999.99 against a Total before GST
  * of ₹1,00,000 is 39.99999%, which ROUNDS to 40.00 — a figure that would claim
  * the standard requirement is met by an amount that does not meet it. Truncation
  * cannot overstate.
@@ -339,13 +339,13 @@ export function standardAdvanceAmount(grandTotal: number | null): number | null 
  * nothing is not a number, and 0 ÷ 0 is not 0%.
  */
 export function derivedAdvancePercent(
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
   amount: number | null,
 ): number | null {
-  if (grandTotal === null || amount === null) return null
-  if (!Number.isFinite(grandTotal) || !Number.isFinite(amount)) return null
-  if (grandTotal <= 0) return null
-  return Math.trunc((toPaise(amount) * 10000) / toPaise(grandTotal)) / 100
+  if (totalBeforeGst === null || amount === null) return null
+  if (!Number.isFinite(totalBeforeGst) || !Number.isFinite(amount)) return null
+  if (totalBeforeGst <= 0) return null
+  return Math.trunc((toPaise(amount) * 10000) / toPaise(totalBeforeGst)) / 100
 }
 
 /**
@@ -356,7 +356,7 @@ export function derivedAdvancePercent(
  * order_submission_effective_advance_amount:
  *
  *   an amount is stored          →  that amount, exactly as declared
- *   'standard' with no amount    →  the standard 40% of the current grand total
+ *   'standard' with no amount    →  the standard 40% of the current Total before GST
  *                                   — what the record has always meant
  *   'exception' with no amount   →  the stored percentage of the current grand
  *                                   total — what the record has always meant
@@ -369,14 +369,14 @@ export function derivedAdvancePercent(
  */
 export function effectiveAdvanceAmount(
   advance: PersistedAdvance,
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
 ): number | null {
   const declared = advanceNumber(advance.advance_declared_amount)
   if (declared !== null) return declared
   const condition = asCondition(advance.advance_condition)
-  if (condition === 'standard') return standardAdvanceAmount(grandTotal)
+  if (condition === 'standard') return standardAdvanceAmount(totalBeforeGst)
   if (condition === 'exception') {
-    return computeAdvanceAmount(grandTotal, advanceNumber(advance.advance_exception_percent))
+    return computeAdvanceAmount(totalBeforeGst, advanceNumber(advance.advance_exception_percent))
   }
   return null
 }
@@ -427,7 +427,7 @@ export type AdvanceView = {
   declaredPercentLabel: string | null
   /** The proposed percentage, when there is an exception. */
   exceptionPercentLabel: string | null
-  /** The proposed advance in rupees, derived from the CURRENT grand total. */
+  /** The proposed advance in rupees, derived from the CURRENT Total before GST. */
   exceptionAmount: string | null
   /** True only for a ₹0 proposal, which needs its meaning spelled out. */
   isZeroPercent: boolean
@@ -448,18 +448,18 @@ export type AdvanceView = {
 /**
  * Everything the three screens print about one record's advance condition.
  *
- * THE RUPEE FIGURES ARE DERIVED, ALWAYS, from the grand total passed in — which
+ * THE RUPEE FIGURES ARE DERIVED, ALWAYS, from the Total before GST passed in — which
  * is the CURRENT persisted one. An approved exception is a decision about a
  * PERCENTAGE, so when a corrected PI changes the total, the figure shown moves
  * with it rather than reporting an amount nobody agreed to. That is also why the
  * database stores no amount to disagree with.
  *
- * A grand total of null yields em dashes rather than zeroes: an unknown amount
+ * A Total before GST of null yields em dashes rather than zeroes: an unknown amount
  * is not ₹0, and the submit path refuses to declare anything against one.
  */
 export function describeAdvance(
   advance: PersistedAdvance,
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
 ): AdvanceView {
   const condition = asCondition(advance.advance_condition)
   const status = asStatus(advance.advance_exception_status)
@@ -470,11 +470,11 @@ export function describeAdvance(
   // THE REQUIREMENT ITSELF, taken as the ceiling: the smallest real figure that
   // satisfies "at least 40%", which is what the standard choice is measured
   // against and what the dialog pre-fills.
-  const standard = standardAdvanceAmount(grandTotal)
+  const standard = standardAdvanceAmount(totalBeforeGst)
   // THE DECLARED FIGURE, WHEN THERE IS ONE, and what the record has always meant
   // when there is not. One rule, in effectiveAdvanceAmount, mirrored in SQL.
-  const declared = effectiveAdvanceAmount(advance, grandTotal)
-  const declaredPercent = derivedAdvancePercent(grandTotal, declared)
+  const declared = effectiveAdvanceAmount(advance, totalBeforeGst)
+  const declaredPercent = derivedAdvancePercent(totalBeforeGst, declared)
   const proposed = condition === 'exception' ? declared : null
   // ZERO IS READ OFF THE AMOUNT, not off the percentage. ₹5 against a ₹10,00,000
   // total truncates to 0.00% and is still a real advance somebody declared, so
@@ -600,11 +600,11 @@ export const ADVANCE_AMOUNT_NEGATIVE = 'The advance amount cannot be negative.'
 
 /** The standard route's two bounds, worded with the figures they compare against. */
 export const advanceBelowStandardMessage = (minimum: string): string =>
-  `A standard advance must be at least ${minimum}, which is ${ADVANCE_STANDARD_PERCENT}% of the grand total. Select “${ADVANCE_REDUCED_LABEL}” to declare less.`
+  `A standard advance must be at least ${minimum}, which is ${ADVANCE_STANDARD_PERCENT}% of the Total before GST. Select “${ADVANCE_REDUCED_LABEL}” to declare less.`
 export const advanceAboveTotalMessage = (total: string): string =>
   `The advance cannot be more than the grand total of ${total}.`
 export const advanceNotReducedMessage = (minimum: string): string =>
-  `A reduced advance must be below ${minimum}, which is ${ADVANCE_STANDARD_PERCENT}% of the grand total. Select “${ADVANCE_STANDARD_LABEL}” to declare that much or more.`
+  `A reduced advance must be below ${minimum}, which is ${ADVANCE_STANDARD_PERCENT}% of the Total before GST. Select “${ADVANCE_STANDARD_LABEL}” to declare that much or more.`
 
 /**
  * Zero typed into Reduced advance.
@@ -620,16 +620,16 @@ export const ADVANCE_REASON_REQUIRED = 'Say why a lower advance is being propose
 export const ADVANCE_REASON_TOO_LONG =
   `Please shorten the reason to ${ADVANCE_REASON_MAX_LENGTH} characters or fewer.`
 export const ADVANCE_TOTAL_MISSING =
-  'This PI has no stored grand total, so an advance cannot be declared against it. Upload a corrected PI with Change PI.'
+  'This PI has no stored Total before GST, so an advance cannot be declared against it. Upload a corrected PI with Change PI.'
 /**
- * A grand total of zero.
+ * A Total before GST of zero.
  *
  * Only the standard route survives it — ₹0 of ₹0 is the whole of it — because an
  * exception is a figure BELOW a threshold that is itself zero, and there is no
  * such figure. The database refuses the same case by name.
  */
 export const ADVANCE_TOTAL_NOT_POSITIVE =
-  'This PI has a grand total of ₹0, so no advance exception can be declared against it.'
+  'This PI has a Total before GST of ₹0, so no advance exception can be declared against it.'
 
 /**
  * How many decimal places a typed figure actually carries.
@@ -713,7 +713,7 @@ function parseExceptionReason(reason: string): { ok: true; reason: string } | { 
  * so the record and the person agree about what was asked for. Nothing is
  * rounded, coerced or silently reinterpreted.
  *
- * A MISSING GRAND TOTAL FAILS CLOSED, for every choice. The employee must not be
+ * A MISSING TOTAL BEFORE GST FAILS CLOSED, for every choice. The employee must not be
  * allowed to declare an advance against an amount nobody knows — 40% of an
  * unknown is not a figure, and neither is ₹0 of one.
  */
@@ -722,20 +722,23 @@ export function validateAdvanceDeclaration(input: {
   /** Exactly what is in the amount box. Never a pre-parsed number. */
   amountText: string
   reason: string
-  /** The PERSISTED grand total. Null means the workbook printed no figure. */
+  /** The PERSISTED Total before GST — what the 40% is taken of. Null means the workbook printed no figure. */
+  totalBeforeGst: number | null
+  /** The PERSISTED Grand Total — the ceiling a payment cannot exceed. Null fails closed. */
   grandTotal: number | null
 }): AdvanceValidation {
-  if (input.grandTotal === null || !Number.isFinite(input.grandTotal)) {
+  if (input.totalBeforeGst === null || !Number.isFinite(input.totalBeforeGst)
+    || input.grandTotal === null || !Number.isFinite(input.grandTotal)) {
     return { ok: false, message: ADVANCE_TOTAL_MISSING }
   }
-  const minimum = standardAdvanceAmount(input.grandTotal)
+  const minimum = standardAdvanceAmount(input.totalBeforeGst)
   if (minimum === null) return { ok: false, message: ADVANCE_TOTAL_MISSING }
 
   // No advance carries no typed amount at all: the figure IS the choice. Whatever
   // is sitting in the box from a moment spent on another option is not read, so
   // it cannot contradict the declaration being made.
   if (input.choice === 'none') {
-    if (input.grandTotal <= 0) return { ok: false, message: ADVANCE_TOTAL_NOT_POSITIVE }
+    if (input.totalBeforeGst <= 0) return { ok: false, message: ADVANCE_TOTAL_NOT_POSITIVE }
     const reason = parseExceptionReason(input.reason)
     if (!reason.ok) return { ok: false, message: reason.message }
     return { ok: true, value: { condition: 'exception', amount: 0, reason: reason.reason } }
@@ -744,6 +747,8 @@ export function validateAdvanceDeclaration(input: {
   const parsed = parseDeclaredAmount(input.amountText)
   if (!parsed.ok) return { ok: false, message: parsed.message }
 
+  // THE CEILING IS WHAT IS OWED, GST INCLUDED. The 40% is taken of the Total
+  // before GST, but a client may pay up to the Grand Total.
   if (parsed.amount > input.grandTotal) {
     return { ok: false, message: advanceAboveTotalMessage(formatInr(input.grandTotal)) }
   }
@@ -755,7 +760,7 @@ export function validateAdvanceDeclaration(input: {
     return { ok: true, value: { condition: 'standard', amount: parsed.amount } }
   }
 
-  if (input.grandTotal <= 0) return { ok: false, message: ADVANCE_TOTAL_NOT_POSITIVE }
+  if (input.totalBeforeGst <= 0) return { ok: false, message: ADVANCE_TOTAL_NOT_POSITIVE }
   if (parsed.amount === 0) return { ok: false, message: ADVANCE_AMOUNT_ZERO_USE_NONE }
   if (parsed.amount >= minimum) {
     return { ok: false, message: advanceNotReducedMessage(formatInr(minimum)) }
@@ -803,9 +808,9 @@ export function advanceAmountText(amount: number | null): string {
  */
 export function initialAdvanceSelection(
   advance: PersistedAdvance,
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
 ): AdvanceDeclaration {
-  const declared = effectiveAdvanceAmount(advance, grandTotal)
+  const declared = effectiveAdvanceAmount(advance, totalBeforeGst)
 
   if (asCondition(advance.advance_condition) === 'exception') {
     const reason = (advance.advance_exception_reason ?? '').trim()
@@ -821,7 +826,7 @@ export function initialAdvanceSelection(
     amountText: advanceAmountText(
       asCondition(advance.advance_condition) === 'standard' && declared !== null
         ? declared
-        : standardAdvanceAmount(grandTotal),
+        : standardAdvanceAmount(totalBeforeGst),
     ),
     reason: '',
   }
@@ -850,13 +855,13 @@ export function initialAdvanceSelection(
 export function advanceChoiceChange(
   current: AdvanceDeclaration,
   next: AdvanceChoice,
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
 ): AdvanceDeclaration {
   if (next === current.choice) return current
   if (next === 'standard') {
     return {
       choice: 'standard',
-      amountText: advanceAmountText(standardAdvanceAmount(grandTotal)),
+      amountText: advanceAmountText(standardAdvanceAmount(totalBeforeGst)),
       reason: '',
     }
   }
@@ -891,10 +896,10 @@ export function advanceDeclarationUntouched(declaration: AdvanceDeclaration): bo
  */
 export function previewAdvancePercent(
   amountText: string,
-  grandTotal: number | null,
+  totalBeforeGst: number | null,
 ): string {
   const parsed = parseDeclaredAmount(amountText)
   if (!parsed.ok) return '—'
-  const percent = derivedAdvancePercent(grandTotal, parsed.amount)
+  const percent = derivedAdvancePercent(totalBeforeGst, parsed.amount)
   return percent === null ? '—' : `${formatPercent(percent)}%`
 }

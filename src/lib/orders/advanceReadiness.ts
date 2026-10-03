@@ -26,6 +26,8 @@ export type AdvanceHold = {
 
 export type AdvanceReadiness = {
   order_value: number | string | null
+  /** The Total before GST — what percent, required and shortfall are taken of. Null: unknown. */
+  advance_base?: number | string | null
   /** False for NULL, zero or NaN: nothing to measure the advance against. */
   value_known?: boolean
   verified: number | string
@@ -115,8 +117,8 @@ export function advanceHoldSentence(h: AdvanceHold | null | undefined, formatWhe
   const when = formatWhen && h.held_at ? ` on ${formatWhen(h.held_at)}` : ''
   const why = holdCauseText(h.cause, h.previous_order_value, h.order_value)
   const where = h.percent == null
-    ? 'no Order value is on record to measure the advance against'
-    : `the verified advance fell to ${percentText(h.percent)} of ${rupees(h.order_value)}`
+    ? 'no Total before GST is on record to measure the advance against'
+    : `the verified advance fell to ${percentText(h.percent)} of the Total before GST`
   return `Production readiness was removed${when} because ${why}: ${where}.`
 }
 
@@ -125,8 +127,8 @@ export function advanceGateView(r: AdvanceReadiness | null, input: { versionNumb
   const threshold = percentText(r.threshold_percent)
   const valueKnown = r.value_known !== false
   const figures = valueKnown
-    ? `${percentText(r.percent)} verified — ${rupees(r.verified)} of the Order value ${rupees(r.order_value)}.`
-    : `No Order value is on record, so the advance cannot be measured (${rupees(r.verified)} verified).`
+    ? `${percentText(r.percent)} verified — ${rupees(r.verified)} of the Total before GST ${rupees(r.advance_base ?? null)}.`
+    : `No Total before GST is on record, so the advance cannot be measured (${rupees(r.verified)} verified).`
   if (r.ready && r.exception) {
     const who = input.approverName ?? 'an administrator'
     const when = input.formatWhen && r.exception.approved_at ? ` on ${input.formatWhen(r.exception.approved_at)}` : ''

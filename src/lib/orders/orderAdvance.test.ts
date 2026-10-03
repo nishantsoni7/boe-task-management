@@ -46,7 +46,7 @@ type Row = {
  * is the legacy direct-link case — and attributeToTarget gives it a zero share,
  * which is the canonical rule. Nothing here bypasses it.
  */
-function position(rows: Row[], orderValue: number | null) {
+function position(rows: Row[], orderValue: number | null, totalBeforeGst: number | null = orderValue) {
   const merged = rows.map(r => ({
     id: r.id, client_name: 'Kalyan', amount: r.amount,
     payment_date: '2026-09-09', payment_mode: 'neft', order_number: '0524',
@@ -68,11 +68,14 @@ function position(rows: Row[], orderValue: number | null) {
       allocationTotals: new Map(rows.map(r => [r.id, r.allocatedToThisOrder ?? 0])),
     } as never,
   )
-  return buildOrderFinancePosition(exact, orderValue)
+  return buildOrderFinancePosition(exact, orderValue, totalBeforeGst)
 }
 
-const standing = (rows: Row[], orderValue: number | null) =>
-  advanceStanding({ finance: position(rows, orderValue), formatAmount: formatMoney, formatPercent })
+// Unless a test passes one, the advance base (Total before GST) is the same
+// figure as the value: the fixtures predate the base and their arithmetic is
+// unchanged. The tests that distinguish the two pass both explicitly.
+const standing = (rows: Row[], orderValue: number | null, totalBeforeGst: number | null = orderValue) =>
+  advanceStanding({ finance: position(rows, orderValue, totalBeforeGst), formatAmount: formatMoney, formatPercent })
 
 const verified = (id: string, amount: number, allocated: number | null = amount): Row =>
   ({ id, amount, status: 'approved_linked', allocatedToThisOrder: allocated })
@@ -142,12 +145,25 @@ describe('what counts toward the advance', () => {
     assert.equal(s.percent, '40.00')
   })
 
-  test('the denominator is the FINAL ORDER VALUE, not the product value', () => {
-    // 4,00,000 of an Order worth 10,00,000 is 40%. If the product subtotal
-    // (say 8,00,000) were used it would read 50%.
+  test('the denominator is the TOTAL BEFORE GST, not the product value', () => {
+    // 4,00,000 of a Total before GST of 10,00,000 is 40%. If the product
+    // subtotal (say 8,00,000) were used it would read 50%.
     const s = standing([verified('p1', 400000)], 1000000)
     assert.equal(s.percent, '40.00')
     assert.equal(s.orderValue, formatMoney(1000000))
+  })
+
+  test('THE DENOMINATOR IS NOT THE GRAND TOTAL: 48,000 of 1,20,000 before GST is 40%, though the Order value is 1,41,600', () => {
+    const s = standing([verified('p1', 48000)], 141600, 120000)
+    assert.equal(s.percent, '40.00')
+    assert.equal(s.orderValue, formatMoney(120000), 'the card prints the base it measured against')
+    assert.notEqual(s.orderValue, formatMoney(141600))
+    assert.equal(s.classification?.label, ADVANCE_SAFE_LABEL)
+  })
+
+  test('the 35% line is judged against the base: 41,999 is Risky, 42,000 is Safe, of a 1,20,000 base', () => {
+    assert.equal(standing([verified('p1', 41999)], 141600, 120000).classification?.label, ADVANCE_RISKY_LABEL)
+    assert.equal(standing([verified('p1', 42000)], 141600, 120000).classification?.label, ADVANCE_SAFE_LABEL)
   })
 })
 
@@ -217,6 +233,15 @@ describe('the figures that cannot be derived', () => {
     assert.equal(s.classification, null, 'and no Risky/Safe claim is made')
   })
 
+  test('AN ORDER VALUE WITHOUT A TOTAL BEFORE GST IS NOT AVAILABLE — it never falls back to the Grand Total', () => {
+    const s = standing([verified('p1', 48000)], 141600, null)
+    assert.equal(s.percent, null)
+    assert.equal(s.percentLabel, ADVANCE_NOT_AVAILABLE)
+    assert.equal(s.orderValue, null)
+    assert.equal(s.classification, null)
+    assert.equal(s.verifiedAmount, formatMoney(48000))
+  })
+
   test('an Order with NO value says the same, and still states what was received', () => {
     const s = standing([verified('p1', 100000)], null)
     assert.equal(s.percentLabel, ADVANCE_NOT_AVAILABLE)
@@ -225,7 +250,7 @@ describe('the figures that cannot be derived', () => {
   })
 
   test('the note says WHY a percentage is missing rather than leaving a blank', () => {
-    assert.match(standing([], 0).note, /no value/i)
+    assert.match(standing([], 0).note, /no total before gst/i)
     assert.match(standing([verified('p1', 1)], 1000).note, /verified/i)
   })
 

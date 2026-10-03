@@ -26,12 +26,15 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   BOE_STANDARD_COMMERCIAL_TERMS,
   COMMERCIAL_TERMS_ABSENT,
-  FABRIC_RESPONSIBILITY_UNANSWERED,
 } from '@/lib/orders/piTerms'
+import {
+  AMOUNT_MASK, applyAmountMask, hasAmount, maskAmounts, type MaskMemory,
+} from '@/lib/orders/amountMask'
 
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
+  BREAKDOWN_TITLE,
   PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
   PiAdvanceBand,
@@ -70,6 +73,10 @@ import {
   buildDateSummary,
   DATE_SET_AT_SUBMISSION,
   PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL,
+  BREAKDOWN_FABRIC_BY_BOE,
+  BREAKDOWN_FABRIC_BY_CLIENT,
+  BREAKDOWN_FABRIC_NOT_SELECTED,
+  BREAKDOWN_FABRIC_UNANSWERED,
   summaryCommercialFigures,
   telLink,
   type PaymentStatusView,
@@ -999,32 +1006,32 @@ const metricTag = (html: string, key: 'confirmed' | 'awaiting'): string | null =
   html.match(new RegExp(`<(button|div)\\b[^>]*data-metric="${key}"`))?.[1] ?? null
 
 describe('payment status: how much has been received, and what it is made of', () => {
-  test('the headline is received — confirmed plus awaiting — as a share of the full PI total', () => {
+  test('the headline is received — confirmed plus awaiting — as a share of the Total before GST', () => {
     const t = text(statusHtml())
     assert.ok(t.includes(PAYMENT_STATUS_TITLE))
     assert.ok(t.includes('41.94% received'))
-    assert.ok(t.includes('₹4,95,000 received of ₹11,80,000 PI Total'))
+    assert.ok(t.includes('₹4,95,000 received of ₹11,80,000 Total before GST'))
     assert.ok(!t.includes('Required') && !t.includes('₹4,72,000'), 'the requirement is not a figure on this card')
     assert.ok(!t.includes('Confirmed %'), 'the verified-only headline is gone')
   })
 
   test('beside it, Confirmed and Awaiting verification — each an amount, a count and a share', () => {
     const t = text(statusHtml())
-    assert.ok(t.includes('Confirmed ₹2,50,000 2 payments · 21.18% of PI Total'))
-    assert.ok(t.includes('Awaiting verification ₹2,45,000 1 payment · 20.76% of PI Total'))
+    assert.ok(t.includes('Confirmed ₹2,50,000 2 payments · 21.18% of Total before GST'))
+    assert.ok(t.includes('Awaiting verification ₹2,45,000 1 payment · 20.76% of Total before GST'))
     assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'money waiting on Finance is never called failed or unpaid')
   })
 
   test('every figure comes off the view — nothing is re-added in the browser', () => {
     const t = text(statusHtml({ status: statusView({ received: '₹9,99,999', receivedPercent: '12.34%' }) }))
-    assert.ok(t.includes('12.34% received') && t.includes('₹9,99,999 received of ₹11,80,000 PI Total'),
+    assert.ok(t.includes('12.34% received') && t.includes('₹9,99,999 received of ₹11,80,000 Total before GST'),
       'deliberately inconsistent figures survive unchanged')
   })
 
   test('no payments: 0% received, two quiet parts, and the whole track red', () => {
     const html = statusHtml({ status: statusView(NO_PAYMENTS) })
     const t = text(html)
-    assert.ok(t.includes('0% received') && t.includes('₹0 received of ₹11,80,000 PI Total'))
+    assert.ok(t.includes('0% received') && t.includes('₹0 received of ₹11,80,000 Total before GST'))
     assert.ok(t.includes('No confirmed payments yet') && t.includes('Nothing awaiting verification'))
     assert.equal(metricTag(html, 'confirmed'), 'div')
     assert.equal(metricTag(html, 'awaiting'), 'div')
@@ -1107,7 +1114,7 @@ describe('payment status: how much has been received, and what it is made of', (
     assert.equal(view.receivedBarPercent, 100)
     const html = statusHtml({ status: view })
     assert.ok(text(html).includes('105.93% received'), 'the percentage is the database’s, uncapped')
-    assert.ok(text(html).includes('₹12,50,000 received of ₹11,80,000 PI Total'))
+    assert.ok(text(html).includes('₹12,50,000 received of ₹11,80,000 Total before GST'))
     assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
     assert.equal(segment(html, 'unpaid'), null)
   })
@@ -1124,7 +1131,7 @@ describe('payment status: how much has been received, and what it is made of', (
 
   test('a PI with no total leads with the amount rather than a dash', () => {
     const t = text(statusHtml({ status: statusView({ receivedPercent: '—', receivedPercentValue: null, total: '—' }) }))
-    assert.ok(t.includes('₹4,95,000 received') && t.includes('PI Total not available'))
+    assert.ok(t.includes('₹4,95,000 received') && t.includes('Total before GST not available'))
   })
 
   test('an unknown requirement is a dash, and no note or tick label is invented for it', () => {
@@ -1300,7 +1307,7 @@ describe('payment status opens OPEN, and is still a real disclosure', () => {
     const t = text(open)
     assert.ok(open.includes('aria-expanded="true"'))
     assert.ok(!t.includes(PAYMENT_COLLAPSED_HINT), 'the hint has done its job and gone')
-    for (const part of ['received', 'Confirmed', 'Awaiting verification', 'PI Total']) {
+    for (const part of ['received', 'Confirmed', 'Awaiting verification', 'Total before GST']) {
       assert.ok(t.includes(part), `${part} is back`)
     }
     assert.ok(open.includes('role="progressbar"'))
@@ -1723,143 +1730,359 @@ describe('the workflow panel does not repeat what the context row already says',
 })
 
 // ── 6a. The commercial breakdown card ─────────────────────────────────────────
+//
+// THE CARD IS NINE LINES OF ARITHMETIC, in the order the arithmetic runs, and it
+// ENDS at the Grand Total. There is no big total in its head any more: the
+// figure the card exists to reach is its last, largest line.
 
-describe('the commercial breakdown leads with the PI total and keeps only lines that say something', () => {
-  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
-  const view = buildBreakdownView(rows)
-  const html = renderToStaticMarkup(<PiCommercialBreakdown view={view} />)
+/** A PI that charges for everything: the worked example from the brief. */
+const WORKED_EXAMPLE: Partial<PersistedSubmission> = {
+  gross_product_amount: 100000,
+  discount_amount: 10000,
+  subtotal_after_discount: 90000,
+  fabric_cost: 20000, fabric_cost_meaning: 'numeric', fabric_cost_text: null,
+  packing_cost: 5000, packing_cost_meaning: 'numeric', packing_cost_text: null,
+  transportation_amount: 5000, transportation_text: null,
+  total_before_gst: 120000,
+  gst_amount: 21600,
+  grand_total: 141600,
+}
 
-  test('the PI total is large, first, and the builder’s own string', () => {
-    const total = rows.find(r => r.key === 'grandTotal')
-    assert.ok(total)
-    assert.equal(view.total?.value, total.value)
-    assert.ok(html.includes(`class="pi-detail-breakdown-total-value">${total.value}<`))
-    assert.ok(html.indexOf('pi-detail-breakdown-total') < html.indexOf('pi-detail-breakdown-rows'))
-    assert.ok(!view.rows.some(r => r.key === 'grandTotal'), 'and it is not repeated as a row')
+/** The card exactly as the page assembles it. */
+function breakdownCard(
+  over: Partial<PersistedSubmission> = {},
+  fabricResponsibility: string | null = 'boe',
+  card: { commercialTerms?: string | null; onEditTerms?: (() => void) | null } = {},
+) {
+  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission(over))))
+  const view = buildBreakdownView(rows, { fabricResponsibility })
+  const html = renderToStaticMarkup(<PiCommercialBreakdown view={view} {...card} />)
+  return { rows, view, html }
+}
+
+/** Every rendered row of the card: its classes, its label, its qualifier and its figure. */
+function renderedRows(html: string) {
+  const out: { classes: string[]; label: string; qualifier: string | null; value: string; valueClass: string }[] = []
+  const row = /<div class="(pi-detail-breakdown-row[^"]*)"><dt>(.*?)<\/dt><dd class="([^"]*)">(.*?)<\/dd><\/div>/g
+  for (const m of html.matchAll(row)) {
+    const qualifier = /<span class="pi-detail-breakdown-qualifier">(.*?)<\/span>/.exec(m[2])
+    out.push({
+      classes: m[1].split(' '),
+      label: m[2].replace(/<span class="pi-detail-breakdown-qualifier">.*?<\/span>/, ''),
+      qualifier: qualifier ? qualifier[1] : null,
+      value: m[4],
+      valueClass: m[3],
+    })
+  }
+  return out
+}
+
+/** The breakdown's own CSS rules, with line endings normalised. */
+const breakdownCss = (): string => pageCss().replace(/\r\n/g, '\n')
+
+/** The declared font-size, in px, of the rule whose selector is exactly `selector`. */
+function fontSizeOf(css: string, selector: string): number | null {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const rule = new RegExp(`(?:^|\\n)${escaped} \\{([^}]*)\\}`).exec(css)
+  const size = rule ? /font-size:\s*([\d.]+)px/.exec(rule[1]) : null
+  return size ? Number(size[1]) : null
+}
+
+const NINE_LABELS = [
+  'Product value, before discount',
+  'Discount',
+  'Subtotal, after discount',
+  'Fabric amount',
+  'Packaging',
+  'Transportation',
+  'Total before GST',
+  'GST',
+  'Grand Total',
+]
+
+describe('the commercial breakdown is nine lines of arithmetic that end at the Grand Total', () => {
+  const { rows, view, html } = breakdownCard()
+  const shown = renderedRows(html)
+
+  test('exactly nine rows, in the order the arithmetic runs, with these labels', () => {
+    assert.deepEqual(view.rows.map(r => r.key),
+      ['gross', 'discount', 'subtotal', 'fabric', 'packing', 'transportation', 'beforeGst', 'gst', 'grandTotal'])
+    assert.deepEqual(view.rows.map(r => r.label), NINE_LABELS)
+    assert.deepEqual(shown.map(r => r.label), NINE_LABELS, 'and the markup draws the same nine')
+    assert.equal((html.match(/class="pi-detail-breakdown-row[ "]/g) ?? []).length, 9,
+      'nothing else is a row: no fabric sentence, no total line')
+    assert.equal(PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL, 'Product value, before discount')
   })
 
-  test('every line shown is the shared builder’s string, character for character', () => {
-    for (const shown of view.rows) {
-      assert.equal(shown.value, rows.find(r => r.key === shown.key)?.value, shown.key)
+  test('the Grand Total is the LAST row, and the title is all that is left in the head', () => {
+    assert.equal(shown[shown.length - 1].label, 'Grand Total')
+    assert.equal(view.rows[view.rows.length - 1].key, 'grandTotal')
+    assert.ok(!('total' in view), 'the view no longer carries a separate total')
+    assert.ok(!html.includes('pi-detail-breakdown-total'), 'no large total in the head')
+    const head = html.slice(html.indexOf('<div class="pi-detail-breakdown-head">'), html.indexOf('<dl'))
+    assert.equal(text(head).trim(), BREAKDOWN_TITLE)
+    assert.equal((html.match(/Grand Total/g) ?? []).length, 1, 'said once, as the last row')
+  })
+
+  test('every figure is the shared builder’s string, character for character', () => {
+    for (const shownRow of view.rows) {
+      const built = rows.find(r => r.key === shownRow.key)
+      assert.ok(built, shownRow.key)
+      // The one transformation: a deduction is drawn with a leading minus.
+      const expected = shownRow.key === 'discount' && built.kind === 'amount' && built.value !== formatInr(0)
+        ? `−${built.value}`
+        : built.value
+      assert.equal(shownRow.value, expected, shownRow.key)
     }
+    assert.equal(rows.find(r => r.key === 'grandTotal')?.value, formatInr(GRAND_TOTAL))
+    assert.ok(!view.rows.some(r => r.key === 'advance') && !text(html).includes('Required advance'),
+      'and the advance is never a line of this calculation')
   })
 
-  test('no line the PI never stated, none marked not applicable, and never the advance', () => {
-    const keys = view.rows.map(r => r.key)
-    for (const hidden of rows.filter(r => r.kind === 'missing' || r.kind === 'notApplicable')) {
-      assert.ok(!keys.includes(hidden.key), `${hidden.key} says nothing here`)
+  test('the Grand Total is the most prominent line: its own class, and a larger size than any other row', () => {
+    const grand = shown.filter(r => r.classes.includes('pi-detail-breakdown-grand'))
+    assert.equal(grand.length, 1)
+    assert.equal(grand[0].label, 'Grand Total')
+    assert.equal(shown[shown.length - 1], grand[0])
+
+    const css = breakdownCss()
+    const grandSize = fontSizeOf(css, '.pi-detail-breakdown-grand dd')
+    assert.ok(grandSize !== null, 'the Grand Total figure has a size of its own')
+    for (const other of [
+      '.pi-detail-breakdown-row dt', '.pi-detail-breakdown-row dd', '.pi-detail-breakdown-title',
+      '.pi-detail-breakdown-grand dt', '.pi-detail-breakdown-qualifier',
+    ]) {
+      const size = fontSizeOf(css, other)
+      assert.ok(size !== null && grandSize > size, `${other} (${size}px) must be smaller than the Grand Total (${grandSize}px)`)
     }
-    assert.ok(!keys.includes('advance'))
-    assert.ok(!text(html).includes('Required advance'))
-    for (const kept of ['gross', 'discount', 'subtotal', 'beforeGst', 'gst']) {
-      assert.ok(keys.includes(kept), `${kept} is information and stays`)
-    }
+    // The cascade: the equally specific row rule comes first, the Grand Total rule after it.
+    assert.ok(css.indexOf('.pi-detail-breakdown-grand dd {') > css.indexOf('.pi-detail-breakdown-row dd {'))
   })
 
-  test('a zero discount and a subtotal identical to the product value are not repeated', () => {
-    const plain = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(persistedCommercial(
-      submission({ discount_amount: 0, subtotal_after_discount: 1000000 }))))).rows.map(r => r.key)
-    assert.ok(!plain.includes('discount'))
-    assert.ok(!plain.includes('subtotal'))
-    assert.ok(plain.includes('gross') && plain.includes('beforeGst'))
+  test('the Discount label and amount are red (#B42318) and the amount leads with a minus', () => {
+    const discount = shown[1]
+    assert.equal(discount.label, 'Discount')
+    assert.ok(discount.classes.includes('pi-detail-breakdown-deduction'))
+    assert.equal(shown.filter(r => r.classes.includes('pi-detail-breakdown-deduction')).length, 1,
+      'only the Discount line is a deduction')
+    assert.ok(discount.value.startsWith('−₹'), `"${discount.value}" must lead with a minus sign`)
+    assert.equal(discount.value, `−${formatInr(50000)}`)
+    const css = breakdownCss()
+    assert.match(css, /\.pi-detail-breakdown-deduction dt,\n\.pi-detail-breakdown-deduction dd \{[^}]*color: #B42318;/,
+      'both the label and the amount take the red')
+    // The red wins over the amount’s own colour: it is at least as specific and later.
+    assert.ok(css.indexOf('.pi-detail-breakdown-deduction dd') > css.indexOf('.pi-detail-breakdown-amount {'))
   })
 
-  test('product value is called what the commercial card calls it', () => {
-    assert.equal(view.rows[0].key, 'gross')
-    // The fixture carries a discount, so the gross row is the value BEFORE it:
-    // the card's Product value is the amount after the discount.
-    assert.equal(view.rows[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
-    const plain = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(persistedCommercial(
-      submission({ discount_amount: 0, subtotal_after_discount: 1000000 })))))
-    assert.equal(plain.rows[0].label, 'Product value', 'with no discount the two are one figure, one name')
+  test('a nil discount reads ₹0 with no minus sign', () => {
+    const { view: nil, html: nilHtml } = breakdownCard({ discount_amount: 0, subtotal_after_discount: 1000000 })
+    const discount = nil.rows[1]
+    assert.equal(discount.label, 'Discount')
+    assert.equal(discount.value, '₹0')
+    assert.ok(!renderedRows(nilHtml)[1].value.includes('−'))
+    assert.ok(!text(nilHtml).includes('−'), 'no minus sign anywhere on the card')
   })
 
-  test('amounts are figures, and tax opens the one group', () => {
-    assert.equal((html.match(/pi-detail-breakdown-subtotal/g) ?? []).length, 1)
-    // From the end of the row's opening tag, so the text starts at its label.
-    const subtotalRow = html.slice(html.indexOf('>', html.indexOf('pi-detail-breakdown-subtotal')) + 1)
-    assert.ok(text(subtotalRow).trim().startsWith('Total before GST'))
-    const css = pageCss()
+  test('dividers sit before Total before GST and before Grand Total, and nowhere else', () => {
+    assert.equal((html.match(/pi-detail-breakdown-subtotal/g) ?? []).length, 2,
+      'exactly two divider rows')
+    assert.deepEqual(shown.filter(r => r.classes.includes('pi-detail-breakdown-subtotal')).map(r => r.label),
+      ['Total before GST', 'Grand Total'])
+    const css = breakdownCss()
+    assert.ok(/\.pi-detail-breakdown-subtotal \{[^}]*border-top: 1px solid/.test(css), 'the divider is a hairline')
+  })
+
+  test('labels sit left and amounts right, as tabular figures', () => {
+    const css = breakdownCss()
     assert.ok(/\.pi-detail-breakdown-row \{[^}]*justify-content: space-between/.test(css))
     assert.ok(/\.pi-detail-breakdown-row dd \{[^}]*text-align: right/.test(css))
     assert.ok(/\.pi-detail-breakdown-amount \{[^}]*font-variant-numeric: tabular-nums/.test(css))
-    assert.ok(/\.pi-detail-breakdown-total-value \{[^}]*font-size: 24px/.test(css))
+    for (const amount of shown.filter(r => r.value.includes('₹'))) {
+      assert.equal(amount.valueClass, 'pi-detail-breakdown-amount', amount.label)
+    }
   })
 
-  test('a PI with no stated total says so, muted, rather than printing zero', () => {
-    const missing = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(persistedCommercial(
-      submission({ grand_total: null })))))
-    assert.ok(renderToStaticMarkup(<PiCommercialBreakdown view={missing} />)
-      .includes('class="pi-detail-breakdown-total-absent"'))
+  test('a figure the PI never stated reads “Not recorded”, in words — never ₹0', () => {
+    const { view: bare, html: bareHtml } = breakdownCard({
+      fabric_cost: null, fabric_cost_meaning: null, fabric_cost_text: null,
+      grand_total: null,
+    })
+    const byKey = Object.fromEntries(bare.rows.map(r => [r.key, r]))
+    assert.equal(byKey.fabric.value, 'Not recorded')
+    assert.equal(byKey.fabric.kind, 'missing')
+    assert.equal(byKey.grandTotal.value, 'Not recorded')
+    assert.equal(byKey.grandTotal.kind, 'missing')
+    const drawn = renderedRows(bareHtml)
+    assert.equal(drawn.length, 9, 'the line is still there')
+    assert.equal(drawn[3].valueClass, 'pi-detail-breakdown-word', 'a word, in the lighter weight')
+    assert.equal(drawn[8].value, 'Not recorded')
+    assert.notEqual(drawn[3].value, formatInr(0))
+    assert.notEqual(drawn[8].value, formatInr(0))
+  })
+
+  test('a row the builder did not supply at all is still drawn, as “Not recorded”', () => {
+    const sparse = buildBreakdownView(rows.filter(r => r.key !== 'gst'))
+    assert.equal(sparse.rows.length, 9)
+    assert.equal(sparse.rows[7].label, 'GST')
+    assert.equal(sparse.rows[7].value, 'Not recorded')
+    assert.equal(sparse.rows[7].kind, 'missing')
+  })
+
+  test('transportation written in words keeps its words; a quoted amount is an amount', () => {
+    assert.equal(view.rows[5].label, 'Transportation')
+    assert.equal(view.rows[5].value, 'as applicable')
+    assert.equal(shown[5].valueClass, 'pi-detail-breakdown-word')
+    const { view: quoted } = breakdownCard(WORKED_EXAMPLE)
+    assert.equal(quoted.rows[5].value, formatInr(5000))
+  })
+
+  test('a PI with no stated Grand Total says so rather than printing zero', () => {
+    const { html: missing } = breakdownCard({ grand_total: null })
+    const last = renderedRows(missing)[8]
+    assert.equal(last.label, 'Grand Total')
+    assert.equal(last.value, 'Not recorded')
+    assert.ok(!text(missing).includes('₹0 '), 'and not as a zero')
+  })
+
+  test('the product value is the same figure the Order page’s breakdown shows, however each names it', () => {
+    assert.equal(view.rows[0].key, 'gross')
+    assert.equal(view.rows[0].value, rows.find(r => r.key === 'gross')?.value)
+  })
+})
+
+describe('Hide amounts removes every rupee figure from the breakdown and nothing else', () => {
+  const { html } = breakdownCard(WORKED_EXAMPLE, 'client')
+
+  test('before masking the card really does carry the figures', () => {
+    for (const figure of ['−₹10,000', '₹1,20,000', '₹21,600', '₹1,41,600']) {
+      assert.ok(text(html).includes(figure), `${figure} is on the card`)
+    }
+    assert.ok(hasAmount(html))
+  })
+
+  test('maskAmounts leaves no rupee figure anywhere, the minus-signed discount and the Grand Total included', () => {
+    const masked = maskAmounts(html)
+    assert.equal(hasAmount(masked), false, 'no figure survives in the markup')
+    assert.equal(/₹\s?\d/.test(masked), false)
+    assert.equal(/\d,\d{2},\d{3}/.test(text(masked)), false, 'no grouped figure either')
+    for (const gone of ['10,000', '90,000', '20,000', '5,000', '1,20,000', '21,600', '1,41,600']) {
+      assert.ok(!masked.includes(gone), `${gone} must be hidden`)
+    }
+    assert.equal(masked.includes('−'), false, 'and the minus sign went with the figure it belonged to')
+    assert.ok(masked.includes(AMOUNT_MASK))
+  })
+
+  test('the labels and the fabric words stay readable', () => {
+    const masked = text(maskAmounts(html))
+    for (const label of NINE_LABELS) assert.ok(masked.includes(label), `${label} stays`)
+    assert.ok(masked.includes('Provided by client'))
+    assert.ok(masked.includes(BREAKDOWN_TITLE))
+    // One mask per hidden figure: eight amounts (the worded rows have none).
+    assert.equal((masked.match(/₹ ••••/g) ?? []).length, 9)
+  })
+
+  test('applyAmountMask over a rendered tree hides the same figures and restores them', () => {
+    // A minimal node tree of the rendered rows, the shape applyAmountMask walks.
+    const nodes = renderedRows(html).map(r => ({ nodeType: 3, nodeValue: r.value, childNodes: [] }) as never)
+    const root = { nodeType: 1, nodeValue: null, childNodes: nodes } as never
+    const memory: MaskMemory = new WeakMap()
+    applyAmountMask(root, true, memory)
+    for (const node of nodes as { nodeValue: string }[]) assert.equal(hasAmount(node.nodeValue), false, node.nodeValue)
+    applyAmountMask(root, false, memory)
+    assert.ok((nodes as { nodeValue: string }[]).some(n => n.nodeValue === '−₹10,000'), 'and Show amounts brings them back')
   })
 })
 
 // ── 6b. What the card says about the fabric and the terms ────────────────────
 
-describe('the breakdown states who provides the fabric, beside the figure', () => {
-  // A PI THAT ACTUALLY CHARGES FOR FABRIC. The default fixture leaves the
-  // cell not-applicable, which buildBreakdownView correctly drops — and the
-  // whole point of these assertions is where the statement lands RELATIVE TO
-  // the figure, so there has to be a figure.
-  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(
-    submission({ fabric_cost: 40000, fabric_cost_meaning: 'numeric', fabric_cost_text: null }))))
-  const view = buildBreakdownView(rows)
+describe('the breakdown states who provides the fabric, beneath the figure', () => {
+  const worked = (responsibility: string | null) => breakdownCard(WORKED_EXAMPLE, responsibility)
 
-  const card = (over: {
-    fabricResponsibility?: string | null
-    commercialTerms?: string | null
-  } = {}) => renderToStaticMarkup(
-    <PiCommercialBreakdown
-      view={view}
-      fabricResponsibility={'fabricResponsibility' in over ? over.fabricResponsibility : 'boe'}
-      commercialTerms={'commercialTerms' in over ? over.commercialTerms : BOE_STANDARD_COMMERCIAL_TERMS}
-    />)
-
-  test('the sentence sits DIRECTLY under the fabric cost it explains', () => {
-    const html = card({ fabricResponsibility: 'client' })
-    // A figure and the sentence that says what it means have to be read
-    // together. 'Fabric cost Rs. 40,000' six lines above 'Fabric will be
-    // provided by client' is two facts a reader has to assemble, and the
-    // assembly is where they get it wrong.
-    const fabricRow = html.indexOf('Fabric cost')
-    assert.notEqual(fabricRow, -1, 'the fixture must carry a fabric line')
-    const statement = html.indexOf('Fabric will be provided by client.')
-    assert.ok(statement > fabricRow, 'the statement follows its figure')
-    // Nothing else between them: the very next row is the statement.
-    const between = text(html.slice(fabricRow, statement))
-    assert.ok(!/Packing|Transportation|GST|Grand Total/.test(between),
-      'no other line comes between the fabric cost and what it means')
+  test('the worked example: the fabric amount is shown, “Provided by client” is beneath it, and it stays inside the total', () => {
+    const { view, html } = worked('client')
+    const drawn = renderedRows(html)
+    assert.deepEqual(drawn.map(r => r.value), [
+      '₹1,00,000', '−₹10,000', '₹90,000', '₹20,000', '₹5,000', '₹5,000', '₹1,20,000', '₹21,600', '₹1,41,600',
+    ])
+    const fabric = drawn[3]
+    assert.equal(fabric.label, 'Fabric amount')
+    assert.equal(fabric.value, '₹20,000', 'the recorded amount is NOT dropped because the client supplies it')
+    assert.equal(fabric.qualifier, 'Provided by client')
+    assert.equal(view.rows[3].qualifier, BREAKDOWN_FABRIC_BY_CLIENT)
+    // The qualifier is inside the fabric row’s own label, i.e. beside/beneath its figure.
+    assert.ok(html.includes('<dt>Fabric amount<span class="pi-detail-breakdown-qualifier">Provided by client</span></dt><dd class="pi-detail-breakdown-amount">₹20,000</dd>'))
+    // And the fabric amount is still INSIDE the Total before GST: 90,000 + 20,000 + 5,000 + 5,000.
+    assert.equal(90000 + 20000 + 5000 + 5000, 120000)
+    assert.equal(drawn[6].label, 'Total before GST')
+    assert.equal(drawn[6].value, '₹1,20,000')
+    assert.equal(drawn[7].value, '₹21,600')
+    assert.equal(drawn[8].value, '₹1,41,600')
+    assert.equal(120000 + 21600, 141600)
   })
 
-  test('each of the three answers prints its own sentence', () => {
-    assert.ok(text(card({ fabricResponsibility: 'boe' })).includes('Fabric will be provided by BOE.'))
-    assert.ok(text(card({ fabricResponsibility: 'client' })).includes('Fabric will be provided by client.'))
-    assert.ok(text(card({ fabricResponsibility: 'not_selected' })).includes('Fabric not selected yet.'))
+  test('each answer is said as a qualifier on the fabric row, and on no other row', () => {
+    for (const [answer, words] of [
+      ['client', 'Provided by client'],
+      ['boe', 'Provided by BOE'],
+      ['not_selected', 'Fabric not selected yet'],
+      [null, 'Fabric responsibility not chosen yet'],
+    ] as const) {
+      const { html } = worked(answer)
+      const drawn = renderedRows(html)
+      assert.equal(drawn[3].qualifier, words, String(answer))
+      assert.equal(drawn.filter(r => r.qualifier !== null).length, 1, `${answer}: the fabric row is the only one qualified`)
+      assert.equal((html.match(/pi-detail-breakdown-qualifier/g) ?? []).length, 1)
+    }
+    assert.equal(BREAKDOWN_FABRIC_BY_BOE, 'Provided by BOE')
+    assert.equal(BREAKDOWN_FABRIC_NOT_SELECTED, 'Fabric not selected yet')
+    assert.equal(BREAKDOWN_FABRIC_UNANSWERED, 'Fabric responsibility not chosen yet')
+  })
+
+  test('there is no separate “Fabric responsibility” row or sentence any more', () => {
+    for (const answer of ['client', 'boe', 'not_selected', null]) {
+      const { html } = worked(answer)
+      const drawn = renderedRows(html)
+      assert.equal(drawn.length, 9, `${answer}: exactly nine rows, no extra`)
+      assert.ok(!drawn.some(r => /fabric responsibility/i.test(r.label)), 'no row is labelled Fabric responsibility')
+      assert.equal(/Fabric will be provided by/.test(html), false, 'the old sentence is gone')
+      assert.equal(/fabric responsibility<\/dt>/i.test(html), false)
+    }
+    // The component takes no such prop: the answer travels on the view.
+    const component = read(SECTIONS)
+    const props = component.slice(component.indexOf('export function PiCommercialBreakdown'), component.indexOf('const terms = commercialTermsNote'))
+    assert.equal(props.includes('fabricResponsibility'), false)
   })
 
   test('a client-supplied PI never reads as though BOE will source it', () => {
-    const said = text(card({ fabricResponsibility: 'client' }))
-    assert.ok(!said.includes('Fabric will be provided by BOE'))
+    const said = text(worked('client').html)
+    assert.ok(said.includes('Provided by client'))
+    assert.ok(!said.includes('Provided by BOE'))
   })
 
-  test('AN UNANSWERED PI SAYS SO, and does not borrow a deliberate answer', () => {
-    const said = text(card({ fabricResponsibility: null }))
-    assert.ok(said.includes(FABRIC_RESPONSIBILITY_UNANSWERED))
-    assert.ok(!said.includes('Fabric not selected yet'),
-      'nobody-has-answered must not print the answer "not selected yet"')
-    assert.ok(!said.includes('provided by'))
+  test('an unanswered PI says so, and does not borrow a deliberate answer', () => {
+    const said = text(worked(null).html)
+    assert.ok(said.includes(BREAKDOWN_FABRIC_UNANSWERED))
+    assert.ok(!said.includes('Fabric not selected yet'), 'nobody-has-answered must not print the answer “not selected yet”')
+    assert.ok(!said.includes('Provided by'))
   })
 
-  test('the question is answered even on a PI with no fabric line at all', () => {
-    const noFabric = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(
-      persistedCommercial(submission({ fabric_cost: null })))))
-    const html = renderToStaticMarkup(
-      <PiCommercialBreakdown view={noFabric} fabricResponsibility='client' />)
-    assert.ok(text(html).includes('Fabric will be provided by client.'),
-      'the answer is about the order, not about the line')
-    assert.equal((html.match(/Fabric will be provided by client\./g) ?? []).length, 1,
-      'and it is said exactly once')
+  test('a PI with no fabric figure still shows the line and still says who provides it', () => {
+    const { html } = breakdownCard({ fabric_cost: null, fabric_cost_meaning: null, fabric_cost_text: null }, 'client')
+    const fabric = renderedRows(html)[3]
+    assert.equal(fabric.label, 'Fabric amount')
+    assert.equal(fabric.value, 'Not recorded', 'and the missing amount is not ₹0')
+    assert.equal(fabric.qualifier, 'Provided by client')
   })
+
+  test('a fabric cell marked not applicable keeps those words — it is not a zero either', () => {
+    const { html } = breakdownCard({}, 'boe')
+    const fabric = renderedRows(html)[3]
+    assert.equal(fabric.value, 'Not applicable')
+    assert.notEqual(fabric.value, formatInr(0))
+  })
+
+  const card = (card: { commercialTerms?: string | null; onEditTerms?: (() => void) | null } = {}) =>
+    breakdownCard({}, 'boe', { commercialTerms: 'commercialTerms' in card ? card.commercialTerms : BOE_STANDARD_COMMERCIAL_TERMS, ...card }).html
 
   test('the terms are printed under the figures they qualify', () => {
     const html = card()
@@ -1880,11 +2103,9 @@ describe('the breakdown states who provides the fabric, beside the figure', () =
   })
 
   test('the Edit control appears only where the viewer may edit', () => {
-    const withEdit = renderToStaticMarkup(
-      <PiCommercialBreakdown view={view} fabricResponsibility='boe' onEditTerms={() => {}} />)
+    const withEdit = card({ onEditTerms: () => {} })
     assert.ok(withEdit.includes('aria-label="Edit PI terms and fabric responsibility"'))
-    const readOnly = renderToStaticMarkup(
-      <PiCommercialBreakdown view={view} fabricResponsibility='boe' onEditTerms={null} />)
+    const readOnly = card({ onEditTerms: null })
     assert.ok(!readOnly.includes('aria-label="Edit PI terms and fabric responsibility"'),
       'a control that cannot act must not be offered')
   })

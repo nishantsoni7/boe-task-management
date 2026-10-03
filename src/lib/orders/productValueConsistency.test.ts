@@ -18,6 +18,7 @@ import {
   summaryCommercialFigures,
   PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL,
 } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL as ORDER_PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL } from './orderCommercial'
 import { orderProductValue, PRODUCT_VALUE_BEFORE_DISCOUNT_DETAIL } from './orderWorkspace'
 import { orderCommercialLines } from './orderCommercial'
 
@@ -82,13 +83,38 @@ describe('an Order whose figure no longer matches its PI keeps its own, and says
   })
 })
 
-describe('with a discount, the gross line is called the value BEFORE it, in both breakdowns', () => {
-  test('the PI Draft’s Commercial breakdown', () => {
+describe('the gross line is the value BEFORE the discount, in both breakdowns, and it is the same figure', () => {
+  // The two surfaces name it a hair differently on purpose: the PI Draft's card
+  // is a nine-line calculation whose first line always reads "Product value,
+  // before discount" (comma), while the Order page's list keeps its own caption
+  // "Product value before discount" and says only "Product value" when there is
+  // no discount to be before. What must not drift is the FIGURE under the label.
+  test('the PI Draft’s Commercial breakdown always names its first line the value before discount', () => {
+    assert.equal(PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL, 'Product value, before discount')
     assert.equal(buildBreakdownView(rowsOf(RIVOLI)).rows[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
-    assert.equal(buildBreakdownView(rowsOf(PLAIN)).rows[0].label, 'Product value')
+    // With no discount the figure is the same and the line is still the first
+    // of the nine, because the card never drops a line.
+    assert.equal(buildBreakdownView(rowsOf(PLAIN)).rows[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
   })
-  test('the Order page’s Commercial breakdown', () => {
-    assert.equal(orderCommercialLines(rowsOf(RIVOLI))[0].label, PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
+
+  test('the Order page’s Commercial breakdown keeps its own caption, unchanged', () => {
+    assert.equal(ORDER_PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL, 'Product value before discount')
+    assert.equal(orderCommercialLines(rowsOf(RIVOLI))[0].label, ORDER_PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
     assert.equal(orderCommercialLines(rowsOf(PLAIN))[0].label, 'Product value')
+  })
+
+  test('both surfaces show the SAME figure on that line, discounted or not', () => {
+    for (const [name, p] of [['Rivoli', RIVOLI], ['Kalyan', KALYAN], ['no discount', PLAIN]] as const) {
+      const draft = buildBreakdownView(rowsOf(p)).rows[0]
+      const order = orderCommercialLines(rowsOf(p))[0]
+      assert.equal(draft.key, 'gross', name)
+      assert.equal(order.key, 'gross', name)
+      assert.equal(draft.value, order.value, `${name}: one figure on two surfaces`)
+      assert.equal(draft.value, formatInr(Number(p.gross_product_amount)), `${name}: and it is the stored gross`)
+    }
+  })
+
+  test('the two captions differ only by the comma, so a reader sees one idea', () => {
+    assert.equal(PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL.replace(',', ''), ORDER_PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL)
   })
 })

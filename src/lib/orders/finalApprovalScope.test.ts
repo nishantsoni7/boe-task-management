@@ -669,7 +669,65 @@ describe('the import preview and the parser are untouched', () => {
         ['    .filter(warning => !isRetiredWarning(warning.code))\n', ''],
       ], 'previewView')
     }
-    const undone = issuesFirst((source.slice(0, from) + source.slice(to)).replace(RENAMED, WAS))
+    // 4. THE ADVANCE IS TAKEN OF THE TOTAL BEFORE GST (2026-10): the advance
+    //    percentage is a share of the pre-GST total everywhere, so the 40% row,
+    //    its constant and its note moved with it. What changed, and ONLY this:
+    //      * PI_ADVANCE_PERCENT is the shared STANDARD_ADVANCE_PERCENT;
+    //      * the note says what the 40% is taken of;
+    //      * computeAdvanceAmount / computeRequiredAdvance name their argument
+    //        for what it now is (the Total before GST), and computeRequiredAdvance
+    //        rounds through the shared requiredAdvance (up to the paisa);
+    //      * the 'advance' row is built from commercial.totalBeforeGst.
+    //    formatInr, formatPiValue, formatPiDate and every other row builder stay
+    //    provably untouched, because each edit below is undone by exact text.
+    const advanceBaseChange = (src: string) => undoAll(src, [
+      ["import { STANDARD_ADVANCE_PERCENT, requiredAdvance } from '@/lib/orders/advanceFormula'\n", ''],
+      ['export const PI_ADVANCE_PERCENT = STANDARD_ADVANCE_PERCENT\n', 'export const PI_ADVANCE_PERCENT = 40\n'],
+      ["  'Required advance only, taken on the Total before GST. No payment has been recorded or requested.'\n",
+       "  'Required advance only. No payment has been recorded or requested.'\n"],
+      [[
+        ' * A percentage of the Total before GST, in rupees. THE ONE FORMULA.',
+        ' *',
+        ' * The first argument is the ADVANCE BASE — the Total before GST — and not the',
+        ' * Grand Total (see src/lib/orders/advanceFormula.ts, which owns the rule).',
+      ].join('\n'), ' * A percentage of a grand total, in rupees. THE ONE FORMULA.'],
+      ['  totalBeforeGst: number | null | undefined,\n  percent: number | null | undefined,',
+       '  grandTotal: number | null | undefined,\n  percent: number | null | undefined,'],
+      ['  if (totalBeforeGst === null || totalBeforeGst === undefined || !Number.isFinite(totalBeforeGst)) return null',
+       '  if (grandTotal === null || grandTotal === undefined || !Number.isFinite(grandTotal)) return null'],
+      ['  return Math.round(totalBeforeGst * percent) / 100', '  return Math.round(grandTotal * percent) / 100'],
+      [' * 40% of the Total before GST.', ' * 40% of the grand total.'],
+      [[
+        ' * Computable only when the Total before GST is a real, positive figure. A',
+        ' * workbook whose I120 holds text, or nothing, has no base to take a percentage',
+        ' * of, and the honest answer there is an em dash — not a number derived from a',
+        ' * guess, and not a requirement of ₹0 that anything would satisfy.',
+      ].join('\n'), [
+        ' * Computable only when the grand total is a real figure. A workbook whose',
+        ' * I122 holds text has no grand total to take a percentage of, and the honest',
+        ' * answer there is an em dash — not a number derived from a guess.',
+      ].join('\n')],
+      [[
+        " * The arithmetic is the shared advanceFormula's, so this row, the gates and the",
+        ' * database all round the same way (up to the paisa).',
+      ].join('\n'), [
+        " * The arithmetic itself is computeAdvanceAmount's; this only decides what counts",
+        ' * as a grand total worth taking a percentage of.',
+      ].join('\n')],
+      [[
+        'export function computeRequiredAdvance(totalBeforeGst: PiAmountOrText | null | undefined): number | null {',
+        '  const total = formatPiValue(totalBeforeGst)',
+      ].join('\n'), [
+        'export function computeRequiredAdvance(grandTotal: PiAmountOrText | null | undefined): number | null {',
+        '  const total = formatPiValue(grandTotal)',
+      ].join('\n')],
+      [[
+        '  const required = requiredAdvance(total.amount, PI_ADVANCE_PERCENT)',
+        '  return required === null ? null : Number(required)',
+      ].join('\n'), '  return computeAdvanceAmount(total.amount, PI_ADVANCE_PERCENT)'],
+      ['  const advance = computeRequiredAdvance(commercial.totalBeforeGst)', '  const advance = computeRequiredAdvance(commercial.grandTotal)'],
+    ], 'previewView advance base')
+    const undone = advanceBaseChange(issuesFirst((source.slice(0, from) + source.slice(to)).replace(RENAMED, WAS)))
     assert.equal(undone, base, 'nothing else in previewView.ts changed')
   })
 
@@ -833,8 +891,18 @@ describe('the import preview and the parser are untouched', () => {
 const PI_ACTIVITY_ACTION_CHECK_EXTENSION =
   /(?:execute\s+format\(\s*'alter\s+table\s+(?:public\.)?order_submission_activity\s+drop\s+constraint[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+(?:drop|add)\s+constraint\s+[^;]*order_submission_activity_action_check[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+add\s+constraint\s+order_submission_activity_action_check[^;]*;)/gi
 
+// THE SECOND SANCTIONED EXTENSION (the advance is taken of the Total before GST,
+// 20270226000000). The advance rule lives in ONE constraint on order_submissions,
+// order_submissions_advance_amount_matches_condition, and moving its base from
+// the Grand Total to the Total before GST means dropping and re-adding exactly
+// that constraint. Only those two statements are forgiven: the pattern names the
+// constraint, so a file that also alters a column, adds a policy or touches any
+// other constraint still fails the structural test below.
+const PI_ADVANCE_CONSTRAINT_REWRITE =
+  /alter\s+table\s+(?:public\.)?order_submissions\s+(?:drop\s+constraint\s+(?:if\s+exists\s+)?|add\s+constraint\s+)order_submissions_advance_amount_matches_condition\b[^;]*;/gi
+
 function withoutSanctionedActivityExtension(sql: string): string {
-  return sql.replace(PI_ACTIVITY_ACTION_CHECK_EXTENSION, '')
+  return sql.replace(PI_ACTIVITY_ACTION_CHECK_EXTENSION, '').replace(PI_ADVANCE_CONSTRAINT_REWRITE, '')
 }
 
 const PI_STRUCTURAL_CHANGE =

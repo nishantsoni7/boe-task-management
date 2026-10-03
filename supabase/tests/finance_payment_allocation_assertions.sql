@@ -155,13 +155,13 @@ values (current_setting('test.ord')::uuid, null, 'ASSERT alloc order',
         'running', 900000);
 
 insert into public.order_submissions
-  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
 -- Created as 'draft', which is where the transition trigger requires every PI to
 -- start — and is also the earliest stage the business wants a payment allocatable
 -- against, so the fixture proves the intended case rather than working around it.
 values (current_setting('test.sub')::uuid, 'draft',
         current_setting('test.allocator_id')::uuid, current_setting('test.allocator_id')::uuid,
-        'ASSERT alloc PI', 800000, 0, 800000);
+        'ASSERT alloc PI', 800000, 0, 800000, 800000);
 
 insert into public.finance_payment_requests
   (id, client_name, amount, payment_date, payment_mode, received_in, status, submitted_by, approved_by, approved_at)
@@ -184,10 +184,10 @@ values
 -- salesperson: the PI is theirs because they submitted it, the Order because it
 -- was requested for them. Those are exactly the two participant branches.
 insert into public.order_submissions
-  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
 values (current_setting('test.sub2')::uuid, 'draft',
         current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-        'ASSERT sales PI', 500000, 0, 500000);
+        'ASSERT sales PI', 500000, 0, 500000, 500000);
 
 insert into public.orders (id, display_number, client_name, requested_by, created_by, status, total_value)
 values (current_setting('test.ord2')::uuid, null, 'ASSERT sales order',

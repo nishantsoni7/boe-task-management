@@ -126,7 +126,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT edit client', gross_product_amount = 100000, discount_amount = 0,
-         grand_total = 100000, source_workbook_path = v_wb, source_workbook_sha256 = v_sha,
+         grand_total = 100000, total_before_gst = 100000, source_workbook_path = v_wb, source_workbook_sha256 = v_sha,
          fabric_responsibility = 'client', commercial_terms_note = 'Ex-factory.', client_city = 'Coimbatore'
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
@@ -177,7 +177,7 @@ begin
   perform pg_temp.restore();
   assert v_msg like 'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%', 'the admin client-details door: ' || v_msg;
 
-  v_msg := pg_temp.fails_with(format('update public.order_submissions set grand_total = 1 where id = %L', v_sub));
+  v_msg := pg_temp.fails_with(format('update public.order_submissions set grand_total = 1, total_before_gst = 1 where id = %L', v_sub));
   assert v_msg like 'ORDER_PI_APPROVED_EDIT_REQUIRES_REVISION%', 'a raw UPDATE, even as the owner of the table: ' || v_msg;
 
   v_msg := pg_temp.fails_with(format(

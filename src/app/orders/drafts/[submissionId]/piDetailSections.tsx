@@ -60,10 +60,7 @@ import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
   COMMERCIAL_TERMS_ABSENT,
   COMMERCIAL_TERMS_LABEL,
-  FABRIC_RESPONSIBILITY_LABEL,
-  FABRIC_RESPONSIBILITY_UNANSWERED,
   commercialTermsNote,
-  fabricResponsibilityStatement,
 } from '@/lib/orders/piTerms'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
@@ -756,7 +753,7 @@ function PiPaymentPosition({ status, onOpenDetails }: {
         receivedPercent={status.receivedBarPercent}
         thresholdPercent={status.thresholdPercent}
         height={10}
-        label={`Received: ${status.receivedPercent} of the PI total — ${status.percent} confirmed, ${status.pendingPercent} awaiting verification`}
+        label={`Received: ${status.receivedPercent} of the Total before GST — ${status.percent} confirmed, ${status.pendingPercent} awaiting verification`}
       />
 
       <ul className="pi-detail-paystatus-legend">
@@ -788,93 +785,59 @@ function PiPaymentPosition({ status, onOpenDetails }: {
 export const BREAKDOWN_TITLE = 'Commercial breakdown'
 
 /**
- * The PI total, large, then the lines that lead to it.
+ * The calculation, top to bottom, ending in the Grand Total.
  *
- * THE ROWS ARE THE SHARED BUILDER'S, selected by buildBreakdownView and never
- * recomputed. Amounts are right-aligned tabular figures; a worded value
- * ("Included", "as applicable") keeps its words and a lighter weight. Total
- * before GST opens the tax group, the one rule inside the card.
+ * THE ROWS ARE THE SHARED BUILDER'S, selected and ordered by buildBreakdownView
+ * and never recomputed. Labels sit on the left and amounts on the right as
+ * tabular figures; a worded value ("Included", "as applicable", "Not recorded")
+ * keeps its words and a lighter weight. Discount is red and its amount is a
+ * deduction. Total before GST and the Grand Total each open with a hairline, and
+ * the Grand Total — the figure the card exists to reach — is the largest thing
+ * in it.
  *
- * WHO PROVIDES THE FABRIC IS STATED INSIDE THE ROWS, directly under the fabric
- * cost, and not appended after the total. A figure and the sentence that says
- * what it means have to be read together: "Fabric cost Rs. 40,000" with
- * "Fabric will be provided by client" six lines below it is two facts a reader
- * has to assemble, and the assembly is where they get it wrong. Where the PI
- * carries no fabric row at all the statement still appears, at the foot of the
- * rows, because the answer is about the order and not about the line.
+ * WHO PROVIDES THE FABRIC IS STATED BENEATH THE FIGURE. The fabric row carries
+ * "Provided by client" (or BOE, or not chosen yet) under its label and still
+ * shows the recorded amount, because that amount is inside the total. A figure
+ * and the words that explain it are read together, and no sentence sits between
+ * two lines of arithmetic.
  *
- * IT IS NOT A COMMERCIAL ROW and is never built as one. buildCommercialRows
- * produces the figures the workbook stated; this is a sentence about them, it
- * carries no amount, and it enters no arithmetic.
+ * THE QUALIFIER IS NOT A COMMERCIAL ROW and is never built as one. It carries
+ * no amount and enters no arithmetic; buildBreakdownView attaches it.
  */
-export function PiCommercialBreakdown({ view, fabricResponsibility, commercialTerms, onEditTerms }: {
+export function PiCommercialBreakdown({ view, commercialTerms, onEditTerms }: {
   view: BreakdownView
-  /** order_submissions.fabric_responsibility, or null when nobody has answered. */
-  fabricResponsibility?: string | null
   /** The stored commercial terms note, or null. */
   commercialTerms?: string | null
   /** Opens the PI terms editor, where the viewer may change these. */
   onEditTerms?: (() => void) | null
 }) {
-  const fabricStatement = fabricResponsibilityStatement(fabricResponsibility)
   const terms = commercialTermsNote(commercialTerms)
-
-  /**
-   * The fabric sentence, or the absence of one said out loud.
-   *
-   * AN UNANSWERED PI DOES NOT BORROW A SENTENCE. fabricResponsibilityStatement
-   * returns null for a record nobody has answered, and what is printed then is
-   * "Not chosen yet" in muted type beside the control that asks — never
-   * "Fabric not selected yet", which is one of the three deliberate answers and
-   * would read as a decision that was never taken.
-   */
-  const fabricLine = (
-    <div className="pi-detail-breakdown-row" key="fabric-responsibility">
-      <dt>{FABRIC_RESPONSIBILITY_LABEL}</dt>
-      <dd
-        className="pi-detail-breakdown-word"
-        style={fabricStatement ? undefined : { color: colors.muted }}
-      >
-        {fabricStatement ?? FABRIC_RESPONSIBILITY_UNANSWERED}
-      </dd>
-    </div>
-  )
-
-  const hasFabricRow = view.rows.some(row => row.key === 'fabric')
 
   return (
     <PiCard>
       <section className="pi-detail-breakdown" aria-label={BREAKDOWN_TITLE}>
         <div className="pi-detail-breakdown-head">
           <div className="pi-detail-breakdown-title">{BREAKDOWN_TITLE}</div>
-          {view.total && (
-            <div className="pi-detail-breakdown-total">
-              <span className="pi-detail-breakdown-total-label">{view.total.label}</span>
-              <span className={view.total.kind === 'amount'
-                ? 'pi-detail-breakdown-total-value'
-                : 'pi-detail-breakdown-total-absent'}>
-                {view.total.value}
-              </span>
-            </div>
-          )}
         </div>
         <dl className="pi-detail-breakdown-rows">
-          {view.rows.map(row => (
-            <Fragment key={row.key}>
-              <div
-                className={row.groupStart ? 'pi-detail-breakdown-row pi-detail-breakdown-subtotal' : 'pi-detail-breakdown-row'}
-              >
-                <dt>{row.label}</dt>
+          {view.rows.map(row => {
+            const classes = ['pi-detail-breakdown-row']
+            if (row.divider) classes.push('pi-detail-breakdown-subtotal')
+            if (row.deduction) classes.push('pi-detail-breakdown-deduction')
+            if (row.emphasis === 'total') classes.push('pi-detail-breakdown-grand')
+            return (
+              <div key={row.key} className={classes.join(' ')}>
+                <dt>
+                  {row.label}
+                  {/* Directly under the figure it explains. */}
+                  {row.qualifier && <span className="pi-detail-breakdown-qualifier">{row.qualifier}</span>}
+                </dt>
                 <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
                   {row.value}
                 </dd>
               </div>
-              {/* Directly under the figure it explains. */}
-              {row.key === 'fabric' && fabricLine}
-            </Fragment>
-          ))}
-          {/* No fabric figure on this PI, and the question still has an answer. */}
-          {!hasFabricRow && fabricLine}
+            )
+          })}
         </dl>
 
         {/* ── What the prices cover ──

@@ -150,7 +150,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT in-force client', gross_product_amount = 60000, discount_amount = 0,
-         grand_total = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64),
+         grand_total = 60000, total_before_gst = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64),
          fabric_responsibility = 'client', commercial_terms_note = 'Ex-factory.', client_city = 'Pune'
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
@@ -472,7 +472,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT workbook client', gross_product_amount = 60000, discount_amount = 0,
-         grand_total = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+         grand_total = 60000, total_before_gst = 60000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
     jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
@@ -615,7 +615,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = p_client, gross_product_amount = p_total, discount_amount = 0,
-         grand_total = p_total, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+         grand_total = p_total, total_before_gst = p_total, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
     jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));

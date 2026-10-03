@@ -2,20 +2,20 @@
 //
 // WHAT THIS MODULE IS FOR
 // -----------------------
-// The status workspace states one figure: the share of the final Order Value
-// that Finance has VERIFIED and that is genuinely allocated to this Order.
+// The status workspace states one figure: the share of the Order's Total before
+// GST (the advance base — advanceFormula.ts) that Finance has VERIFIED and that is genuinely allocated to this Order.
 // 35% or more reads Safe; below 35% reads Risky.
 //
 // IT COMPUTES NO MONEY. Every figure below is buildOrderFinancePosition's, and
 // `verifiedPercent` is already exactly the quantity this card wants:
 //
-//     verified allocated share ÷ orders.total_value × 100
+//     verified allocated share ÷ Total before GST × 100
 //
 // where `verified` counts only rows isVerifiedPaymentStatus() admits, at the
 // share attributeToTarget() derives from this Order's own ACTIVE allocations.
 // Pending money, money in clarification, refused money, money with no
 // allocation and money allocated somewhere else are all already excluded there,
-// truncated to two decimals, and null when the Order carries no value. A second
+// truncated to two decimals, and null when the Order has no Total before GST. A second
 // arithmetic path here is precisely the thing that would let the Order screen
 // and the Finance module print different percentages for the same payments.
 //
@@ -34,7 +34,7 @@ import type { OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
 
 export const ADVANCE_TITLE = 'Advance Received'
 export const ADVANCE_AMOUNT_LABEL = 'Received'
-export const ADVANCE_ORDER_VALUE_LABEL = 'Order value'
+export const ADVANCE_ORDER_VALUE_LABEL = 'Total before GST'
 export const ADVANCE_PERCENT_LABEL = 'Advance received'
 
 /** What a figure that cannot be derived says. Never 0%, which is a claim. */
@@ -54,9 +54,9 @@ export const ADVANCE_SAFE_LABEL = 'Safe'
 export const ADVANCE_SAFE_THRESHOLD_PERCENT = 35
 
 export const ADVANCE_NOTE_VERIFIED =
-  'Verified payments allocated to this Order, against its final Order Value.'
+  'Verified payments allocated to this Order, against its Total before GST.'
 export const ADVANCE_NOTE_NO_VALUE =
-  'This Order carries no value, so a percentage cannot be derived.'
+  'This Order has no Total before GST on record, so a percentage cannot be derived.'
 
 // ── The standing ──────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ export type AdvanceStanding = {
   percentLabel: string
   /** Verified money allocated to this Order, formatted. */
   verifiedAmount: string
-  /** orders.total_value, formatted — or null when the Order has none. */
+  /** The Total before GST, formatted — or null when the Order has none. */
   orderValue: string | null
   /** Null exactly when the percentage could not be derived. */
   classification: AdvanceClassification | null
@@ -126,7 +126,7 @@ export function advanceStanding(input: {
     percent,
     percentLabel: percent === null ? ADVANCE_NOT_AVAILABLE : formatPercent(percent),
     verifiedAmount: formatAmount(finance.verified),
-    orderValue: finance.orderValue === null ? null : formatAmount(finance.orderValue),
+    orderValue: finance.advanceBase === null ? null : formatAmount(finance.advanceBase),
     classification: classifyAdvance(percent),
     note: percent === null ? ADVANCE_NOTE_NO_VALUE : ADVANCE_NOTE_VERIFIED,
   }

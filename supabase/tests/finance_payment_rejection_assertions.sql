@@ -98,10 +98,10 @@ declare v_pi uuid := gen_random_uuid();
 begin
   insert into public.order_submissions
     (id, status, submitted_by, created_by, client_name, source_workbook_path,
-     gross_product_amount, discount_amount, grand_total)
+     gross_product_amount, discount_amount, grand_total, total_before_gst)
   values
     (v_pi, 'draft', 'd0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000001',
-     'ASSERT decision PI', 'submissions/assert-decision/original/w.xlsx', 100000000, 0, 100000000);
+     'ASSERT decision PI', 'submissions/assert-decision/original/w.xlsx', 100000000, 0, 100000000, 100000000);
   insert into assert_ctx values ('pi', v_pi::text);
 end $$;
 

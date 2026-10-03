@@ -925,24 +925,29 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // The detail page's breakdown is a card of its own now — the preview's
     // component is untouched — and it is handed a SELECTION of exactly those
     // rows: nothing rebuilt, nothing recomputed.
-    // 20270122000000: the same rows, with only the deduction row's WORD set
-    // (Discount / Design Fee) — clientDeductionRows changes labels and drops a
-    // zero deduction; it never touches a value.
-    assert.ok(detail.includes('const breakdown = buildBreakdownView(clientDeductionRows(commercialRows, '),
+    // The nine-line breakdown: the same rows, handed to buildBreakdownView with
+    // only the fabric answer beside them. buildBreakdownView fixes the labels and
+    // the order, never a value; the page no longer routes the rows through
+    // clientDeductionRows (that wording step belongs to the client-facing PDF and
+    // the Order handoff), because this card always shows the Discount line.
+    assert.ok(detail.includes('const breakdown = buildBreakdownView(commercialRows, { fabricResponsibility: submission.fabric_responsibility ?? null })'),
       'the breakdown selects from exactly those rows')
+    assert.equal(detail.includes('clientDeductionRows'), false,
+      'and the PI Draft page no longer words the deduction row itself')
     assert.ok(detail.includes('<PiCommercialBreakdown'),
       'the breakdown card is still the thing that renders it')
     assert.ok(detail.includes('view={breakdown}'),
       'and renders that selection')
     // WHAT IT GAINED, AND WHAT IT DID NOT. The card also states who provides
-    // the fabric and what the prices cover (20261225000000). Both are
-    // SENTENCES about the figures, passed in beside them — neither is a
-    // commercial row, so buildCommercialRows is unchanged and the preview
+    // the fabric and what the prices cover (20261225000000). The fabric answer
+    // now travels on the VIEW (a qualifier on the Fabric amount row, set by
+    // buildBreakdownView) and the terms are passed in beside the figures - neither
+    // is a commercial row, so buildCommercialRows is unchanged and the preview
     // still renders exactly what it always did.
-    assert.ok(detail.includes('fabricResponsibility={submission.fabric_responsibility'),
-      'the fabric answer is passed, not derived')
+    assert.equal(/<PiCommercialBreakdown[^>]*fabricResponsibility=/.test(detail), false,
+      'the component takes no fabric prop: the answer is on the view')
     assert.ok(detail.includes('commercialTerms={submission.commercial_terms_note'),
-      'and so are the terms')
+      'the terms are passed, not derived')
     assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
       'and the summary card picks its two figures out of the same array')
   })

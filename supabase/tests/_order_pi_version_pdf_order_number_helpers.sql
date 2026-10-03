@@ -76,7 +76,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT pdfnum ' || p_label, gross_product_amount = 40000, discount_amount = 0,
-         grand_total = 40000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64),
+         grand_total = 40000, total_before_gst = 40000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64),
          fabric_responsibility = 'client', commercial_terms_note = 'Ex-factory.', client_city = 'Pune'
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,

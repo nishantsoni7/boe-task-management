@@ -28,6 +28,7 @@
 
 import { PI_MAX_WORKBOOK_BYTES } from './workbookReader'
 import { storableImageMime } from './imageFormats'
+import { STANDARD_ADVANCE_PERCENT, requiredAdvance } from '@/lib/orders/advanceFormula'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -371,10 +372,10 @@ export function buildOrderInformationRows(input: {
 // ── Commercial summary ────────────────────────────────────────────────────────
 
 /** The standard advance BOE requires against a confirmed order. */
-export const PI_ADVANCE_PERCENT = 40
+export const PI_ADVANCE_PERCENT = STANDARD_ADVANCE_PERCENT
 
 export const ADVANCE_NOT_A_PAYMENT_NOTE =
-  'Required advance only. No payment has been recorded or requested.'
+  'Required advance only, taken on the Total before GST. No payment has been recorded or requested.'
 
 export type PiAmountRow = PiSummaryRow & {
   kind: PiValueKind
@@ -393,7 +394,10 @@ export type PiAmountRow = PiSummaryRow & {
 }
 
 /**
- * A percentage of a grand total, in rupees. THE ONE FORMULA.
+ * A percentage of the Total before GST, in rupees. THE ONE FORMULA.
+ *
+ * The first argument is the ADVANCE BASE — the Total before GST — and not the
+ * Grand Total (see src/lib/orders/advanceFormula.ts, which owns the rule).
  *
  * Everything that needs an advance figure comes through here — the commercial
  * summary's standard 40% row, the submission dialog's live preview of a proposed
@@ -410,28 +414,30 @@ export type PiAmountRow = PiSummaryRow & {
  * standard percentage out of the migration so the two cannot drift.
  */
 export function computeAdvanceAmount(
-  grandTotal: number | null | undefined,
+  totalBeforeGst: number | null | undefined,
   percent: number | null | undefined,
 ): number | null {
-  if (grandTotal === null || grandTotal === undefined || !Number.isFinite(grandTotal)) return null
+  if (totalBeforeGst === null || totalBeforeGst === undefined || !Number.isFinite(totalBeforeGst)) return null
   if (percent === null || percent === undefined || !Number.isFinite(percent)) return null
-  return Math.round(grandTotal * percent) / 100
+  return Math.round(totalBeforeGst * percent) / 100
 }
 
 /**
- * 40% of the grand total.
+ * 40% of the Total before GST.
  *
- * Computable only when the grand total is a real figure. A workbook whose
- * I122 holds text has no grand total to take a percentage of, and the honest
- * answer there is an em dash — not a number derived from a guess.
+ * Computable only when the Total before GST is a real, positive figure. A
+ * workbook whose I120 holds text, or nothing, has no base to take a percentage
+ * of, and the honest answer there is an em dash — not a number derived from a
+ * guess, and not a requirement of ₹0 that anything would satisfy.
  *
- * The arithmetic itself is computeAdvanceAmount's; this only decides what counts
- * as a grand total worth taking a percentage of.
+ * The arithmetic is the shared advanceFormula's, so this row, the gates and the
+ * database all round the same way (up to the paisa).
  */
-export function computeRequiredAdvance(grandTotal: PiAmountOrText | null | undefined): number | null {
-  const total = formatPiValue(grandTotal)
+export function computeRequiredAdvance(totalBeforeGst: PiAmountOrText | null | undefined): number | null {
+  const total = formatPiValue(totalBeforeGst)
   if (total.kind !== 'amount' || total.amount === null) return null
-  return computeAdvanceAmount(total.amount, PI_ADVANCE_PERCENT)
+  const required = requiredAdvance(total.amount, PI_ADVANCE_PERCENT)
+  return required === null ? null : Number(required)
 }
 
 /**
@@ -497,7 +503,7 @@ export function buildCommercialRows(commercial: PiCommercialSummary): PiAmountRo
     emphasis: 'total',
   })
 
-  const advance = computeRequiredAdvance(commercial.grandTotal)
+  const advance = computeRequiredAdvance(commercial.totalBeforeGst)
   rows.push({
     key: 'advance',
     label: `Required advance (${PI_ADVANCE_PERCENT}%)`,

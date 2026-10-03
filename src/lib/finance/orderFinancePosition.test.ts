@@ -105,6 +105,12 @@ function position(
   linkedRows: readonly LinkedRow[],
   allocations: readonly OrderAllocationRow[],
   orderValue: string | number | null,
+  // THE ADVANCE BASE (Total before GST). These fixtures were written when the
+  // percentage was a share of the order value, so unless a test says otherwise
+  // the base is the same figure; the tests that prove the base is what is used
+  // pass a different one explicitly (see 'the percentage is a share of the Total
+  // before GST').
+  totalBeforeGst: string | number | null = orderValue,
 ) {
   const merged = mergeOrderPayments(
     linkedRows as Parameters<typeof mergeOrderPayments>[0],
@@ -128,7 +134,7 @@ function position(
   }
 
   const rows = withExactAmounts(merged, { linked: linkedRows, allocations, activeTotals })
-  return { rows, summary: buildOrderFinancePosition(rows, orderValue) }
+  return { rows, summary: buildOrderFinancePosition(rows, orderValue, totalBeforeGst) }
 }
 
 // ── 1. The Order and its PI agree ─────────────────────────────────────────────
@@ -167,6 +173,53 @@ describe('the Order agrees with the PI it was approved from', () => {
     ], '1000000.00')
     assert.equal(summary.verifiedPercent, '39.99')
     assert.equal(summary.fullyPaid, false)
+  })
+})
+
+describe('the percentage is a share of the Total before GST, not of the Order value', () => {
+  test('48,000 verified of a 1,20,000 base is 40.00%, though the Order value is 1,41,600', () => {
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '48000.00' })], '141600.00', '120000.00')
+    assert.equal(summary.verifiedPercent, '40.00')
+    assert.equal(summary.advanceBase, '120000.00')
+    // Against the Grand Total it would have been 33.89 — the old, wrong figure.
+    assert.notEqual(summary.verifiedPercent, '33.89')
+    // What is OWED is still measured against the Order value (GST included).
+    assert.equal(summary.orderValue, '141600.00')
+    assert.equal(summary.pendingBalance, '93600.00')
+    assert.equal(summary.fullyPaid, false)
+  })
+
+  test('received (verified + awaiting) uses the same base', () => {
+    const { summary } = position([], [
+      allocated({ id: 'p-1', amount: '48000.00', status: 'approved_linked' }),
+      allocated({ id: 'p-2', amount: '12000.00', status: 'pending_approval' }),
+    ], '141600.00', '120000.00')
+    assert.equal(summary.verifiedPercent, '40.00')
+    assert.equal(summary.receivedPercent, '50.00')
+  })
+
+  test('no base: the percentages are NULL, never a fall back to the Order value', () => {
+    for (const absent of [undefined, null, '0.00', 0, 'abc']) {
+      const rows: Parameters<typeof buildOrderFinancePosition>[0] = []
+      const summary = buildOrderFinancePosition(rows, '141600.00', absent as never)
+      assert.equal(summary.verifiedPercent, null)
+      assert.equal(summary.receivedPercent, null)
+      assert.equal(summary.advanceBase, null)
+      // The balance and fullyPaid still follow the Order value.
+      assert.equal(summary.pendingBalance, '141600.00')
+    }
+    const omitted = buildOrderFinancePosition([], '141600.00')
+    assert.equal(omitted.verifiedPercent, null)
+  })
+
+  test('the 35% line is judged on the base: 42,000 is 35.00% of 1,20,000 but only 29.66% of 1,41,600', () => {
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '42000.00' })], '141600.00', '120000.00')
+    assert.equal(summary.verifiedPercent, '35.00')
+  })
+
+  test('not capped at 100% against the base either', () => {
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '150000.00' })], '141600.00', '120000.00')
+    assert.equal(summary.verifiedPercent, '125.00')
   })
 })
 

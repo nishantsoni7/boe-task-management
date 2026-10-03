@@ -357,6 +357,12 @@ describe('the read side excludes system types too', () => {
     // type, no trigger on notifications, nothing scheduled.
     const REVIEW_EDIT = '20270223000000_customer_review_custom_edit_delete.sql'
     const REVIEW_DUPLICATE = '20270224000000_customer_review_custom_duplicate_detection.sql'
+    // A fourteenth, 20270226000000, measures the 40% advance against the TOTAL BEFORE GST. It
+    // re-emits order_advance_hold_recheck() with the percentage and the rupee figure it already
+    // told management, now of the pre-GST total: the SAME one Orders-type write
+    // (order_update_production) in the transaction of the person's own write that left an aligned
+    // Order short. No new type, no trigger on notifications, nothing scheduled.
+    const ADVANCE_ON_BASE = '20270226000000_order_submission_advance_on_total_before_gst.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -371,7 +377,17 @@ describe('the read side excludes system types too', () => {
       ADMIN_DECISIONS,
       REVIEW_EDIT,
       REVIEW_DUPLICATE,
+      ADVANCE_ON_BASE,
     ])
+    {
+      const sql = read(join(dir, ADVANCE_ON_BASE))
+      const types = [...(sql.match(/'(\w+)'::notification_type/g) ?? [])].map(s => s.replace(/'|::notification_type/g, ''))
+      assert.deepEqual(types, ['order_update_production'], `${ADVANCE_ON_BASE}: the one hold notice, Orders type`)
+      for (const t of types) assert.equal(isSystemGeneratedNotificationType(t), false)
+      assert.equal((sql.match(/insert\s+into\s+public\.notifications/gi) ?? []).length, 1, `${ADVANCE_ON_BASE}: exactly one notification write`)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql), false)
+      assert.equal(/cron\.schedule|pg_net|http_post/i.test(sql), false, `${ADVANCE_ON_BASE}: nothing is scheduled`)
+    }
     for (const f of [REVIEW_EDIT, REVIEW_DUPLICATE]) {
       const sql = read(join(dir, f))
       assert.equal((sql.match(/insert\s+into\s+(public\.)?notifications/gi) ?? []).length, 1, `${f}: exactly one notification write`)
@@ -482,7 +498,7 @@ describe('the read side excludes system types too', () => {
         }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR && name !== REVIEW_EDIT && name !== REVIEW_DUPLICATE && name !== ADVANCE_ON_BASE && name !== OPERATIONS_HANDOFF && name !== ORDER_0524_HANDOFF && name !== DOCUMENT_SUBMISSIONS && name !== REVISED_PI_PROMOTION && name !== REVISION_IN_FORCE && name !== ADMIN_DECISIONS)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)
