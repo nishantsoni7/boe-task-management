@@ -66,11 +66,11 @@ begin
     v_num := public.allocate_confirmed_order_number();
     insert into public.order_submissions
       (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount,
-       grand_total, source_workbook_path, source_workbook_sha256, parse_warnings, parse_blocking_issues,
+       grand_total, total_before_gst, source_workbook_path, source_workbook_sha256, parse_warnings, parse_blocking_issues,
        reservation_required, reserved_order_number, reserved_order_number_at, reserved_order_number_by,
        reserved_number_workbook_sha256)
     values
-      (p_id, 'draft', v_owner, v_owner, p_client, p_total, 0, p_total, v_wb, v_sha, '[]', '[]',
+      (p_id, 'draft', v_owner, v_owner, p_client, p_total, 0, p_total, p_total, v_wb, v_sha, '[]', '[]',
        true, v_num, now(), v_owner, v_sha);
   else
     -- A NEW draft: created empty, as create_order_submission makes one, then
@@ -78,7 +78,7 @@ begin
     insert into public.order_submissions (id, status, submitted_by, created_by, parse_warnings, parse_blocking_issues)
     values (p_id, 'draft', v_owner, v_owner, '[]', '[]');
     update public.order_submissions
-       set client_name = p_client, gross_product_amount = p_total, discount_amount = 0, grand_total = p_total,
+       set client_name = p_client, gross_product_amount = p_total, discount_amount = 0, grand_total = p_total, total_before_gst = p_total,
            source_workbook_path = v_wb, source_workbook_sha256 = v_sha
      where id = p_id;
   end if;

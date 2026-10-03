@@ -84,6 +84,7 @@ import {
   type PersistedAdvance,
 } from './advanceRequirement'
 import { PI_ADVANCE_PERCENT, computeAdvanceAmount, computeRequiredAdvance } from '@/lib/pi/previewView'
+import { requiredAdvance } from './advanceFormula'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { isProtectedAction } from '@/lib/permissions/levels'
 
@@ -141,9 +142,14 @@ const exception = (
  * above zero; zero itself now has its own choice, and its own refusal when it is
  * typed into the wrong one.
  */
+// `totalBeforeGst` is what 40% is taken of; `grandTotal` (GST included) is the
+// ceiling an advance cannot pass. Unless a test gives one, the ceiling is the
+// same figure, so a boundary test is about the 40% rule alone; the tests that
+// need the two apart pass both (see 'the 40% is taken of the Total before GST').
 const validate = (choice: AdvanceChoice, amountText: string, reason: string,
-                  grandTotal: number | null = 100000) =>
-  validateAdvanceDeclaration({ choice, amountText, reason, grandTotal })
+                  totalBeforeGst: number | null = 100000,
+                  grandTotal: number | null = totalBeforeGst) =>
+  validateAdvanceDeclaration({ choice, amountText, reason, totalBeforeGst, grandTotal })
 
 // ── The standard rule ─────────────────────────────────────────────────────────
 
@@ -163,15 +169,20 @@ describe('there is one advance percentage and one formula', () => {
   })
 
   test('the commercial summary’s advance is the shared formula applied at 40%', () => {
-    // ONE FORMULA. computeRequiredAdvance is now expressed in terms of
-    // computeAdvanceAmount, so the summary row and the exception preview cannot
-    // round differently or drop a percentage sign in different places.
-    for (const total of [100000, 118000, 123456.78, 0, 1]) {
-      assert.equal(
-        computeRequiredAdvance({ amount: total, text: null, zeroMeaning: null } as never),
-        computeAdvanceAmount(total, ADVANCE_STANDARD_PERCENT),
-      )
+    // ONE FORMULA. computeRequiredAdvance is the advanceFormula's requiredAdvance,
+    // so the summary row, the gates and the database round the same way: UP to
+    // the paisa, so the figure shown is always one that satisfies the rule. (It
+    // used to round to nearest, which showed 49,382.71 for a base whose 40% is
+    // 49,382.712 - a figure a paisa short of the requirement.)
+    const required = (amount: number) =>
+      computeRequiredAdvance({ amount, text: null, zeroMeaning: null } as never)
+    for (const total of [100000, 118000, 123456.78, 1]) {
+      assert.equal(required(total), Number(requiredAdvance(total, ADVANCE_STANDARD_PERCENT)))
     }
+    assert.equal(required(123456.78), 49382.72)
+    assert.equal(required(120000), 48000)
+    // A base of nothing has no requirement - not a requirement of 0.
+    assert.equal(required(0), null)
   })
 
   test('the amount is rounded to paise, never to a float artefact', () => {
@@ -305,7 +316,7 @@ describe('the three choices are three choices, not two with a trick', () => {
 
   test('the standard helper says the amount is declared, and what bounds it', () => {
     assert.equal(ADVANCE_CHOICE_HINT.standard,
-      'Declare the amount agreed. It must be at least 40% of the grand total, and may be more.')
+      'Declare the amount agreed. It must be at least 40% of the Total before GST, and may be more.')
   })
 
   test('No advance says that management must approve it', () => {
@@ -508,6 +519,92 @@ describe('the reason is mandatory, and whitespace is not a reason', () => {
            '20260913000000_order_submission_advance_exceptions.sql'), 'utf8')
     assert.ok(sql.includes(`char_length(v_reason) > ${ADVANCE_REASON_MAX_LENGTH}`),
       'the two limits must be the same number')
+  })
+})
+
+describe('the 40% is taken of the Total before GST; the Grand Total is only the ceiling', () => {
+  // The worked example: product 1,00,000, discount 10,000, fabric 20,000,
+  // packaging 5,000, transport 5,000 -> Total before GST 1,20,000; GST 21,600;
+  // Grand Total 1,41,600.
+  const BASE = 120000
+  const GRAND = 141600
+
+  test('the standard amount for a base of 1,20,000 is 48,000, not 40% of 1,41,600', () => {
+    assert.equal(standardAdvanceAmount(BASE), 48000)
+    assert.notEqual(standardAdvanceAmount(BASE), standardAdvanceAmount(GRAND))
+    assert.equal(standardAdvanceAmount(GRAND), 56640)
+  })
+
+  test('declaring 48,000 against base 1,20,000 / grand 1,41,600 is a standard advance', () => {
+    const result = validate('standard', '48000', '', BASE, GRAND)
+    assert.ok(result.ok)
+    assert.deepEqual(result.value, { condition: 'standard', amount: 48000 })
+  })
+
+  test('47,999.99 is reduced, not standard', () => {
+    const std = validate('standard', '47999.99', '', BASE, GRAND)
+    assert.ok(!std.ok)
+    assert.equal(std.message, advanceBelowStandardMessage('₹48,000'))
+    const reduced = validate('reduced', '47999.99', 'agreed', BASE, GRAND)
+    assert.ok(reduced.ok)
+    assert.deepEqual(reduced.value, { condition: 'exception', amount: 47999.99, reason: 'agreed' })
+  })
+
+  test('the old threshold (40% of the Grand Total, 56,640) no longer decides standard', () => {
+    // 50,000 would have been a reduced advance under the old rule.
+    const result = validate('standard', '50000', '', BASE, GRAND)
+    assert.ok(result.ok)
+    assert.ok(!validate('reduced', '50000', 'agreed', BASE, GRAND).ok, '50,000 is not below 48,000')
+  })
+
+  test('an amount above the Grand Total is refused, naming the Grand Total', () => {
+    const result = validate('standard', '141600.01', '', BASE, GRAND)
+    assert.ok(!result.ok)
+    assert.equal(result.message, advanceAboveTotalMessage('₹1,41,600'))
+    const reduced = validate('reduced', '141600.01', 'agreed', BASE, GRAND)
+    assert.ok(!reduced.ok)
+    assert.equal(reduced.message, advanceAboveTotalMessage('₹1,41,600'))
+  })
+
+  test('an amount between the base and the Grand Total is allowed', () => {
+    for (const raw of ['120000.01', '130000', '141600']) {
+      const result = validate('standard', raw, '', BASE, GRAND)
+      assert.ok(result.ok, `${raw} must be accepted`)
+      assert.deepEqual(result.value, { condition: 'standard', amount: Number(raw) })
+    }
+  })
+
+  test('a Grand Total that is missing fails closed even when the base is known', () => {
+    for (const choice of ['standard', 'reduced', 'none'] as const) {
+      const result = validate(choice, '48000', 'agreed', BASE, null)
+      assert.ok(!result.ok, choice)
+      assert.equal(result.message, ADVANCE_TOTAL_MISSING)
+    }
+  })
+
+  test('a base that is missing fails closed even when the Grand Total is known', () => {
+    for (const choice of ['standard', 'reduced', 'none'] as const) {
+      const result = validate(choice, '48000', 'agreed', null, GRAND)
+      assert.ok(!result.ok, choice)
+      assert.equal(result.message, ADVANCE_TOTAL_MISSING)
+    }
+  })
+
+  test('the percentage shown for a declaration is a share of the base', () => {
+    assert.equal(derivedAdvancePercent(BASE, 48000), 40)
+    assert.equal(derivedAdvancePercent(GRAND, 48000), 33.89)
+  })
+
+  test('every explanation says Total before GST; only the ceiling names the grand total', () => {
+    for (const text of [
+      ADVANCE_CHOICE_HINT.standard, ADVANCE_CHOICE_HINT.reduced,
+      advanceBelowStandardMessage('₹48,000'), advanceNotReducedMessage('₹48,000'),
+      ADVANCE_REJECTED_INSTRUCTION, ADVANCE_TOTAL_MISSING, ADVANCE_TOTAL_NOT_POSITIVE,
+    ]) {
+      assert.match(text, /Total before GST/, text)
+      assert.doesNotMatch(text, /grand total/i, text)
+    }
+    assert.match(advanceAboveTotalMessage('₹1,41,600'), /grand total/)
   })
 })
 
@@ -952,7 +1049,7 @@ describe('changing choice clears what does not belong to the new one', () => {
   test('and every result is one the validator can judge without a stale error', () => {
     for (const next of ['standard', 'reduced', 'none'] as const) {
       const moved = advanceChoiceChange(reduced, next, 100000)
-      const result = validateAdvanceDeclaration({ ...moved, grandTotal: 100000 })
+      const result = validateAdvanceDeclaration({ ...moved, totalBeforeGst: 100000, grandTotal: 100000 })
       // Either it is sendable, or it is waiting on input that belongs to the new
       // choice — never refused for something the previous choice carried.
       assert.ok(result.ok || advanceDeclarationUntouched(moved) || next === 'none',

@@ -413,10 +413,20 @@ const payment = (over: Partial<OrderFinancePaymentRow>): OrderFinancePaymentRow 
   ...over,
 } as OrderFinancePaymentRow)
 
-function paymentMarkup(payments: OrderFinancePaymentRow[], orderValue: number | null, loaded = true) {
+// The Order's value is the Grand Total (GST included); the percentage is a share
+// of its Total before GST. 15,64,090 is 13,25,500 plus 18% GST, so the two are
+// different figures and a section that measured against the wrong one is caught.
+const TOTAL_BEFORE_GST = 1325500
+
+function paymentMarkup(
+  payments: OrderFinancePaymentRow[],
+  orderValue: number | null,
+  loaded = true,
+  totalBeforeGst: number | null = TOTAL_BEFORE_GST,
+) {
   return renderToStaticMarkup(
     <PaymentSummaryFigures
-      finance={buildOrderFinancePosition(payments, orderValue)}
+      finance={buildOrderFinancePosition(payments, orderValue, totalBeforeGst)}
       loaded={loaded}
       onOpenList={() => {}}
     />,
@@ -426,16 +436,30 @@ function paymentMarkup(payments: OrderFinancePaymentRow[], orderValue: number | 
 describe('the payment summary figures', () => {
   test('answers the four questions an owner asks, and states each ONCE', () => {
     const body = text(paymentMarkup([payment({})], 1564090))
-    // How much is verified, and what share of the Order that is.
-    assert.ok(body.includes('47.95%'))
-    assert.ok(body.includes('₹7,50,000.00 verified of ₹15,64,090.00 order value'))
+    // How much is verified, and what share of the Total before GST that is.
+    assert.ok(body.includes('56.58%'))
+    assert.ok(body.includes('₹7,50,000.00 verified of ₹13,25,500.00 Total before GST'))
+    // Not the old share of the Grand Total, and not the old wording.
+    assert.equal(body.includes('47.95%'), false)
+    assert.equal(/order value/i.test(body), false)
     // The two parts of what has been received.
     assert.ok(body.includes('Verified ₹7,50,000.00'))
     assert.ok(body.includes('Awaiting verification ₹0.00'))
     // What remains.
     assert.ok(body.includes('Balance ₹8,14,090.00'))
-    // THE ORDER VALUE IS STATED ONCE, in the line under the headline.
-    assert.equal((body.match(/₹15,64,090\.00/g) ?? []).length, 1)
+    // THE BASE IS STATED ONCE, in the line under the headline.
+    assert.equal((body.match(/₹13,25,500\.00/g) ?? []).length, 1)
+  })
+
+  test('with no Total before GST the percentage is not available - it is never measured against the Grand Total', () => {
+    const html = paymentMarkup([payment({})], 1564090, true, null)
+    const body = text(html)
+    assert.ok(body.includes('Total before GST not available'))
+    assert.equal(body.includes('47.95%'), false, 'the Grand Total share must not appear')
+    assert.equal(body.includes('verified of'), false)
+    // The balance still follows the Order value, and the money still stands.
+    assert.ok(body.includes('Balance ₹8,14,090.00'))
+    assert.ok(body.includes('Verified ₹7,50,000.00'))
   })
 
   test('the duplicated blocks are gone: no Received figure, no legend', () => {
@@ -462,7 +486,7 @@ describe('the payment summary figures', () => {
       assert.ok(html.includes(`data-segment="${seg}"`), seg)
     }
     // A reader who cannot see the bar is told what it measures.
-    assert.match(html, /aria-label="Verified: 47\.95% of the order value [^"]*not received"/)
+    assert.match(html, /aria-label="Verified: 56\.58% of the Total before GST [^"]*not received"/)
   })
 
   test('the payment WORDS are the Order’s own — verified is never called approved', () => {
@@ -521,12 +545,14 @@ describe('the payment summary figures', () => {
   test('the figures themselves are unchanged — same builder, same arithmetic', () => {
     // Nothing in this pass touched a money rule. The position is the one the
     // shared builder produces, and the section only rearranges its output.
-    const finance = buildOrderFinancePosition([payment({})], 1564090)
+    const finance = buildOrderFinancePosition([payment({})], 1564090, TOTAL_BEFORE_GST)
     assert.equal(finance.verified, '750000.00')
     assert.equal(finance.awaitingVerification, '0')
     assert.equal(finance.received, '750000.00')
     assert.equal(finance.pendingBalance, '814090.00')
-    assert.equal(finance.verifiedPercent, '47.95')
+    // The share is of the Total before GST (13,25,500), not the Order value.
+    assert.equal(finance.verifiedPercent, '56.58')
+    assert.equal(finance.advanceBase, '1325500')
   })
 })
 

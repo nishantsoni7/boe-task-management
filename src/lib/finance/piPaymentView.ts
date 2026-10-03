@@ -112,6 +112,13 @@ export type PiPaymentSummary = {
   /** order_submissions.status, so the card can read the position in context. */
   submission_status?: string | null
   grand_total: string | number | null
+  /**
+   * The Total before GST, and the BASE every percentage and requirement below is
+   * taken of (20270226000000, advanceFormula.ts). Null when the PI states none —
+   * in which case the percentages are null too and nothing is "met".
+   */
+  total_before_gst?: string | number | null
+  advance_base?: string | number | null
   verified_amount: string | number
   unverified_amount: string | number
   /**
@@ -221,11 +228,13 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
   const tiles: PiPaymentTile[] = [
     // THE GRAND TOTAL LEADS, because every other figure on the card is a part of
     // it and a reader who cannot see the whole cannot judge the parts.
+    { key: 'base',       label: 'Total before GST',      value: formatMoney(summary.advance_base ?? summary.total_before_gst),
+      hint: 'the base for the advance' },
     { key: 'grand',      label: 'Grand total',           value: formatMoney(summary.grand_total) },
     { key: 'verified',   label: 'Verified payment',      value: formatMoney(summary.verified_amount) },
     { key: 'unverified', label: 'Awaiting verification', value: formatMoney(summary.unverified_amount) },
     { key: 'percent',    label: 'Verified payment %',    value: formatPercent(summary.verified_percent),
-      hint: 'of grand total, verified only' },
+      hint: 'of Total before GST, verified only' },
     { key: 'needed',     label: 'Needed for approval',   value: formatMoney(summary.needed_for_standard),
       hint: `to reach the standard ${standard}%` },
     { key: 'balance',    label: 'Pending balance',       value: formatMoney(summary.pending_balance) },
@@ -237,7 +246,7 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
     tiles.push({ key: 'attached', label: 'Total attached payment',
       value: formatMoney(summary.attached_amount), hint: 'verified + awaiting verification' })
     tiles.push({ key: 'attached_percent', label: 'Total attached %',
-      value: formatPercent(summary.attached_percent), hint: 'of grand total, attached' })
+      value: formatPercent(summary.attached_percent), hint: 'of Total before GST, attached' })
   }
   return tiles
 }

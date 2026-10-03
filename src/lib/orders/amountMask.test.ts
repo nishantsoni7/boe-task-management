@@ -34,7 +34,11 @@ describe('every way this page prints money is found', () => {
     formatInr(118000), formatInr(1234567.5), formatInr(-2500), formatInr(0),
     formatMoney('47200'), formatMoney(3500.2),
     describeMiddleman({ middleman_commission: 'yes', middleman_recipient: 'A', middleman_commission_basis: 'amount', middleman_commission_amount: 25000 }),
-    'Declare an amount above ₹0 and below 40% of the grand total.',
+    'Declare an amount above ₹0 and below 40% of the Total before GST.',
+    // The commercial breakdown's Discount line: a deduction drawn with a leading
+    // minus (U+2212), and the Grand Total that closes the card.
+    `−${formatInr(10000)}`,
+    formatInr(141600),
     '₹ 4,00,000 still needed',
   ]
   for (const text of printed) {
@@ -48,6 +52,36 @@ describe('every way this page prints money is found', () => {
     assert.equal(maskAmounts(formatInr(1234567.5)), AMOUNT_MASK)
     assert.equal(maskAmounts(formatInr(-2500)), AMOUNT_MASK)
     assert.equal(maskAmounts('Yes — Site agent, ₹25,000.00'), `Yes — Site agent, ${AMOUNT_MASK}`)
+  })
+
+  test('a deduction’s minus sign is part of the figure and goes with it', () => {
+    const discount = `−${formatInr(10000)}`
+    assert.equal(discount, '−₹10,000')
+    assert.equal(maskAmounts(discount), AMOUNT_MASK)
+    assert.equal(maskAmounts(`Discount ${discount}`), `Discount ${AMOUNT_MASK}`)
+    assert.equal(maskAmounts('Discount -₹10,000'), `Discount ${AMOUNT_MASK}`, 'a hyphen-minus too')
+    assert.equal(maskAmounts(formatInr(0)), AMOUNT_MASK, 'and a nil discount is still a figure')
+  })
+
+  test('the breakdown rows: every amount is hidden, every label and word stays', () => {
+    const rows: [string, string][] = [
+      ['Product value, before discount', formatInr(100000)],
+      ['Discount', `−${formatInr(10000)}`],
+      ['Subtotal, after discount', formatInr(90000)],
+      ['Fabric amount', formatInr(20000)],
+      ['Packaging', formatInr(5000)],
+      ['Transportation', 'as applicable'],
+      ['Total before GST', formatInr(120000)],
+      ['GST', formatInr(21600)],
+      ['Grand Total', formatInr(141600)],
+    ]
+    const markup = rows.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('') + '<span>Provided by client</span>'
+    const masked = maskAmounts(markup)
+    assert.equal(hasAmount(masked), false)
+    assert.equal(/\d,\d{2},\d{3}|\d,\d{3}/.test(masked), false, 'no digit group survives')
+    assert.equal((masked.match(/₹ ••••/g) ?? []).length, 8)
+    for (const [label] of rows) assert.ok(masked.includes(`<dt>${label}</dt>`), label)
+    assert.ok(masked.includes('as applicable') && masked.includes('Provided by client'))
   })
 
   test('two figures in one sentence are both masked', () => {

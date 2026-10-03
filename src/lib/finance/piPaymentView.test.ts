@@ -115,7 +115,11 @@ describe('status wording maps the database vocabulary to the product one', () =>
 describe('the card formats the database totals and never recalculates them', () => {
   const summary = (over: Partial<PiPaymentSummary> = {}): PiPaymentSummary => ({
     submission_id: 'pi-1',
-    grand_total: '100000.00',
+    // GST is 18,000 here, so the two totals differ and a tile that read the wrong
+    // one cannot pass: the percentages are shares of the 1,00,000 base.
+    grand_total: '118000.00',
+    total_before_gst: '100000.00',
+    advance_base: '100000.00',
     verified_amount: '30000.00',
     unverified_amount: '10000.00',
     verified_percent: '30.00',
@@ -128,18 +132,34 @@ describe('the card formats the database totals and never recalculates them', () 
     ...over,
   })
 
-  test('the six confirmed tiles, in order', () => {
-    // The GRAND TOTAL leads since Phase 3: every other figure on the card is a
-    // part of it, and a reader who cannot see the whole cannot judge the parts.
+  test('the seven confirmed tiles, in order: the base leads, then the Grand total', () => {
+    // The TOTAL BEFORE GST leads: it is the base every percentage and the
+    // "needed for approval" figure on the card are taken of, so a reader sees
+    // what the percentages are shares OF before they see them. The Grand total
+    // follows, as the whole the client is invoiced.
     const tiles = piPaymentTiles(summary())
     assert.deepEqual(tiles.map(t => t.key),
-      ['grand', 'verified', 'unverified', 'percent', 'needed', 'balance'])
+      ['base', 'grand', 'verified', 'unverified', 'percent', 'needed', 'balance'])
+    assert.equal(tiles[0].label, 'Total before GST')
+    assert.equal(tiles[0].hint, 'the base for the advance')
     assert.equal(tiles[0].value, '₹1,00,000.00')
-    assert.equal(tiles[1].value, '₹30,000.00')
-    assert.equal(tiles[2].value, '₹10,000.00')
-    assert.equal(tiles[3].value, '30%')
-    assert.equal(tiles[4].value, '₹10,000.00')
-    assert.equal(tiles[5].value, '₹70,000.00')
+    assert.equal(tiles[1].value, '₹1,18,000.00')
+    assert.equal(tiles[2].value, '₹30,000.00')
+    assert.equal(tiles[3].value, '₹10,000.00')
+    assert.equal(tiles[4].value, '30%')
+    assert.equal(tiles[5].value, '₹10,000.00')
+    assert.equal(tiles[6].value, '₹70,000.00')
+  })
+
+  test('the base tile reads advance_base, then total_before_gst, and never the Grand total', () => {
+    const tile = (over: Partial<PiPaymentSummary>) => piPaymentTiles(summary(over))[0]
+    assert.equal(tile({ advance_base: '120000.00', total_before_gst: '100000.00' }).value, '₹1,20,000.00',
+      'the database-reported advance_base wins')
+    assert.equal(tile({ advance_base: undefined, total_before_gst: '100000.00' }).value, '₹1,00,000.00')
+    assert.equal(tile({ advance_base: null, total_before_gst: '100000.00' }).value, '₹1,00,000.00')
+    // Neither reported: a dash. It does NOT borrow the Grand total (1,18,000).
+    assert.equal(tile({ advance_base: null, total_before_gst: null }).value, '—')
+    assert.equal(tile({ advance_base: undefined, total_before_gst: undefined }).value, '—')
   })
 
   test('DELIBERATELY INCONSISTENT figures survive unchanged', () => {
@@ -152,17 +172,20 @@ describe('the card formats the database totals and never recalculates them', () 
       needed_for_standard: '12345.67',
       pending_balance: '0.01',
     }))
-    assert.equal(tiles[1].value, '₹1.00')
-    assert.equal(tiles[3].value, '99%')
-    assert.equal(tiles[4].value, '₹12,345.67')
-    assert.equal(tiles[5].value, '₹0.01')
+    assert.equal(tiles[2].value, '₹1.00')
+    assert.equal(tiles[4].value, '99%')
+    assert.equal(tiles[5].value, '₹12,345.67')
+    assert.equal(tiles[6].value, '₹0.01')
   })
 
   test('an uncomputable percentage reads as a dash, never as zero', () => {
-    // A PI with no stored grand total. 0% would say "nothing received", which is
-    // a different and false statement.
-    const tiles = piPaymentTiles(summary({ grand_total: null, verified_percent: null }))
-    assert.equal(tiles[3].value, '—')
+    // A PI with no stored Total before GST. 0% would say "nothing received",
+    // which is a different and false statement.
+    const tiles = piPaymentTiles(summary({
+      grand_total: null, total_before_gst: null, advance_base: null, verified_percent: null,
+    }))
+    assert.equal(tiles[0].value, '—')
+    assert.equal(tiles[4].value, '—')
     assert.equal(formatPercent(null), '—')
     assert.equal(formatMoney(null), '—')
   })
@@ -175,7 +198,15 @@ describe('the card formats the database totals and never recalculates them', () 
 
   test('the standard percentage comes from the summary, not from a literal', () => {
     const tiles = piPaymentTiles(summary({ standard_percent: 55 }))
-    assert.match(tiles[4].hint ?? '', /55%/)
+    assert.match(tiles[5].hint ?? '', /55%/)
+  })
+
+  test('every percentage hint says it is a share of the Total before GST', () => {
+    const tiles = piPaymentTiles(summary({ attached_amount: '40000.00', attached_percent: '40.00' }))
+    const byKey = Object.fromEntries(tiles.map(t => [t.key, t]))
+    assert.equal(byKey.percent.hint, 'of Total before GST, verified only')
+    assert.equal(byKey.attached_percent.hint, 'of Total before GST, attached')
+    for (const t of tiles) assert.ok(!/grand total/i.test(t.hint ?? ''), `${t.key} hint names the grand total`)
   })
 
   test('no tile mentions the declared advance', () => {

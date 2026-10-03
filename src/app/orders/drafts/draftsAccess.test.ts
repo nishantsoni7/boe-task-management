@@ -959,18 +959,26 @@ describe('a saved commercial figure means what it meant', () => {
     assert.equal(byKey.grandTotal.emphasis, 'total')
   })
 
-  test('the required advance is derived from the stored grand total', () => {
+  test('the required advance is derived from the stored Total before GST, not the grand total', () => {
     const rows = buildCommercialRows(persistedCommercial(submission()))
     const advance = rows.find(r => r.key === 'advance')
     assert.ok(advance)
-    assert.equal(advance.value, '₹1,18,000', '40% of ₹2,95,000')
+    assert.equal(advance.value, '₹1,00,000', '40% of the ₹2,50,000 Total before GST')
+    assert.notEqual(advance.value, '₹1,18,000', 'not 40% of the ₹2,95,000 grand total')
     assert.equal(advance.emphasis, 'advance')
     assert.ok(advance.note?.includes('No payment'), 'and it is never presented as a payment')
   })
 
-  test('a missing grand total yields no advance rather than a guess', () => {
-    const rows = buildCommercialRows(persistedCommercial(submission({ grand_total: null })))
+  test('a missing Total before GST yields no advance rather than a guess', () => {
+    const rows = buildCommercialRows(persistedCommercial(submission({ total_before_gst: null })))
     assert.equal(rows.find(r => r.key === 'advance')?.value, '—')
+    // The grand total is still there; it is just not the base.
+    assert.equal(rows.find(r => r.key === 'grandTotal')?.value, '₹2,95,000')
+  })
+
+  test('a missing grand total alone does not remove the advance - its base is the Total before GST', () => {
+    const rows = buildCommercialRows(persistedCommercial(submission({ grand_total: null })))
+    assert.equal(rows.find(r => r.key === 'advance')?.value, '₹1,00,000')
     assert.equal(rows.find(r => r.key === 'grandTotal')?.value, '—')
   })
 
@@ -1394,7 +1402,7 @@ describe('the top summary answers four questions and repeats none of them', () =
       'receivedPercentValue: toNumber(payments.attached_percent)',
       'confirmed: formatInr(toNumber(payments.verified_amount))',
       'pendingPercent: formatPercent(payments.unverified_percent)',
-      'total: formatInr(toNumber(payments.grand_total))',
+      'total: formatInr(toNumber(payments.advance_base ?? payments.total_before_gst))',
       'formatInr(toNumber(payments.required_payment))',
       'verifiedPercent: formatPercent(payments.verified_percent)',
       'pendingAmount: formatInr(toNumber(payments.unverified_amount))',

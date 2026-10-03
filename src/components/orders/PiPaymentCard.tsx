@@ -431,7 +431,7 @@ function FilteredTotal({ tone, label, amount, count, share, total }: {
       </div>
       <span style={{ fontSize: '12px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
         {describePaymentCount(count)}
-        {share !== '—' && ` · ${share} of ${total} PI Total`}
+        {share !== '—' && ` · ${share} of ${total} Total before GST`}
       </span>
     </div>
   )
@@ -732,13 +732,13 @@ export function PiPaymentDetailsModal({
                 value={status.pendingCount > 0 ? status.pendingAmount : '—'}
                 tone={status.pendingCount > 0 ? 'amber' : undefined}
               />
-              <Figure label="PI Total" value={status.total} />
+              <Figure label="Total before GST" value={status.total} />
             </div>
             <PiPaymentProgress
               confirmedPercent={status.barPercent}
               receivedPercent={status.receivedBarPercent}
               thresholdPercent={status.thresholdPercent}
-              label={`Received: ${status.receivedPercent} of the PI total, ${status.percent} confirmed`}
+              label={`Received: ${status.receivedPercent} of the Total before GST, ${status.percent} confirmed`}
             />
             <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
               {status.receivedPercent} received of {status.total} · {status.percent} confirmed

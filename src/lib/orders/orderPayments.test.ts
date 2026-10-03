@@ -241,7 +241,7 @@ describe('the Order screen reads, and never writes, the payment tables', () => {
     // Order was approved from. See orderFinancePosition.ts.
     assert.ok(page.includes('withExactAmounts('),
       'the exact `numeric` strings must be re-read from the source rows')
-    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'),
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'),
       'every figure comes from the one shared builder')
   })
 

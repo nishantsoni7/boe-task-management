@@ -699,7 +699,7 @@ describe('every supporting record opens over the Order, not in another module', 
 
 describe('the business rules this pass must not touch', () => {
   test('every payment figure still comes from the one shared builder', () => {
-    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'))
     assert.ok(page.includes('withExactAmounts('))
     // No money is added, subtracted or percentaged on the page.
     assert.equal(/\(order\.total_value \?\? 0\) -/.test(page), false)
@@ -747,7 +747,7 @@ describe('the business rules this pass must not touch', () => {
               loaded={recordsReady}
               onOpenList={setPaymentList}
             />`), 'the component is handed the position, the load flag and a door — nothing else')
-    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'))
   })
 
   test('the writing path is Finance’s, and the refresh is the page’s own', () => {
@@ -880,10 +880,20 @@ describe('a narrow write does not re-read the whole page', () => {
     assert.equal((page.match(/activityQuery\(\)/g) ?? []).length, 2,
       'the activity query: the full load and the narrow refresh')
     // And each of those tables is SELECTed from in exactly one place: the
-    // trail has one read, and the Order row's single read sits beside the one
-    // UPDATE a status change performs.
+    // trail has one read. The Order row has TWO reads, both inside the one
+    // shared orderRowQuery: the row itself, and (since the advance became a share
+    // of the Total before GST) a second, tolerant read of the single computed
+    // column order_total_before_gst, kept separate so that a database without
+    // the column yet fails THAT read alone and the Order still opens. Neither is
+    // reachable from anywhere else, which the next assertion proves.
     assert.equal((page.match(/\.from\('order_activity_log'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
-    assert.equal((page.match(/\.from\('orders'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
+    assert.equal((page.match(/\.from\('orders'\)\s*\n?\s*\.select\(/g) ?? []).length, 2)
+    const rowQuery = page.slice(page.indexOf('const orderRowQuery = async'))
+    const rowQueryBody = rowQuery.slice(0, rowQuery.indexOf('\n  }\n'))
+    assert.equal((rowQueryBody.match(/\.from\('orders'\)\s*\n?\s*\.select\(/g) ?? []).length, 2,
+      'both Order reads are inside the shared query')
+    assert.ok(rowQueryBody.includes(".select('order_total_before_gst')"),
+      'the second read is the one computed column and nothing else')
   })
 
   test('every path that CAN move commercial data still reloads everything', () => {
@@ -913,7 +923,7 @@ describe('a narrow write does not re-read the whole page', () => {
     // Deliberately NOT memoised: it sits after the early returns where a hook
     // may not go, and moving it would move the expression two Finance tests
     // read as proof that this screen adds no money of its own.
-    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)'))
   })
   test('nothing on this page reloads the browser', () => {
     for (const forbidden of ['window.location.reload', 'location.href =', 'router.refresh()']) {

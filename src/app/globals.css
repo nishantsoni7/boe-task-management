@@ -7100,33 +7100,6 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
   color: #111318;
 }
 
-.pi-detail-breakdown-total {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
-.pi-detail-breakdown-total-label {
-  font-size: 12px;
-  color: #6b7384;
-}
-
-.pi-detail-breakdown-total-value {
-  font-size: 24px;
-  font-weight: 750;
-  line-height: 1.2;
-  color: #111318;
-  font-variant-numeric: tabular-nums;
-}
-
-.pi-detail-breakdown-total-absent {
-  font-size: 20px;
-  font-weight: 600;
-  color: #8c94a6;
-}
-
 .pi-detail-breakdown-rows {
   margin: 0;
   padding: 8px 18px 14px;
@@ -7174,6 +7147,42 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
 
 .pi-detail-breakdown-subtotal dt {
   font-weight: 600;
+  color: #111318;
+}
+
+/* The Discount line: a deduction, in an accessible red (#B42318 is 6.4:1 on
+   white), and its amount carries a minus sign in the text itself. */
+.pi-detail-breakdown-deduction dt,
+.pi-detail-breakdown-deduction dd {
+  color: #B42318;
+}
+
+/* "Provided by client" under the fabric label. Words only, no amount. */
+.pi-detail-breakdown-qualifier {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7384;
+}
+
+/* The Grand Total closes the calculation and is its most prominent line. The
+   hairline above it comes from .pi-detail-breakdown-subtotal. */
+.pi-detail-breakdown-grand {
+  margin-top: 6px;
+  padding-top: 11px;
+}
+
+.pi-detail-breakdown-grand dt {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-detail-breakdown-grand dd {
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.2;
   color: #111318;
 }
 

@@ -48,10 +48,10 @@ declare v_owner uuid;
 begin
   select id into v_owner from public.users where email = p_owner;
   insert into public.order_submissions (
-    id, status, submitted_by, created_by, client_name, grand_total, gross_product_amount,
+    id, status, submitted_by, created_by, client_name, grand_total, total_before_gst, gross_product_amount,
     reservation_required,
     source_workbook_path, source_workbook_name, source_workbook_sha256)
-  values (p_id, p_status, v_owner, v_owner, p_client, p_total, p_total,
+  values (p_id, p_status, v_owner, v_owner, p_client, p_total, p_total, p_total,
           false,
           'submissions/' || p_id::text || '/original/pi.xlsx', 'pi.xlsx', p_sha);
   return p_id;
@@ -67,8 +67,8 @@ declare v_owner uuid;
 begin
   select id into v_owner from public.users where email = p_owner;
   insert into public.order_submissions (
-    id, status, submitted_by, created_by, client_name, grand_total, gross_product_amount)
-  values (p_id, 'draft', v_owner, v_owner, p_client, p_total, p_total);
+    id, status, submitted_by, created_by, client_name, grand_total, total_before_gst, gross_product_amount)
+  values (p_id, 'draft', v_owner, v_owner, p_client, p_total, p_total, p_total);
   return p_id;
 end $$;
 

@@ -113,10 +113,10 @@ declare
 begin
   insert into public.order_submissions
     (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount,
-     grand_total, source_workbook_path, source_workbook_sha256, parse_warnings, parse_blocking_issues,
+     grand_total, total_before_gst, source_workbook_path, source_workbook_sha256, parse_warnings, parse_blocking_issues,
      reservation_required)
   values
-    (p_id, 'draft', p_owner, p_owner, p_client, p_total, 0, p_total, v_wb, v_sha, '[]', '[]', false);
+    (p_id, 'draft', p_owner, p_owner, p_client, p_total, 0, p_total, p_total, v_wb, v_sha, '[]', '[]', false);
 
   insert into storage.objects (bucket_id, name, metadata)
   values ('order-files', v_wb,

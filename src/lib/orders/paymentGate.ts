@@ -103,7 +103,7 @@ export const PAYMENT_POSITION_TONE: Record<PaymentPosition, PaymentPositionTone>
  */
 export const PAYMENT_POSITION_HINT: Record<PaymentPosition, string> = {
   standard_met:
-    `Verified payment is at or above ${PAYMENT_STANDARD_PERCENT}% of the grand total. No approval to proceed below is needed.`,
+    `Verified payment is at or above ${PAYMENT_STANDARD_PERCENT}% of the Total before GST. No approval to proceed below is needed.`,
   exception_approved:
     `Admin has approved confirming this Order below ${PAYMENT_STANDARD_PERCENT}%.`,
   exception_stale:
@@ -115,7 +115,7 @@ export const PAYMENT_POSITION_HINT: Record<PaymentPosition, string> = {
   verification_pending:
     'Payment is awaiting Finance verification. Unverified payment does not count towards the requirement.',
   payment_required:
-    `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total.`,
+    `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the Total before GST.`,
 }
 
 // ── Where a PI stands for SUBMISSION ──────────────────────────────────────────
@@ -210,7 +210,7 @@ export const PAYMENT_NOT_A_DECLARATION =
  * where payment awaiting verification IS counted — and is still short.
  */
 export const SUBMISSION_BELOW_HINT =
-  `Attached payment (verified plus awaiting Finance verification) has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total. Admin approval is needed to send this PI for approval below it. Payment awaiting verification is not verified payment.`
+  `Attached payment (verified plus awaiting Finance verification) has not reached ${PAYMENT_STANDARD_PERCENT}% of the Total before GST. Admin approval is needed to send this PI for approval below it. Payment awaiting verification is not verified payment.`
 
 // ── The submit dialog's fields ────────────────────────────────────────────────
 
@@ -455,7 +455,7 @@ export const PAYMENT_GATE_FAILURES: readonly { marker: string; message: string }
   },
   {
     marker: 'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT',
-    message: `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total. ${PAYMENT_ADMIN_APPROVAL_REQUIRED}`,
+    message: `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the Total before GST. ${PAYMENT_ADMIN_APPROVAL_REQUIRED}`,
   },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_PENDING',  message: PAYMENT_EXCEPTION_PENDING },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_STALE',    message: PAYMENT_EXCEPTION_STALE },

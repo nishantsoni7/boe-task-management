@@ -139,16 +139,16 @@ end $$;
 
 -- Each PI names its workbook: a PI under review must (order_submissions_reviewable_is_complete).
 insert into public.order_submissions
-  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total,
+  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst,
    source_workbook_path, source_workbook_sha256)
 values
   (current_setting('test.pi')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-   'ASSERT PI gate', 1000000, 0, 1000000,
+   'ASSERT PI gate', 1000000, 0, 1000000, 1000000,
    'submissions/' || current_setting('test.pi') || '/original/pi.xlsx', repeat('b', 64)),
   (current_setting('test.pi_other')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-   'ASSERT PI other', 1000000, 0, 1000000,
+   'ASSERT PI other', 1000000, 0, 1000000, 1000000,
    'submissions/' || current_setting('test.pi_other') || '/original/pi.xlsx', repeat('b', 64));
 
 do $$
@@ -1027,10 +1027,10 @@ declare
   v_label text;
   v_flag  boolean;
 begin
-  insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
+  insert into public.order_submissions (id, client_name, status, grand_total, total_before_gst, created_by, submitted_by)
   -- Created as a draft (a submission is born a draft since 20260913000000);
   -- this section classifies payments and is indifferent to the PI's status.
-  values (v_pi, 'ASSERT classify', 'draft', 1000000, v_sales, v_sales);
+  values (v_pi, 'ASSERT classify', 'draft', 1000000, 1000000, v_sales, v_sales);
 
   insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
   values (v_order,  'ASSERT classify', 1000000, v_admin, 'running', v_pi),
@@ -1374,10 +1374,10 @@ begin
   -- Fixtures are written with NO impersonated identity (an earlier section's
   -- claim would make the payment trigger judge them as that person).
   perform set_config('request.jwt.claims', '', true);
-  insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
+  insert into public.order_submissions (id, client_name, status, grand_total, total_before_gst, created_by, submitted_by)
   -- Created as a draft (a submission is born a draft since 20260913000000);
   -- this section classifies payments and is indifferent to the PI's status.
-  values (v_pi, 'ASSERT sides', 'draft', 1000000, v_sales, v_sales);
+  values (v_pi, 'ASSERT sides', 'draft', 1000000, 1000000, v_sales, v_sales);
   insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
   values (v_order, 'ASSERT sides', 1000000, v_admin, 'running', v_pi);
   insert into public.finance_payment_requests

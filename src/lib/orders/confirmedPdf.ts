@@ -306,7 +306,7 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
     payment: input.payment
       ? [
           { label: 'Verified payment', value: pdfAmount(input.payment.receivedText) },
-          { label: 'Of order value', value: toPdfText(input.payment.percentText) },
+          { label: 'Of Total before GST', value: toPdfText(input.payment.percentText) },
           ...(input.payment.awaitingCount > 0
             ? [{
                 label: 'Awaiting verification',
