@@ -1,8 +1,9 @@
 -- THE SALESPERSON'S OWN ORDERS DASHBOARD (20270226000000)
 -- ===========================================================================
---   1  who gets it       sales candidates only; admin, operations, view_all and a non-assignee
---                        get { applicable: false } and nothing else; a wide visibility scope
---                        changes nothing about what the personal dashboard counts
+--   1  who gets it       sales candidates only; admin, operations and a non-assignee get
+--                        { applicable: false } and nothing else; a salesperson who ALSO holds
+--                        orders.view_all (or a wide visibility scope) still gets the personal
+--                        dashboard, counting only their own orders
 --   2  ownership         orders.assigned_to (not created_by, not requested_by); submissions
 --                        by order_submissions.salesperson_id; salesperson B's records never
 --                        move salesperson A's figures
@@ -18,7 +19,7 @@
 --                        exception, an invalid denominator, dispatched/cancelled
 --   7  fabric / finish   either pending, both pending, both approved, newest event wins, a fresh
 --                        order is listed (no 15-day gate) with the 15-day flag only past 15,
---                        historical-unrecorded is counted and not listed
+--                        a historical order with no record is listed APART as "unknown"
 --   8  ready dispatch    the Order's own status and nothing inferred; earliest date first,
 --                        undated last
 --   9  completeness      lists of 0, 1, 5, 6 and 25 come back whole (no cap)
@@ -42,6 +43,7 @@ begin
   perform set_config('test.d_id',       'd0000000-0000-4000-8000-00000000e014', true); -- salesperson D
   perform set_config('test.p_id',       'd0000000-0000-4000-8000-00000000e015', true); -- salesperson P (revenue parity)
   perform set_config('test.n_id',       'd0000000-0000-4000-8000-00000000e016', true); -- NOT assignable (purchase)
+  perform set_config('test.sv_id',      'd0000000-0000-4000-8000-00000000e017', true); -- salesperson who ALSO holds orders.view_all
 end $$;
 
 insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
@@ -53,7 +55,8 @@ insert into public.users (id, full_name, email, role, team, is_active, employee_
   (current_setting('test.c_id')::uuid,       'SPD Sales C',  'spd-c@example.test',       'member', 'sales',      true, 'ASSERT-S13'),
   (current_setting('test.d_id')::uuid,       'SPD Sales D',  'spd-d@example.test',       'member', 'sales',      true, 'ASSERT-S14'),
   (current_setting('test.p_id')::uuid,       'SPD Sales P',  'spd-p@example.test',       'member', 'sales',      true, 'ASSERT-S15'),
-  (current_setting('test.n_id')::uuid,       'SPD Purchase', 'spd-n@example.test',       'member', 'purchase',   true, 'ASSERT-S16')
+  (current_setting('test.n_id')::uuid,       'SPD Purchase', 'spd-n@example.test',       'member', 'purchase',   true, 'ASSERT-S16'),
+  (current_setting('test.sv_id')::uuid,      'SPD SalesViewAll', 'spd-sv@example.test',  'member', 'sales',      true, 'ASSERT-S17')
 on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
 update public.users set role = 'admin', is_active = true, is_deleted = false
  where id = current_setting('test.owner_id')::uuid;
@@ -70,7 +73,9 @@ select g.uid, mpa.module_id, mpa.action_id, true, current_setting('test.owner_id
     (current_setting('test.c_id')::uuid,       'orders', 'view'),
     (current_setting('test.d_id')::uuid,       'orders', 'view'),
     (current_setting('test.p_id')::uuid,       'orders', 'view'),
-    (current_setting('test.n_id')::uuid,       'orders', 'view')) g(uid, m, a)
+    (current_setting('test.n_id')::uuid,       'orders', 'view'),
+    (current_setting('test.sv_id')::uuid,      'orders', 'view'),
+    (current_setting('test.sv_id')::uuid,      'orders', 'view_all')) g(uid, m, a)
   join public.permission_modules pm on pm.module_key = g.m
   join public.permission_actions pa on pa.action_key = g.a
   join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
@@ -187,7 +192,7 @@ begin
 end $$;
 
 /** One PI submission: any status, any salesperson, submitted p_ago before now. */
-create function pg_temp.mk_pi(p_tag text, p_status text, p_salesperson uuid, p_ago interval default interval '0') returns uuid language plpgsql as $$
+create function pg_temp.mk_pi(p_tag text, p_status text, p_salesperson uuid, p_ago interval default interval '0', p_submitter uuid default null) returns uuid language plpgsql as $$
 declare v_id uuid := gen_random_uuid();
 begin
   perform set_config('request.jwt.claims', '', true);
@@ -195,7 +200,7 @@ begin
   insert into public.order_submissions (id, status, submitted_by, created_by, salesperson_id, client_name, source_workbook_path,
                                         gross_product_amount, discount_amount, subtotal_after_discount, grand_total, submitted_at,
                                         approved_by, approved_at, rejected_by, rejected_at)
-  values (v_id, p_status, coalesce(p_salesperson, current_setting('test.owner_id')::uuid), current_setting('test.owner_id')::uuid,
+  values (v_id, p_status, coalesce(p_submitter, p_salesperson, current_setting('test.owner_id')::uuid), coalesce(p_submitter, current_setting('test.owner_id')::uuid),
           p_salesperson, 'SPD-' || p_tag, 'pi/' || v_id::text || '.xlsx', 100, 0, 100, 118,
           case when p_status = 'draft' then null else now() - p_ago end,
           case when p_status = 'approved' then current_setting('test.owner_id')::uuid end,
@@ -243,6 +248,18 @@ begin
   s := pg_temp.dash(current_setting('test.b_id')::uuid);
   perform pg_temp.check((s ->> 'total_orders')::int = 1, 'and B counts only B');
   delete from public.order_visibility_scopes where user_id = current_setting('test.a_id')::uuid;
+
+  -- A salesperson who ALSO holds orders.view_all: the personal dashboard, own orders only.
+  perform pg_temp.mk_order('sv_mine',  'running', pg_temp.today(), 100, 100, current_setting('test.sv_id')::uuid);
+  perform pg_temp.mk_order('sv_theirs','running', pg_temp.today(), 100, 100, current_setting('test.d_id')::uuid);
+  perform pg_temp.mk_pi('sv_pi_other', 'submitted', current_setting('test.b_id')::uuid, interval '1 day');
+  s := pg_temp.dash(current_setting('test.sv_id')::uuid);
+  perform pg_temp.check((s ->> 'applicable')::boolean, 'a salesperson who holds orders.view_all is STILL offered the personal dashboard');
+  perform pg_temp.check((s ->> 'total_orders')::int = 1 and not (s::text like '%sv_theirs%') and not (s::text like '%sv_pi_other%'),
+    'and view_all does not broaden it: only their own order, none of D''s order or B''s PI');
+  perform pg_temp.become(current_setting('test.sv_id')::uuid);
+  perform pg_temp.check((select count(*) from public.orders where client_name = 'SPD-sv_theirs') = 1, 'while the broader read they hold elsewhere is untouched: they can still open D''s order');
+  perform pg_temp.restore();
 
   -- Not by created_by, not by requested_by.
   perform pg_temp.mk_order('own_requested', 'running', pg_temp.today(), 100, 100, current_setting('test.b_id')::uuid, null, false, current_setting('test.a_id')::uuid);
@@ -323,6 +340,7 @@ begin
   perform pg_temp.mk_pi('pi_rej',   'rejected',      d, interval '1 day');
   perform pg_temp.mk_pi('pi_appr',  'approved',      d, interval '1 day');
   perform pg_temp.mk_pi('pi_none',  'submitted',     null, interval '1 day');     -- no salesperson: nobody's
+  perform pg_temp.mk_pi('pi_by_other', 'submitted',  d, interval '10 days', current_setting('test.owner_id')::uuid);  -- assigned to D, filed by somebody else
   perform pg_temp.mk_pi('pi_other', 'submitted',     b, interval '1 day');        -- someone else's
   claimed := pg_temp.mk_pi('pi_reserved', 'submitted', d, interval '1 day');
   perform set_config('request.jwt.claims', '', true);
@@ -331,14 +349,20 @@ begin
   alter table public.order_submissions enable trigger user;
 
   s := pg_temp.dash(d);
-  perform pg_temp.check((s ->> 'pending_total')::int - base = 2, format('only SUBMITTED, owned, not-reserved PIs: got %s', (s ->> 'pending_total')::int - base));
-  perform pg_temp.check(pg_temp.tags(s, 'pending') = array['pi_old', 'pi_new'], format('longest waiting first: %s', pg_temp.tags(s, 'pending')));
+  perform pg_temp.check((s ->> 'pending_total')::int - base = 3, format('only SUBMITTED, owned, not-reserved PIs: got %s', (s ->> 'pending_total')::int - base));
+  perform pg_temp.check(pg_temp.tags(s, 'pending') = array['pi_by_other', 'pi_old', 'pi_new'], format('longest waiting first: %s', pg_temp.tags(s, 'pending')));
   perform pg_temp.check((s ->> 'pending_total')::int = jsonb_array_length(s -> 'pending'), 'the card and the panel are one number');
-  perform pg_temp.check((s -> 'pending' -> 0 ->> 'waiting_seconds')::numeric between 5 * 86400 and 5 * 86400 + 600, 'waiting time runs from the submission');
+  perform pg_temp.check((s -> 'pending' -> 0 ->> 'waiting_seconds')::numeric between 10 * 86400 and 10 * 86400 + 600, 'waiting time runs from the submission');
   perform pg_temp.check(not (s::text like '%pi_other%') and not (s::text like '%pi_none%'), 'B''s PI and the salesperson-less PI are not in D''s answer');
   perform pg_temp.check(s -> 'pending' -> 0 ? 'reference', 'a pending PI carries its PI reference (no order number exists yet)');
   perform pg_temp.check(not (s -> 'pending' -> 0 ? 'display_number'), 'and no invented order number');
-  perform pg_temp.check((s -> 'pending' -> 0 ->> 'can_open')::boolean is not null, 'it says whether the existing PI rules let this reader open it');
+  perform pg_temp.check((select (x ->> 'can_open')::boolean from jsonb_array_elements(s -> 'pending') x where x ->> 'client_name' = 'SPD-pi_old'), 'a PI the salesperson filed themselves can be opened by them');
+  perform pg_temp.check(not (select (x ->> 'can_open')::boolean from jsonb_array_elements(s -> 'pending') x where x ->> 'client_name' = 'SPD-pi_by_other'),
+    'a PI assigned to them but filed by somebody else is listed, and flagged as NOT openable under the existing PI rules');
+  perform pg_temp.become(d);
+  perform pg_temp.check(public.can_view_order_submission((select id from public.order_submissions where client_name = 'SPD-pi_old')), 'the existing rule agrees: filed by D, D may open it');
+  perform pg_temp.check(not public.can_view_order_submission((select id from public.order_submissions where client_name = 'SPD-pi_by_other')), 'the existing rule agrees: filed by someone else, D may not (this PR does not change it)');
+  perform pg_temp.restore();
 end $$;
 
 -- ═══ 6. Advance below 40% ═════════════════════════════════════════════════════
@@ -418,7 +442,16 @@ begin
   perform pg_temp.check(not (pg_temp.field(s, 'fabric_finish', 'ff_15', 'over_15_days'))::boolean, '15 days does not');
   perform pg_temp.check(jsonb_array_length((select x -> 'pending' from jsonb_array_elements(s -> 'fabric_finish') x where x ->> 'client_name' = 'SPD-ff_15')) = 1, 'fabric approved, finish pending: listed once, for finish only');
   perform pg_temp.check((select x -> 'pending' -> 0 ->> 'kind' from jsonb_array_elements(s -> 'fabric_finish') x where x ->> 'client_name' = 'SPD-ff_fab_only') = 'fabric', 'partially approved fabric is pending; the approved finish is not');
-  perform pg_temp.check((s ->> 'fabric_finish_unrecorded')::int = 1, 'the historical order with no record is counted, not listed');
+  perform pg_temp.check(pg_temp.tags(s, 'fabric_finish_unknown') @> array['ff_history'], 'the historical order with no record is listed as UNKNOWN, not omitted');
+  perform pg_temp.check(not (pg_temp.tags(s, 'fabric_finish') && array['ff_history']), 'and it is not mixed into the known-pending list');
+  perform pg_temp.check((select x -> 'unknown' from jsonb_array_elements(s -> 'fabric_finish_unknown') x where x ->> 'client_name' = 'SPD-ff_history') = '["fabric", "finish"]'::jsonb, 'unknown says WHICH items have no record');
+  perform pg_temp.check(not (pg_temp.tags(s, 'fabric_finish_unknown') && array['ff_done', 'ff_fresh', 'ff_16', 'ff_disp', 'ff_other']), 'approved, pending, dispatched and others'' orders are not unknown');
+  o := pg_temp.mk_order('ff_hist_mixed', 'running', t - 70, 100, 100, c); perform pg_temp.make_historical(o);
+    perform pg_temp.fabric(o, 'fabric', 'not_approved', now() - interval '60 days');
+  s := pg_temp.dash(c);
+  perform pg_temp.check((select x -> 'unknown' from jsonb_array_elements(s -> 'fabric_finish') x where x ->> 'client_name' = 'SPD-ff_hist_mixed') = '["finish"]'::jsonb
+                        and not (pg_temp.tags(s, 'fabric_finish_unknown') && array['ff_hist_mixed']), 'a known pending item plus an unknown one: one row, in pending, naming the unknown item');
+  perform pg_temp.check(not (s::text ~ 'fabric_finish_unrecorded'), 'the old count is gone');
   perform pg_temp.check((select count(*) from jsonb_array_elements(s -> 'fabric_finish') x where x ->> 'client_name' = 'SPD-ff_16') = 1, 'an order with both pending appears once');
   perform pg_temp.check((pg_temp.tags(s, 'fabric_finish'))[array_length(pg_temp.tags(s, 'fabric_finish'), 1)] = 'ff_nodate' , 'oldest confirmation first, no confirmation date last');
 end $$;
@@ -483,6 +516,18 @@ begin
   perform pg_temp.restore();
   perform pg_temp.check(not has_function_privilege('anon', 'public.salesperson_orders_dashboard()', 'execute'), 'anon cannot execute it');
   perform pg_temp.check(has_function_privilege('authenticated', 'public.salesperson_orders_dashboard()', 'execute'), 'signed-in users can');
+  perform pg_temp.check((select pronargs = 0 and prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%pg_temp%')
+                           from pg_proc where oid = 'public.salesperson_orders_dashboard()'::regprocedure),
+    'no arguments (so no way to name another salesperson), SECURITY DEFINER, search_path pinned with pg_temp last');
+  perform pg_temp.check(not has_function_privilege('public', 'public.salesperson_orders_dashboard()', 'execute'), 'PUBLIC cannot execute it');
+  begin
+    execute 'set local role anon';
+    perform public.salesperson_orders_dashboard();
+    raise exception 'ASSERT FAILED: anon must be refused';
+  exception when others then
+    perform pg_temp.restore();
+    if sqlerrm not like '%permission denied%' then raise; end if;
+  end;
   begin
     perform public.salesperson_orders_dashboard();   -- no JWT: refused, not an empty dashboard
     raise exception 'ASSERT FAILED: an unauthenticated call must be refused';

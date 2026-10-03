@@ -45,9 +45,20 @@ export type SpFabricFinishRow = {
   displayNumber: string
   clientName: string
   pending: SpPendingKind[]
+  /** Items of this order with NO approval record at all (an older order): status unknown, said beside the pending. */
+  unknown: SpPendingKind[]
   /** Null when the order has no confirmation date. */
   daysSinceConfirmation: number | null
   over15Days: boolean
+}
+
+/** An order whose fabric/finish approval status is unknown: no record exists, so it is neither approved nor pending. */
+export type SpUnknownRow = {
+  orderId: string
+  displayNumber: string
+  clientName: string
+  unknown: SpPendingKind[]
+  daysSinceConfirmation: number | null
 }
 
 export type SpReadyRow = {
@@ -69,8 +80,8 @@ export type SalespersonDashboard = {
   /** Open orders with no usable value: no percentage exists, so they are not listed. */
   advanceUnchecked: number
   fabricFinish: SpFabricFinishRow[]
-  /** Older orders with no fabric/finish record at all: ambiguous history, not listed as pending. */
-  fabricFinishUnrecorded: number
+  /** Older orders with no fabric/finish record at all: listed apart, as unknown — never approved, never invented. */
+  fabricFinishUnknown: SpUnknownRow[]
   readyForDispatch: SpReadyRow[]
 }
 
@@ -112,6 +123,14 @@ const dateOnly = (v: unknown, what: string): string => {
   return s.slice(0, 10)
 }
 const optDate = (v: unknown, what: string): string | null => (v === null || v === undefined ? null : dateOnly(v, what))
+const kindsOf = (v: unknown, what: string): SpPendingKind[] => {
+  const seen = new Set<SpPendingKind>()
+  for (const k of arr(v ?? [], what)) {
+    if (k !== 'fabric' && k !== 'finish') throw new Bad(what)
+    seen.add(k)
+  }
+  return (['fabric', 'finish'] as const).filter(k => seen.has(k))
+}
 const clientOf = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 /** Turns the RPC's answer into the page's model, or says why it cannot. */
@@ -163,17 +182,31 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
           kinds.add(po.kind)
         }
         if (kinds.size === 0) throw new Bad('a fabric row with nothing pending')
+        const unknown = kindsOf(o.unknown, 'unknown items')
         return {
           orderId: str(o.order_id, 'order_id'),
           displayNumber: str(o.display_number, 'display_number'),
           clientName: clientOf(o.client_name),
           pending: (['fabric', 'finish'] as const).filter(k => kinds.has(k)),
+          unknown,
           daysSinceConfirmation: o.days_since_confirmation === null || o.days_since_confirmation === undefined
             ? null : num(o.days_since_confirmation, 'days_since_confirmation'),
           over15Days: o.over_15_days === true,
         }
       }),
-      fabricFinishUnrecorded: count(root.fabric_finish_unrecorded, 'fabric_finish_unrecorded'),
+      fabricFinishUnknown: arr(root.fabric_finish_unknown, 'fabric_finish_unknown').map((x): SpUnknownRow => {
+        const o = obj(x, 'unknown row')
+        const unknown = kindsOf(o.unknown, 'unknown items')
+        if (unknown.length === 0) throw new Bad('an unknown row with nothing unknown')
+        return {
+          orderId: str(o.order_id, 'order_id'),
+          displayNumber: str(o.display_number, 'display_number'),
+          clientName: clientOf(o.client_name),
+          unknown,
+          daysSinceConfirmation: o.days_since_confirmation === null || o.days_since_confirmation === undefined
+            ? null : num(o.days_since_confirmation, 'days_since_confirmation'),
+        }
+      }),
       readyForDispatch: arr(root.ready_for_dispatch, 'ready_for_dispatch').map((x): SpReadyRow => {
         const o = obj(x, 'ready row')
         return {
@@ -210,6 +243,25 @@ export function isDashboardFunctionMissing(error: { code?: string; message?: str
     || /could not find the function|does not exist/i.test(error.message ?? '')
 }
 
+/**
+ * What the page does with the personal read's answer. ONE decision, in one place:
+ *   - the function is missing on this database      → 'other'  (the dashboard everybody else has)
+ *   - any OTHER failure, or an unreadable answer     → 'error'  (shown, with a retry; never zeros)
+ *   - { applicable: false }                          → 'other'
+ *   - a valid personal answer                        → 'ready'
+ */
+export type PersonalRead =
+  | { kind: 'other' }
+  | { kind: 'error' }
+  | { kind: 'ready'; data: SalespersonDashboard }
+
+export function resolvePersonalRead(res: { data: unknown; error: { code?: string; message?: string } | null }): PersonalRead {
+  if (res.error) return isDashboardFunctionMissing(res.error) ? { kind: 'other' } : { kind: 'error' }
+  const parsed = parseSalespersonDashboard(res.data)
+  if (!parsed.ok) return { kind: 'error' }
+  return parsed.applicable ? { kind: 'ready', data: parsed.dashboard } : { kind: 'other' }
+}
+
 // ── Words ─────────────────────────────────────────────────────────────────────
 
 export const SP_TITLE = 'Your orders'
@@ -242,7 +294,12 @@ export const SP_PENDING_STATUS = 'Pending approval'
 export const SP_BELOW_40 = 'Below 40%'
 export const SP_READY_STATUS = 'Ready for dispatch'
 export const SP_OVER_15 = 'Over 15 days'
-export const SP_NOT_OPENABLE = 'You cannot open this PI'
+export const SP_NOT_OPENABLE = 'Only the person who filed this PI, its reviewer or an approver can open it'
+export const SP_NOT_OPENABLE_SHORT = 'Opens only for whoever filed it'
+export const SP_FABRIC_PENDING_HEADING = 'Pending approval'
+export const SP_UNKNOWN_HEADING = 'Approval status unknown'
+export const SP_UNKNOWN_RULE = 'No approval record exists for these orders, so they are neither approved nor pending. Nothing is assumed.'
+export const SP_FABRIC_NO_KNOWN_PENDING = 'No order has a recorded pending approval.'
 
 /** `2026-10-01` → `October 2026`. */
 export const revenueMonthLabel = (monthFrom: string): string => formatMonth(monthFrom)
@@ -289,6 +346,12 @@ export function advanceUncheckedNote(n: number): string | null {
   return n > 0 ? `${plural(n, 'active order')} with no order value could not be checked.` : null
 }
 
-export function fabricUnrecordedNote(n: number): string | null {
-  return n > 0 ? `${plural(n, 'older order')} with no fabric or finish record ${n === 1 ? 'is' : 'are'} not listed.` : null
+/** `Fabric status unknown`, `Finish status unknown`, `Fabric + Finish status unknown`. */
+export function unknownKindsText(kinds: readonly SpPendingKind[]): string {
+  return `${pendingKindsText(kinds)} status unknown`
+}
+
+/** The fabric/finish heading's count: known pending and unknown are two numbers, never one. */
+export function fabricCountText(pending: number, unknown: number): string {
+  return unknown > 0 ? `${pending} pending · ${unknown} unknown` : String(pending)
 }

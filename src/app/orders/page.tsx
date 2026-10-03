@@ -43,8 +43,7 @@ import {
   SP_ERROR_BODY,
   SP_ERROR_HEADING,
   SP_RETRY_LABEL,
-  isDashboardFunctionMissing,
-  parseSalespersonDashboard,
+  resolvePersonalRead,
   type SalespersonDashboard,
 } from '@/lib/orders/salespersonDashboard'
 
@@ -138,16 +137,7 @@ export default function OrdersDashboardPage() {
 
     // A FAILED READ IS AN ERROR, NEVER ZEROS. Only "this function is not on this database yet" leaves
     // the existing dashboard in place; every other failure is shown.
-    if (personalRes.error) {
-      setPersonal(isDashboardFunctionMissing(personalRes.error) ? { kind: 'other' } : { kind: 'error' })
-    } else {
-      const parsedPersonal = parseSalespersonDashboard(personalRes.data)
-      setPersonal(
-        !parsedPersonal.ok ? { kind: 'error' }
-          : parsedPersonal.applicable ? { kind: 'ready', data: parsedPersonal.dashboard }
-          : { kind: 'other' },
-      )
-    }
+    setPersonal(resolvePersonalRead(personalRes))
 
     if (summaryRes.error) {
       setSummary({ kind: 'error' })

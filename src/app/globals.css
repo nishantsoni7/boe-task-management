@@ -8277,6 +8277,11 @@ a.spd-row:hover { background: #F6F7F9; }
 .spd-pill[data-tone='alert'] { color: #B42318; background: #FDECEA; }
 .spd-pill[data-tone='good'] { color: #1B6B3A; background: #E6F5EC; }
 .spd-empty { margin: 10px 0 12px; font-size: 13px; color: #6B7384; }
+.spd-pill[data-tone='muted'] { color: #4A5261; background: #EEF0F4; }
+.spd-restricted { flex-basis: 100%; text-align: right; font-style: italic; }
+.spd-subhead { margin: 12px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: #4A5261; }
+.spd-subhead span { font-weight: 500; color: #6B7384; font-variant-numeric: tabular-nums; }
+.spd-unknown { margin-top: 14px; padding-top: 4px; border-top: 1px dashed rgba(0, 0, 0, 0.18); }
 .spd-gap { margin: 4px 0 10px; font-size: 12px; color: #8A5A0A; }
 
 @media (max-width: 899px) {

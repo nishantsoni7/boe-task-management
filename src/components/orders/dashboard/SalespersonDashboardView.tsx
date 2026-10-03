@@ -27,7 +27,12 @@ import {
   SP_CARD_TOTAL,
   SP_CARD_TOTAL_SUB,
   SP_EMPTY,
+  SP_FABRIC_NO_KNOWN_PENDING,
+  SP_FABRIC_PENDING_HEADING,
   SP_NOT_OPENABLE,
+  SP_NOT_OPENABLE_SHORT,
+  SP_UNKNOWN_HEADING,
+  SP_UNKNOWN_RULE,
   SP_OVER_15,
   SP_PANEL_ADVANCE,
   SP_PANEL_FABRIC,
@@ -39,13 +44,14 @@ import {
   advancePercentText,
   advanceUncheckedNote,
   dispatchDateText,
-  fabricUnrecordedNote,
+  fabricCountText,
   pendingKindsText,
   pendingWaitText,
   revenueMonthLabel,
   revenueNotes,
   revenueText,
   sinceConfirmationText,
+  unknownKindsText,
   type SalespersonDashboard,
 } from '@/lib/orders/salespersonDashboard'
 
@@ -64,13 +70,18 @@ function Card({ id, label, value, sub, notes }: { id: string; label: string; val
   )
 }
 
-function Panel({ id, area, title, count, empty, notes, children }: {
+function Panel({ id, area, title, count, countText, empty, notes, raw, children }: {
   id: string
   area: 'pending' | 'advance' | 'fabric' | 'ready'
   title: string
+  /** How many rows the panel holds; zero draws the empty state. */
   count: number
+  /** What the heading says when it is not just `count` (known pending and unknown are two numbers). */
+  countText?: string
   empty: string
   notes?: (string | null)[]
+  /** The children are already their own lists. */
+  raw?: boolean
   children: ReactNode
 }) {
   const shown = (notes ?? []).filter((n): n is string => !!n)
@@ -78,9 +89,9 @@ function Panel({ id, area, title, count, empty, notes, children }: {
     <section className="spd-panel" data-area={area} aria-labelledby={id}>
       <header className="spd-panel-head">
         <h2 id={id} className="spd-panel-title">{title}</h2>
-        <span className="spd-panel-count" aria-label={`${count} matching`}>{count}</span>
+        <span className="spd-panel-count" aria-label={`${countText ?? count} matching`}>{countText ?? count}</span>
       </header>
-      {count === 0 ? <p className="spd-empty">{empty}</p> : <ul className="spd-rows">{children}</ul>}
+      {count === 0 ? <p className="spd-empty">{empty}</p> : raw ? children : <ul className="spd-rows">{children}</ul>}
       {shown.map(n => <p key={n} className="spd-gap">{n}</p>)}
     </section>
   )
@@ -138,6 +149,7 @@ export function SalespersonDashboardView({ data }: { data: SalespersonDashboard 
                     <RowBody number={r.reference} client={r.clientName}>
                       <span className="spd-pill" data-tone="warn">{SP_PENDING_STATUS}</span>
                       <span className="spd-meta-text">{pendingWaitText(r.waitingSeconds)}</span>
+                      <span className="spd-meta-text spd-restricted">{SP_NOT_OPENABLE_SHORT}</span>
                     </RowBody>
                   </div>
                 )}
@@ -146,16 +158,40 @@ export function SalespersonDashboardView({ data }: { data: SalespersonDashboard 
           </Panel>
 
           <Panel
-            id="spd-p-fabric" area="fabric" title={SP_PANEL_FABRIC} count={data.fabricFinish.length}
-            empty={SP_EMPTY.fabric} notes={[fabricUnrecordedNote(data.fabricFinishUnrecorded)]}
+            id="spd-p-fabric" area="fabric" title={SP_PANEL_FABRIC} raw
+            count={data.fabricFinish.length + data.fabricFinishUnknown.length}
+            countText={fabricCountText(data.fabricFinish.length, data.fabricFinishUnknown.length)}
+            empty={SP_EMPTY.fabric}
           >
-            {data.fabricFinish.map(r => (
-              <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                <span className="spd-pill" data-tone="warn">{pendingKindsText(r.pending)}</span>
-                <span className="spd-meta-text">{sinceConfirmationText(r.daysSinceConfirmation)}</span>
-                {r.over15Days ? <span className="spd-pill" data-tone="alert">{SP_OVER_15}</span> : null}
-              </OrderRow>
-            ))}
+            {data.fabricFinishUnknown.length > 0 ? (
+              <h3 className="spd-subhead">{SP_FABRIC_PENDING_HEADING} <span>{data.fabricFinish.length}</span></h3>
+            ) : null}
+            {data.fabricFinish.length > 0 ? (
+              <ul className="spd-rows">
+                {data.fabricFinish.map(r => (
+                  <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
+                    <span className="spd-pill" data-tone="warn">{pendingKindsText(r.pending)}</span>
+                    <span className="spd-meta-text">{sinceConfirmationText(r.daysSinceConfirmation)}</span>
+                    {r.unknown.length > 0 ? <span className="spd-meta-text">{unknownKindsText(r.unknown)}</span> : null}
+                    {r.over15Days ? <span className="spd-pill" data-tone="alert">{SP_OVER_15}</span> : null}
+                  </OrderRow>
+                ))}
+              </ul>
+            ) : <p className="spd-empty">{SP_FABRIC_NO_KNOWN_PENDING}</p>}
+            {data.fabricFinishUnknown.length > 0 ? (
+              <div className="spd-unknown">
+                <h3 className="spd-subhead">{SP_UNKNOWN_HEADING} <span>{data.fabricFinishUnknown.length}</span></h3>
+                <p className="spd-gap">{SP_UNKNOWN_RULE}</p>
+                <ul className="spd-rows">
+                  {data.fabricFinishUnknown.map(r => (
+                    <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
+                      <span className="spd-pill" data-tone="muted">{unknownKindsText(r.unknown)}</span>
+                      <span className="spd-meta-text">{sinceConfirmationText(r.daysSinceConfirmation)}</span>
+                    </OrderRow>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </Panel>
         </div>
 

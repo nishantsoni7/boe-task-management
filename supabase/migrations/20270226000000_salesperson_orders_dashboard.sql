@@ -33,11 +33,13 @@
 -- -----------
 -- "Salesperson" is not a role. The caller is offered this dashboard when they are
 -- an eligible order assignee (is_eligible_order_assignee: the sales team, or
--- orders.can_be_order_assignee) and are NOT an admin, NOT on the operations team
--- and do NOT hold orders.view_all — those readers keep the dashboard they have.
+-- orders.can_be_order_assignee) and are NOT an admin and NOT on the operations
+-- team — those readers keep the dashboard they have. orders.view_all does NOT
+-- take the personal dashboard away from a salesperson: it widens what a person may
+-- OPEN elsewhere, never what THIS dashboard counts, which is their own orders
+-- only (assigned_to / salesperson_id = the caller, whatever else they can see).
 -- Everybody else gets { "applicable": false } and nothing else. A visibility scope
--- (own / selected / all_sales) never matters here: it widens what a person may
--- OPEN, and this dashboard is theirs alone.
+-- (own / selected / all_sales) likewise never matters here.
 --
 -- NO ROW CAP: the lists are one jsonb value, so no PostgREST row limit applies.
 -- READ-ONLY, one statement, no writes, no new table, no new grant beyond execute.
@@ -66,7 +68,6 @@ begin
     public.is_eligible_order_assignee(v_actor)
     and not exists (select 1 from public.users u
                      where u.id = v_actor and (u.role = 'admin' or u.team = 'operations'))
-    and not coalesce(public.resolve_permission(v_actor, 'orders', 'view_all'), false)
   ) then
     return jsonb_build_object('applicable', false);
   end if;
@@ -138,7 +139,9 @@ begin
     -- usable value has no percentage: it is counted, never given a fabricated one.
     select c.id, c.display_number, c.client_name, c.status, c.confirm_date,
            (p.pos ->> 'verified')::numeric as verified,
-           trunc(100 * (p.pos ->> 'verified')::numeric / c.total_value, 2) as percent,
+           -- The helper's OWN order value (its denominator), so a change to the rule
+           -- in order_advance_position() reaches this list with no edit here.
+           trunc(100 * (p.pos ->> 'verified')::numeric / (p.pos ->> 'order_value')::numeric, 2) as percent,
            (jsonb_typeof(p.pos -> 'exception') = 'object') as exception_approved
       from open_orders c join pos p on p.order_id = c.id
      where coalesce((p.pos ->> 'value_known')::boolean, false)
@@ -171,7 +174,10 @@ begin
            jsonb_agg(f.kind order by f.kind)
              filter (where f.effective_status is not null and f.effective_status <> 'fully_approved') as pending_kinds,
            jsonb_agg(jsonb_build_object('kind', f.kind, 'status', f.effective_status) order by f.kind)
-             filter (where f.effective_status is not null and f.effective_status <> 'fully_approved') as pending_items
+             filter (where f.effective_status is not null and f.effective_status <> 'fully_approved') as pending_items,
+           -- NO RECORD AT ALL on an order that predates tracking: the status is UNKNOWN. It is not
+           -- approved and it is not "not applicable"; it is said, and listed apart from the pending.
+           coalesce(jsonb_agg(f.kind order by f.kind) filter (where f.effective_status is null), '[]'::jsonb) as unknown_kinds
       from ff f
      group by f.id, f.display_number, f.client_name, f.status, f.confirm_date
   ),
@@ -215,11 +221,16 @@ begin
                'order_id', f.id, 'display_number', f.display_number, 'client_name', f.client_name,
                'status', f.status, 'confirm_date', f.confirm_date,
                'days_since_confirmation', f.days_since, 'over_15_days', coalesce(f.days_since > 15, false),
-               'pending', f.pending_items)
+               'pending', f.pending_items, 'unknown', f.unknown_kinds)
              order by f.confirm_date asc nulls last, f.display_number)
         from ff_orders f where f.pending_kinds is not null), '[]'::jsonb),
-    'fabric_finish_unrecorded', (select count(*) from ff_orders f where f.pending_kinds is null
-                                   and exists (select 1 from ff x where x.id = f.id and x.effective_status is null)),
+    'fabric_finish_unknown', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'order_id', f.id, 'display_number', f.display_number, 'client_name', f.client_name,
+               'status', f.status, 'confirm_date', f.confirm_date,
+               'days_since_confirmation', f.days_since, 'unknown', f.unknown_kinds)
+             order by f.confirm_date asc nulls last, f.display_number)
+        from ff_orders f where f.pending_kinds is null and jsonb_array_length(f.unknown_kinds) > 0), '[]'::jsonb),
     'ready_for_dispatch', coalesce((
       select jsonb_agg(jsonb_build_object(
                'order_id', r.id, 'display_number', r.display_number, 'client_name', r.client_name,
@@ -235,7 +246,7 @@ $$;
 revoke execute on function public.salesperson_orders_dashboard() from public, anon;
 grant  execute on function public.salesperson_orders_dashboard() to authenticated;
 comment on function public.salesperson_orders_dashboard() is
-  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller; { applicable: false } for admins, operations, orders.view_all holders and non-assignees. Read-only, no row cap. 20270226000000.';
+  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller (orders.view_all does not widen it); { applicable: false } for admins, operations and non-assignees. Read-only, no row cap. 20270226000000.';
 
 do $$
 begin

@@ -19,8 +19,10 @@ import {
   SP_EMPTY,
   advancePercentText,
   dispatchDateText,
-  fabricUnrecordedNote,
+  fabricCountText,
+  unknownKindsText,
   isDashboardFunctionMissing,
+  resolvePersonalRead,
   parseSalespersonDashboard,
   pendingKindsText,
   pendingWaitText,
@@ -58,11 +60,11 @@ function payload(over: Record<string, unknown> = {}): any {
     advance_unchecked: 0,
     fabric_finish: [
       { order_id: 'ord-f1', display_number: '0510', client_name: 'Patel Retail', status: 'running', confirm_date: '2026-09-01', days_since_confirmation: 32, over_15_days: true,
-        pending: [{ kind: 'fabric', status: 'not_approved' }, { kind: 'finish', status: 'no_approval_recorded' }] },
+        pending: [{ kind: 'fabric', status: 'not_approved' }, { kind: 'finish', status: 'no_approval_recorded' }], unknown: [] },
       { order_id: 'ord-f2', display_number: '0530', client_name: 'Rao Studio', status: 'running', confirm_date: '2026-10-02', days_since_confirmation: 1, over_15_days: false,
-        pending: [{ kind: 'finish', status: 'partially_approved' }] },
+        pending: [{ kind: 'finish', status: 'partially_approved' }], unknown: [] },
     ],
-    fabric_finish_unrecorded: 0,
+    fabric_finish_unknown: [],
     ready_for_dispatch: [
       { order_id: 'ord-r1', display_number: '0501', client_name: 'Desai Group', status: 'ready_for_dispatch', planned_dispatch_date: '2026-10-12' },
       { order_id: 'ord-r2', display_number: '0502', client_name: 'Nair Exports', status: 'ready_for_dispatch', planned_dispatch_date: null },
@@ -128,6 +130,22 @@ describe('the answer is validated, never trusted', () => {
     assert.equal(parseSalespersonDashboard(p).ok, false)
   })
 
+  test('a missing function falls back to the existing dashboard; a genuine failure is an error, never zeros', () => {
+    const missing = { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.salesperson_orders_dashboard without parameters in the schema cache' } }
+    assert.deepEqual(resolvePersonalRead(missing), { kind: 'other' })
+    for (const error of [
+      { code: '42501', message: 'permission denied for function salesperson_orders_dashboard' },
+      { code: '57014', message: 'canceling statement due to statement timeout' },
+      { code: '', message: 'Failed to fetch' },
+      { code: 'XX000', message: 'internal error' },
+    ]) assert.deepEqual(resolvePersonalRead({ data: null, error }), { kind: 'error' }, error.message)
+    assert.deepEqual(resolvePersonalRead({ data: null, error: null }), { kind: 'error' }, 'no data and no error is unreadable, not an empty dashboard')
+    assert.deepEqual(resolvePersonalRead({ data: { applicable: true }, error: null }), { kind: 'error' }, 'a malformed answer is an error')
+    assert.deepEqual(resolvePersonalRead({ data: { applicable: false }, error: null }), { kind: 'other' })
+    const ok = resolvePersonalRead({ data: payload(), error: null })
+    assert.equal(ok.kind, 'ready')
+  })
+
   test('only a MISSING function falls back; every other failure is an error', () => {
     assert.equal(isDashboardFunctionMissing({ code: 'PGRST202', message: 'Could not find the function public.salesperson_orders_dashboard' }), true)
     assert.equal(isDashboardFunctionMissing({ code: '42883' }), true)
@@ -173,9 +191,15 @@ describe('the words', () => {
     assert.equal(dispatchDateText(null), 'No dispatch date')
   })
 
+  test('pending and unknown are two numbers, never one', () => {
+    assert.equal(fabricCountText(7, 0), '7')
+    assert.equal(fabricCountText(7, 2), '7 pending · 2 unknown')
+    assert.equal(fabricCountText(0, 3), '0 pending · 3 unknown')
+    assert.equal(unknownKindsText(['fabric']), 'Fabric status unknown')
+    assert.equal(unknownKindsText(['fabric', 'finish']), 'Fabric + Finish status unknown')
+  })
+
   test('what could not be assessed is said, not folded into a clean list', () => {
-    assert.equal(fabricUnrecordedNote(0), null)
-    assert.match(fabricUnrecordedNote(2) ?? '', /2 older orders .* not listed/)
     assert.deepEqual(revenueNotes({ amount: 1, orders: 1, noProductValue: 0, beforeDiscount: 0 }), [])
     assert.match(revenueNotes({ amount: 1, orders: 1, noProductValue: 2, beforeDiscount: 1 }).join(' '), /2 orders.*are not counted.*1 order this month carries/)
   })
@@ -255,11 +279,70 @@ describe('the page body: three cards and four panels, in order', () => {
     assert.match(out, /href="\/orders\/drafts\/sub-1\?returnTo=%2Forders"/)
   })
 
-  test('a PI the existing rules would not let this reader open is text, not a dead link', () => {
+  test('a PI the existing rules would not let this reader open is text, not a dead link, and says why on screen', () => {
     const out = html(parsed(payload()))
     assert.doesNotMatch(out, /href="\/orders\/drafts\/sub-2/)
-    assert.match(out, /data-static="true"[^>]*title="You cannot open this PI"/)
-    assert.match(out, /Meera Textiles/)
+    assert.match(out, /data-static="true"[^>]*title="Only the person who filed this PI, its reviewer or an approver can open it"/)
+    assert.match(out, /Meera Textiles[\s\S]*Opens only for whoever filed it/)
+    // …and a PI they CAN open carries no such text.
+    assert.equal(out.match(/Opens only for whoever filed it/g)?.length, 1)
+  })
+
+  describe('approval status unknown is shown, apart from the known pending', () => {
+    const withUnknown = () => parsed(payload({
+      fabric_finish: [{
+        order_id: 'ord-f1', display_number: '0510', client_name: 'Patel Retail', status: 'running', confirm_date: '2026-09-01',
+        days_since_confirmation: 32, over_15_days: true,
+        pending: [{ kind: 'fabric', status: 'not_approved' }], unknown: ['finish'],
+      }],
+      fabric_finish_unknown: [
+        { order_id: 'ord-u1', display_number: '0441', client_name: 'Old Record House', status: 'running', confirm_date: '2026-06-01', days_since_confirmation: 124, unknown: ['fabric', 'finish'] },
+        { order_id: 'ord-u2', display_number: '0442', client_name: 'Older Still Traders', status: 'running', confirm_date: null, days_since_confirmation: null, unknown: ['finish'] },
+      ],
+    }))
+
+    test('the heading says pending and unknown separately', () => {
+      const out = html(withUnknown())
+      assert.match(out, /Fabric \/ Finish Pending Approval<\/h2><span class="spd-panel-count"[^>]*>1 pending · 2 unknown</)
+    })
+
+    test('unknown orders sit in their own section, under their own heading, with the no-assumption rule', () => {
+      const out = html(withUnknown())
+      const panel = out.split('data-area="fabric"')[1].split('</section>')[0]
+      const [known, unknown] = panel.split('spd-unknown')
+      assert.match(known, />0510</)
+      assert.doesNotMatch(known, />044[12]</)
+      assert.match(unknown, /Approval status unknown/)
+      assert.match(unknown, /neither approved nor pending/)
+      assert.match(unknown, />0441<[\s\S]*Fabric \+ Finish status unknown[\s\S]*124 days since confirmation/)
+      assert.match(unknown, />0442<[\s\S]*Finish status unknown[\s\S]*Confirmation date not recorded/)
+    })
+
+    test('an order with one item pending and the other unknown stays in pending and names the unknown item', () => {
+      const out = html(withUnknown())
+      assert.match(out, />0510<[\s\S]*Fabric[\s\S]*Finish status unknown/)
+    })
+
+    test('no invented state: unknown is never worded as approved or not applicable', () => {
+      const out = html(withUnknown())
+      const unknown = out.split('spd-unknown')[1].split('</section>')[0]
+      assert.doesNotMatch(unknown, /approved(?! nor)|not applicable|n\/a/i)
+    })
+
+    test('only unknown rows (no known pending): the pending side says so, the unknown rows still show', () => {
+      const out = html(parsed(payload({
+        fabric_finish: [],
+        fabric_finish_unknown: [{ order_id: 'ord-u1', display_number: '0441', client_name: 'Old Record House', status: 'running', confirm_date: '2026-06-01', days_since_confirmation: 124, unknown: ['fabric'] }],
+      })))
+      assert.match(out, />0 pending · 1 unknown</)
+      assert.match(out, /No order has a recorded pending approval/)
+      assert.match(out, />0441</)
+    })
+
+    test('an unknown row with nothing unknown is refused', () => {
+      const p = payload({ fabric_finish_unknown: [{ order_id: 'x', display_number: '1', client_name: 'c', unknown: [], days_since_confirmation: 1 }] })
+      assert.equal(parseSalespersonDashboard(p).ok, false)
+    })
   })
 
   test('each row is one link, so there is one keyboard stop per order', () => {
@@ -293,9 +376,9 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
   })
 
   test('gaps are said under the list they affect', () => {
-    const out = html(parsed(payload({ advance_unchecked: 2, fabric_finish_unrecorded: 3 })))
+    const out = html(parsed(payload({ advance_unchecked: 2 })))
     assert.match(out, /2 active orders with no order value could not be checked/)
-    assert.match(out, /3 older orders with no fabric or finish record are not listed/)
+    assert.doesNotMatch(out, /not listed/)
   })
 
   test('revenue gaps are said under the revenue card', () => {
@@ -336,8 +419,7 @@ describe('the code', () => {
   })
 
   test('a failed or unreadable read is an error state, never zeros', () => {
-    assert.match(page, /setPersonal\(isDashboardFunctionMissing\(personalRes\.error\) \? \{ kind: 'other' \} : \{ kind: 'error' \}\)/)
-    assert.match(page, /!parsedPersonal\.ok \? \{ kind: 'error' \}/)
+    assert.match(page, /setPersonal\(resolvePersonalRead\(personalRes\)\)/)
     assert.match(page, /role="alert"/)
   })
 
