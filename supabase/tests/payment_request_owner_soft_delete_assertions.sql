@@ -10,6 +10,8 @@
 --   D. A deleted row vanishes for every reader and is frozen for every writer,
 --      approval included
 --   E. Allocations are reversed (kept), intents cancelled, nothing new attaches
+--   F. A submitter can no longer hard-DELETE through the API; admin deletion survives
+--   G. A rejection leaves the cancelled link readable (the client shows it)
 --
 -- Runs inside ONE transaction that ends in ROLLBACK. The approval/deletion race
 -- (two sessions) cannot run in one transaction; see the PR for that run.
@@ -360,6 +362,87 @@ begin
   perform pg_temp.ok((select deleted_at from public.finance_payment_requests where id = pg_temp.id('okap')) is null,
     'R3. and it is intact');
   raise notice 'R (approve-then-delete) PASSED';
+end $$;
+
+-- ═══ F. The bypass is closed: no direct DELETE for the submitter ═════════════
+
+do $$
+declare n int; e text;
+begin
+  insert into ids values ('byp', pg_temp.mk('SD-BYP', pg_temp.s1(), 'pending_approval'));
+  insert into public.finance_payment_request_activity_log (payment_request_id, actor_id, event_type, payload)
+  values (pg_temp.id('byp'), pg_temp.s1(), 'status_changed', jsonb_build_object('from_status','x','to_status','pending_approval'));
+
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  delete from public.finance_payment_requests where id = pg_temp.id('byp');
+  get diagnostics n = row_count;
+  perform pg_temp.ok(n = 0, 'F1. the submitter''s direct DELETE of their own unapproved request removes nothing');
+  reset role;
+  perform pg_temp.ok((select count(*) from public.finance_payment_requests where id = pg_temp.id('byp')) = 1, 'F2. the row is still there');
+  perform pg_temp.ok((select count(*) from public.finance_payment_request_activity_log where payment_request_id = pg_temp.id('byp')) >= 1,
+    'F3. and so is its history');
+
+  -- The only DELETE policies left are the admin and finance.delete ones.
+  perform pg_temp.ok((select count(*) from pg_policy where polrelid = 'public.finance_payment_requests'::regclass
+                       and polcmd = 'd' and polname like '%own_delete%') = 0, 'F4. no own_delete policy remains');
+
+  -- The soft-delete RPC still works for the same request.
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  perform public.delete_own_payment_request(pg_temp.id('byp'));
+  reset role;
+  perform pg_temp.ok((select deleted_at from public.finance_payment_requests where id = pg_temp.id('byp')) is not null,
+    'F5. the RPC still soft-deletes it, and the history is kept');
+
+  -- Authorised admin deletion still works: a direct admin DELETE of an unapproved row.
+  insert into ids values ('adm', pg_temp.mk('SD-ADM', pg_temp.s2(), 'pending_approval'));
+  perform pg_temp.become(pg_temp.adm());
+  set local role authenticated;
+  delete from public.finance_payment_requests where id = pg_temp.id('adm');
+  get diagnostics n = row_count;
+  reset role;
+  perform pg_temp.ok(n = 1, 'F6. an admin can still delete an unapproved request');
+
+  -- ...and an approved payment is still protected from the admin's DELETE policy by the guard trigger.
+  perform pg_temp.become(pg_temp.adm());
+  set local role authenticated;
+  e := pg_temp.fails_with(format('delete from public.finance_payment_requests where id = %L', pg_temp.id('appr')));
+  reset role;
+  perform pg_temp.ok(e <> 'NO ERROR' or (select count(*) from public.finance_payment_requests where id = pg_temp.id('appr')) = 1,
+    'F7. an approved payment survives a direct DELETE');
+  raise notice 'F (bypass closed) PASSED';
+end $$;
+
+-- ═══ G. A rejection leaves the cancelled link readable by its owner ══════════
+
+do $$
+declare pi uuid; pay uuid; ordr uuid; r record;
+begin
+  select id into pi from public.order_submissions order by created_at limit 1;
+  insert into ids values ('rej2', pg_temp.mk('SD-REJ2', pg_temp.s1(), 'pending_approval'));
+  pay := pg_temp.id('rej2');
+  insert into public.finance_payment_allocation_intents (payment_request_id, target_type, order_submission_id, intended_amount, created_by)
+  values (pay, 'pi_draft', pi, 100, pg_temp.s1());
+
+  perform pg_temp.become(pg_temp.adm());
+  set local role authenticated;
+  perform public.reject_finance_payment_request(pay, 'not matching');
+  reset role;
+
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  select status, cancelled_reason, order_submission_id into r
+    from public.finance_payment_allocation_intents where payment_request_id = pay;
+  reset role;
+  perform pg_temp.ok(r.status = 'cancelled', 'G1. rejection cancels the intent (unchanged)');
+  perform pg_temp.ok(r.cancelled_reason = 'payment request rejected',
+    'G2. with the exact reason the client reads it back by');
+  perform pg_temp.ok(r.order_submission_id = pi, 'G3. and the cancelled intent still names the original PI');
+  perform pg_temp.ok((select count(*) from public.finance_payment_allocation_intents
+                       where payment_request_id = pay and status = 'pending') = 0,
+    'G4. the link stays cancelled — nothing is reactivated');
+  raise notice 'G (rejection context) PASSED';
 end $$;
 
 select 'ALL PAYMENT REQUEST SOFT DELETE ASSERTIONS PASSED' as result;

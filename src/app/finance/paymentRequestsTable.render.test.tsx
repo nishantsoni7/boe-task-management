@@ -496,3 +496,30 @@ describe("7. the salesperson's list", () => {
     assert.ok(cells[8].includes('Delete'))
   })
 })
+
+describe('8. a rejected request keeps its original PI/Order', () => {
+  const rejected = row({ status: 'rejected' })
+  const cancelledDest: PaymentDestination = {
+    paymentId: rejected.id, source: 'intent', kind: 'pi_draft', orderCount: 0, submissionCount: 1, customerCount: 1,
+    orderId: null, orderNumber: null, submissionId: 'b1b2c3d4-0000-4000-8000-0000000000aa', reference: 'PID-00007', cancelled: true,
+  }
+
+  test('8a. Against names it, marks the link cancelled, and still links to the PI', () => {
+    const destinations = new Map([[rejected.id, cancelledDest]])
+    const markup = renderToStaticMarkup(
+      <PaymentsTable rows={[rejected]} destinations={destinations} isAdmin={false} userId={USER} salesView
+        totals={new Map([[rejected.id, 132500]])}
+        cutoff={0} highlightId={null} onRowClick={noop} onView={noop} onEdit={noop} onDelete={noop}
+        againstHref={() => '/orders/drafts/b1b2c3d4-0000-4000-8000-0000000000aa'} />)
+    assert.match(markup, /<a [^>]*href="\/orders\/drafts\/b1b2c3d4[^"]*"[^>]*>PI Draft PID-00007 \(cancelled\)<\/a>/)
+    const cells = firstRowCells(markup)
+    assert.equal(cells[2], 'PI Draft PID-00007 (cancelled)')
+    assert.equal(cells[3], '₹1,32,500.00', 'the total is the same record\'s')
+    assert.match(markup, /before it was rejected/, 'and its tooltip says where it came from')
+  })
+
+  test('8b. a rejected request whose record cannot be resolved still says Unavailable', () => {
+    const cells = firstRowCells(render([rejected], { salesView: true, totals: new Map([[rejected.id, null]]) }))
+    assert.equal(cells[3], 'Unavailable')
+  })
+})

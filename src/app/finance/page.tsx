@@ -23,7 +23,9 @@ import {
   deleteOwnPaymentRequest,
 } from '@/lib/finance/ownPaymentRequestDeletion'
 import { DeleteOwnPaymentRequestModal } from '@/components/finance/DeleteOwnPaymentRequestModal'
+import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView'
 import { loadPaymentTotals } from '@/lib/finance/paymentCommercialTotals'
+import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
@@ -2724,7 +2726,11 @@ export function PaymentsTable({
             const totalCell = (
               <td
                 style={{ ...TD_MONEY, color: total === null ? colors.muted : colors.secondary, fontStyle: total === null ? 'italic' : 'normal' }}
-                title={total === null ? 'The total before GST of the linked PI or Order could not be resolved' : undefined}
+                title={total === null
+                  ? 'The total before GST of the linked PI or Order could not be resolved'
+                  : destination && destination.cancelled
+                    ? 'Total before GST of the PI or Order this request was linked to before it was rejected (the link is cancelled)'
+                    : undefined}
               >
                 {total === undefined ? '…' : total === null ? 'Unavailable' : fmtAmount(total)}
               </td>
@@ -2826,6 +2832,12 @@ function FinancePageInner() {
   const [totalsState, setTotalsState] = useState<{
     forDestinations: Map<string, PaymentDestination>
     totals: Map<string, number | null>
+  } | null>(null)
+  // What rejected requests were linked to before the rejection cancelled it,
+  // tagged with the destinations it was read for (see paymentCancelledLinks.ts).
+  const [cancelledState, setCancelledState] = useState<{
+    forDestinations: Map<string, PaymentDestination>
+    links: Map<string, PaymentDestination>
   } | null>(null)
   // Seeded from the address — ?q= and ?page= — and mirrored back to it below
   // (useMirrorToUrl), so Back from an Order or PI returns to the same tab,
@@ -3335,24 +3347,43 @@ function FinancePageInner() {
     () => requests.filter(r => tabMatches(r, activeTab, cutoffMs)),
     [requests, activeTab, cutoffMs])
 
-  // THE SALESPERSON'S LIST: not an admin, cannot approve payments, cannot see the
-  // company's payments. Anyone with review authority keeps the review columns.
-  const salesView = !isAdmin && !caps.canApprovePayment && !caps.canViewAllFinance
+  // THE SALESPERSON'S LIST — see paymentRequestsSalesView.ts for why only a
+  // person who can decide a payment keeps the review columns.
+  const salesView = isSalespersonPaymentView(isAdmin, caps)
 
   // ── Total Before GST ─────────────────────────────────────────────────────────
   // Two batched reads for the whole page (never per row), started when this
   // page's destinations land and only for the list that shows the column. The
   // result is tagged with the destinations it was read for, so a slow answer for
   // page one can never paint beside page two's rows.
+  //
+  // A rejected request has no live destination (its intent was cancelled), so
+  // its original PI/Order is read back from that cancelled intent FIRST and the
+  // total follows the same record the Against cell names.
   useEffect(() => {
-    if (!salesView || !destinations) return
+    if (!destinations) return
     let current = true
-    void loadPaymentTotals(supabase, destinations).then(found => {
-      if (current) setTotalsState({ forDestinations: destinations, totals: found })
+    const missing = requests.filter(r => r.status === 'rejected' && needsHistoricalLink(destinations.get(r.id))).map(r => r.id)
+    void (missing.length > 0 ? loadCancelledLinks(supabase, missing) : Promise.resolve(new Map<string, PaymentDestination>()))
+      .then(links => { if (current) setCancelledState({ forDestinations: destinations, links }) })
+    return () => { current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destinations, supabase])
+  const shownDestinations = useMemo(() => {
+    if (!destinations || !cancelledState || cancelledState.forDestinations !== destinations) return destinations
+    return withCancelledLinks(destinations, cancelledState.links)
+  }, [destinations, cancelledState])
+  const historySettled = !!destinations && cancelledState?.forDestinations === destinations
+
+  useEffect(() => {
+    if (!salesView || !shownDestinations || !historySettled) return
+    let current = true
+    void loadPaymentTotals(supabase, shownDestinations).then(found => {
+      if (current) setTotalsState({ forDestinations: shownDestinations, totals: found })
     })
     return () => { current = false }
-  }, [salesView, destinations, supabase])
-  const totals = totalsState && totalsState.forDestinations === destinations ? totalsState.totals : null
+  }, [salesView, shownDestinations, historySettled, supabase])
+  const totals = totalsState && totalsState.forDestinations === shownDestinations ? totalsState.totals : null
 
   // Which delete dialog a row opens: the admin's hard delete if they are allowed
   // it, otherwise the submitter's own.
@@ -3489,7 +3520,7 @@ function FinancePageInner() {
           </div>
         ) : (
           <PaymentsTable
-            destinations={destinations}
+            destinations={shownDestinations}
             rows={visible}
             isAdmin={isAdmin}
             userId={userId}

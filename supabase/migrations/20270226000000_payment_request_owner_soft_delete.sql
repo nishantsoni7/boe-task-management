@@ -39,6 +39,10 @@
 --      removes them from the list, the tab counts, search, the action queue and
 --      the finance_received_payments view (security_invoker) in one place.
 --   4. Allocations and intents cannot be created against a deleted payment.
+--   5. The submitter's own DELETE policy is dropped (see "The bypass" below), so
+--      the RPC is the ONLY way a submitter can remove a request. Without this a
+--      salesperson could DELETE their own unapproved row straight through the
+--      database API, which cascades the activity log away.
 
 -- ── Columns ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +80,35 @@ alter table public.finance_payment_request_activity_log
     'allocation_moved',
     'request_deleted'
   ));
+
+-- ── The bypass: a submitter hard-deleting through the API ──────────────────────
+-- finance_payment_requests_own_delete (20260700000000) let the submitter DELETE
+-- their own unapproved row directly. The admin-only rule of 20261011000000 never
+-- removed it (that migration changed the RPC protocol, not this policy). Dropped,
+-- and so is its older 20260672 spelling. What remains, deliberately:
+--   * finance_payment_requests_admin_delete_unapproved    (admins)
+--   * finance_payment_requests_permitted_delete_unapproved (finance.delete holders)
+--   * the admin claim protocol (begin/finalize_finance_payment_deletion), which is
+--     SECURITY DEFINER and does not depend on any DELETE policy.
+-- The finance_payment_requests_guard_approved_delete trigger still refuses every
+-- caller deleting an approved payment, whatever policies exist.
+
+drop policy if exists finance_payment_requests_own_delete on public.finance_payment_requests;
+drop policy if exists finance_payment_requests_own_delete_pending on public.finance_payment_requests;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_policy p
+     where p.polrelid = 'public.finance_payment_requests'::regclass
+       and p.polcmd in ('d', '*')
+       and p.polname not in ('finance_payment_requests_admin_delete_unapproved',
+                             'finance_payment_requests_permitted_delete_unapproved',
+                             'finance_payment_requests_module_entry_gate')
+  ) then
+    raise exception 'A DELETE policy other than the admin and finance.delete ones exists on finance_payment_requests; a submitter could hard-delete through the API.';
+  end if;
+end $$;
 
 -- ── 3. Deleted rows are invisible ────────────────────────────────────────────
 

@@ -715,6 +715,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
+      // Payment Requests: a salesperson's soft delete of their own never-approved request,
+      // held by src/lib/finance/ownPaymentRequestDeletion.test.tsx and
+      // supabase/tests/payment_request_owner_soft_delete_assertions.sql.
+      if (f === 'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2521,6 +2525,10 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // dialog, the activity label for the new trail event, and the suites that hold them. It
   // changes no payment entry, allocation or balance.
   const ALLOWED_PAYMENT_REQUEST_OWNER_DELETE = new Set([
+    'src/lib/finance/paymentCancelledLinks.test.ts',
+    'src/lib/finance/paymentCancelledLinks.ts',
+    'src/lib/finance/paymentDestination.ts',
+    'src/lib/finance/paymentRequestsSalesView.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
     'src/app/finance/page.tsx',
     'src/app/finance/paymentRequestsTable.render.test.tsx',
