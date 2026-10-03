@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
@@ -299,12 +299,6 @@ export default function TaskDetailPage() {
     () => buildGalleryEntries(task, taskLevelAttachments),
     [task, taskLevelAttachments],
   )
-  // Desktop puts the gallery above Activity in the right column; below that
-  // width the columns stack, so it sits under the summary card instead of after
-  // the whole activity feed. Rendered in ONE slot only, so thumbnails are
-  // signed and fetched once.
-  const isWideLayout = useWideLayout()
-
   const queryClient = useQueryClient()
   const taskId      = params.id as string
 
@@ -2041,16 +2035,6 @@ export default function TaskDetailPage() {
               )}
             </div>
 
-            {/* ─ Attachments, stacked layout ─ */}
-            {!isWideLayout && (
-              <TaskAttachmentGallery
-                entries={galleryEntries}
-                taskTitle={task.title}
-                supabase={supabase}
-                onOpenFile={openPreview}
-              />
-            )}
-
             {/* ─ B. Current Status Card ─
                 Hidden for the two parties to a pending approval: the review card
                 below states the same status, in the words of the decision that is
@@ -2234,202 +2218,197 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {/* § Unacknowledged notice */}
-            {isUnacknowledged && (
-              <div className="boe-card" style={{
-                padding: '12px 18px',
-                background: colors.amberTint,
-                borderLeft: `3px solid ${colors.amber}`,
-              }}>
-                <p style={{ fontSize: '12px', color: colors.amber, fontWeight: 600, margin: 0 }}>
-                  ⚠️ Please acknowledge this task before updating it.
-                </p>
-              </div>
-            )}
-
-            {/* ─ C. Conversation ─ */}
-            {mayPostUpdate && (
-              <div className="boe-card" style={{
-                padding: '16px 20px',
-                display: 'flex', flexDirection: 'column', gap: '10px',
-                background: '#ffffff',
-              }}>
-                <span style={{
-                  fontSize: '10px', fontWeight: 700,
-                  letterSpacing: '0.09em', textTransform: 'uppercase',
-                  color: colors.muted,
-                }}>
-                  Updates
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div
-                    style={{ position: 'relative' }}
-                    onDragOver={handleCommentDragOver}
-                    onDragEnter={handleCommentDragEnter}
-                    onDragLeave={handleCommentDragLeave}
-                    onDrop={handleCommentDrop}
-                  >
-                    <textarea
-                      value={commentNote}
-                      onChange={e => setCommentNote(e.target.value)}
-                      onPaste={handleCommentPaste}
-                      placeholder={isQuotation ? 'Add an update...' : 'Add a comment or share details…'}
-                      className="boe-input"
-                      style={{
-                        resize: 'none', height: '98px', paddingBottom: '36px',
-                        width: '100%', boxSizing: 'border-box',
-                        border: `1.5px dashed ${commentDropActive ? colors.blue : colors.border}`,
-                        background: commentDropActive ? colors.blueTint : '#F0F2F5',
-                        borderRadius: '8px',
-                        fontSize: '12.5px', lineHeight: 1.5,
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    />
-                    {commentDropActive && (
-                      <div style={{
-                        position: 'absolute', inset: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        pointerEvents: 'none',
-                        fontSize: '12px', fontWeight: 600, color: colors.blue,
-                        background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
-                      }}>
-                        Drop files to attach
-                      </div>
-                    )}
-                    <label
-                      title="Add attachments"
-                      style={{
-                        position: 'absolute', bottom: '9px', right: '10px',
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: '28px', height: '28px', borderRadius: '50%',
-                        background: commentAttachments.length > 0 ? colors.blueTint : '#ffffff',
-                        border: `1.5px solid ${commentAttachments.length > 0 ? colors.blue + '55' : colors.border}`,
-                        fontSize: '13px', cursor: 'pointer', userSelect: 'none',
-                        transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                      }}
-                    >
-                      📎
-                      <input
-                        type="file"
-                        multiple
-                        accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
-                        onChange={e => {
-                          addCommentFiles(Array.from(e.target.files ?? []))
-                          e.target.value = ''
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-                  </div>
-                  <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
-                    Drop files here, paste copied files, or browse
-                  </p>
-                  {/* Selected files list — each row shows its own upload state, because
-                      uploading starts on selection rather than on submit. */}
-                  {commentAttachments.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {commentAttachments.map(a => (
-                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '10.5px', color: colors.blue, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            📎 {a.fileName} <span style={{ color: colors.tertiary }}>({(a.size / 1024).toFixed(0)} KB)</span>
-                          </span>
-                          <span
-                            role="status"
-                            title={a.error ?? undefined}
-                            style={{
-                              fontSize: '10px', fontWeight: 600, flexShrink: 0,
-                              color: a.status === 'failed' ? colors.red
-                                   : a.status === 'uploaded' ? colors.green
-                                   : colors.secondary,
-                            }}
-                          >
-                            {a.status === 'uploaded' ? '✓ ' : ''}{attachmentStatusLabel(a)}
-                          </span>
-                          {a.status === 'failed' && (
-                            <button
-                              type="button"
-                              onClick={() => retryCommentAttachment(a.id)}
-                              style={{
-                                background: 'none', border: `1px solid ${colors.blue}`, borderRadius: '5px',
-                                cursor: 'pointer', color: colors.blue, fontSize: '10px', fontWeight: 600,
-                                padding: '1px 6px', flexShrink: 0, fontFamily: font.body,
-                              }}
-                            >
-                              Retry
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => removeCommentAttachment(a.id)}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: colors.tertiary, fontSize: '12px', padding: '0 2px', flexShrink: 0,
-                            }}
-                            aria-label={`Remove ${a.fileName}`}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {(commentUploadError ?? failureSummary(commentAttachments)) && (
-                    <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>
-                      {commentUploadError ?? failureSummary(commentAttachments)}
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
-                    <button
-                      onClick={saveComment}
-                      // Blocked only by an in-flight submit or a failed upload —
-                      // an upload still running is waited on, not a barrier.
-                      disabled={commentSaving || commentAttachments.some(a => a.status === 'failed')}
-                      title={commentAttachments.some(a => a.status === 'failed')
-                        ? 'Retry or remove the failed attachment first'
-                        : undefined}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '6px 18px', borderRadius: '7px',
-                        border: `1.5px solid ${colors.blue}`,
-                        background: colors.blue, color: '#ffffff',
-                        fontSize: '12px', fontWeight: 600,
-                        cursor: commentSaving ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
-                        opacity: commentSaving ? 0.6 : 1, transition: 'all 0.15s',
-                        boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {submitButtonLabel({
-                        saving: commentSaving,
-                        waitingForUploads: commentWaitingUploads,
-                        isQuotation,
-                      })}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-
-        </div>
-
-        {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
-        <div className="boe-task-right-col" style={{ minWidth: 0 }}>
-
-          {/* Attachments, desktop layout — ABOVE Activity. Activity grows without
-              limit, so the images come first where they are always in view. */}
-          {isWideLayout && (
+            {/* ─ Attachments ─ one slot, below Current Status; the Updates composer sits above Activity in the right column. */}
             <TaskAttachmentGallery
               entries={galleryEntries}
               taskTitle={task.title}
               supabase={supabase}
               onOpenFile={openPreview}
             />
+        </div>
+
+        {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
+        <div className="boe-task-right-col" style={{ minWidth: 0 }}>
+
+          {/* § Unacknowledged notice */}
+          {isUnacknowledged && (
+            <div className="boe-card" style={{
+              padding: '12px 18px',
+              background: colors.amberTint,
+              borderLeft: `3px solid ${colors.amber}`,
+            }}>
+              <p style={{ fontSize: '12px', color: colors.amber, fontWeight: 600, margin: 0 }}>
+                ⚠️ Please acknowledge this task before updating it.
+              </p>
+            </div>
           )}
 
+          {/* ─ C. Conversation ─ */}
+          {mayPostUpdate && (
+            <div className="boe-card" style={{
+              padding: '16px 20px',
+              display: 'flex', flexDirection: 'column', gap: '10px',
+              flexShrink: 0,
+              background: '#ffffff',
+            }}>
+              <span style={{
+                fontSize: '10px', fontWeight: 700,
+                letterSpacing: '0.09em', textTransform: 'uppercase',
+                color: colors.muted,
+              }}>
+                Updates
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div
+                  style={{ position: 'relative' }}
+                  onDragOver={handleCommentDragOver}
+                  onDragEnter={handleCommentDragEnter}
+                  onDragLeave={handleCommentDragLeave}
+                  onDrop={handleCommentDrop}
+                >
+                  <textarea
+                    value={commentNote}
+                    onChange={e => setCommentNote(e.target.value)}
+                    onPaste={handleCommentPaste}
+                    placeholder={isQuotation ? 'Add an update...' : 'Add a comment or share details…'}
+                    className="boe-input"
+                    style={{
+                      resize: 'none', height: '98px', paddingBottom: '36px',
+                      width: '100%', boxSizing: 'border-box',
+                      border: `1.5px dashed ${commentDropActive ? colors.blue : colors.border}`,
+                      background: commentDropActive ? colors.blueTint : '#F0F2F5',
+                      borderRadius: '8px',
+                      fontSize: '12.5px', lineHeight: 1.5,
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                  />
+                  {commentDropActive && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      pointerEvents: 'none',
+                      fontSize: '12px', fontWeight: 600, color: colors.blue,
+                      background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
+                    }}>
+                      Drop files to attach
+                    </div>
+                  )}
+                  <label
+                    title="Add attachments"
+                    style={{
+                      position: 'absolute', bottom: '9px', right: '10px',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: '28px', height: '28px', borderRadius: '50%',
+                      background: commentAttachments.length > 0 ? colors.blueTint : '#ffffff',
+                      border: `1.5px solid ${commentAttachments.length > 0 ? colors.blue + '55' : colors.border}`,
+                      fontSize: '13px', cursor: 'pointer', userSelect: 'none',
+                      transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                    }}
+                  >
+                    📎
+                    <input
+                      type="file"
+                      multiple
+                      accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
+                      onChange={e => {
+                        addCommentFiles(Array.from(e.target.files ?? []))
+                        e.target.value = ''
+                      }}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
+                <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
+                  Drop files here, paste copied files, or browse
+                </p>
+                {/* Selected files list — each row shows its own upload state, because
+                    uploading starts on selection rather than on submit. */}
+                {commentAttachments.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {commentAttachments.map(a => (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '10.5px', color: colors.blue, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          📎 {a.fileName} <span style={{ color: colors.tertiary }}>({(a.size / 1024).toFixed(0)} KB)</span>
+                        </span>
+                        <span
+                          role="status"
+                          title={a.error ?? undefined}
+                          style={{
+                            fontSize: '10px', fontWeight: 600, flexShrink: 0,
+                            color: a.status === 'failed' ? colors.red
+                                 : a.status === 'uploaded' ? colors.green
+                                 : colors.secondary,
+                          }}
+                        >
+                          {a.status === 'uploaded' ? '✓ ' : ''}{attachmentStatusLabel(a)}
+                        </span>
+                        {a.status === 'failed' && (
+                          <button
+                            type="button"
+                            onClick={() => retryCommentAttachment(a.id)}
+                            style={{
+                              background: 'none', border: `1px solid ${colors.blue}`, borderRadius: '5px',
+                              cursor: 'pointer', color: colors.blue, fontSize: '10px', fontWeight: 600,
+                              padding: '1px 6px', flexShrink: 0, fontFamily: font.body,
+                            }}
+                          >
+                            Retry
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeCommentAttachment(a.id)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: colors.tertiary, fontSize: '12px', padding: '0 2px', flexShrink: 0,
+                          }}
+                          aria-label={`Remove ${a.fileName}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(commentUploadError ?? failureSummary(commentAttachments)) && (
+                  <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>
+                    {commentUploadError ?? failureSummary(commentAttachments)}
+                  </p>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
+                  <button
+                    onClick={saveComment}
+                    // Blocked only by an in-flight submit or a failed upload —
+                    // an upload still running is waited on, not a barrier.
+                    disabled={commentSaving || commentAttachments.some(a => a.status === 'failed')}
+                    title={commentAttachments.some(a => a.status === 'failed')
+                      ? 'Retry or remove the failed attachment first'
+                      : undefined}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      padding: '6px 18px', borderRadius: '7px',
+                      border: `1.5px solid ${colors.blue}`,
+                      background: colors.blue, color: '#ffffff',
+                      fontSize: '12px', fontWeight: 600,
+                      cursor: commentSaving ? 'not-allowed' : 'pointer',
+                      fontFamily: font.body,
+                      opacity: commentSaving ? 0.6 : 1, transition: 'all 0.15s',
+                      boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {submitButtonLabel({
+                      saving: commentSaving,
+                      waitingForUploads: commentWaitingUploads,
+                      isQuotation,
+                    })}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Activity */}
           <div className="boe-card boe-activity-card" style={{
@@ -3318,21 +3297,5 @@ export default function TaskDetailPage() {
 
       <Toast toast={toast} onDismiss={dismissToast} />
     </DashboardLayout>
-  )
-}
-
-// The breakpoint .boe-task-2col collapses at (globals.css). Read on the client
-// only: the page renders nothing task-specific until the task has loaded
-// client-side, so the server snapshot is never what the user sees.
-const WIDE_LAYOUT_QUERY = '(min-width: 1024px)'
-function useWideLayout(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mq = window.matchMedia(WIDE_LAYOUT_QUERY)
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    },
-    () => window.matchMedia(WIDE_LAYOUT_QUERY).matches,
-    () => true,
   )
 }

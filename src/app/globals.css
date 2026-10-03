@@ -352,9 +352,9 @@ body {
 .boe-activity-action:hover { color: #4A5261 !important; text-decoration: underline; }
 
 /* ── Task attachment gallery (Task Detail) ──
-   Its own card: under Activity in the sticky right column on desktop, under
-   the summary card when the columns stack. The grid scrolls inside the card so
-   a task with forty photos cannot push Activity off the sticky column. */
+   Its own card, below Current Status in the left column (and in the same
+   reading position when the columns stack). The grid scrolls inside the card
+   so a task with forty photos cannot make the page endless. */
 .boe-task-gallery {
   padding: 0;
   background: #ffffff;
@@ -365,7 +365,6 @@ body {
   flex-direction: column;
   min-width: 0;
 }
-.boe-task-right-col > .boe-task-gallery { flex: 0 0 auto; }
 .boe-task-gallery-head {
   display: flex;
   align-items: center;
