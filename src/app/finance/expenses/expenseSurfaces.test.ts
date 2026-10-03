@@ -712,6 +712,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/orders/orderDashboardSummary.test.ts
       // and supabase/tests/orders_dashboard_assertions.sql.
       if (f === 'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql') continue
+      // The salesperson's own Orders dashboard (20270226000000): one read-only function, held by
+      // src/lib/orders/salespersonDashboard.test.tsx and supabase/tests/salesperson_orders_dashboard_assertions.sql.
+      if (f === 'supabase/migrations/20270226000000_salesperson_orders_dashboard.sql') continue
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
@@ -2572,6 +2575,34 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql',
   ])
 
+  // The salesperson's own Orders dashboard (2026-10-03, 20270226000000): one new READ-ONLY
+  // function, the /orders page and the one component that draws it, its words and its
+  // style, and the migration-inventory pins that name every migration on disk. It reaches no payment
+  // entry, allocation, balance or Finance screen, and changes no approval, manufacturing or dispatch workflow.
+  const ALLOWED_SALESPERSON_DASHBOARD = new Set([
+    'src/app/globals.css',
+    'src/app/orders/page.tsx',
+    'src/components/orders/dashboard/SalespersonDashboardView.tsx',
+    'src/lib/orders/salespersonDashboard.test.tsx',
+    'src/lib/orders/salespersonDashboard.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270226000000_salesperson_orders_dashboard.sql',
+  ])
+
   // Minop collection-only and the "Incoming Minop data" register (2026-10-01): Minop
   // messages are stored and inspected but never turned into attendance. No
   // migration, no Finance or Orders file; the Attendance admin pages, the Minop
@@ -2663,6 +2694,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_CLEANUP_NUMBER_CHOICE.has(f) &&
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
+    !ALLOWED_SALESPERSON_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f)
 
@@ -3007,6 +3039,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
+        || ALLOWED_SALESPERSON_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `

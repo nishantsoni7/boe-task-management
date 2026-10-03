@@ -355,7 +355,10 @@ describe('no Order screen waits more than it must', () => {
       //   gone. What remains is ONE orders_dashboard_summary() read, the PI Drafts
       //   count, the three operations-handoff counts, the profile and the session —
       //   all but the session inside the existing Promise.all, so the page still waits exactly twice.
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 4, [DETAIL]: 40,
+      // DASHBOARD 7 -> 8 (20270226000000, the salesperson's own dashboard): ONE more read,
+      //   salesperson_orders_dashboard(), issued INSIDE the same Promise.all beside
+      //   orders_dashboard_summary(), so the page still waits exactly twice.
+      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 40,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
