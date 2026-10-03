@@ -2434,6 +2434,20 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/taskCreateFlow.test.ts',
   ])
 
+  // Task Management: Task Detail stalls (2026-10-03). Task Detail's reads split into
+  // essential and secondary, a submission no longer waits on the history, and an
+  // unconfirmed write is reconciled rather than repeated. One page, one new
+  // helper, and the suites that pin them; no migration, no Finance or Orders file.
+  const ALLOWED_TASK_DETAIL_STALLS = new Set([
+    'src/app/tasks/[id]/page.tsx',
+    'src/lib/tasks/taskDetailLoad.ts',
+    'src/lib/tasks/taskDetailLoad.test.ts',
+    'src/lib/tasks/taskDetailOpenFromDrawer.test.ts',
+    'src/lib/tasks/taskNavigationPerformance.test.ts',
+    'src/lib/tasks/taskReturnPath.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+  ])
+
   // Customer Reviews: employee edit / delete, duplicate detection, admin reporting and the shared
   // leaderboard (feat/customer-reviews-edit-dup-reporting). Custom Review submissions only: no Finance
   // or Orders screen, figure or table. Named one by one; the migration inventories gain one line each.
@@ -2651,6 +2665,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
+    !ALLOWED_TASK_DETAIL_STALLS.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -3006,6 +3021,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file)
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
+        || ALLOWED_TASK_DETAIL_STALLS.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
