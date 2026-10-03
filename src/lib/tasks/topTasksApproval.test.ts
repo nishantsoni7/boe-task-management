@@ -319,6 +319,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270223000000_customer_review_custom_edit_delete.sql',
     '20270224000000_customer_review_custom_duplicate_detection.sql',
     '20270225000000_customer_review_reporting_and_leaderboard.sql',
+    '20270226000000_task_change_status_rpc.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
