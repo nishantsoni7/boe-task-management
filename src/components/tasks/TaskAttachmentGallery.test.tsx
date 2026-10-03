@@ -117,14 +117,13 @@ describe('Task Detail page wiring', () => {
     assert.doesNotMatch(page, /Task attachments — legacy single \+ new multi-file/)
   })
 
-  test('the gallery is rendered once per layout: above Activity, or under the summary', () => {
-    assert.equal(count(page, '<TaskAttachmentGallery'), 2)
-    assert.match(page, /\{!isWideLayout && \(\n\s+<TaskAttachmentGallery/)
-    assert.match(page, /\{isWideLayout && \(\n\s+<TaskAttachmentGallery/)
+  test('the gallery is rendered once, below Current Status in the left column', () => {
+    assert.equal(count(page, '<TaskAttachmentGallery'), 1)
+    assert.doesNotMatch(page, /isWideLayout/)
     const rightColStart = page.indexOf('<div className="boe-task-right-col"')
-    const desktopSlot = page.indexOf('{isWideLayout && (\n            <TaskAttachmentGallery')
-    const activity = page.indexOf('<div className="boe-card boe-activity-card"')
-    assert.ok(rightColStart > 0 && desktopSlot > rightColStart && desktopSlot < activity,
-      'the desktop gallery sits in the right column, before the Activity card')
+    const gallery = page.indexOf('<TaskAttachmentGallery')
+    const status = page.indexOf("'Current Status'")
+    assert.ok(status > 0 && gallery > status && gallery < rightColStart,
+      'the gallery follows Current Status, before the right column')
   })
 })
