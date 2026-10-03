@@ -157,6 +157,12 @@ describe('the migration is the authority, not the button', () => {
     assert.ok(SQL.includes("set status = 'cancelled'"))
     assert.ok(SQL.includes("'request_deleted'"))
   })
+  test('no submitter delete policy survives, and a finance.delete holder cannot hard-delete their OWN request', () => {
+    assert.ok(SQL.includes('drop policy if exists finance_payment_requests_own_delete on public.finance_payment_requests;'))
+    const policy = SQL.slice(SQL.indexOf('create policy finance_payment_requests_permitted_delete_unapproved'))
+    assert.ok(policy.slice(0, 400).includes('and submitted_by is distinct from auth.uid()'))
+    assert.ok(policy.slice(0, 400).includes("actor_has_permission('finance', 'delete')"), 'it is still the finance.delete policy')
+  })
   test('only signed-in users may call it', () => {
     assert.ok(SQL.includes('revoke all on function public.delete_own_payment_request(uuid) from public, anon;'))
     assert.ok(SQL.includes('grant execute on function public.delete_own_payment_request(uuid) to authenticated;'))

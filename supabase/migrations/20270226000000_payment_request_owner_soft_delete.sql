@@ -87,7 +87,8 @@ alter table public.finance_payment_request_activity_log
 -- removed it (that migration changed the RPC protocol, not this policy). Dropped,
 -- and so is its older 20260672 spelling. What remains, deliberately:
 --   * finance_payment_requests_admin_delete_unapproved    (admins)
---   * finance_payment_requests_permitted_delete_unapproved (finance.delete holders)
+--   * finance_payment_requests_permitted_delete_unapproved (finance.delete holders,
+--     for OTHER people's requests only — see below)
 --   * the admin claim protocol (begin/finalize_finance_payment_deletion), which is
 --     SECURITY DEFINER and does not depend on any DELETE policy.
 -- The finance_payment_requests_guard_approved_delete trigger still refuses every
@@ -95,6 +96,22 @@ alter table public.finance_payment_request_activity_log
 
 drop policy if exists finance_payment_requests_own_delete on public.finance_payment_requests;
 drop policy if exists finance_payment_requests_own_delete_pending on public.finance_payment_requests;
+
+-- A finance.delete holder can be a salesperson (the grant is protected and
+-- individually ticked, so nothing stops it being given to one). Their policy must
+-- not turn into a second hard-delete path for their OWN request: for those the
+-- RPC is the only door. It still lets them delete OTHER people's unapproved
+-- requests, which is the Finance behaviour the grant exists for. (Nobody holds it
+-- today but the admin; checked read-only on production 2026-10-03.)
+drop policy if exists finance_payment_requests_permitted_delete_unapproved on public.finance_payment_requests;
+create policy finance_payment_requests_permitted_delete_unapproved
+  on public.finance_payment_requests
+  for delete to authenticated
+  using (
+    status in ('pending_approval', 'needs_clarification', 'rejected')
+    and public.actor_has_permission('finance', 'delete')
+    and submitted_by is distinct from auth.uid()
+  );
 
 do $$
 begin

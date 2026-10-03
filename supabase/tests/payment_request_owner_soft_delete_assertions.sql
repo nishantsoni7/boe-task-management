@@ -12,6 +12,7 @@
 --   E. Allocations are reversed (kept), intents cancelled, nothing new attaches
 --   F. A submitter can no longer hard-DELETE through the API; admin deletion survives
 --   G. A rejection leaves the cancelled link readable (the client shows it)
+--   H. A salesperson who also holds finance.delete still soft-deletes their own; Finance deletion of others' survives
 --
 -- Runs inside ONE transaction that ends in ROLLBACK. The approval/deletion race
 -- (two sessions) cannot run in one transaction; see the PR for that run.
@@ -443,6 +444,62 @@ begin
                        where payment_request_id = pay and status = 'pending') = 0,
     'G4. the link stays cancelled — nothing is reactivated');
   raise notice 'G (rejection context) PASSED';
+end $$;
+
+-- ═══ H. A salesperson who ALSO holds finance.delete ═════════════════════════
+
+do $$
+declare n int;
+begin
+  -- Give the first salesperson the protected finance.delete grant (an individual override).
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  select pg_temp.s1(), m.id, a.id, true, pg_temp.adm()
+    from public.permission_modules m, public.permission_actions a
+   where m.module_key = 'finance' and a.action_key = 'delete';
+
+  insert into ids values ('mine', pg_temp.mk('SD-MINE', pg_temp.s1(), 'pending_approval'));
+  insert into ids values ('theirs', pg_temp.mk('SD-THEIRS', pg_temp.s2(), 'pending_approval'));
+
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  perform pg_temp.ok(public.actor_has_permission('finance', 'delete'), 'H0. the grant is really in effect for this session');
+
+  delete from public.finance_payment_requests where id = pg_temp.id('mine');
+  get diagnostics n = row_count;
+  perform pg_temp.ok(n = 0, 'H1. finance.delete does NOT let them hard-delete their own request');
+  reset role;
+  perform pg_temp.ok((select count(*) from public.finance_payment_requests where id = pg_temp.id('mine')) = 1, 'H2. the row is intact');
+
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  perform public.delete_own_payment_request(pg_temp.id('mine'));
+  reset role;
+  perform pg_temp.ok((select deleted_at from public.finance_payment_requests where id = pg_temp.id('mine')) is not null,
+    'H3. their own request is removed the soft-delete way (history kept)');
+  perform pg_temp.ok((select count(*) from public.finance_payment_request_activity_log
+                       where payment_request_id = pg_temp.id('mine') and event_type = 'request_deleted') = 1, 'H4. with its trail row');
+
+  -- The authorised Finance behaviour is preserved: they can still delete SOMEONE ELSE'S unapproved request.
+  -- (Deleting needs SEEING the row, so a Finance deleter also holds the company-wide view_all, as before.)
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  select pg_temp.s1(), m.id, a.id, true, pg_temp.adm()
+    from public.permission_modules m, public.permission_actions a
+   where m.module_key = 'finance' and a.action_key = 'view_all';
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  delete from public.finance_payment_requests where id = pg_temp.id('theirs');
+  get diagnostics n = row_count;
+  reset role;
+  perform pg_temp.ok(n = 1, 'H5. a finance.delete holder can still delete another person''s unapproved request');
+
+  -- ...but never an approved payment, whoever asks.
+  perform pg_temp.become(pg_temp.s1());
+  set local role authenticated;
+  delete from public.finance_payment_requests where id = pg_temp.id('appr');
+  reset role;
+  perform pg_temp.ok((select count(*) from public.finance_payment_requests where id = pg_temp.id('appr')) = 1,
+    'H6. an approved payment is untouched');
+  raise notice 'H (salesperson + finance.delete) PASSED';
 end $$;
 
 select 'ALL PAYMENT REQUEST SOFT DELETE ASSERTIONS PASSED' as result;
