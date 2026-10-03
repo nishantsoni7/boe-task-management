@@ -38,6 +38,15 @@ import { AdvanceSection, AlignmentSection, FabricFinishSection, StatusStrip } fr
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { useViewAs } from '@/contexts/ViewAsContext'
+import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
+import {
+  SP_ERROR_BODY,
+  SP_ERROR_HEADING,
+  SP_RETRY_LABEL,
+  isDashboardFunctionMissing,
+  parseSalespersonDashboard,
+  type SalespersonDashboard,
+} from '@/lib/orders/salespersonDashboard'
 
 // ── What the summary read is in ───────────────────────────────────────────────
 
@@ -45,6 +54,14 @@ type SummaryState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'ready'; summary: DashboardSummary }
+
+// The salesperson's own dashboard. `other` = this reader is not a salesperson (or the read
+// is not on this database yet), so the dashboard below is the one they always had.
+type PersonalState =
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'other' }
+  | { kind: 'ready'; data: SalespersonDashboard }
 
 export default function OrdersDashboardPage() {
   const [pageLoading, setPageLoading] = useState(true)
@@ -55,6 +72,7 @@ export default function OrdersDashboardPage() {
   // a control is not access control.
   const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [summary,     setSummary]     = useState<SummaryState>({ kind: 'loading' })
+  const [personal,    setPersonal]    = useState<PersonalState>({ kind: 'loading' })
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
   // The owner's "Select an order" control opens the Factory Focus form.
   const [focusFormOpen, setFocusFormOpen] = useState(false)
@@ -86,12 +104,17 @@ export default function OrdersDashboardPage() {
     setSummary(prev => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
 
     const [
+      personalRes,
       summaryRes,
       { count: draftCount },
       opsMineRes,
       opsUnassignedRes,
       opsFlaggedRes,
     ] = await Promise.all([
+      // THE SALESPERSON'S OWN DASHBOARD (20270226000000): the caller's own orders only, scoped by the
+      // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
+      supabase.rpc('salesperson_orders_dashboard'),
+
       supabase.rpc('orders_dashboard_summary'),
 
       // PI Drafts, in exactly the statuses /orders/drafts lists — the same
@@ -112,6 +135,19 @@ export default function OrdersDashboardPage() {
     ])
 
     if (ticket !== latest.current) return
+
+    // A FAILED READ IS AN ERROR, NEVER ZEROS. Only "this function is not on this database yet" leaves
+    // the existing dashboard in place; every other failure is shown.
+    if (personalRes.error) {
+      setPersonal(isDashboardFunctionMissing(personalRes.error) ? { kind: 'other' } : { kind: 'error' })
+    } else {
+      const parsedPersonal = parseSalespersonDashboard(personalRes.data)
+      setPersonal(
+        !parsedPersonal.ok ? { kind: 'error' }
+          : parsedPersonal.applicable ? { kind: 'ready', data: parsedPersonal.dashboard }
+          : { kind: 'other' },
+      )
+    }
 
     if (summaryRes.error) {
       setSummary({ kind: 'error' })
@@ -175,6 +211,7 @@ export default function OrdersDashboardPage() {
   const queues = orderDashboardCards({ counts, orders: ordersCaps })
 
   const ready = summary.kind === 'ready' ? summary.summary : null
+  const personalView = personal.kind === 'ready' || personal.kind === 'error'
 
   return (
     <OrdersLayout
@@ -205,7 +242,7 @@ export default function OrdersDashboardPage() {
           }
           {/* ── FACTORY FOCUS, FOR THE OWNER ── opens the selection form. The database
               refuses anybody else, so this is only a courtesy. */}
-          {ready?.viewer.canManageFocus && !viewAsUserId ? (
+          {!personalView && ready?.viewer.canManageFocus && !viewAsUserId ? (
             <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setFocusFormOpen(true)}>
               {FOCUS_ADD_LABEL}
             </button>
@@ -213,6 +250,22 @@ export default function OrdersDashboardPage() {
         </>
       }
     >
+      {personalView ? (
+        // ── THE SALESPERSON'S OWN DASHBOARD ── three figures, four complete lists, nothing else.
+        <div className="od-stack">
+          {personal.kind === 'ready' ? (
+            <SalespersonDashboardView data={personal.data} />
+          ) : (
+            <div className="od-error" role="alert">
+              <h2 className="od-error-title">{SP_ERROR_HEADING}</h2>
+              <p>{SP_ERROR_BODY}</p>
+              <button type="button" className="boe-btn boe-btn-primary" onClick={reload}>
+                {SP_RETRY_LABEL}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="od-stack">
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
             stepping in. Revenue only when the read returned it: the database sends it to a reader
@@ -286,6 +339,7 @@ export default function OrdersDashboardPage() {
           </nav>
         ) : null}
       </div>
+      )}
     </OrdersLayout>
   )
 }
