@@ -167,16 +167,19 @@ export type SavedTaskState = Pick<Task,
   'status' | 'completed_at' | 'last_update_at' | 'blocker_reason' | 'waiting_on_type' | 'waiting_on_user_id' | 'waiting_on_text'>
 
 export type Reconciled =
-  /** The row shows the expected status AND carries an activity row this person wrote after the task last changed: it was our request. */
+  /**
+   * The row shows the expected status and EXACTLY ONE activity row of ours explains it. This is evidence that the
+   * change is saved under this person's name — it is NOT proof that THIS request wrote it: a second tab of the same
+   * person, or an earlier attempt, produces the same row. Callers must not report it as a confirmed success of this
+   * request (see the comment on reconcileSavedStatus).
+   */
   | { outcome: 'applied'; saved: SavedTaskState }
   /**
-   * The row shows the expected status but no activity row of ours explains it.
-   * Somebody else (or another tab of the same person) made the same move, or
-   * our write landed and its activity row did not. Either way our request is
-   * not PROVEN saved — so it is reported, never claimed.
+   * The row shows the expected status but no activity row of ours explains it, or SEVERAL do. Somebody else (or
+   * another tab) made the move, or our write landed and its row is not visible. Never claimed.
    */
   | { outcome: 'unattributed'; saved: SavedTaskState }
-  /** The row still shows the status it had before and nothing of ours explains a change: nothing was written. */
+  /** The row still shows the status it had before and nothing of ours explains a change: no saved change was found. */
   | { outcome: 'not_applied'; saved: SavedTaskState }
   /** The row holds some other status, or an inconsistent mix — it moved without us. */
   | { outcome: 'changed'; saved: SavedTaskState }
@@ -194,27 +197,15 @@ export type ReconcileSpec = {
   since: string
 }
 
-/**
- * After an uncertain write, read what was actually saved and attribute it.
- *
- * The status alone proves nothing about OUR request: another user may have made
- * the same transition. What only our request can produce is a `status_changed`
- * activity row authored by us, leaving `previousStatus`, newer than the task
- * state we last saw (the protected RPC and both API routes write that row, and
- * the RPC writes it in the same transaction as the status). So:
- *
- *   status = expected, our row present  -> applied     (ours, proven)
- *   status = expected, no row of ours   -> unattributed (do not claim it)
- *   status = previous, no row of ours   -> not_applied (safe to try again)
- *   anything else                       -> changed
- *
- * This reads — it never writes, and never re-sends the mutation.
- */
-export async function reconcileSavedStatus(
-  supabase: SupabaseClient,
-  taskId: string,
-  spec: ReconcileSpec,
-): Promise<Reconciled> {
+export type ReconcileOptions = {
+  /**
+   * When the first read says "unattributed" or "not applied", look once more after this many ms before saying so:
+   * a write that landed just before the read may not be visible yet. Bounded, read-only. 0 disables it.
+   */
+  recheckMs?: number
+}
+
+async function readOnce(supabase: SupabaseClient, taskId: string, spec: ReconcileSpec): Promise<Reconciled> {
   try {
     let logQuery = supabase
       .from('task_activity_log')
@@ -227,16 +218,51 @@ export async function reconcileSavedStatus(
     if (spec.expectedStatus) logQuery = logQuery.eq('to_status', spec.expectedStatus)
     const [taskRes, logRes] = await Promise.all([
       supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single(),
-      logQuery.limit(1),
+      logQuery.limit(2),
     ])
     if (taskRes.error || !taskRes.data || logRes.error) return { outcome: 'unknown' }
     const saved = taskRes.data as unknown as SavedTaskState
-    const ours = (logRes.data ?? []).length > 0
+    const matching = (logRes.data ?? []).length
     const moved = spec.expectedStatus ? saved.status === spec.expectedStatus : saved.status !== spec.previousStatus
-    if (moved) return ours ? { outcome: 'applied', saved } : { outcome: 'unattributed', saved }
-    if (saved.status === spec.previousStatus && !ours) return { outcome: 'not_applied', saved }
+    // Exactly one: two matching rows mean more than one action of ours since the task was last seen (two tabs, or
+    // an earlier attempt that landed late) and the row cannot be tied to this request.
+    if (moved) return matching === 1 ? { outcome: 'applied', saved } : { outcome: 'unattributed', saved }
+    if (saved.status === spec.previousStatus && matching === 0) return { outcome: 'not_applied', saved }
     return { outcome: 'changed', saved }
   } catch {
     return { outcome: 'unknown' }
   }
+}
+
+/**
+ * After an uncertain write, read what was actually saved and say what can be said.
+ *
+ * The status alone proves nothing about OUR request: another user may have made the same transition. What only our
+ * request can produce is a `status_changed` activity row authored by us, leaving `previousStatus`, newer than the
+ * task state we last saw. That is the best evidence available WITHOUT changing the database, and it has a limit
+ * that cannot be removed here: it identifies "an action of ours", not "this request". A second tab of the same
+ * person, or an earlier attempt, writes an identical row. Exact attribution needs a request id carried through the
+ * protected RPC onto the activity row; until then the callers treat even `applied` as "saved under your name, not
+ * confirmed as this request" and never resend.
+ *
+ *   status = expected, exactly one row of ours -> applied      (consistent with ours)
+ *   status = expected, none or several         -> unattributed (do not claim it)
+ *   status = previous, none                    -> not_applied  (nothing found; the person may try again)
+ *   anything else                              -> changed
+ *
+ * A first answer of `unattributed` / `not_applied` is read once more after `recheckMs`, in case the write landed
+ * just before the read and is not visible yet. This only reads — it never writes and never re-sends the mutation.
+ */
+export async function reconcileSavedStatus(
+  supabase: SupabaseClient,
+  taskId: string,
+  spec: ReconcileSpec,
+  opts: ReconcileOptions = {},
+): Promise<Reconciled> {
+  const first = await readOnce(supabase, taskId, spec)
+  const wait = opts.recheckMs ?? 700
+  if (wait <= 0 || (first.outcome !== 'unattributed' && first.outcome !== 'not_applied')) return first
+  await new Promise(r => setTimeout(r, wait))
+  const second = await readOnce(supabase, taskId, spec)
+  return second.outcome === 'unknown' ? first : second
 }

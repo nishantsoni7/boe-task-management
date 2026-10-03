@@ -640,12 +640,10 @@ export default function TaskDetailPage() {
       if (settled.outcome === 'unknown') {
         window.alert('The connection dropped and we could not confirm whether this change was saved. Refresh the page status before trying again.')
       } else if (settled.outcome === 'not_applied') {
-        window.alert('The connection dropped and this change was not saved. You can try again.')
+        window.alert(recoveryMessage('not_applied', task.status))
       } else {
         if (mountedRef.current) { applySavedState(task, settled.saved); void loadLog(task.id) }
-        window.alert(settled.outcome === 'applied'
-          ? 'The connection dropped, but the change was saved. The activity feed is being refreshed.'
-          : notProven(settled.saved.status))
+        window.alert(recoveryMessage(settled.outcome, settled.saved.status))
       }
     } finally {
       statusUpdatingRef.current = false
@@ -661,8 +659,17 @@ export default function TaskDetailPage() {
     previousStatus: t.status,
     since:          t.last_update_at ?? t.created_at,
   })
-  const notProven = (status: string) =>
-    `The connection dropped. This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
+  /**
+   * What to tell the person after a write whose answer was lost, once the saved state has been read back. NOTHING here
+   * claims that THIS request succeeded: even `applied` only means a change of ours is saved — a second tab or an earlier
+   * attempt leaves the same row — so it is reported as "saved under your name, not confirmed as this request". The task
+   * is refreshed to what the server holds and nothing is sent again.
+   */
+  const recoveryMessage = (outcome: 'applied' | 'unattributed' | 'changed' | 'not_applied', status: string) => {
+    if (outcome === 'not_applied') return 'The connection dropped and we could not find this change saved. Nothing was sent again — you can try again.'
+    if (outcome === 'applied') return `The connection dropped. This task is now "${status}" under your name, but we cannot match it to this exact request (it could also be another tab or an earlier attempt of yours), so it is not treated as confirmed. Nothing was sent again.`
+    return `The connection dropped. This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
+  }
 
   /** Applies a task state the server has confirmed (an RPC result, or a saved row read back). */
   const applySavedState = (base: Task, saved: Partial<SavedTaskState>) => {
@@ -741,19 +748,16 @@ export default function TaskDetailPage() {
           return false
         }
         const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, REVIEW_RESULT_STATUS[action]))
-        if (settled.outcome === 'applied') {
-          perf.mark('reconciled')
-          if (mountedRef.current) applySavedState(startedOn, settled.saved)
-          if (opts.refreshHistory !== false) void loadLog(startedOn.id)
-          return true
-        }
         if (settled.outcome === 'not_applied') {
-          window.alert('The connection dropped and this change was not saved. Nothing was sent twice — you can try again.')
+          window.alert(recoveryMessage('not_applied', startedOn.status))
           return false
         }
-        if (settled.outcome === 'unattributed' || settled.outcome === 'changed') {
+        if (settled.outcome !== 'unknown') {
+          // applied / unattributed / changed: show what the server holds, claim nothing, and stay — a Submit does not
+          // leave for the list on evidence that is not tied to this request.
+          perf.mark('reconciled')
           if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
-          window.alert(notProven(settled.saved.status))
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
           return false
         }
         if (mountedRef.current) setReviewUncertain(action)
@@ -794,8 +798,7 @@ export default function TaskDetailPage() {
       applySavedState(task, settled.saved)
       void loadLog(task.id)
       setReviewUncertain(null)
-      if (settled.outcome === 'not_applied') window.alert('That change was not saved. Nothing was sent twice — you can try again.')
-      else if (settled.outcome !== 'applied') window.alert(notProven(settled.saved.status))
+      window.alert(recoveryMessage(settled.outcome, settled.saved.status))
     } finally {
       reviewBusyRef.current = false
       if (mountedRef.current) setReviewBusy(null)
@@ -882,17 +885,13 @@ export default function TaskDetailPage() {
         // No answer: it may have been applied. Read the saved status instead of
         // asking the person to press the button again.
         const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, null))
-        if (settled.outcome === 'applied') {
-          if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
-          return
-        }
         if (settled.outcome === 'unknown') {
           window.alert('The connection dropped and we could not confirm whether the task was reopened. Refresh the status before trying again.')
         } else if (settled.outcome === 'not_applied') {
-          window.alert('The connection dropped and the task was not reopened. You can try again.')
+          window.alert(recoveryMessage('not_applied', startedOn.status))
         } else {
           if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
-          window.alert(notProven(settled.saved.status))
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
         }
         return
       }
@@ -939,17 +938,15 @@ export default function TaskDetailPage() {
       if (!res) {
         // No answer: read what was saved rather than inviting a second cancel.
         const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, 'cancelled'))
-        if (settled.outcome !== 'applied') {
-          if (settled.outcome === 'unknown') {
-            window.alert('The connection dropped and we could not confirm whether the task was cancelled. Refresh the status before trying again.')
-          } else if (settled.outcome === 'not_applied') {
-            window.alert('The connection dropped and the task was not cancelled. You can try again.')
-          } else {
-            if (mountedRef.current) { applySavedState(startedOn, settled.saved); setCancelModalOpen(false); void loadLog(startedOn.id) }
-            window.alert(notProven(settled.saved.status))
-          }
-          return
+        if (settled.outcome === 'unknown') {
+          window.alert('The connection dropped and we could not confirm whether the task was cancelled. Refresh the status before trying again.')
+        } else if (settled.outcome === 'not_applied') {
+          window.alert(recoveryMessage('not_applied', startedOn.status))
+        } else {
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); setCancelModalOpen(false); void loadLog(startedOn.id) }
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
         }
+        return
       } else if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
         window.alert(`Failed to cancel task: ${error}`)

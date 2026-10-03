@@ -2771,6 +2771,29 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  test('the Task Detail stall allowance is EXACTLY the files of that change', () => {
+    // Pinned by value so it cannot quietly grow: one page, one helper, the suites
+    // that pin them, and this file. Nothing under finance/, orders/, api/ or
+    // supabase/ rides in on it.
+    assert.deepEqual([...ALLOWED_TASK_DETAIL_STALLS].sort(), [
+      'src/app/finance/expenses/expenseSurfaces.test.ts',
+      'src/app/tasks/[id]/page.tsx',
+      'src/lib/tasks/taskDetailLoad.test.ts',
+      'src/lib/tasks/taskDetailLoad.ts',
+      'src/lib/tasks/taskDetailOpenFromDrawer.test.ts',
+      'src/lib/tasks/taskNavigationPerformance.test.ts',
+      'src/lib/tasks/taskReturnPath.test.ts',
+    ])
+    for (const file of ALLOWED_TASK_DETAIL_STALLS) {
+      assert.ok(/\.tsx?$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      assert.equal(
+        /^(src\/app\/(finance\/(?!expenses\/expenseSurfaces\.test\.ts$)|orders\/|api\/)|src\/lib\/(finance|orders|pi|permissions)\/|supabase\/)/.test(file),
+        false, `${file} is not a Task Detail file`)
+    }
+  })
+
   test('THE GUARD STILL BITES \u2014 an unrelated changed file fails it', () => {
     // The negative half of the allowance. Adding a list of permitted files
     // is only safe if the guard still rejects everything else, so this runs

@@ -189,6 +189,7 @@ describe('uncertain writes are reconciled, never repeated', () => {
     assert.deepEqual(REVIEW_RESULT_STATUS, { submit: 'pending_approval', approve: 'completed', return: 'working' })
   })
 
+  const NO_RECHECK = { recheckMs: 0 }
   const spec = { actorId: 'me', expectedStatus: 'pending_approval', previousStatus: 'working', since: '2026-01-01T00:00:00Z' }
   const world = (status: string, ours: boolean) => ({
     tasks: { data: { status } },
@@ -196,35 +197,35 @@ describe('uncertain writes are reconciled, never repeated', () => {
   })
 
   test('expected status AND an activity row of ours → applied (our request, proven)', async () => {
-    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', true)), 't1', spec)
+    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', true)), 't1', spec, NO_RECHECK)
     assert.equal(r.outcome, 'applied')
   })
 
   test('expected status but NO row of ours → unattributed: another user may have made that move, so it is never claimed', async () => {
-    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', false)), 't1', spec)
+    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', false)), 't1', spec, NO_RECHECK)
     assert.equal(r.outcome, 'unattributed')
   })
 
   test('still the old status and no row of ours → not applied, safe to try again', async () => {
-    const r = await reconcileSavedStatus(fakeClient(world('working', false)), 't1', spec)
+    const r = await reconcileSavedStatus(fakeClient(world('working', false)), 't1', spec, NO_RECHECK)
     assert.equal(r.outcome, 'not_applied')
   })
 
   test('a third status → changed', async () => {
-    const r = await reconcileSavedStatus(fakeClient(world('cancelled', false)), 't1', spec)
+    const r = await reconcileSavedStatus(fakeClient(world('cancelled', false)), 't1', spec, NO_RECHECK)
     assert.equal(r.outcome, 'changed')
   })
 
   test('old status but a row of ours exists (it moved and moved back) → changed, not "safe to retry"', async () => {
-    const r = await reconcileSavedStatus(fakeClient(world('working', true)), 't1', spec)
+    const r = await reconcileSavedStatus(fakeClient(world('working', true)), 't1', spec, NO_RECHECK)
     assert.equal(r.outcome, 'changed')
   })
 
   test('no single expected status (reopen): any move away from the previous status counts, attributed by our row', async () => {
     const reopen = { ...spec, expectedStatus: null, previousStatus: 'completed' }
-    assert.equal((await reconcileSavedStatus(fakeClient(world('working', true)), 't1', reopen)).outcome, 'applied')
-    assert.equal((await reconcileSavedStatus(fakeClient(world('working', false)), 't1', reopen)).outcome, 'unattributed')
-    assert.equal((await reconcileSavedStatus(fakeClient(world('completed', false)), 't1', reopen)).outcome, 'not_applied')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('working', true)), 't1', reopen, NO_RECHECK)).outcome, 'applied')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('working', false)), 't1', reopen, NO_RECHECK)).outcome, 'unattributed')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('completed', false)), 't1', reopen, NO_RECHECK)).outcome, 'not_applied')
   })
 
   test('the query that attributes a row is scoped to us, this task, status_changed, leaving the old status, newer than what we saw', async () => {
@@ -239,7 +240,7 @@ describe('uncertain writes are reconciled, never repeated', () => {
         return q
       },
     } as unknown as SupabaseClient
-    await reconcileSavedStatus(client, 't1', spec)
+    await reconcileSavedStatus(client, 't1', spec, NO_RECHECK)
     for (const expected of [
       'task_activity_log.eq(task_id,t1)', 'task_activity_log.eq(actor_id,me)', 'task_activity_log.eq(action,status_changed)',
       'task_activity_log.eq(from_status,working)', 'task_activity_log.eq(to_status,pending_approval)',
@@ -249,12 +250,12 @@ describe('uncertain writes are reconciled, never repeated', () => {
 
   test('either read fails or rejects → unknown, and it only ever READS', async () => {
     const calls: string[] = []
-    for (const answers of [
+    for (const answers of <Record<string, Answer>[]>[
       { tasks: { error: { message: 'down' } } },
       { tasks: { throws: new Error('down') } },
       { tasks: { data: { status: 'working' } }, task_activity_log: { error: { message: 'down' } } },
     ]) {
-      const r = await reconcileSavedStatus(fakeClient(answers, calls), 't1', spec)
+      const r = await reconcileSavedStatus(fakeClient(answers, calls), 't1', spec, NO_RECHECK)
       assert.equal(r.outcome, 'unknown')
     }
     assert.deepEqual(calls.filter(c => c === 'tasks'), ['tasks', 'tasks', 'tasks'], 'one task read per attempt, no write, no retry')
@@ -331,5 +332,67 @@ describe('Task Detail wiring', () => {
 
   test('the cancel redirect timer is cleared when the page unmounts', () => {
     assert.ok(PAGE.includes('if (cancelNavTimer.current) clearTimeout(cancelNavTimer.current)'))
+  })
+})
+
+describe('attribution limits — what recovery may and may not claim', () => {
+  const spec = { actorId: 'me', expectedStatus: 'pending_approval', previousStatus: 'working', since: '2026-01-01T00:00:00Z' }
+
+  /** A client whose reads answer from a per-table QUEUE, so a second look can see something the first did not. */
+  function seqClient(script: Record<string, Answer[]>, calls: string[] = []): SupabaseClient {
+    const next = (table: string): Answer => { const q = script[table]; return (q.length > 1 ? q.shift() : q[0]) as Answer }
+    const from = (table: string) => {
+      const run = async () => { calls.push(table); const a = next(table); if (a.throws) throw a.throws; return { data: a.data ?? null, error: a.error ?? null } }
+      const q: Record<string, unknown> = {}
+      for (const m of ['select', 'eq', 'gt', 'order', 'limit']) q[m] = () => q
+      q.single = run
+      q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej)
+      return q
+    }
+    return { from } as unknown as SupabaseClient
+  }
+  const moved = { data: { status: 'pending_approval' } }, unmoved = { data: { status: 'working' } }
+  const none = { data: [] }, one = { data: [{ id: 'r1' }] }, two = { data: [{ id: 'r1' }, { id: 'r2' }] }
+
+  test('a COMPETING action by the same person (two matching rows) is not claimed as this request', async () => {
+    // Another tab of the same user, or an earlier attempt that landed late, leaves a second identical row.
+    const r = await reconcileSavedStatus(seqClient({ tasks: [moved], task_activity_log: [two] }), 't1', spec, { recheckMs: 0 })
+    assert.equal(r.outcome, 'unattributed')
+  })
+
+  test('DELAYED activity visibility: the row is not visible on the first look, is on the second → applied', async () => {
+    const calls: string[] = []
+    const r = await reconcileSavedStatus(seqClient({ tasks: [moved], task_activity_log: [none, one] }, calls), 't1', spec, { recheckMs: 5 })
+    assert.equal(r.outcome, 'applied')
+    assert.equal(calls.filter(c => c === 'tasks').length, 2, 'looked twice, nothing was written')
+  })
+
+  test('DELAYED visibility of the status itself: unmoved first, moved with our row second → applied', async () => {
+    const r = await reconcileSavedStatus(seqClient({ tasks: [unmoved, moved], task_activity_log: [none, one] }), 't1', spec, { recheckMs: 5 })
+    assert.equal(r.outcome, 'applied')
+  })
+
+  test('still nothing on the second look → unattributed / not applied, never upgraded', async () => {
+    assert.equal((await reconcileSavedStatus(seqClient({ tasks: [moved], task_activity_log: [none] }), 't1', spec, { recheckMs: 5 })).outcome, 'unattributed')
+    assert.equal((await reconcileSavedStatus(seqClient({ tasks: [unmoved], task_activity_log: [none] }), 't1', spec, { recheckMs: 5 })).outcome, 'not_applied')
+  })
+
+  test('a second look that cannot be read keeps the first answer instead of inventing one', async () => {
+    const r = await reconcileSavedStatus(seqClient({ tasks: [moved, { error: { message: 'down' } }], task_activity_log: [none] }), 't1', spec, { recheckMs: 5 })
+    assert.equal(r.outcome, 'unattributed')
+  })
+
+  test('a confident first answer is not looked at twice', async () => {
+    const calls: string[] = []
+    await reconcileSavedStatus(seqClient({ tasks: [moved], task_activity_log: [one] }, calls), 't1', spec, { recheckMs: 5 })
+    assert.equal(calls.filter(c => c === 'tasks').length, 1)
+  })
+
+  test('the page never reports a recovered write as a confirmed success of THIS request, and never leaves for the list on it', () => {
+    const run = PAGE.slice(PAGE.indexOf('const runReviewAction = async'), PAGE.indexOf('const checkSavedReviewStatus'))
+    const recovered = run.slice(run.indexOf('reconcileSavedStatus('), run.indexOf("perf.mark('rpc')"))
+    assert.equal(/return true/.test(recovered), false, 'no recovery branch returns success')
+    assert.ok(PAGE.includes('we cannot match it to this exact request'))
+    assert.equal(/not treated as confirmed/.test(PAGE), true)
   })
 })
