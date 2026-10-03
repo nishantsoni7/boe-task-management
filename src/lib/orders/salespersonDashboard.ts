@@ -1,4 +1,4 @@
-// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE USES IT (20270226000000).
+// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE USES IT (20270227000000).
 //
 // public.salesperson_orders_dashboard() returns the three figures and the four
 // complete lists for THE CALLER ONLY, in one round trip. This module VALIDATES
@@ -343,7 +343,7 @@ export function dispatchDateText(iso: string | null): string {
 }
 
 export function advanceUncheckedNote(n: number): string | null {
-  return n > 0 ? `${plural(n, 'active order')} with no order value could not be checked.` : null
+  return n > 0 ? `${plural(n, 'active order')} with no total before GST on record could not be checked.` : null
 }
 
 /** `Fabric status unknown`, `Finish status unknown`, `Fabric + Finish status unknown`. */

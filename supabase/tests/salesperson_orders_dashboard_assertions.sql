@@ -1,4 +1,4 @@
--- THE SALESPERSON'S OWN ORDERS DASHBOARD (20270226000000)
+-- THE SALESPERSON'S OWN ORDERS DASHBOARD (20270227000000)
 -- ===========================================================================
 --   1  who gets it       sales candidates only; admin, operations and a non-assignee get
 --                        { applicable: false } and nothing else; a salesperson who ALSO holds
@@ -44,6 +44,7 @@ begin
   perform set_config('test.p_id',       'd0000000-0000-4000-8000-00000000e015', true); -- salesperson P (revenue parity)
   perform set_config('test.n_id',       'd0000000-0000-4000-8000-00000000e016', true); -- NOT assignable (purchase)
   perform set_config('test.sv_id',      'd0000000-0000-4000-8000-00000000e017', true); -- salesperson who ALSO holds orders.view_all
+  perform set_config('test.e_id',       'd0000000-0000-4000-8000-00000000e018', true); -- salesperson for the GST-basis cases
 end $$;
 
 insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
@@ -56,7 +57,8 @@ insert into public.users (id, full_name, email, role, team, is_active, employee_
   (current_setting('test.d_id')::uuid,       'SPD Sales D',  'spd-d@example.test',       'member', 'sales',      true, 'ASSERT-S14'),
   (current_setting('test.p_id')::uuid,       'SPD Sales P',  'spd-p@example.test',       'member', 'sales',      true, 'ASSERT-S15'),
   (current_setting('test.n_id')::uuid,       'SPD Purchase', 'spd-n@example.test',       'member', 'purchase',   true, 'ASSERT-S16'),
-  (current_setting('test.sv_id')::uuid,      'SPD SalesViewAll', 'spd-sv@example.test',  'member', 'sales',      true, 'ASSERT-S17')
+  (current_setting('test.sv_id')::uuid,      'SPD SalesViewAll', 'spd-sv@example.test',  'member', 'sales',      true, 'ASSERT-S17'),
+  (current_setting('test.e_id')::uuid,       'SPD Sales E',  'spd-e@example.test',       'member', 'sales',      true, 'ASSERT-S18')
 on conflict (id) do update set role = excluded.role, team = excluded.team, is_active = true, is_deleted = false;
 update public.users set role = 'admin', is_active = true, is_deleted = false
  where id = current_setting('test.owner_id')::uuid;
@@ -75,7 +77,8 @@ select g.uid, mpa.module_id, mpa.action_id, true, current_setting('test.owner_id
     (current_setting('test.p_id')::uuid,       'orders', 'view'),
     (current_setting('test.n_id')::uuid,       'orders', 'view'),
     (current_setting('test.sv_id')::uuid,      'orders', 'view'),
-    (current_setting('test.sv_id')::uuid,      'orders', 'view_all')) g(uid, m, a)
+    (current_setting('test.sv_id')::uuid,      'orders', 'view_all'),
+    (current_setting('test.e_id')::uuid,       'orders', 'view')) g(uid, m, a)
   join public.permission_modules pm on pm.module_key = g.m
   join public.permission_actions pa on pa.action_key = g.a
   join public.module_permission_actions mpa on mpa.module_id = pm.id and mpa.action_id = pa.id
@@ -129,15 +132,31 @@ create function pg_temp.mk_order(
   p_tag text, p_status text, p_confirm date, p_total numeric, p_product numeric,
   p_assigned uuid, p_due date default null, p_test boolean default false,
   p_requested_by uuid default null
+, p_before numeric default null
 ) returns uuid language plpgsql as $$
-declare v_id uuid := gen_random_uuid();
+declare v_id uuid := gen_random_uuid(); v_pi uuid;
 begin
   perform set_config('request.jwt.claims', '', true);
   update public.test_data_cleanup_settings set enabled = p_test, permanently_disabled = false where id;
+  -- THE ADVANCE BASIS (20270226000000): the 40% is a percentage of the total BEFORE GST, which the shared helper
+  -- recovers from the PI stating the Order's value. An Order with a value gets a source PI stating it: by default
+  -- a GST-free one (before GST = grand total), so every percentage below reads as it was written; p_before makes
+  -- a PI with GST. An Order with no value has no PI, and so no basis.
+  if p_total is not null then
+    v_pi := gen_random_uuid();
+    alter table public.order_submissions disable trigger user;
+    insert into public.order_submissions (id, status, submitted_by, created_by, client_name, source_workbook_path,
+                                          gross_product_amount, discount_amount, subtotal_after_discount,
+                                          total_before_gst, gst_amount, grand_total, submitted_at, approved_by, approved_at)
+    values (v_pi, 'approved', current_setting('test.owner_id')::uuid, current_setting('test.owner_id')::uuid, 'SPD-src-pi',
+            'pi/' || v_pi::text || '.xlsx', 100, 0, 100, coalesce(p_before, p_total), p_total - coalesce(p_before, p_total), p_total, now(),
+            current_setting('test.owner_id')::uuid, now());
+    alter table public.order_submissions enable trigger user;
+  end if;
   insert into public.orders (id, client_name, status, confirm_date, due_date, total_value, total_product_value,
-                             created_by, assigned_to, requested_by)
+                             created_by, assigned_to, requested_by, source_order_submission_id)
   values (v_id, 'SPD-' || p_tag, p_status, p_confirm, p_due, p_total, p_product,
-          current_setting('test.owner_id')::uuid, p_assigned, p_requested_by);
+          current_setting('test.owner_id')::uuid, p_assigned, p_requested_by, v_pi);
   update public.test_data_cleanup_settings set enabled = false where id;
   return v_id;
 end $$;
@@ -404,6 +423,40 @@ begin
         from jsonb_array_elements(s -> 'advance') with ordinality t(x, ord)) q), 'lowest percentage first');
   perform pg_temp.check((s ->> 'advance_unchecked')::int = 2, 'the orders with no usable value are COUNTED (2), not given a percentage');
   perform pg_temp.check(not (s::text ~* '(nan|infinity)'), 'no NaN or Infinity anywhere in the answer');
+end $$;
+
+-- ═══ 6b. The advance is a percentage of the total BEFORE GST (20270226000000) ═══
+-- Orders whose grand total includes 18% GST: ₹1,18,000 grand total, ₹1,00,000 before GST. The list divides by
+-- nothing of its own — it carries the shared helper's percentage — so it follows the helper exactly.
+do $$
+declare
+  t date := pg_temp.today(); e uuid := current_setting('test.e_id')::uuid; o uuid; s jsonb;
+begin
+  o := pg_temp.mk_order('gst_exact', 'running', t - 1, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.pay(o, 40000);
+  o := pg_temp.mk_order('gst_3999', 'running', t - 2, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.pay(o, 39990);
+  o := pg_temp.mk_order('gst_3999paise', 'running', t - 3, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.pay(o, 39999.99);
+  o := pg_temp.mk_order('gst_unver', 'running', t - 4, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.pay(o, 90000, 'pending_approval');
+  o := pg_temp.mk_order('gst_old_basis', 'running', t - 5, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.pay(o, 45000);                       -- 33.9% of the grand total, 45% of the total before GST: NOT listed
+  o := pg_temp.mk_order('gst_nobasis', 'running', t - 6, 118000, 100000, e, t + 5, false, null, 100000);
+  perform pg_temp.restore();
+  alter table public.orders disable trigger orders_guard_amendable_columns;
+  update public.orders set total_value = 125000 where id = o;   -- value amended away from its PI: no recoverable basis
+  alter table public.orders enable trigger orders_guard_amendable_columns;
+  perform pg_temp.pay(o, 50000);
+
+  s := pg_temp.dash(e);
+  perform pg_temp.check(pg_temp.tags(s, 'advance') = array['gst_unver', 'gst_3999paise', 'gst_3999'],
+    format('on the total before GST: exactly 40%% and 45%% are not listed; 0%%, 39.99%% and 39.99%% are: %s', pg_temp.tags(s, 'advance')));
+  perform pg_temp.check((pg_temp.field(s, 'advance', 'gst_3999', 'percent'))::numeric = 39.99 and (pg_temp.field(s, 'advance', 'gst_3999paise', 'percent'))::numeric = 39.99,
+    '₹39,990 and ₹39,999.99 both read 39.99%, never 40');
+  perform pg_temp.check((pg_temp.field(s, 'advance', 'gst_unver', 'percent'))::numeric = 0, 'an unverified payment adds nothing');
+  perform pg_temp.check((s ->> 'advance_unchecked')::int = 1, 'the order whose value was amended away from its PI has no basis: counted as unchecked, never given a percentage');
+  perform pg_temp.check(not (s::text ~* '(nan|infinity)'), 'no NaN or Infinity anywhere');
 end $$;
 
 -- ═══ 7. Fabric / finish ═══════════════════════════════════════════════════════

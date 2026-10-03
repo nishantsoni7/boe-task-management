@@ -1,4 +1,4 @@
-// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE READS IT (20270226000000).
+// THE SALESPERSON'S OWN ORDERS DASHBOARD, AS THE PAGE READS IT (20270227000000).
 //
 // The database decides what counts; supabase/tests/salesperson_orders_dashboard_assertions.sql
 // pins the rules (ownership, confirmed orders, revenue windows, the 40% line, fabric/finish,
@@ -377,7 +377,7 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
 
   test('gaps are said under the list they affect', () => {
     const out = html(parsed(payload({ advance_unchecked: 2 })))
-    assert.match(out, /2 active orders with no order value could not be checked/)
+    assert.match(out, /2 active orders with no total before GST on record could not be checked/)
     assert.doesNotMatch(out, /not listed/)
   })
 
@@ -395,6 +395,18 @@ describe('the code', () => {
   const lib = noComments(read('src/lib/orders/salespersonDashboard.ts'))
   const page = read('src/app/orders/page.tsx')
   const css = read('src/app/globals.css')
+
+  test('the advance list follows the shared helper: it takes ITS percentage and divides by nothing of its own', () => {
+    const sql = read('supabase/migrations/20270227000000_salesperson_orders_dashboard.sql')
+    const stripped = sql.replace(/^\s*--.*$/gm, '')
+    const advance = /advance as \([\s\S]*?\n  \),/.exec(stripped)?.[0] ?? ''
+    assert.ok(advance.length > 100, 'found the advance CTE')
+    assert.match(advance, /\(p\.pos ->> 'percent'\)::numeric as percent/)
+    assert.doesNotMatch(advance, /total_value|order_value|total_before_gst|\/\s*\(?p\.pos|trunc\(100/, 'no denominator, no arithmetic: the rule has one definition')
+    assert.match(sql, /DEPENDENCY MISSING: 20270226000000_order_submission_advance_on_total_before_gst \(PR #281\) must be applied before this migration/)
+    assert.match(sql, /order_advance_base\(uuid\)/)
+    assert.ok('20270226000000' < '20270227000000', 'this migration sorts after the one that corrects the helper')
+  })
 
   test('no row cap anywhere in the personal dashboard', () => {
     assert.doesNotMatch(view, /\.slice\(/)

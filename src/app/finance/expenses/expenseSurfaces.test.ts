@@ -712,9 +712,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/orders/orderDashboardSummary.test.ts
       // and supabase/tests/orders_dashboard_assertions.sql.
       if (f === 'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql') continue
-      // The salesperson's own Orders dashboard (20270226000000): one read-only function, held by
+      // The salesperson's own Orders dashboard (20270227000000): one read-only function, held by
       // src/lib/orders/salespersonDashboard.test.tsx and supabase/tests/salesperson_orders_dashboard_assertions.sql.
-      if (f === 'supabase/migrations/20270226000000_salesperson_orders_dashboard.sql') continue
+      if (f === 'supabase/migrations/20270227000000_salesperson_orders_dashboard.sql') continue
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
@@ -2575,7 +2575,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270221000000_orders_dashboard_factory_focus.sql',
   ])
 
-  // The salesperson's own Orders dashboard (2026-10-03, 20270226000000): one new READ-ONLY
+  // The salesperson's own Orders dashboard (2026-10-03, 20270227000000): one new READ-ONLY
   // function, the /orders page and the one component that draws it, its words and its
   // style, and the migration-inventory pins that name every migration on disk. It reaches no payment
   // entry, allocation, balance or Finance screen, and changes no approval, manufacturing or dispatch workflow.
@@ -2600,7 +2600,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/assignmentWriteAuthority.test.ts',
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
-    'supabase/migrations/20270226000000_salesperson_orders_dashboard.sql',
+    'supabase/migrations/20270227000000_salesperson_orders_dashboard.sql',
   ])
 
   // Minop collection-only and the "Incoming Minop data" register (2026-10-01): Minop
