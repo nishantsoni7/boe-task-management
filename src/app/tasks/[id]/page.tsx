@@ -48,7 +48,7 @@ import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/act
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
 import {
   readTaskEssential, readTaskSecondary, mergeActivityRead, createLatestGate,
-  classifyWriteFailure, reconcileSavedStatus, REVIEW_RESULT_STATUS,
+  classifyWriteFailure, isStateConflict, reconcileSavedStatus, REVIEW_RESULT_STATUS,
   type ReviewAction, type SavedTaskState,
 } from '@/lib/tasks/taskDetailLoad'
 
@@ -737,17 +737,25 @@ export default function TaskDetailPage() {
       const { data, error } = rpc
       if (error) {
         console.error(`[runReviewAction:${action}] rpc failed:`, error.message)
-        if (classifyWriteFailure(error) === 'rejected') {
-          // The RPC's messages are written to be read — "TASK_REVIEW_FORBIDDEN:
-          // Only the task creator can approve this task" — so the part after the
-          // code is shown rather than a generic failure line.
-          const readable = error.message.includes(':')
-            ? error.message.slice(error.message.indexOf(':') + 1).trim()
-            : error.message
+        // The RPC's messages are written to be read — "TASK_REVIEW_FORBIDDEN:
+        // Only the task creator can approve this task" — so the part after the
+        // code is shown rather than a generic failure line.
+        const readable = error.message.includes(':')
+          ? error.message.slice(error.message.indexOf(':') + 1).trim()
+          : error.message
+        const decided = classifyWriteFailure(error) === 'rejected'
+        // A refusal that says "wrong state" may be the database refusing a RE-SEND of a write that already applied
+        // (a browser re-sends a POST whose reused connection was reset), so it is reconciled like a lost answer.
+        if (decided && !isStateConflict(error)) {
           window.alert(readable || 'Failed to update this task. Please try again.')
           return false
         }
         const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, REVIEW_RESULT_STATUS[action]))
+        if (decided && settled.outcome === 'unknown') {
+          // The database DID answer, and the saved state cannot be read: show its answer, and do not lock anything.
+          window.alert(readable || 'Failed to update this task. Please try again.')
+          return false
+        }
         if (settled.outcome === 'not_applied') {
           window.alert(recoveryMessage('not_applied', startedOn.status))
           return false

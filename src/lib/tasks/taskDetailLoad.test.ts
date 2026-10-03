@@ -30,7 +30,7 @@ import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { LogEntry } from '@/lib/types'
 import {
-  buildActivityLog, classifyWriteFailure, createLatestGate, mergeActivityRead,
+  buildActivityLog, classifyWriteFailure, createLatestGate, isStateConflict, mergeActivityRead,
   readTaskEssential, readTaskSecondary, reconcileSavedStatus, REVIEW_RESULT_STATUS,
 } from './taskDetailLoad'
 
@@ -394,5 +394,21 @@ describe('attribution limits — what recovery may and may not claim', () => {
     assert.equal(/return true/.test(recovered), false, 'no recovery branch returns success')
     assert.ok(PAGE.includes('we cannot match it to this exact request'))
     assert.equal(/not treated as confirmed/.test(PAGE), true)
+  })
+})
+
+describe('a refusal that may be about a RE-SEND', () => {
+  test("only the database's wrong-state code (55000) is treated as possibly caused by our own earlier send", () => {
+    assert.equal(isStateConflict({ message: 'TASK_REVIEW_INVALID_SOURCE: ...', code: '55000' }), true)
+    for (const code of ['42501', 'P0002', '22023', '28000', '', null]) assert.equal(isStateConflict({ message: 'x', code }), false, String(code))
+    assert.equal(isStateConflict(null), false)
+  })
+
+  test('the page reconciles a wrong-state refusal before showing it, and shows the database answer only if nothing can be read', () => {
+    const run = PAGE.slice(PAGE.indexOf('const runReviewAction = async'), PAGE.indexOf('const checkSavedReviewStatus'))
+    assert.ok(run.includes('if (decided && !isStateConflict(error))'), 'other refusals are shown as before')
+    assert.ok(run.indexOf('isStateConflict(error)') < run.indexOf('reconcileSavedStatus('), 'the conflict reaches the reconcile')
+    assert.ok(run.includes("if (decided && settled.outcome === 'unknown')"), 'unreadable + decided: the database answer, no lock')
+    assert.equal((run.match(/supabase\.rpc\(/g) ?? []).length, 1, 'still exactly one send')
   })
 })

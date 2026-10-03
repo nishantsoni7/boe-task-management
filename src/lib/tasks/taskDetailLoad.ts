@@ -151,6 +151,16 @@ export function classifyWriteFailure(error: ReadError | null | undefined): 'reje
   return error?.code ? 'rejected' : 'uncertain'
 }
 
+/**
+ * The database's "this task is not in the state that action needs" (TASK_REVIEW_INVALID_SOURCE, SQLSTATE 55000).
+ * It is a decision, but not always a decision about OUR request: a browser re-sends a POST whose connection was reset
+ * on a reused socket, so the first send can have applied and the re-send is what the database refuses. The refusal
+ * therefore proves nothing about whether the change is saved — the caller reads the saved state before showing it.
+ */
+export function isStateConflict(error: ReadError | null | undefined): boolean {
+  return error?.code === '55000'
+}
+
 export type ReviewAction = 'submit' | 'approve' | 'return'
 
 /** The status each review action leaves the task in. */
