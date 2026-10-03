@@ -2525,6 +2525,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // dialog, the activity label for the new trail event, and the suites that hold them. It
   // changes no payment entry, allocation or balance.
   const ALLOWED_PAYMENT_REQUEST_OWNER_DELETE = new Set([
+    'docs/releases/payment-request-owner-soft-delete-release.md',
     'src/lib/finance/paymentCancelledLinks.test.ts',
     'src/lib/finance/paymentCancelledLinks.ts',
     'src/lib/finance/paymentDestination.ts',
