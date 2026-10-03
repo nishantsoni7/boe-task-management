@@ -18,6 +18,14 @@ import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
 import { canDeletePayment } from '@/lib/finance/paymentDeletion'
+import {
+  canDeleteOwnPaymentRequest,
+  deleteOwnPaymentRequest,
+} from '@/lib/finance/ownPaymentRequestDeletion'
+import { DeleteOwnPaymentRequestModal } from '@/components/finance/DeleteOwnPaymentRequestModal'
+import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView'
+import { loadPaymentTotals } from '@/lib/finance/paymentCommercialTotals'
+import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
@@ -598,6 +606,9 @@ function DetailsModal({
   // any status. Self-delete by the submitter of an unapproved request — which
   // canManage still grants for Edit/Reapply — is withdrawn for Delete alone.
   const canDelete = canDeletePayment(r, { isAdmin: !!isAdmin })
+    // ...and the submitter may remove their own never-approved request (a soft
+    // delete, confirmed in its own dialog; the database has the final say).
+    || canDeleteOwnPaymentRequest(r, userId)
 
   const [newStatus,       setNewStatus]       = useState(r.status)
   const [correctionNote,  setCorrectionNote]  = useState('')
@@ -2439,7 +2450,23 @@ export function PaymentsTable({
   onEdit,
   onDelete,
   againstHref = () => null,
+  salesView = false,
+  totals = null,
 }: {
+  /**
+   * THE SALESPERSON'S LIST (not an admin, not a payment approver, not a company-
+   * wide Finance viewer): Payment ID, Client, Against, Total Before GST, Payment
+   * Request Amount, Payment Date, Payment Mode, Actions. Status stays in the tabs
+   * and in the request details, and Requested By is always the viewer themself.
+   * Every other reader keeps the review columns.
+   */
+  salesView?: boolean
+  /**
+   * Total Before GST of the PI or Order each payment is for, by payment id, read
+   * for the whole page in one batch (loadPaymentTotals). `null` = not read yet;
+   * an entry of `null` (or no entry once read) = unavailable.
+   */
+  totals?: Map<string, number | null> | null
   /**
    * The page of the single Order or PI Draft a payment is for — ONLY when this
    * reader may open it (Orders module entry AND the destination named a record
@@ -2475,6 +2502,9 @@ export function PaymentsTable({
   onDelete: (r: PaymentRequest) => void
 }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  // Money in the salesperson's list: right aligned, tabular digits, two decimals
+  // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
+  const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }
 
   return (
     // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
@@ -2494,6 +2524,18 @@ export function PaymentsTable({
             ellipsis + title fallback underneath. A fixed layout would have
             clipped names on a 1280px laptop instead, which is the thing this
             change is not allowed to do. They total 100. */}
+        {salesView ? (
+          <colgroup>
+            <col style={{ width: '9%'  }} />{/* Payment ID */}
+            <col style={{ width: '17%' }} />{/* Client */}
+            <col style={{ width: '20%' }} />{/* Against */}
+            <col style={{ width: '12%' }} />{/* Total Before GST */}
+            <col style={{ width: '12%' }} />{/* Payment Request Amount */}
+            <col style={{ width: '9%'  }} />{/* Payment Date */}
+            <col style={{ width: '9%'  }} />{/* Payment Mode */}
+            <col style={{ width: '12%' }} />{/* Actions */}
+          </colgroup>
+        ) : (
         <colgroup>
           <col style={{ width: '8%'  }} />{/* Payment ID   — monospace, fixed shape */}
           <col style={{ width: '15%' }} />{/* Client       — truncates past this */}
@@ -2505,8 +2547,19 @@ export function PaymentsTable({
           <col style={{ width: '10%' }} />{/* Requested By */}
           <col style={{ width: '11%' }} />{/* Action */}
         </colgroup>
+        )}
         <thead>
           <tr>
+            {salesView ? (<>
+              <th style={TH_STYLE}>Payment ID</th>
+              <th style={TH_STYLE}>Client</th>
+              <th style={TH_STYLE}>Against</th>
+              <th style={{ ...TH_STYLE, textAlign: 'right' }}>Total Before GST</th>
+              <th style={{ ...TH_STYLE, textAlign: 'right' }}>Payment Request Amount</th>
+              <th style={TH_STYLE}>Payment Date</th>
+              <th style={TH_STYLE}>Payment Mode</th>
+              <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
+            </>) : (<>
             <th style={TH_STYLE}>Payment ID</th>
             <th style={TH_STYLE}>Client</th>
             {/* Amount is LEFT-aligned, header and value together. Right
@@ -2521,6 +2574,7 @@ export function PaymentsTable({
             <th style={TH_STYLE}>Status</th>
             <th style={TH_STYLE}>Requested By</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
+            </>)}
           </tr>
         </thead>
         <tbody>
@@ -2543,6 +2597,11 @@ export function PaymentsTable({
             // narrower, separate rule from canManage, which still grants
             // Edit/Reapply to the submitter of their own unapproved request.
             const showDelete  = canDeletePayment(r, { isAdmin })
+            // THE SUBMITTER'S OWN, NEVER-APPROVED REQUEST (soft delete,
+            // 20270226000000). Separate from showDelete, which is the admin's
+            // hard delete; an admin keeps that one. The database makes the final
+            // call on ownership, status and approval history.
+            const showDeleteOwn = !showDelete && canDeleteOwnPaymentRequest(r, userId)
             const isHighlighted = r.id === highlightId
 
             // `undefined` while the page's destinations are still in flight;
@@ -2551,6 +2610,131 @@ export function PaymentsTable({
             const against = paymentAgainstDisplay(destination)
             const hasDestination = !!destination && destination.kind !== 'suspense'
             const againstLink = againstHref(destination)
+
+            const idCell = (
+              <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                {r.human_payment_id}
+              </td>
+            )
+            // THE CLIENT CELL HOLDS THE CLIENT NAME, AND NOTHING ELSE (no status
+            // chip beside it). Truncates instead of widening the table; the full
+            // name is in the title.
+            const clientCell = (
+              <td style={TD}>
+                <div
+                  title={customerDisplayName(r.client_name)}
+                  style={{
+                    // Just under the column's own share (15% — about 200px on a
+                    // 1366px laptop), so the cap and the column agree.
+                    maxWidth: '200px',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontSize: '13px', fontWeight: 600,
+                    // A payment with no customer is named in the muted tone the
+                    // page uses for "nothing recorded".
+                    color: r.client_name ? colors.primary : colors.muted,
+                  }}
+                >
+                  {customerDisplayName(r.client_name)}
+                </div>
+              </td>
+            )
+            const dateCell = (
+              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                {fmtDate(r.payment_date)}
+              </td>
+            )
+            // PAYMENT MODE — the value the row already carries (payment_mode is in
+            // the bounded list select), through the one formatter every payment
+            // surface reads. NOT derived from the destination.
+            const modeCell = (
+              <td style={{ ...TD, fontSize: '12px', color: r.payment_mode ? colors.secondary : colors.muted }}>
+                {paymentModeLabel(r.payment_mode)}
+              </td>
+            )
+            // WHAT THIS PAYMENT IS FOR — the destination, from the allocation
+            // ledger and the pending intent, linked to the PI Draft or Order when
+            // the reader may open it.
+            const againstCell = (
+              <td style={TD}>
+                <div
+                  title={against}
+                  style={{ maxWidth: salesView ? '270px' : '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
+                >
+                  {againstLink ? (
+                    // The row's own click must not also open the payment.
+                    <Link
+                      href={againstLink}
+                      prefetch={false}
+                      className="boe-record-link"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {against}
+                    </Link>
+                  ) : against}
+                </div>
+              </td>
+            )
+            const actionButtons = (
+              <div
+                style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => onView(r)}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                >
+                  View
+                </button>
+                {showEdit && (
+                  <button
+                    onClick={() => onEdit(r)}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {showReapply && (
+                  <button
+                    onClick={() => onEdit(r)}
+                    className="boe-btn boe-btn-primary"
+                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                  >
+                    Reapply
+                  </button>
+                )}
+                {(showDelete || showDeleteOwn) && (
+                  <button
+                    onClick={() => onDelete(r)}
+                    aria-label={`Delete payment request ${r.human_payment_id}`}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.red, border: `1px solid ${colors.red}` }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            )
+            const actionCell = <td style={{ ...TD, textAlign: 'right' }}>{actionButtons}</td>
+
+            // TOTAL BEFORE GST. Until the page's one batched read settles it says
+            // so; once settled, a PI/Order that cannot be resolved (mixed or
+            // suspense destination, a record this reader cannot open, no stored
+            // total) reads "Unavailable" — never a misleading ₹0.
+            const total = totals === null ? undefined : (totals.get(r.id) ?? null)
+            const totalCell = (
+              <td
+                style={{ ...TD_MONEY, color: total === null ? colors.muted : colors.secondary, fontStyle: total === null ? 'italic' : 'normal' }}
+                title={total === null
+                  ? 'The total before GST of the linked PI or Order could not be resolved'
+                  : destination && destination.cancelled
+                    ? 'Total before GST of the PI or Order this request was linked to before it was rejected (the link is cancelled)'
+                    : undefined}
+              >
+                {total === undefined ? '…' : total === null ? 'Unavailable' : fmtAmount(total)}
+              </td>
+            )
 
             return (
               <tr
@@ -2561,140 +2745,43 @@ export function PaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
-                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
-                  {r.human_payment_id}
-                </td>
-                <td style={TD}>
-                  {/* THE CLIENT CELL HOLDS THE CLIENT NAME, AND NOTHING ELSE.
-                      It used to carry a "Review" chip for approvers on a
-                      pending row. That said nothing the Status column two
-                      across did not already say — it reads "Pending Approval"
-                      on the same row — and it said it to only some viewers, so
-                      the same record looked like two different records
-                      depending on who opened it. Removed rather than restyled
-                      or replaced: a second status badge beside a name is the
-                      problem, not its colour.
-
-                      Truncates instead of widening the table; full name via title. */}
-                  <div
-                    title={customerDisplayName(r.client_name)}
-                    style={{
-                      // Just under the column's own share (15% — about 200px on
-                      // a 1366px laptop, 216px on a 1440px one), so the cap and
-                      // the column agree instead of the cap truncating early
-                      // and leaving the blank strip back where it started.
-                      maxWidth: '200px',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      fontSize: '13px', fontWeight: 600,
-                      // A payment with no customer is named in the muted tone
-                      // the rest of the page uses for "nothing recorded", so
-                      // it never reads as a customer actually called that.
-                      color: r.client_name ? colors.primary : colors.muted,
-                    }}
-                  >
-                    {customerDisplayName(r.client_name)}
-                  </div>
-                </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-                  {fmtAmount(r.amount)}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {fmtDate(r.payment_date)}
-                </td>
-                {/* PAYMENT MODE — the value the row already carries.
-                    `payment_mode` has been in this page's bounded list select
-                    since it was written, so this column adds no query, and no
-                    per-row request. It is NOT derived from the destination:
-                    that is the allocation ledger's answer to "what is this
-                    payment FOR", a different question, and the Against column
-                    two across is where it belongs.
-
-                    paymentModeLabel is the one formatter every payment surface
-                    already reads — it writes the four current modes as HDFC /
-                    PNB / Paytm / Canara, the five retired ones as Bank
-                    Transfer / Cash / UPI / Cheque / Other, an empty or null
-                    value as an em dash, and anything neither list knows AS IT
-                    IS STORED rather than inventing a label for it. */}
-                <td style={{ ...TD, fontSize: '12px', color: r.payment_mode ? colors.secondary : colors.muted }}>
-                  {paymentModeLabel(r.payment_mode)}
-                </td>
-                <td style={TD}>
-                  {/* WHAT THIS PAYMENT IS FOR — the destination, from the
-                      allocation ledger and the pending intent. This column used
-                      to read order_number / order_request_number /
-                      payment_against and printed "New Order — no order created
-                      yet" for every request the current form writes. */}
-                  <div
-                    title={against}
-                    style={{ maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
-                  >
-                    {againstLink ? (
-                      // The record this payment is for, one click away. The
-                      // row's own click must not also open the payment.
-                      <Link
-                        href={againstLink}
-                        prefetch={false}
-                        className="boe-record-link"
-                        onClick={e => e.stopPropagation()}
+                {salesView ? (
+                  <>
+                    {idCell}
+                    {clientCell}
+                    {againstCell}
+                    {totalCell}
+                    {/* ONLY the amount requested in THIS row — never cumulative. */}
+                    <td style={{ ...TD_MONEY, fontWeight: 700, color: colors.primary }}>{fmtAmount(r.amount)}</td>
+                    {dateCell}
+                    {modeCell}
+                    {actionCell}
+                  </>
+                ) : (
+                  <>
+                    {idCell}
+                    {clientCell}
+                    <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtAmount(r.amount)}
+                    </td>
+                    {dateCell}
+                    {modeCell}
+                    {againstCell}
+                    <td style={TD}>
+                      <StatusBadge status={r.status} destination={destination} />
+                      {isStaleClarification(r, cutoff) && <StaleBadge />}
+                    </td>
+                    <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                      <div
+                        title={r.submitted_by_name ?? undefined}
+                        style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       >
-                        {against}
-                      </Link>
-                    ) : against}
-                  </div>
-                </td>
-                <td style={TD}>
-                  <StatusBadge status={r.status} destination={destination} />
-                  {isStaleClarification(r, cutoff) && <StaleBadge />}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  <div
-                    title={r.submitted_by_name ?? undefined}
-                    style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    {r.submitted_by_name ?? '—'}
-                  </div>
-                </td>
-                <td style={{ ...TD, textAlign: 'right' }}>
-                  <div
-                    style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => onView(r)}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                    >
-                      View
-                    </button>
-                    {showEdit && (
-                      <button
-                        onClick={() => onEdit(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                      >
-                        Edit
-                      </button>
-                    )}
-                    {showReapply && (
-                      <button
-                        onClick={() => onEdit(r)}
-                        className="boe-btn boe-btn-primary"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                      >
-                        Reapply
-                      </button>
-                    )}
-                    {showDelete && (
-                      <button
-                        onClick={() => onDelete(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </td>
+                        {r.submitted_by_name ?? '—'}
+                      </div>
+                    </td>
+                    {actionCell}
+                  </>
+                )}
               </tr>
             )
           })}
@@ -2739,6 +2826,19 @@ function FinancePageInner() {
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
+  // The submitter's own soft delete — a different dialog from the admin's.
+  const [deleteOwnRequest, setDeleteOwnRequest] = useState<PaymentRequest | null>(null)
+  // Total Before GST per payment on the loaded page; see the effect below.
+  const [totalsState, setTotalsState] = useState<{
+    forDestinations: Map<string, PaymentDestination>
+    totals: Map<string, number | null>
+  } | null>(null)
+  // What rejected requests were linked to before the rejection cancelled it,
+  // tagged with the destinations it was read for (see paymentCancelledLinks.ts).
+  const [cancelledState, setCancelledState] = useState<{
+    forDestinations: Map<string, PaymentDestination>
+    links: Map<string, PaymentDestination>
+  } | null>(null)
   // Seeded from the address — ?q= and ?page= — and mirrored back to it below
   // (useMirrorToUrl), so Back from an Order or PI returns to the same tab,
   // search and page. ?tab= already arrived this way.
@@ -3247,6 +3347,51 @@ function FinancePageInner() {
     () => requests.filter(r => tabMatches(r, activeTab, cutoffMs)),
     [requests, activeTab, cutoffMs])
 
+  // THE SALESPERSON'S LIST — see paymentRequestsSalesView.ts for why only a
+  // person who can decide a payment keeps the review columns.
+  const salesView = isSalespersonPaymentView(isAdmin, caps)
+
+  // ── Total Before GST ─────────────────────────────────────────────────────────
+  // Two batched reads for the whole page (never per row), started when this
+  // page's destinations land and only for the list that shows the column. The
+  // result is tagged with the destinations it was read for, so a slow answer for
+  // page one can never paint beside page two's rows.
+  //
+  // A rejected request has no live destination (its intent was cancelled), so
+  // its original PI/Order is read back from that cancelled intent FIRST and the
+  // total follows the same record the Against cell names.
+  useEffect(() => {
+    if (!destinations) return
+    let current = true
+    const missing = requests.filter(r => r.status === 'rejected' && needsHistoricalLink(destinations.get(r.id))).map(r => r.id)
+    void (missing.length > 0 ? loadCancelledLinks(supabase, missing) : Promise.resolve(new Map<string, PaymentDestination>()))
+      .then(links => { if (current) setCancelledState({ forDestinations: destinations, links }) })
+    return () => { current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destinations, supabase])
+  const shownDestinations = useMemo(() => {
+    if (!destinations || !cancelledState || cancelledState.forDestinations !== destinations) return destinations
+    return withCancelledLinks(destinations, cancelledState.links)
+  }, [destinations, cancelledState])
+  const historySettled = !!destinations && cancelledState?.forDestinations === destinations
+
+  useEffect(() => {
+    if (!salesView || !shownDestinations || !historySettled) return
+    let current = true
+    void loadPaymentTotals(supabase, shownDestinations).then(found => {
+      if (current) setTotalsState({ forDestinations: shownDestinations, totals: found })
+    })
+    return () => { current = false }
+  }, [salesView, shownDestinations, historySettled, supabase])
+  const totals = totalsState && totalsState.forDestinations === shownDestinations ? totalsState.totals : null
+
+  // Which delete dialog a row opens: the admin's hard delete if they are allowed
+  // it, otherwise the submitter's own.
+  const openDelete = (r: PaymentRequest) => {
+    if (canDeletePayment(r, { isAdmin })) setDeleteRequest(r)
+    else setDeleteOwnRequest(r)
+  }
+
   // ── The tab badges ───────────────────────────────────────────────────────────
   // Counted by the DATABASE across the whole narrowed set — the old counts were
   // taken over the rows that happened to be loaded, which was every row only
@@ -3375,7 +3520,7 @@ function FinancePageInner() {
           </div>
         ) : (
           <PaymentsTable
-            destinations={destinations}
+            destinations={shownDestinations}
             rows={visible}
             isAdmin={isAdmin}
             userId={userId}
@@ -3385,7 +3530,9 @@ function FinancePageInner() {
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
             againstHref={againstHref}
-            onDelete={r => setDeleteRequest(r)}
+            salesView={salesView}
+            totals={totals}
+            onDelete={openDelete}
           />
         )}
 
@@ -3469,7 +3616,7 @@ function FinancePageInner() {
           // Details hands off to the same two modals the table uses; only one
           // Finance modal is open at a time, so it closes as they open.
           onEdit={r => { setDetailRequest(null); setEditRequest(r) }}
-          onDelete={r => { setDetailRequest(null); setDeleteRequest(r) }}
+          onDelete={r => { setDetailRequest(null); openDelete(r) }}
         />
       )}
       {editRequest && (
@@ -3485,6 +3632,22 @@ function FinancePageInner() {
           for any status. This page tracks no allocation-links data of its own
           (that read lives on Received Payments), so allocationSummary is
           withheld rather than guessed. */}
+      {deleteOwnRequest && (
+        <DeleteOwnPaymentRequestModal
+          payment={deleteOwnRequest}
+          formatAmount={fmtAmount}
+          onDelete={id => deleteOwnPaymentRequest(supabase, id)}
+          onClose={() => setDeleteOwnRequest(null)}
+          onDeleted={id => {
+            // Gone from this screen at once; the re-read below confirms it and
+            // brings every tab count into line.
+            setRequests(prev => prev.filter(x => x.id !== id))
+            setDeleteOwnRequest(null)
+            refreshAfterMutation()
+            queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+          }}
+        />
+      )}
       {deleteRequest && (
         <DeletePaymentModal
           payment={deleteRequest}

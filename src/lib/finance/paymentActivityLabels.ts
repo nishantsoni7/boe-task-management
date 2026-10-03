@@ -193,6 +193,10 @@ export function paymentActivityLabel(
       const base = `Allocation to ${namedTarget(kind, p.target_id, resolve)} reversed`
       return reason ? `${base}. Reason: ${reason}` : base
     }
+    case 'request_deleted':
+      // The submitter removed their own never-approved request
+      // (delete_own_payment_request, 20270226000000). The row and this trail stay.
+      return 'Payment request deleted by the submitter'
     case 'allocation_moved': {
       // The PI-to-Order conversion, and the only shape it has: the allocation
       // leaves an order_submission and lands on an order. Both ends are in the
