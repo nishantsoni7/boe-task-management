@@ -81,6 +81,8 @@ const noop = () => {}
 function render(rows: PaymentRequest[], opts: {
   destinations?: Map<string, PaymentDestination> | null
   isAdmin?: boolean
+  salesView?: boolean
+  totals?: Map<string, number | null> | null
 } = {}): string {
   return renderToStaticMarkup(
     <PaymentsTable
@@ -88,6 +90,8 @@ function render(rows: PaymentRequest[], opts: {
       destinations={opts.destinations ?? null}
       isAdmin={opts.isAdmin ?? false}
       userId={USER}
+      salesView={opts.salesView}
+      totals={opts.totals}
       cutoff={Date.parse('2026-08-27T00:00:00Z')}
       highlightId={null}
       onRowClick={noop}
@@ -362,5 +366,133 @@ describe('6. no new query, and the narrow-width view keeps the column', () => {
     const cells = firstRowCells(render([row()], { isAdmin: true }))
     assert.ok(cells[8].includes('View'))
     assert.ok(cells[8].includes('Delete'), 'an admin still gets Delete')
+  })
+})
+
+// ── 7. The salesperson's list ────────────────────────────────────────────────
+
+const PI_DEST = (paymentId: string): PaymentDestination => ({
+  paymentId, source: 'intent', kind: 'pi_draft', orderCount: 0, submissionCount: 1, customerCount: 1,
+  orderId: null, orderNumber: null, submissionId: 'b1b2c3d4-0000-4000-8000-0000000000aa', reference: 'PID-00007',
+})
+
+/** Every body row's cells, stripped of markup. */
+function allRowCells(markup: string): string[][] {
+  const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
+  return body.split('</tr>').filter(x => x.includes('<td')).map(r =>
+    [...r.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1].replace(/<[^>]*>/g, '').trim()))
+}
+
+describe("7. the salesperson's list", () => {
+  const sales = (rows: PaymentRequest[], extra: Parameters<typeof render>[1] = {}) =>
+    render(rows, { salesView: true, ...extra })
+
+  test('7a. exactly the eight requested columns, in order', () => {
+    assert.deepEqual(headers(sales([row()])), [
+      'Payment ID', 'Client', 'Against', 'Total Before GST', 'Payment Request Amount',
+      'Payment Date', 'Payment Mode', 'Actions',
+    ])
+  })
+
+  test('7b. Status and Requested By are gone from the list, for every status', () => {
+    for (const status of ['pending_approval', 'needs_clarification', 'rejected']) {
+      const markup = sales([row({ status })])
+      const h = headers(markup)
+      assert.equal(h.includes('Status'), false)
+      assert.equal(h.includes('Requested By'), false)
+      assert.equal(firstRowCells(markup).join('|').includes('Anita Rao'), false, 'no requester name in any cell')
+    }
+  })
+
+  test('7c. every row has one cell per header, and the colgroup totals 100', () => {
+    const markup = sales([row(), row({ id: 'a1b2c3d4-0000-4000-8000-000000000002' })])
+    const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
+    for (const r of body.split('</tr>').filter(x => x.includes('<td'))) {
+      assert.equal([...r.matchAll(/<td[^>]*>/g)].length, 8)
+    }
+    const colgroup = markup.slice(markup.indexOf('<colgroup'), markup.indexOf('</colgroup>'))
+    const widths = [...colgroup.matchAll(/width:\s*(\d+)%/g)].map(m => Number(m[1]))
+    assert.equal(widths.length, 8)
+    assert.equal(widths.reduce((a, b) => a + b, 0), 100)
+  })
+
+  test('7d. both amount columns are right aligned, INR, two decimals', () => {
+    const totals = new Map([[row().id, 250000]])
+    const markup = sales([row()], { totals })
+    const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
+    const ths = [...head.matchAll(/<th\b[^>]*>/g)].map(m => m[0])
+    for (const i of [3, 4, 7]) assert.match(ths[i], /text-align:\s*right/)
+    for (const i of [0, 1, 2, 5, 6]) assert.equal(/text-align:\s*right/.test(ths[i]), false)
+    const cells = firstRowCells(markup)
+    assert.equal(cells[3], '₹2,50,000.00')
+    assert.equal(cells[4], '₹1,25,000.00')
+    const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'))
+    const tds = [...body.matchAll(/<td[^>]*>/g)].map(m => m[0])
+    assert.match(tds[3], /text-align:\s*right/)
+    assert.match(tds[4], /text-align:\s*right/)
+  })
+
+  test("7e. Payment Request Amount is this row's own amount; two requests on one PI share the total", () => {
+    const a = row({ id: 'a1b2c3d4-0000-4000-8000-0000000000a1', amount: 40000 })
+    const b = row({ id: 'a1b2c3d4-0000-4000-8000-0000000000a2', amount: 60000, human_payment_id: 'P-AA-0002' })
+    const destinations = new Map([[a.id, PI_DEST(a.id)], [b.id, PI_DEST(b.id)]])
+    const totals = new Map([[a.id, 500000], [b.id, 500000]])
+    const rows = allRowCells(sales([a, b], { destinations, totals }))
+    assert.equal(rows[0][3], '₹5,00,000.00')
+    assert.equal(rows[1][3], '₹5,00,000.00')
+    assert.equal(rows[0][4], '₹40,000.00')
+    assert.equal(rows[1][4], '₹60,000.00')
+  })
+
+  test('7f. an unresolved total says Unavailable — never ₹0.00; unread says so too', () => {
+    const unresolved = firstRowCells(sales([row()], { totals: new Map([[row().id, null]]) }))
+    assert.equal(unresolved[3], 'Unavailable')
+    const absent = firstRowCells(sales([row()], { totals: new Map() }))
+    assert.equal(absent[3], 'Unavailable')
+    const loading = firstRowCells(sales([row()], { totals: null }))
+    assert.equal(loading[3], '…')
+    for (const c of [unresolved[3], absent[3], loading[3]]) assert.equal(/₹0/.test(c), false)
+  })
+
+  test('7g. Against keeps its link to the PI Draft or Order', () => {
+    const r = row()
+    const destinations = new Map([[r.id, PI_DEST(r.id)]])
+    assert.match(firstRowCells(sales([r], { destinations }))[2], /PID-00007/)
+    const linked = renderToStaticMarkup(
+      <PaymentsTable rows={[r]} destinations={destinations} isAdmin={false} userId={USER} salesView
+        cutoff={0} highlightId={null} onRowClick={noop} onView={noop} onEdit={noop} onDelete={noop}
+        againstHref={() => '/orders/drafts/b1b2c3d4-0000-4000-8000-0000000000aa'} />)
+    assert.match(linked, /<a [^>]*href="\/orders\/drafts\/b1b2c3d4[^"]*"[^>]*>PI Draft PID-00007<\/a>/)
+  })
+
+  test("7h. Delete appears for the owner's unapproved rows only, beside View", () => {
+    for (const status of ['pending_approval', 'needs_clarification', 'rejected']) {
+      const cells = firstRowCells(sales([row({ status })]))
+      assert.ok(cells[7].includes('View') && cells[7].includes('Delete'), `${status}: owner sees Delete`)
+    }
+    // Someone else's row, and an approved row, get no Delete.
+    const other = firstRowCells(sales([row({ submitted_by: '99999999-0000-4000-8000-000000000000' })]))
+    assert.equal(other[7].includes('Delete'), false)
+    for (const status of ['approved_unlinked', 'approved_linked']) {
+      assert.equal(firstRowCells(sales([row({ status })]))[7].includes('Delete'), false, status)
+    }
+  })
+
+  test('7i. the Delete control is compact and red', () => {
+    const markup = sales([row()])
+    const btn = markup.match(/<button[^>]*aria-label="Delete payment request P-AA-0001"[^>]*>/)?.[0] ?? ''
+    assert.ok(btn.length > 0)
+    assert.match(btn, /color:\s*(var\([^)]*\)|#D94F4F)/i)
+    assert.match(btn, /font-size:\s*11px/)
+  })
+
+  test('7j. the review list is unchanged for everyone else', () => {
+    assert.equal(headers(render([row()])).length, 9)
+    assert.equal(headers(render([row()], { isAdmin: true })).length, 9)
+  })
+
+  test("7k. a reviewer's own request can be deleted from the review list too", () => {
+    const cells = firstRowCells(render([row()]))
+    assert.ok(cells[8].includes('Delete'))
   })
 })
