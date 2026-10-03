@@ -2528,10 +2528,10 @@ export function PaymentsTable({
           <colgroup>
             <col style={{ width: '9%'  }} />{/* Payment ID */}
             <col style={{ width: '17%' }} />{/* Client */}
-            <col style={{ width: '17%' }} />{/* Against */}
-            <col style={{ width: '13%' }} />{/* Total Before GST */}
-            <col style={{ width: '13%' }} />{/* Payment Request Amount */}
-            <col style={{ width: '10%' }} />{/* Payment Date */}
+            <col style={{ width: '20%' }} />{/* Against */}
+            <col style={{ width: '12%' }} />{/* Total Before GST */}
+            <col style={{ width: '12%' }} />{/* Payment Request Amount */}
+            <col style={{ width: '9%'  }} />{/* Payment Date */}
             <col style={{ width: '9%'  }} />{/* Payment Mode */}
             <col style={{ width: '12%' }} />{/* Actions */}
           </colgroup>
@@ -2658,7 +2658,7 @@ export function PaymentsTable({
               <td style={TD}>
                 <div
                   title={against}
-                  style={{ maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
+                  style={{ maxWidth: salesView ? '270px' : '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
                 >
                   {againstLink ? (
                     // The row's own click must not also open the payment.
