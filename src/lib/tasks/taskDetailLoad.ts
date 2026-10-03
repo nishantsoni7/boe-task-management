@@ -52,8 +52,8 @@ export async function readTaskEssential(supabase: SupabaseClient, taskId: string
       .from('tasks')
       .select('*, creator:created_by(full_name)')
       .eq('id', taskId)
-      .single()
       .abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS))
+      .single()
     if (error) {
       return error.code === NO_ROWS
         ? { status: 'not_found' }
@@ -237,7 +237,7 @@ async function readOnce(supabase: SupabaseClient, taskId: string, spec: Reconcil
       .gt('created_at', spec.since)
     if (spec.expectedStatus) logQuery = logQuery.eq('to_status', spec.expectedStatus)
     const [taskRes, logRes] = await Promise.all([
-      supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single().abortSignal(AbortSignal.timeout(RECONCILE_READ_TIMEOUT_MS)),
+      supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).abortSignal(AbortSignal.timeout(RECONCILE_READ_TIMEOUT_MS)).single(),
       logQuery.limit(2).abortSignal(AbortSignal.timeout(RECONCILE_READ_TIMEOUT_MS)),
     ])
     if (taskRes.error || !taskRes.data || logRes.error) return { outcome: 'unknown' }
