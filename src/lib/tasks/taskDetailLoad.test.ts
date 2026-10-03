@@ -48,7 +48,7 @@ function fakeClient(answers: Record<string, Answer>, calls: string[] = []): Supa
       return { data: a.data ?? null, error: a.error ?? null }
     }
     const q: Record<string, unknown> = {}
-    for (const m of ['select', 'eq', 'order']) q[m] = () => q
+    for (const m of ['select', 'eq', 'gt', 'order', 'limit']) q[m] = () => q
     q.single = run
     q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej)
     return q
@@ -189,30 +189,75 @@ describe('uncertain writes are reconciled, never repeated', () => {
     assert.deepEqual(REVIEW_RESULT_STATUS, { submit: 'pending_approval', approve: 'completed', return: 'working' })
   })
 
-  const saved = (status: string) => ({ tasks: { data: { status } } })
+  const spec = { actorId: 'me', expectedStatus: 'pending_approval', previousStatus: 'working', since: '2026-01-01T00:00:00Z' }
+  const world = (status: string, ours: boolean) => ({
+    tasks: { data: { status } },
+    task_activity_log: { data: ours ? [{ id: 'row' }] : [] },
+  })
 
-  test('saved status is the expected one → applied', async () => {
-    const r = await reconcileSavedStatus(fakeClient(saved('pending_approval')), 't1', 'pending_approval', 'working')
+  test('expected status AND an activity row of ours → applied (our request, proven)', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', true)), 't1', spec)
     assert.equal(r.outcome, 'applied')
   })
 
-  test('saved status is still the old one → not applied, safe to try again', async () => {
-    const r = await reconcileSavedStatus(fakeClient(saved('working')), 't1', 'pending_approval', 'working')
+  test('expected status but NO row of ours → unattributed: another user may have made that move, so it is never claimed', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', false)), 't1', spec)
+    assert.equal(r.outcome, 'unattributed')
+  })
+
+  test('still the old status and no row of ours → not applied, safe to try again', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('working', false)), 't1', spec)
     assert.equal(r.outcome, 'not_applied')
   })
 
-  test('saved status is a third one → changed by somebody else', async () => {
-    const r = await reconcileSavedStatus(fakeClient(saved('cancelled')), 't1', 'pending_approval', 'working')
+  test('a third status → changed', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('cancelled', false)), 't1', spec)
     assert.equal(r.outcome, 'changed')
   })
 
-  test('the saved row cannot be read → unknown, and it only ever READS', async () => {
+  test('old status but a row of ours exists (it moved and moved back) → changed, not "safe to retry"', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('working', true)), 't1', spec)
+    assert.equal(r.outcome, 'changed')
+  })
+
+  test('no single expected status (reopen): any move away from the previous status counts, attributed by our row', async () => {
+    const reopen = { ...spec, expectedStatus: null, previousStatus: 'completed' }
+    assert.equal((await reconcileSavedStatus(fakeClient(world('working', true)), 't1', reopen)).outcome, 'applied')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('working', false)), 't1', reopen)).outcome, 'unattributed')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('completed', false)), 't1', reopen)).outcome, 'not_applied')
+  })
+
+  test('the query that attributes a row is scoped to us, this task, status_changed, leaving the old status, newer than what we saw', async () => {
+    const seen: string[] = []
+    const client = {
+      from: (table: string) => {
+        const q: Record<string, unknown> = {}
+        for (const m of ['select', 'order', 'limit']) q[m] = () => q
+        for (const m of ['eq', 'gt']) q[m] = (col: string, v: unknown) => { seen.push(`${table}.${m}(${col},${v})`); return q }
+        q.single = async () => ({ data: { status: 'pending_approval' }, error: null })
+        q.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [{ id: 'row' }], error: null }).then(res)
+        return q
+      },
+    } as unknown as SupabaseClient
+    await reconcileSavedStatus(client, 't1', spec)
+    for (const expected of [
+      'task_activity_log.eq(task_id,t1)', 'task_activity_log.eq(actor_id,me)', 'task_activity_log.eq(action,status_changed)',
+      'task_activity_log.eq(from_status,working)', 'task_activity_log.eq(to_status,pending_approval)',
+      'task_activity_log.gt(created_at,2026-01-01T00:00:00Z)',
+    ]) assert.ok(seen.includes(expected), expected)
+  })
+
+  test('either read fails or rejects → unknown, and it only ever READS', async () => {
     const calls: string[] = []
-    for (const answers of [{ tasks: { error: { message: 'down' } } }, { tasks: { throws: new Error('down') } }]) {
-      const r = await reconcileSavedStatus(fakeClient(answers, calls), 't1', 'pending_approval', 'working')
+    for (const answers of [
+      { tasks: { error: { message: 'down' } } },
+      { tasks: { throws: new Error('down') } },
+      { tasks: { data: { status: 'working' } }, task_activity_log: { error: { message: 'down' } } },
+    ]) {
+      const r = await reconcileSavedStatus(fakeClient(answers, calls), 't1', spec)
       assert.equal(r.outcome, 'unknown')
     }
-    assert.deepEqual(calls, ['tasks', 'tasks'], 'one read each, no write, no retry')
+    assert.deepEqual(calls.filter(c => c === 'tasks'), ['tasks', 'tasks', 'tasks'], 'one task read per attempt, no write, no retry')
   })
 })
 

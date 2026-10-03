@@ -167,32 +167,74 @@ export type SavedTaskState = Pick<Task,
   'status' | 'completed_at' | 'last_update_at' | 'blocker_reason' | 'waiting_on_type' | 'waiting_on_user_id' | 'waiting_on_text'>
 
 export type Reconciled =
-  /** The saved row shows the write landed. */
+  /** The row shows the expected status AND carries an activity row this person wrote after the task last changed: it was our request. */
   | { outcome: 'applied'; saved: SavedTaskState }
-  /** The saved row still shows the status it had before: nothing was written. */
+  /**
+   * The row shows the expected status but no activity row of ours explains it.
+   * Somebody else (or another tab of the same person) made the same move, or
+   * our write landed and its activity row did not. Either way our request is
+   * not PROVEN saved — so it is reported, never claimed.
+   */
+  | { outcome: 'unattributed'; saved: SavedTaskState }
+  /** The row still shows the status it had before and nothing of ours explains a change: nothing was written. */
   | { outcome: 'not_applied'; saved: SavedTaskState }
-  /** The row holds some third status — somebody else moved the task meanwhile. */
+  /** The row holds some other status, or an inconsistent mix — it moved without us. */
   | { outcome: 'changed'; saved: SavedTaskState }
-  /** The row could not be read either, so nothing can be said. */
+  /** The row or its history could not be read, so nothing can be said. */
   | { outcome: 'unknown' }
 
+export type ReconcileSpec = {
+  /** The signed-in person: the only author an activity row can have to count as ours. */
+  actorId: string
+  /** The status a successful write leaves. Null when it is not a single value (reopen restores the previous status). */
+  expectedStatus: string | null
+  /** The status the task held when the write was sent. */
+  previousStatus: string
+  /** Rows written at or before this instant belong to earlier actions — the task's last_update_at (else created_at) as last seen. */
+  since: string
+}
+
 /**
- * After an uncertain write, read what was actually saved. `expectedStatus` is
- * the status a successful write leaves; `previousStatus` the one it started
- * from. This reads — it never writes, and never re-sends the mutation.
+ * After an uncertain write, read what was actually saved and attribute it.
+ *
+ * The status alone proves nothing about OUR request: another user may have made
+ * the same transition. What only our request can produce is a `status_changed`
+ * activity row authored by us, leaving `previousStatus`, newer than the task
+ * state we last saw (the protected RPC and both API routes write that row, and
+ * the RPC writes it in the same transaction as the status). So:
+ *
+ *   status = expected, our row present  -> applied     (ours, proven)
+ *   status = expected, no row of ours   -> unattributed (do not claim it)
+ *   status = previous, no row of ours   -> not_applied (safe to try again)
+ *   anything else                       -> changed
+ *
+ * This reads — it never writes, and never re-sends the mutation.
  */
 export async function reconcileSavedStatus(
   supabase: SupabaseClient,
   taskId: string,
-  expectedStatus: string,
-  previousStatus: string,
+  spec: ReconcileSpec,
 ): Promise<Reconciled> {
   try {
-    const { data, error } = await supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single()
-    if (error || !data) return { outcome: 'unknown' }
-    const saved = data as unknown as SavedTaskState
-    if (saved.status === expectedStatus) return { outcome: 'applied', saved }
-    if (saved.status === previousStatus) return { outcome: 'not_applied', saved }
+    let logQuery = supabase
+      .from('task_activity_log')
+      .select('id')
+      .eq('task_id', taskId)
+      .eq('actor_id', spec.actorId)
+      .eq('action', 'status_changed')
+      .eq('from_status', spec.previousStatus)
+      .gt('created_at', spec.since)
+    if (spec.expectedStatus) logQuery = logQuery.eq('to_status', spec.expectedStatus)
+    const [taskRes, logRes] = await Promise.all([
+      supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single(),
+      logQuery.limit(1),
+    ])
+    if (taskRes.error || !taskRes.data || logRes.error) return { outcome: 'unknown' }
+    const saved = taskRes.data as unknown as SavedTaskState
+    const ours = (logRes.data ?? []).length > 0
+    const moved = spec.expectedStatus ? saved.status === spec.expectedStatus : saved.status !== spec.previousStatus
+    if (moved) return ours ? { outcome: 'applied', saved } : { outcome: 'unattributed', saved }
+    if (saved.status === spec.previousStatus && !ours) return { outcome: 'not_applied', saved }
     return { outcome: 'changed', saved }
   } catch {
     return { outcome: 'unknown' }

@@ -636,14 +636,16 @@ export default function TaskDetailPage() {
       // saved status so the buttons show what is true, and do not ask the person
       // to press the same button into a possible duplicate.
       console.error('[applyStatusChange] failed:', e)
-      const settled = await reconcileSavedStatus(supabase, task.id, newStatus, task.status)
-      if (settled.outcome === 'applied') {
-        if (mountedRef.current) { applySavedState(task, settled.saved); void loadLog(task.id) }
-        window.alert('The connection dropped, but the change was saved. The activity feed is being refreshed.')
+      const settled = await reconcileSavedStatus(supabase, task.id, reconcileSpecFor(task, newStatus))
+      if (settled.outcome === 'unknown') {
+        window.alert('The connection dropped and we could not confirm whether this change was saved. Refresh the page status before trying again.')
+      } else if (settled.outcome === 'not_applied') {
+        window.alert('The connection dropped and this change was not saved. You can try again.')
       } else {
-        window.alert(settled.outcome === 'unknown'
-          ? 'The connection dropped and we could not confirm whether this change was saved. Refresh the page status before trying again.'
-          : 'The connection dropped and this change was not saved. You can try again.')
+        if (mountedRef.current) { applySavedState(task, settled.saved); void loadLog(task.id) }
+        window.alert(settled.outcome === 'applied'
+          ? 'The connection dropped, but the change was saved. The activity feed is being refreshed.'
+          : notProven(settled.saved.status))
       }
     } finally {
       statusUpdatingRef.current = false
@@ -651,6 +653,16 @@ export default function TaskDetailPage() {
       perf.end()
     }
   }
+
+  /** What identifies OUR write when the answer to it was lost — see reconcileSavedStatus. */
+  const reconcileSpecFor = (t: Task, expectedStatus: string | null) => ({
+    actorId:        currentUserId,
+    expectedStatus,
+    previousStatus: t.status,
+    since:          t.last_update_at ?? t.created_at,
+  })
+  const notProven = (status: string) =>
+    `The connection dropped. This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
 
   /** Applies a task state the server has confirmed (an RPC result, or a saved row read back). */
   const applySavedState = (base: Task, saved: Partial<SavedTaskState>) => {
@@ -728,18 +740,20 @@ export default function TaskDetailPage() {
           window.alert(readable || 'Failed to update this task. Please try again.')
           return false
         }
-        const settled = await reconcileSavedStatus(supabase, startedOn.id, REVIEW_RESULT_STATUS[action], startedOn.status)
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, REVIEW_RESULT_STATUS[action]))
         if (settled.outcome === 'applied') {
           perf.mark('reconciled')
           if (mountedRef.current) applySavedState(startedOn, settled.saved)
           if (opts.refreshHistory !== false) void loadLog(startedOn.id)
           return true
         }
-        if (settled.outcome === 'not_applied' || settled.outcome === 'changed') {
-          if (mountedRef.current && settled.outcome === 'changed') applySavedState(startedOn, settled.saved)
-          window.alert(settled.outcome === 'not_applied'
-            ? 'The connection dropped and this change was not saved. Nothing was sent twice — you can try again.'
-            : 'The connection dropped, and this task has since changed. It has been refreshed — please review it before acting again.')
+        if (settled.outcome === 'not_applied') {
+          window.alert('The connection dropped and this change was not saved. Nothing was sent twice — you can try again.')
+          return false
+        }
+        if (settled.outcome === 'unattributed' || settled.outcome === 'changed') {
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
+          window.alert(notProven(settled.saved.status))
           return false
         }
         if (mountedRef.current) setReviewUncertain(action)
@@ -771,7 +785,7 @@ export default function TaskDetailPage() {
     reviewBusyRef.current = true
     setReviewBusy(reviewUncertain)
     try {
-      const settled = await reconcileSavedStatus(supabase, task.id, REVIEW_RESULT_STATUS[reviewUncertain], task.status)
+      const settled = await reconcileSavedStatus(supabase, task.id, reconcileSpecFor(task, REVIEW_RESULT_STATUS[reviewUncertain]))
       if (!mountedRef.current) return
       if (settled.outcome === 'unknown') {
         window.alert('Still unable to read the saved status. Check your connection and try again.')
@@ -780,6 +794,8 @@ export default function TaskDetailPage() {
       applySavedState(task, settled.saved)
       void loadLog(task.id)
       setReviewUncertain(null)
+      if (settled.outcome === 'not_applied') window.alert('That change was not saved. Nothing was sent twice — you can try again.')
+      else if (settled.outcome !== 'applied') window.alert(notProven(settled.saved.status))
     } finally {
       reviewBusyRef.current = false
       if (mountedRef.current) setReviewBusy(null)
@@ -865,14 +881,19 @@ export default function TaskDetailPage() {
       if (!res) {
         // No answer: it may have been applied. Read the saved status instead of
         // asking the person to press the button again.
-        const settled = await reconcileSavedStatus(supabase, startedOn.id, 'working', startedOn.status)
-        if (settled.outcome !== 'unknown' && settled.saved.status !== startedOn.status) {
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, null))
+        if (settled.outcome === 'applied') {
           if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
           return
         }
-        window.alert(settled.outcome === 'unknown'
-          ? 'The connection dropped and we could not confirm whether the task was reopened. Refresh the status before trying again.'
-          : 'The connection dropped and the task was not reopened. You can try again.')
+        if (settled.outcome === 'unknown') {
+          window.alert('The connection dropped and we could not confirm whether the task was reopened. Refresh the status before trying again.')
+        } else if (settled.outcome === 'not_applied') {
+          window.alert('The connection dropped and the task was not reopened. You can try again.')
+        } else {
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
+          window.alert(notProven(settled.saved.status))
+        }
         return
       }
       if (!res.ok) {
@@ -917,11 +938,16 @@ export default function TaskDetailPage() {
       }
       if (!res) {
         // No answer: read what was saved rather than inviting a second cancel.
-        const settled = await reconcileSavedStatus(supabase, startedOn.id, 'cancelled', startedOn.status)
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, 'cancelled'))
         if (settled.outcome !== 'applied') {
-          window.alert(settled.outcome === 'unknown'
-            ? 'The connection dropped and we could not confirm whether the task was cancelled. Refresh the status before trying again.'
-            : 'The connection dropped and the task was not cancelled. You can try again.')
+          if (settled.outcome === 'unknown') {
+            window.alert('The connection dropped and we could not confirm whether the task was cancelled. Refresh the status before trying again.')
+          } else if (settled.outcome === 'not_applied') {
+            window.alert('The connection dropped and the task was not cancelled. You can try again.')
+          } else {
+            if (mountedRef.current) { applySavedState(startedOn, settled.saved); setCancelModalOpen(false); void loadLog(startedOn.id) }
+            window.alert(notProven(settled.saved.status))
+          }
           return
         }
       } else if (!res.ok) {
