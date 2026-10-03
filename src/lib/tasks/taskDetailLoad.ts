@@ -22,6 +22,15 @@ import type { Task, LogEntry, TaskAttachment } from '@/lib/types'
 
 type ReadError = { message: string; code?: string | null }
 
+/**
+ * A request that never answers must not hold a loader or a busy flag forever. Each is bounded; on expiry the client
+ * aborts and the result is an ordinary error (code-less, so a write is treated as UNCERTAIN and reconciled — it is
+ * never sent again). Generous on purpose: these are ceilings for a hung connection, not performance targets.
+ */
+export const READ_TIMEOUT_MS = 20_000
+export const WRITE_TIMEOUT_MS = 30_000
+export const RECONCILE_READ_TIMEOUT_MS = 10_000
+
 const ACTIVITY_COLUMNS =
   'id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )'
 
@@ -44,6 +53,7 @@ export async function readTaskEssential(supabase: SupabaseClient, taskId: string
       .select('*, creator:created_by(full_name)')
       .eq('id', taskId)
       .single()
+      .abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS))
     if (error) {
       return error.code === NO_ROWS
         ? { status: 'not_found' }
@@ -95,8 +105,8 @@ export function buildActivityLog(
 export async function readTaskSecondary(supabase: SupabaseClient, taskId: string): Promise<SecondaryRead> {
   try {
     const [logRes, attRes] = await Promise.all([
-      supabase.from('task_activity_log').select(ACTIVITY_COLUMNS).eq('task_id', taskId).order('created_at', { ascending: false }),
-      supabase.from('task_attachments').select('*').eq('task_id', taskId).order('created_at', { ascending: true }),
+      supabase.from('task_activity_log').select(ACTIVITY_COLUMNS).eq('task_id', taskId).order('created_at', { ascending: false }).abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS)),
+      supabase.from('task_attachments').select('*').eq('task_id', taskId).order('created_at', { ascending: true }).abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS)),
     ])
     const failed: ReadError | null = logRes.error ?? attRes.error
     if (failed) return { status: 'error', message: failed.message || 'The activity could not be loaded.' }
@@ -227,8 +237,8 @@ async function readOnce(supabase: SupabaseClient, taskId: string, spec: Reconcil
       .gt('created_at', spec.since)
     if (spec.expectedStatus) logQuery = logQuery.eq('to_status', spec.expectedStatus)
     const [taskRes, logRes] = await Promise.all([
-      supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single(),
-      logQuery.limit(2),
+      supabase.from('tasks').select(SAVED_STATE_COLUMNS).eq('id', taskId).single().abortSignal(AbortSignal.timeout(RECONCILE_READ_TIMEOUT_MS)),
+      logQuery.limit(2).abortSignal(AbortSignal.timeout(RECONCILE_READ_TIMEOUT_MS)),
     ])
     if (taskRes.error || !taskRes.data || logRes.error) return { outcome: 'unknown' }
     const saved = taskRes.data as unknown as SavedTaskState

@@ -48,8 +48,8 @@ function fakeClient(answers: Record<string, Answer>, calls: string[] = []): Supa
       return { data: a.data ?? null, error: a.error ?? null }
     }
     const q: Record<string, unknown> = {}
-    for (const m of ['select', 'eq', 'gt', 'order', 'limit']) q[m] = () => q
-    q.single = run
+    for (const m of ['select', 'eq', 'gt', 'order', 'limit', 'abortSignal']) q[m] = () => q
+    q.single = () => q
     q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej)
     return q
   }
@@ -233,10 +233,11 @@ describe('uncertain writes are reconciled, never repeated', () => {
     const client = {
       from: (table: string) => {
         const q: Record<string, unknown> = {}
-        for (const m of ['select', 'order', 'limit']) q[m] = () => q
+        for (const m of ['select', 'order', 'limit', 'abortSignal']) q[m] = () => q
         for (const m of ['eq', 'gt']) q[m] = (col: string, v: unknown) => { seen.push(`${table}.${m}(${col},${v})`); return q }
-        q.single = async () => ({ data: { status: 'pending_approval' }, error: null })
-        q.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [{ id: 'row' }], error: null }).then(res)
+        let one = false
+        q.single = () => { one = true; return q }
+        q.then = (res: (v: unknown) => unknown) => Promise.resolve(one ? { data: { status: 'pending_approval' }, error: null } : { data: [{ id: 'row' }], error: null }).then(res)
         return q
       },
     } as unknown as SupabaseClient
@@ -326,6 +327,7 @@ describe('Task Detail wiring', () => {
     assert.ok(run.includes("classifyWriteFailure(error) === 'rejected'"))
     assert.ok(run.includes('reconcileSavedStatus('))
     assert.equal((run.match(/supabase\.rpc\(/g) ?? []).length, 1, 'the RPC is sent exactly once per call')
+    assert.ok(run.includes('.abortSignal(AbortSignal.timeout(WRITE_TIMEOUT_MS))'), 'a request that never answers is bounded')
     assert.ok(PAGE.includes('reviewBusy !== null || reviewUncertain !== null'))
     assert.ok(run.includes('if (reviewBusyRef.current || reviewUncertain) return false'))
   })
@@ -344,8 +346,8 @@ describe('attribution limits — what recovery may and may not claim', () => {
     const from = (table: string) => {
       const run = async () => { calls.push(table); const a = next(table); if (a.throws) throw a.throws; return { data: a.data ?? null, error: a.error ?? null } }
       const q: Record<string, unknown> = {}
-      for (const m of ['select', 'eq', 'gt', 'order', 'limit']) q[m] = () => q
-      q.single = run
+      for (const m of ['select', 'eq', 'gt', 'order', 'limit', 'abortSignal']) q[m] = () => q
+      q.single = () => q
       q.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => run().then(res, rej)
       return q
     }

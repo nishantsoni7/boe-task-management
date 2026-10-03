@@ -48,7 +48,7 @@ import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/act
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
 import {
   readTaskEssential, readTaskSecondary, mergeActivityRead, createLatestGate,
-  classifyWriteFailure, isStateConflict, reconcileSavedStatus, REVIEW_RESULT_STATUS,
+  classifyWriteFailure, isStateConflict, reconcileSavedStatus, REVIEW_RESULT_STATUS, WRITE_TIMEOUT_MS,
   type ReviewAction, type SavedTaskState,
 } from '@/lib/tasks/taskDetailLoad'
 
@@ -726,11 +726,13 @@ export default function TaskDetailPage() {
     try {
       let rpc: { data: unknown; error: { message: string; code?: string | null } | null }
       try {
+        // Bounded: a request that never answers must not hold the controls forever. On expiry the client aborts, the
+        // failure carries no database code, and it is reconciled below — never sent again.
         rpc = await supabase.rpc('transition_task_review', {
           p_task_id: startedOn.id,
           p_action:  action,
           p_note:    note ?? null,
-        })
+        }).abortSignal(AbortSignal.timeout(WRITE_TIMEOUT_MS))
       } catch (e) {
         rpc = { data: null, error: { message: e instanceof Error ? e.message : 'Network error', code: null } }
       }
