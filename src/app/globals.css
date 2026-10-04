@@ -8258,6 +8258,7 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
    below 900px the columns dissolve and `order` stacks Pending → Advance →
    Fabric/Finish → Ready. Phone rules sit at 560px, after the tablet rule. */
 .spd { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.spd-preview { margin: 0; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(85, 133, 232, 0.35); background: rgba(85, 133, 232, 0.08); color: #1F3A7A; font-size: 13px; font-weight: 500; }
 .spd a:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
 .spd-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .spd-card { background: #FFFFFF; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px; padding: 14px 18px; min-width: 0; }

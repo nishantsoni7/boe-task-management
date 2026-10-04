@@ -368,7 +368,11 @@ describe('no Order screen waits more than it must', () => {
       //   column in the row's select, so that a database without the computed
       //   column yet fails THAT read alone: the Order still opens and its
       //   percentage says "Total before GST not available".
-      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 41,
+      // DASHBOARD 8 -> 9 (20270304000000, the administrator's preview): the SAME read slot, written as a choice -
+      //   admin_preview_salesperson_orders_dashboard(viewed person) when an administrator is in View As,
+      //   salesperson_orders_dashboard() otherwise. It is one more call site, but never one more read: exactly one of the
+      //   two runs, inside the same Promise.all, so the page still waits exactly twice.
+      [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 4, [DETAIL]: 41,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

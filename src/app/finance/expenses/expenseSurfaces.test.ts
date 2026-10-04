@@ -715,6 +715,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // The salesperson's own Orders dashboard (20270228000000): one read-only function, held by
       // src/lib/orders/salespersonDashboard.test.tsx and supabase/tests/salesperson_orders_dashboard_assertions.sql.
       if (f === 'supabase/migrations/20270228000000_salesperson_orders_dashboard.sql') continue
+      // The administrator's preview of that dashboard (20270304000000): one read-only, administrators-only function, held by
+      // src/lib/orders/adminPreviewSalespersonDashboard.test.ts and supabase/tests/admin_preview_salesperson_dashboard_assertions.sql.
+      if (f === 'supabase/migrations/20270304000000_admin_preview_salesperson_orders_dashboard.sql') continue
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
@@ -2822,6 +2825,35 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270228000000_salesperson_orders_dashboard.sql',
   ])
 
+  // The administrator's preview of that dashboard (2026-10-05, 20270304000000): one new READ-ONLY, administrators-only
+  // function, the /orders page's choice of read when an administrator is in View As, the dashboard view's one-line
+  // notice and its style, and the migration-inventory pins that name every migration on disk. It reaches no payment
+  // entry, allocation, balance or Finance screen, and changes no approval, manufacturing or dispatch workflow.
+  const ALLOWED_ADMIN_PREVIEW = new Set([
+    'src/app/globals.css',
+    'src/app/orders/page.tsx',
+    'src/components/orders/dashboard/SalespersonDashboardView.tsx',
+    'src/lib/orders/salespersonDashboard.ts',
+    'src/lib/orders/salespersonDashboard.test.tsx',
+    'src/lib/orders/adminPreviewSalespersonDashboard.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270304000000_admin_preview_salesperson_orders_dashboard.sql',
+  ])
+
   // Minop collection-only and the "Incoming Minop data" register (2026-10-01): Minop
   // messages are stored and inspected but never turned into attendance. No
   // migration, no Finance or Orders file; the Attendance admin pages, the Minop
@@ -2927,6 +2959,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_SALESPERSON_DASHBOARD.has(f) &&
+    !ALLOWED_ADMIN_PREVIEW.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
     !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f) &&
@@ -3252,7 +3285,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // edits the two suites whose below-40% reasons are now one of three.
       // The advance on the total before GST (20270227000000) adds its suite and gives every
       // fixture that prices a PI a total_before_gst beside its grand_total.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|admin_preview_salesperson_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3395,6 +3428,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_TASK_STATUS_SWITCH.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_SALESPERSON_DASHBOARD.has(file)
+        || ALLOWED_ADMIN_PREVIEW.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
         || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file)
