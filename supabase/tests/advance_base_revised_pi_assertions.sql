@@ -86,7 +86,7 @@ begin
   alter table public.order_pi_versions disable trigger order_pi_versions_guard;
   insert into public.order_pi_versions (id, order_id, submission_id, version_number, status, decided_by, decided_at,
                                         decision_reason, superseded_at, revision_reason, pdf_order_number)
-  values (v_ver, p_order, p_submission, p_n, p_status, current_setting('test.owner_id')::uuid, now(),
+  values (v_ver, p_order, p_submission, p_n, p_status, case when p_status = 'pending' then null else current_setting('test.owner_id')::uuid end, case when p_status = 'pending' then null else now() end,
           case when p_status = 'rejected' then 'no' end,
           case when p_status = 'superseded' then now() end,
           case when p_n > 1 then 'client change' end, 'ADV-1');
@@ -187,11 +187,13 @@ begin
   perform pg_temp.check(pg_temp.base(o) is null,
     'a superseded revision that once stated the same grand total does not supply the base; the in-force V3 states another total: unknown');
 
-  -- Now V3 states the Order's value: the in-force revision wins, whatever V2 said
-  perform pg_temp.restore();
-  update public.order_pi_revision_staged_parses
-     set payload = jsonb_build_object('commercial', jsonb_build_object('grand_total', '236000', 'total_before_gst', '210000'))
-   where version_id = v3;
+  -- A staged parse is WRITE-ONCE (ORDER_PI_REVISION_STAGE_IMMUTABLE), so the in-force-wins case is its own Order:
+  -- V2 (superseded) and V3 (in force) state the SAME grand total with different pre-GST figures.
+  pi := pg_temp.mk_pi(100000, 118000, 'approved');
+  o  := pg_temp.mk_order('rev2b', 236000, pi);
+  v1 := pg_temp.mk_version(o, pi, 1, 'superseded');
+  v2 := pg_temp.rev(o, 2, 'superseded', '236000', '200000');
+  v3 := pg_temp.rev(o, 3, 'approved',   '236000', '210000');
   perform pg_temp.check(pg_temp.base(o) = 210000, 'the in-force V3 states the value: its 2,10,000, never the superseded V2''s 2,00,000');
 end $$;
 
@@ -229,7 +231,7 @@ begin
   perform pg_temp.check(pg_temp.base(o) is null, 'a PENDING revision stating the value is not in force: unknown');
   perform pg_temp.restore();
   alter table public.order_pi_versions disable trigger order_pi_versions_guard;
-  update public.order_pi_versions set status = 'rejected', decision_reason = 'no' where order_id = o and version_number = 2;
+  update public.order_pi_versions set status = 'rejected', decision_reason = 'no', decided_by = current_setting('test.owner_id')::uuid, decided_at = now() where order_id = o and version_number = 2;
   alter table public.order_pi_versions enable trigger order_pi_versions_guard;
   perform pg_temp.check(pg_temp.base(o) is null, 'a REJECTED revision never is');
 end $$;
