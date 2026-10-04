@@ -274,6 +274,23 @@ begin
   select count(*) into n_after from public.notifications;
   assert n_after = n_before, 'change_task_status writes no notification — /api/notify-status-update still owns that';
 
+  -- EXPLICIT revocation, read from the ACL itself rather than inferred from has_function_privilege: a function is
+  -- executable by PUBLIC until somebody revokes it, and Supabase's default privileges can add `anon` on creation. A null
+  -- proacl means "never revoked" (PUBLIC may execute), so a non-null ACL is the proof that the REVOKE ran.
+  assert (select proacl is not null from pg_proc where proname = 'change_task_status'),
+    'the ACL must be explicit (a null ACL means PUBLIC may still execute)';
+  assert not exists (
+    select 1 from pg_proc p, aclexplode(p.proacl) a
+     where p.proname = 'change_task_status' and a.grantee = 0 and a.privilege_type = 'EXECUTE'),
+    'EXECUTE must be explicitly REVOKED from PUBLIC';
+  assert not exists (
+    select 1 from pg_proc p, aclexplode(p.proacl) a
+     where p.proname = 'change_task_status' and a.grantee = 'anon'::regrole::oid and a.privilege_type = 'EXECUTE'),
+    'EXECUTE must be explicitly REVOKED from anon';
+  assert exists (
+    select 1 from pg_proc p, aclexplode(p.proacl) a
+     where p.proname = 'change_task_status' and a.grantee = 'authenticated'::regrole::oid and a.privilege_type = 'EXECUTE'),
+    'EXECUTE must be explicitly GRANTED to authenticated';
   assert has_function_privilege('authenticated', 'public.change_task_status(uuid, text, text, text, text, uuid, text)', 'execute'),
     '`authenticated` must be able to execute change_task_status';
   assert not has_function_privilege('anon', 'public.change_task_status(uuid, text, text, text, text, uuid, text)', 'execute'),
