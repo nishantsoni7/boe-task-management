@@ -196,9 +196,9 @@ describe('uncertain writes are reconciled, never repeated', () => {
     task_activity_log: { data: ours ? [{ id: 'row' }] : [] },
   })
 
-  test('expected status AND an activity row of ours → applied (our request, proven)', async () => {
+  test('expected status AND exactly one activity row of ours → own_action_found (an action of ours is saved — NOT this request confirmed)', async () => {
     const r = await reconcileSavedStatus(fakeClient(world('pending_approval', true)), 't1', spec, NO_RECHECK)
-    assert.equal(r.outcome, 'applied')
+    assert.equal(r.outcome, 'own_action_found')
   })
 
   test('expected status but NO row of ours → unattributed: another user may have made that move, so it is never claimed', async () => {
@@ -223,7 +223,7 @@ describe('uncertain writes are reconciled, never repeated', () => {
 
   test('no single expected status (reopen): any move away from the previous status counts, attributed by our row', async () => {
     const reopen = { ...spec, expectedStatus: null, previousStatus: 'completed' }
-    assert.equal((await reconcileSavedStatus(fakeClient(world('working', true)), 't1', reopen, NO_RECHECK)).outcome, 'applied')
+    assert.equal((await reconcileSavedStatus(fakeClient(world('working', true)), 't1', reopen, NO_RECHECK)).outcome, 'own_action_found')
     assert.equal((await reconcileSavedStatus(fakeClient(world('working', false)), 't1', reopen, NO_RECHECK)).outcome, 'unattributed')
     assert.equal((await reconcileSavedStatus(fakeClient(world('completed', false)), 't1', reopen, NO_RECHECK)).outcome, 'not_applied')
   })
@@ -362,16 +362,16 @@ describe('attribution limits — what recovery may and may not claim', () => {
     assert.equal(r.outcome, 'unattributed')
   })
 
-  test('DELAYED activity visibility: the row is not visible on the first look, is on the second → applied', async () => {
+  test('DELAYED activity visibility: the row is not visible on the first look, is on the second → own_action_found', async () => {
     const calls: string[] = []
     const r = await reconcileSavedStatus(seqClient({ tasks: [moved], task_activity_log: [none, one] }, calls), 't1', spec, { recheckMs: 5 })
-    assert.equal(r.outcome, 'applied')
+    assert.equal(r.outcome, 'own_action_found')
     assert.equal(calls.filter(c => c === 'tasks').length, 2, 'looked twice, nothing was written')
   })
 
-  test('DELAYED visibility of the status itself: unmoved first, moved with our row second → applied', async () => {
+  test('DELAYED visibility of the status itself: unmoved first, moved with our row second → own_action_found', async () => {
     const r = await reconcileSavedStatus(seqClient({ tasks: [unmoved, moved], task_activity_log: [none, one] }), 't1', spec, { recheckMs: 5 })
-    assert.equal(r.outcome, 'applied')
+    assert.equal(r.outcome, 'own_action_found')
   })
 
   test('still nothing on the second look → unattributed / not applied, never upgraded', async () => {
@@ -412,5 +412,39 @@ describe('a refusal that may be about a RE-SEND', () => {
     assert.ok(run.indexOf('isStateConflict(error)') < run.indexOf('reconcileSavedStatus('), 'the conflict reaches the reconcile')
     assert.ok(run.includes("if (decided && settled.outcome === 'unknown')"), 'unreadable + decided: the database answer, no lock')
     assert.equal((run.match(/supabase\.rpc\(/g) ?? []).length, 1, 'still exactly one send')
+  })
+})
+
+describe('current state reconciled is NOT this request confirmed', () => {
+  const spec = { actorId: 'me', expectedStatus: 'pending_approval', previousStatus: 'working', since: '2026-01-01T00:00:00Z' }
+  const NO_RECHECK = { recheckMs: 0 }
+  const world = (status: string, rows: { id: string }[]) => ({ tasks: { data: { status } }, task_activity_log: { data: rows } })
+
+  test('a matching action carries the id of the ONE event it found, and is never marked as a confirmed request', async () => {
+    const r = await reconcileSavedStatus(fakeClient(world('pending_approval', [{ id: 'evt-1' }])), 't1', spec, NO_RECHECK)
+    assert.equal(r.outcome, 'own_action_found')
+    if (r.outcome !== 'own_action_found') return
+    assert.equal(r.eventId, 'evt-1', 'the event a notification must be tied to')
+    assert.equal(r.requestConfirmed, false, 'a match on actor/task/action/time does not identify this request')
+    assert.equal(r.saved.status, 'pending_approval', 'the current state IS reconciled')
+  })
+
+  test('SAME USER, ANOTHER TAB: that tab\'s row is indistinguishable from ours — found, saved state adopted, request NOT confirmed', async () => {
+    // Tab B submitted; tab A (stale, still showing "working") lost the response to its own click. One row of ours exists —
+    // written by tab B. It must not be reported as tab A's request.
+    const fromOtherTab = await reconcileSavedStatus(fakeClient(world('pending_approval', [{ id: 'evt-from-tab-b' }])), 't1', spec, NO_RECHECK)
+    assert.equal(fromOtherTab.outcome, 'own_action_found')
+    if (fromOtherTab.outcome === 'own_action_found') assert.equal(fromOtherTab.requestConfirmed, false)
+    // Both tabs' rows present: ambiguous — not even an own action is claimed.
+    const both = await reconcileSavedStatus(fakeClient(world('pending_approval', [{ id: 'evt-a' }, { id: 'evt-b' }])), 't1', spec, NO_RECHECK)
+    assert.equal(both.outcome, 'unattributed')
+    assert.equal('eventId' in both, false, 'no event is offered when it cannot be identified uniquely')
+  })
+
+  test('no outcome ever reports a confirmed request, and the page never acts on one', () => {
+    const lib = read('src/lib/tasks/taskDetailLoad.ts')
+    assert.equal((lib.match(/requestConfirmed: (true|boolean)/g) ?? []).length, 0, 'the flag can only be the literal false')
+    assert.equal(/requestConfirmed/.test(PAGE), false, 'the page never branches on it — a recovered write is never treated as confirmed')
+    assert.equal(/outcome === 'applied'|'applied'/.test(PAGE), false, 'the old, misleading outcome name is gone')
   })
 })

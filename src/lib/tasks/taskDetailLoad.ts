@@ -186,14 +186,23 @@ const SAVED_STATE_COLUMNS =
 export type SavedTaskState = Pick<Task,
   'status' | 'completed_at' | 'last_update_at' | 'blocker_reason' | 'waiting_on_type' | 'waiting_on_user_id' | 'waiting_on_text'>
 
+/**
+ * TWO DIFFERENT THINGS, KEPT APART.
+ *
+ *   1. CURRENT STATE RECONCILED — what the server holds now (`saved`). Every readable outcome has this, and the page
+ *      adopts it.
+ *   2. THIS REQUEST CONFIRMED — that the write THIS click sent is the one that produced it. Nothing here can establish
+ *      that: a status change leaves an actor, a task, an action and a time, and a second tab of the same person (or an
+ *      earlier attempt) leaves an identical row. Only a request id carried through the RPC onto the history row could
+ *      identify it uniquely, and none exists. So `requestConfirmed` is the literal `false` on every outcome, and a
+ *      matching row is called what it is — an own action found — never a confirmation.
+ */
 export type Reconciled =
   /**
-   * The row shows the expected status and EXACTLY ONE activity row of ours explains it. This is evidence that the
-   * change is saved under this person's name — it is NOT proof that THIS request wrote it: a second tab of the same
-   * person, or an earlier attempt, produces the same row. Callers must not report it as a confirmed success of this
-   * request (see the comment on reconcileSavedStatus).
+   * The row shows the expected status and EXACTLY ONE activity row of ours explains it: an action of ours is saved
+   * (`eventId` is its id — the event a notification must be tied to). It is NOT this request being confirmed.
    */
-  | { outcome: 'applied'; saved: SavedTaskState }
+  | { outcome: 'own_action_found'; saved: SavedTaskState; eventId: string; requestConfirmed: false }
   /**
    * The row shows the expected status but no activity row of ours explains it, or SEVERAL do. Somebody else (or
    * another tab) made the move, or our write landed and its row is not visible. Never claimed.
@@ -246,7 +255,8 @@ async function readOnce(supabase: SupabaseClient, taskId: string, spec: Reconcil
     const moved = spec.expectedStatus ? saved.status === spec.expectedStatus : saved.status !== spec.previousStatus
     // Exactly one: two matching rows mean more than one action of ours since the task was last seen (two tabs, or
     // an earlier attempt that landed late) and the row cannot be tied to this request.
-    if (moved) return matching === 1 ? { outcome: 'applied', saved } : { outcome: 'unattributed', saved }
+    const eventId = matching === 1 ? String((logRes.data as { id: string }[])[0].id) : null
+    if (moved) return eventId ? { outcome: 'own_action_found', saved, eventId, requestConfirmed: false } : { outcome: 'unattributed', saved }
     if (saved.status === spec.previousStatus && matching === 0) return { outcome: 'not_applied', saved }
     return { outcome: 'changed', saved }
   } catch {
@@ -265,7 +275,7 @@ async function readOnce(supabase: SupabaseClient, taskId: string, spec: Reconcil
  * protected RPC onto the activity row; until then the callers treat even `applied` as "saved under your name, not
  * confirmed as this request" and never resend.
  *
- *   status = expected, exactly one row of ours -> applied      (consistent with ours)
+ *   status = expected, exactly one row of ours -> own_action_found (an action of ours is saved; NOT "this request")
  *   status = expected, none or several         -> unattributed (do not claim it)
  *   status = previous, none                    -> not_applied  (nothing found; the person may try again)
  *   anything else                              -> changed
