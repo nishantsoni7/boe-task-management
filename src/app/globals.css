@@ -8253,6 +8253,62 @@ a.od-strip-item:hover { border-color: rgba(0, 0, 0, 0.2); color: #111318; }
 .od-error p { margin: 0; font-size: 13px; color: #111318; }
 .od-error-title { margin: 0; font-size: 14px; font-weight: 700; color: #B42318; }
 
+/* ── The salesperson's own dashboard: three figures, then four complete lists ──
+   Two independent columns (no row alignment, so a short panel leaves no gap);
+   below 900px the columns dissolve and `order` stacks Pending → Advance →
+   Fabric/Finish → Ready. Phone rules sit at 560px, after the tablet rule. */
+.spd { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.spd a:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.spd-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.spd-card { background: #FFFFFF; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px; padding: 14px 18px; min-width: 0; }
+.spd-card-label { margin: 0; font-size: 13px; font-weight: 500; color: #4A5261; }
+.spd-card-value { margin: 4px 0 0; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; color: #111318; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.spd-card-sub { margin: 2px 0 0; font-size: 12px; color: #6B7384; }
+.spd-notes { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; color: #8A5A0A; }
+.spd-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.spd-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.spd-panel { background: #FFFFFF; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px; padding: 14px 16px 6px; min-width: 0; }
+.spd-panel-head { display: flex; align-items: baseline; gap: 10px; }
+.spd-panel-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; color: #111318; }
+.spd-panel-count { font-size: 13px; font-weight: 500; color: #6B7384; font-variant-numeric: tabular-nums; }
+.spd-rows { list-style: none; margin: 10px 0 0; padding: 0; }
+.spd-rows > li + li { border-top: 1px solid rgba(0, 0, 0, 0.06); }
+.spd-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; padding: 10px 6px; margin: 0 -6px; border-radius: 6px; color: inherit; text-decoration: none; min-width: 0; }
+a.spd-row:hover { background: #F6F7F9; }
+.spd-row-main { display: flex; align-items: baseline; gap: 4px 10px; min-width: 0; flex: 1 1 200px; }
+.spd-row-num { font-weight: 600; color: #111318; font-variant-numeric: tabular-nums; flex: none; }
+.spd-row-client { font-size: 13px; color: #4A5261; overflow-wrap: anywhere; min-width: 0; }
+.spd-row-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; margin-left: auto; font-size: 12px; color: #6B7384; }
+.spd-meta-text { font-size: 12px; color: #6B7384; }
+.spd-strong { font-weight: 600; color: #111318; }
+.spd-pill { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.spd-pill[data-tone='warn'] { color: #8A5A0A; background: #FFF4E0; }
+.spd-pill[data-tone='alert'] { color: #B42318; background: #FDECEA; }
+.spd-pill[data-tone='good'] { color: #1B6B3A; background: #E6F5EC; }
+.spd-empty { margin: 10px 0 12px; font-size: 13px; color: #6B7384; }
+.spd-pill[data-tone='muted'] { color: #4A5261; background: #EEF0F4; }
+.spd-restricted { flex-basis: 100%; text-align: right; font-style: italic; }
+.spd-subhead { margin: 12px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: #4A5261; }
+.spd-subhead span { font-weight: 500; color: #6B7384; font-variant-numeric: tabular-nums; }
+.spd-unknown { margin-top: 14px; padding-top: 4px; border-top: 1px dashed rgba(0, 0, 0, 0.18); }
+.spd-gap { margin: 4px 0 10px; font-size: 12px; color: #8A5A0A; }
+
+@media (max-width: 899px) {
+  .spd-panels { display: flex; flex-direction: column; }
+  .spd-col { display: contents; }
+  .spd-panel[data-area='pending'] { order: 1; }
+  .spd-panel[data-area='advance'] { order: 2; }
+  .spd-panel[data-area='fabric']  { order: 3; }
+  .spd-panel[data-area='ready']   { order: 4; }
+}
+
+@media (max-width: 559px) {
+  .spd-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .spd-card-value { font-size: 26px; }
+  .spd-panel { padding-left: 12px; padding-right: 12px; }
+  .spd-row-meta { justify-content: flex-start; flex-basis: 100%; }
+}
+
 /* Wide screens: two selections per row. */
 @media (min-width: 1280px) {
   .od-focus-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

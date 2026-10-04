@@ -355,6 +355,9 @@ describe('no Order screen waits more than it must', () => {
       //   gone. What remains is ONE orders_dashboard_summary() read, the PI Drafts
       //   count, the three operations-handoff counts, the profile and the session —
       //   all but the session inside the existing Promise.all, so the page still waits exactly twice.
+      // DASHBOARD 7 -> 8 (20270228000000, the salesperson's own dashboard): ONE more read,
+      //   salesperson_orders_dashboard(), issued INSIDE the same Promise.all beside
+      //   orders_dashboard_summary(), so the page still waits exactly twice.
       // DETAIL 40 -> 41 (20270227000000, the advance is a share of the Total
       //   before GST): ONE more READ, the second select on the 'orders' table
       //   inside the shared orderRowQuery - the single computed column
@@ -365,7 +368,7 @@ describe('no Order screen waits more than it must', () => {
       //   column in the row's select, so that a database without the computed
       //   column yet fails THAT read alone: the Order still opens and its
       //   percentage says "Total before GST not available".
-      [GUARD]: 2, [DASHBOARD]: 7, [ALL]: 4, [DETAIL]: 41,
+      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 41,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

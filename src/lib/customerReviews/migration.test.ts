@@ -357,6 +357,7 @@ describe('the migration is one file, correctly sequenced', () => {
       '20270225000000_customer_review_reporting_and_leaderboard.sql',
       '20270226000000_payment_request_owner_soft_delete.sql',
       '20270227000000_order_submission_advance_on_total_before_gst.sql',
+      '20270228000000_salesperson_orders_dashboard.sql',
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
       '20270303000000_task_acknowledge_rpc.sql',
