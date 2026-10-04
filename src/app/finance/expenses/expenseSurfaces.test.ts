@@ -2724,6 +2724,15 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/minop/stage2Security.test.ts',
   ])
 
+  // The Dashboard's Acknowledge button under View As (2026-10-04): the page stops
+  // handing the handler to the panel while an administrator is viewing as someone
+  // else, and the handler refuses too. One page and one source-contract suite,
+  // no migration, no Finance or Orders file.
+  const ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE = new Set([
+    'src/app/dashboard/page.tsx',
+    'src/lib/tasks/dashboardViewAsReadOnly.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2796,7 +2805,19 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
-    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f)
+    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f) &&
+    !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f)
+
+  test('the Dashboard View As allowance is EXACTLY its two named files', () => {
+    assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
+      'src/app/dashboard/page.tsx',
+      'src/lib/tasks/dashboardViewAsReadOnly.test.ts',
+    ])
+    for (const file of ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE) {
+      assert.equal(file.includes('*'), false)
+      assert.equal(/finance|orders/i.test(file), false, `${file} must not be a Finance or Orders file`)
+    }
+  })
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -3248,7 +3269,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
-        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file),
+        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file)
+        || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
