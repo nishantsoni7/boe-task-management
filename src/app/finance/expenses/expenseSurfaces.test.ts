@@ -719,6 +719,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // held by src/lib/finance/ownPaymentRequestDeletion.test.tsx and
       // supabase/tests/payment_request_owner_soft_delete_assertions.sql.
       if (f === 'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql') continue
+      // Task Management: acknowledge_task() — Acknowledge and its two history rows in one transaction,
+      // held by src/lib/tasks/acknowledgeTask.test.ts, acknowledgeCallers.test.ts and
+      // supabase/tests/task_acknowledge_assertions.sql.
+      if (f === 'supabase/migrations/20270303000000_task_acknowledge_rpc.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2559,6 +2563,35 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
 
 
+  // Task Management: Acknowledge as ONE transaction (feat/task-acknowledge-rpc). One migration
+  // (acknowledge_task), one client module, the three screens that offer Acknowledge, and the suites
+  // that hold them. It reaches no Finance or Orders file, and leaves /api/notify-status-update alone.
+  const ALLOWED_TASK_ACKNOWLEDGE = new Set([
+    'src/app/dashboard/page.tsx',
+    'src/app/tasks/[id]/page.tsx',
+    'src/app/tasks/my/page.tsx',
+    'src/lib/tasks/acknowledgeTask.ts',
+    'src/lib/tasks/acknowledgeTask.test.ts',
+    'src/lib/tasks/acknowledgeCallers.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270303000000_task_acknowledge_rpc.sql',
+    'supabase/tests/task_acknowledge_assertions.sql',
+    'supabase/tests/run_task_acknowledge_local.sh',
+  ])
+
   // The Orders dashboard redesign (2026-09-29, 20270221000000): what needs
   // intervention, revenue, Factory Focus and Order visibility scopes. One new migration, the dashboard read
   // and its two write paths, the page and its three components, the
@@ -2710,7 +2743,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
-    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f)
+    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f) &&
+    !ALLOWED_TASK_ACKNOWLEDGE.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -3055,7 +3089,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
-        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file),
+        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file)
+        || ALLOWED_TASK_ACKNOWLEDGE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

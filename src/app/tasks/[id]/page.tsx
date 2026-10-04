@@ -46,6 +46,7 @@ import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
+import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, postAcknowledgedNotice } from '@/lib/tasks/acknowledgeTask'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -485,34 +486,21 @@ export default function TaskDetailPage() {
     acknowledgingRef.current = true
     setAcknowledging(true)
     try {
-    const now = new Date().toISOString()
-    const oldStatus = task.status
-    const { error } = await supabase.from('tasks').update({
-      acknowledged_at: now,
-      status: 'working',
-      last_update_at: now,
-    }).eq('id', task.id)
-    if (error) {
-      alert('Failed to acknowledge task. Please try again.')
-      return
+    // ONE database call: the stamp, the move to Working and both history rows commit together or not at all. Only an
+    // ANSWER counts as success; a lost answer is read back, never re-sent (see acknowledgeTask.ts).
+    const outcome = await acknowledgeTask(supabase, { task, actorId: currentUserId })
+    const adopted = adoptableAck(outcome)
+    if (shouldAnnounceAck(outcome)) {
+      postAcknowledgedNotice({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, actorId: currentUserId, actorName: profile?.full_name }, 'acknowledge')
     }
-    await supabase.from('task_activity_log').insert([
-      { task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null },
-      { task_id: task.id, actor_id: currentUserId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
-    ])
-    if (task.created_by && task.created_by !== currentUserId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[acknowledge] notification failed:', d))
-      }).catch(err => console.error('[acknowledge] notification fetch error:', err))
+    if (adopted) {
+      setTask({ ...task, acknowledged_at: adopted.acknowledged_at, status: adopted.status as TaskStatus, last_update_at: adopted.last_update_at })
+      setSelectedStatus('working')
+      invalidateTaskCache(task.assigned_to)
+      await loadLog(task.id)
     }
-    setTask({ ...task, acknowledged_at: now, status: 'working' as TaskStatus, last_update_at: now })
-    setSelectedStatus('working')
-    invalidateTaskCache(task.assigned_to)
-    await loadLog(task.id)
+    const message = acknowledgeMessage(outcome)
+    if (message) alert(message)
     } finally {
       // Always released — no failure path may leave Acknowledge stuck disabled.
       acknowledgingRef.current = false

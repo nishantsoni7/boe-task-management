@@ -417,6 +417,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20270224000000_customer_review_custom_duplicate_detection.sql',
       '20270225000000_customer_review_reporting_and_leaderboard.sql',
       '20270226000000_payment_request_owner_soft_delete.sql',
+      '20270303000000_task_acknowledge_rpc.sql',
     ])
   })
 

@@ -47,6 +47,7 @@ import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { perfTrack } from '@/lib/perf'
 import { canMarkComplete, canSubmitForApproval } from '@/lib/tasks/taskDetailAccess'
+import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, postAcknowledgedNotice } from '@/lib/tasks/acknowledgeTask'
 
 
 // Tab membership, overdue-ness, staleness and date normalisation all live in
@@ -1226,6 +1227,7 @@ function MyTasksContent() {
   // The detail page hit exactly this and fixed it the same way
   // (statusUpdatingRef / reviewBusyRef in tasks/[id]/page.tsx).
   const quickActionRef = useRef(false)
+  const acknowledgingRef = useRef(false)
   const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
@@ -1348,31 +1350,29 @@ function MyTasksContent() {
     if (!selectedTask) return
     if (selectedTask.assigned_to !== userId) return
     if (selectedTask.created_by === userId) return
-    const now = new Date().toISOString()
-    const oldStatus = selectedTask.status
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', selectedTask.id)
-    if (error) {
-      alert('Failed to acknowledge task. Please try again.')
-      return
+    // Synchronous re-entry guard: both clicks of a double-click land before React re-renders. The database also refuses a
+    // second acknowledgement, but the guard keeps that refusal from reaching the person as a message.
+    if (acknowledgingRef.current) return
+    acknowledgingRef.current = true
+    try {
+      // ONE database call: the stamp, the move to Working and both history rows commit together or not at all. Only an
+      // ANSWER counts as success; a lost answer is read back, never re-sent (see acknowledgeTask.ts).
+      const outcome = await acknowledgeTask(supabase, { task: selectedTask, actorId: userId })
+      const patch = adoptableAck(outcome)
+      if (shouldAnnounceAck(outcome)) {
+        postAcknowledgedNotice({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, actorId: userId, actorName: profile?.full_name }, 'my-tasks/acknowledge')
+      }
+      if (patch) {
+        setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
+        setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+        queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+      }
+      const message = acknowledgeMessage(outcome)
+      if (message) alert(message)
+    } finally {
+      acknowledgingRef.current = false
     }
-    await supabase.from('task_activity_log').insert([
-      { task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null },
-      { task_id: selectedTask.id, actor_id: userId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
-    ])
-    if (selectedTask.created_by && selectedTask.created_by !== userId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, action: 'acknowledged', actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[my-tasks/acknowledge] notification failed:', d))
-      }).catch(err => console.error('[my-tasks/acknowledge] notification fetch error:', err))
-    }
-    const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
-    setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
-    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
-    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
-    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }
 
   const handleDelete = async (task: Task) => {
