@@ -715,6 +715,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
+      // Payment Requests: a salesperson's soft delete of their own never-approved request,
+      // held by src/lib/finance/ownPaymentRequestDeletion.test.tsx and
+      // supabase/tests/payment_request_owner_soft_delete_assertions.sql.
+      if (f === 'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
@@ -2528,6 +2532,47 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   ])
   // MARKER-END
 
+  // A salesperson deleting their OWN never-approved payment request, and the
+  // salesperson's Payment Requests columns (feat/payment-request-salesperson-delete).
+  // One soft-delete migration (nothing is hard-deleted; approved money is refused in the
+  // database), the Payment Requests list and its details footer, two small libraries and a
+  // dialog, the activity label for the new trail event, and the suites that hold them. It
+  // changes no payment entry, allocation or balance.
+  const ALLOWED_PAYMENT_REQUEST_OWNER_DELETE = new Set([
+    'docs/releases/payment-request-owner-soft-delete-release.md',
+    'src/lib/finance/paymentCancelledLinks.test.ts',
+    'src/lib/finance/paymentCancelledLinks.ts',
+    'src/lib/finance/paymentDestination.ts',
+    'src/lib/finance/paymentRequestsSalesView.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/app/finance/page.tsx',
+    'src/app/finance/paymentRequestsTable.render.test.tsx',
+    'src/components/PaymentRequestActivity.tsx',
+    'src/components/finance/DeleteOwnPaymentRequestModal.tsx',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/ownPaymentRequestDeletion.test.tsx',
+    'src/lib/finance/ownPaymentRequestDeletion.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/finance/paymentActivityLabels.test.ts',
+    'src/lib/finance/paymentActivityLabels.ts',
+    'src/lib/finance/paymentCommercialTotals.test.ts',
+    'src/lib/finance/paymentCommercialTotals.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql',
+    'supabase/tests/payment_request_owner_soft_delete_assertions.sql',
+  ])
+
+
   // The Orders dashboard redesign (2026-09-29, 20270221000000): what needs
   // intervention, revenue, Factory Focus and Order visibility scopes. One new migration, the dashboard read
   // and its two write paths, the page and its three components, the
@@ -2679,7 +2724,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
-    !ALLOWED_CUSTOMER_REVIEWS_V2.has(f)
+    !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
+    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2907,7 +2953,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3047,7 +3093,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_TASK_DETAIL_STALLS.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
-        || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
+        || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
+        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

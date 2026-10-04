@@ -103,6 +103,13 @@ export type PaymentDestination = {
    * read. The second is said out loud rather than left blank.
    */
   reference: string | null
+  /**
+   * TRUE ONLY for a destination reconstructed from the intent a REJECTION
+   * cancelled (see paymentCancelledLinks.ts). It is history, not a live link: no
+   * allocation or pending intent exists, and the display says so. The live
+   * projection (readPaymentDestination) never sets it.
+   */
+  cancelled?: boolean
 }
 
 const KINDS: readonly string[] = ['confirmed_order', 'pi_draft', 'mixed', 'suspense']
@@ -210,6 +217,13 @@ export function destinationReferenceLabel(
  * open the record.
  */
 export function paymentAgainstDisplay(
+  destination: PaymentDestination | null | undefined,
+): string {
+  const text = livePaymentAgainstDisplay(destination)
+  return destination?.cancelled ? `${text} (cancelled)` : text
+}
+
+function livePaymentAgainstDisplay(
   destination: PaymentDestination | null | undefined,
 ): string {
   if (destination === undefined) return DESTINATION_LOADING
