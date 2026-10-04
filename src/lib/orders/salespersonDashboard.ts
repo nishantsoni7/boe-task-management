@@ -61,6 +61,13 @@ export type SpUnknownRow = {
   daysSinceConfirmation: number | null
 }
 
+/** An open order whose advance could not be checked: no total before GST is on record for its current value. */
+export type SpUncheckedRow = {
+  orderId: string
+  displayNumber: string
+  clientName: string
+}
+
 export type SpReadyRow = {
   orderId: string
   displayNumber: string
@@ -78,7 +85,7 @@ export type SalespersonDashboard = {
   pending: SpPendingRow[]
   advance: SpAdvanceRow[]
   /** Open orders with no usable value: no percentage exists, so they are not listed. */
-  advanceUnchecked: number
+  advanceUnchecked: SpUncheckedRow[]
   fabricFinish: SpFabricFinishRow[]
   /** Older orders with no fabric/finish record at all: listed apart, as unknown — never approved, never invented. */
   fabricFinishUnknown: SpUnknownRow[]
@@ -172,7 +179,10 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
           exceptionApproved: o.exception_approved === true,
         }
       }),
-      advanceUnchecked: count(root.advance_unchecked, 'advance_unchecked'),
+      advanceUnchecked: arr(root.advance_unchecked, 'advance_unchecked').map((x): SpUncheckedRow => {
+        const o = obj(x, 'unchecked row')
+        return { orderId: str(o.order_id, 'order_id'), displayNumber: str(o.display_number, 'display_number'), clientName: clientOf(o.client_name) }
+      }),
       fabricFinish: arr(root.fabric_finish, 'fabric_finish').map((x): SpFabricFinishRow => {
         const o = obj(x, 'fabric row')
         const kinds = new Set<SpPendingKind>()
@@ -294,6 +304,11 @@ export const SP_PENDING_STATUS = 'Pending approval'
 export const SP_BELOW_40 = 'Below 40%'
 export const SP_READY_STATUS = 'Ready for dispatch'
 export const SP_OVER_15 = 'Over 15 days'
+export const SP_ADVANCE_UNCHECKED_HEADING = 'Advance not checked'
+export const SP_ADVANCE_UNCHECKED_PILL = 'Advance not checked'
+export const SP_ADVANCE_UNCHECKED_RULE =
+  'No total before GST is on record for these orders\' current value, so their advance cannot be measured. They are not cleared: check them, or ask for the PI to be corrected.'
+export const SP_ADVANCE_BELOW_NONE_KNOWN = 'No checked order is below 40%.'
 export const SP_NOT_OPENABLE = 'Only the person who filed this PI, its reviewer or an approver can open it'
 export const SP_NOT_OPENABLE_SHORT = 'Opens only for whoever filed it'
 export const SP_FABRIC_PENDING_HEADING = 'Pending approval'
@@ -342,8 +357,9 @@ export function dispatchDateText(iso: string | null): string {
   return iso ? `Dispatch ${formatDate(iso)}` : 'No dispatch date'
 }
 
-export function advanceUncheckedNote(n: number): string | null {
-  return n > 0 ? `${plural(n, 'active order')} with no total before GST on record could not be checked.` : null
+/** The advance heading's count: orders known to be below 40% and orders NOT CHECKED are two numbers, never one. */
+export function advanceCountText(below: number, unchecked: number): string {
+  return unchecked > 0 ? `${below} below 40% · ${unchecked} not checked` : String(below)
 }
 
 /** `Fabric status unknown`, `Finish status unknown`, `Fabric + Finish status unknown`. */

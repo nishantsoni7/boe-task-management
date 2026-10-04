@@ -17,6 +17,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   SP_EMPTY,
+  advanceCountText,
   advancePercentText,
   dispatchDateText,
   fabricCountText,
@@ -57,7 +58,7 @@ function payload(over: Record<string, unknown> = {}): any {
       { order_id: 'ord-a1', display_number: '0524', client_name: 'Sharma & Sons Furnishing Private Limited (Bandra West Showroom, Mumbai)', status: 'running', verified: 0, percent: 0, exception_approved: false, confirm_date: '2026-09-01' },
       { order_id: 'ord-a2', display_number: '0525', client_name: 'Iyer Homes', status: 'running', verified: 399999.99, percent: 39.99, exception_approved: true, confirm_date: '2026-09-02' },
     ],
-    advance_unchecked: 0,
+    advance_unchecked: [],
     fabric_finish: [
       { order_id: 'ord-f1', display_number: '0510', client_name: 'Patel Retail', status: 'running', confirm_date: '2026-09-01', days_since_confirmation: 32, over_15_days: true,
         pending: [{ kind: 'fabric', status: 'not_approved' }, { kind: 'finish', status: 'no_approval_recorded' }], unknown: [] },
@@ -375,10 +376,56 @@ describe('EVERY matching order is drawn: 0, 1, 5, 6 and 25 rows', () => {
     assert.equal(new Set(Object.values(SP_EMPTY)).size, 4)
   })
 
-  test('gaps are said under the list they affect', () => {
-    const out = html(parsed(payload({ advance_unchecked: 2 })))
-    assert.match(out, /2 active orders with no total before GST on record could not be checked/)
-    assert.doesNotMatch(out, /not listed/)
+  describe('orders whose advance cannot be checked are LISTED, never just counted', () => {
+    const unchecked = [
+      { order_id: 'ord-u1', display_number: '0441', client_name: 'Old Record House', status: 'running', confirm_date: '2026-06-01' },
+      { order_id: 'ord-u2', display_number: '0442', client_name: 'Amended Away Traders', status: 'running', confirm_date: null },
+    ]
+    const withUnchecked = (advance: unknown[] = payload().advance) => html(parsed(payload({ advance_unchecked: unchecked, advance })))
+
+    test('the heading counts the two groups separately', () => {
+      assert.match(withUnchecked(), /Advance Below 40%<\/h2><span class="spd-panel-count"[^>]*>2 below 40% · 2 not checked</)
+      assert.equal(advanceCountText(0, 3), '0 below 40% · 3 not checked')
+      assert.equal(advanceCountText(5, 0), '5')
+    })
+
+    test('each unchecked order has its own row, the "Advance not checked" label and an accessible link', () => {
+      const out = withUnchecked()
+      const section = out.split('spd-unknown')[1].split('</section>')[0]
+      assert.match(section, /Advance not checked <span>2<\/span>/)
+      assert.match(section, /<a [^>]*href="\/orders\/ord-u1\?returnTo=%2Forders"/)
+      assert.match(section, /<a [^>]*href="\/orders\/ord-u2\?returnTo=%2Forders"/)
+      assert.match(section, />0441<[\s\S]*Old Record House[\s\S]*Advance not checked</)
+      assert.match(section, /not cleared/)
+      assert.equal(section.match(/<a /g)?.length, 2, 'one keyboard stop per order')
+    })
+
+    test('they are drawn apart from the known below-40% rows and never among them', () => {
+      const out = withUnchecked()
+      const [known, rest] = out.split('data-area="advance"')[1].split('spd-unknown')
+      assert.match(known, />0524</)
+      assert.doesNotMatch(known, />044[12]</)
+      assert.match(rest, />0441</)
+    })
+
+    test('with nothing below 40% but unchecked orders, the panel does NOT say everything is fine', () => {
+      const out = withUnchecked([])
+      const panel = out.split('data-area="advance"')[1].split('</section>')[0]
+      assert.match(panel, /No checked order is below 40%/)
+      assert.doesNotMatch(panel, /Every active order has at least 40% verified advance/)
+      assert.match(panel, /0 below 40% · 2 not checked/)
+      assert.match(panel, />0441</)
+    })
+
+    test('no unchecked orders: the panel reads exactly as before', () => {
+      const out = html(parsed(payload()))
+      assert.doesNotMatch(out, /not checked|Advance not checked/)
+    })
+
+    test('a payload whose unchecked list is not a list is refused, never read as none', () => {
+      assert.equal(parseSalespersonDashboard(payload({ advance_unchecked: 2 })).ok, false)
+      assert.equal(parseSalespersonDashboard(payload({ advance_unchecked: [{ order_id: 'x' }] })).ok, false)
+    })
   })
 
   test('revenue gaps are said under the revenue card', () => {

@@ -20,6 +20,10 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import {
+  SP_ADVANCE_BELOW_NONE_KNOWN,
+  SP_ADVANCE_UNCHECKED_HEADING,
+  SP_ADVANCE_UNCHECKED_PILL,
+  SP_ADVANCE_UNCHECKED_RULE,
   SP_BELOW_40,
   SP_CARD_PENDING,
   SP_CARD_PENDING_SUB,
@@ -42,7 +46,7 @@ import {
   SP_READY_STATUS,
   SP_REVENUE_BASIS,
   advancePercentText,
-  advanceUncheckedNote,
+  advanceCountText,
   dispatchDateText,
   fabricCountText,
   pendingKindsText,
@@ -197,16 +201,38 @@ export function SalespersonDashboardView({ data }: { data: SalespersonDashboard 
 
         <div className="spd-col">
           <Panel
-            id="spd-p-advance" area="advance" title={SP_PANEL_ADVANCE} count={data.advance.length}
-            empty={SP_EMPTY.advance} notes={[advanceUncheckedNote(data.advanceUnchecked)]}
+            id="spd-p-advance" area="advance" title={SP_PANEL_ADVANCE} raw
+            count={data.advance.length + data.advanceUnchecked.length}
+            countText={advanceCountText(data.advance.length, data.advanceUnchecked.length)}
+            empty={SP_EMPTY.advance}
           >
-            {data.advance.map(r => (
-              <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
-                <span className="spd-meta-text spd-strong">{advancePercentText(r.percent)}</span>
-                <span className="spd-pill" data-tone="warn">{SP_BELOW_40}</span>
-                {r.exceptionApproved ? <span className="spd-meta-text">Exception approved</span> : null}
-              </OrderRow>
-            ))}
+            {data.advanceUnchecked.length > 0 ? (
+              <h3 className="spd-subhead">{SP_PANEL_ADVANCE} <span>{data.advance.length}</span></h3>
+            ) : null}
+            {data.advance.length > 0 ? (
+              <ul className="spd-rows">
+                {data.advance.map(r => (
+                  <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
+                    <span className="spd-meta-text spd-strong">{advancePercentText(r.percent)}</span>
+                    <span className="spd-pill" data-tone="warn">{SP_BELOW_40}</span>
+                    {r.exceptionApproved ? <span className="spd-meta-text">Exception approved</span> : null}
+                  </OrderRow>
+                ))}
+              </ul>
+            ) : <p className="spd-empty">{SP_ADVANCE_BELOW_NONE_KNOWN}</p>}
+            {data.advanceUnchecked.length > 0 ? (
+              <div className="spd-unknown">
+                <h3 className="spd-subhead">{SP_ADVANCE_UNCHECKED_HEADING} <span>{data.advanceUnchecked.length}</span></h3>
+                <p className="spd-gap">{SP_ADVANCE_UNCHECKED_RULE}</p>
+                <ul className="spd-rows">
+                  {data.advanceUnchecked.map(r => (
+                    <OrderRow key={r.orderId} orderId={r.orderId} number={r.displayNumber} client={r.clientName}>
+                      <span className="spd-pill" data-tone="muted">{SP_ADVANCE_UNCHECKED_PILL}</span>
+                    </OrderRow>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </Panel>
 
           <Panel id="spd-p-ready" area="ready" title={SP_PANEL_READY} count={data.readyForDispatch.length} empty={SP_EMPTY.ready}>

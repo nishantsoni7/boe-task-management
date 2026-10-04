@@ -421,7 +421,9 @@ begin
   perform pg_temp.check((select bool_and((x ->> 'percent')::numeric >= lag_p) from (
       select x, coalesce(lag((x ->> 'percent')::numeric) over (order by ord), 0) as lag_p
         from jsonb_array_elements(s -> 'advance') with ordinality t(x, ord)) q), 'lowest percentage first');
-  perform pg_temp.check((s ->> 'advance_unchecked')::int = 2, 'the orders with no usable value are COUNTED (2), not given a percentage');
+  perform pg_temp.check(jsonb_array_length(s -> 'advance_unchecked') = 2 and pg_temp.tags(s, 'advance_unchecked') @> array['adv_null', 'adv_zeroval'],
+    format('the orders with no usable value are LISTED (not just counted) and given no percentage: %s', pg_temp.tags(s, 'advance_unchecked')));
+  perform pg_temp.check(not (pg_temp.tags(s, 'advance') && pg_temp.tags(s, 'advance_unchecked')), 'and an order is never in both lists');
   perform pg_temp.check(not (s::text ~* '(nan|infinity)'), 'no NaN or Infinity anywhere in the answer');
 end $$;
 
@@ -455,7 +457,7 @@ begin
   perform pg_temp.check((pg_temp.field(s, 'advance', 'gst_3999', 'percent'))::numeric = 39.99 and (pg_temp.field(s, 'advance', 'gst_3999paise', 'percent'))::numeric = 39.99,
     '₹39,990 and ₹39,999.99 both read 39.99%, never 40');
   perform pg_temp.check((pg_temp.field(s, 'advance', 'gst_unver', 'percent'))::numeric = 0, 'an unverified payment adds nothing');
-  perform pg_temp.check((s ->> 'advance_unchecked')::int = 1, 'the order whose value was amended away from its PI has no basis: counted as unchecked, never given a percentage');
+  perform pg_temp.check(pg_temp.tags(s, 'advance_unchecked') = array['gst_nobasis'], 'the order whose value was amended away from its PI has no basis: LISTED as not checked, never given a percentage');
   perform pg_temp.check(not (s::text ~* '(nan|infinity)'), 'no NaN or Infinity anywhere');
 end $$;
 

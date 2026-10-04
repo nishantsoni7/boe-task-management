@@ -227,8 +227,15 @@ begin
                'exception_approved', a.exception_approved, 'confirm_date', a.confirm_date)
              order by a.percent asc, a.confirm_date asc nulls last, a.display_number)
         from advance a), '[]'::jsonb),
-    'advance_unchecked', (select count(*) from pos p
-                           where not coalesce((p.pos ->> 'value_known')::boolean, false)),
+    -- ORDERS WHOSE ADVANCE CANNOT BE CHECKED (no total before GST is recoverable): LISTED, not merely counted, so they
+    -- never read as cleared and never vanish behind a number. Oldest confirmation first, like the lists beside it.
+    'advance_unchecked', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'order_id', c.id, 'display_number', c.display_number, 'client_name', c.client_name,
+               'status', c.status, 'confirm_date', c.confirm_date)
+             order by c.confirm_date asc nulls last, c.display_number)
+        from open_orders c join pos p on p.order_id = c.id
+       where not coalesce((p.pos ->> 'value_known')::boolean, false)), '[]'::jsonb),
     'fabric_finish', coalesce((
       select jsonb_agg(jsonb_build_object(
                'order_id', f.id, 'display_number', f.display_number, 'client_name', f.client_name,
