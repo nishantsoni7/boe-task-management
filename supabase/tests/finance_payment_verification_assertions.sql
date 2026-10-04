@@ -58,12 +58,12 @@ end $$;
 -- are checkable by eye.
 insert into public.order_submissions
   (id, status, submitted_by, created_by, client_name, source_workbook_path,
-   gross_product_amount, discount_amount, grand_total)
+   gross_product_amount, discount_amount, grand_total, total_before_gst)
 values
   (current_setting('test.pi')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
    'ASSERT verify PI', 'submissions/assert-verify/original/w.xlsx',
-   100000, 0, 100000);
+   100000, 0, 100000, 100000);
 
 -- The transition trigger insists a submission is CREATED as draft; it reaches
 -- 'submitted' only by moving there, which is the state a PI sits in while

@@ -86,10 +86,10 @@ declare
   v_pay  uuid;
   v_pay2 uuid;
 begin
-  insert into public.order_submissions (client_name, status, grand_total)
-  values ('Fixture Draft A', 'draft', 100000) returning id into v_sub;
-  insert into public.order_submissions (client_name, status, grand_total)
-  values ('Fixture Draft B', 'needs_changes', 50000) returning id into v_sub2;
+  insert into public.order_submissions (client_name, status, grand_total, total_before_gst)
+  values ('Fixture Draft A', 'draft', 100000, 100000) returning id into v_sub;
+  insert into public.order_submissions (client_name, status, grand_total, total_before_gst)
+  values ('Fixture Draft B', 'needs_changes', 50000, 50000) returning id into v_sub2;
 
   insert into public.order_submission_items (submission_id, product_name)
   values (v_sub, 'Fixture product') returning id into v_item;

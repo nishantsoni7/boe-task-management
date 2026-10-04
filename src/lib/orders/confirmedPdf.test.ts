@@ -309,7 +309,7 @@ describe('the payment position', () => {
     const m = model(1, {}, { payment: { receivedText: '₹4,00,000', percentText: '29%', awaitingCount: 0 } })
     assert.deepEqual(m.payment?.map(f => [f.label, f.value]), [
       ['Verified payment', 'Rs. 4,00,000'],
-      ['Of order value', '29%'],
+      ['Of Total before GST', '29%'],
     ])
   })
 

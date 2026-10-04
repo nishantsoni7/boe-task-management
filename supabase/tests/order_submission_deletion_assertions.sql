@@ -186,8 +186,8 @@ declare
   v_ipath text;
 begin
   insert into public.order_submissions
-    (submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
-  values (v_owner, v_owner, 'Deletion Assertions Client', 100000, 0, 118000)
+    (submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
+  values (v_owner, v_owner, 'Deletion Assertions Client', 100000, 0, 118000, 118000)
   returning id into v_id;
 
   insert into public.order_submission_items

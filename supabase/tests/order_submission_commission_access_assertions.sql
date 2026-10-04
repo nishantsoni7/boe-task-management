@@ -167,10 +167,10 @@ declare
 begin
   perform set_config('request.jwt.claims', '', true);
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, bill_to_name, gross_product_amount, discount_amount, grand_total,
+    (id, status, submitted_by, created_by, client_name, bill_to_name, gross_product_amount, discount_amount, total_before_gst, grand_total,
      source_workbook_path, source_workbook_sha256, source_workbook_name, parse_warnings, parse_blocking_issues, reservation_required,
      order_confirmation_date, due_date, dispatch_commitment)
-  values (p_id, 'draft', p_owner, p_owner, 'ASSERT client', 'ASSERT client', p_total, 0, p_total, v_wb, v_sha, 'pi.xlsx', '[]', '[]', false,
+  values (p_id, 'draft', p_owner, p_owner, 'ASSERT client', 'ASSERT client', p_total, 0, p_total, p_total, v_wb, v_sha, 'pi.xlsx', '[]', '[]', false,
           date '2026-09-20', date '2026-11-20', '8 weeks from confirmation');
   insert into storage.objects (bucket_id, name, metadata)
   values ('order-files', v_wb, jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));

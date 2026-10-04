@@ -155,10 +155,10 @@ declare
   v_ipath  text;
 begin
   insert into public.order_submissions
-    (submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values
     (current_setting('test.owner')::uuid, current_setting('test.owner')::uuid,
-     'Advance Assertions Client', 100000, 0, p_grand_total)
+     'Advance Assertions Client', 100000, 0, p_grand_total, p_grand_total)
   returning id into v_id;
 
   insert into public.order_submission_items

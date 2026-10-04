@@ -55,6 +55,7 @@ import {
   subtractExact,
   type ExactDecimal,
 } from './exactMoney'
+import { advanceBase } from '@/lib/orders/advanceFormula'
 import { attributeToTarget, type AttributionBasis } from './paymentAttribution'
 import { isAwaitingVerification } from './piPaymentView'
 import { isVerifiedPaymentStatus, type OrderPaymentRow } from '@/lib/orders/orderPayments'
@@ -94,6 +95,14 @@ export type OrderFinancePosition = {
   /** orders.total_value, or null when the Order carries none. */
   orderValue: string | null
   /**
+   * THE ADVANCE BASE: the Order's Total before GST, or null when it cannot be
+   * derived. Every percentage below is a share of THIS, not of orderValue —
+   * the advance is measured against the pre-GST amount (advanceFormula.ts).
+   * orderValue (GST included) still decides what is OWED: the balance and
+   * fullyPaid.
+   */
+  advanceBase: string | null
+  /**
    * Money Finance has CONFIRMED arrived, at this Order's allocated share.
    * The figure the business treats as paid.
    */
@@ -119,9 +128,9 @@ export type OrderFinancePosition = {
   received: string
   /** orderValue - verified, floored at zero. Null when the Order has no value. */
   pendingBalance: string | null
-  /** verified as a percentage of orderValue, truncated to 2dp. Null if not computable. */
+  /** verified as a percentage of advanceBase, truncated to 2dp. Null if not computable. */
   verifiedPercent: string | null
-  /** received as a percentage of orderValue, truncated to 2dp. Null if not computable. */
+  /** received as a percentage of advanceBase, truncated to 2dp. Null if not computable. */
   receivedPercent: string | null
   /** True when verified alone already covers the Order's value. */
   fullyPaid: boolean
@@ -241,8 +250,15 @@ export function withExactAmounts(
 export function buildOrderFinancePosition(
   rows: readonly OrderFinancePaymentRow[],
   orderValue: string | number | null | undefined,
+  /**
+   * The Order's Total before GST — the base the advance percentage is taken of.
+   * Absent or non-positive means the percentage is not computable (null), NEVER
+   * a fallback to orderValue: the Grand Total is the wrong denominator.
+   */
+  totalBeforeGst?: string | number | null,
 ): OrderFinancePosition {
   const total = parseExact(orderValue)
+  const base = advanceBase(totalBeforeGst)
 
   let verified: ExactDecimal = ZERO
   let awaiting: ExactDecimal = ZERO
@@ -284,13 +300,14 @@ export function buildOrderFinancePosition(
 
   return {
     orderValue: total ? exactToString(total) : null,
+    advanceBase: base ? exactToString(base) : null,
     verified: exactToString(verified),
     awaitingVerification: exactToString(awaiting),
     rejected: exactToString(rejected),
     received: exactToString(received),
     pendingBalance: total ? exactToString(clampAtZero(subtractExact(total, verified))) : null,
-    verifiedPercent: percentOrNull(verified, total),
-    receivedPercent: percentOrNull(received, total),
+    verifiedPercent: percentOrNull(verified, base),
+    receivedPercent: percentOrNull(received, base),
     fullyPaid: Boolean(total && compareExact(verified, total) >= 0),
     splitPayments,
     counts: {

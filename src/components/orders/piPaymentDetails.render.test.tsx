@@ -201,11 +201,11 @@ describe('a verifier never decides a payment they recorded', () => {
 // ── 2. The figures above the rows ─────────────────────────────────────────────
 
 describe('the dialog opens on the page’s own figures', () => {
-  test('Received, Confirmed, Awaiting verification and PI Total, with the bar under them', () => {
+  test('Received, Confirmed, Awaiting verification and Total before GST, with the bar under them', () => {
     const html = modal()
     const t = text(html)
     for (const part of [
-      'Received ₹4,50,000', 'Confirmed ₹2,50,000', 'Awaiting verification ₹2,00,000', 'PI Total ₹11,80,000',
+      'Received ₹4,50,000', 'Confirmed ₹2,50,000', 'Awaiting verification ₹2,00,000', 'Total before GST ₹11,80,000',
     ]) {
       assert.ok(t.includes(part), `${part} missing`)
     }
@@ -298,7 +298,7 @@ describe('the Confirmed view', () => {
       assert.ok(!t.includes(other), `${other} is not a confirmed payment`)
     }
     assert.ok(t.includes('Confirmed total ₹2,50,000'))
-    assert.ok(t.includes('2 payments · 21.18% of ₹11,80,000 PI Total'))
+    assert.ok(t.includes('2 payments · 21.18% of ₹11,80,000 Total before GST'))
     assert.ok(!t.includes('Awaiting verification total'))
   })
 
@@ -328,7 +328,7 @@ describe('the Awaiting verification view', () => {
       assert.ok(!t.includes(other), `${other} is not awaiting verification`)
     }
     assert.ok(t.includes('Awaiting verification total ₹2,00,000'))
-    assert.ok(t.includes('2 payments · 16.94% of ₹11,80,000 PI Total'))
+    assert.ok(t.includes('2 payments · 16.94% of ₹11,80,000 Total before GST'))
     assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'waiting money is never called failed or unpaid')
   })
 

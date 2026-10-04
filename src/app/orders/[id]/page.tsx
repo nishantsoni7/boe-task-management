@@ -267,6 +267,14 @@ type Order = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  /**
+   * The Order's Total before GST — the base its advance percentage is taken of
+   * (advanceFormula.ts). Derived on read by order_total_before_gst() from the
+   * PI the Order was approved from; never stored on the Order and never written
+   * from here. Null when it cannot be derived, and the percentage then reads
+   * "not available" rather than falling back to total_value (GST included).
+   */
+  total_before_gst?: number | string | null
   total_product_value: number | null
   lead_source: string | null
   status: string
@@ -1210,10 +1218,11 @@ export default function OrderDetailPage() {
    * The Order's own row, as one query and one mapping — named once so the full
    * load and the narrow refreshes below cannot read or shape it differently.
    */
-  const orderRowQuery = () =>
-    supabase
-      .from('orders')
-      .select(`
+  const orderRowQuery = async () => {
+    const [row, base] = await Promise.all([
+      supabase
+        .from('orders')
+        .select(`
         id, display_number, client_name,
         requested_by, assigned_to, created_by,
         confirm_date, due_date, total_value, total_product_value,
@@ -1226,8 +1235,18 @@ export default function OrderDetailPage() {
         created_by_user:users!created_by(full_name),
         production_aligned_by_user:users!production_aligned_by(full_name)
       `)
-      .eq('id', id)
-      .single()
+        .eq('id', id)
+        .single(),
+      // THE ADVANCE BASE, in a read of its own so that it can fail alone. The
+      // computed column exists from 20270227000000; against a database that
+      // does not have it yet this errors, the Order still opens, and its
+      // advance percentage says "not available" instead of the page breaking.
+      supabase.from('orders').select('order_total_before_gst').eq('id', id).maybeSingle(),
+    ])
+    if (!row.data) return row
+    const derived = base.error ? null : (base.data as { order_total_before_gst?: number | string | null } | null)?.order_total_before_gst
+    return { ...row, data: { ...row.data, total_before_gst: derived ?? null } }
+  }
 
   /** The embeds flattened onto the row, said once for both callers. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2347,7 +2366,7 @@ export default function OrderDetailPage() {
   // may not go, and hoisting it to memoise a few decimal additions would move
   // the one expression two Finance tests pin as proof that this screen adds no
   // money of its own. The guarantee is worth more than the microseconds.
-  const finance = buildOrderFinancePosition(payments, order.total_value)
+  const finance = buildOrderFinancePosition(payments, order.total_value, order.total_before_gst)
 
   const isOverdue = order.due_date &&
     !['dispatched', 'cancelled'].includes(order.status) &&

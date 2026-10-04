@@ -645,8 +645,9 @@ describe('buildCommercialRows', () => {
   test('an included cost adds nothing to the advance, and never says ₹0', () => {
     const rows = buildCommercialRows(commercial({ packingCost: includedValue('I118') }))
     assert.equal(rows.find(r => r.key === 'packing')?.value, 'Included')
-    // The grand total is the workbook's own figure and is untouched by this.
-    assert.equal(rows.find(r => r.key === 'advance')?.value, '₹1,18,000')
+    // The advance is 40% of the Total before GST (2,50,000), not of the Grand
+    // Total (2,95,000, which would have given ₹1,18,000).
+    assert.equal(rows.find(r => r.key === 'advance')?.value, '₹1,00,000')
   })
 
   test('the grand total and the advance are the two emphasised lines', () => {
@@ -657,37 +658,63 @@ describe('buildCommercialRows', () => {
 })
 
 describe('the 40% advance', () => {
-  test('is 40% of the grand total, rounded to paise', () => {
+  test('is 40% of the Total before GST, rounded UP to the paisa', () => {
     assert.equal(PI_ADVANCE_PERCENT, 40)
-    assert.equal(computeRequiredAdvance(amount(295000)), 118000)
+    assert.equal(computeRequiredAdvance(amount(120000)), 48000)
+    assert.equal(computeRequiredAdvance(amount(250000)), 100000)
     assert.equal(computeRequiredAdvance(amount(100000)), 40000)
+    // 40% of 12,345.67 is 4,938.268: rounded to nearest it was 4,938.27 by luck;
+    // 100.01 is the case that tells the two apart (40.004 -> 40.01, not 40.00).
     assert.equal(computeRequiredAdvance(amount(12345.67)), 4938.27)
+    assert.equal(computeRequiredAdvance(amount(100.01)), 40.01)
+  })
+
+  test('the Grand Total is not the base: the same figure as a Total before GST gives 40% of IT', () => {
+    // 1,41,600 here is a Total before GST (a different PI), so it is 56,640; the
+    // worked example's Grand Total 1,41,600 never reaches this function.
+    assert.equal(computeRequiredAdvance(amount(141600)), 56640)
+    const rows = buildCommercialRows(commercial({
+      totalBeforeGst: amount(120000, 'I120'),
+      gst: amount(21600, 'I121'),
+      grandTotal: amount(141600, 'I122'),
+    }))
+    assert.equal(rows.find(r => r.key === 'advance')?.value, '₹48,000')
+    assert.notEqual(rows.find(r => r.key === 'advance')?.value, '₹56,640')
   })
 
   test('is displayed as a requirement, never as a payment', () => {
     const advance = buildCommercialRows(commercial()).find(r => r.key === 'advance')
-    assert.equal(advance?.value, '₹1,18,000')
+    assert.equal(advance?.value, '₹1,00,000')
     assert.equal(advance?.label, 'Required advance (40%)')
     assert.equal(advance?.note, ADVANCE_NOT_A_PAYMENT_NOTE)
     assert.ok(/no payment has been recorded/i.test(ADVANCE_NOT_A_PAYMENT_NOTE))
+    assert.ok(/taken on the Total before GST/.test(ADVANCE_NOT_A_PAYMENT_NOTE),
+      'the note says what the 40% is taken of')
   })
 
-  test('is not computed when the grand total is text or missing', () => {
+  test('is not computed when the Total before GST is text or missing', () => {
     assert.equal(computeRequiredAdvance(textValue('to be confirmed')), null)
     assert.equal(computeRequiredAdvance(emptyValue()), null)
     assert.equal(computeRequiredAdvance(null), null)
 
-    const rows = buildCommercialRows(commercial({ grandTotal: textValue('to be confirmed', 'I122') }))
+    const rows = buildCommercialRows(commercial({ totalBeforeGst: textValue('to be confirmed', 'I120') }))
     const advance = rows.find(r => r.key === 'advance')
     assert.equal(advance?.value, '—')
     assert.equal(advance?.kind, 'missing')
+
+    // A usable Grand Total does not stand in for a missing base.
+    assert.equal(rows.find(r => r.key === 'grandTotal')?.value, '₹2,95,000')
+  })
+
+  test('a base of zero has no requirement - not a requirement of ₹0', () => {
+    assert.equal(computeRequiredAdvance(amount(0)), null)
   })
 
   test('a "not applicable" marker is not an advance base', () => {
-    // The grand total cell is read with the strict policy, so the parser never
-    // marks it notApplicable. If one ever arrived, 40% of "nothing to charge"
-    // is not a requirement to state — it is a signal that the PI is wrong.
-    assert.equal(computeRequiredAdvance(nilValue('I122')), null)
+    // The cell is read with the strict policy, so the parser never marks it
+    // notApplicable. If one ever arrived, 40% of "nothing to charge" is not a
+    // requirement to state - it is a signal that the PI is wrong.
+    assert.equal(computeRequiredAdvance(nilValue('I120')), null)
   })
 })
 

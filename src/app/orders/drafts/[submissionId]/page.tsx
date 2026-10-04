@@ -130,7 +130,7 @@ import {
   internalDetailsStillOpen, submissionCommissionBlock,
   submitWithInternalDates, withCommission, workbookDateNotes, type SubmissionDates,
 } from '@/lib/orders/piInternalDetails'
-import { classifyDiscountWording, clientDeductionRows } from '@/lib/orders/discountWording'
+import { classifyDiscountWording } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -1768,10 +1768,11 @@ function PiDraftDetailPageInner() {
   //
   // ONE ANSWER, FROM ONE HELPER, shared with its tests, exactly as the action
   // rules above are. The rupee figures are derived from the CURRENT persisted
-  // grand total, so a corrected PI moves them rather than reporting an amount
-  // that was true of an older document.
+  // Total before GST — the base the 40% is taken of (advanceFormula.ts) — so a
+  // corrected PI moves them rather than reporting an amount that was true of an
+  // older document.
   const grandTotalValue = toNumber(submission.grand_total)
-  const advance = describeAdvance(submission, grandTotalValue)
+  const advance = describeAdvance(submission, toNumber(submission.total_before_gst))
   const advanceActions = describeAdvanceActions({
     status: submission.status,
     advance: submission,
@@ -2176,7 +2177,9 @@ function PiDraftDetailPageInner() {
     required: payments.required_payment === undefined || payments.required_payment === null
       ? null
       : formatInr(toNumber(payments.required_payment)),
-    total: formatInr(toNumber(payments.grand_total)),
+    // THE ADVANCE BASE, not the Grand Total: every percentage above is a share
+    // of the Total before GST, and the figure they are shares of is printed here.
+    total: formatInr(toNumber(payments.advance_base ?? payments.total_before_gst)),
     standardPercent: payments.standard_percent === undefined || payments.standard_percent === null
       ? null
       : formatPercent(payments.standard_percent),
@@ -2192,9 +2195,10 @@ function PiDraftDetailPageInner() {
   })
 
   /** The breakdown card's selection of the same shared rows. Nothing is recomputed. */
-  // The deduction row as the generated client PI prints it (20270122000000):
-  // "Discount" when non-zero, left off when zero. Every figure is the builder's.
-  const breakdown = buildBreakdownView(clientDeductionRows(commercialRows, { amount: submission.discount_amount }))
+  // The nine lines of the calculation, in the order the arithmetic runs, ending
+  // in the Grand Total. Every figure is the builder's; the fabric responsibility
+  // only adds "Provided by client" under the fabric line.
+  const breakdown = buildBreakdownView(commercialRows, { fabricResponsibility: submission.fabric_responsibility ?? null })
 
   /**
    * The employee's reply, shown to a reviewer WHILE THE PI IS WITH THEM.
@@ -2852,11 +2856,10 @@ function PiDraftDetailPageInner() {
         <PiLowerGrid
           commercial={
             /* The stored figures, through the shared rows builder, selected by
-               buildBreakdownView: the PI total large, then only the lines that
-               say something. Nothing on this page recomputes a total. */
+               buildBreakdownView: the nine lines of the calculation in order, ending
+               in the Grand Total. Nothing on this page recomputes a total. */
             <PiCommercialBreakdown
               view={breakdown}
-              fabricResponsibility={submission.fabric_responsibility ?? null}
               commercialTerms={submission.commercial_terms_note ?? null}
               onEditTerms={null}
             />

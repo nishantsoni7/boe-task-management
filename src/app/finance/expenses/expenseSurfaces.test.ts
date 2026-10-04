@@ -732,6 +732,10 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the test Order cleanup's keep/reuse number choice (20270217000000),
       // held by src/lib/orders/cleanupNumberChoice.test.ts.
       if (f === 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql') continue
+      // The advance is 40% of the TOTAL BEFORE GST (20270227000000), held by
+      // src/lib/orders/advanceOnTotalBeforeGstSchema.test.ts and
+      // supabase/tests/advance_on_total_before_gst_assertions.sql.
+      if (f === 'supabase/migrations/20270227000000_order_submission_advance_on_total_before_gst.sql') continue
       // And change_task_status() (20270302000000): one additive function, held by
       // supabase/tests/task_change_status_assertions.sql and the inventory suites.
       if (f === 'supabase/migrations/20270302000000_task_change_status_rpc.sql') continue
@@ -1829,6 +1833,59 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * stored amount or Finance file.
    */
   const ALLOWED_ZERO_DISCOUNT_SUBTOTAL = new Set([
+    'supabase/migrations/20270227000000_order_submission_advance_on_total_before_gst.sql',
+    // The advance is taken of the TOTAL BEFORE GST (20270227000000): the shared formula, the breakdown,
+    // the payment wording and the tests that hold them. No payment, allocation or verification rule.
+    'src/app/globals.css',
+    'src/app/orders/[id]/OrderWorkspace.tsx',
+    'src/app/orders/[id]/orderDetailArchitecture.test.ts',
+    'src/app/orders/[id]/orderWorkspace.render.test.tsx',
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailSections.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/import/importAccess.test.ts',
+    'src/components/orders/PiPaymentCard.tsx',
+    'src/components/orders/piPaymentDetails.render.test.tsx',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/orderFinancePosition.test.ts',
+    'src/lib/finance/orderFinancePosition.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/finance/piPaymentView.test.ts',
+    'src/lib/finance/piPaymentView.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notificationSystemActivity.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/advanceReadiness.ts',
+    'src/lib/orders/advanceRequirement.test.ts',
+    'src/lib/orders/advanceRequirement.ts',
+    'src/lib/orders/amountMask.test.ts',
+    'src/lib/orders/confirmedPdf.test.ts',
+    'src/lib/orders/confirmedPdf.ts',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/orderAdvance.test.ts',
+    'src/lib/orders/orderAdvance.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderPayments.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/orders/paymentGate.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/orders/productValueConsistency.test.ts',
+    'src/lib/orders/reviewDecision.test.ts',
+    'src/lib/pi/previewView.test.ts',
+    'src/lib/pi/previewView.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'src/lib/orders/advanceFormula.test.ts',
+    'src/lib/orders/advanceFormula.ts',
+    'src/lib/orders/advanceOnTotalBeforeGstSchema.test.ts',
     'src/lib/orders/discountWording.ts',
     'src/lib/orders/discountWording.test.ts',
     'src/lib/orders/orderPiHandoff.ts',
@@ -3193,7 +3250,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge/.test(f),
+      // The advance on the total before GST (20270227000000) adds its suite and gives every
+      // fixture that prices a PI a total_before_gst beside its grand_total.
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3390,7 +3449,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // (20270117000000): a failed proof no longer deletes the payment. The
       // money modules (entry, allocations, position, exact money, currency) are not.
       // …and permissions/finance.ts by the Admin-decision permissions (20270120000000).
-      if (ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) || ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable)) continue
+      if (ALLOWED_GUARDS_RUN_AS_OWNER.has(untouchable) || ALLOWED_ADMIN_DECISIONS_ASK_PERMISSIONS.has(untouchable) || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(untouchable)) continue
       assert.equal(touched.has(untouchable), false, `${untouchable} must not change`)
     }
   })

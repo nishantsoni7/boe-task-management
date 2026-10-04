@@ -1061,7 +1061,8 @@ export const PAYMENT_STATUS_LABEL = {
   confirmed: 'Confirmed',
   awaiting: 'Awaiting verification',
   unpaid: 'Not yet received',
-  piTotal: 'PI Total',
+  // The base every percentage on the card is a share of: the Total before GST.
+  piTotal: 'Total before GST',
 } as const
 
 /** A percentage as a bar width: a pixel quantity, clamped, never shown as a figure. */
@@ -1181,7 +1182,7 @@ export type ReceivedHeadline = {
   /** "41.94%" — or the received amount itself, when there is no PI total to
    *  measure it against. */
   figure: string
-  /** "₹4,95,000 received of ₹11,80,000 PI Total". */
+  /** "₹4,95,000 received of ₹11,80,000 Total before GST". */
   line: string
 }
 
@@ -1196,7 +1197,7 @@ export function describeReceivedHeadline(view: PaymentStatusView): ReceivedHeadl
   if (view.receivedPercent === '—') {
     return {
       figure: view.received,
-      line: view.total === '—' ? 'PI Total not available' : `of ${view.total} PI Total`,
+      line: view.total === '—' ? 'Total before GST not available' : `of ${view.total} Total before GST`,
     }
   }
   return {
@@ -1213,7 +1214,7 @@ export type PaymentMetric = {
   amount: string
   /** How many rows it is summed from. */
   count: number
-  /** "2 payments · 21.18% of PI Total", or what an empty part means. */
+  /** "2 payments · 21.18% of Total before GST", or what an empty part means. */
   meta: string
   /** Whether there are rows behind it to open. A part with none is not a control. */
   interactive: boolean
@@ -1393,42 +1394,115 @@ export const BILLING_NOT_DECLARED_LABEL = 'Not declared'
 
 // ── The commercial breakdown ──────────────────────────────────────────────────
 
-export type BreakdownView = {
-  /** The PI total, for the large figure. Null when the builder produced none. */
-  total: PiAmountRow | null
-  /** The lines that lead to it, meaningless ones left out. */
-  rows: PiAmountRow[]
+/**
+ * One line of the calculation. The builder's PiAmountRow plus what only this
+ * card needs to say about it.
+ */
+export type BreakdownRow = PiAmountRow & {
+  /** The Discount line: drawn in red, and its amount shown as a deduction. */
+  deduction?: true
+  /** A short qualifier under the label ("Provided by client"). No amount in it. */
+  qualifier?: string
+  /** A hairline above this line — before Total before GST and Grand Total. */
+  divider?: true
 }
 
+export type BreakdownView = {
+  /** The nine lines of the calculation, in the order the arithmetic runs. */
+  rows: BreakdownRow[]
+}
+
+export const PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL = 'Product value, before discount'
+export const BREAKDOWN_SUBTOTAL_LABEL = 'Subtotal, after discount'
+export const BREAKDOWN_FABRIC_LABEL = 'Fabric amount'
+export const BREAKDOWN_PACKAGING_LABEL = 'Packaging'
+export const BREAKDOWN_TRANSPORTATION_LABEL = 'Transportation'
+export const BREAKDOWN_BEFORE_GST_LABEL = 'Total before GST'
+export const BREAKDOWN_GRAND_TOTAL_LABEL = 'Grand Total'
+export const BREAKDOWN_FABRIC_BY_CLIENT = 'Provided by client'
+export const BREAKDOWN_FABRIC_BY_BOE = 'Provided by BOE'
+export const BREAKDOWN_FABRIC_NOT_SELECTED = 'Fabric not selected yet'
+/** Nobody has answered. Said in words under the figure, in the same muted type. */
+export const BREAKDOWN_FABRIC_UNANSWERED = 'Fabric responsibility not chosen yet'
+
+/** Who sources the fabric, as a short qualifier for the Fabric amount line. */
+export function fabricQualifier(responsibility: string | null | undefined): string {
+  switch (responsibility) {
+    case 'client': return BREAKDOWN_FABRIC_BY_CLIENT
+    case 'boe': return BREAKDOWN_FABRIC_BY_BOE
+    case 'not_selected': return BREAKDOWN_FABRIC_NOT_SELECTED
+    default: return BREAKDOWN_FABRIC_UNANSWERED
+  }
+}
+/** A figure the PI never stated. Said in words — it is not ₹0. */
+export const BREAKDOWN_NOT_RECORDED = 'Not recorded'
+
+/** The nine lines, top to bottom. This IS the order of the calculation. */
+const BREAKDOWN_ORDER = [
+  ['gross', PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL],
+  ['discount', 'Discount'],
+  ['subtotal', BREAKDOWN_SUBTOTAL_LABEL],
+  ['fabric', BREAKDOWN_FABRIC_LABEL],
+  ['packing', BREAKDOWN_PACKAGING_LABEL],
+  ['transportation', BREAKDOWN_TRANSPORTATION_LABEL],
+  ['beforeGst', BREAKDOWN_BEFORE_GST_LABEL],
+  ['gst', 'GST'],
+  ['grandTotal', BREAKDOWN_GRAND_TOTAL_LABEL],
+] as const
+
 /**
- * The breakdown, as a reader scans it: the PI total first, then only the lines
- * that say something.
+ * The breakdown, as the arithmetic runs:
+ *
+ *   Product value, before discount
+ *   Discount                          (a deduction, in red)
+ *   Subtotal, after discount
+ *   Fabric amount                     (always here, even when the client supplies it)
+ *   Packaging
+ *   Transportation                    ("as applicable" keeps its words)
+ *   ───────────────
+ *   Total before GST                  (the base the 40% advance is taken of)
+ *   GST
+ *   ───────────────
+ *   Grand Total                       (last, and the most prominent)
  *
  * SELECTION AND WORDING ONLY. The rows are the shared builder's, already
- * formatted; nothing is recomputed. What is dropped is what carries no
- * information here — a line the PI never stated, one it marked not applicable,
- * a zero discount, and a subtotal identical to the product value above it
- * (compared as the displayed strings, not by arithmetic) — plus the advance row
- * and the total itself, which leads the card instead of closing it.
+ * formatted, and nothing is recomputed: the workbook transcribes its totals and
+ * the parser checks them. What this function decides is which line each one is,
+ * where it sits and how it reads.
  *
- * THE GROSS ROW'S NAME FOLLOWS THE CARD. The commercial card's "Product value"
- * is the amount AFTER the discount, so where there is a discount the gross row
- * says it is the value before it; with none, the two are the same figure and
- * share the name.
+ * EVERY LINE IS ALWAYS PRESENT. The old card dropped a line the PI never stated
+ * and a zero discount, so a PI with the client's fabric on it simply had no
+ * fabric line — and a reader could not tell "no charge" from "not looked at".
+ * A figure the PI did not state now reads "Not recorded". It is never turned
+ * into ₹0, and nothing is added to the total on its behalf.
+ *
+ * FABRIC STAYS INSIDE THE TOTAL WHOEVER PROVIDES IT. When the client supplies
+ * the fabric the line still shows the recorded amount, and "Provided by client"
+ * sits under its label as a qualifier — a statement about who sources the cloth,
+ * not a reason to subtract anything. The qualifier is how EVERY answer is said,
+ * so the card stays exactly nine lines of arithmetic with no sentence wedged
+ * between two of them.
  */
-export const PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL = 'Product value before discount'
+export function buildBreakdownView(
+  rows: readonly PiAmountRow[],
+  options: { fabricResponsibility?: string | null } = {},
+): BreakdownView {
+  const shown: BreakdownRow[] = BREAKDOWN_ORDER.map(([key, label]) => {
+    const source = rows.find(row => row.key === key)
+    const row: BreakdownRow = source
+      ? { ...source, label }
+      : { key, label, value: BREAKDOWN_NOT_RECORDED, kind: 'missing' }
+    if (row.kind === 'missing') row.value = BREAKDOWN_NOT_RECORDED
 
-export function buildBreakdownView(rows: readonly PiAmountRow[]): BreakdownView {
-  const total = rows.find(row => row.key === 'grandTotal') ?? null
-  const gross = rows.find(row => row.key === 'gross')?.value ?? null
-  const discounted = rows.some(row => row.key === 'discount' && row.kind === 'amount' && row.value !== formatInr(0))
-  const shown = rows
-    .filter(row => row.key !== 'grandTotal' && row.key !== ADVANCE_ROW_KEY)
-    .filter(row => row.kind !== 'missing' && row.kind !== 'notApplicable')
-    .filter(row => !(row.key === 'discount' && row.value === formatInr(0)))
-    .filter(row => !(row.key === 'subtotal' && gross !== null && row.value === gross))
-    .map(row => row.key === 'gross'
-      ? { ...row, label: discounted ? PRODUCT_VALUE_BEFORE_DISCOUNT_LABEL : SUMMARY_FIGURE_LABEL.productValue }
-      : row)
-  return { total, rows: shown }
+    if (key === 'discount') {
+      row.deduction = true
+      // A deduction reads as one: "−₹10,000". A nil discount is ₹0 — no sign.
+      if (row.kind === 'amount' && row.value !== formatInr(0)) row.value = `−${row.value}`
+    }
+    if (key === 'fabric') row.qualifier = fabricQualifier(options.fabricResponsibility)
+    if (key === 'beforeGst' || key === 'grandTotal') row.divider = true
+    if (key === 'grandTotal') row.emphasis = 'total'
+    return row
+  })
+  return { rows: shown }
 }

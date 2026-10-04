@@ -17,7 +17,7 @@ import { describeHandoffFailure, validateRecoveryReason } from './operationsHand
 import { orderAttentionItems } from './orderWorkspace'
 
 const short: AdvanceReadiness = {
-  order_value: '389400.00', verified: '126496', awaiting: '20000', required: '155760', shortfall: '29264.00',
+  order_value: '389400.00', advance_base: '389400.00', verified: '126496', awaiting: '20000', required: '155760', shortfall: '29264.00',
   percent: '32.48', threshold_percent: '40', below: true, ready: false, exception: null,
 }
 
@@ -27,7 +27,7 @@ describe('below 40% on the amended value', () => {
     assert.equal(v.kind, 'blocked')
     if (v.kind !== 'blocked') return
     assert.equal(v.headline, 'Advance below 40% — production cannot be aligned')
-    assert.equal(v.figures, '32.48% verified — ₹1,26,496.00 of the Order value ₹3,89,400.00.')
+    assert.equal(v.figures, '32.48% verified — ₹1,26,496.00 of the Total before GST ₹3,89,400.00.')
     assert.equal(v.shortfall, '₹29,264.00 more verified payment is needed.')
   })
   test('money awaiting Finance is named, and does not count', () => {
@@ -133,7 +133,7 @@ describe('an aligned Order that fell short is ON HOLD, and says when and why', (
     assert.equal(v.kind, 'blocked')
     if (v.kind !== 'blocked') return
     assert.equal(v.headline, 'Production on hold — advance below 40%')
-    assert.equal(v.hold, 'Production readiness was removed on 25 Sep 2026 because verified payment against it was reduced: the verified advance fell to 30% of ₹10,00,000.00.')
+    assert.equal(v.hold, 'Production readiness was removed on 25 Sep 2026 because verified payment against it was reduced: the verified advance fell to 30% of the Total before GST.')
     assert.match(v.action, /^Operations can align production again against PI V2 once Finance verifies the payment/)
   })
   test('each cause in words, saying which way the value moved (review R2)', () => {
@@ -168,7 +168,7 @@ describe('no value on record is never ready', () => {
     const v = advanceGateView(unknown, { versionNumber: 1 })
     assert.equal(v.kind, 'blocked')
     if (v.kind !== 'blocked') return
-    assert.equal(v.figures, 'No Order value is on record, so the advance cannot be measured (₹4,00,000.00 verified).')
+    assert.equal(v.figures, 'No Total before GST is on record, so the advance cannot be measured (₹4,00,000.00 verified).')
     assert.equal(v.shortfall, "An administrator's below-40% approval is needed.")
   })
   test('the database refusal is shown in its own words', () => {

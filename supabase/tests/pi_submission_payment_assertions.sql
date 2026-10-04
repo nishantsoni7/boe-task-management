@@ -50,14 +50,14 @@ end $$;
 -- The salesperson's own PI, a second PI belonging to the allocator, and a PI
 -- that has already become an Order.
 insert into public.order_submissions
-  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
 values
   (current_setting('test.pi')::uuid, 'draft',
    current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-   'ASSERT PI payer', 100000, 0, 100000),
+   'ASSERT PI payer', 100000, 0, 100000, 100000),
   (current_setting('test.pi_other')::uuid, 'draft',
    current_setting('test.allocator_id')::uuid, current_setting('test.allocator_id')::uuid,
-   'ASSERT PI other', 50000, 0, 50000);
+   'ASSERT PI other', 50000, 0, 50000, 50000);
 
 -- Order Management entry only for the salesperson; NO Finance action.
 insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
@@ -170,9 +170,9 @@ begin
   v_pi := gen_random_uuid();
   insert into public.order_submissions
     (id, status, submitted_by, created_by, client_name, source_workbook_path,
-     gross_product_amount, discount_amount, grand_total)
+     gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT stage draft', 'submissions/' || v_pi::text || '/original/w.xlsx', 1000, 0, 1000);
+          'ASSERT stage draft', 'submissions/' || v_pi::text || '/original/w.xlsx', 1000, 0, 1000, 1000);
   v_r := public.record_pi_submission_payment(v_pi, 10.00, current_date, 'upi');
   assert v_r->>'payment_request_id' is not null, 'a DRAFT PI must accept a payment';
 
@@ -212,9 +212,9 @@ begin
   -- schema does not permit.
   v_pi := gen_random_uuid();
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT stage claimed', 1000, 0, 1000);
+          'ASSERT stage claimed', 1000, 0, 1000, 1000);
 
   -- The claim column is the freeze every other path honours; set directly here
   -- because begin_order_submission_deletion() has its own authorization run that
@@ -390,9 +390,9 @@ do $$
 declare v_pi uuid := gen_random_uuid(); v_a jsonb; v_b jsonb;
 begin
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT duplicates', 10000, 0, 10000);
+          'ASSERT duplicates', 10000, 0, 10000, 10000);
 
   perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
   v_a := public.record_pi_submission_payment(v_pi, 500.00, current_date, 'upi', 'SAME-REF', 'same remark');
@@ -500,9 +500,9 @@ declare
   v_pi uuid := gen_random_uuid();
 begin
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT PI totals', 100000, 0, 100000);
+          'ASSERT PI totals', 100000, 0, 100000, 100000);
   perform set_config('test.pi_totals', v_pi::text, true);
 
   perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
@@ -597,9 +597,9 @@ do $$
 declare v_pi uuid := gen_random_uuid(); v_r jsonb; v_sum jsonb; v_pay uuid;
 begin
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT clarification', 10000, 0, 10000);
+          'ASSERT clarification', 10000, 0, 10000, 10000);
 
   perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
   v_r := public.record_pi_submission_payment(v_pi, 700.00, current_date, 'cheque');
@@ -648,7 +648,10 @@ end $$;
 --
 -- The invariant the cases assert, in the RPC's own returned fields:
 --
---   requirement = round(grand_total * standard_percent / 100, 2)
+--   requirement = round(advance_base * standard_percent / 100, 2)
+--   (20270227000000: the requirement is a share of the TOTAL BEFORE GST, advance_base. These fixtures
+--   carry no GST, so the base equals the grand total and every figure below is unchanged; the GST case
+--   is held by advance_on_total_before_gst_assertions.sql.)
 --   needed      = max(requirement - verified, 0)
 --   pending     = max(grand_total - verified, 0)
 --
@@ -680,10 +683,10 @@ begin
     v_pi := gen_random_uuid();
     insert into public.order_submissions
       (id, status, submitted_by, created_by, client_name,
-       gross_product_amount, discount_amount, grand_total)
+       gross_product_amount, discount_amount, grand_total, total_before_gst)
     values (v_pi, 'draft', current_setting('test.sales_id')::uuid,
             current_setting('test.sales_id')::uuid, 'ASSERT money rules',
-            v_case.grand_total, 0, v_case.grand_total);
+            v_case.grand_total, 0, v_case.grand_total, v_case.grand_total);
 
     -- Verified money arrives as a real payment, verified the real way. Zero
     -- verified means no payment at all, which is the honest starting state.
@@ -707,7 +710,7 @@ begin
     -- rather than from a literal, so a change to the standard rate cannot make
     -- this pass while the card shows something else.
     v_requirement := round(
-      (v_sum->>'grand_total')::numeric * (v_sum->>'standard_percent')::numeric / 100, 2);
+      (v_sum->>'advance_base')::numeric * (v_sum->>'standard_percent')::numeric / 100, 2);
     assert v_requirement = v_case.requirement,
       format('GT %s: the %s%% requirement must be %s, got %s',
              v_case.grand_total, v_sum->>'standard_percent', v_case.requirement, v_requirement);
@@ -740,9 +743,9 @@ do $$
 declare v_pi uuid := gen_random_uuid(); v_sum jsonb;
 begin
   insert into public.order_submissions
-    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total, total_before_gst)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT float safety', 1.00, 0, 1.00);
+          'ASSERT float safety', 1.00, 0, 1.00, 1.00);
 
   perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
   perform public.record_pi_submission_payment(v_pi, 0.10, current_date, 'upi');

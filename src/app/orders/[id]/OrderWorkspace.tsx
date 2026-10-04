@@ -396,9 +396,15 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
         </span>
         <span className="order-pay-word">verified</span>
       </div>
-      {/* THE ORDER VALUE IS STATED HERE, and nowhere else in this section. */}
+      {/* THE BASE IS STATED HERE, and nowhere else in this section: the
+          percentage above is a share of the Total before GST, the same base
+          the 40% advance requirement is taken of. Where the Order has none
+          derivable it says so rather than measuring against the GST-inclusive
+          Order value. */}
       <div className="order-pay-of">
-        {formatMoney(finance.verified)} verified of {formatMoney(finance.orderValue)} order value
+        {finance.advanceBase === null
+          ? 'Total before GST not available'
+          : `${formatMoney(finance.verified)} verified of ${formatMoney(finance.advanceBase)} Total before GST`}
       </div>
 
       <div className="order-pay-metrics">
@@ -436,7 +442,7 @@ export function PaymentSummaryFigures({ finance, loaded, onOpenList }: {
           thresholdPercent={null}
           height={10}
           palette={PAYMENT_BAR_COLORS_SUBDUED}
-          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the order value -- ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} awaiting verification, ${formatMoney(finance.pendingBalance)} not received`}
+          label={`Verified: ${formatPercent(finance.verifiedPercent)} of the Total before GST -- ${formatMoney(finance.verified)} verified, ${formatMoney(finance.awaitingVerification)} awaiting verification, ${formatMoney(finance.pendingBalance)} not received`}
         />
       )}
 

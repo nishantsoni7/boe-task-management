@@ -148,7 +148,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = p_client, gross_product_amount = p_total, discount_amount = 0,
-         grand_total = p_total, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+         grand_total = p_total, total_before_gst = p_total, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
     jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
@@ -206,6 +206,17 @@ end $$;
 
 create function pg_temp.amend(p_order uuid, p_total numeric, p_as uuid default null) returns text language plpgsql as $$
 begin
+  -- 20270227000000: the advance is measured against the PI's TOTAL BEFORE GST, and
+  -- an Order amended by hand has none of its own (it reads as "no base", which
+  -- advance_on_total_before_gst_assertions.sql holds). These scenarios are about
+  -- what happens to an aligned Order when its value MOVES, so the Order's PI is
+  -- first re-priced to the same figure (no GST) and the base follows, as it does
+  -- after a revised PI.
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('boe.pi_revision_apply', (select source_order_submission_id::text from public.orders where id = p_order), true);
+  update public.order_submissions s set total_before_gst = p_total, grand_total = p_total
+    from public.orders o where o.id = p_order and s.id = o.source_order_submission_id;
+  perform set_config('boe.pi_revision_apply', '', true);
   return pg_temp.try_as(coalesce(p_as, current_setting('test.admin2_id')::uuid),
     format('select public.amend_order(%L, %L, null, %s, null, null, null, null, null)', p_order, 'ASSERT hold amendment', p_total));
 end $$;
@@ -684,7 +695,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT hold 10', gross_product_amount = 1000000, discount_amount = 0,
-         grand_total = 1000000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+         grand_total = 1000000, total_before_gst = 1000000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
     jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
@@ -988,7 +999,7 @@ begin
   values (v_sub, 'draft', v_sales, v_sales, '[]', '[]');
   update public.order_submissions
      set client_name = 'ASSERT hold 11f', gross_product_amount = 1000000, discount_amount = 0,
-         grand_total = 1000000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
+         grand_total = 1000000, total_before_gst = 1000000, source_workbook_path = v_wb, source_workbook_sha256 = repeat('b', 64)
    where id = v_sub;
   insert into storage.objects (bucket_id, name, metadata) values ('order-files', v_wb,
     jsonb_build_object('mimetype', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));

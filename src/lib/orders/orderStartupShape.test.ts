@@ -358,7 +358,17 @@ describe('no Order screen waits more than it must', () => {
       // DASHBOARD 7 -> 8 (20270228000000, the salesperson's own dashboard): ONE more read,
       //   salesperson_orders_dashboard(), issued INSIDE the same Promise.all beside
       //   orders_dashboard_summary(), so the page still waits exactly twice.
-      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 40,
+      // DETAIL 40 -> 41 (20270227000000, the advance is a share of the Total
+      //   before GST): ONE more READ, the second select on the 'orders' table
+      //   inside the shared orderRowQuery - the single computed column
+      //   order_total_before_gst. It is issued in the SAME Promise.all as the
+      //   Order row itself (the row and the column are fetched together, not one
+      //   after the other), so the startup wait count is unchanged and the test
+      //   above still requires exactly three. It is a separate read, and not a
+      //   column in the row's select, so that a database without the computed
+      //   column yet fails THAT read alone: the Order still opens and its
+      //   percentage says "Total before GST not available".
+      [GUARD]: 2, [DASHBOARD]: 8, [ALL]: 4, [DETAIL]: 41,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
