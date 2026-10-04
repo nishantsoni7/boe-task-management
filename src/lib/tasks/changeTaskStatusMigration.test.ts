@@ -1,5 +1,5 @@
 /**
- * 20270228000000_task_change_status_rpc.sql — what the migration is allowed to be.
+ * 20270230000000_task_change_status_rpc.sql — what the migration is allowed to be.
  *
  * The behaviour is proved against a database by supabase/tests/task_change_status_assertions.sql. This file holds the
  * SHAPE that no SQL suite notices drifting: the function is a SECURITY DEFINER door, so it must stay narrow, pinned
@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
-const FILE = 'supabase/migrations/20270228000000_task_change_status_rpc.sql'
+const FILE = 'supabase/migrations/20270230000000_task_change_status_rpc.sql'
 const SQL = read(FILE)
 /** Comments explain what the migration refuses to do — code checks read statements only. */
 const CODE = SQL.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
@@ -75,7 +75,7 @@ describe('change_task_status migration', () => {
   })
 
   test('is the newest migration here and sorts after the review-path files it relies on', () => {
-    assert.ok(FILE.endsWith('20270228000000_task_change_status_rpc.sql'))
+    assert.ok(FILE.endsWith('20270230000000_task_change_status_rpc.sql'))
     assert.ok(SQL.includes('apply 20260832000000 (pending_approval) first'), 'it states its prerequisite and checks it')
   })
 })

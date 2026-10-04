@@ -22,7 +22,7 @@ import { verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
 import { shouldNotifyTaskStatusEvent } from '@/lib/notifications/taskNotificationPolicy'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
-const MIGRATION = read('supabase/migrations/20270228000000_task_change_status_rpc.sql')
+const MIGRATION = read('supabase/migrations/20270230000000_task_change_status_rpc.sql')
 const ROUTE = read('src/app/api/notify-status-update/route.ts')
 
 /** The statuses the function accepts, read from the migration itself. */

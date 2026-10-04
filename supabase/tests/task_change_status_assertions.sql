@@ -1,6 +1,6 @@
 -- change_task_status() assertions
 -- ===========================================================================
--- Covers 20270228000000_task_change_status_rpc.sql on top of the Task Management
+-- Covers 20270230000000_task_change_status_rpc.sql on top of the Task Management
 -- review path (20260832 status value, 20260833 review RPC, 20260834 enforcement).
 --
 -- WHAT IT PROVES
@@ -39,7 +39,7 @@ begin
      where n.nspname = 'public' and p.proname = 'change_task_status'
        and pg_get_function_identity_arguments(p.oid)
            = 'p_task_id uuid, p_status text, p_reason text, p_attachment_url text, p_waiting_on_type text, p_waiting_on_user_id uuid, p_waiting_on_text text'),
-    '20270228000000_task_change_status_rpc.sql is NOT applied: public.change_task_status does not exist with the expected signature';
+    '20270230000000_task_change_status_rpc.sql is NOT applied: public.change_task_status does not exist with the expected signature';
   assert exists (select 1 from pg_trigger where tgrelid = 'public.tasks'::regclass
                   and tgname = 'tasks_enforce_review_path' and not tgisinternal),
     '20260834000000 is NOT applied: the review-path trigger is missing, so §4 would prove nothing';
