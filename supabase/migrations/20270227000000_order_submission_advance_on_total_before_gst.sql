@@ -192,6 +192,10 @@ as $$
           where o.id = p_order_id
             and public.order_advance_numeric(p.payload -> 'commercial' ->> 'grand_total') = o.total_value
             and public.order_advance_numeric(p.payload -> 'commercial' ->> 'total_before_gst') > 0
+            -- INCONSISTENT DATA IS NOT A BASE: GST is never negative, so a pre-GST total above the grand total
+            -- it is part of violates the commercial model (the parser only WARNS, GRAND_TOTAL_MISMATCH).
+            and public.order_advance_numeric(p.payload -> 'commercial' ->> 'total_before_gst')
+                <= public.order_advance_numeric(p.payload -> 'commercial' ->> 'grand_total')
           limit 1),
         (select s.total_before_gst
            from public.orders o
@@ -200,6 +204,8 @@ as $$
             and s.grand_total = o.total_value
             and s.total_before_gst <> 'NaN'::numeric
             and s.total_before_gst > 0
+            -- (as above) a pre-GST total above its own grand total is inconsistent data, not a base
+            and s.total_before_gst <= s.grand_total
           limit 1)
       ) as base
     ) b
@@ -693,7 +699,8 @@ begin
   -- an exception does not change that: refused before any payment is judged.
   if v_sub.total_before_gst is null
      or v_sub.total_before_gst = 'NaN'::numeric
-     or v_sub.total_before_gst <= 0 then
+     or v_sub.total_before_gst <= 0
+     or v_sub.total_before_gst > v_sub.grand_total then
     raise exception
       'ORDER_SUBMISSION_INCOMPLETE: this PI has no stored total before GST, so its 40%% advance cannot be measured'
       using errcode = 'P0001';
@@ -1093,7 +1100,8 @@ begin
   -- GST (the base of the 40%), no decision.
   if v_sub.total_before_gst is null
      or v_sub.total_before_gst = 'NaN'::numeric
-     or v_sub.total_before_gst <= 0 then
+     or v_sub.total_before_gst <= 0
+     or v_sub.total_before_gst > v_sub.grand_total then
     raise exception
       'ORDER_SUBMISSION_INCOMPLETE: this PI has no stored total before GST, so its advance cannot be measured and an exception cannot be decided'
       using errcode = 'P0001';
@@ -1343,7 +1351,8 @@ begin
   -- total but no usable pre-GST figure is incomplete, in the same words.
   if v_sub.total_before_gst is null
      or v_sub.total_before_gst = 'NaN'::numeric
-     or v_sub.total_before_gst <= 0 then
+     or v_sub.total_before_gst <= 0
+     or v_sub.total_before_gst > v_sub.grand_total then
     raise exception
       'ORDER_SUBMISSION_ADVANCE_TOTAL_MISSING: this PI has no stored total before GST, so its payment position cannot be judged'
       using errcode = 'P0001';
@@ -1936,7 +1945,8 @@ begin
     -- a usable pre-GST figure nothing can be classified as standard or reduced.
     if v_sub.total_before_gst is null
        or v_sub.total_before_gst = 'NaN'::numeric
-       or v_sub.total_before_gst <= 0 then
+       or v_sub.total_before_gst <= 0
+       or v_sub.total_before_gst > v_sub.grand_total then
       raise exception
         'ORDER_SUBMISSION_ADVANCE_TOTAL_MISSING: this PI has no stored total before GST, so an advance requirement cannot be declared against it'
         using errcode = 'P0001';
@@ -2353,7 +2363,8 @@ begin
   -- 20270227000000: every advance figure below is measured against the TOTAL
   -- BEFORE GST (advance_base). No usable base: percentages, required and
   -- shortfall are NULL and the gate is not cleared.
-  v_base_ok  := v_sub.total_before_gst is not null and v_sub.total_before_gst <> 'NaN'::numeric and v_sub.total_before_gst > 0;
+  v_base_ok  := v_sub.total_before_gst is not null and v_sub.total_before_gst <> 'NaN'::numeric and v_sub.total_before_gst > 0
+                and v_sub.total_before_gst <= coalesce(v_sub.grand_total, v_sub.total_before_gst);
   v_base     := case when v_base_ok then v_sub.total_before_gst end;
   v_required := public.order_submission_required_payment(v_base);
   v_meets    := v_required is not null and v_verified >= v_required;
@@ -3028,7 +3039,7 @@ begin
     from public.order_submissions s
    where s.status in ('draft', 'submitted', 'needs_changes')
      and s.grand_total is not null
-     and (s.total_before_gst is null or s.total_before_gst <= 0);
+     and (s.total_before_gst is null or s.total_before_gst <= 0 or s.total_before_gst > s.grand_total);
   raise notice '20270227000000: % aligned Order(s) have no derivable total before GST (they read as not ready until a payment, a PI revision or an administrator''s approval says otherwise; nothing was written); % open PI(s) have a grand total but no usable total before GST (their approval / submission is refused as incomplete until the PI is corrected).', v_aligned, v_n;
 end $verify$;
 

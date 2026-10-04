@@ -268,3 +268,24 @@ describe('the rollback', () => {
     assert.match(fnText(ROLLBACK, 'approve_order_submission'), /order_submission_required_payment\(v_sub\.grand_total\)/)
   })
 })
+
+
+describe('inconsistent data is not a base: a pre-GST total never exceeds the grand total it is part of', () => {
+  // grand total = total before GST + GST, and GST is never negative, so a pre-GST figure ABOVE the grand total violates
+  // the commercial model. The parser only WARNS about it (GRAND_TOTAL_MISMATCH: the workbook's figure is kept), so such
+  // a PI can be stored and approved: it must read as an UNKNOWN base, not be trusted.
+  test('order_advance_base rejects it on both sources (the staged parse and the source PI)', () => {
+    const start = SQL.indexOf('create or replace function public.order_advance_base(')
+    const end = SQL.indexOf('revoke execute on function public.order_advance_base', start)
+    const f = SQL.slice(start, end)
+    assert.ok(start > 0 && end > start)
+    assert.match(f, /order_advance_numeric\(p\.payload -> 'commercial' ->> 'total_before_gst'\)\s*<=\s*public\.order_advance_numeric\(p\.payload -> 'commercial' ->> 'grand_total'\)/)
+    assert.match(f, /s\.total_before_gst <= s\.grand_total/)
+  })
+
+  test('every PI-level gate refuses it with the same "no usable total before GST" answer', () => {
+    assert.equal((SQL.match(/v_sub\.total_before_gst > v_sub\.grand_total/g) ?? []).length, 4, 'approve, exception approve, submit, declare')
+    assert.match(SQL, /v_sub\.total_before_gst <= coalesce\(v_sub\.grand_total, v_sub\.total_before_gst\)/, 'the payment summary reports no base')
+    assert.match(SQL, /s\.total_before_gst > s\.grand_total\)/, 'and the migration\'s own notice counts such PIs')
+  })
+})
