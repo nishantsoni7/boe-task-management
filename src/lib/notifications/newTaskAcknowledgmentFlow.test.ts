@@ -85,34 +85,42 @@ describe('the acknowledgment event', () => {
   })
 
   test('every acknowledge action still writes the timestamp and the Working transition', () => {
+    // Now ONE database call (acknowledge_task, 20270303000000) from every screen; the stamp, the move to Working and the
+    // 'acknowledged' history row are written by that function, not by the browser.
     for (const path of ACK_SCREENS) {
       const src = read(path)
-      assert.match(src, /acknowledged_at: now,?\s*status: 'working'/, path)
-      assert.ok(src.includes("action: 'acknowledged', note: null"), `${path} logs the acknowledgment`)
+      assert.ok(src.includes('acknowledgeTask(supabase,'), `${path} acknowledges through acknowledge_task()`)
     }
+    const fn = read('supabase/migrations/20270303000000_task_acknowledge_rpc.sql')
+    assert.match(fn, /acknowledged_at = v_now/)
+    assert.match(fn, /status\s+= 'working'::public\.task_status/)
+    assert.match(fn, /values \(p_task_id, v_uid, 'acknowledged', null\)/)
   })
 
   test('and still notifies the creator through /api/notify-status-update', () => {
     for (const path of ACK_SCREENS) {
       const src = read(path)
-      const ack = src.indexOf("action: 'acknowledged', note: null")
-      const notify = src.indexOf("fetch('/api/notify-status-update'", ack)
-      assert.ok(ack > 0 && notify > ack, path)
-      assert.ok(src.slice(notify, notify + 400).includes('createdBy:'), `${path} addresses the creator`)
+      const call = src.indexOf('postAcknowledgedNotice(')
+      assert.ok(call > 0, path)
+      assert.ok(src.slice(call, call + 400).includes('createdBy:'), `${path} addresses the creator`)
     }
+    const helper = read('src/lib/tasks/acknowledgeTask.ts')
+    const notify = helper.indexOf("'/api/notify-status-update'")
+    assert.ok(notify > 0 && helper.slice(notify, notify + 400).includes('createdBy'), 'the shared helper posts to the route')
   })
 
   test('as an acknowledgment, from every screen — never as "moved to Working"', () => {
     // The task detail page used to send `action: 'working'`, so the creator read
     // "<name> moved task to Working" where the other two screens say
     // "<name> acknowledged task".
+    const helper = read('src/lib/tasks/acknowledgeTask.ts')
+    const notify = helper.indexOf("'/api/notify-status-update'")
+    const call = helper.slice(notify, helper.indexOf('})', notify))
+    assert.match(call, /action: 'acknowledged'/)
+    assert.equal(/action: 'working'/.test(call), false)
+    // And every screen sends it through that one helper, so none can say otherwise.
     for (const path of ACK_SCREENS) {
-      const src = read(path)
-      const ack = src.indexOf("action: 'acknowledged', note: null")
-      const notify = src.indexOf("fetch('/api/notify-status-update'", ack)
-      const call = src.slice(notify, src.indexOf('})', notify))
-      assert.match(call, /action: 'acknowledged'/, path)
-      assert.equal(/action: 'working'/.test(call), false, path)
+      assert.ok(read(path).includes('postAcknowledgedNotice('), path)
     }
   })
 

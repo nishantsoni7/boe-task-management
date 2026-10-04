@@ -347,11 +347,14 @@ describe('the rules this branch must not have touched', () => {
     assert.ok(apply.indexOf('changeTaskStatus(') < apply.indexOf('router.push(dest)'), 'before any navigation')
   })
 
-  test('acknowledgement still writes both rows and is still guarded', () => {
+  test('acknowledgement still writes both rows (in one database call) and is still guarded', () => {
     const ack = DETAIL.slice(DETAIL.indexOf('const acknowledge = async'), DETAIL.indexOf('const applyStatusChange = async'))
     assert.ok(ack.includes('if (acknowledgingRef.current) return'))
-    assert.ok(ack.includes("action: 'acknowledged'"))
-    assert.ok(ack.includes("to_status: 'working'"))
+    assert.ok(ack.includes('acknowledgeTask(supabase,'))
+    // Both rows are written by acknowledge_task() in the same transaction as the stamp.
+    const fn = readFileSync(join(process.cwd(), 'supabase/migrations/20270303000000_task_acknowledge_rpc.sql'), 'utf8')
+    assert.ok(fn.includes("'acknowledged'"))
+    assert.ok(fn.includes("'status_changed'"))
   })
 })
 

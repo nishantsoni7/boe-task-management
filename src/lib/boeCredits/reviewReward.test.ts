@@ -306,6 +306,7 @@ describe('the file, and where it sits', () => {
       '20270226000000_payment_request_owner_soft_delete.sql',
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
+      '20270303000000_task_acknowledge_rpc.sql',
     ])
   })
 

@@ -1063,6 +1063,7 @@ describe('the applied migrations are frozen', () => {
       '20270226000000_payment_request_owner_soft_delete.sql',
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
+      '20270303000000_task_acknowledge_rpc.sql',
     ])
   })
 
@@ -1377,6 +1378,7 @@ describe('the applied migrations are frozen', () => {
       '20270226000000_payment_request_owner_soft_delete.sql',
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
+      '20270303000000_task_acknowledge_rpc.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

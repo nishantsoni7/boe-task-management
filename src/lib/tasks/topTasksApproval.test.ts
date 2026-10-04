@@ -322,6 +322,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270226000000_payment_request_owner_soft_delete.sql',
     '20270301000000_notifications_event_idempotency.sql',
     '20270302000000_task_change_status_rpc.sql',
+    '20270303000000_task_acknowledge_rpc.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

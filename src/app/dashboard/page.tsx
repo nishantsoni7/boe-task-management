@@ -11,6 +11,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
+import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, postAcknowledgedNotice } from '@/lib/tasks/acknowledgeTask'
 import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
@@ -435,42 +436,33 @@ export default function DashboardPage() {
     if (task.created_by === currentUserId) return
     if (acknowledgingIds.has(task.id)) return
     setAcknowledgingIds(prev => new Set(prev).add(task.id))
-    const now = new Date().toISOString()
-    const oldStatus = task.status
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', task.id)
-    if (error) {
-      alert('Failed to acknowledge task. Please try again.')
+    try {
+      // ONE database call: the stamp, the move to Working and both history rows commit together or not at all. Only an
+      // ANSWER counts as success; a lost answer is read back, never re-sent (see acknowledgeTask.ts).
+      const outcome = await acknowledgeTask(supabase, { task, actorId: currentUserId })
+      const patch = adoptableAck(outcome)
+      if (shouldAnnounceAck(outcome)) {
+        postAcknowledgedNotice({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, actorId: currentUserId, actorName: profile?.full_name }, 'dashboard/acknowledge')
+      }
+      if (patch) {
+        setSelectedTask(prev => prev && prev.id === task.id ? { ...prev, ...patch } : prev)
+        // Write through to the cache entry the page now reads from. Nothing is adopted unless the database answered (or the
+        // saved row was read back), so a failed acknowledgement leaves the cache exactly as it was. The whole
+        // {tasks, assignerNames} shape is preserved and only the acknowledged row is replaced.
+        queryClient.setQueryData<DashboardTaskData>(dashboardTasksKey, prev =>
+          prev
+            ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, ...patch } : t) }
+            : prev
+        )
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
+        queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
+      }
+      const message = acknowledgeMessage(outcome)
+      if (message) alert(message)
+    } finally {
+      // Always released — no failure path may leave this task's Acknowledge stuck disabled.
       setAcknowledgingIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
-      return
     }
-    await supabase.from('task_activity_log').insert([
-      { task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null },
-      { task_id: task.id, actor_id: currentUserId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
-    ])
-    if (task.created_by && task.created_by !== currentUserId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[dashboard/acknowledge] notification failed:', d))
-      }).catch(err => console.error('[dashboard/acknowledge] notification fetch error:', err))
-    }
-    const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
-    setSelectedTask(prev => prev && prev.id === task.id ? { ...prev, ...patch } : prev)
-    // Write through to the cache entry the page now reads from. Nothing is
-    // rolled back on failure because nothing is written before success — the
-    // error branch above returns before reaching here, exactly as it did when
-    // this was a setTasks call. The whole {tasks, assignerNames} shape is
-    // preserved and only the acknowledged row is replaced.
-    queryClient.setQueryData<DashboardTaskData>(dashboardTasksKey, prev =>
-      prev
-        ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, ...patch } : t) }
-        : prev
-    )
-    setAcknowledgingIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
-    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
-    queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
   }
 
   const userMap = useMemo(
