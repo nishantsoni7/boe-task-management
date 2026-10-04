@@ -21,7 +21,7 @@ import {
 } from '@/lib/notificationWrites'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
-const MIGRATION = read('supabase/migrations/20270229000000_notifications_event_idempotency.sql')
+const MIGRATION = read('supabase/migrations/20270301000000_notifications_event_idempotency.sql')
 const CODE = MIGRATION.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 const ROUTE = read('src/app/api/notify-status-update/route.ts')
 

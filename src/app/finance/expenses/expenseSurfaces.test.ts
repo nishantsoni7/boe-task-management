@@ -725,9 +725,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the test Order cleanup's keep/reuse number choice (20270217000000),
       // held by src/lib/orders/cleanupNumberChoice.test.ts.
       if (f === 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql') continue
-      // And the notification event key (20270229000000): a guard and one partial unique index, held by
+      // And the notification event key (20270301000000): a guard and one partial unique index, held by
       // supabase/tests/notifications_event_idempotency_assertions.sql and src/lib/notifications/eventIdempotency.test.ts.
-      if (f === 'supabase/migrations/20270229000000_notifications_event_idempotency.sql') continue
+      if (f === 'supabase/migrations/20270301000000_notifications_event_idempotency.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2445,7 +2445,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // notification writer reading that index's refusal as "already announced", and the status-update route returning it as
   // success. The migration, those two source files, their suite, and the one line each migration-inventory suite needs.
   const ALLOWED_NOTIFICATION_EVENT_ONCE = new Set([
-    'supabase/migrations/20270229000000_notifications_event_idempotency.sql',
+    'supabase/migrations/20270301000000_notifications_event_idempotency.sql',
     'src/lib/notifications/eventIdempotency.test.ts',
     'src/lib/notifications/statusEventNotice.ts',
     'src/lib/notifications/statusEventNotice.test.ts',
@@ -2856,7 +2856,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/lib/tasks/assignmentWriteAuthority.test.ts',
       'src/lib/tasks/healthCheckMigrationAudit.test.ts',
       'src/lib/tasks/topTasksApproval.test.ts',
-      'supabase/migrations/20270229000000_notifications_event_idempotency.sql',
+      'supabase/migrations/20270301000000_notifications_event_idempotency.sql',
     ])
     for (const file of ALLOWED_NOTIFICATION_EVENT_ONCE) {
       assert.ok(/\.(ts|tsx|sql)$/.test(file), `${file} must be one file, not a directory`)

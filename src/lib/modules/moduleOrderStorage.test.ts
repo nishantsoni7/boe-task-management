@@ -654,7 +654,7 @@ describe('the database half of this verification', () => {
       '20270224000000_customer_review_custom_duplicate_detection.sql',
       '20270225000000_customer_review_reporting_and_leaderboard.sql',
       '20270226000000_payment_request_owner_soft_delete.sql',
-      '20270229000000_notifications_event_idempotency.sql',
+      '20270301000000_notifications_event_idempotency.sql',
     ], 'every migration after this one is accounted for')
   })
 })

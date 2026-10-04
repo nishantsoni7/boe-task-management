@@ -90,7 +90,7 @@ export type NotificationInsertResult = {
   duplicate?: true
 }
 
-/** The partial unique index on (activity_log_id, user_id, type) — 20270229000000_notifications_event_idempotency.sql. */
+/** The partial unique index on (activity_log_id, user_id, type) — 20270301000000_notifications_event_idempotency.sql. */
 export const EVENT_ONCE_INDEX = 'notifications_event_once_idx'
 
 /**

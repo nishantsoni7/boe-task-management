@@ -1,6 +1,6 @@
 -- notifications_event_once_idx assertions
 -- ===========================================================================
--- Covers 20270229000000_notifications_event_idempotency.sql.
+-- Covers 20270301000000_notifications_event_idempotency.sql.
 --
 --   §1  the index: unique, partial (activity_log_id is not null), on (activity_log_id, user_id, type), in `public`
 --   §2  the same event announced twice to the same person, same type -> refused by THIS index (SQLSTATE 23505, index named)
@@ -22,7 +22,7 @@ do $$
 begin
   assert exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                   where n.nspname = 'public' and c.relname = 'notifications_event_once_idx' and c.relkind = 'i'),
-    '20270229000000_notifications_event_idempotency.sql is NOT applied: notifications_event_once_idx is missing';
+    '20270301000000_notifications_event_idempotency.sql is NOT applied: notifications_event_once_idx is missing';
   perform set_config('test.recipient_a', '11111111-1111-1111-1111-111111111111', true);  -- REPLACE
   perform set_config('test.recipient_b', '22222222-2222-2222-2222-222222222222', true);  -- REPLACE
   assert (select count(*) from public.users
