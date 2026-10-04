@@ -3,7 +3,7 @@
 # TEST-ONLY — runs task_change_status_assertions.sql on a DISPOSABLE local stack
 # ═════════════════════════════════════════════════════════════════════════════
 #
-# Requires 20260832, 20260833, 20260834 and 20270226000000_task_change_status_rpc.sql to be applied.
+# Requires 20260832, 20260833, 20260834 and 20270228000000_task_change_status_rpc.sql to be applied.
 # Creates three fixture users (committed), runs the assertions (which roll back), removes the users.
 # Refuses any container that is not marked disposable or that already holds users or tasks.
 #

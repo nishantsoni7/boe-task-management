@@ -721,9 +721,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the test Order cleanup's keep/reuse number choice (20270217000000),
       // held by src/lib/orders/cleanupNumberChoice.test.ts.
       if (f === 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql') continue
-      // And change_task_status() (20270226000000): one additive function, held by
+      // And change_task_status() (20270228000000): one additive function, held by
       // supabase/tests/task_change_status_assertions.sql and the inventory suites.
-      if (f === 'supabase/migrations/20270226000000_task_change_status_rpc.sql') continue
+      if (f === 'supabase/migrations/20270228000000_task_change_status_rpc.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2442,7 +2442,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   // migration-inventory suite needs to name it; the assertions live under supabase/tests/. No application file
   // changes, no Finance or Orders file.
   const ALLOWED_TASK_CHANGE_STATUS_RPC = new Set([
-    'supabase/migrations/20270226000000_task_change_status_rpc.sql',
+    'supabase/migrations/20270228000000_task_change_status_rpc.sql',
     'src/lib/tasks/changeTaskStatusMigration.test.ts',
     'src/lib/tasks/changeTaskStatusNotificationCompat.test.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
@@ -2804,7 +2804,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/changeTaskStatusNotificationCompat.test.ts',
       'src/lib/tasks/healthCheckMigrationAudit.test.ts',
       'src/lib/tasks/topTasksApproval.test.ts',
-      'supabase/migrations/20270226000000_task_change_status_rpc.sql',
+      'supabase/migrations/20270228000000_task_change_status_rpc.sql',
     ])
     for (const file of ALLOWED_TASK_CHANGE_STATUS_RPC) {
       assert.ok(/\.(ts|sql)$/.test(file), `${file} must be one file, not a directory`)
