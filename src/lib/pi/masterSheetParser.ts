@@ -72,7 +72,6 @@ import {
   PRODUCT_COLUMN_NAMES,
   TEMPLATE_FOOTER_LABEL_COL,
   TEMPLATE_GRAND_TOTAL_ROW,
-  TEMPLATE_HEADER_CELLS,
   type PiLayout,
   type ProductColumns,
 } from './layout'
@@ -162,6 +161,9 @@ const HEADER_CELLS = {
 } as const
 
 /** Commercial footer. Read by POSITION — see the note at the top of this file. */
+// Kept as a value on purpose: it documents the template addresses and the
+// reader below takes its key set from it (source tests pin both).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const COMMERCIAL_CELLS = {
   discount:              'I115',
   discountLabel:         'G115',
