@@ -238,6 +238,7 @@ describe('no label leaks an internal identifier', () => {
     'order_request_linked', 'order_request_unlinked', 'order_link_changed',
     'status_changed', 'collection_details_updated', 'cash_handover_recorded',
     'allocation_created', 'allocation_reversed', 'allocation_moved',
+    'request_deleted',
     'an_event_from_the_future',
   ]
 
