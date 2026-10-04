@@ -36,6 +36,7 @@ import {
   SP_NOT_OPENABLE,
   SP_NOT_OPENABLE_SHORT,
   SP_UNKNOWN_HEADING,
+  spPreviewNote,
   SP_UNKNOWN_RULE,
   SP_OVER_15,
   SP_PANEL_ADVANCE,
@@ -127,6 +128,9 @@ export function SalespersonDashboardView({ data }: { data: SalespersonDashboard 
   const notes = revenueNotes(data.revenue)
   return (
     <div className="spd">
+      {data.preview ? (
+        <p className="spd-preview" role="status" data-testid="spd-preview">{spPreviewNote(data.preview.fullName)}</p>
+      ) : null}
       <div className="spd-cards">
         <Card id="spd-total" label={SP_CARD_TOTAL} value={data.totalOrders} sub={SP_CARD_TOTAL_SUB} />
         <Card

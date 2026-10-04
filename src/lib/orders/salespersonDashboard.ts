@@ -76,7 +76,12 @@ export type SpReadyRow = {
   plannedDispatchDate: string | null
 }
 
+/** Present only on an ADMINISTRATOR'S preview (20270304000000): whose dashboard this is. A salesperson's own read has none. */
+export type SpPreview = { salespersonId: string; fullName: string }
+
 export type SalespersonDashboard = {
+  /** Set when an administrator is previewing this salesperson's dashboard through View As; absent on the salesperson's own. */
+  preview?: SpPreview
   /** `YYYY-MM-01`, the month the revenue card is for. */
   monthFrom: string
   totalOrders: number
@@ -158,7 +163,13 @@ export function parseSalespersonDashboard(raw: unknown): ParsedSalespersonDashbo
         canOpen: o.can_open === true,
       }
     })
+    let preview: SpPreview | undefined
+    if (root.preview !== undefined && root.preview !== null) {
+      const p = obj(root.preview, 'preview')
+      preview = { salespersonId: str(p.salesperson_id, 'preview salesperson_id'), fullName: str(p.full_name, 'preview full_name') }
+    }
     const dashboard: SalespersonDashboard = {
+      ...(preview ? { preview } : {}),
       monthFrom: dateOnly(root.month_from, 'month_from'),
       totalOrders: count(root.total_orders, 'total_orders'),
       revenue: {
@@ -275,6 +286,9 @@ export function resolvePersonalRead(res: { data: unknown; error: { code?: string
 // ── Words ─────────────────────────────────────────────────────────────────────
 
 export const SP_TITLE = 'Your orders'
+/** The strip an administrator sees above a previewed dashboard: whose it is, that it is read-only, and what the links do. */
+export const spPreviewNote = (fullName: string): string =>
+  `Previewing ${fullName}'s dashboard, exactly as they see it. Read-only. Links open with your own access.`
 export const SP_ERROR_HEADING = 'Your orders could not be loaded'
 export const SP_ERROR_BODY =
   'None of the figures or lists could be read, so an empty screen here does not mean you have no orders. Try again; if it keeps failing, tell an administrator.'

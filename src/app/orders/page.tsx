@@ -112,7 +112,14 @@ export default function OrdersDashboardPage() {
     ] = await Promise.all([
       // THE SALESPERSON'S OWN DASHBOARD (20270228000000): the caller's own orders only, scoped by the
       // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
-      supabase.rpc('salesperson_orders_dashboard'),
+      //
+      // AN ADMINISTRATOR VIEWING AS A SALESPERSON (20270304000000) previews THAT person's dashboard instead:
+      // the same answer, for the viewed person, refused by the database to anybody who is not an administrator.
+      // { applicable: false } when the viewed person has no personal dashboard — the page then draws the
+      // dashboard it always drew.
+      viewAsUserId
+        ? supabase.rpc('admin_preview_salesperson_orders_dashboard', { p_salesperson_id: viewAsUserId })
+        : supabase.rpc('salesperson_orders_dashboard'),
 
       supabase.rpc('orders_dashboard_summary'),
 
@@ -183,8 +190,10 @@ export default function OrdersDashboardPage() {
       setPageLoading(false)
     }
     init()
+  // Switching View As (or leaving it) while this page is open runs the load again, so the page draws the dashboard
+  // of whoever is being viewed; a read overtaken by a newer one never overwrites it (the `latest` ticket).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [viewAsUserId])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
