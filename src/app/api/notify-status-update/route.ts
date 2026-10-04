@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
   // the funnel EVERY task status notification passes through, which makes it
   // the one place a system-generated type could ever reach `notifications`
   // from application code. See src/lib/notificationWrites.ts.
-  const { suppressed, selfSuppressed, error } = await insertUserNotifications(supabase, {
+  const { suppressed, selfSuppressed, duplicate, error } = await insertUserNotifications(supabase, {
     user_id:      notifyUserId,
     task_id:      taskId,
     type:         'task_acknowledged',
@@ -158,6 +158,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // This event was already announced to this person (a repeat of the same send — a recovery, a second tab). Success: they
+  // have their notification, and the database, not a racing read, is what said so.
+  if (duplicate) return NextResponse.json({ success: true, skipped: true, duplicate: true })
   if (suppressed > 0) return NextResponse.json({ success: true, suppressed })
   // Nothing was wrong: the actor is the recipient, so there was nobody to tell.
   // Reported the same way the early `notifyUserId === user.id` return is.
