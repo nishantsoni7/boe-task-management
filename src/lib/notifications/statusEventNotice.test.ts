@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadActivityEvent } from '@/lib/notifications/activityLink'
-import { ANNOUNCED_ELSEWHERE, STATUS_NOTICE_TYPE, deriveNoticeFromEvent, type ActivityEvent } from '@/lib/notifications/statusEventNotice'
+import { ALLOWED_STATUS_ACTIONS, ANNOUNCED_ELSEWHERE, STATUS_NOTICE_TYPE, deriveNoticeFromEvent, type ActivityEvent } from '@/lib/notifications/statusEventNotice'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const ROUTE = read('src/app/api/notify-status-update/route.ts')
@@ -72,6 +72,15 @@ describe('what an event does NOT license', () => {
     }
   })
 
+  test('only the allowed status actions can be announced; any other label is refused', () => {
+    assert.deepEqual([...ALLOWED_STATUS_ACTIONS].sort(), ['blocked', 'completed', 'pending', 'started', 'waiting', 'working'])
+    for (const to of ['archived', 'review', 'WAITING', '']) {
+      const r = deriveNoticeFromEvent({ ...EVENT, to_status: to || null }, TASK, ASSIGNEE)
+      assert.equal(r.ok, false, `"${to}" must not be announced`)
+    }
+    assert.deepEqual(deriveNoticeFromEvent({ ...EVENT, to_status: 'archived' }, TASK, ASSIGNEE), { ok: false, reason: 'status_not_allowed' })
+  })
+
   test('a caller with no counter-party on the task has nobody to tell', () => {
     assert.deepEqual(deriveNoticeFromEvent(EVENT, { ...TASK, created_by: null }, ASSIGNEE), { ok: false, reason: 'no_other_party' })
     assert.deepEqual(deriveNoticeFromEvent({ ...EVENT, actor_id: OUTSIDER }, TASK, OUTSIDER), { ok: false, reason: 'no_other_party' })
@@ -103,16 +112,34 @@ describe('the route applies it — source contract (the route builds Supabase cl
     assert.ok(ROUTE.includes('{ action: claimedAction, recipientId: notifyUserId }'), 'what the request claims is checked against the event')
     assert.ok(ROUTE.includes('const action: string | undefined = derived?.ok ? derived.action : claimedAction'), 'the action used from here on is the event\'s')
     assert.ok(/composeTitle\(action,/.test(ROUTE) && /shouldNotifyTaskStatusEvent\(task, action\)/.test(ROUTE))
-    assert.ok(ROUTE.includes('if (derived && !derived.ok) {') && ROUTE.includes('status: 422'))
+    assert.ok(ROUTE.includes('if (!derived.ok) {') && ROUTE.includes('status: 422'))
     assert.ok(ROUTE.indexOf('deriveNoticeFromEvent(') > ROUTE.indexOf("'Invalid recipient'"), 'after both party checks')
     assert.ok(ROUTE.indexOf('deriveNoticeFromEvent(') < ROUTE.indexOf('shouldNotifyTaskStatusEvent(task, action)'), 'before the policy and the write')
   })
 
-  test('a recovery send REQUIRES a matching status event and writes nothing without one', () => {
-    const guard = ROUTE.indexOf('if (recovery === true && !isStatusEvent)')
-    assert.ok(guard > 0)
-    assert.ok(guard < ROUTE.indexOf('insertUserNotifications('), 'the refusal comes before any write')
-    assert.ok(ROUTE.slice(guard, guard + 260).includes("reason: 'event_required'"))
+  test('a STATUS notice ALWAYS requires a valid event — there is no path to an unlinked status notice, recovery or not', () => {
+    const code = ROUTE.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+    assert.equal(/\brecovery\b/.test(code), false, 'the route does not branch on a recovery flag: ordinary and recovery sends are the same')
+    const gate = code.indexOf('if (isStatusNotice) {')
+    assert.ok(gate > 0, 'the status gate exists')
+    const insert = code.indexOf('insertUserNotifications(')
+    assert.ok(gate < insert, 'and comes before any write')
+    const block = code.slice(gate, code.indexOf("const action: string | undefined"))
+    assert.ok(block.includes("reason: 'event_required'") && block.includes("reason: 'event_not_found'"), 'missing, and nonexistent / cross-task, are distinct refusals')
+    assert.ok(block.includes('if (!derived.ok)'), 'an incompatible event is refused')
+    assert.equal((block.match(/return NextResponse\.json/g) ?? []).length, 3, 'every failure in the gate returns; none falls through to a write')
+    assert.ok(block.includes('status: 422'))
+  })
+
+  test('only a comment and an acknowledgment are exempt, and nothing else can claim to be one', () => {
+    assert.ok(ROUTE.includes("const isStatusNotice = !(typeof claimedAction === 'string' && (claimedAction === 'comment_added' || claimedAction === 'acknowledged'))"))
+    // An unknown or absent action is a STATUS notice: it must name an event whose status it then takes.
+    assert.ok(/composeTitle\(action,/.test(ROUTE))
+  })
+
+  test('a notice the rules say is not announced (a quotation, a delegated completion) is skipped BEFORE an event is demanded', () => {
+    const skip = ROUTE.indexOf('isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction)')
+    assert.ok(skip > 0 && skip < ROUTE.indexOf('if (isStatusNotice) {'))
   })
 
   test('authorisation is unchanged and still comes first: the caller must be a party before the event is even read', () => {

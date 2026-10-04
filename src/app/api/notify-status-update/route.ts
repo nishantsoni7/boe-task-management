@@ -32,8 +32,6 @@ export async function POST(req: NextRequest) {
   // So nothing legitimate is lost by refusing to listen.
   const {
     taskId, createdBy, recipientId, action: claimedAction,
-    // true when the caller is announcing an event it found AFTER a lost response: the event is then REQUIRED, never optional.
-    recovery,
     // The activity row the caller just created. VERIFIED below, never trusted:
     // an unchecked id here would let a caller point a notification at any
     // activity row in the database and have its note read back to the
@@ -117,39 +115,51 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid recipient' }, { status: 403 })
   }
 
-  // THE EVENT, WHEN THE CALLER NAMES ONE, IS THE SOURCE OF THE FACTS.
+  // THREE KINDS OF NOTICE LEAVE THIS ROUTE, AND ONLY ONE OF THEM IS A STATUS NOTICE.
   //
-  // A status change leaves a history row. When the caller names that row, the action is READ from it and the recipient and the
-  // type are checked against it and the stored task: the event must be a status change, on this task, authored by the caller,
-  // and the action and recipient the request claims must be the ones it implies. A disagreement is refused (422), never
-  // silently overridden. See src/lib/notifications/statusEventNotice.ts. This sits after both party checks above, so a refusal
-  // still reads as one, and before the notification policy and the write.
+  //   · `comment_added`  — a comment. Its event is the note row; it is linked when the caller names it, and not required.
+  //   · `acknowledged`   — an acknowledgment. No caller links an event to it today. Unchanged.
+  //   · everything else   — a STATUS notice ("moved task to Waiting", "completed task"). It announces an event, so it REQUIRES one.
   //
-  // A `recovery` send (the page found its event after a lost response) REQUIRES such an event: with none, nothing is written, so
-  // a recovery can never degrade into an unlinked notice that the event key cannot protect.
+  // A STATUS NOTICE NEEDS A VALID EVENT, ALWAYS — an ordinary send and a recovery send alike. The activity row it names must
+  // exist, belong to THIS task, be a status change authored by the CALLER, and move to an allowed status; the action and recipient
+  // the request claims must be the ones that event implies (a disagreement is refused, never overridden); the recipient, the type
+  // and the headline are then derived from the event and the stored task. A missing, nonexistent, cross-task or incompatible event
+  // is refused (422) and NOTHING is written: there is no fallback to an unlinked status notice, which the event key could not
+  // protect and which could be sent twice. See src/lib/notifications/statusEventNotice.ts.
   //
   // Matching an event is not proof that THIS request wrote it (a second tab of the same person leaves an identical row), so
   // nothing here, or in what is returned, says "confirmed".
-  const eventRow = typeof activityLogId === 'string' && isValidUUID(activityLogId)
+  const isStatusNotice = !(typeof claimedAction === 'string' && (claimedAction === 'comment_added' || claimedAction === 'acknowledged'))
+  // Not announced by rule (a quotation, a delegated task's completion): there is no notice to write, so no event is needed to
+  // say so. Answered before the event is demanded, exactly as before.
+  if (isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction)) {
+    return NextResponse.json({ success: true, skipped: true })
+  }
+  const eventNamed = activityLogId !== undefined && activityLogId !== null && activityLogId !== ''
+  const eventRow = eventNamed && typeof activityLogId === 'string' && isValidUUID(activityLogId)
     ? await loadActivityEvent(supabase, activityLogId, taskId)
     : null
-  const isStatusEvent = !!eventRow && eventRow.action === 'status_changed'
-  if (recovery === true && !isStatusEvent) {
-    return NextResponse.json({ error: 'No matching event for this notification', reason: 'event_required' }, { status: 422 })
+  let derived: ReturnType<typeof deriveNoticeFromEvent> | null = null
+  if (isStatusNotice) {
+    if (!eventNamed) {
+      return NextResponse.json({ error: 'A status notification must name its event', reason: 'event_required' }, { status: 422 })
+    }
+    if (!eventRow) {
+      return NextResponse.json({ error: 'No such event on this task', reason: 'event_not_found' }, { status: 422 })
+    }
+    derived = deriveNoticeFromEvent(
+      eventRow,
+      { id: taskId, created_by: task.created_by, assigned_to: task.assigned_to },
+      user.id,
+      { action: claimedAction, recipientId: notifyUserId },
+    )
+    if (!derived.ok) {
+      console.error('[notify-status-update] event does not match the notification', { caller: user.id, taskId, reason: derived.reason })
+      return NextResponse.json({ error: 'The event does not match this notification', reason: derived.reason }, { status: 422 })
+    }
   }
-  const derived = isStatusEvent && eventRow
-    ? deriveNoticeFromEvent(
-        eventRow,
-        { id: taskId, created_by: task.created_by, assigned_to: task.assigned_to },
-        user.id,
-        { action: claimedAction, recipientId: notifyUserId },
-      )
-    : null
-  if (derived && !derived.ok) {
-    console.error('[notify-status-update] event does not match the notification', { caller: user.id, taskId, reason: derived.reason })
-    return NextResponse.json({ error: 'The event does not match this notification', reason: derived.reason }, { status: 422 })
-  }
-  // From here on `action` is the EVENT's status when there is a status event, the caller's word otherwise (legacy callers).
+  // From here on `action` is the EVENT's status for a status notice, the caller's word for a comment or an acknowledgment.
   const action: string | undefined = derived?.ok ? derived.action : claimedAction
 
   // NOT ANNOUNCED, BY RULE — after both party checks, so a refusal still reads

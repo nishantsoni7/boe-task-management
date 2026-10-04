@@ -35,6 +35,12 @@ export type EventTaskFacts = { id: string; created_by: string | null; assigned_t
 export const STATUS_NOTICE_TYPE = 'task_acknowledged' as const
 
 /**
+ * The statuses a status notice from this route may announce. Anything else — an unknown label, a status another writer owns —
+ * is refused, so a status notice can only ever say one of these.
+ */
+export const ALLOWED_STATUS_ACTIONS = new Set(['pending', 'started', 'working', 'waiting', 'blocked', 'completed'])
+
+/**
  * Statuses whose notices are written by the thing that made the change (the review function; the cancel route), not by the
  * status-update route. An event moving to one of them is refused here, so the same event can never be announced twice by
  * two different writers.
@@ -50,6 +56,7 @@ export type EventNoticeRefusal =
   | 'event_not_a_status_change'
   | 'event_not_by_caller'
   | 'announced_elsewhere'
+  | 'status_not_allowed'
   | 'action_mismatch'
   | 'recipient_mismatch'
   | 'no_other_party'
@@ -68,6 +75,7 @@ export function deriveNoticeFromEvent(
   if (event.action !== 'status_changed' || !event.to_status) return { ok: false, reason: 'event_not_a_status_change' }
   if (event.actor_id !== callerId) return { ok: false, reason: 'event_not_by_caller' }
   if (ANNOUNCED_ELSEWHERE.has(event.to_status)) return { ok: false, reason: 'announced_elsewhere' }
+  if (!ALLOWED_STATUS_ACTIONS.has(event.to_status)) return { ok: false, reason: 'status_not_allowed' }
 
   const action = event.to_status
   if (claimed.action !== undefined && claimed.action !== null && claimed.action !== action) {
