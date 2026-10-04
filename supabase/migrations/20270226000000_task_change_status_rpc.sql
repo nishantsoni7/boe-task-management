@@ -28,9 +28,12 @@
 --     (/api/notify-status-update, called by the page with the activity row id this
 --     function returns), so the notification rules are untouched by this migration.
 --   * Cancellation and restore stay on /api/cancel-task and /api/restore-task.
---   * No table, column, policy, trigger or existing function is changed, and nothing in
---     the application calls this yet. It is inert until the page is switched over in a
---     separate change, so applying it cannot alter behaviour.
+--   * No table, column, policy, trigger or existing function is changed. The application
+--     does not use this function yet: it is NOT YET USED BY THE APP, and the page is
+--     switched over in a separate change. That is not the same as harmless — from the
+--     moment it is applied it is a callable door, granted to `authenticated`, so it is
+--     written and reviewed as one (locked row, caller from auth.uid(), every rule
+--     validated against the locked current task).
 --
 -- WHO. Only the assignee, exactly as the page offers it (Mark Complete and Update Status
 -- are drawn for the assignee alone). A creator, an admin and anybody else are refused:

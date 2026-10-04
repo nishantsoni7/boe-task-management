@@ -79,3 +79,43 @@ describe('change_task_status migration', () => {
     assert.ok(SQL.includes('apply 20260832000000 (pending_approval) first'), 'it states its prerequisite and checks it')
   })
 })
+
+describe('SECURITY DEFINER hygiene', () => {
+  /**
+   * The FUNCTION BODY only (the prerequisite DO block above it reads pg_catalog tables, which resolve through pg_catalog
+   * first and cannot be shadowed), with comments and string literals (messages) removed.
+   */
+  const BODY = CODE.slice(CODE.indexOf('create or replace function public.change_task_status'), CODE.indexOf('revoke all'))
+  const STATEMENTS = BODY.replace(/'(?:[^']|'')*'/g, "''")
+
+  test('every relation it reads or writes is schema-qualified', () => {
+    const refs = [...STATEMENTS.matchAll(/(?<!distinct\s)\b(from|update|join|insert\s+into)\s+([a-z_][a-z0-9_.]*)/gi)].map(m => m[2])
+    assert.ok(refs.length >= 4, 'found the statements to check')
+    for (const r of refs) assert.ok(/^(public|auth)\./.test(r), `${r} must be schema-qualified`)
+    assert.ok(STATEMENTS.includes('auth.uid()') && !/[^.]\buid\(\)/.test(STATEMENTS), 'auth.uid() is qualified')
+    assert.ok(STATEMENTS.includes('::public.task_status'), 'the enum cast is qualified')
+  })
+
+  test('search_path is pinned with pg_temp LAST, and nothing runs dynamic SQL or switches role', () => {
+    assert.ok(/set search_path = public, pg_temp\s+as \$\$/.test(CODE))
+    assert.equal(/\bexecute\b/i.test(STATEMENTS), false, 'no dynamic SQL')
+    assert.equal(/\bset\s+(local\s+)?(role|session\s+authorization)\b|set_config\s*\(/i.test(STATEMENTS), false, 'no role switch, no GUC writes')
+  })
+
+  test('the task is LOCKED before any rule is judged, and every rule reads the locked row', () => {
+    const lock = CODE.indexOf('for update')
+    const firstRule = CODE.indexOf('v_uid is distinct from v_task.assigned_to')
+    const write = CODE.indexOf('update public.tasks')
+    assert.ok(lock > 0 && lock < firstRule && firstRule < write, 'lock, then the rules, then the write')
+    // Everything the rules compare against comes from v_task / auth.uid(), never from a caller-supplied field:
+    // the only caller-supplied inputs that influence a decision are the target status, reason and waiting detail.
+    for (const fact of ['v_task.assigned_to', 'v_task.created_by', 'v_task.acknowledged_at', 'v_task.task_type', 'v_task.status']) {
+      assert.ok(CODE.includes(fact), `${fact} is read from the locked row`)
+    }
+  })
+
+  test('a caller cannot name the actor, the author of the history row, or the task owner', () => {
+    assert.ok(/values \(p_task_id, v_uid, 'status_changed'/.test(CODE), 'the history row is authored by auth.uid()')
+    assert.equal(/set\s+(created_by|assigned_to|delegated_by)\s*=/i.test(STATEMENTS), false, 'ownership is never written')
+  })
+})

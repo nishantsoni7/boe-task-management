@@ -14,6 +14,8 @@
 --   §4  the review path is untouched: a delegated task still cannot be completed
 --       directly, and the trigger does not interfere with the allowed moves
 --   §5  no notification is written, and the grants are `authenticated` only
+--   §6  a FORCED history-insert failure rolls the task update back (identical row, no history row)
+--   §7  a double press: one change, one history row, a clean refusal for the second
 --
 -- Runs in ONE transaction that ends in ROLLBACK; every fixture is discarded.
 --
@@ -279,6 +281,76 @@ begin
   assert (select prosecdef from pg_proc where proname = 'change_task_status'), 'it is SECURITY DEFINER';
   assert (select 'search_path=public, pg_temp' = any (proconfig) from pg_proc where proname = 'change_task_status'),
     'its search_path is pinned to public, pg_temp';
+end $$;
+
+-- ── 6. A forced history-insert failure rolls the task update back ───────────
+-- The whole point of the function: if the history row cannot be written, the status change must not survive.
+-- A trigger that refuses ONE task's history insert stands in for any failure of that insert (constraint, lock
+-- timeout, full disk). The failing call runs inside a sub-transaction (the exception handler), exactly as a failed
+-- RPC rolls back its own transaction.
+
+do $$
+declare
+  t           text := current_setting('t.deleg');
+  v_before    jsonb;
+  v_after     jsonb;
+  rows_before bigint;
+  v_msg       text;
+  r           jsonb;
+begin
+  perform pg_temp.act_as(null);
+  create or replace function public.zz_force_history_failure() returns trigger language plpgsql as $f$
+  begin
+    raise exception 'ZZ_FORCED_HISTORY_FAILURE' using errcode = 'XX000';
+  end $f$;
+  create trigger zz_force_history_failure before insert on public.task_activity_log
+    for each row when (new.task_id = current_setting('t.deleg')::uuid)
+    execute function public.zz_force_history_failure();
+
+  select to_jsonb(x) into v_before from public.tasks x where x.id = t::uuid;
+  rows_before := pg_temp.rows_for(t);
+
+  perform pg_temp.act_as(current_setting('test.assignee_id'));
+  begin
+    perform public.change_task_status(t::uuid, 'waiting', null, null, 'external', null, 'ASSERT forced failure');
+    assert false, 'the call must fail when its history insert fails';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg = 'ZZ_FORCED_HISTORY_FAILURE', 'unexpected failure: ' || v_msg;
+  end;
+
+  select to_jsonb(x) into v_after from public.tasks x where x.id = t::uuid;
+  assert v_after = v_before, 'the task row must be EXACTLY as it was: the update rolled back with the failed history insert';
+  assert pg_temp.rows_for(t) = rows_before, 'and no history row exists';
+
+  -- Positive control: remove the obstacle and the identical call succeeds, so the failure above was the trigger and
+  -- nothing else.
+  perform pg_temp.act_as(null);
+  drop trigger zz_force_history_failure on public.task_activity_log;
+  drop function public.zz_force_history_failure();
+  perform pg_temp.act_as(current_setting('test.assignee_id'));
+  r := public.change_task_status(t::uuid, 'waiting', null, null, 'external', null, 'ASSERT forced failure');
+  assert r->>'status' = 'waiting', 'the same call succeeds once the history insert can succeed';
+  assert pg_temp.rows_for(t) = rows_before + 1, 'with exactly one row';
+end $$;
+
+-- ── 7. Double submit, one session after the other ────────────────────────────
+-- Two presses of Mark Complete (or a retry of a request whose answer was lost): one change, one history row, and the
+-- second call is a clean refusal. The two-connection version of this is run_task_change_status_race.sh.
+
+do $$
+declare t text := gen_random_uuid()::text; r jsonb;
+begin
+  perform pg_temp.act_as(null);
+  insert into public.tasks (id, title, status, priority, created_by, assigned_to, task_type, team)
+  values (t::uuid, 'ASSERT double press', 'working', 'medium',
+          current_setting('test.assignee_id')::uuid, current_setting('test.assignee_id')::uuid, 'general',
+          (select u.team from public.users u where u.id = current_setting('test.assignee_id')::uuid));
+  perform pg_temp.act_as(current_setting('test.assignee_id'));
+  r := public.change_task_status(t::uuid, 'completed');
+  assert r->>'status' = 'completed', 'the first press completes the task';
+  perform pg_temp.refused(format('select public.change_task_status(%L, ''completed'')', t), '55000', 'TASK_STATUS_FINISHED:');
+  assert pg_temp.rows_for(t) = 1, 'exactly ONE history row for two presses';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;
