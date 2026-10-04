@@ -104,8 +104,14 @@ describe('the route admits every caller the function admits', () => {
   })
 })
 
-describe('the route is not idempotent — so the page, not the route, must prevent a second notice', () => {
-  test('nothing in the route de-duplicates by activity row (documented here so the switch-over does not assume it)', () => {
-    assert.equal(/onConflict|upsert|already notified|duplicate/i.test(ROUTE), false)
+describe('whether the route de-duplicates by activity row depends on the notification event key', () => {
+  test('alone, nothing in the route de-duplicates (so the page must prevent a second notice); with the event key it does, by that index only', () => {
+    const withEventKey = /notifications_event_once_idx/.test(read('src/lib/notificationWrites.ts'))
+    if (withEventKey) {
+      // The notification event-key change is present: a repeat of one event is answered "already announced" by the database.
+      assert.ok(/duplicate/i.test(ROUTE), 'the route reports an already-announced event')
+    } else {
+      assert.equal(/onConflict|upsert|already notified|duplicate/i.test(ROUTE), false)
+    }
   })
 })
