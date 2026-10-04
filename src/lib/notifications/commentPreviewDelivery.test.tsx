@@ -188,10 +188,14 @@ describe('1-2. the exact comment writer passes its own activity id', () => {
     // Not the comment path, but the same defect class: a writer that reads its
     // activity row back and then throws the id away can never show the status
     // the task moved FROM, because that value exists only on that row.
-    assert.ok(TASK_DETAIL.includes('activityLogId: logRow?.id ?? null'),
-      'applyStatusChange links the row it already read back')
-    assert.ok(TASK_DETAIL.includes('activityLogId: waitingLog?.id ?? null'),
-      'the Waiting modal reads its row back and links it')
+    // Status changes now come back from change_task_status() WITH the id of the row they wrote, and every status caller
+    // (Task Detail, the Waiting modal, My Tasks quick-complete) announces that id.
+    assert.ok(TASK_DETAIL.includes('sendStatusNotice(browserNoticePost, { task: t, actorId: currentUserId, status, eventId })'),
+      'Task Detail announces the event the change wrote')
+    assert.ok(TASK_DETAIL.includes('void announceStatus(startedOn, newStatus, change.eventId)'))
+    assert.ok(TASK_DETAIL.includes('modalStatus, null, null,'), 'the Waiting modal goes through the same function')
+    assert.ok(read('src/app/tasks/my/page.tsx').includes("sendStatusNotice(browserNoticePost, { task, actorId: userId, status: 'completed', eventId })"))
+    assert.ok(read('src/lib/tasks/statusChange.ts').includes('activityLogId: p.eventId'), 'the id is what the notice carries')
   })
 
   test('2. the route verifies the id belongs to the SAME task before storing it', () => {
