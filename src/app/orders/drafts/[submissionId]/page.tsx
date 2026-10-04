@@ -300,7 +300,6 @@ import {
   PiLowerGrid,
   PiPaymentStatusCard,
   PiTopCard,
-  PiCommercialCard,
   PiSavedStrip,
   PiStoredCopyNote,
   PiWarningPanel,

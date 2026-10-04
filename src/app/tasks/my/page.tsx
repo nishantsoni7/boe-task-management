@@ -47,6 +47,8 @@ import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { perfTrack } from '@/lib/perf'
 import { canMarkComplete, canSubmitForApproval } from '@/lib/tasks/taskDetailAccess'
+import { changeTaskStatus, adoptableState, statusChangeMessage, sendStatusNotice, browserNoticePost } from '@/lib/tasks/statusChange'
+import { acknowledgeTask, acknowledgeMessage, adoptableAck, shouldAnnounceAck, postAcknowledgedNotice } from '@/lib/tasks/acknowledgeTask'
 
 
 // Tab membership, overdue-ness, staleness and date normalisation all live in
@@ -1226,6 +1228,7 @@ function MyTasksContent() {
   // The detail page hit exactly this and fixed it the same way
   // (statusUpdatingRef / reviewBusyRef in tasks/[id]/page.tsx).
   const quickActionRef = useRef(false)
+  const acknowledgingRef = useRef(false)
   const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
@@ -1348,31 +1351,29 @@ function MyTasksContent() {
     if (!selectedTask) return
     if (selectedTask.assigned_to !== userId) return
     if (selectedTask.created_by === userId) return
-    const now = new Date().toISOString()
-    const oldStatus = selectedTask.status
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', selectedTask.id)
-    if (error) {
-      alert('Failed to acknowledge task. Please try again.')
-      return
+    // Synchronous re-entry guard: both clicks of a double-click land before React re-renders. The database also refuses a
+    // second acknowledgement, but the guard keeps that refusal from reaching the person as a message.
+    if (acknowledgingRef.current) return
+    acknowledgingRef.current = true
+    try {
+      // ONE database call: the stamp, the move to Working and both history rows commit together or not at all. Only an
+      // ANSWER counts as success; a lost answer is read back, never re-sent (see acknowledgeTask.ts).
+      const outcome = await acknowledgeTask(supabase, { task: selectedTask, actorId: userId })
+      const patch = adoptableAck(outcome)
+      if (shouldAnnounceAck(outcome)) {
+        postAcknowledgedNotice({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, actorId: userId, actorName: profile?.full_name }, 'my-tasks/acknowledge')
+      }
+      if (patch) {
+        setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
+        setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+        queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+      }
+      const message = acknowledgeMessage(outcome)
+      if (message) alert(message)
+    } finally {
+      acknowledgingRef.current = false
     }
-    await supabase.from('task_activity_log').insert([
-      { task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null },
-      { task_id: selectedTask.id, actor_id: userId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
-    ])
-    if (selectedTask.created_by && selectedTask.created_by !== userId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, action: 'acknowledged', actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[my-tasks/acknowledge] notification failed:', d))
-      }).catch(err => console.error('[my-tasks/acknowledge] notification fetch error:', err))
-    }
-    const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
-    setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
-    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
-    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
-    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }
 
   const handleDelete = async (task: Task) => {
@@ -1455,77 +1456,47 @@ function MyTasksContent() {
     // once in the perf audit wherever it was performed.
     const perf = perfTrack('task.complete')
     try {
-      const now = new Date().toISOString()
-      // A task left blocked or waiting carries the reason it was stuck on.
-      // Completing it here has to clear those the way applyStatusChange does,
-      // or the row keeps a blocker that no longer describes anything — and the
-      // Waiting / Blocked tab is one of the places this button is reached from.
-      const updates: Record<string, unknown> = {
-        status: 'completed', completed_at: now, last_update_at: now,
+      // Through change_task_status(): the status, the blocker / waiting-on resets and the history row are ONE transaction.
+      // This path used to update the task, never look at how many rows that touched, and show "Task completed" even when
+      // the history insert had failed.
+      const outcome = await changeTaskStatus(supabase, { task, actorId: userId, status: 'completed' })
+      perf.mark('rpc')
+
+      // Show the state the SERVER holds — its own resets included — never one assembled here.
+      const adopted = adoptableState(outcome)
+      if (adopted) {
+        applyQuickActionResult(task, {
+          status:             adopted.status,
+          last_update_at:     adopted.last_update_at ?? task.last_update_at,
+          completed_at:       adopted.completed_at,
+          blocker_reason:     adopted.blocker_reason,
+          waiting_on_type:    adopted.waiting_on_type,
+          waiting_on_user_id: adopted.waiting_on_user_id,
+          waiting_on_text:    adopted.waiting_on_text,
+        })
       }
-      if (task.status === 'blocked') updates.blocker_reason = null
-      if (task.status === 'waiting') {
-        updates.waiting_on_type    = null
-        updates.waiting_on_user_id = null
-        updates.waiting_on_text    = null
+
+      // The event the change wrote, announced to the other party. Safe to repeat (one notice per event, enforced by the
+      // database), so a transport failure is retried once inside sendStatusNotice; a notice that still cannot be sent says so.
+      const announce = async (eventId: string | null) => {
+        const result = await sendStatusNotice(browserNoticePost, { task, actorId: userId, status: 'completed', eventId })
+        if (result === 'failed') {
+          console.error('[my-tasks/quick-complete] notification could not be sent after a retry', { taskId: task.id, eventId })
+          showToast('Task completed. The notification could not be sent.', 'error')
+        } else if (result === 'refused' || result === 'no_event') {
+          console.error('[my-tasks/quick-complete] notification not sent:', result, { taskId: task.id, eventId })
+        }
       }
-      const { error } = await supabase
-        .from('tasks')
-        .update(updates)
-        .eq('id', task.id)
-        .eq('assigned_to', userId)
-      if (error) {
-        console.error('[my-tasks/quick-complete] task update failed:', error.message)
-        window.alert('Failed to complete this task. Please try again.')
+
+      if (outcome.kind === 'saved') {
+        void announce(outcome.change.eventId)
+        showToast('Task completed')
         return
       }
-      perf.mark('update-task')
-      // Read the row back for its id: the notification card shows the PREVIOUS
-      // status, and that value lives only on the activity row it links to.
-      // Without activityLogId the card can only say "Status changed".
-      const { data: logRow, error: logError } = await supabase.from('task_activity_log').insert({
-        task_id: task.id,
-        actor_id: userId,
-        action: 'status_changed',
-        from_status: task.status,
-        to_status: 'completed',
-        note: null,
-      })
-        .select('id')
-        .single()
-      if (logError) console.error('[my-tasks/quick-complete] activity log failed:', logError.message)
-      perf.mark('insert-activity')
-
-      const recipient = task.created_by !== userId ? task.created_by : null
-      if (recipient) {
-        fetch('/api/notify-status-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            taskId: task.id,
-            taskTitle: task.title,
-            createdBy: task.created_by,
-            recipientId: recipient,
-            action: 'completed',
-            actorName: profile?.full_name,
-            // Null when the insert failed — the notification is then written
-            // unlinked, exactly as the detail page does.
-            activityLogId: logRow?.id ?? null,
-          }),
-        }).catch(err => console.error('[my-tasks/quick-complete] notification failed:', err))
-      }
-
-      // The same fields, cleared locally, so the list and the DB agree without
-      // a refetch.
-      const patch: Partial<Task> = { status: 'completed', last_update_at: now }
-      if (task.status === 'blocked') patch.blocker_reason = null
-      if (task.status === 'waiting') {
-        patch.waiting_on_type    = null
-        patch.waiting_on_user_id = null
-        patch.waiting_on_text    = null
-      }
-      applyQuickActionResult(task, patch)
-      showToast('Task completed')
+      // Anything else is NOT success: no toast, a message that claims nothing, and nothing resent.
+      if (outcome.kind === 'own_action_found') void announce(outcome.eventId)
+      const message = statusChangeMessage(outcome, task.status)
+      if (message) window.alert(message)
     } finally {
       perf.end()
       quickActionRef.current = false

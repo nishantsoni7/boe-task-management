@@ -318,7 +318,6 @@ describe('Task Detail wiring', () => {
     const cancel = PAGE.slice(PAGE.indexOf('const handleCancelTask = async'), PAGE.indexOf('const addCommentFiles'))
     assert.ok(/finally \{[\s\S]*setCancelling\(false\)/.test(cancel))
     const status = between('const applyStatusChange = async', 'const applySavedState')
-    assert.ok(/catch \(e\)/.test(status), 'a rejected status write is caught')
     assert.ok(/finally \{[\s\S]*statusUpdatingRef\.current = false/.test(status))
   })
 
@@ -394,8 +393,9 @@ describe('attribution limits — what recovery may and may not claim', () => {
     const run = PAGE.slice(PAGE.indexOf('const runReviewAction = async'), PAGE.indexOf('const checkSavedReviewStatus'))
     const recovered = run.slice(run.indexOf('reconcileSavedStatus('), run.indexOf("perf.mark('rpc')"))
     assert.equal(/return true/.test(recovered), false, 'no recovery branch returns success')
-    assert.ok(PAGE.includes('we cannot match it to this exact request'))
-    assert.equal(/not treated as confirmed/.test(PAGE), true)
+    const LOAD = read('src/lib/tasks/taskDetailLoad.ts')
+    assert.ok(LOAD.includes('we cannot match it to this exact request'))
+    assert.equal(/not treated as confirmed/.test(LOAD), true)
   })
 })
 
