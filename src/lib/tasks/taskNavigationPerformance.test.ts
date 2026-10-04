@@ -249,11 +249,11 @@ describe('acknowledge, status, complete and reopen all mark the same lists', () 
 
   for (const [name, from, to] of [
     ['acknowledge',      'const acknowledge = async',       'const applyStatusChange = async'],
-    ['status / complete', 'const applyStatusChange = async', 'const submitReturnTimer'],
+    ['status / complete', 'const applyStatusChange = async', 'const applySavedState'],
     ['reopen',           'const handleReopen = async',      'const handleCancelTask = async'],
   ] as const) {
     test(`${name} goes through invalidateTaskCache`, () => {
-      assert.ok(body(from, to).includes('invalidateTaskCache(task.assigned_to)'), name)
+      assert.ok(/invalidateTaskCache\((task|startedOn)\.assigned_to\)/.test(body(from, to)), name)
     })
   }
 
@@ -268,7 +268,7 @@ describe('acknowledge, status, complete and reopen all mark the same lists', () 
 
 describe('a failed write neither navigates nor claims success', () => {
   test('Mark Complete returns before the navigation when the update fails', () => {
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
     const failed = apply.indexOf("window.alert('Failed to update task status. Please try again.')")
     assert.ok(failed > 0)
     assert.ok(apply.slice(failed, failed + 120).includes('return'), 'the alert is followed by a return')
@@ -277,7 +277,7 @@ describe('a failed write neither navigates nor claims success', () => {
 
   test('Reopen returns before it rewrites the status locally', () => {
     const reopen = DETAIL.slice(DETAIL.indexOf('const handleReopen = async'), DETAIL.indexOf('const handleCancelTask = async'))
-    assert.ok(reopen.indexOf("window.alert('Failed to reopen task. Please try again.')") < reopen.indexOf('setTask({ ...task, status: restored })'))
+    assert.ok(reopen.indexOf("window.alert('Failed to reopen task. Please try again.')") < reopen.indexOf('setTask({ ...startedOn, status: restored })'))
   })
 })
 
@@ -326,7 +326,7 @@ describe('the rules this branch must not have touched', () => {
   })
 
   test('Blocked still carries its reason, and leaving a status still clears it', () => {
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
     assert.ok(apply.includes("if (newStatus === 'blocked')   updates.blocker_reason = reason"))
     assert.ok(apply.includes("if (oldStatus === 'blocked' && newStatus !== 'blocked') updates.blocker_reason = null"))
     assert.ok(apply.includes("if (oldStatus === 'waiting' && newStatus !== 'waiting') {"))
@@ -336,7 +336,7 @@ describe('the rules this branch must not have touched', () => {
     // The activity log is the accountability record. A performance change that
     // dropped it, or moved it after the user was told the change succeeded,
     // would be a correctness regression wearing a speed costume.
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
     const logAt = apply.indexOf("supabase.from('task_activity_log').insert({")
     assert.ok(logAt > 0)
     assert.ok(logAt < apply.indexOf('setTask({ ...task, ...localPatch })'),
