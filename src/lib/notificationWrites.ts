@@ -65,7 +65,7 @@ export type NotificationInsert = {
  */
 export type NotificationInsertClient = {
   from: (table: 'notifications') => {
-    insert: (rows: NotificationInsert[]) => PromiseLike<{ error: { message: string } | null }>
+    insert: (rows: NotificationInsert[]) => PromiseLike<{ error: { message: string; code?: string } | null }>
   }
 }
 
@@ -82,6 +82,23 @@ export type NotificationInsertResult = {
   selfSuppressed: number
   /** The insert's own error, unchanged, or null. */
   error: { message: string } | null
+  /**
+   * Present (and true) only when the database refused the row because THIS EVENT was already announced to this recipient
+   * (see EVENT_ONCE_INDEX). That is not a failure — the notice exists — so `error` is null. Absent otherwise, so no
+   * existing result changes shape.
+   */
+  duplicate?: true
+}
+
+/** The partial unique index on (activity_log_id, user_id, type) — 20270301000000_notifications_event_idempotency.sql. */
+export const EVENT_ONCE_INDEX = 'notifications_event_once_idx'
+
+/**
+ * A unique violation of THAT index and no other. A different 23505 (a primary key, a future constraint) is a real error and
+ * must stay one, so the index is identified by name, not by SQLSTATE alone.
+ */
+export function isEventAlreadyAnnounced(error: { message: string; code?: string } | null | undefined): boolean {
+  return !!error && error.code === '23505' && error.message.includes(EVENT_ONCE_INDEX)
 }
 
 /** Everything the guard needs beyond the rows themselves. */
@@ -124,6 +141,11 @@ export async function insertUserNotifications(
   }
 
   const { error } = await client.from('notifications').insert(addressed)
+  // The event was already announced to this recipient: the safe outcome of sending twice, not an error. This is what
+  // makes a repeat send harmless even when two overlap — the database decides, not a read that raced.
+  if (isEventAlreadyAnnounced(error)) {
+    return { inserted: 0, suppressed: suppressed.length, selfSuppressed, error: null, duplicate: true }
+  }
   return {
     inserted: error ? 0 : addressed.length,
     suppressed: suppressed.length,
