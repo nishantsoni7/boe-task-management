@@ -2452,6 +2452,17 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/finance/expenses/expenseSurfaces.test.ts',
   ])
 
+  // Task Management: every status caller goes through change_task_status() (stacked on the Task Detail stall change).
+  // Named one by one, pinned by value below: the shared helper, its suite, the My Tasks page, and the pin suites whose
+  // intent moved onto the new structure. No migration here (those ride in their own PRs), no Finance or Orders file.
+  const ALLOWED_TASK_STATUS_SWITCH = new Set([
+    'src/lib/tasks/statusChange.ts',
+    'src/lib/tasks/statusChange.test.ts',
+    'src/app/tasks/my/page.tsx',
+    'src/lib/tasks/myTasksQuickAction.test.ts',
+    'src/lib/notifications/commentPreviewDelivery.test.tsx',
+  ])
+
   // Customer Reviews: employee edit / delete, duplicate detection, admin reporting and the shared
   // leaderboard (feat/customer-reviews-edit-dup-reporting). Custom Review submissions only: no Finance
   // or Orders screen, figure or table. Named one by one; the migration inventories gain one line each.
@@ -2711,6 +2722,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
     !ALLOWED_TASK_DETAIL_STALLS.has(f) &&
+    !ALLOWED_TASK_STATUS_SWITCH.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -2837,6 +2849,21 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       assert.equal(
         /^(src\/app\/(finance\/(?!expenses\/expenseSurfaces\.test\.ts$)|orders\/|api\/)|src\/lib\/(finance|orders|pi|permissions)\/|supabase\/)/.test(file),
         false, `${file} is not a Task Detail file`)
+    }
+  })
+
+  test('the status-switch allowance is EXACTLY the files of that change', () => {
+    assert.deepEqual([...ALLOWED_TASK_STATUS_SWITCH].sort(), [
+      'src/app/tasks/my/page.tsx',
+      'src/lib/notifications/commentPreviewDelivery.test.tsx',
+      'src/lib/tasks/myTasksQuickAction.test.ts',
+      'src/lib/tasks/statusChange.test.ts',
+      'src/lib/tasks/statusChange.ts',
+    ])
+    for (const file of ALLOWED_TASK_STATUS_SWITCH) {
+      assert.ok(/\.tsx?$/.test(file), `${file} must be one file`)
+      assert.equal(file.includes('*'), false)
+      assert.equal(/^(src\/app\/(finance|orders|api)\/|src\/lib\/(finance|orders|pi|permissions)\/|supabase\/)/.test(file), false)
     }
   })
 
@@ -3091,6 +3118,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
         || ALLOWED_TASK_DETAIL_STALLS.has(file)
+        || ALLOWED_TASK_STATUS_SWITCH.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
