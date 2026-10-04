@@ -732,6 +732,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And change_task_status() (20270302000000): one additive function, held by
       // supabase/tests/task_change_status_assertions.sql and the inventory suites.
       if (f === 'supabase/migrations/20270302000000_task_change_status_rpc.sql') continue
+      // And the notification event key (20270301000000): a guard and one partial unique index, held by
+      // supabase/tests/notifications_event_idempotency_assertions.sql and src/lib/notifications/eventIdempotency.test.ts.
+      if (f === 'supabase/migrations/20270301000000_notifications_event_idempotency.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2494,6 +2497,33 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/notifications/commentPreviewDelivery.test.tsx',
   ])
 
+  // Notifications: one notice per event (2026-10-04). A partial unique index over (activity_log_id, user_id, type), the
+  // notification writer reading that index's refusal as "already announced", and the status-update route returning it as
+  // success. The migration, those two source files, their suite, and the one line each migration-inventory suite needs.
+  const ALLOWED_NOTIFICATION_EVENT_ONCE = new Set([
+    'supabase/migrations/20270301000000_notifications_event_idempotency.sql',
+    'src/lib/notifications/eventIdempotency.test.ts',
+    'src/lib/notifications/statusEventNotice.ts',
+    'src/lib/notifications/statusEventNotice.test.ts',
+    'src/lib/notifications/activityLink.ts',
+    'src/lib/notificationWrites.ts',
+    'src/app/api/notify-status-update/route.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+
   // Customer Reviews: employee edit / delete, duplicate detection, admin reporting and the shared
   // leaderboard (feat/customer-reviews-edit-dup-reporting). Custom Review submissions only: no Finance
   // or Orders screen, figure or table. Named one by one; the migration inventories gain one line each.
@@ -2729,6 +2759,15 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/minop/stage2Security.test.ts',
   ])
 
+  // The Dashboard's Acknowledge button under View As (2026-10-04): the page stops
+  // handing the handler to the panel while an administrator is viewing as someone
+  // else, and the handler refuses too. One page and one source-contract suite,
+  // no migration, no Finance or Orders file.
+  const ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE = new Set([
+    'src/app/dashboard/page.tsx',
+    'src/lib/tasks/dashboardViewAsReadOnly.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2784,6 +2823,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
     !ALLOWED_TASK_CHANGE_STATUS_RPC.has(f) &&
+    !ALLOWED_NOTIFICATION_EVENT_ONCE.has(f) &&
     !ALLOWED_TASK_DETAIL_STALLS.has(f) &&
     !ALLOWED_TASK_STATUS_SWITCH.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
@@ -2801,7 +2841,19 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
     !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f) &&
-    !ALLOWED_TASK_ACKNOWLEDGE.has(f)
+    !ALLOWED_TASK_ACKNOWLEDGE.has(f) &&
+    !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f)
+
+  test('the Dashboard View As allowance is EXACTLY its two named files', () => {
+    assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
+      'src/app/dashboard/page.tsx',
+      'src/lib/tasks/dashboardViewAsReadOnly.test.ts',
+    ])
+    for (const file of ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE) {
+      assert.equal(file.includes('*'), false)
+      assert.equal(/finance|orders/i.test(file), false, `${file} must not be a Finance or Orders file`)
+    }
+  })
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2962,6 +3014,40 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  test('the notification event-key allowance is EXACTLY the files of that change', () => {
+    // Pinned by value so it cannot quietly grow. The application files in it are on purpose (the writer, the one route that reads its answer, and the event helpers); nothing under finance/, orders/, payroll or permissions rides in on it.
+    assert.deepEqual([...ALLOWED_NOTIFICATION_EVENT_ONCE].sort(), [
+      'src/app/api/notify-status-update/route.ts',
+      'src/app/finance/expenses/expenseSurfaces.test.ts',
+      'src/lib/announcementsMigration.test.ts',
+      'src/lib/boeCredits/reviewReward.test.ts',
+      'src/lib/customerReviews/migration.test.ts',
+      'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+      'src/lib/modules/moduleOrderStorage.test.ts',
+      'src/lib/notificationWrites.ts',
+      'src/lib/notifications/activityLink.ts',
+      'src/lib/notifications/activityLinkMigration.test.ts',
+      'src/lib/notifications/eventIdempotency.test.ts',
+      'src/lib/notifications/groupMutations.test.ts',
+      'src/lib/notifications/statusEventNotice.test.ts',
+      'src/lib/notifications/statusEventNotice.ts',
+      'src/lib/orders/orderFinanceTestReset.test.ts',
+      'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+      'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+      'src/lib/tasks/assignmentWriteAuthority.test.ts',
+      'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+      'src/lib/tasks/topTasksApproval.test.ts',
+      'supabase/migrations/20270301000000_notifications_event_idempotency.sql',
+    ])
+    for (const file of ALLOWED_NOTIFICATION_EVENT_ONCE) {
+      assert.ok(/\.(ts|tsx|sql)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      assert.equal(/^src\/app\/(finance\/(?!expenses\/expenseSurfaces\.test\.ts$)|orders\/|api\/(?!notify-status-update\/route\.ts$))/.test(file), false, `${file} is outside this change`)
+    }
+    assert.equal([...ALLOWED_NOTIFICATION_EVENT_ONCE].filter(f => f.startsWith('supabase/migrations/')).length, 1, 'exactly one migration')
+  })
+
   test('THE GUARD STILL BITES \u2014 an unrelated changed file fails it', () => {
     // The negative half of the allowance. Adding a list of permitted files
     // is only safe if the guard still rejects everything else, so this runs
@@ -3075,7 +3161,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|task_acknowledge/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3213,13 +3299,15 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
         || ALLOWED_TASK_CHANGE_STATUS_RPC.has(file)
+        || ALLOWED_NOTIFICATION_EVENT_ONCE.has(file)
         || ALLOWED_TASK_DETAIL_STALLS.has(file)
         || ALLOWED_TASK_STATUS_SWITCH.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
         || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file)
-        || ALLOWED_TASK_ACKNOWLEDGE.has(file),
+        || ALLOWED_TASK_ACKNOWLEDGE.has(file)
+        || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }
