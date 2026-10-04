@@ -62,36 +62,32 @@ test('both quick actions take the lock, and both release it', () => {
   assert.equal((PAGE.match(/quickActionRef\.current = false/g) ?? []).length, 2)
 })
 
-test('quick-completing a blocked or waiting task clears the stale reason', () => {
-  // applyStatusChange on the detail page clears these; the Waiting / Blocked
-  // tab is one of the places this button is reached from, so the row would
-  // otherwise keep a blocker that no longer describes anything.
+test('quick-completing a blocked or waiting task shows the reset the SERVER made', () => {
+  // The resets are done by change_task_status() in the same transaction as the write, so the row is patched from the state
+  // the function returned — never from fields assembled here, which could disagree with what was stored.
   const handler = PAGE.slice(
     PAGE.indexOf('const handleQuickComplete'),
     PAGE.indexOf('const handleQuickSubmit'),
   )
   assert.ok(handler.length > 0, 'the quick-complete handler is present')
+  assert.match(handler, /changeTaskStatus\(supabase, \{ task, actorId: userId, status: 'completed' \}\)/)
+  assert.equal(/\.from\('tasks'\)\.update\(/.test(handler), false, 'no separate field-by-field update')
   for (const field of ['blocker_reason', 'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text']) {
-    assert.match(handler, new RegExp(field), field + ' is cleared on completion')
+    assert.match(handler, new RegExp(field + ':\\s+adopted\\.' + field), field + ' is taken from the returned state')
   }
-  // Cleared in the database write AND in the local patch, so the list and the
-  // row agree without a refetch.
-  assert.match(handler, /updates\.blocker_reason = null/)
-  assert.match(handler, /patch\.blocker_reason = null/)
-  assert.match(handler, /updates\.waiting_on_user_id = null/)
-  assert.match(handler, /patch\.waiting_on_user_id = null/)
 })
 
-test('the completion notification carries the activity row it came from', () => {
-  // Without activityLogId the card cannot show the previous status — that
-  // value lives only on the activity row the notification links to.
+test('the completion notification carries the activity row it came from, and success is claimed only for a saved change', () => {
+  // Without the event id the card cannot show the previous status — that value lives only on the history row the
+  // notification links to. The id now comes back from the same transaction that wrote the row.
   const handler = PAGE.slice(
     PAGE.indexOf('const handleQuickComplete'),
     PAGE.indexOf('const handleQuickSubmit'),
   )
-  assert.match(handler, /\.select\('id'\)/)
-  assert.match(handler, /\.single\(\)/)
-  assert.match(handler, /activityLogId: logRow\?\.id \?\? null/)
+  assert.match(handler, /sendStatusNotice\(browserNoticePost, \{ task, actorId: userId, status: 'completed', eventId \}\)/)
+  assert.match(handler, /void announce\(outcome\.change\.eventId\)\s*\n\s*showToast\('Task completed'\)/)
+  assert.equal((handler.match(/showToast\('Task completed'\)/g) ?? []).length, 1, 'the success toast appears on one path only')
+  assert.match(handler, /statusChangeMessage\(outcome, task\.status\)/)
 })
 
 test('quick actions are measured under the same perf actions as the detail page', () => {

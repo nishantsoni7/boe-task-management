@@ -234,7 +234,7 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
     // task need never have been on.
     assert.ok(detail.includes("const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)"))
     assert.equal(detail.includes("const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'"), false)
-    assert.ok(detail.includes('noteListReturn()\n      router.push(dest)'), 'the list is told this counts as a return, so it restores its scroll')
+    assert.ok(/noteListReturn\(\)\s*\n\s*router\.push\(dest\)/.test(detail), 'the list is told this counts as a return, so it restores its scroll')
   })
 
   test('Mark Complete no longer waits 800ms for a toast it never shows', () => {
