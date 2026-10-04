@@ -46,6 +46,15 @@ import { defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
+import {
+  changeTaskStatus, adoptableState, statusChangeMessage, sendStatusNotice, browserNoticePost,
+  type StatusChangeOutcome, type WaitingDetail,
+} from '@/lib/tasks/statusChange'
+import {
+  readTaskEssential, readTaskSecondary, mergeActivityRead, createLatestGate,
+  classifyWriteFailure, isStateConflict, reconcileSavedStatus, recoveryMessage, REVIEW_RESULT_STATUS, WRITE_TIMEOUT_MS,
+  type ReviewAction, type SavedTaskState,
+} from '@/lib/tasks/taskDetailLoad'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -136,6 +145,17 @@ export default function TaskDetailPage() {
   const [log,             setLog]             = useState<LogEntry[]>([])
   const [creatorName,     setCreatorName]     = useState<string | null>(null)
   const [loading,         setLoading]         = useState(true)
+  // The essential read (the task row) failed, as opposed to returning no row.
+  // Drawn as a recoverable error — before, it was drawn as "Task not found".
+  const [loadError,       setLoadError]       = useState<string | null>(null)
+  const [loadAttempt,     setLoadAttempt]     = useState(0)
+  // The activity + attachment panels load after the page is usable. They fail
+  // and retry on their own, without taking the task off the screen.
+  const [activityState,   setActivityState]   = useState<'loading' | 'ready' | 'error'>('loading')
+  // A review write failed in transit and the saved state could not be read
+  // back, so whether it landed is unknown. Every review control stays locked
+  // until "Check saved status" gets an answer; nothing is re-sent on its own.
+  const [reviewUncertain, setReviewUncertain] = useState<ReviewAction | null>(null)
 
   // ── WHO, from the cache the route guard already filled ─────────────────────
   //
@@ -360,116 +380,103 @@ export default function TaskDetailPage() {
   }
 
 
+  // Held for the page's lifetime so a timer or a late response can tell whether
+  // the person is still on this task before it moves them or paints over it.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  // One gate for every activity/attachment read of this task. A read may change
+  // the screen only if it is the newest and the page has not moved on.
+  const activityGate = useMemo(() => createLatestGate(), [])
+  useEffect(() => {
+    activityGate.open()
+    return () => activityGate.close()
+  }, [activityGate])
+
+  // ESSENTIAL FIRST. The task row is what makes the page usable, so it alone
+  // gates the loader. The activity feed and the attachment gallery were part of
+  // one three-way Promise.all, which meant the slowest of the three — normally
+  // the full history of a long-lived task — decided when the page appeared, and
+  // a failed one was ignored and drawn as "Task not found". Now they are read
+  // beside it, settle on their own, and a failure of either is a retryable
+  // notice inside its panel rather than a blank page.
   useEffect(() => {
     // Nothing is asked until the session query has answered — under ModuleGuard
     // it already has. A caller with no session still goes to /login.
     if (idPending) return
     if (!signedInUserId) { router.push('/login'); return }
 
-    const init = async () => {
-      // Timings print to the console only with NEXT_PUBLIC_BOE_PERF_DEBUG=true;
-      // otherwise every call here is a no-op. See src/lib/perf.ts.
-      const perf = perfTrack('task.detail.load')
+    // A response from a task the person has left (or from an attempt a retry
+    // has replaced) must not touch the screen.
+    let active = true
+    const perf = perfTrack('task.detail.load')
 
-      const taskId = params.id as string
+    void (async () => {
+      const essentialRead = readTaskEssential(supabase, taskId)
+      const ticket = activityGate.begin()
+      const secondaryRead = readTaskSecondary(supabase, taskId)
 
-      // Fetch task (with creator name embedded), members, activity log, and all
-      // attachments for this task — all in one parallel batch. The caller's own
-      // profile is not among them: useProfile above already holds it.
-      const [
-        { data: taskData },
-        { data: activityLogData },
-        { data: allAttachments },
-      ] = await Promise.all([
-        supabase.from('tasks').select('*, creator:created_by(full_name)').eq('id', taskId).single(),
-        supabase.from('task_activity_log')
-          .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
-          .eq('task_id', taskId)
-          .order('created_at', { ascending: false }),
-        supabase.from('task_attachments')
-          .select('*')
-          .eq('task_id', taskId)
-          .order('created_at', { ascending: true }),
-      ])
-
-      perf.mark('queries')
-
-      if (taskData) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const creatorName = (taskData as any).creator?.full_name ?? null
-        if (creatorName) setCreatorName(creatorName)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { creator: _creator, ...taskFields } = taskData as any
-        setTask(taskFields)
-        setSelectedStatus(taskFields.status)
+      const essential = await essentialRead
+      if (!active) { perf.end(); return }
+      perf.mark('task')
+      if (essential.status === 'ok') {
+        if (essential.creatorName) setCreatorName(essential.creatorName)
+        setTask(essential.task)
+        setSelectedStatus(essential.task.status)
+        setLoadError(null)
+      } else if (essential.status === 'error') {
+        setLoadError(essential.message)
       }
-
-      // Split attachments: task-level (no activity_log_id) vs per-log
-      const attachsByLogId: Record<string, TaskAttachment[]> = {}
-      const taskLevelAtts: TaskAttachment[] = []
-      for (const att of (allAttachments ?? []) as TaskAttachment[]) {
-        if (!att.activity_log_id) {
-          taskLevelAtts.push(att)
-        } else {
-          if (!attachsByLogId[att.activity_log_id]) attachsByLogId[att.activity_log_id] = []
-          attachsByLogId[att.activity_log_id].push(att)
-        }
-      }
-      setTaskLevelAttachments(taskLevelAtts)
-
-      if (activityLogData) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setLog((activityLogData as any[]).map(e => ({
-          ...e,
-          actor_name:     e.users?.full_name ?? null,
-          old_val:        e.old_val ?? null,
-          new_val:        e.new_val ?? null,
-          attachment_url: e.attachment_url ?? null,
-          attachments:    attachsByLogId[e.id] ?? [],
-        })))
-      }
-
       setLoading(false)
+
+      const secondary = await secondaryRead
+      perf.mark('activity')
       perf.end()
-    }
-    init()
-  }, [params.id, idPending, signedInUserId, router, supabase])
-
-  const loadLog = async (taskId: string) => {
-    // Fetch activity log and all task attachments in parallel
-    const [{ data }, { data: allAtts }] = await Promise.all([
-      supabase
-        .from('task_activity_log')
-        .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('task_attachments')
-        .select('*')
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true }),
-    ])
-    if (!data) return
-
-    const attachsByLogId: Record<string, TaskAttachment[]> = {}
-    const taskLevelAtts: TaskAttachment[] = []
-    for (const att of (allAtts ?? []) as TaskAttachment[]) {
-      if (!att.activity_log_id) {
-        taskLevelAtts.push(att)
+      if (!active || !activityGate.isCurrent(ticket)) return
+      if (secondary.status === 'ok') {
+        setTaskLevelAttachments(secondary.taskLevelAttachments)
+        setLog(prev => mergeActivityRead(secondary.log, prev))
+        setActivityState('ready')
       } else {
-        if (!attachsByLogId[att.activity_log_id]) attachsByLogId[att.activity_log_id] = []
-        attachsByLogId[att.activity_log_id].push(att)
+        console.error('[task detail] activity read failed:', secondary.message)
+        setActivityState('error')
       }
-    }
-    setTaskLevelAttachments(taskLevelAtts)
+    })()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setLog((data as any[]).map(e => ({
-      ...e,
-      actor_name:     e.users?.full_name ?? null,
-      attachment_url: e.attachment_url ?? null,
-      attachments:    attachsByLogId[e.id] ?? [],
-    })))
+    return () => { active = false }
+  }, [taskId, loadAttempt, idPending, signedInUserId, router, supabase, activityGate])
+
+  // Re-reads the activity feed and attachments. Never throws, never blocks the
+  // caller (nothing awaits it on a user's path), and a result that has been
+  // overtaken — by a newer refresh, or by leaving the task — is dropped. A
+  // failed refresh keeps what is on screen; the next successful one corrects it.
+  const loadLog = async (forTaskId: string): Promise<'ok' | 'failed' | 'stale'> => {
+    if (forTaskId !== taskId) return 'stale'
+    const ticket = activityGate.begin()
+    const secondary = await readTaskSecondary(supabase, forTaskId)
+    if (!activityGate.isCurrent(ticket)) return 'stale'
+    if (secondary.status !== 'ok') {
+      console.error('[task detail] activity refresh failed:', secondary.message)
+      return 'failed'
+    }
+    setTaskLevelAttachments(secondary.taskLevelAttachments)
+    setLog(prev => mergeActivityRead(secondary.log, prev))
+    setActivityState('ready')
+    return 'ok'
+  }
+
+  const retryTaskLoad = () => {
+    setLoadError(null)
+    setLoading(true)
+    setActivityState('loading')
+    setLoadAttempt(n => n + 1)
+  }
+
+  const retryActivityLoad = () => {
+    setActivityState('loading')
+    void loadLog(taskId).then(r => { if (r === 'failed' && mountedRef.current) setActivityState('error') })
   }
 
   const acknowledge = async () => {
@@ -520,119 +527,126 @@ export default function TaskDetailPage() {
     }
   }
 
-  const applyStatusChange = async (newStatus: string, reason: string | null, attachmentUrl?: string | null) => {
-    if (!task) return
+  /**
+   * Announces a status event to the other party. The notice is safe to repeat (one per event, per recipient — enforced by the
+   * database), so a transport failure is retried once inside sendStatusNotice. A notice that still cannot be sent never changes
+   * what the status change was, and never claims it was delivered: it says so, once, and logs why.
+   */
+  const announceStatus = async (t: Task, status: string, eventId: string | null) => {
+    const result = await sendStatusNotice(browserNoticePost, { task: t, actorId: currentUserId, status, eventId })
+    if (result === 'failed') {
+      console.error('[status notice] could not be sent after a retry', { taskId: t.id, eventId })
+      if (mountedRef.current) showToast('Status saved. The notification could not be sent.', 'error')
+    } else if (result === 'refused' || result === 'no_event') {
+      console.error('[status notice] not sent:', result, { taskId: t.id, eventId })
+    }
+  }
+
+  /**
+   * Saves a status through change_task_status(): the status, the resets and the history row are ONE transaction, so a changed
+   * task always has its history and a refused or failed change leaves nothing behind. Used by Mark Complete, the status modal
+   * and the waiting modal alike.
+   *
+   * Only an ANSWER from the database counts as success. Anything else — a refusal, a lost answer, a state we cannot attribute
+   * to ourselves — is reported as exactly that, the state the server holds is adopted, and nothing is claimed or resent. The
+   * mutation is sent once per call; the double-click guard below and the database's refusal of a repeat make a second press
+   * harmless. Returns what happened, so a caller can decide whether a dialog may close.
+   */
+  const applyStatusChange = async (
+    newStatus: string,
+    reason: string | null,
+    attachmentUrl?: string | null,
+    waiting?: WaitingDetail,
+  ): Promise<StatusChangeOutcome['kind'] | null> => {
+    if (!task) return null
     // Same guard as acknowledge: a double-click here wrote two status_changed
     // rows and fired two notifications for one intended change.
-    if (statusUpdatingRef.current) return
+    if (statusUpdatingRef.current) return null
     statusUpdatingRef.current = true
     setStatusUpdating(true)
     const perf = perfTrack(newStatus === 'completed' ? 'task.complete' : 'task.status.update')
     try {
-    const oldStatus = task.status
-    const now = new Date().toISOString()
-    const updates: Record<string, unknown> = { status: newStatus, last_update_at: now }
-    if (newStatus === 'blocked')   updates.blocker_reason = reason
-    if (oldStatus === 'blocked' && newStatus !== 'blocked') updates.blocker_reason = null
-    if (oldStatus === 'waiting' && newStatus !== 'waiting') {
-      updates.waiting_on_type    = null
-      updates.waiting_on_user_id = null
-      updates.waiting_on_text    = null
-    }
-    if (newStatus === 'completed') updates.completed_at = now
+      const startedOn = task
+      const outcome = await changeTaskStatus(supabase, {
+        task: startedOn, actorId: currentUserId, status: newStatus, reason, attachmentUrl, waiting,
+      })
+      perf.mark('rpc')
 
-    const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-    if (taskErr) {
-      console.error('[applyStatusChange] tasks update failed:', taskErr.message)
-      window.alert('Failed to update task status. Please try again.')
-      return
-    }
-    perf.mark('update-task')
-    // Read the inserted row back so the feed can be updated locally. The audit
-    // record is still written before the user is told the change succeeded —
-    // only the *display* refresh changes.
-    const { data: logRow, error: logErr } = await supabase.from('task_activity_log').insert({
-      task_id:        task.id,
-      actor_id:       currentUserId,
-      action:         'status_changed',
-      from_status:    oldStatus,
-      to_status:      newStatus,
-      note:           reason ?? null,
-      attachment_url: attachmentUrl ?? null,
-    })
-      .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url')
-      .single()
-    if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
-    {
-      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-      if (recipient && recipient !== currentUserId) {
-        fetch('/api/notify-status-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // The status row this call just wrote, whose id is already in hand
-          // from the insert above. Without it the notification links to
-          // nothing and the card can only say "Status changed to Waiting" —
-          // it can never show the previous status, because that value lives
-          // ONLY on the activity row. `logRow` is null when the insert failed;
-          // the notification is then written unlinked, exactly as before.
-          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: newStatus, actorName: profile?.full_name, activityLogId: logRow?.id ?? null }),
-        }).then(res => {
-          if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
-        }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
+      // Adopt whatever state the server told us about (a saved change, or a state read back) — never an invented one.
+      const adopted = adoptableState(outcome)
+      if (adopted && mountedRef.current) applySavedState(startedOn, adopted)
+
+      if (outcome.kind === 'saved') {
+        const { change } = outcome
+        if (mountedRef.current) {
+          // The history row came back with the change: show it without re-reading the whole feed.
+          if (change.eventId) {
+            setLog(prev => [{
+              id:             change.eventId as string,
+              action:         'status_changed',
+              note:           reason ?? null,
+              from_status:    change.fromStatus,
+              to_status:      newStatus,
+              old_val:        null,
+              new_val:        null,
+              created_at:     change.at ?? new Date().toISOString(),
+              actor_id:       currentUserId,
+              actor_name:     profile?.full_name,
+              attachment_url: attachmentUrl ?? null,
+              attachments:    [],
+            } as unknown as LogEntry, ...prev])
+          } else {
+            void loadLog(startedOn.id)
+          }
+        }
+        void announceStatus(startedOn, newStatus, change.eventId)
+        if (newStatus === 'completed' && mountedRef.current) {
+          // BACK TO THE LIST THIS TASK WAS OPENED FROM, AT ONCE. `returnTo` is the view they actually left and every internal
+          // entry point attaches it; the task's own list stays the fallback for a pasted URL. Only on an ANSWER: any other
+          // outcome stays here, with the state the server holds and a message that claims nothing.
+          const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)
+          noteListReturn()
+          router.push(dest)
+        }
+        return 'saved'
       }
-    }
-    const localPatch: Partial<Task> = { status: newStatus as TaskStatus, last_update_at: now }
-    if (newStatus === 'blocked')   localPatch.blocker_reason = reason
-    if (oldStatus === 'blocked' && newStatus !== 'blocked') localPatch.blocker_reason = null
-    if (oldStatus === 'waiting' && newStatus !== 'waiting') {
-      localPatch.waiting_on_type    = null
-      localPatch.waiting_on_user_id = null
-      localPatch.waiting_on_text    = null
-    }
-    setTask({ ...task, ...localPatch })
-    setSelectedStatus(newStatus)
-    invalidateTaskCache(task.assigned_to)
-    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-    perf.mark('insert-activity')
-    // Prepend the row we just wrote instead of re-reading the entire activity
-    // log plus every attachment of the task — two round trips that returned
-    // data we already had. A status change never alters attachments, so nothing
-    // else on screen goes stale. `loadLog` is the fallback if the read-back
-    // failed, so the feed is never left missing an entry.
-    if (logRow) {
-      setLog(prev => [{
-        ...(logRow as unknown as LogEntry),
-        actor_name:     profile?.full_name,
-        attachment_url: logRow.attachment_url ?? null,
-        attachments:    [],
-      }, ...prev])
-    } else {
-      await loadLog(task.id)
-    }
-    perf.mark('append-activity')
-    if (newStatus === 'completed') {
-      // BACK TO THE LIST THIS TASK WAS OPENED FROM, AT ONCE.
-      //
-      // Two things were wrong here. The destination was one of two fixed
-      // addresses, so a creator who completed a task they had opened from
-      // Assigned By Me — or from Today's Focus, or from a notification — was
-      // put on /tasks/my, a list that task need never have been on. `returnTo`
-      // is the view they actually left and every internal entry point attaches
-      // it; the task's own list stays the fallback for a pasted URL.
-      //
-      // And the navigation waited 800ms for a toast that this path never shows.
-      // Nothing was drawn in that time and nothing was being awaited — it was
-      // dead time after a click, on the one action people perform most. The
-      // list itself is the confirmation: the task is gone from it.
-      const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)
-      noteListReturn()
-      router.push(dest)
-    }
+
+      if (mountedRef.current && (outcome.kind === 'own_action_found' || outcome.kind === 'state_changed')) void loadLog(startedOn.id)
+      // An action of ours is saved but not provably THIS request: announce its event (safe to repeat) and still claim nothing.
+      if (outcome.kind === 'own_action_found') void announceStatus(startedOn, newStatus, outcome.eventId)
+      const message = statusChangeMessage(outcome, startedOn.status)
+      if (message) window.alert(message)
+      return outcome.kind
     } finally {
       statusUpdatingRef.current = false
-      setStatusUpdating(false)
+      if (mountedRef.current) setStatusUpdating(false)
       perf.end()
     }
+  }
+
+  /** What identifies OUR write when the answer to it was lost — see reconcileSavedStatus. */
+  const reconcileSpecFor = (t: Task, expectedStatus: string | null) => ({
+    actorId:        currentUserId,
+    expectedStatus,
+    previousStatus: t.status,
+    since:          t.last_update_at ?? t.created_at,
+  })
+  /** Applies a task state the server has confirmed (an RPC result, or a saved row read back). */
+  const applySavedState = (base: Task, saved: Partial<SavedTaskState>) => {
+    const nextStatus = (saved.status ?? base.status) as TaskStatus
+    setTask({
+      ...base,
+      status:             nextStatus,
+      completed_at:       saved.completed_at ?? base.completed_at,
+      last_update_at:     saved.last_update_at ?? base.last_update_at,
+      blocker_reason:     saved.blocker_reason ?? null,
+      waiting_on_type:    saved.waiting_on_type ?? null,
+      waiting_on_user_id: saved.waiting_on_user_id ?? null,
+      waiting_on_text:    saved.waiting_on_text ?? null,
+    })
+    setSelectedStatus(nextStatus)
+    invalidateTaskCache(base.assigned_to)
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   /**
@@ -641,25 +655,48 @@ export default function TaskDetailPage() {
    * Nothing about who is acting, who gets told or what the task is called is
    * sent from here: `transition_task_review` reads every one of those from the
    * locked task row and takes the actor from auth.uid(). What comes back is the
-   * updated task, which is merged into local state — no reload, and no
-   * navigation, because none of the three actions moves the task off this page
-   * for the person who performed it.
+   * updated task, which is merged into local state — no reload.
+   *
+   * WHAT THE CALLER WAITS FOR is the RPC's answer and nothing else. The
+   * activity feed is re-read afterwards, in the background, for the actions that
+   * stay on this page; it used to be awaited here, so a slow history read held
+   * a finished submission — and its return to the list — on this screen.
+   *
+   * A FAILURE IS CLASSIFIED before it is shown. A database answer (a code) means
+   * the write was refused and nothing changed. A bare transport failure means
+   * it may have landed, so the saved row is read back: applied → treated as
+   * done, not applied → safe to try again, unreadable → every review control
+   * stays locked until "Check saved status" gets an answer. The RPC is never
+   * re-sent from here.
    */
-  const runReviewAction = async (action: 'submit' | 'approve' | 'return', note?: string) => {
+  const runReviewAction = async (
+    action: ReviewAction,
+    note?: string,
+    opts: { refreshHistory?: boolean } = {},
+  ) => {
     if (!task) return false
-    if (reviewBusyRef.current) return false
+    if (reviewBusyRef.current || reviewUncertain) return false
     reviewBusyRef.current = true
     setReviewBusy(action)
+    const startedOn = task
     // Timed under the existing actions rather than three new ones: approval IS
     // the completion of a delegated task, and submit/return are status moves.
     // The perf audit's vocabulary stays the size it was.
     const perf = perfTrack(action === 'approve' ? 'task.complete' : 'task.status.update')
     try {
-      const { data, error } = await supabase.rpc('transition_task_review', {
-        p_task_id: task.id,
-        p_action:  action,
-        p_note:    note ?? null,
-      })
+      let rpc: { data: unknown; error: { message: string; code?: string | null } | null }
+      try {
+        // Bounded: a request that never answers must not hold the controls forever. On expiry the client aborts, the
+        // failure carries no database code, and it is reconciled below — never sent again.
+        rpc = await supabase.rpc('transition_task_review', {
+          p_task_id: startedOn.id,
+          p_action:  action,
+          p_note:    note ?? null,
+        }).abortSignal(AbortSignal.timeout(WRITE_TIMEOUT_MS))
+      } catch (e) {
+        rpc = { data: null, error: { message: e instanceof Error ? e.message : 'Network error', code: null } }
+      }
+      const { data, error } = rpc
       if (error) {
         console.error(`[runReviewAction:${action}] rpc failed:`, error.message)
         // The RPC's messages are written to be read — "TASK_REVIEW_FORBIDDEN:
@@ -668,45 +705,73 @@ export default function TaskDetailPage() {
         const readable = error.message.includes(':')
           ? error.message.slice(error.message.indexOf(':') + 1).trim()
           : error.message
-        window.alert(readable || 'Failed to update this task. Please try again.')
+        const decided = classifyWriteFailure(error) === 'rejected'
+        // A refusal that says "wrong state" may be the database refusing a RE-SEND of a write that already applied
+        // (a browser re-sends a POST whose reused connection was reset), so it is reconciled like a lost answer.
+        if (decided && !isStateConflict(error)) {
+          window.alert(readable || 'Failed to update this task. Please try again.')
+          return false
+        }
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, REVIEW_RESULT_STATUS[action]))
+        if (decided && settled.outcome === 'unknown') {
+          // The database DID answer, and the saved state cannot be read: show its answer, and do not lock anything.
+          window.alert(readable || 'Failed to update this task. Please try again.')
+          return false
+        }
+        if (settled.outcome === 'not_applied') {
+          window.alert(recoveryMessage('not_applied', startedOn.status))
+          return false
+        }
+        if (settled.outcome !== 'unknown') {
+          // applied / unattributed / changed: show what the server holds, claim nothing, and stay — a Submit does not
+          // leave for the list on evidence that is not tied to this request.
+          perf.mark('reconciled')
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
+          return false
+        }
+        if (mountedRef.current) setReviewUncertain(action)
+        window.alert('The connection dropped and we could not confirm whether this change was saved. Use "Check saved status" before trying again.')
         return false
       }
       perf.mark('rpc')
 
-      const result = (data ?? {}) as {
-        status?: string
-        completed_at?: string | null
-        last_update_at?: string | null
-        blocker_reason?: string | null
-        waiting_on_type?: 'team_member' | 'external' | null
-        waiting_on_user_id?: string | null
-        waiting_on_text?: string | null
+      if (mountedRef.current) {
+        applySavedState(startedOn, (data ?? {}) as Partial<SavedTaskState>)
+        // The notification this wrote is addressed to the OTHER party, so there
+        // is nothing of the actor's own to invalidate here.
+        // The RPC wrote the activity row inside its own transaction, so it is
+        // re-read rather than synthesized — the feed shows exactly what was
+        // recorded, including the return reason. In the background.
+        if (opts.refreshHistory !== false) void loadLog(startedOn.id)
       }
-      const nextStatus = (result.status ?? task.status) as TaskStatus
-      setTask({
-        ...task,
-        status:             nextStatus,
-        last_update_at:     result.last_update_at ?? task.last_update_at,
-        blocker_reason:     result.blocker_reason ?? null,
-        waiting_on_type:    result.waiting_on_type ?? null,
-        waiting_on_user_id: result.waiting_on_user_id ?? null,
-        waiting_on_text:    result.waiting_on_text ?? null,
-      })
-      setSelectedStatus(nextStatus)
-      invalidateTaskCache(task.assigned_to)
-      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-      // The notification this wrote is addressed to the OTHER party, so there
-      // is nothing of the actor's own to invalidate here.
-      // The RPC wrote the activity row inside its own transaction, so it is
-      // re-read rather than synthesized — the feed shows exactly what was
-      // recorded, including the return reason.
-      await loadLog(task.id)
-      perf.mark('reload-log')
       return true
     } finally {
       reviewBusyRef.current = false
-      setReviewBusy(null)
+      if (mountedRef.current) setReviewBusy(null)
       perf.end()
+    }
+  }
+
+  /** Reads what the server holds after a review write whose outcome could not be confirmed. */
+  const checkSavedReviewStatus = async () => {
+    if (!task || !reviewUncertain || reviewBusyRef.current) return
+    reviewBusyRef.current = true
+    setReviewBusy(reviewUncertain)
+    try {
+      const settled = await reconcileSavedStatus(supabase, task.id, reconcileSpecFor(task, REVIEW_RESULT_STATUS[reviewUncertain]))
+      if (!mountedRef.current) return
+      if (settled.outcome === 'unknown') {
+        window.alert('Still unable to read the saved status. Check your connection and try again.')
+        return
+      }
+      applySavedState(task, settled.saved)
+      void loadLog(task.id)
+      setReviewUncertain(null)
+      window.alert(recoveryMessage(settled.outcome, settled.saved.status))
+    } finally {
+      reviewBusyRef.current = false
+      if (mountedRef.current) setReviewBusy(null)
     }
   }
 
@@ -719,24 +784,24 @@ export default function TaskDetailPage() {
   // task's own list when there is none (a pasted URL, an old bookmark).
   //
   // `replace`, not `push`: the submitted task is not left one Back press away,
-  // and Back from the list still goes wherever it went before Task Detail. The
-  // toast stays up briefly first — the same 800 ms Mark Complete waits. A failed
-  // submit returns before any of this, so the user stays here with the error.
-  const submitReturnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => {
-    if (submitReturnTimer.current) clearTimeout(submitReturnTimer.current)
-  }, [])
-
+  // and Back from the list still goes wherever it went before Task Detail. A
+  // failed submit returns before any of this, so the user stays here with the
+  // error.
+  //
+  // IMMEDIATELY, as Mark Complete does. This used to read the activity feed back
+  // and then wait a further 800 ms for a toast that disappeared with the page —
+  // dead time between an acknowledged write and the list, on every submission,
+  // and unbounded when the history read was slow. The list is the confirmation:
+  // its caches are invalidated by `applySavedState`, so the row arrives already
+  // marked as submitted. And only while the person is still here: a Back press
+  // during the RPC means they have already chosen where to be.
   const submitForApproval = async () => {
-    const ok = await runReviewAction('submit')
-    if (!ok) return
-    showToast(`Submitted to ${creatorName ?? 'the creator'} for review.`)
+    const ok = await runReviewAction('submit', undefined, { refreshHistory: false })
+    if (!ok || !mountedRef.current) return
     const target = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task?.task_type)
-    submitReturnTimer.current = setTimeout(() => {
-      // Counts as a return, so the list restores its scroll the way Back does.
-      noteListReturn()
-      router.replace(target)
-    }, 800)
+    // Counts as a return, so the list restores its scroll the way Back does.
+    noteListReturn()
+    router.replace(target)
   }
 
   const approveTask = async () => {
@@ -768,66 +833,116 @@ export default function TaskDetailPage() {
   }
 
   const handleReopen = async () => {
-    if (!task) return
+    if (!task || reopening) return
     const confirmed = window.confirm(
       'Reopen this task? It will be restored to its previous status and the assignee will be notified.'
     )
     if (!confirmed) return
     setReopening(true)
-    const res = await fetch('/api/restore-task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId: task.id, actorName: profile?.full_name }),
-    })
-    if (!res.ok) {
-      console.error('[handleReopen] failed:', await res.text())
-      window.alert('Failed to reopen task. Please try again.')
-      setReopening(false)
-      return
+    const startedOn = task
+    try {
+      let res: Response | null = null
+      try {
+        res = await fetch('/api/restore-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: startedOn.id, actorName: profile?.full_name }),
+        })
+      } catch (e) {
+        console.error('[handleReopen] request failed:', e)
+      }
+      if (!res) {
+        // No answer: it may have been applied. Read the saved status instead of
+        // asking the person to press the button again.
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, null))
+        if (settled.outcome === 'unknown') {
+          window.alert('The connection dropped and we could not confirm whether the task was reopened. Refresh the status before trying again.')
+        } else if (settled.outcome === 'not_applied') {
+          window.alert(recoveryMessage('not_applied', startedOn.status))
+        } else {
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); void loadLog(startedOn.id) }
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
+        }
+        return
+      }
+      if (!res.ok) {
+        console.error('[handleReopen] failed:', await res.text().catch(() => ''))
+        window.alert('Failed to reopen task. Please try again.')
+        return
+      }
+      const { restoredStatus } = await res.json().catch(() => ({ restoredStatus: null }))
+      const restored = (restoredStatus ?? 'working') as TaskStatus
+      if (!mountedRef.current) return
+      setTask({ ...startedOn, status: restored })
+      setSelectedStatus(restored)
+      invalidateTaskCache(startedOn.assigned_to)
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+      void loadLog(startedOn.id)
+    } finally {
+      if (mountedRef.current) setReopening(false)
     }
-    const { restoredStatus } = await res.json()
-    const restored = (restoredStatus ?? 'working') as TaskStatus
-    setTask({ ...task, status: restored })
-    setSelectedStatus(restored)
-    invalidateTaskCache(task.assigned_to)
-    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-    await loadLog(task.id)
-    setReopening(false)
   }
 
+  const cancelNavTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (cancelNavTimer.current) clearTimeout(cancelNavTimer.current)
+  }, [])
+
   const handleCancelTask = async () => {
-    if (!task) return
+    if (!task || cancelling) return
     const finalReason = cancelReason === 'Other' ? cancelOtherText.trim() : cancelReason
     if (!finalReason) return
     setCancelling(true)
-    const res = await fetch('/api/cancel-task', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskId: task.id, reason: finalReason, actorName: profile?.full_name }),
-    })
-    if (!res.ok) {
-      const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
-      window.alert(`Failed to cancel task: ${error}`)
-      setCancelling(false)
-      return
+    const startedOn = task
+    try {
+      let res: Response | null = null
+      try {
+        res = await fetch('/api/cancel-task', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: startedOn.id, reason: finalReason, actorName: profile?.full_name }),
+        })
+      } catch (e) {
+        console.error('[handleCancelTask] request failed:', e)
+      }
+      if (!res) {
+        // No answer: read what was saved rather than inviting a second cancel.
+        const settled = await reconcileSavedStatus(supabase, startedOn.id, reconcileSpecFor(startedOn, 'cancelled'))
+        if (settled.outcome === 'unknown') {
+          window.alert('The connection dropped and we could not confirm whether the task was cancelled. Refresh the status before trying again.')
+        } else if (settled.outcome === 'not_applied') {
+          window.alert(recoveryMessage('not_applied', startedOn.status))
+        } else {
+          if (mountedRef.current) { applySavedState(startedOn, settled.saved); setCancelModalOpen(false); void loadLog(startedOn.id) }
+          window.alert(recoveryMessage(settled.outcome, settled.saved.status))
+        }
+        return
+      } else if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
+        window.alert(`Failed to cancel task: ${error}`)
+        return
+      }
+      if (!mountedRef.current) return
+      const now = new Date().toISOString()
+      setTask({
+        ...startedOn,
+        status:              'cancelled' as TaskStatus,
+        cancellation_reason: finalReason,
+        cancelled_at:        now,
+        cancelled_by:        currentUserId,
+      })
+      setSelectedStatus('cancelled')
+      setCancelModalOpen(false)
+      setCancelReason('')
+      setCancelOtherText('')
+      invalidateTaskCache(startedOn.assigned_to)
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+      void loadLog(startedOn.id)
+      // Only if the person is still here when it fires — leaving clears it.
+      cancelNavTimer.current = setTimeout(() => router.push('/tasks/cancelled'), 600)
+    } finally {
+      if (mountedRef.current) setCancelling(false)
     }
-    const now = new Date().toISOString()
-    setTask({
-      ...task,
-      status:              'cancelled' as TaskStatus,
-      cancellation_reason: finalReason,
-      cancelled_at:        now,
-      cancelled_by:        currentUserId,
-    })
-    setSelectedStatus('cancelled')
-    setCancelModalOpen(false)
-    setCancelReason('')
-    setCancelOtherText('')
-    invalidateTaskCache(task.assigned_to)
-    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-    await loadLog(task.id)
-    setCancelling(false)
-    setTimeout(() => router.push('/tasks/cancelled'), 600)
   }
 
   // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior identical
@@ -1235,6 +1350,14 @@ export default function TaskDetailPage() {
   // waited for exactly as it was when it rode in the query batch. Under
   // ModuleGuard it is already cached and this waits for nothing.
   if (loading || (!!signedInUserId && profilePending)) return <LoadingScreen />
+  if (loadError && !task) {
+    return (
+      <div className="boe-loading" role="alert">
+        <p>This task could not be loaded. Check your connection and try again.</p>
+        <button type="button" onClick={retryTaskLoad}>Try again</button>
+      </div>
+    )
+  }
   if (!task)   return <LoadingScreen message="Task not found" />
 
   const isAssignee   = task.assigned_to === currentUserId
@@ -1261,7 +1384,9 @@ export default function TaskDetailPage() {
   const mayApprove       = canApproveTask(task, currentUserId)
   const mayReturn        = canReturnTask(task, currentUserId)
   const isPendingApproval = task.status === 'pending_approval'
-  const reviewBusyAny    = reviewBusy !== null
+  // Locked while a write is in flight, and while one whose outcome is unknown
+  // has not been reconciled (see reviewUncertain).
+  const reviewBusyAny    = reviewBusy !== null || reviewUncertain !== null
   // The creator's accept-or-return decision. Both halves are the same rule, but
   // both are read so the 2x2 grid can never be laid out for a decision that is
   // only half present.
@@ -1420,6 +1545,22 @@ export default function TaskDetailPage() {
       hideTaskCreateActions={isQuotation}
       onSignOut={handleLogout}
     >
+
+      {reviewUncertain && (
+        <div role="alert" style={{
+          marginBottom: '12px', padding: '10px 14px', borderRadius: '8px',
+          background: '#FFF7E6', border: '1px solid #F0D9A8', color: '#7A5A12',
+          fontSize: '13px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+        }}>
+          <span style={{ flex: '1 1 260px' }}>
+            The connection dropped before we could confirm whether your last change was saved.
+            Approval actions are paused until the saved status is checked — nothing is sent again automatically.
+          </span>
+          <button type="button" className="boe-btn" onClick={checkSavedReviewStatus} disabled={reviewBusy !== null}>
+            {reviewBusy !== null ? 'Checking…' : 'Check saved status'}
+          </button>
+        </div>
+      )}
 
       <div className="boe-task-2col">
 
@@ -2436,6 +2577,22 @@ export default function TaskDetailPage() {
               )}
             </div>
 
+            {activityState !== 'ready' && (
+              <div role={activityState === 'error' ? 'alert' : 'status'} style={{
+                padding: '8px 16px', fontSize: '12px', color: activityState === 'error' ? '#B42318' : colors.muted,
+                borderBottom: '1px solid #E9ECF1', display: 'flex', alignItems: 'center', gap: '10px',
+              }}>
+                {activityState === 'error' ? (
+                  <>
+                    <span>The full activity could not be loaded.</span>
+                    <button type="button" className="boe-btn" onClick={retryActivityLoad}>Try again</button>
+                  </>
+                ) : (
+                  <span>Loading activity…</span>
+                )}
+              </div>
+            )}
+
             {displayLog.length === 0 ? (
               <div style={{ padding: '20px 16px' }}>
                 <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
@@ -3033,56 +3190,21 @@ export default function TaskDetailPage() {
                     setSaving(true)
                     setWaitingOnError(false)
 
-                    if (modalStatus === 'waiting') {
-                      const now = new Date().toISOString()
-                      const updates: Record<string, unknown> = {
-                        status: 'waiting', last_update_at: now,
-                        waiting_on_type:    waitingOnType,
-                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-                      }
-                      if (task.status === 'blocked') updates.blocker_reason = null
-                      const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-                      if (taskErr) {
-                        console.error('[modal/waiting] tasks update failed:', taskErr.message)
-                        window.alert('Failed to save status. Please try again.')
-                        setSaving(false)
-                        return
-                      }
-                      // Read the id back, for the same reason the other two
-                      // status writers do: it is the ONLY way the notification
-                      // can carry the status the task moved FROM. One row, one
-                      // returning id — no second query, and nothing inferred.
-                      const { data: waitingLog } = await supabase.from('task_activity_log').insert({
-                        task_id: task.id, actor_id: currentUserId,
-                        action: 'status_changed', from_status: task.status, to_status: 'waiting', note: null,
-                      })
-                        .select('id')
-                        .single()
-                      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-                      if (recipient && recipient !== currentUserId) {
-                        fetch('/api/notify-status-update', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name, activityLogId: waitingLog?.id ?? null }),
-                        }).catch(err => console.error('[modal/waiting] notification fetch error:', err))
-                      }
-                      const localPatch: Partial<Task> = {
-                        status: 'waiting' as TaskStatus, last_update_at: now,
-                        waiting_on_type:    waitingOnType,
-                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-                      }
-                      if (task.status === 'blocked') localPatch.blocker_reason = null
-                      setTask({ ...task, ...localPatch })
-                      setSelectedStatus('waiting')
-                      await loadLog(task.id)
-                    } else {
-                      await applyStatusChange(modalStatus, null)
-                    }
-
+                    // Waiting goes through the same transactional path as every other status, with its detail in the same call.
+                    const kind = await applyStatusChange(
+                      modalStatus, null, null,
+                      modalStatus === 'waiting'
+                        ? {
+                            type:   waitingOnType,
+                            userId: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+                            text:   waitingOnType === 'external' ? waitingOnText.trim() : null,
+                          }
+                        : undefined,
+                    )
                     setSaving(false)
-                    setModalOpen(false)
+                    // The dialog closes only when something is saved (or was found saved). After a refusal, a lost answer
+                    // or an unreadable state it stays open, so the person can read the message and decide.
+                    if (kind === 'saved' || kind === 'own_action_found' || kind === 'state_changed') setModalOpen(false)
                   }}
                   disabled={saving || statusUpdating}
                   style={{

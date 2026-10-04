@@ -249,11 +249,11 @@ describe('acknowledge, status, complete and reopen all mark the same lists', () 
 
   for (const [name, from, to] of [
     ['acknowledge',      'const acknowledge = async',       'const applyStatusChange = async'],
-    ['status / complete', 'const applyStatusChange = async', 'const submitReturnTimer'],
+    ['status / complete', 'const applyStatusChange = async', 'const applySavedState'],
     ['reopen',           'const handleReopen = async',      'const handleCancelTask = async'],
   ] as const) {
     test(`${name} goes through invalidateTaskCache`, () => {
-      assert.ok(body(from, to).includes('invalidateTaskCache(task.assigned_to)'), name)
+      assert.ok(/invalidateTaskCache\((task|startedOn)\.assigned_to\)/.test(body(from, to)) || /applySavedState\(/.test(body(from, to)), name)
     })
   }
 
@@ -267,17 +267,20 @@ describe('acknowledge, status, complete and reopen all mark the same lists', () 
 })
 
 describe('a failed write neither navigates nor claims success', () => {
-  test('Mark Complete returns before the navigation when the update fails', () => {
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
-    const failed = apply.indexOf("window.alert('Failed to update task status. Please try again.')")
-    assert.ok(failed > 0)
-    assert.ok(apply.slice(failed, failed + 120).includes('return'), 'the alert is followed by a return')
-    assert.ok(failed < apply.indexOf('router.push(dest)'), 'the failure path is reached first')
+  test('Mark Complete navigates only on an ANSWER from the database, and a failed change alerts and stays', () => {
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
+    const savedAt = apply.indexOf("if (outcome.kind === 'saved')")
+    const pushAt = apply.indexOf('router.push(dest)')
+    assert.ok(savedAt > 0 && pushAt > savedAt, 'the navigation sits inside the saved branch')
+    const notSaved = apply.slice(apply.indexOf("return 'saved'"))
+    assert.ok(notSaved.includes('statusChangeMessage(outcome, startedOn.status)'), 'every other outcome gets a message that claims nothing')
+    assert.ok(notSaved.includes('window.alert(message)'))
+    assert.equal(/router\.push\(/.test(notSaved), false, 'no other outcome navigates')
   })
 
   test('Reopen returns before it rewrites the status locally', () => {
     const reopen = DETAIL.slice(DETAIL.indexOf('const handleReopen = async'), DETAIL.indexOf('const handleCancelTask = async'))
-    assert.ok(reopen.indexOf("window.alert('Failed to reopen task. Please try again.')") < reopen.indexOf('setTask({ ...task, status: restored })'))
+    assert.ok(reopen.indexOf("window.alert('Failed to reopen task. Please try again.')") < reopen.indexOf('setTask({ ...startedOn, status: restored })'))
   })
 })
 
@@ -313,37 +316,35 @@ describe('the rules this branch must not have touched', () => {
     const guard = modal.indexOf("if (!filled) { setWaitingOnError(true); return }")
     assert.ok(guard > 0, 'the required-information guard is still there')
     assert.ok(modal.includes("const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()"))
-    assert.ok(guard < modal.indexOf("supabase.from('tasks').update(updates)"),
-      'it refuses BEFORE the write, not after')
+    assert.ok(guard < modal.indexOf('applyStatusChange('), 'it refuses BEFORE the write, not after')
   })
 
   test('Waiting still records who or what is being waited on', () => {
+    // Carried in the same call as the status now; the RPC stores it in the same transaction.
     for (const field of [
-      'waiting_on_type:    waitingOnType,',
-      "waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,",
-      "waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,",
+      'type:   waitingOnType,',
+      "userId: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,",
+      "text:   waitingOnType === 'external' ? waitingOnText.trim() : null,",
     ]) assert.ok(modal.includes(field), field)
+    assert.ok(read('src/lib/tasks/statusChange.ts').includes('p_waiting_on_type'), 'and the call hands it to the function')
   })
 
   test('Blocked still carries its reason, and leaving a status still clears it', () => {
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
-    assert.ok(apply.includes("if (newStatus === 'blocked')   updates.blocker_reason = reason"))
-    assert.ok(apply.includes("if (oldStatus === 'blocked' && newStatus !== 'blocked') updates.blocker_reason = null"))
-    assert.ok(apply.includes("if (oldStatus === 'waiting' && newStatus !== 'waiting') {"))
+    // The reason travels with the call; the resets are enforced by change_task_status() itself, in the same transaction as
+    // the write, so no caller can forget them (pinned against the real function in supabase/tests/task_change_status_assertions.sql).
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
+    assert.ok(apply.includes('status: newStatus, reason, attachmentUrl, waiting'))
+    assert.ok(read('src/lib/tasks/statusChange.ts').includes("supabase.rpc('change_task_status'"), 'one function call, no field-by-field update')
   })
 
-  test('every status change still writes its audit row', () => {
-    // The activity log is the accountability record. A performance change that
-    // dropped it, or moved it after the user was told the change succeeded,
-    // would be a correctness regression wearing a speed costume.
-    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const submitReturnTimer'))
-    const logAt = apply.indexOf("supabase.from('task_activity_log').insert({")
-    assert.ok(logAt > 0)
-    assert.ok(logAt < apply.indexOf('setTask({ ...task, ...localPatch })'),
-      'the audit row is written before the screen says it worked')
-    assert.ok(logAt < apply.indexOf('router.push(dest)'), 'and before any navigation')
-    assert.ok(modal.includes("action: 'status_changed', from_status: task.status, to_status: 'waiting'"),
-      'the Waiting path keeps its own audit row')
+  test('every status change still writes its audit row — in the same transaction as the change', () => {
+    // The activity log is the accountability record. It is now written by the function that changes the status, so a changed
+    // task can no longer exist without it, and a failed history insert rolls the status back.
+    const apply = DETAIL.slice(DETAIL.indexOf('const applyStatusChange = async'), DETAIL.indexOf('const applySavedState'))
+    assert.equal(apply.includes("supabase.from('task_activity_log').insert({"), false, 'the page no longer writes it separately')
+    assert.equal(/\.from\('tasks'\)\.update\(/.test(apply), false, 'and no longer updates the task separately')
+    assert.ok(read('src/lib/tasks/statusChange.ts').includes("supabase.rpc('change_task_status'"), 'the function that inserts the history row is the only write')
+    assert.ok(apply.indexOf('changeTaskStatus(') < apply.indexOf('router.push(dest)'), 'before any navigation')
   })
 
   test('acknowledgement still writes both rows and is still guarded', () => {

@@ -110,7 +110,7 @@ describe('Task Detail starts its queries at mount', () => {
   test('a caller with no session is still sent to /login before anything is read', () => {
     const redirect = DETAIL_CODE.indexOf("if (!signedInUserId) { router.push('/login'); return }")
     assert.ok(redirect > -1)
-    assert.ok(redirect < DETAIL_CODE.indexOf("supabase.from('tasks').select('*, creator:created_by(full_name)')"))
+    assert.ok(redirect < DETAIL_CODE.indexOf('readTaskEssential(supabase, taskId)'))
   })
 
   test('the profile row is not read a second time', () => {
@@ -121,13 +121,18 @@ describe('Task Detail starts its queries at mount', () => {
     assert.ok(DETAIL_CODE.includes('if (loading || (!!signedInUserId && profilePending)) return <LoadingScreen />'))
   })
 
-  test('the task, its activity log and its attachments are still loaded together', () => {
-    const batch = DETAIL_CODE.slice(DETAIL_CODE.indexOf('await Promise.all(['))
-    for (const read of [
-      "supabase.from('tasks').select('*, creator:created_by(full_name)')",
-      "supabase.from('task_activity_log')",
-      "supabase.from('task_attachments')",
-    ]) assert.ok(batch.includes(read), read)
+  test('the task, its activity log and its attachments are still all read at mount, side by side', () => {
+    // The reads moved into src/lib/tasks/taskDetailLoad.ts so each can fail on
+    // its own; the page starts all of them before awaiting any.
+    const lib = read('src/lib/tasks/taskDetailLoad.ts')
+    for (const readSql of [
+      ".from('tasks')",
+      ".from('task_activity_log')",
+      ".from('task_attachments')",
+    ]) assert.ok(lib.includes(readSql), readSql)
+    const effect = DETAIL_CODE.slice(DETAIL_CODE.indexOf('readTaskEssential(supabase, taskId)'))
+    assert.ok(effect.indexOf('readTaskSecondary(supabase, taskId)') < effect.indexOf('await essentialRead'),
+      'the secondary read is started before the essential one is awaited')
   })
 
   test('the active-user directory is NOT one of them — it is the shared cache entry', () => {
