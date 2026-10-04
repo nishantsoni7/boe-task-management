@@ -1061,6 +1061,7 @@ describe('the applied migrations are frozen', () => {
       '20270224000000_customer_review_custom_duplicate_detection.sql',
       '20270225000000_customer_review_reporting_and_leaderboard.sql',
       '20270226000000_payment_request_owner_soft_delete.sql',
+      '20270302000000_task_change_status_rpc.sql',
     ])
   })
 
@@ -1373,6 +1374,7 @@ describe('the applied migrations are frozen', () => {
       '20270224000000_customer_review_custom_duplicate_detection.sql',
       '20270225000000_customer_review_reporting_and_leaderboard.sql',
       '20270226000000_payment_request_owner_soft_delete.sql',
+      '20270302000000_task_change_status_rpc.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
