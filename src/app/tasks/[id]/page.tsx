@@ -666,9 +666,9 @@ export default function TaskDetailPage() {
    * is refreshed to what the server holds and nothing is sent again.
    */
   const recoveryMessage = (outcome: 'own_action_found' | 'unattributed' | 'changed' | 'not_applied', status: string) => {
-    if (outcome === 'not_applied') return 'The connection dropped and we could not find this change saved. Nothing was sent again — you can try again.'
-    if (outcome === 'own_action_found') return `The connection dropped. This task is now "${status}" under your name, but we cannot match it to this exact request (it could also be another tab or an earlier attempt of yours), so it is not treated as confirmed. Nothing was sent again.`
-    return `The connection dropped. This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
+    if (outcome === 'not_applied') return 'We could not find this change saved. Nothing was sent again — you can try again.'
+    if (outcome === 'own_action_found') return `This task is now "${status}" under your name, but we cannot match it to this exact request (it could also be another tab or an earlier attempt of yours), so it is not treated as confirmed. Nothing was sent again.`
+    return `This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
   }
 
   /** Applies a task state the server has confirmed (an RPC result, or a saved row read back). */
