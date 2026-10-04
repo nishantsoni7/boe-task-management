@@ -2447,6 +2447,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const ALLOWED_NOTIFICATION_EVENT_ONCE = new Set([
     'supabase/migrations/20270229000000_notifications_event_idempotency.sql',
     'src/lib/notifications/eventIdempotency.test.ts',
+    'src/lib/notifications/statusEventNotice.ts',
+    'src/lib/notifications/statusEventNotice.test.ts',
+    'src/lib/notifications/activityLink.ts',
     'src/lib/notificationWrites.ts',
     'src/app/api/notify-status-update/route.ts',
     'src/app/finance/expenses/expenseSurfaces.test.ts',
@@ -2831,8 +2834,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   })
 
   test('the notification event-key allowance is EXACTLY the files of that change', () => {
-    // Pinned by value so it cannot quietly grow. Two application files are in it on purpose (the writer and the one route
-    // that reads its answer); nothing under finance/, orders/, payroll or permissions rides in on it.
+    // Pinned by value so it cannot quietly grow. The application files in it are on purpose (the writer, the one route that reads its answer, and the event helpers); nothing under finance/, orders/, payroll or permissions rides in on it.
     assert.deepEqual([...ALLOWED_NOTIFICATION_EVENT_ONCE].sort(), [
       'src/app/api/notify-status-update/route.ts',
       'src/app/finance/expenses/expenseSurfaces.test.ts',
@@ -2842,9 +2844,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
       'src/lib/modules/moduleOrderStorage.test.ts',
       'src/lib/notificationWrites.ts',
+      'src/lib/notifications/activityLink.ts',
       'src/lib/notifications/activityLinkMigration.test.ts',
       'src/lib/notifications/eventIdempotency.test.ts',
       'src/lib/notifications/groupMutations.test.ts',
+      'src/lib/notifications/statusEventNotice.test.ts',
+      'src/lib/notifications/statusEventNotice.ts',
       'src/lib/orders/orderFinanceTestReset.test.ts',
       'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
       'src/lib/orders/piFinanceVerificationRemoval.test.ts',

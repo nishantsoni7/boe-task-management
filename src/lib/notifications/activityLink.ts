@@ -79,3 +79,29 @@ export async function findTaskCreationActivityId(
   const rows = (data ?? []) as Row[]
   return rows.length > 0 && typeof rows[0].id === 'string' ? rows[0].id : null
 }
+
+/**
+ * The activity row a caller-supplied id names, IF it belongs to the task — the whole row the notice may be derived from.
+ * Null when it does not exist, belongs to another task, or cannot be read: never a guess.
+ */
+export async function loadActivityEvent(
+  client: ActivityClient,
+  activityLogId: string,
+  taskId: string,
+): Promise<{ id: string; task_id: string; actor_id: string | null; action: string; from_status: string | null; to_status: string | null } | null> {
+  const { data, error } = await client
+    .from('task_activity_log')
+    .select('id, task_id, actor_id, action, from_status, to_status')
+    .eq('id', activityLogId)
+    .eq('task_id', taskId)
+    .limit(1)
+  if (error) return null
+  const row = ((data ?? []) as Record<string, unknown>[])[0]
+  if (!row || typeof row.id !== 'string' || typeof row.task_id !== 'string' || typeof row.action !== 'string') return null
+  return {
+    id: row.id, task_id: row.task_id, action: row.action,
+    actor_id: typeof row.actor_id === 'string' ? row.actor_id : null,
+    from_status: typeof row.from_status === 'string' ? row.from_status : null,
+    to_status: typeof row.to_status === 'string' ? row.to_status : null,
+  }
+}

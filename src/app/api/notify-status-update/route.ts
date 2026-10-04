@@ -2,7 +2,8 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
-import { verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { loadActivityEvent, verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { deriveNoticeFromEvent } from '@/lib/notifications/statusEventNotice'
 import { shouldNotifyTaskStatusEvent } from '@/lib/notifications/taskNotificationPolicy'
 import { isValidUUID } from '@/lib/ui'
 
@@ -30,7 +31,9 @@ export async function POST(req: NextRequest) {
   // `title`; the other two always sent exactly what the task row already says.
   // So nothing legitimate is lost by refusing to listen.
   const {
-    taskId, createdBy, recipientId, action,
+    taskId, createdBy, recipientId, action: claimedAction,
+    // true when the caller is announcing an event it found AFTER a lost response: the event is then REQUIRED, never optional.
+    recovery,
     // The activity row the caller just created. VERIFIED below, never trusted:
     // an unchecked id here would let a caller point a notification at any
     // activity row in the database and have its note read back to the
@@ -114,6 +117,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid recipient' }, { status: 403 })
   }
 
+  // THE EVENT, WHEN THE CALLER NAMES ONE, IS THE SOURCE OF THE FACTS.
+  //
+  // A status change leaves a history row. When the caller names that row, the action is READ from it and the recipient and the
+  // type are checked against it and the stored task: the event must be a status change, on this task, authored by the caller,
+  // and the action and recipient the request claims must be the ones it implies. A disagreement is refused (422), never
+  // silently overridden. See src/lib/notifications/statusEventNotice.ts. This sits after both party checks above, so a refusal
+  // still reads as one, and before the notification policy and the write.
+  //
+  // A `recovery` send (the page found its event after a lost response) REQUIRES such an event: with none, nothing is written, so
+  // a recovery can never degrade into an unlinked notice that the event key cannot protect.
+  //
+  // Matching an event is not proof that THIS request wrote it (a second tab of the same person leaves an identical row), so
+  // nothing here, or in what is returned, says "confirmed".
+  const eventRow = typeof activityLogId === 'string' && isValidUUID(activityLogId)
+    ? await loadActivityEvent(supabase, activityLogId, taskId)
+    : null
+  const isStatusEvent = !!eventRow && eventRow.action === 'status_changed'
+  if (recovery === true && !isStatusEvent) {
+    return NextResponse.json({ error: 'No matching event for this notification', reason: 'event_required' }, { status: 422 })
+  }
+  const derived = isStatusEvent && eventRow
+    ? deriveNoticeFromEvent(
+        eventRow,
+        { id: taskId, created_by: task.created_by, assigned_to: task.assigned_to },
+        user.id,
+        { action: claimedAction, recipientId: notifyUserId },
+      )
+    : null
+  if (derived && !derived.ok) {
+    console.error('[notify-status-update] event does not match the notification', { caller: user.id, taskId, reason: derived.reason })
+    return NextResponse.json({ error: 'The event does not match this notification', reason: derived.reason }, { status: 422 })
+  }
+  // From here on `action` is the EVENT's status when there is a status event, the caller's word otherwise (legacy callers).
+  const action: string | undefined = derived?.ok ? derived.action : claimedAction
+
   // NOT ANNOUNCED, BY RULE — after both party checks, so a refusal still reads
   // as one. A quotation request writes no notification, and a delegated task's
   // "completed" is its creator's approval arriving by this generic road. See
@@ -132,8 +170,9 @@ export async function POST(req: NextRequest) {
   // The link is optional at every step: an absent, malformed or unrelated id
   // produces an UNLINKED notification, which renders exactly the fallbacks
   // every historical row renders. A worse notification, never a failed one.
-  const linkedActivityId =
-    typeof activityLogId === 'string' && isValidUUID(activityLogId)
+  const linkedActivityId = eventRow
+    ? eventRow.id
+    : typeof activityLogId === 'string' && isValidUUID(activityLogId)
       ? await verifyActivityBelongsToTask(supabase, activityLogId, taskId)
       : null
 
