@@ -1,5 +1,5 @@
 /**
- * THE ADVANCE IS 40% OF THE TOTAL BEFORE GST (20270226000000), read as text.
+ * THE ADVANCE IS 40% OF THE TOTAL BEFORE GST (20270227000000), read as text.
  *
  * Executing it was done against a disposable local stack (a clone of a fully
  * migrated schema): supabase/tests/advance_on_total_before_gst_assertions.sql,
@@ -31,7 +31,7 @@ const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const stripSql = (s: string) => s.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
 
-const NAME = '20270226000000_order_submission_advance_on_total_before_gst.sql'
+const NAME = '20270227000000_order_submission_advance_on_total_before_gst.sql'
 const MIGRATION = read(`supabase/migrations/${NAME}`)
 const SQL = stripSql(MIGRATION)
 const ROLLBACK = read('docs/Module Docs/advance-on-total-before-gst-rollback.sql')

@@ -649,7 +649,7 @@ end $$;
 -- The invariant the cases assert, in the RPC's own returned fields:
 --
 --   requirement = round(advance_base * standard_percent / 100, 2)
---   (20270226000000: the requirement is a share of the TOTAL BEFORE GST, advance_base. These fixtures
+--   (20270227000000: the requirement is a share of the TOTAL BEFORE GST, advance_base. These fixtures
 --   carry no GST, so the base equals the grand total and every figure below is unchanged; the GST case
 --   is held by advance_on_total_before_gst_assertions.sql.)
 --   needed      = max(requirement - verified, 0)

@@ -1,4 +1,4 @@
--- THE ADVANCE IS 40% OF THE TOTAL BEFORE GST (20270226000000)
+-- THE ADVANCE IS 40% OF THE TOTAL BEFORE GST (20270227000000)
 -- ===========================================================================
 -- The rule: Advance % = VERIFIED advance / Total before GST x 100, and the
 -- required 40% advance is 40% of the Total before GST (not of the Grand Total).
@@ -33,7 +33,7 @@
 -- Runs inside ONE transaction that ends in ROLLBACK.
 -- SELF-CONTAINED FIXTURES: creates its own people (a1b0…), its own operations
 -- reviewer, and depends on nobody else's seed. Needs the migration chain
--- through 20270226000000.
+-- through 20270227000000.
 -- On success prints NOTICE 'ALL ADVANCE-ON-TOTAL-BEFORE-GST ASSERTIONS PASSED'.
 
 \set ON_ERROR_STOP on

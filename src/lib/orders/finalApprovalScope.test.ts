@@ -892,7 +892,7 @@ const PI_ACTIVITY_ACTION_CHECK_EXTENSION =
   /(?:execute\s+format\(\s*'alter\s+table\s+(?:public\.)?order_submission_activity\s+drop\s+constraint[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+(?:drop|add)\s+constraint\s+[^;]*order_submission_activity_action_check[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+add\s+constraint\s+order_submission_activity_action_check[^;]*;)/gi
 
 // THE SECOND SANCTIONED EXTENSION (the advance is taken of the Total before GST,
-// 20270226000000). The advance rule lives in ONE constraint on order_submissions,
+// 20270227000000). The advance rule lives in ONE constraint on order_submissions,
 // order_submissions_advance_amount_matches_condition, and moving its base from
 // the Grand Total to the Total before GST means dropping and re-adding exactly
 // that constraint. Only those two statements are forgiven: the pattern names the

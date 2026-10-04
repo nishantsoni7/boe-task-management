@@ -143,7 +143,7 @@ create function pg_temp.mk_order(
   p_total numeric, p_product numeric,
   p_assigned uuid default null, p_test boolean default false,
   p_requested_by uuid default null,
-  -- 20270226000000: the advance is of the TOTAL BEFORE GST, so an Order is given a source PI carrying
+  -- 20270227000000: the advance is of the TOTAL BEFORE GST, so an Order is given a source PI carrying
   -- a pre-GST total beside its value as the grand total. Default: the same figure (no GST). Pass a
   -- different figure for GST, or -1 for an Order with a value and NO derivable base. A NULL value has none.
   p_base numeric default null
@@ -269,7 +269,7 @@ begin
   o := pg_temp.mk_order('adv_zero',   'running', t, 1000000, 800000);
   o := pg_temp.mk_order('adv_noval',  'running', t, null,    null);
   o := pg_temp.mk_order('adv_disp',   'dispatched', t, 1000000, 800000);
-  -- 20270226000000: the percentage and the shortfall are of the TOTAL BEFORE GST (base 10,00,000, GST
+  -- 20270227000000: the percentage and the shortfall are of the TOTAL BEFORE GST (base 10,00,000, GST
   -- 1,80,000, Grand Total 11,80,000); an Order with a value and no derivable base is not assessable.
   o := pg_temp.mk_order('adv_gst_met',   'running', t, 1180000, 800000, null, false, null, 1000000);  perform pg_temp.pay(o, 400000.00);
   o := pg_temp.mk_order('adv_gst_short', 'running', t, 1180000, 800000, null, false, null, 1000000);  perform pg_temp.pay(o, 399999.99);
@@ -344,7 +344,7 @@ begin
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_noval') is null, 'no value is not called "below 40%"');
   perform pg_temp.check((s -> 'gaps' ->> 'advance_value_unknown')::int >= 1, 'and is COUNTED as unassessable');
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_disp') is null, 'a dispatched Order is not listed');
-  -- 20270226000000: the base is the total before GST.
+  -- 20270227000000: the base is the total before GST.
   perform pg_temp.check(pg_temp.row_of(s, 'advance_below_40', 'adv_gst_met') is null,
                         'exactly 40.00% of the total before GST (4,00,000 of 10,00,000) is not listed, though it is 33.9% of the Grand Total');
   r := pg_temp.row_of(s, 'advance_below_40', 'adv_gst_short');
@@ -634,7 +634,7 @@ begin
   o3 := pg_temp.mk_order('sc_3', 'running', t, 1000, 1000, current_setting('test.s3_id')::uuid, false, null, -1);
   on_ := pg_temp.mk_order('sc_n', 'running', t, 1000, 1000, n, false, null, -1);           -- belongs to a NON-candidate
   pay := pg_temp.pay(o2, 100);                                           -- verified money on S2's order: 10%, below 40%
-  -- 20270226000000: sc_2 has no source PI (so it has no advance base, and the document-generation
+  -- 20270227000000: sc_2 has no source PI (so it has no advance base, and the document-generation
   -- matrix below keeps asking about an Order with no PI). A colleague's order that DOES have a base:
   oa := pg_temp.mk_order('adv_scope', 'running', t, 1000, 1000, s2);  perform pg_temp.pay(oa, 100);
 

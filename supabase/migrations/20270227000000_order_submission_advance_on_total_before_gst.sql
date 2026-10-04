@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270226000000  THE ADVANCE IS A PERCENTAGE OF THE TOTAL BEFORE GST
+-- 20270227000000  THE ADVANCE IS A PERCENTAGE OF THE TOTAL BEFORE GST
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- THE RULE (agreed with the business, replacing "40% of the Grand Total"):
@@ -162,7 +162,7 @@ as $$
 $$;
 revoke execute on function public.order_advance_numeric(text) from public, anon, authenticated, service_role;
 comment on function public.order_advance_numeric(text) is
-  'A plain decimal out of text, else NULL (never raises, never NaN). Used to read commercial figures out of a PI version''s staged parse. Executable by no client role. 20270226000000.';
+  'A plain decimal out of text, else NULL (never raises, never NaN). Used to read commercial figures out of a PI version''s staged parse. Executable by no client role. 20270227000000.';
 
 -- The Order's advance base: the pre-GST total of the PI that PRICES it.
 --
@@ -206,7 +206,7 @@ as $$
 $$;
 revoke execute on function public.order_advance_base(uuid) from public, anon, authenticated, service_role;
 comment on function public.order_advance_base(uuid) is
-  'The pre-GST total an Order''s advance is measured against, derived on read from the in-force PI version (or the source PI) when its Grand Total is the Order''s value, else NULL. Never stored, never back-filled. Executable by no client role. 20270226000000.';
+  'The pre-GST total an Order''s advance is measured against, derived on read from the in-force PI version (or the source PI) when its Grand Total is the Order''s value, else NULL. Never stored, never back-filled. Executable by no client role. 20270227000000.';
 
 -- The same scalar for a signed-in reader, shaped as a PostgREST COMPUTED COLUMN:
 --   .from('orders').select('id, total_value, order_total_before_gst')
@@ -225,7 +225,7 @@ $$;
 revoke all on function public.order_total_before_gst(public.orders) from public, anon, service_role;
 grant execute on function public.order_total_before_gst(public.orders) to authenticated;
 comment on function public.order_total_before_gst(public.orders) is
-  'The pre-GST total this Order''s advance is measured against (derive-on-read, no write), or NULL when none is known; NULL for a caller who cannot read the Order. A PostgREST computed column. 20270226000000.';
+  'The pre-GST total this Order''s advance is measured against (derive-on-read, no write), or NULL when none is known; NULL for a caller who cannot read the Order. A PostgREST computed column. 20270227000000.';
 
 -- ═══ 2. The pure helpers: the argument is now the PRE-GST BASE ══════════════
 --
@@ -332,19 +332,19 @@ as $$
 $$;
 
 comment on function public.order_submission_standard_advance_amount(numeric) is
-  'The smallest whole-paise advance that meets the standard 40% of the PRE-GST BASE (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. 20270226000000.';
+  'The smallest whole-paise advance that meets the standard 40% of the PRE-GST BASE (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. 20270227000000.';
 comment on function public.order_submission_advance_amount(numeric, numeric) is
-  'round(base x percent / 100, 2) where the base is the PRE-GST total (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. 20270226000000.';
+  'round(base x percent / 100, 2) where the base is the PRE-GST total (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. 20270227000000.';
 comment on function public.order_submission_required_payment(numeric) is
-  '40% of the PRE-GST base (the argument, still named p_grand_total), exact; NULL for a NULL, NaN, zero or negative base. 20270226000000.';
+  '40% of the PRE-GST base (the argument, still named p_grand_total), exact; NULL for a NULL, NaN, zero or negative base. 20270227000000.';
 comment on function public.order_submission_payment_shortfall(numeric, numeric) is
-  'How much more verified payment reaches 40% of the PRE-GST base (the argument, still named p_grand_total), rounded UP to the paisa; NULL when the base or the verified figure is unusable. 20270226000000.';
+  'How much more verified payment reaches 40% of the PRE-GST base (the argument, still named p_grand_total), rounded UP to the paisa; NULL when the base or the verified figure is unusable. 20270227000000.';
 comment on function public.order_submission_payment_ready(numeric, numeric, text) is
-  'True only with a usable PRE-GST base (the argument, still named p_grand_total) and either an approved exception or verified payment of at least 40% of it. NULL, zero, NaN and negative bases are never ready. 20270226000000.';
+  'True only with a usable PRE-GST base (the argument, still named p_grand_total) and either an approved exception or verified payment of at least 40% of it. NULL, zero, NaN and negative bases are never ready. 20270227000000.';
 comment on function public.order_submission_advance_percent_of(numeric, numeric) is
-  'trunc(amount x 100 / base, 2) where the base is the PRE-GST total (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. Body unchanged by 20270226000000: only what is passed in changed.';
+  'trunc(amount x 100 / base, 2) where the base is the PRE-GST total (the argument, still named p_grand_total); NULL for a NULL, NaN, zero or negative base. Body unchanged by 20270227000000: only what is passed in changed.';
 comment on function public.order_submission_effective_advance_amount(text, numeric, numeric, numeric) is
-  'The advance a PI states: its declared amount, else the standard / exception figure of the PRE-GST base (the last argument, still named p_grand_total). Body unchanged by 20270226000000: only what is passed in changed.';
+  'The advance a PI states: its declared amount, else the standard / exception figure of the PRE-GST base (the last argument, still named p_grand_total). Body unchanged by 20270227000000: only what is passed in changed.';
 
 -- ═══ 3. A declared amount follows BOTH totals ═══════════════════════════════
 --
@@ -405,7 +405,7 @@ alter table public.order_submissions
   );
 
 comment on column public.order_submissions.advance_declared_amount is
-  'The advance AMOUNT the employee declared for this PI, in rupees, to two decimal places. Since 20270226000000 the 40% is of the TOTAL BEFORE GST: at least total_before_gst x 40 / 100 under the standard condition and strictly below it under an exception (the table constraint is the looser one -- standard: at least 40% of the pre-GST total; exception: below 40% of the Grand Total -- so declarations made on the old basis stay valid; the submit door applies the strict pre-GST classification). NULL means no amount was declared: a record written before this column existed, or one whose totals were replaced afterwards. NULL is never zero -- zero is the No advance declaration. Says nothing about payment: no money has been recorded, requested, verified or received.';
+  'The advance AMOUNT the employee declared for this PI, in rupees, to two decimal places. Since 20270227000000 the 40% is of the TOTAL BEFORE GST: at least total_before_gst x 40 / 100 under the standard condition and strictly below it under an exception (the table constraint is the looser one -- standard: at least 40% of the pre-GST total; exception: below 40% of the Grand Total -- so declarations made on the old basis stay valid; the submit door applies the strict pre-GST classification). NULL means no amount was declared: a record written before this column existed, or one whose totals were replaced afterwards. NULL is never zero -- zero is the No advance declaration. Says nothing about payment: no money has been recorded, requested, verified or received.';
 
 -- ═══ 5. The callers: every body is its CURRENT latest definition with only the
 -- denominator (and the refusal / keys that go with it) changed ════════════════
@@ -436,7 +436,7 @@ begin
   select * into o from public.orders where id = p_order_id;
   if not found then return null; end if;
 
-  -- 20270226000000: THE ADVANCE IS MEASURED AGAINST THE TOTAL BEFORE GST, not the
+  -- 20270227000000: THE ADVANCE IS MEASURED AGAINST THE TOTAL BEFORE GST, not the
   -- Grand Total. The base is derived on read (order_advance_base): the in-force PI
   -- version's pre-GST total, or the source PI's, when its Grand Total is the Order's
   -- value; otherwise there is no base. NULL, zero and NaN are "no base on record":
@@ -494,7 +494,7 @@ begin
 
   return jsonb_build_object(
     'order_value',  o.total_value,
-    'value_known',  v_known,            -- since 20270226000000: the advance BASE is known
+    'value_known',  v_known,            -- since 20270227000000: the advance BASE is known
     'order_value_known', v_value_known,
     'advance_base', v_base,
     'value_epoch',  o.value_epoch,
@@ -688,7 +688,7 @@ begin
       using errcode = 'P0001';
   end if;
 
-  -- ── 6a'. 20270226000000: the 40% advance is of the TOTAL BEFORE GST ──
+  -- ── 6a'. 20270227000000: the 40% advance is of the TOTAL BEFORE GST ──
   -- A PI with a grand total but no usable pre-GST figure cannot be measured, and
   -- an exception does not change that: refused before any payment is judged.
   if v_sub.total_before_gst is null
@@ -1089,7 +1089,7 @@ begin
       using errcode = 'P0001';
   end if;
 
-  -- 20270226000000: a decision is taken against a figure. No usable total before
+  -- 20270227000000: a decision is taken against a figure. No usable total before
   -- GST (the base of the 40%), no decision.
   if v_sub.total_before_gst is null
      or v_sub.total_before_gst = 'NaN'::numeric
@@ -1339,7 +1339,7 @@ begin
       using errcode = 'P0001';
   end if;
 
-  -- 20270226000000: the 40% is of the TOTAL BEFORE GST. A PI that states a grand
+  -- 20270227000000: the 40% is of the TOTAL BEFORE GST. A PI that states a grand
   -- total but no usable pre-GST figure is incomplete, in the same words.
   if v_sub.total_before_gst is null
      or v_sub.total_before_gst = 'NaN'::numeric
@@ -1932,7 +1932,7 @@ begin
         using errcode = 'P0001';
     end if;
 
-    -- 20270226000000: the advance is a percentage of the TOTAL BEFORE GST. Without
+    -- 20270227000000: the advance is a percentage of the TOTAL BEFORE GST. Without
     -- a usable pre-GST figure nothing can be classified as standard or reduced.
     if v_sub.total_before_gst is null
        or v_sub.total_before_gst = 'NaN'::numeric
@@ -2350,7 +2350,7 @@ begin
 
   v_attached := v_verified + v_unverif;
   v_total    := v_sub.grand_total;
-  -- 20270226000000: every advance figure below is measured against the TOTAL
+  -- 20270227000000: every advance figure below is measured against the TOTAL
   -- BEFORE GST (advance_base). No usable base: percentages, required and
   -- shortfall are NULL and the gate is not cleared.
   v_base_ok  := v_sub.total_before_gst is not null and v_sub.total_before_gst <> 'NaN'::numeric and v_sub.total_before_gst > 0;
@@ -2737,7 +2737,7 @@ begin
       select jsonb_build_object(
                'order_id', d.id, 'display_number', d.display_number, 'client_name', d.client_name,
                'status', d.status, 'order_value', d.total_value,
-               -- 20270226000000: the percentage and the shortfall are of the TOTAL
+               -- 20270227000000: the percentage and the shortfall are of the TOTAL
                -- BEFORE GST (advance_base), not of order_value.
                'advance_base', p.pos -> 'advance_base',
                'verified', p.pos -> 'verified',
@@ -3029,7 +3029,7 @@ begin
    where s.status in ('draft', 'submitted', 'needs_changes')
      and s.grand_total is not null
      and (s.total_before_gst is null or s.total_before_gst <= 0);
-  raise notice '20270226000000: % aligned Order(s) have no derivable total before GST (they read as not ready until a payment, a PI revision or an administrator''s approval says otherwise; nothing was written); % open PI(s) have a grand total but no usable total before GST (their approval / submission is refused as incomplete until the PI is corrected).', v_aligned, v_n;
+  raise notice '20270227000000: % aligned Order(s) have no derivable total before GST (they read as not ready until a payment, a PI revision or an administrator''s approval says otherwise; nothing was written); % open PI(s) have a grand total but no usable total before GST (their approval / submission is refused as incomplete until the PI is corrected).', v_aligned, v_n;
 end $verify$;
 
 drop table if exists pg_temp.pi_advance_acl_before;

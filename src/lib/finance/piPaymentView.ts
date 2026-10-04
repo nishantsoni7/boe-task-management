@@ -114,7 +114,7 @@ export type PiPaymentSummary = {
   grand_total: string | number | null
   /**
    * The Total before GST, and the BASE every percentage and requirement below is
-   * taken of (20270226000000, advanceFormula.ts). Null when the PI states none —
+   * taken of (20270227000000, advanceFormula.ts). Null when the PI states none —
    * in which case the percentages are null too and nothing is "met".
    */
   total_before_gst?: string | number | null

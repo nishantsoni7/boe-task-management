@@ -62,6 +62,7 @@ function markerColor(row: ActivityRow): string {
   if (row.event_type === 'allocation_created')  return colors.green
   if (row.event_type === 'allocation_reversed') return colors.amber
   if (row.event_type === 'allocation_moved')    return colors.blue
+  if (row.event_type === 'request_deleted')     return colors.red
   // A completed handover is the outcome the business waits for; clearing one is
   // a change worth noticing. Colour is never the only signal — the event text
   // above says which of the two happened.

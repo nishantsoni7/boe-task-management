@@ -715,16 +715,23 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
       if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
+      // Payment Requests: a salesperson's soft delete of their own never-approved request,
+      // held by src/lib/finance/ownPaymentRequestDeletion.test.tsx and
+      // supabase/tests/payment_request_owner_soft_delete_assertions.sql.
+      if (f === 'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql') continue
       // And Test Data Cleanup's PI-version SET NULL (20270216000000): one
       // guard re-emitted, held by its own suite.
       if (f === 'supabase/migrations/20270216000000_test_data_cleanup_pi_version_set_null.sql') continue
       // And the test Order cleanup's keep/reuse number choice (20270217000000),
       // held by src/lib/orders/cleanupNumberChoice.test.ts.
       if (f === 'supabase/migrations/20270217000000_order_submission_cleanup_number_choice.sql') continue
-      // The advance is 40% of the TOTAL BEFORE GST (20270226000000), held by
+      // The advance is 40% of the TOTAL BEFORE GST (20270227000000), held by
       // src/lib/orders/advanceOnTotalBeforeGstSchema.test.ts and
       // supabase/tests/advance_on_total_before_gst_assertions.sql.
-      if (f === 'supabase/migrations/20270226000000_order_submission_advance_on_total_before_gst.sql') continue
+      if (f === 'supabase/migrations/20270227000000_order_submission_advance_on_total_before_gst.sql') continue
+      // And change_task_status() (20270302000000): one additive function, held by
+      // supabase/tests/task_change_status_assertions.sql and the inventory suites.
+      if (f === 'supabase/migrations/20270302000000_task_change_status_rpc.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -1816,8 +1823,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * stored amount or Finance file.
    */
   const ALLOWED_ZERO_DISCOUNT_SUBTOTAL = new Set([
-    'supabase/migrations/20270226000000_order_submission_advance_on_total_before_gst.sql',
-    // The advance is taken of the TOTAL BEFORE GST (20270226000000): the shared formula, the breakdown,
+    'supabase/migrations/20270227000000_order_submission_advance_on_total_before_gst.sql',
+    // The advance is taken of the TOTAL BEFORE GST (20270227000000): the shared formula, the breakdown,
     // the payment wording and the tests that hold them. No payment, allocation or verification rule.
     'src/app/globals.css',
     'src/app/orders/[id]/OrderWorkspace.tsx',
@@ -2491,6 +2498,44 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/taskCreateFlow.test.ts',
   ])
 
+  // Task Management: change_task_status() (2026-10-03). One additive SECURITY DEFINER function so the
+  // assignee's status change and its history row are one transaction. The migration, and the one line each
+  // migration-inventory suite needs to name it; the assertions live under supabase/tests/. No application file
+  // changes, no Finance or Orders file.
+  const ALLOWED_TASK_CHANGE_STATUS_RPC = new Set([
+    'supabase/migrations/20270302000000_task_change_status_rpc.sql',
+    'src/lib/tasks/changeTaskStatusMigration.test.ts',
+    'src/lib/tasks/changeTaskStatusNotificationCompat.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+
+  // Task Management: Task Detail stalls (2026-10-03). Task Detail's reads split into
+  // essential and secondary, a submission no longer waits on the history, and an
+  // unconfirmed write is reconciled rather than repeated. One page, one new
+  // helper, and the suites that pin them; no migration, no Finance or Orders file.
+  const ALLOWED_TASK_DETAIL_STALLS = new Set([
+    'src/app/tasks/[id]/page.tsx',
+    'src/lib/tasks/taskDetailLoad.ts',
+    'src/lib/tasks/taskDetailLoad.test.ts',
+    'src/lib/tasks/taskDetailOpenFromDrawer.test.ts',
+    'src/lib/tasks/taskNavigationPerformance.test.ts',
+    'src/lib/tasks/taskReturnPath.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+  ])
+
   // Customer Reviews: employee edit / delete, duplicate detection, admin reporting and the shared
   // leaderboard (feat/customer-reviews-edit-dup-reporting). Custom Review submissions only: no Finance
   // or Orders screen, figure or table. Named one by one; the migration inventories gain one line each.
@@ -2570,6 +2615,47 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/customerReviews/submitAvailability.ts',
   ])
   // MARKER-END
+
+  // A salesperson deleting their OWN never-approved payment request, and the
+  // salesperson's Payment Requests columns (feat/payment-request-salesperson-delete).
+  // One soft-delete migration (nothing is hard-deleted; approved money is refused in the
+  // database), the Payment Requests list and its details footer, two small libraries and a
+  // dialog, the activity label for the new trail event, and the suites that hold them. It
+  // changes no payment entry, allocation or balance.
+  const ALLOWED_PAYMENT_REQUEST_OWNER_DELETE = new Set([
+    'docs/releases/payment-request-owner-soft-delete-release.md',
+    'src/lib/finance/paymentCancelledLinks.test.ts',
+    'src/lib/finance/paymentCancelledLinks.ts',
+    'src/lib/finance/paymentDestination.ts',
+    'src/lib/finance/paymentRequestsSalesView.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/app/finance/page.tsx',
+    'src/app/finance/paymentRequestsTable.render.test.tsx',
+    'src/components/PaymentRequestActivity.tsx',
+    'src/components/finance/DeleteOwnPaymentRequestModal.tsx',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/ownPaymentRequestDeletion.test.tsx',
+    'src/lib/finance/ownPaymentRequestDeletion.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/finance/paymentActivityLabels.test.ts',
+    'src/lib/finance/paymentActivityLabels.ts',
+    'src/lib/finance/paymentCommercialTotals.test.ts',
+    'src/lib/finance/paymentCommercialTotals.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+    'supabase/migrations/20270226000000_payment_request_owner_soft_delete.sql',
+    'supabase/tests/payment_request_owner_soft_delete_assertions.sql',
+  ])
+
 
   // The Orders dashboard redesign (2026-09-29, 20270221000000): what needs
   // intervention, revenue, Factory Focus and Order visibility scopes. One new migration, the dashboard read
@@ -2708,6 +2794,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
+    !ALLOWED_TASK_CHANGE_STATUS_RPC.has(f) &&
+    !ALLOWED_TASK_DETAIL_STALLS.has(f) &&
     !ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(f) &&
     f !== ORDER_0524_HANDOFF_MIGRATION &&
     !ALLOWED_DEFINER_SEARCH_PATH.has(f) &&
@@ -2721,7 +2809,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     f !== CLEANUP_NUMBER_CHOICE_MIGRATION &&
     !ALLOWED_ORDERS_DASHBOARD.has(f) &&
     !ALLOWED_MINOP_COLLECTION_ONLY.has(f) &&
-    !ALLOWED_CUSTOMER_REVIEWS_V2.has(f)
+    !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
+    !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f)
 
   test('the operations-handoff allowance names files, never a directory, and reaches no money', () => {
     for (const file of ALLOWED_OPERATIONS_HANDOFF) {
@@ -2810,6 +2899,60 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // And it may not shadow anything the PI list already accounts for.
     for (const file of ALLOWED_QUICK_ACTION_PLACEMENT) {
       assert.equal(ALLOWED_PI_PREVIEW_REFINEMENT.has(file), false)
+    }
+  })
+
+  test('the change_task_status allowance is EXACTLY the files of that change', () => {
+    // Pinned by value so it cannot quietly grow: the one migration, its own shape suite, the inventory suites that must
+    // name it, and this file. No application source, and nothing Finance or Orders.
+    assert.deepEqual([...ALLOWED_TASK_CHANGE_STATUS_RPC].sort(), [
+      'src/app/finance/expenses/expenseSurfaces.test.ts',
+      'src/lib/announcementsMigration.test.ts',
+      'src/lib/boeCredits/reviewReward.test.ts',
+      'src/lib/customerReviews/migration.test.ts',
+      'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+      'src/lib/modules/moduleOrderStorage.test.ts',
+      'src/lib/notifications/activityLinkMigration.test.ts',
+      'src/lib/notifications/groupMutations.test.ts',
+      'src/lib/orders/orderFinanceTestReset.test.ts',
+      'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+      'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+      'src/lib/tasks/assignmentWriteAuthority.test.ts',
+      'src/lib/tasks/changeTaskStatusMigration.test.ts',
+      'src/lib/tasks/changeTaskStatusNotificationCompat.test.ts',
+      'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+      'src/lib/tasks/topTasksApproval.test.ts',
+      'supabase/migrations/20270302000000_task_change_status_rpc.sql',
+    ])
+    for (const file of ALLOWED_TASK_CHANGE_STATUS_RPC) {
+      assert.ok(/\.(ts|sql)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      assert.equal(/^src\/app\/(?!finance\/expenses\/expenseSurfaces\.test\.ts$)/.test(file), false, `${file} is application source`)
+    }
+    assert.equal([...ALLOWED_TASK_CHANGE_STATUS_RPC].filter(f => f.startsWith('supabase/migrations/')).length, 1, 'exactly one migration')
+  })
+
+  test('the Task Detail stall allowance is EXACTLY the files of that change', () => {
+    // Pinned by value so it cannot quietly grow: one page, one helper, the suites
+    // that pin them, and this file. Nothing under finance/, orders/, api/ or
+    // supabase/ rides in on it.
+    assert.deepEqual([...ALLOWED_TASK_DETAIL_STALLS].sort(), [
+      'src/app/finance/expenses/expenseSurfaces.test.ts',
+      'src/app/tasks/[id]/page.tsx',
+      'src/lib/tasks/taskDetailLoad.test.ts',
+      'src/lib/tasks/taskDetailLoad.ts',
+      'src/lib/tasks/taskDetailOpenFromDrawer.test.ts',
+      'src/lib/tasks/taskNavigationPerformance.test.ts',
+      'src/lib/tasks/taskReturnPath.test.ts',
+    ])
+    for (const file of ALLOWED_TASK_DETAIL_STALLS) {
+      assert.ok(/\.tsx?$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      assert.equal(
+        /^(src\/app\/(finance\/(?!expenses\/expenseSurfaces\.test\.ts$)|orders\/|api\/)|src\/lib\/(finance|orders|pi|permissions)\/|supabase\/)/.test(file),
+        false, `${file} is not a Task Detail file`)
     }
   })
 
@@ -2926,9 +3069,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // promotion moves its helpers onto the staged approval path.
       // PI numbering (20270114000000) adds its own suite and race runner, and
       // edits the two suites whose below-40% reasons are now one of three.
-      // The advance on the total before GST (20270226000000) adds its suite and gives every
+      // The advance on the total before GST (20270227000000) adds its suite and gives every
       // fixture that prices a PI a total_before_gst beside its grand_total.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|advance_on_total_before_gst|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|advance_on_total_before_gst|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3065,9 +3208,12 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_CLEANUP_NUMBER_CHOICE.has(file)
         || ALLOWED_ASSET_CATALOGUE.has(file)
         || ALLOWED_NEW_TASK_SILENT.has(file)
+        || ALLOWED_TASK_CHANGE_STATUS_RPC.has(file)
+        || ALLOWED_TASK_DETAIL_STALLS.has(file)
         || ALLOWED_ORDERS_DASHBOARD.has(file)
         || ALLOWED_MINOP_COLLECTION_ONLY.has(file)
-        || ALLOWED_CUSTOMER_REVIEWS_V2.has(file),
+        || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
+        || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

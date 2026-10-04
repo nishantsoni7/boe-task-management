@@ -206,7 +206,7 @@ end $$;
 
 create function pg_temp.amend(p_order uuid, p_total numeric, p_as uuid default null) returns text language plpgsql as $$
 begin
-  -- 20270226000000: the advance is measured against the PI's TOTAL BEFORE GST, and
+  -- 20270227000000: the advance is measured against the PI's TOTAL BEFORE GST, and
   -- an Order amended by hand has none of its own (it reads as "no base", which
   -- advance_on_total_before_gst_assertions.sql holds). These scenarios are about
   -- what happens to an aligned Order when its value MOVES, so the Order's PI is

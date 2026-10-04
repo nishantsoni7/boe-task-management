@@ -1,4 +1,4 @@
--- ROLLBACK for 20270226000000_order_submission_advance_on_total_before_gst.sql.
+-- ROLLBACK for 20270227000000_order_submission_advance_on_total_before_gst.sql.
 -- Reviewed and tested on a local stack; NOT applied anywhere.
 --
 -- Run only by an administrator, only if "40% of the TOTAL BEFORE GST" must go

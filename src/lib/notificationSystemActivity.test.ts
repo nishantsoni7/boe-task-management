@@ -357,12 +357,12 @@ describe('the read side excludes system types too', () => {
     // type, no trigger on notifications, nothing scheduled.
     const REVIEW_EDIT = '20270223000000_customer_review_custom_edit_delete.sql'
     const REVIEW_DUPLICATE = '20270224000000_customer_review_custom_duplicate_detection.sql'
-    // A fourteenth, 20270226000000, measures the 40% advance against the TOTAL BEFORE GST. It
+    // A fourteenth, 20270227000000, measures the 40% advance against the TOTAL BEFORE GST. It
     // re-emits order_advance_hold_recheck() with the percentage and the rupee figure it already
     // told management, now of the pre-GST total: the SAME one Orders-type write
     // (order_update_production) in the transaction of the person's own write that left an aligned
     // Order short. No new type, no trigger on notifications, nothing scheduled.
-    const ADVANCE_ON_BASE = '20270226000000_order_submission_advance_on_total_before_gst.sql'
+    const ADVANCE_ON_BASE = '20270227000000_order_submission_advance_on_total_before_gst.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',

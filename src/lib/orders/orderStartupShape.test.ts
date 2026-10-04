@@ -355,7 +355,7 @@ describe('no Order screen waits more than it must', () => {
       //   gone. What remains is ONE orders_dashboard_summary() read, the PI Drafts
       //   count, the three operations-handoff counts, the profile and the session —
       //   all but the session inside the existing Promise.all, so the page still waits exactly twice.
-      // DETAIL 40 -> 41 (20270226000000, the advance is a share of the Total
+      // DETAIL 40 -> 41 (20270227000000, the advance is a share of the Total
       //   before GST): ONE more READ, the second select on the 'orders' table
       //   inside the shared orderRowQuery - the single computed column
       //   order_total_before_gst. It is issued in the SAME Promise.all as the

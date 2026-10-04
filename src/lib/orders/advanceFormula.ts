@@ -15,7 +15,7 @@
 // the workbook's own I120 (see 20261002000000), the parser checks it against
 // the rows and keeps the workbook's figure, and the database stores it. This
 // module therefore takes that stored figure as the base — the same figure the
-// database functions in 20270226000000 take — so a screen and a gate cannot
+// database functions in 20270227000000 take — so a screen and a gate cannot
 // disagree about which number 40% is taken of. Transportation written in words
 // ("as applicable") carries no amount and adds nothing; only a quoted figure is
 // inside the stored total.

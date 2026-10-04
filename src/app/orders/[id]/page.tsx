@@ -1238,7 +1238,7 @@ export default function OrderDetailPage() {
         .eq('id', id)
         .single(),
       // THE ADVANCE BASE, in a read of its own so that it can fail alone. The
-      // computed column exists from 20270226000000; against a database that
+      // computed column exists from 20270227000000; against a database that
       // does not have it yet this errors, the Order still opens, and its
       // advance percentage says "not available" instead of the page breaking.
       supabase.from('orders').select('order_total_before_gst').eq('id', id).maybeSingle(),
