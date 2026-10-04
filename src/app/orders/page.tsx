@@ -110,7 +110,7 @@ export default function OrdersDashboardPage() {
       opsUnassignedRes,
       opsFlaggedRes,
     ] = await Promise.all([
-      // THE SALESPERSON'S OWN DASHBOARD (20270227000000): the caller's own orders only, scoped by the
+      // THE SALESPERSON'S OWN DASHBOARD (20270228000000): the caller's own orders only, scoped by the
       // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
       supabase.rpc('salesperson_orders_dashboard'),
 

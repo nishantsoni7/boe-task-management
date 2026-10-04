@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20270227000000  THE SALESPERSON'S OWN ORDERS DASHBOARD — one read
+-- 20270228000000  THE SALESPERSON'S OWN ORDERS DASHBOARD — one read
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- WHAT THIS IS
@@ -44,7 +44,7 @@
 -- NO ROW CAP: the lists are one jsonb value, so no PostgREST row limit applies.
 -- READ-ONLY, one statement, no writes, no new table, no new grant beyond execute.
 
--- DEPENDS ON 20270226000000_order_submission_advance_on_total_before_gst (PR #281): the advance percentage is a
+-- DEPENDS ON 20270227000000_order_submission_advance_on_total_before_gst (PR #281): the advance percentage is a
 -- percentage of the total BEFORE GST, derived by order_advance_base() and reported by order_advance_position() as
 -- 'advance_base' with a TRUNCATED 'percent'. The advance list below takes the helper's OWN percentage and shortfall;
 -- it computes no denominator of its own. Applied before that migration it would list percentages on the wrong
@@ -53,7 +53,7 @@ do $$
 begin
   if to_regprocedure('public.order_advance_base(uuid)') is null
      or pg_get_functiondef('public.order_advance_position(uuid)'::regprocedure) !~ 'advance_base' then
-    raise exception 'DEPENDENCY MISSING: 20270226000000_order_submission_advance_on_total_before_gst (PR #281) must be applied before this migration';
+    raise exception 'DEPENDENCY MISSING: 20270227000000_order_submission_advance_on_total_before_gst (PR #281) must be applied before this migration';
   end if;
 end $$;
 
@@ -259,7 +259,7 @@ $$;
 revoke execute on function public.salesperson_orders_dashboard() from public, anon;
 grant  execute on function public.salesperson_orders_dashboard() to authenticated;
 comment on function public.salesperson_orders_dashboard() is
-  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller (orders.view_all does not widen it); { applicable: false } for admins, operations and non-assignees. Read-only, no row cap. 20270227000000.';
+  'The caller''s own Orders dashboard in one read: confirmed-order total, current-month product-value revenue (IST month, confirm_date), submitted PIs pending approval, and the complete advance-below-40%, fabric/finish-pending and ready-for-dispatch lists. Scoped to orders.assigned_to / order_submissions.salesperson_id = the caller (orders.view_all does not widen it); { applicable: false } for admins, operations and non-assignees. Read-only, no row cap. 20270228000000.';
 
 do $$
 begin
