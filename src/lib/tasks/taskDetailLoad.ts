@@ -296,3 +296,15 @@ export async function reconcileSavedStatus(
   const second = await readOnce(supabase, taskId, spec)
   return second.outcome === 'unknown' ? first : second
 }
+
+/**
+ * What to tell the person after a write whose answer was lost, once the saved state has been read back. NOTHING here claims
+ * that THIS request succeeded: even `own_action_found` only means a change of ours is saved — a second tab or an earlier
+ * attempt leaves the same row — so it is reported as "under your name, not confirmed as this request". The task is refreshed
+ * to what the server holds and nothing is sent again. One wording for every caller that saves a status.
+ */
+export function recoveryMessage(outcome: 'own_action_found' | 'unattributed' | 'changed' | 'not_applied', status: string): string {
+  if (outcome === 'not_applied') return 'We could not find this change saved. Nothing was sent again — you can try again.'
+  if (outcome === 'own_action_found') return `This task is now "${status}" under your name, but we cannot match it to this exact request (it could also be another tab or an earlier attempt of yours), so it is not treated as confirmed. Nothing was sent again.`
+  return `This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
+}
