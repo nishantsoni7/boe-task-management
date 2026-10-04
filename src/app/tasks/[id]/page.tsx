@@ -47,8 +47,12 @@ import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
 import {
+  changeTaskStatus, adoptableState, statusChangeMessage, sendStatusNotice, browserNoticePost,
+  type StatusChangeOutcome, type WaitingDetail,
+} from '@/lib/tasks/statusChange'
+import {
   readTaskEssential, readTaskSecondary, mergeActivityRead, createLatestGate,
-  classifyWriteFailure, isStateConflict, reconcileSavedStatus, REVIEW_RESULT_STATUS, WRITE_TIMEOUT_MS,
+  classifyWriteFailure, isStateConflict, reconcileSavedStatus, recoveryMessage, REVIEW_RESULT_STATUS, WRITE_TIMEOUT_MS,
   type ReviewAction, type SavedTaskState,
 } from '@/lib/tasks/taskDetailLoad'
 
@@ -523,128 +527,96 @@ export default function TaskDetailPage() {
     }
   }
 
-  const applyStatusChange = async (newStatus: string, reason: string | null, attachmentUrl?: string | null) => {
-    if (!task) return
+  /**
+   * Announces a status event to the other party. The notice is safe to repeat (one per event, per recipient — enforced by the
+   * database), so a transport failure is retried once inside sendStatusNotice. A notice that still cannot be sent never changes
+   * what the status change was, and never claims it was delivered: it says so, once, and logs why.
+   */
+  const announceStatus = async (t: Task, status: string, eventId: string | null) => {
+    const result = await sendStatusNotice(browserNoticePost, { task: t, actorId: currentUserId, status, eventId })
+    if (result === 'failed') {
+      console.error('[status notice] could not be sent after a retry', { taskId: t.id, eventId })
+      if (mountedRef.current) showToast('Status saved. The notification could not be sent.', 'error')
+    } else if (result === 'refused' || result === 'no_event') {
+      console.error('[status notice] not sent:', result, { taskId: t.id, eventId })
+    }
+  }
+
+  /**
+   * Saves a status through change_task_status(): the status, the resets and the history row are ONE transaction, so a changed
+   * task always has its history and a refused or failed change leaves nothing behind. Used by Mark Complete, the status modal
+   * and the waiting modal alike.
+   *
+   * Only an ANSWER from the database counts as success. Anything else — a refusal, a lost answer, a state we cannot attribute
+   * to ourselves — is reported as exactly that, the state the server holds is adopted, and nothing is claimed or resent. The
+   * mutation is sent once per call; the double-click guard below and the database's refusal of a repeat make a second press
+   * harmless. Returns what happened, so a caller can decide whether a dialog may close.
+   */
+  const applyStatusChange = async (
+    newStatus: string,
+    reason: string | null,
+    attachmentUrl?: string | null,
+    waiting?: WaitingDetail,
+  ): Promise<StatusChangeOutcome['kind'] | null> => {
+    if (!task) return null
     // Same guard as acknowledge: a double-click here wrote two status_changed
     // rows and fired two notifications for one intended change.
-    if (statusUpdatingRef.current) return
+    if (statusUpdatingRef.current) return null
     statusUpdatingRef.current = true
     setStatusUpdating(true)
     const perf = perfTrack(newStatus === 'completed' ? 'task.complete' : 'task.status.update')
     try {
-    const oldStatus = task.status
-    const now = new Date().toISOString()
-    const updates: Record<string, unknown> = { status: newStatus, last_update_at: now }
-    if (newStatus === 'blocked')   updates.blocker_reason = reason
-    if (oldStatus === 'blocked' && newStatus !== 'blocked') updates.blocker_reason = null
-    if (oldStatus === 'waiting' && newStatus !== 'waiting') {
-      updates.waiting_on_type    = null
-      updates.waiting_on_user_id = null
-      updates.waiting_on_text    = null
-    }
-    if (newStatus === 'completed') updates.completed_at = now
+      const startedOn = task
+      const outcome = await changeTaskStatus(supabase, {
+        task: startedOn, actorId: currentUserId, status: newStatus, reason, attachmentUrl, waiting,
+      })
+      perf.mark('rpc')
 
-    const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-    if (taskErr) {
-      console.error('[applyStatusChange] tasks update failed:', taskErr.message)
-      window.alert('Failed to update task status. Please try again.')
-      return
-    }
-    perf.mark('update-task')
-    // Read the inserted row back so the feed can be updated locally. The audit
-    // record is still written before the user is told the change succeeded —
-    // only the *display* refresh changes.
-    const { data: logRow, error: logErr } = await supabase.from('task_activity_log').insert({
-      task_id:        task.id,
-      actor_id:       currentUserId,
-      action:         'status_changed',
-      from_status:    oldStatus,
-      to_status:      newStatus,
-      note:           reason ?? null,
-      attachment_url: attachmentUrl ?? null,
-    })
-      .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url')
-      .single()
-    if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
-    {
-      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-      if (recipient && recipient !== currentUserId) {
-        fetch('/api/notify-status-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // The status row this call just wrote, whose id is already in hand
-          // from the insert above. Without it the notification links to
-          // nothing and the card can only say "Status changed to Waiting" —
-          // it can never show the previous status, because that value lives
-          // ONLY on the activity row. `logRow` is null when the insert failed;
-          // the notification is then written unlinked, exactly as before.
-          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: newStatus, actorName: profile?.full_name, activityLogId: logRow?.id ?? null }),
-        }).then(res => {
-          if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
-        }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
+      // Adopt whatever state the server told us about (a saved change, or a state read back) — never an invented one.
+      const adopted = adoptableState(outcome)
+      if (adopted && mountedRef.current) applySavedState(startedOn, adopted)
+
+      if (outcome.kind === 'saved') {
+        const { change } = outcome
+        if (mountedRef.current) {
+          // The history row came back with the change: show it without re-reading the whole feed.
+          if (change.eventId) {
+            setLog(prev => [{
+              id:             change.eventId as string,
+              action:         'status_changed',
+              note:           reason ?? null,
+              from_status:    change.fromStatus,
+              to_status:      newStatus,
+              old_val:        null,
+              new_val:        null,
+              created_at:     change.at ?? new Date().toISOString(),
+              actor_id:       currentUserId,
+              actor_name:     profile?.full_name,
+              attachment_url: attachmentUrl ?? null,
+              attachments:    [],
+            } as unknown as LogEntry, ...prev])
+          } else {
+            void loadLog(startedOn.id)
+          }
+        }
+        void announceStatus(startedOn, newStatus, change.eventId)
+        if (newStatus === 'completed' && mountedRef.current) {
+          // BACK TO THE LIST THIS TASK WAS OPENED FROM, AT ONCE. `returnTo` is the view they actually left and every internal
+          // entry point attaches it; the task's own list stays the fallback for a pasted URL. Only on an ANSWER: any other
+          // outcome stays here, with the state the server holds and a message that claims nothing.
+          const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)
+          noteListReturn()
+          router.push(dest)
+        }
+        return 'saved'
       }
-    }
-    const localPatch: Partial<Task> = { status: newStatus as TaskStatus, last_update_at: now }
-    if (newStatus === 'blocked')   localPatch.blocker_reason = reason
-    if (oldStatus === 'blocked' && newStatus !== 'blocked') localPatch.blocker_reason = null
-    if (oldStatus === 'waiting' && newStatus !== 'waiting') {
-      localPatch.waiting_on_type    = null
-      localPatch.waiting_on_user_id = null
-      localPatch.waiting_on_text    = null
-    }
-    setTask({ ...task, ...localPatch })
-    setSelectedStatus(newStatus)
-    invalidateTaskCache(task.assigned_to)
-    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-    perf.mark('insert-activity')
-    // Prepend the row we just wrote instead of re-reading the entire activity
-    // log plus every attachment of the task — two round trips that returned
-    // data we already had. A status change never alters attachments, so nothing
-    // else on screen goes stale. `loadLog` is the fallback if the read-back
-    // failed, so the feed is never left missing an entry.
-    if (logRow) {
-      setLog(prev => [{
-        ...(logRow as unknown as LogEntry),
-        actor_name:     profile?.full_name,
-        attachment_url: logRow.attachment_url ?? null,
-        attachments:    [],
-      }, ...prev])
-    } else {
-      await loadLog(task.id)
-    }
-    perf.mark('append-activity')
-    if (newStatus === 'completed') {
-      // BACK TO THE LIST THIS TASK WAS OPENED FROM, AT ONCE.
-      //
-      // Two things were wrong here. The destination was one of two fixed
-      // addresses, so a creator who completed a task they had opened from
-      // Assigned By Me — or from Today's Focus, or from a notification — was
-      // put on /tasks/my, a list that task need never have been on. `returnTo`
-      // is the view they actually left and every internal entry point attaches
-      // it; the task's own list stays the fallback for a pasted URL.
-      //
-      // And the navigation waited 800ms for a toast that this path never shows.
-      // Nothing was drawn in that time and nothing was being awaited — it was
-      // dead time after a click, on the one action people perform most. The
-      // list itself is the confirmation: the task is gone from it.
-      const dest = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task.task_type)
-      noteListReturn()
-      router.push(dest)
-    }
-    } catch (e) {
-      // A rejected request is not a refused write: it may have landed. Read the
-      // saved status so the buttons show what is true, and do not ask the person
-      // to press the same button into a possible duplicate.
-      console.error('[applyStatusChange] failed:', e)
-      const settled = await reconcileSavedStatus(supabase, task.id, reconcileSpecFor(task, newStatus))
-      if (settled.outcome === 'unknown') {
-        window.alert('The connection dropped and we could not confirm whether this change was saved. Refresh the page status before trying again.')
-      } else if (settled.outcome === 'not_applied') {
-        window.alert(recoveryMessage('not_applied', task.status))
-      } else {
-        if (mountedRef.current) { applySavedState(task, settled.saved); void loadLog(task.id) }
-        window.alert(recoveryMessage(settled.outcome, settled.saved.status))
-      }
+
+      if (mountedRef.current && (outcome.kind === 'own_action_found' || outcome.kind === 'state_changed')) void loadLog(startedOn.id)
+      // An action of ours is saved but not provably THIS request: announce its event (safe to repeat) and still claim nothing.
+      if (outcome.kind === 'own_action_found') void announceStatus(startedOn, newStatus, outcome.eventId)
+      const message = statusChangeMessage(outcome, startedOn.status)
+      if (message) window.alert(message)
+      return outcome.kind
     } finally {
       statusUpdatingRef.current = false
       if (mountedRef.current) setStatusUpdating(false)
@@ -659,18 +631,6 @@ export default function TaskDetailPage() {
     previousStatus: t.status,
     since:          t.last_update_at ?? t.created_at,
   })
-  /**
-   * What to tell the person after a write whose answer was lost, once the saved state has been read back. NOTHING here
-   * claims that THIS request succeeded: even `applied` only means a change of ours is saved — a second tab or an earlier
-   * attempt leaves the same row — so it is reported as "saved under your name, not confirmed as this request". The task
-   * is refreshed to what the server holds and nothing is sent again.
-   */
-  const recoveryMessage = (outcome: 'own_action_found' | 'unattributed' | 'changed' | 'not_applied', status: string) => {
-    if (outcome === 'not_applied') return 'We could not find this change saved. Nothing was sent again — you can try again.'
-    if (outcome === 'own_action_found') return `This task is now "${status}" under your name, but we cannot match it to this exact request (it could also be another tab or an earlier attempt of yours), so it is not treated as confirmed. Nothing was sent again.`
-    return `This task is now "${status}", but we cannot confirm that your request is what changed it — it may have been changed by someone else. It has been refreshed; please review it before acting again.`
-  }
-
   /** Applies a task state the server has confirmed (an RPC result, or a saved row read back). */
   const applySavedState = (base: Task, saved: Partial<SavedTaskState>) => {
     const nextStatus = (saved.status ?? base.status) as TaskStatus
@@ -3230,56 +3190,21 @@ export default function TaskDetailPage() {
                     setSaving(true)
                     setWaitingOnError(false)
 
-                    if (modalStatus === 'waiting') {
-                      const now = new Date().toISOString()
-                      const updates: Record<string, unknown> = {
-                        status: 'waiting', last_update_at: now,
-                        waiting_on_type:    waitingOnType,
-                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-                      }
-                      if (task.status === 'blocked') updates.blocker_reason = null
-                      const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-                      if (taskErr) {
-                        console.error('[modal/waiting] tasks update failed:', taskErr.message)
-                        window.alert('Failed to save status. Please try again.')
-                        setSaving(false)
-                        return
-                      }
-                      // Read the id back, for the same reason the other two
-                      // status writers do: it is the ONLY way the notification
-                      // can carry the status the task moved FROM. One row, one
-                      // returning id — no second query, and nothing inferred.
-                      const { data: waitingLog } = await supabase.from('task_activity_log').insert({
-                        task_id: task.id, actor_id: currentUserId,
-                        action: 'status_changed', from_status: task.status, to_status: 'waiting', note: null,
-                      })
-                        .select('id')
-                        .single()
-                      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-                      if (recipient && recipient !== currentUserId) {
-                        fetch('/api/notify-status-update', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name, activityLogId: waitingLog?.id ?? null }),
-                        }).catch(err => console.error('[modal/waiting] notification fetch error:', err))
-                      }
-                      const localPatch: Partial<Task> = {
-                        status: 'waiting' as TaskStatus, last_update_at: now,
-                        waiting_on_type:    waitingOnType,
-                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-                      }
-                      if (task.status === 'blocked') localPatch.blocker_reason = null
-                      setTask({ ...task, ...localPatch })
-                      setSelectedStatus('waiting')
-                      await loadLog(task.id)
-                    } else {
-                      await applyStatusChange(modalStatus, null)
-                    }
-
+                    // Waiting goes through the same transactional path as every other status, with its detail in the same call.
+                    const kind = await applyStatusChange(
+                      modalStatus, null, null,
+                      modalStatus === 'waiting'
+                        ? {
+                            type:   waitingOnType,
+                            userId: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+                            text:   waitingOnType === 'external' ? waitingOnText.trim() : null,
+                          }
+                        : undefined,
+                    )
                     setSaving(false)
-                    setModalOpen(false)
+                    // The dialog closes only when something is saved (or was found saved). After a refusal, a lost answer
+                    // or an unreadable state it stays open, so the person can read the message and decide.
+                    if (kind === 'saved' || kind === 'own_action_found' || kind === 'state_changed') setModalOpen(false)
                   }}
                   disabled={saving || statusUpdating}
                   style={{
