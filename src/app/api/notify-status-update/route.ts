@@ -2,7 +2,8 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
-import { verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { loadActivityEvent, verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { deriveNoticeFromEvent } from '@/lib/notifications/statusEventNotice'
 import { shouldNotifyTaskStatusEvent } from '@/lib/notifications/taskNotificationPolicy'
 import { isValidUUID } from '@/lib/ui'
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
   // `title`; the other two always sent exactly what the task row already says.
   // So nothing legitimate is lost by refusing to listen.
   const {
-    taskId, createdBy, recipientId, action,
+    taskId, createdBy, recipientId, action: claimedAction,
     // The activity row the caller just created. VERIFIED below, never trusted:
     // an unchecked id here would let a caller point a notification at any
     // activity row in the database and have its note read back to the
@@ -114,6 +115,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid recipient' }, { status: 403 })
   }
 
+  // THREE KINDS OF NOTICE LEAVE THIS ROUTE, AND ONLY ONE OF THEM IS A STATUS NOTICE.
+  //
+  //   · `comment_added`  — a comment. Its event is the note row; it is linked when the caller names it, and not required.
+  //   · `acknowledged`   — an acknowledgment. No caller links an event to it today. Unchanged.
+  //   · everything else   — a STATUS notice ("moved task to Waiting", "completed task"). It announces an event, so it REQUIRES one.
+  //
+  // A STATUS NOTICE NEEDS A VALID EVENT, ALWAYS — an ordinary send and a recovery send alike. The activity row it names must
+  // exist, belong to THIS task, be a status change authored by the CALLER, and move to an allowed status; the action and recipient
+  // the request claims must be the ones that event implies (a disagreement is refused, never overridden); the recipient, the type
+  // and the headline are then derived from the event and the stored task. A missing, nonexistent, cross-task or incompatible event
+  // is refused (422) and NOTHING is written: there is no fallback to an unlinked status notice, which the event key could not
+  // protect and which could be sent twice. See src/lib/notifications/statusEventNotice.ts.
+  //
+  // Matching an event is not proof that THIS request wrote it (a second tab of the same person leaves an identical row), so
+  // nothing here, or in what is returned, says "confirmed".
+  const isStatusNotice = !(typeof claimedAction === 'string' && (claimedAction === 'comment_added' || claimedAction === 'acknowledged'))
+  // Not announced by rule (a quotation, a delegated task's completion): there is no notice to write, so no event is needed to
+  // say so. Answered before the event is demanded, exactly as before.
+  if (isStatusNotice && !shouldNotifyTaskStatusEvent(task, claimedAction)) {
+    return NextResponse.json({ success: true, skipped: true })
+  }
+  const eventNamed = activityLogId !== undefined && activityLogId !== null && activityLogId !== ''
+  const eventRow = eventNamed && typeof activityLogId === 'string' && isValidUUID(activityLogId)
+    ? await loadActivityEvent(supabase, activityLogId, taskId)
+    : null
+  let derived: ReturnType<typeof deriveNoticeFromEvent> | null = null
+  if (isStatusNotice) {
+    if (!eventNamed) {
+      return NextResponse.json({ error: 'A status notification must name its event', reason: 'event_required' }, { status: 422 })
+    }
+    if (!eventRow) {
+      return NextResponse.json({ error: 'No such event on this task', reason: 'event_not_found' }, { status: 422 })
+    }
+    derived = deriveNoticeFromEvent(
+      eventRow,
+      { id: taskId, created_by: task.created_by, assigned_to: task.assigned_to },
+      user.id,
+      { action: claimedAction, recipientId: notifyUserId },
+    )
+    if (!derived.ok) {
+      console.error('[notify-status-update] event does not match the notification', { caller: user.id, taskId, reason: derived.reason })
+      return NextResponse.json({ error: 'The event does not match this notification', reason: derived.reason }, { status: 422 })
+    }
+  }
+  // From here on `action` is the EVENT's status for a status notice, the caller's word for a comment or an acknowledgment.
+  const action: string | undefined = derived?.ok ? derived.action : claimedAction
+
   // NOT ANNOUNCED, BY RULE — after both party checks, so a refusal still reads
   // as one. A quotation request writes no notification, and a delegated task's
   // "completed" is its creator's approval arriving by this generic road. See
@@ -132,8 +180,9 @@ export async function POST(req: NextRequest) {
   // The link is optional at every step: an absent, malformed or unrelated id
   // produces an UNLINKED notification, which renders exactly the fallbacks
   // every historical row renders. A worse notification, never a failed one.
-  const linkedActivityId =
-    typeof activityLogId === 'string' && isValidUUID(activityLogId)
+  const linkedActivityId = eventRow
+    ? eventRow.id
+    : typeof activityLogId === 'string' && isValidUUID(activityLogId)
       ? await verifyActivityBelongsToTask(supabase, activityLogId, taskId)
       : null
 
@@ -142,7 +191,7 @@ export async function POST(req: NextRequest) {
   // the funnel EVERY task status notification passes through, which makes it
   // the one place a system-generated type could ever reach `notifications`
   // from application code. See src/lib/notificationWrites.ts.
-  const { suppressed, selfSuppressed, error } = await insertUserNotifications(supabase, {
+  const { suppressed, selfSuppressed, duplicate, error } = await insertUserNotifications(supabase, {
     user_id:      notifyUserId,
     task_id:      taskId,
     type:         'task_acknowledged',
@@ -158,6 +207,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // This event was already announced to this person (a repeat of the same send — a recovery, a second tab). Success: they
+  // have their notification, and the database, not a racing read, is what said so.
+  if (duplicate) return NextResponse.json({ success: true, skipped: true, duplicate: true })
   if (suppressed > 0) return NextResponse.json({ success: true, suppressed })
   // Nothing was wrong: the actor is the recipient, so there was nobody to tell.
   // Reported the same way the early `notifyUserId === user.id` return is.
