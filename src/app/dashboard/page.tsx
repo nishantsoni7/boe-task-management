@@ -427,6 +427,10 @@ export default function DashboardPage() {
   }
 
   const handleAcknowledge = async (task: Task) => {
+    // View As is read-only. currentUserId is the VIEWED user here, so without
+    // this the write would run under the administrator's session and be
+    // recorded, and notified, as that employee.
+    if (viewAsUserId) return
     if (task.assigned_to !== currentUserId) return
     if (task.created_by === currentUserId) return
     if (acknowledgingIds.has(task.id)) return
@@ -582,7 +586,7 @@ export default function DashboardPage() {
               isMobile={isMobile}
               currentUserId={currentUserId}
               acknowledgingIds={acknowledgingIds}
-              onAcknowledge={handleAcknowledge}
+              onAcknowledge={viewAsUserId ? undefined : handleAcknowledge}
               onPreview={task => setSelectedTask(task)}
               onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
             />
