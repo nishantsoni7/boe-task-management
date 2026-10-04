@@ -190,7 +190,7 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
   const submit = detail.slice(detail.indexOf('const submitForApproval = async'), detail.indexOf('const approveTask = async'))
 
   test('a failed submit returns before any navigation', () => {
-    const failed = submit.indexOf('if (!ok) return')
+    const failed = submit.indexOf('if (!ok || !mountedRef.current) return')
     assert.ok(failed > 0)
     assert.ok(failed < submit.indexOf('router.replace(target)'))
   })
@@ -201,13 +201,24 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
     assert.equal(/router\.(back|push)\(/.test(submit), false)
   })
 
-  test('the toast is shown first, and the list is told this is a return', () => {
-    assert.ok(submit.indexOf('showToast(') < submit.indexOf('router.replace(target)'))
+  test('the list is told this is a return, and nothing waits between the write and it', () => {
+    // The 800 ms toast delay is gone: the toast lived on the page being left,
+    // and the delay sat on top of the activity re-read the submit used to await.
     assert.ok(submit.indexOf('noteListReturn()') < submit.indexOf('router.replace(target)'))
+    assert.equal(/setTimeout\(|showToast\(/.test(submit), false, 'no timer, no toast on a page that is being left')
+    assert.equal(detail.includes('submitReturnTimer'), false)
   })
 
-  test('the pending return is cancelled if the page unmounts first', () => {
-    assert.ok(detail.includes('if (submitReturnTimer.current) clearTimeout(submitReturnTimer.current)'))
+  test('a submit never navigates a person who has already left the page', () => {
+    // A Back press during the RPC unmounts the page; the answer arriving later
+    // must not replace wherever they went.
+    assert.ok(submit.includes('!mountedRef.current'))
+  })
+
+  test('a submit does not wait on the activity history', () => {
+    assert.ok(submit.includes("{ refreshHistory: false }"))
+    const run = detail.slice(detail.indexOf('const runReviewAction = async'), detail.indexOf('const checkSavedReviewStatus'))
+    assert.equal(/await loadLog\(/.test(run), false, 'the history read is never awaited on the write path')
   })
 
   test('Approve and Return still navigate nowhere', () => {
@@ -231,7 +242,7 @@ describe('Task Detail: Submit for Approval returns to the source (15–16)', () 
     // after a click, on the action people perform most. The destination list,
     // which no longer holds the task, is the confirmation.
     assert.equal(detail.includes('setTimeout(() => router.push(dest), 800)'), false)
-    const apply = detail.slice(detail.indexOf('const applyStatusChange = async'), detail.indexOf('const submitReturnTimer'))
+    const apply = detail.slice(detail.indexOf('const applyStatusChange = async'), detail.indexOf('const applySavedState'))
     assert.equal(/setTimeout\(/.test(apply), false, 'no timer stands between the write and the navigation')
   })
 })
