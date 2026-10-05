@@ -979,3 +979,76 @@ detail; this summary is not a specification.
   `photoRemoval*`, `shareOpened`, `deletion`, `preBookingImages`, `adminBypass`,
   `internalTest` under `src/lib/customerReviews/` and
   `src/lib/permissions/customerReviewOutreach.test.ts`.
+
+## 28. Custom Submissions list, reject-after-approval and Admin deletion (`20270304000000`, in the repository — NOT applied)
+
+| | |
+| --- | --- |
+| Migration | `20270304000000_customer_review_admin_reject_and_delete.sql` — two functions added, guard and history trigger re-created; no table, column or policy changed |
+| RPCs | `admin_reject_customer_review_custom_submission(uuid, text)`, `admin_delete_customer_review_custom_submission(uuid)` — `authenticated`, each checks an **active, non-deleted `users.role = 'admin'`** inside the function; `customer_review_custom_is_admin(uuid)` is internal |
+| Screens | `CustomSubmissionsScreen.tsx` (the existing screen), `CustomSubmissionList.tsx`, `AdminSubmissionAction.tsx`, `customSubmissionList.module.css`; pure rules in `submissionList.ts` |
+| Tests | `submissionList.test.ts`, `customReviewAdminActions.test.ts`; `supabase/tests/custom_review_admin_actions_assertions.sql` (run by `run_custom_review_edit_delete_local.sh`); two-session races `run_custom_review_admin_race.sh` (R6–R8) |
+
+### 28.1 The list
+
+**Custom Submissions** now lists every live review — Pending Approval, Approved and Rejected — with status chips
+(**All**, the three statuses, **Deleted**) and two menus: **Review month** and **Submitted by**. Filters are applied
+by the database query; the list pages 100 at a time (*Show more*). A desktop shows a compact table, a phone one card per review.
+
+| Column | Meaning |
+| --- | --- |
+| Screenshot | thumbnail; click opens the full-size proof in place (re-signed on open); *Image not available* when it cannot be loaded |
+| Reviewer | the **customer** who posted the public review — typed by the employee in the optional *Reviewer name* field. Reviews submitted before that field existed show **Not recorded**; nothing is guessed |
+| Submitted by | the **BOE employee** who uploaded it. Never shown in place of the reviewer, never the reverse |
+| Status | Pending Approval / Approved / Rejected (+ credits, or the rejection reason) |
+| Review month | the **Asia/Kolkata month of `submitted_at`**, the existing attribution rule (§11): an edit, reapplication, approval, rejection or deletion never moves it |
+| Submitted | the first submission date |
+| Actions | Open / Open & Decide; for an administrator also *Reject approval* and *Delete* |
+
+### 28.2 Reject after approval
+
+An administrator may take an **approved** review back from the list or the review's details. A reason (≤ 300 characters) is
+required and the dialog states the consequence before the red confirm button. In one transaction the function:
+
+1. checks the caller is an active administrator, locks the review, refuses the administrator's **own** review,
+   and answers *already rejected* to a repeat (second click, second tab, second administrator);
+2. reverses the review's credit **once** through the existing `reverse_customer_review_custom_reward()` (§23.3) — a review
+   whose month already **lapsed** is not reversed again (reported as *expired*); no payroll adjustment or new ledger row type exists;
+3. stores `rejected_by`, `rejected_at`, `rejection_reason` — shown in the review's details like any rejection;
+4. recounts the **original review month** (`refresh_boe_credit_review_month`) — never the month of the rejection. A month that
+   already qualified stays qualified (the existing rule);
+5. writes the history: the original **Approved** event stays; the new **Rejected** event records previous status → new status,
+   the administrator, the time, the reason, and the approval taken back (who approved, when, how many credits).
+
+The review, its screenshot and its history are kept. A reversed credit is not restored (one reward, one reversal, §23.3), so the
+review cannot be approved again; its employee may submit a new one. The verifier's ordinary **Reject** is unchanged and still refuses an approved review.
+
+### 28.3 Admin deletion
+
+*Delete* (any status, with an explicit confirmation) is a **soft delete**, the existing convention (§23.4): `deleted_at` /
+`deleted_by` are stamped, the row, proof and history remain under **Deleted**, the review leaves every list, count, target, report and
+the leaderboard, its monthly slot is freed, and it still counts as evidence for duplicate checks. A paid (or edit-held) credit is
+reversed once and the original month recounted; a repeat answers *already deleted*. The history says it was **not** deleted by the owner.
+The employee's own edit/delete (§23) is unchanged.
+
+### 28.4 Who can do it — and where that is enforced
+
+Only the database decides. Both functions read `auth.uid()`, require an active administrator, and are not callable by `anon`;
+clients hold no write on the table. The guard trigger permits `approved → rejected` only (a) for a confirmed duplicate, as before,
+or (b) inside `admin_reject_…`'s own transaction — a transaction-local marker naming that row *and* a rejecting user who is an
+administrator. A verifier without the admin role who calls either function directly gets `CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED` (`42501`).
+The screens draw the buttons for `profile.role = 'admin'` only as a convenience.
+
+### 28.5 Counting
+
+Reports, eligible counts, credits, points and the leaderboard already read status, `deleted_at` and the ledger (§25), so a rejected
+or deleted review leaves *eligible* in its original month with no change to them (asserted in `custom_review_admin_actions_assertions.sql` §9).
+BOE Credits' per-month `qualifying_review_count` (the *Approved reviews* figure) is recounted by the two functions.
+
+### 28.6 Limitations
+
+* The employee-side delete (§23) still leaves that month row's `qualifying_review_count` stale until the next recount; only the two Admin functions recount it. Not changed here.
+* A review rejected after approval whose credit was reversed cannot be re-approved; **Edit & Reapply** on the employee's side will be refused by the database for the same reason.
+* The Deleted filter reads at most 100 rows per page like every other view; filter menus are built from the newest 5,000 submissions.
+* Reviews from before 20270224 have no reviewer name: **Not recorded**.
+* Two-session behaviour is proven by `run_custom_review_admin_race.sh` on a disposable PostgreSQL container, not on production-scale data.

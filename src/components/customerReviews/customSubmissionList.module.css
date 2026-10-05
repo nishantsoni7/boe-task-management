@@ -1,0 +1,61 @@
+/* Custom Submissions list: a compact table on a desktop and one card per review on a phone.
+   Both are in the markup; the breakpoint decides which is shown, so nothing is scrolled
+   sideways to be read. The phone rules are at 640px, below the dialog's own 640px switch. */
+
+.tableWrap { display: block; border: 1px solid rgba(0, 0, 0, 0.13); border-radius: 10px; background: #FFFFFF; overflow: hidden; }
+.cards { display: none; list-style: none; margin: 0; padding: 0; flex-direction: column; gap: 8px; }
+
+@media (max-width: 640px) {
+  .tableWrap { display: none; }
+  .cards { display: flex; }
+}
+
+.table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.table th {
+  text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: #6B7280; background: #F9FAFB; border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+.table td { padding: 8px 10px; vertical-align: middle; border-bottom: 1px solid rgba(0, 0, 0, 0.07); min-width: 0; }
+.table tr:last-child td { border-bottom: none; }
+.table tbody tr:hover { background: #FAFAFB; }
+
+.person { font-weight: 700; color: #1F2937; overflow-wrap: anywhere; }
+.muted { color: #6B7280; }
+.missing { color: #9CA3AF; font-style: italic; font-weight: 400; }
+.sub { font-size: 11.5px; color: #6B7280; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+.thumb {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 56px; height: 56px; padding: 0; border-radius: 8px; overflow: hidden; cursor: zoom-in;
+  border: 1px solid rgba(0, 0, 0, 0.15); background: #F3F4F6; color: #6B7280; font: inherit; font-size: 10.5px;
+  text-align: center; line-height: 1.2;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb:focus-visible { outline: 2px solid #4F6FD0; outline-offset: 2px; }
+
+.card {
+  padding: 12px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, 0.13); background: #FFFFFF;
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+}
+.cardTop { display: flex; gap: 12px; align-items: flex-start; }
+.cardBody { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.cardFacts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+.cardFacts dt { color: #6B7280; }
+.cardFacts dd { margin: 0; color: #1F2937; font-weight: 600; overflow-wrap: anywhere; }
+.cardActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cardActions > button { flex: 1 1 120px; }
+
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.filters label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 700; color: #6B7280; min-width: 0; }
+.filters select {
+  min-height: 40px; padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.18); background: #FFFFFF; color: #1F2937; max-width: 100%;
+}
+@media (max-width: 640px) {
+  .filters label { flex: 1 1 140px; }
+  .filters select { width: 100%; }
+}

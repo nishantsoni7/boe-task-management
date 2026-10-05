@@ -8,14 +8,15 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
-import { ReviewBadge } from '@/components/customerReviews/ReviewPieces'
+import { AdminSubmissionAction, type AdminActionKind } from '@/components/customerReviews/AdminSubmissionAction'
+import { CustomSubmissionList } from '@/components/customerReviews/CustomSubmissionList'
+import listStyles from '@/components/customerReviews/customSubmissionList.module.css'
 import {
   CustomSubmissionFacts,
   CustomSubmissionProof,
   CustomSubmissionTrail,
 } from '@/components/customerReviews/CustomSubmissionPieces'
 import {
-  DuplicateBadge,
   DuplicatePanel,
   loadDuplicateSummaries,
   type DuplicateSummary,
@@ -26,9 +27,22 @@ import { istDateOf } from '@/lib/istDate'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import { REVIEW_TYPE_META } from '@/lib/customerReviews/types'
 import {
+  NO_SUBMISSION_FILTERS,
+  SUBMISSION_STATUS_FILTERS,
+  SUBMISSION_STATUS_FILTER_LABELS,
+  canAdminDelete,
+  canAdminRejectApproved,
+  recordedOrNot,
+  reviewMonthLabel,
+  reviewMonthOptions,
+  reviewMonthRange,
+  statusFilterOf,
+  type SubmissionListFilters,
+} from '@/lib/customerReviews/submissionList'
+import {
+  CUSTOM_PROOF_BUCKET,
   CUSTOM_REVIEW_TYPE_LABELS,
   CUSTOM_SUBMISSION_COLUMNS,
-  CUSTOM_SUBMISSION_STATUSES,
   CUSTOM_SUBMISSION_STATUS_META,
   MAX_REJECTION_REASON_LENGTH,
   approvalCreditsIssue,
@@ -36,7 +50,6 @@ import {
   formatSubmissionDay,
   rejectionReasonIssue,
   type CustomReviewSubmission,
-  type CustomSubmissionStatus,
 } from '@/lib/customerReviews/customSubmissions'
 
 // ── Custom Submissions: the verifier's queue ─────────────────────────────────
@@ -63,8 +76,12 @@ import {
 
 type Rewards = { text: number; image: number }
 
-/** The three decision queues, plus the employees' deletions (history — read-only). */
-type QueueView = CustomSubmissionStatus | 'deleted'
+/** Reviews read per page. "Show more" asks for another page; nothing is silently cut off. */
+const PAGE_SIZE = 100
+/** How many rows the filter menus are built from (employees and months that have submissions). */
+const FILTER_SOURCE_LIMIT = 5000
+/** Signed screenshot links for the thumbnails live this long; opening one re-signs it. */
+const THUMB_TTL_SECONDS = 600
 
 export function CustomSubmissionsScreen() {
   const { supabase, profile, caps, loading, signOut } = useCustomerReviews()
@@ -72,28 +89,39 @@ export function CustomSubmissionsScreen() {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
 
-  const [status, setStatus] = useState<QueueView>('pending_verification')
+  const [filters, setFilters] = useState<SubmissionListFilters>(NO_SUBMISSION_FILTERS)
+  const [limit, setLimit] = useState(PAGE_SIZE)
   const [rows, setRows] = useState<CustomReviewSubmission[]>([])
-  const [loadedStatus, setLoadedStatus] = useState<QueueView | null>(null)
+  const [total, setTotal] = useState<number | null>(null)
+  // The filters the rows on screen were loaded with — a list for filters somebody already left is not shown.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [names, setNames] = useState<Map<string, string>>(new Map())
+  const [namesReady, setNamesReady] = useState(false)
+  const [thumbs, setThumbs] = useState<Map<string, string>>(new Map())
+  const [filterSource, setFilterSource] = useState<{ submitted_by: string; submitted_at: string }[]>([])
   const [pendingCount, setPendingCount] = useState<number | null>(null)
   const [rewards, setRewards] = useState<Rewards | null>(null)
   // Possible-duplicate state for the rows on screen. A failed read leaves it null: no badge, never a "clear".
   const [duplicates, setDuplicates] = useState<Map<string, DuplicateSummary> | null>(null)
   const [opened, setOpened] = useState<CustomReviewSubmission | null>(null)
+  const [previewing, setPreviewing] = useState<CustomReviewSubmission | null>(null)
+  const [adminAction, setAdminAction] = useState<{ kind: AdminActionKind; row: CustomReviewSubmission } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  // A response for a tab somebody already left must not overwrite the one they are on.
+  // A response for filters somebody already left must not overwrite the ones they are on.
   const loadTicket = useRef(0)
   const deepLinked = useRef<string | null>(null)
+
+  const filterKey = `${filters.status}|${filters.month}|${filters.employeeId}|${limit}`
+  const isAdmin = profile?.role === 'admin'
 
   useEffect(() => {
     if (loading) return
     if (!caps.canVerify) router.replace('/customer-reviews')
   }, [loading, caps.canVerify, router])
 
-  const rememberNames = useCallback(async (found: CustomReviewSubmission[]) => {
-    const ids = [...new Set(found.flatMap(r => [r.submitted_by, r.approved_by, r.rejected_by]).filter((v): v is string => !!v))]
+  const rememberNames = useCallback(async (found: { submitted_by: string; approved_by?: string | null; rejected_by?: string | null; deleted_by?: string | null }[]) => {
+    const ids = [...new Set(found.flatMap(r => [r.submitted_by, r.approved_by, r.rejected_by, r.deleted_by]).filter((v): v is string => !!v))]
     if (ids.length === 0) return
     // id and full_name only — users has private columns (src/lib/users/safeColumns.ts).
     const { data: people } = await supabase.from('users').select('id, full_name').in('id', ids)
@@ -105,19 +133,40 @@ export function CustomSubmissionsScreen() {
     })
   }, [supabase])
 
-  const load = useCallback(async (which: QueueView) => {
-    const ticket = ++loadTicket.current
-    // A deleted review is kept for verifiers (RLS) but is not in any queue: it
-    // has its own tab, and the pending count leaves it out.
-    const base = supabase
+  /** Employees and months that have submissions — the filter menus, and nothing else. */
+  const loadFilterSource = useCallback(async () => {
+    const { data } = await supabase
       .from('customer_review_custom_submissions')
-      .select(CUSTOM_SUBMISSION_COLUMNS)
+      .select('submitted_by, submitted_at')
+      .order('submitted_at', { ascending: false })
+      .limit(FILTER_SOURCE_LIMIT)
+    const found = (data ?? []) as unknown as { submitted_by: string; submitted_at: string }[]
+    setFilterSource(found)
+    await rememberNames(found)
+  }, [supabase, rememberNames])
+
+  const load = useCallback(async (f: SubmissionListFilters, rowLimit: number) => {
+    const ticket = ++loadTicket.current
+    const key = `${f.status}|${f.month}|${f.employeeId}|${rowLimit}`
+    // A deleted review is kept for verifiers (RLS) but is in no queue: it has its own filter,
+    // and every other view leaves it out — as do the counts.
+    let query = supabase
+      .from('customer_review_custom_submissions')
+      .select(CUSTOM_SUBMISSION_COLUMNS, { count: 'exact' })
+    query = f.status === 'deleted' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
+    if (f.status !== 'all' && f.status !== 'deleted') query = query.eq('status', f.status)
+    if (f.employeeId) query = query.eq('submitted_by', f.employeeId)
+    const range = reviewMonthRange(f.month)
+    if (range) query = query.gte('submitted_at', range.from).lt('submitted_at', range.to)
+    // Oldest pending first — that queue is worked in order; everything else, newest first.
+    query = f.status === 'pending_verification'
+      ? query.order('submitted_at', { ascending: true })
+      : f.status === 'deleted'
+        ? query.order('deleted_at', { ascending: false })
+        : query.order('submitted_at', { ascending: false })
+
     const [list, pending] = await Promise.all([
-      (which === 'deleted'
-        ? base.not('deleted_at', 'is', null).order('deleted_at', { ascending: false })
-        // Oldest pending first — the queue is worked in order; decided ones newest first.
-        : base.eq('status', which).is('deleted_at', null).order('submitted_at', { ascending: which === 'pending_verification' })
-      ).limit(200),
+      query.limit(rowLimit),
       supabase
         .from('customer_review_custom_submissions')
         .select('id', { count: 'exact', head: true })
@@ -128,24 +177,49 @@ export function CustomSubmissionsScreen() {
     if (list.error) {
       setLoadError('Custom submissions could not be loaded. Refresh to try again.')
       setRows([])
-      setLoadedStatus(which)
+      setTotal(null)
+      setLoadedKey(key)
       return
     }
     const found = (list.data ?? []) as unknown as CustomReviewSubmission[]
     setLoadError(null)
     setRows(found)
-    setLoadedStatus(which)
+    setTotal(list.count ?? found.length)
+    setLoadedKey(key)
     setPendingCount(pending.error ? null : pending.count ?? null)
+    setNamesReady(false)
     await rememberNames(found)
+    if (ticket !== loadTicket.current) return
+    setNamesReady(true)
+
+    // Thumbnails: one batch request for the page. A path that fails simply has no thumbnail and
+    // the card says so; the full-size preview asks for the file again.
+    const paths = [...new Set(found.map(r => r.proof_storage_path))]
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from(CUSTOM_PROOF_BUCKET).createSignedUrls(paths, THUMB_TTL_SECONDS)
+      if (ticket !== loadTicket.current) return
+      const next = new Map<string, string>()
+      for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) next.set(s.path, s.signedUrl)
+      setThumbs(next)
+    } else {
+      setThumbs(new Map())
+    }
+
     const summaries = await loadDuplicateSummaries(supabase, found.map(r => r.id))
     if (ticket === loadTicket.current) setDuplicates(summaries)
   }, [supabase, rememberNames])
 
   useEffect(() => {
     if (loading || !caps.canVerify) return
-    const startFetch = () => { void load(status) }
+    const startFetch = () => { void load(filters, limit) }
     startFetch()
-  }, [loading, caps.canVerify, status, load])
+  }, [loading, caps.canVerify, filters, limit, load])
+
+  useEffect(() => {
+    if (loading || !caps.canVerify) return
+    const startFetch = () => { void loadFilterSource() }
+    startFetch()
+  }, [loading, caps.canVerify, loadFilterSource])
 
   // The review a notification points at, opened once per id.
   const wanted = searchParams.get('submission')
@@ -162,7 +236,8 @@ export function CustomSubmissionsScreen() {
         const row = data as unknown as CustomReviewSubmission | null
         if (!row) { setNotice('That custom review could not be found.'); return }
         await rememberNames([row])
-        setStatus(row.deleted_at ? 'deleted' : row.status)
+        setLimit(PAGE_SIZE)
+        setFilters({ ...NO_SUBMISSION_FILTERS, status: statusFilterOf(row) })
         setOpened(row)
       })()
     }
@@ -192,36 +267,57 @@ export function CustomSubmissionsScreen() {
     return () => { active = false }
   }, [loading, caps.canVerify, supabase])
 
+  /** After any decision or admin action: the list, the filter menus and every count that reads reviews. */
+  const refreshAfterChange = useCallback(async () => {
+    // Pending badge, reports and any other query under 'customer-reviews'; credits screens read the ledger on open.
+    void queryClient.invalidateQueries({ queryKey: CUSTOM_REVIEW_PENDING_COUNT_KEY })
+    void queryClient.invalidateQueries({ queryKey: ['customer-reviews'] })
+    await Promise.all([load(filters, limit), loadFilterSource()])
+  }, [queryClient, load, filters, limit, loadFilterSource])
+
   if (loading) return <LoadingScreen />
 
-  const listLoading = loadedStatus !== status
+  const listLoading = loadedKey !== filterKey
+  const monthOptions = reviewMonthOptions(filterSource.map(r => r.submitted_at))
+  const employeeOptions = [...new Set(filterSource.map(r => r.submitted_by))]
+    .map(id => ({ id, name: names.get(id) ?? '…' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const filtered = filters.status !== 'all' || filters.month !== '' || filters.employeeId !== ''
+
+  const changeFilters = (next: Partial<SubmissionListFilters>) => {
+    setFilters(prev => ({ ...prev, ...next }))
+    setLimit(PAGE_SIZE)
+    setNotice(null)
+  }
 
   return (
     <CustomerReviewsLayout
       profile={profile}
       title="Custom Submissions"
-      subtitle="Custom reviews waiting for approval"
+      subtitle="Every custom review — pending, approved and rejected"
       canVerify={caps.canVerify}
       onSignOut={signOut}
     >
-      <div style={{ maxWidth: '960px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {notice && (
-          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>
+          <p role="status" style={{ fontSize: '12.5px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>
         )}
 
         <div role="tablist" aria-label="Submission status" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {([...CUSTOM_SUBMISSION_STATUSES, 'deleted'] as QueueView[]).map(s => {
-            const active = s === status
+          {SUBMISSION_STATUS_FILTERS.map(s => {
+            const active = s === filters.status
             const meta = s === 'deleted'
               ? { label: 'Deleted', bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' }
-              : CUSTOM_SUBMISSION_STATUS_META[s]
+              : s === 'all'
+                ? { label: 'All', bg: 'rgba(79,111,208,0.10)', color: '#3B5BC0', border: 'rgba(79,111,208,0.25)' }
+                : CUSTOM_SUBMISSION_STATUS_META[s]
             return (
               <button
                 key={s}
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => { setStatus(s); setNotice(null) }}
+                onClick={() => changeFilters({ status: s })}
                 style={{
                   minHeight: '40px', padding: '7px 14px', borderRadius: '999px', fontFamily: 'inherit',
                   fontSize: '12.5px', fontWeight: 600, cursor: 'pointer',
@@ -230,10 +326,45 @@ export function CustomSubmissionsScreen() {
                   color: active ? meta.color : colors.secondary,
                 }}
               >
-                {meta.label}{s === 'pending_verification' && pendingCount != null ? ` · ${pendingCount}` : ''}
+                {SUBMISSION_STATUS_FILTER_LABELS[s]}{s === 'pending_verification' && pendingCount != null ? ` · ${pendingCount}` : ''}
               </button>
             )
           })}
+        </div>
+
+        <div className={listStyles.filters}>
+          <label>
+            Review month
+            <select
+              value={filters.month}
+              onChange={e => changeFilters({ month: e.target.value })}
+              aria-label="Filter by review month"
+            >
+              <option value="">All months</option>
+              {monthOptions.map(m => <option key={m} value={m}>{reviewMonthLabel(m)}</option>)}
+            </select>
+          </label>
+          <label>
+            Submitted by
+            <select
+              value={filters.employeeId}
+              onChange={e => changeFilters({ employeeId: e.target.value })}
+              aria-label="Filter by employee"
+            >
+              <option value="">All employees</option>
+              {employeeOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </label>
+          {filtered && (
+            <button
+              type="button"
+              className="boe-btn boe-btn-ghost"
+              onClick={() => changeFilters(NO_SUBMISSION_FILTERS)}
+              style={{ padding: '7px 12px', fontSize: '12.5px', minHeight: '40px' }}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {loadError && (
@@ -247,87 +378,56 @@ export function CustomSubmissionsScreen() {
             margin: 0, padding: '24px 20px', borderRadius: '10px', textAlign: 'center',
             border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px',
           }}>
-            {status === 'pending_verification'
-              ? 'Nothing is waiting for approval.'
-              : status === 'approved' ? 'No custom review has been approved yet.'
-              : status === 'deleted' ? 'No employee has deleted a custom review.'
-              : 'No custom review is rejected right now.'}
+            {filtered ? 'No custom review matches these filters.' : 'No custom review has been submitted yet.'}
           </p>
         ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {rows.map(row => (
-              <li
-                key={row.id}
-                style={{
-                  padding: '12px 14px', borderRadius: '10px', border: `1px solid ${colors.borderSoft}`,
-                  background: colors.base, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px',
-                }}
+          <>
+            <p style={{ margin: 0, fontSize: '12px', color: colors.secondary }}>
+              Showing {rows.length}{total != null && total > rows.length ? ` of ${total}` : ''} {rows.length === 1 ? 'review' : 'reviews'}
+            </p>
+            <CustomSubmissionList
+              rows={rows}
+              names={names}
+              namesReady={namesReady}
+              thumbs={thumbs}
+              duplicates={duplicates}
+              viewerId={profile?.id ?? null}
+              isAdmin={isAdmin}
+              onOpen={row => { setNotice(null); setOpened(row) }}
+              onPreview={setPreviewing}
+              onAdminReject={row => { setNotice(null); setAdminAction({ kind: 'reject', row }) }}
+              onAdminDelete={row => { setNotice(null); setAdminAction({ kind: 'delete', row }) }}
+            />
+            {total != null && total > rows.length && (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                onClick={() => setLimit(l => l + PAGE_SIZE)}
+                style={{ alignSelf: 'center', padding: '8px 18px', fontSize: '13px', minHeight: '44px' }}
               >
-                <div style={{ flex: '1 1 280px', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '13.5px', fontWeight: 700, color: colors.primary }}>
-                      {names.get(row.submitted_by) ?? '…'}
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: REVIEW_TYPE_META[row.review_type].color }}>
-                      {CUSTOM_REVIEW_TYPE_LABELS[row.review_type]}
-                    </span>
-                    <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
-                    <DuplicateBadge summary={duplicates?.get(row.id)} />
-                    {row.reward_held && !row.deleted_at && (
-                      <span style={{
-                        fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-                        background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A',
-                      }}>
-                        Edited after approval
-                      </span>
-                    )}
-                    {row.reapplication_count > 0 && row.status === 'pending_verification' && (
-                      <span style={{
-                        fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-                        background: 'rgba(79,111,208,0.10)', color: '#3B5BC0', border: '1px solid rgba(79,111,208,0.25)',
-                      }}>
-                        Reapplied
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
-                    {row.submission_ref} · Published {formatSubmissionDay(row.published_on)} · Submitted {formatSubmissionDay(istDateOf(row.submitted_at))}
-                    {row.last_reapplied_at ? ` · Reapplied ${formatSubmissionDay(istDateOf(row.last_reapplied_at))}` : ''}
-                    {row.last_edited_at ? ` · Edited ${formatSubmissionDay(istDateOf(row.last_edited_at))}` : ''}
-                    {row.deleted_at ? ` · Deleted ${formatSubmissionDay(istDateOf(row.deleted_at))}` : ''}
-                  </div>
-                  {(row.candidate_note ?? row.remark) && (
-                    <div style={{
-                      fontSize: '12px', color: colors.tertiary, marginTop: '3px',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {row.candidate_note ? `Note: ${row.candidate_note}` : row.remark}
-                    </div>
-                  )}
-                </div>
-                {row.status === 'approved' && row.credits_awarded != null && (
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCredits(Number(row.credits_awarded), { signed: true })}
-                  </span>
-                )}
-                {row.reward_held && !row.deleted_at && row.credits_awarded != null && (
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#92400E' }}>
-                    {formatCredits(Number(row.credits_awarded))} on hold
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={row.status === 'pending_verification' ? 'boe-btn boe-btn-primary' : 'boe-btn boe-btn-ghost'}
-                  onClick={() => { setNotice(null); setOpened(row) }}
-                  style={{ padding: '7px 14px', fontSize: '12.5px', minHeight: '44px' }}
-                >
-                  {row.status === 'pending_verification' ? 'Open & Decide' : 'Open'}
-                </button>
-              </li>
-            ))}
-          </ul>
+                Show more
+              </button>
+            )}
+          </>
         )}
       </div>
+
+      {previewing && (
+        <ReviewSheet
+          title={`Screenshot · ${previewing.submission_ref}`}
+          subtitle={`${recordedOrNot(previewing.reviewer_name)} · submitted by ${names.get(previewing.submitted_by) ?? '…'}`}
+          maxWidth="900px"
+          onClose={() => setPreviewing(null)}
+        >
+          <CustomSubmissionProof
+            key={previewing.id}
+            supabase={supabase}
+            path={previewing.proof_storage_path}
+            alt={`Screenshot of ${previewing.submission_ref}`}
+            large
+          />
+        </ReviewSheet>
+      )}
 
       {opened && (
         <DecisionSheet
@@ -335,18 +435,34 @@ export function CustomSubmissionsScreen() {
           row={opened}
           supabase={supabase}
           viewerId={profile?.id ?? null}
-          isAdmin={profile?.role === 'admin'}
+          isAdmin={isAdmin}
           names={names}
           rewards={rewards}
           duplicate={duplicates?.get(opened.id)}
-          onDuplicateChanged={() => { void load(status) }}
+          onDuplicateChanged={() => { void load(filters, limit) }}
           onClose={() => setOpened(null)}
+          onAdminAction={(kind, row) => setAdminAction({ kind, row })}
           onDecided={async message => {
             setOpened(null)
             setNotice(message)
-            // The sidebar's pending badge reads the same queue.
-            void queryClient.invalidateQueries({ queryKey: CUSTOM_REVIEW_PENDING_COUNT_KEY })
-            await load(status)
+            await refreshAfterChange()
+          }}
+        />
+      )}
+
+      {adminAction && (
+        <AdminSubmissionAction
+          key={`${adminAction.kind}:${adminAction.row.id}`}
+          kind={adminAction.kind}
+          row={adminAction.row}
+          employee={names.get(adminAction.row.submitted_by) ?? 'the employee'}
+          supabase={supabase}
+          onClose={() => setAdminAction(null)}
+          onDone={async message => {
+            setAdminAction(null)
+            setOpened(null)
+            setNotice(message)
+            await refreshAfterChange()
           }}
         />
       )}
@@ -355,7 +471,7 @@ export function CustomSubmissionsScreen() {
 }
 
 function DecisionSheet({
-  row, supabase, viewerId, isAdmin, names, rewards, duplicate, onDuplicateChanged, onClose, onDecided,
+  row, supabase, viewerId, isAdmin, names, rewards, duplicate, onDuplicateChanged, onClose, onDecided, onAdminAction,
 }: {
   row: CustomReviewSubmission
   supabase: SupabaseClient
@@ -369,6 +485,8 @@ function DecisionSheet({
   onDuplicateChanged: () => void
   onClose: () => void
   onDecided: (message: string) => Promise<void>
+  /** An administrator's reject-after-approval or delete — confirmed in its own dialog. */
+  onAdminAction: (kind: AdminActionKind, row: CustomReviewSubmission) => void
 }) {
   const configured = rewards ? (row.review_type === 'image' ? rewards.image : rewards.text) : null
   const [creditsText, setCreditsText] = useState(configured != null ? String(configured) : '')
@@ -379,6 +497,8 @@ function DecisionSheet({
   // State is too slow to stop a double click. The database is what makes an
   // approval pay once; this only stops the second request.
   const acting = useRef(false)
+
+  const buttonStyle: React.CSSProperties = { padding: '8px 16px', fontSize: '13px', minHeight: '44px' }
 
   const own = row.submitted_by === viewerId
   const pending = row.status === 'pending_verification' && row.deleted_at == null
@@ -452,11 +572,39 @@ function DecisionSheet({
     }
   }
 
-  const buttonStyle: React.CSSProperties = { padding: '8px 16px', fontSize: '13px', minHeight: '44px' }
+  const adminReject = canAdminRejectApproved(row, viewerId, isAdmin)
+  const adminDelete = canAdminDelete(row, isAdmin)
+  const adminButtons = (adminReject || adminDelete) && !rejecting ? (
+    <>
+      {adminDelete && (
+        <button
+          type="button"
+          className="boe-btn boe-btn-ghost"
+          onClick={() => onAdminAction('delete', row)}
+          disabled={busy}
+          style={{ ...buttonStyle, color: '#B91C1C', marginRight: 'auto' }}
+        >
+          Delete
+        </button>
+      )}
+      {adminReject && (
+        <button
+          type="button"
+          className="boe-btn boe-btn-primary"
+          onClick={() => onAdminAction('reject', row)}
+          disabled={busy}
+          style={{ ...buttonStyle, background: '#B91C1C', borderColor: '#B91C1C' }}
+        >
+          Reject approval
+        </button>
+      )}
+    </>
+  ) : null
 
-  const footer = pending && !own ? (
+  const footer = (pending && !own) || adminButtons ? (
     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-      {rejecting ? (
+      {adminButtons}
+      {!(pending && !own) ? null : rejecting ? (
         <>
           <button
             type="button"
@@ -527,7 +675,7 @@ function DecisionSheet({
             padding: '10px 12px', borderRadius: '9px', border: '1px solid #D1D5DB', background: '#F3F4F6',
             fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
           }}>
-            <strong>Deleted by {names.get(row.deleted_by ?? '') ?? 'the employee'} on {formatSubmissionDay(istDateOf(row.deleted_at))}.</strong>{' '}
+            <strong>Deleted by {row.deleted_by && row.deleted_by !== row.submitted_by ? (names.get(row.deleted_by) ?? 'an administrator') : (names.get(row.deleted_by ?? '') ?? 'the employee')} on {formatSubmissionDay(istDateOf(row.deleted_at))}.</strong>{' '}
             The record is kept as history and as duplicate-check evidence.
             {row.reward_reversal_transaction_id ? ' Its credit was reversed.' : ''}
           </section>

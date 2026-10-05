@@ -556,6 +556,7 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
       '20270303000000_task_acknowledge_rpc.sql',
+      '20270304000000_customer_review_admin_reject_and_delete.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

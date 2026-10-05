@@ -460,6 +460,7 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270301000000_notifications_event_idempotency.sql',
       '20270302000000_task_change_status_rpc.sql',
       '20270303000000_task_acknowledge_rpc.sql',
+      '20270304000000_customer_review_admin_reject_and_delete.sql',
     ],'every migration at or after this one is accounted for')
   })
 })
