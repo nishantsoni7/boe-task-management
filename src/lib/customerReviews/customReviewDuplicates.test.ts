@@ -39,7 +39,8 @@ const SQL = read('supabase/migrations/20270224000000_customer_review_custom_dupl
 const code = SQL.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 const ROUTE = read('src/app/api/customer-reviews/custom-submissions/route.ts')
 const WORKSPACE = read('src/components/customerReviews/CustomReviewSubmissions.tsx')
-const QUEUE = read('src/app/customer-reviews/CustomSubmissionsScreen.tsx')
+// The queue is the screen plus the list it draws its rows with.
+const QUEUE = read('src/app/customer-reviews/CustomSubmissionsScreen.tsx') + read('src/components/customerReviews/CustomSubmissionList.tsx')
 const REVIEW = read('src/components/customerReviews/DuplicateReview.tsx')
 const NEXT_CONFIG = read('next.config.ts')
 

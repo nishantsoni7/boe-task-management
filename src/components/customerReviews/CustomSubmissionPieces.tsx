@@ -15,6 +15,7 @@ import {
   type CustomReviewSubmission,
   type CustomSubmissionEvent,
 } from '@/lib/customerReviews/customSubmissions'
+import { NOT_RECORDED, recordedOrNot } from '@/lib/customerReviews/submissionList'
 import type { ReviewType } from '@/lib/customerReviews/types'
 
 // The pieces the employee's history and the verifier's queue both show: the
@@ -114,14 +115,15 @@ export function CustomSubmissionFacts({
 }) {
   const facts: { label: string; value: string }[] = []
 
-  if (names) facts.push({ label: 'Employee', value: names.get(row.submitted_by) ?? '—' })
+  // Two different people: the employee who uploaded it, and the customer who posted the public review.
+  if (names) facts.push({ label: 'Submitted By', value: names.get(row.submitted_by) ?? NOT_RECORDED })
   facts.push(
     { label: 'Reference',    value: row.submission_ref },
     { label: 'Review Type',  value: CUSTOM_REVIEW_TYPE_LABELS[row.review_type] },
     { label: 'Published On', value: formatSubmissionDay(row.published_on) },
     { label: 'Submitted On', value: formatSubmissionMoment(row.submitted_at) },
-    { label: 'Reviewer Name', value: row.reviewer_name ?? '—' },
-    { label: 'Review Text',  value: row.review_text ?? '—' },
+    { label: 'Reviewer Name', value: recordedOrNot(row.reviewer_name) },
+    { label: 'Review Text',  value: recordedOrNot(row.review_text) },
     { label: 'Remark',       value: row.remark ?? '—' },
     { label: 'Status',       value: CUSTOM_SUBMISSION_STATUS_META[row.status].label },
   )
@@ -254,6 +256,14 @@ export function CustomSubmissionTrail({
                 {e.event_type === 'approved' && e.details?.reaffirmed_after_edit === true && (
                   <div style={{ color: colors.secondary }}>Approved again after an edit · nothing more awarded</div>
                 )}
+                {e.event_type === 'rejected' && e.details?.reversed_approval === true && (
+                  <div style={{ color: '#B91C1C' }}>
+                    Approval taken back · was Approved{typeof e.details.previous_approved_at === 'string'
+                      ? ` on ${formatSubmissionMoment(e.details.previous_approved_at)}` : ''}
+                    {typeof e.details.previous_approved_by === 'string' && who(e.details.previous_approved_by)
+                      ? ` by ${who(e.details.previous_approved_by)}` : ''}
+                  </div>
+                )}
                 {e.event_type === 'rejected' && e.details?.credit_reversed === true && (
                   <div style={{ color: '#B91C1C' }}>Credit withdrawn</div>
                 )}
@@ -274,7 +284,7 @@ export function CustomSubmissionTrail({
                 )}
                 {e.event_type === 'deleted' && (
                   <div style={{ color: colors.secondary }}>
-                    Was {typeof e.details?.status_at_delete === 'string' ? String(e.details.status_at_delete).replace('pending_verification', 'pending approval') : 'submitted'}
+                    {e.details?.by_owner === false ? 'Deleted by an administrator · ' : ''}Was {typeof e.details?.status_at_delete === 'string' ? String(e.details.status_at_delete).replace('pending_verification', 'pending approval') : 'submitted'}
                     {e.details?.credits_reversed === true ? ' · credit reversed' : ''}
                   </div>
                 )}

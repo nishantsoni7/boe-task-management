@@ -123,7 +123,7 @@ export const CUSTOM_SUBMISSION_EVENT_LABELS: Record<CustomSubmissionEventType, s
   reapplied: 'Reapplied for approval',
   approved:  'Approved',
   edited:    'Edited',
-  deleted:   'Deleted by the employee',
+  deleted:   'Deleted',
   duplicate_flagged: 'Possible duplicate flagged',
   duplicate_decided: 'Duplicate decision recorded',
 }
@@ -310,6 +310,8 @@ export function customSubmissionFailureStatus(message: string | null | undefined
     ['CUSTOMER_REVIEW_CUSTOM_UNAUTHORIZED', 403],
     ['CUSTOMER_REVIEW_CUSTOM_NOT_OWNER', 403],
     ['CUSTOMER_REVIEW_CUSTOM_NOT_FOUND', 404],
+    ['CUSTOMER_REVIEW_CUSTOM_NOT_APPROVED', 409],
+    ['CUSTOMER_REVIEW_CUSTOM_SELF', 403],
     ['CUSTOMER_REVIEW_CUSTOM_DUPLICATE', 409],
     ['CUSTOMER_REVIEW_CUSTOM_DECIDED', 409],
     ['CUSTOMER_REVIEW_CUSTOM_NOT_EDITABLE', 409],

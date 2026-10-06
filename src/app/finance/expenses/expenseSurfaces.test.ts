@@ -717,7 +717,7 @@ describe('the migration is the one this work adds, and it is additive', () => {
       if (f === 'supabase/migrations/20270228000000_salesperson_orders_dashboard.sql') continue
       // Customer Reviews: edit / delete, duplicate detection, reporting (2027022300… onward), held by
       // src/lib/customerReviews/*.test.ts and supabase/tests/custom_review_*.sql.
-      if (/^supabase\/migrations\/2027022[3-9]0{6}_customer_review_(custom_|reporting_)/.test(f)) continue
+      if (/^supabase\/migrations\/(2027022[3-9]0{6}_customer_review_(custom_|reporting_)|20270304000000_customer_review_admin_)/.test(f)) continue
       // Payment Requests: a salesperson's soft delete of their own never-approved request,
       // held by src/lib/finance/ownPaymentRequestDeletion.test.tsx and
       // supabase/tests/payment_request_owner_soft_delete_assertions.sql.
@@ -2661,6 +2661,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/finance/expenses/expenseSurfaces.test.ts',
     'src/components/customerReviews/CustomReviewSubmitControl.tsx',
     'src/lib/customerReviews/submitAvailability.ts',
+    // An administrator rejects an approved review / deletes a review, and the filterable list (20270304000000).
+    'src/components/customerReviews/AdminSubmissionAction.tsx',
+    'src/components/customerReviews/CustomSubmissionList.tsx',
+    'src/components/customerReviews/customSubmissionList.module.css',
+    'src/lib/customerReviews/customReviewAdminActions.test.ts',
+    'src/lib/customerReviews/submissionList.test.ts',
+    'src/lib/customerReviews/submissionList.ts',
+    'supabase/migrations/20270304000000_customer_review_admin_reject_and_delete.sql',
+    'supabase/tests/custom_review_admin_actions_assertions.sql',
+    'supabase/tests/run_custom_review_admin_race.sh',
   ])
   // MARKER-END
 
@@ -2732,6 +2742,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/healthCheckMigrationAudit.test.ts',
     'src/lib/tasks/topTasksApproval.test.ts',
     'supabase/migrations/20270303000000_task_acknowledge_rpc.sql',
+    'supabase/migrations/20270304000000_customer_review_admin_reject_and_delete.sql',
     'supabase/tests/task_acknowledge_assertions.sql',
     'supabase/tests/run_task_acknowledge_local.sh',
   ])
@@ -3252,7 +3263,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // edits the two suites whose below-40% reasons are now one of three.
       // The advance on the total before GST (20270227000000) adds its suite and gives every
       // fixture that prices a PI a total_before_gst beside its grand_total.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting|admin_actions|admin_race)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
