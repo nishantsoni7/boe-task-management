@@ -38,14 +38,14 @@ type ListProps = SubmissionListActions & {
   names: Map<string, string>
   /** False until the submitters' names were read, so a name still loading is not shown as missing. */
   namesReady: boolean
-  /** Signed thumbnail URLs by storage path. A path that is absent has none (yet, or it failed). */
-  thumbs: Map<string, string>
+  /** Signed thumbnail URLs by storage path: a URL, null when the file could not be signed, absent while loading. */
+  thumbs: Map<string, string | null>
   duplicates: Map<string, DuplicateSummary> | null
   viewerId: string | null
   isAdmin: boolean
 }
 
-function Thumb({ row, url, onPreview }: { row: CustomReviewSubmission; url: string | undefined; onPreview: () => void }) {
+function Thumb({ row, url, onPreview }: { row: CustomReviewSubmission; url: string | null | undefined; onPreview: () => void }) {
   // A thumbnail that cannot be shown says so; the full-size preview re-requests the file itself.
   const [broken, setBroken] = useState(false)
   return (

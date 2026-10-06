@@ -1,16 +1,18 @@
 /* Custom Submissions list: a compact table on a desktop and one card per review on a phone.
    Both are in the markup; the breakpoint decides which is shown, so nothing is scrolled
-   sideways to be read. The phone rules are at 640px, below the dialog's own 640px switch. */
+   sideways to be read. Cards replace the table below 960px of viewport. */
 
-.tableWrap { display: block; border: 1px solid rgba(0, 0, 0, 0.13); border-radius: 10px; background: #FFFFFF; overflow: hidden; }
+.tableWrap { display: block; border: 1px solid rgba(0, 0, 0, 0.13); border-radius: 10px; background: #FFFFFF; overflow-x: auto; }
 .cards { display: none; list-style: none; margin: 0; padding: 0; flex-direction: column; gap: 8px; }
 
-@media (max-width: 640px) {
+/* The module sidebar takes ~200px of a tablet, so the table needs ~960px of viewport. */
+@media (max-width: 960px) {
   .tableWrap { display: none; }
   .cards { display: flex; }
 }
 
-.table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 12.5px; }
+.table td:nth-child(2) { min-width: 150px; }
 .table th {
   text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   text-transform: uppercase; color: #6B7280; background: #F9FAFB; border-bottom: 1px solid rgba(0, 0, 0, 0.1);

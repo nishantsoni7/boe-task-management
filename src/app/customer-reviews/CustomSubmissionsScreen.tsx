@@ -98,7 +98,8 @@ export function CustomSubmissionsScreen() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [names, setNames] = useState<Map<string, string>>(new Map())
   const [namesReady, setNamesReady] = useState(false)
-  const [thumbs, setThumbs] = useState<Map<string, string>>(new Map())
+  // path → signed URL; null = it could not be signed (missing file); absent = not asked for yet.
+  const [thumbs, setThumbs] = useState<Map<string, string | null>>(new Map())
   const [filterSource, setFilterSource] = useState<{ submitted_by: string; submitted_at: string }[]>([])
   const [pendingCount, setPendingCount] = useState<number | null>(null)
   const [rewards, setRewards] = useState<Rewards | null>(null)
@@ -198,7 +199,8 @@ export function CustomSubmissionsScreen() {
     if (paths.length > 0) {
       const { data: signed } = await supabase.storage.from(CUSTOM_PROOF_BUCKET).createSignedUrls(paths, THUMB_TTL_SECONDS)
       if (ticket !== loadTicket.current) return
-      const next = new Map<string, string>()
+      // Every path gets an answer: a URL, or null — so a missing file reads "Image not available", never "Loading…".
+      const next = new Map<string, string | null>(paths.map(p => [p, null]))
       for (const s of signed ?? []) if (s.path && s.signedUrl && !s.error) next.set(s.path, s.signedUrl)
       setThumbs(next)
     } else {

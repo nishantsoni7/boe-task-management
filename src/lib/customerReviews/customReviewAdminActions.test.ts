@@ -153,6 +153,7 @@ describe('the list', () => {
     assert.match(LIST, /Preview the screenshot of/)
     assert.match(LIST, /Image not available/)
     assert.match(LIST, /onError=\{\(\) => setBroken\(true\)\}/)
+    assert.match(SCREEN, /new Map<string, string \| null>\(paths\.map\(p => \[p, null\]\)\)/, 'a file that cannot be signed is "not available", never "Loading…" forever')
     assert.match(SCREEN, /createSignedUrls\(paths, THUMB_TTL_SECONDS\)/)
     assert.match(SCREEN, /<CustomSubmissionProof[\s\S]{0,200}path=\{previewing\.proof_storage_path\}/, 'the preview re-requests the file itself')
     assert.ok(!/router\.push|window\.open/.test(SCREEN), 'the preview does not leave the list')
@@ -162,7 +163,7 @@ describe('the list', () => {
     assert.match(LIST, /className=\{styles\.tableWrap\}/)
     assert.match(LIST, /className=\{styles\.cards\}/)
     const css = read('src/components/customerReviews/customSubmissionList.module.css')
-    assert.match(css, /@media \(max-width: 640px\)[\s\S]{0,120}\.tableWrap \{ display: none; \}[\s\S]{0,60}\.cards \{ display: flex; \}/)
+    assert.match(css, /@media \(max-width: 960px\)[\s\S]{0,120}\.tableWrap \{ display: none; \}[\s\S]{0,60}\.cards \{ display: flex; \}/)
   })
 
   test('the administrator\'s buttons are drawn only for an administrator, and the screen never writes the table', () => {
