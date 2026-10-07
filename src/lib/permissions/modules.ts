@@ -385,3 +385,16 @@ registerModule({
     { actionKey: 'create', displayName: 'Create' },
   ],
 })
+
+registerModule({
+  moduleKey: 'exhibition_leads',
+  displayName: 'Exhibition Leads',
+  description: 'Capture visitors at an exhibition and follow them up afterwards.',
+  actions: [
+    // One action. `view` opens the module and lets the holder add leads and work
+    // the leads they currently own; Admin (role) sees and manages everything.
+    // Rows are written only by SECURITY DEFINER functions that read auth.uid(),
+    // so there is no separate create/edit grant to drift out of step.
+    { actionKey: 'view', displayName: 'View' },
+  ],
+})

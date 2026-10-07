@@ -151,7 +151,7 @@ describe('the administrator convention is preserved', () => {
 describe('registration', () => {
   test('the module is engine-gated', () => {
     assert.ok((ENGINE_GATED_MODULE_KEYS as readonly string[]).includes(IMAGE_EDITOR_MODULE_KEY))
-    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 10)
+    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 11)
   })
 
   test('the key is spelled once and shared', () => {
@@ -350,7 +350,7 @@ describe('the /modules launcher card', () => {
     // loosening the assertion, so a card appearing from anywhere else still
     // fails — which is the whole point of pinning the set.
     assert.deepEqual(keys, [
-      'assets', 'attendance_payroll', 'control_center', 'customer_reviews',
+      'assets', 'attendance_payroll', 'control_center', 'customer_reviews', 'exhibition_leads',
       'finance', 'image_editor', 'meetings', 'members', 'orders', 'performance',
       'samples', 'showroom', 'tasks',
     ])

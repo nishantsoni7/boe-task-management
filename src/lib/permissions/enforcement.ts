@@ -113,6 +113,15 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'Both actions are enforced in the screen and in the API. Use requires View.',
   },
 
+  // Every read and write goes through a SECURITY DEFINER function that checks
+  // admin-or-view itself (exhibition_leads_actor), and the three tables carry the
+  // RESTRICTIVE module_entry_open('exhibition_leads') gate.
+  // Entry: src/app/exhibition-leads/layout.tsx via ModuleGuard.
+  exhibition_leads: {
+    state: 'enforced',
+    detail: 'View is enforced in the screen and in the database; leads are scoped to their current owner, and Admin sees all.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //

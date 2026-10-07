@@ -556,6 +556,7 @@ describe('every finance verification ever recorded is left exactly as it is', ()
       '20270302000000_task_change_status_rpc.sql',
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
+      '20270305000000_exhibition_leads.sql',
     ])
 
     const previous = lf(readFileSync(
