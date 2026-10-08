@@ -387,7 +387,7 @@ describe('nothing else about the launcher moved', () => {
     for (const key of [
       'task_management', 'sample_tracking', 'showroom_qr', 'assets_access',
       'employee_records', 'performance', 'finance', 'meetings', 'orders',
-      'image_editor',
+      'image_editor', 'exhibition_leads',
     ]) {
       assert.ok(PAGE.includes(`canOpenModule('${key}')`), `${key} is still gated`)
     }

@@ -158,8 +158,10 @@ describe('Quick Add Expense on the launcher', () => {
     // the launcher still computes the gate, the shared list only draws it.
     assert.ok(modules.includes('deriveFinanceCapabilities('))
     assert.ok(modules.includes('financeCaps.canCreatePaymentRecord'))
-    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canRequestAttendance \}\)/.test(modules),
-      'the list is built from the two gates and from nothing else')
+    // The third gate is Exhibition Leads' own module access; it is NAMED here so
+    // a FOURTH gate appearing from anywhere else still fails.
+    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canRequestAttendance, canAddExhibitionLead \}\)/.test(modules),
+      'the list is built from the three named gates and from nothing else')
     assert.ok(/if \(gates\.canQuickAddExpense\)/.test(quickActions),
       'the definition enters the list only when its gate is true')
     assert.ok(/actions\.length === 0\) return null/.test(quickActions),
@@ -742,6 +744,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the notification event key (20270301000000): a guard and one partial unique index, held by
       // supabase/tests/notifications_event_idempotency_assertions.sql and src/lib/notifications/eventIdempotency.test.ts.
       if (f === 'supabase/migrations/20270301000000_notifications_event_idempotency.sql') continue
+      // And Exhibition Leads (20270305000000): its own tables, functions and module registration, held by
+      // src/lib/exhibitionLeads/migration.test.ts and supabase/tests/exhibition_leads_assertions.sql.
+      if (f === 'supabase/migrations/20270305000000_exhibition_leads.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -761,7 +766,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const changed = execFileSync('git', ['diff', '--name-only', 'origin/main...HEAD'],
     { cwd: process.cwd(), encoding: 'utf8' })
     .split('\n').map(s => unquote(s.trim())).filter(Boolean)
-  const staged = execFileSync('git', ['status', '--porcelain'],
+  const staged = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'],
     { cwd: process.cwd(), encoding: 'utf8' })
     .split('\n').map(s => unquote(s.slice(3).trim())).filter(Boolean)
   const touched = new Set([...changed, ...staged])
@@ -2867,6 +2872,61 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/tasks/dashboardViewAsReadOnly.test.ts',
   ])
 
+  // Exhibition Leads (20270305000000): a new module of its own — one migration, its screens, hook, library and
+  // layout, its two login/module-card wiring edits, the module registry, and the migration-inventory pins that
+  // name every migration on disk. It reaches no Finance or Orders file. Named files only, never a directory.
+  const ALLOWED_EXHIBITION_LEADS = new Set([
+    'src/app/exhibition-leads/add/page.tsx',
+    'src/app/exhibition-leads/all/page.tsx',
+    'src/app/exhibition-leads/layout.tsx',
+    'src/app/exhibition-leads/my/page.tsx',
+    'src/app/exhibition-leads/page.tsx',
+    'src/app/exhibition-leads/ranking/page.tsx',
+    'src/components/exhibitionLeads/AddLeadScreen.tsx',
+    'src/components/exhibitionLeads/ChoiceGroup.tsx',
+    'src/components/exhibitionLeads/LeadBits.tsx',
+    'src/components/exhibitionLeads/LeadDetailSheet.tsx',
+    'src/components/exhibitionLeads/LeadsListScreen.tsx',
+    'src/components/exhibitionLeads/RankingScreen.tsx',
+    'src/components/exhibitionLeads/leads.module.css',
+    'src/components/layout/ExhibitionLeadsLayout.tsx',
+    'src/hooks/useExhibitionLeads.ts',
+    'src/lib/exhibitionLeads/api.ts',
+    'src/lib/exhibitionLeads/constants.ts',
+    'src/lib/exhibitionLeads/csv.ts',
+    'src/lib/exhibitionLeads/draft.ts',
+    'src/lib/exhibitionLeads/errors.ts',
+    'src/lib/exhibitionLeads/exhibitionLeads.test.ts',
+    'src/lib/exhibitionLeads/filters.ts',
+    'src/lib/exhibitionLeads/format.ts',
+    'src/lib/exhibitionLeads/migration.test.ts',
+    'src/lib/exhibitionLeads/phone.ts',
+    'src/lib/exhibitionLeads/ranking.ts',
+    'src/lib/exhibitionLeads/validation.ts',
+    'supabase/migrations/20270305000000_exhibition_leads.sql',
+    'src/app/login/page.tsx',
+    'src/app/modules/moduleCardSurface.test.ts',
+    'src/lib/permissions/enforcement.ts',
+    'src/lib/permissions/imageEditor.test.ts',
+    'src/lib/permissions/moduleParentGate.test.ts',
+    'src/lib/permissions/moduleVisibility.ts',
+    'src/lib/permissions/modules.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/boeCredits/reviewReward.test.ts',
+    'src/lib/customerReviews/migration.test.ts',
+    'src/lib/finance/participantAndOrderTotalSecurity.test.ts',
+    'src/lib/modules/moduleOrderStorage.test.ts',
+    'src/lib/notifications/activityLinkMigration.test.ts',
+    'src/lib/notifications/groupMutations.test.ts',
+    'src/lib/orders/orderFinanceTestReset.test.ts',
+    'src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts',
+    'src/lib/orders/piFinanceVerificationRemoval.test.ts',
+    'src/lib/tasks/assignmentWriteAuthority.test.ts',
+    'src/lib/tasks/healthCheckMigrationAudit.test.ts',
+    'src/lib/tasks/topTasksApproval.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -2942,7 +3002,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_CUSTOMER_REVIEWS_V2.has(f) &&
     !ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(f) &&
     !ALLOWED_TASK_ACKNOWLEDGE.has(f) &&
-    !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f)
+    !ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(f) &&
+    !ALLOWED_EXHIBITION_LEADS.has(f)
 
   test('the Dashboard View As allowance is EXACTLY its two named files', () => {
     assert.deepEqual([...ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE].sort(), [
@@ -3263,7 +3324,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       // edits the two suites whose below-40% reasons are now one of three.
       // The advance on the total before GST (20270227000000) adds its suite and gives every
       // fixture that prices a PI a total_before_gst beside its grand_total.
-      assert.ok(/custom_review_(edit_delete|duplicate|reporting|admin_actions|admin_race)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
+      assert.ok(/custom_review_(edit_delete|duplicate|reporting|admin_actions|admin_race)|payment_request_owner_soft_delete|attendance_request_live_uniqueness|expense_lifecycle|expense_reimbursement|personal_module_order|order_operations_handoff|order_0524_operations_handoff|order_document_submissions|order_pi_revision_promotion|order_pi_review_gate_and_versions|order_submission_numbering|pi_verified_payment_gate|order_pi_edit_revisions|order_pi_revision_in_force_at_admin_approval|order_advance_hold|order_amendment|order_submission_admin_amendment|order_submission_change_pi|order_submission_advance_exception|order_submission_internal_details|order_submission_commission_access|order_pi_version_pdf_order_number|order_advance_exception_cleanup|announcements|asset_catalogue|orders_dashboard|task_change_status|notifications_event_idempotency|task_acknowledge|exhibition_leads|advance_on_total_before_gst|advance_base_revised_pi|finance_payment_(allocation|rejection|verification)_assertions|order_finance_reset|order_number_reservation|order_submission_deletion|pi_submission_payment/.test(f),
         `${f} does not belong to this feature`)
     }
     // The PI numbering race runner is held to the same rule.
@@ -3410,7 +3471,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_CUSTOMER_REVIEWS_V2.has(file)
         || ALLOWED_PAYMENT_REQUEST_OWNER_DELETE.has(file)
         || ALLOWED_TASK_ACKNOWLEDGE.has(file)
-        || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file),
+        || ALLOWED_DASHBOARD_VIEW_AS_ACKNOWLEDGE.has(file)
+        || ALLOWED_EXHIBITION_LEADS.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

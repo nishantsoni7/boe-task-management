@@ -22,7 +22,7 @@ import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import Link from 'next/link'
-import { ArrowRight, ArrowUpRight, Image as ImageIcon, Megaphone } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import {
   IDLE_MODULE_ORDER_EDIT,
@@ -320,7 +320,10 @@ export default function BoeOsHomePage() {
   // desktop sidebar and the small-screen page both render, so a second action
   // is an entry in QuickActions.tsx and no layout work here. An unauthorized
   // viewer gets an empty list and therefore no section in either place.
-  const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance })
+  // Exhibition Leads: the form is one tap from the first screen, on a phone and
+  // in the desktop sidebar, gated by the same parent gate as its launcher card.
+  const canAddExhibitionLead = canOpenModule('exhibition_leads')
+  const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance, canAddExhibitionLead })
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves
@@ -533,6 +536,15 @@ export default function BoeOsHomePage() {
       icon: <ImageIcon size={26} strokeWidth={1.8} />,
       // A generated master is stored for its owner alone, and nothing about a
       // private seven-day history is a company-wide count worth badging.
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('exhibition_leads') ? [{
+      key: 'exhibition_leads',
+      title: 'Exhibition Leads',
+      // The registered module description, verbatim.
+      description: 'Capture visitors at an exhibition and follow them up afterwards.',
+      href: '/exhibition-leads/add',
+      icon: <ContactRound size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{

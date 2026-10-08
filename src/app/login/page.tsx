@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { colors, font } from '@/lib/tokens'
 import { AlertBanner } from '@/components/ui/atoms'
+import { safeReturnPath } from '@/lib/safeReturnPath'
 
 function LoginForm() {
   const [email,    setEmail]    = useState('')
@@ -25,7 +26,9 @@ function LoginForm() {
       return
     }
     const redirect = searchParams.get('redirect')
-    router.push(redirect && redirect.startsWith('/') ? redirect : '/')
+    // Only an internal BOE path is followed: "//host" and "/\host" pass a bare
+    // startsWith('/') check and would send someone off-site after signing in.
+    router.push(safeReturnPath(redirect) ?? '/')
   }
 
   return (

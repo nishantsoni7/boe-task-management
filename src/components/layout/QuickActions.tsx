@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarClock, Receipt as ReceiptIcon } from 'lucide-react'
+import { CalendarClock, ContactRound, Receipt as ReceiptIcon } from 'lucide-react'
 import { AttendanceRequestFlow } from '@/components/attendanceRequests/AttendanceRequestFlow'
 
 // ── QUICK ACTIONS — ONE DEFINITION LIST, TWO PLACEMENTS ──────────────────────
@@ -55,6 +55,12 @@ export type QuickActionGates = {
    * grants nothing about anybody else's attendance, approvals or payroll.
    */
   canRequestAttendance: boolean
+  /**
+   * Exhibition Leads module access (the same parent gate as its launcher card).
+   * Optional so a page that has not resolved module access simply omits it.
+   * It grants nothing: the route's guard and the database decide.
+   */
+  canAddExhibitionLead?: boolean
 }
 
 /**
@@ -79,6 +85,15 @@ export function buildQuickActions(gates: QuickActionGates): QuickAction[] {
       label: 'Quick Add Expense',
       href: '/finance/expenses/new',
       icon: <ReceiptIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
+    })
+  }
+
+  if (gates.canAddExhibitionLead) {
+    actions.push({
+      key: 'add-exhibition-lead',
+      label: 'Add Exhibition Lead',
+      href: '/exhibition-leads/add',
+      icon: <ContactRound size={16} strokeWidth={1.9} aria-hidden="true" />,
     })
   }
 
