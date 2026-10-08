@@ -28,7 +28,7 @@ import { buildLeadsCsv, phoneCell, LEAD_CSV_COLUMNS, type ExportLead } from './c
 import { classifyLeadError } from './errors'
 import { exhibitionDates, istDateTime, pickDefaultExhibition, shortDate } from './format'
 import { newSubmissionId } from './draft'
-import { CLIENT_TYPES, REQUIREMENTS, STATUSES, optionValues } from './constants'
+import { CLIENT_TYPES, LEAD_TYPES, REQUIREMENTS, STATUSES, optionValues } from './constants'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '')
@@ -90,11 +90,17 @@ describe('phone normalisation', () => {
 describe('lead form validation', () => {
   const ok = (): LeadFormValues => ({
     ...emptyLeadForm(), contactName: ' Asha Rao ', mobile: '98765 43210',
-    clientType: 'architect_designer', requirements: ['chairs'],
+    clientType: 'architect_designer', requirements: ['restaurant_cafe'], leadType: 'warm',
   })
-  test('four required fields, nothing else', () => {
+  test('five required fields, nothing else', () => {
     assert.deepEqual(validateLeadForm(ok()), {})
-    assert.deepEqual(Object.keys(validateLeadForm(emptyLeadForm())).sort(), ['clientType', 'contactName', 'mobile', 'requirements'])
+    assert.deepEqual(Object.keys(validateLeadForm(emptyLeadForm())).sort(), ['clientType', 'contactName', 'leadType', 'mobile', 'requirements'])
+  })
+  test('Lead type is mandatory, has no default, and only the four values pass', () => {
+    assert.equal(emptyLeadForm().leadType, '')
+    assert.equal(validateLeadForm({ ...ok(), leadType: '' }).leadType, 'Choose a lead type')
+    assert.equal(validateLeadForm({ ...ok(), leadType: 'urgent' as never }).leadType, 'Choose a lead type')
+    for (const v of ['hot', 'warm', 'long_term', 'mismatched_retail'] as const) assert.deepEqual(validateLeadForm({ ...ok(), leadType: v }), {})
   })
   test('name is trimmed and non-empty', () => {
     assert.ok(validateLeadForm({ ...ok(), contactName: '   ' }).contactName)
@@ -102,17 +108,41 @@ describe('lead form validation', () => {
   })
   test('requirement is multiple, client type single', () => {
     assert.ok(validateLeadForm({ ...ok(), requirements: [] }).requirements)
-    assert.deepEqual(validateLeadForm({ ...ok(), requirements: ['chairs', 'tables', 'sofas_booth'] }), {})
+    assert.deepEqual(validateLeadForm({ ...ok(), requirements: ['restaurant_cafe', 'hotel'] }), {})
     assert.ok(validateLeadForm({ ...ok(), clientType: '' }).clientType)
   })
-  test('Not Decided excludes the other requirements', () => {
-    assert.deepEqual(toggleRequirement(['chairs', 'tables'], 'not_decided'), ['not_decided'])
-    assert.deepEqual(toggleRequirement(['not_decided'], 'chairs'), ['chairs'])
-    assert.deepEqual(toggleRequirement(['chairs'], 'chairs'), [])
+  test('the vocabularies are exactly the ones asked for', () => {
+    assert.deepEqual(CLIENT_TYPES.map(o => o.label), ['Architect / Interior Designer', 'Property Owner', 'Consultant', 'Other'])
+    assert.deepEqual(REQUIREMENTS.map(o => o.label), ['Restaurant / Cafe', 'Hotel'])
+    // The visible label is the short name; the bracketed explanation is a hint behind the "i".
+    assert.deepEqual(LEAD_TYPES.map(o => o.label), ['Hot', 'Warm', 'Long Term', 'Mismatched / Retail Inquiries'])
+    assert.deepEqual(LEAD_TYPES.map(o => o.hint), [
+      'Immediate RFQs / Active Site Plan',
+      'Sourcing for Pipeline Projects',
+      'General Networking & Future Roster',
+      'Low Priority',
+    ])
+    for (const o of LEAD_TYPES) assert.ok(!o.label.includes('('), 'no bracket text in the visible label')
+  })
+  test('requirements toggle independently', () => {
+    assert.deepEqual(toggleRequirement(['hotel'], 'restaurant_cafe'), ['hotel', 'restaurant_cafe'])
+    assert.deepEqual(toggleRequirement(['hotel', 'restaurant_cafe'], 'hotel'), ['restaurant_cafe'])
+    assert.deepEqual(toggleRequirement([], 'hotel'), ['hotel'])
+  })
+  test('"Other" needs a message, and only "Other" sends one', () => {
+    assert.equal(validateLeadForm({ ...ok(), clientType: 'other' }).clientTypeOther, 'Say what kind of client this is')
+    assert.equal(validateLeadForm({ ...ok(), clientType: 'other', clientTypeOther: '   ' }).clientTypeOther, 'Say what kind of client this is')
+    assert.deepEqual(validateLeadForm({ ...ok(), clientType: 'other', clientTypeOther: 'Furniture retailer' }), {})
+    assert.ok(validateLeadForm({ ...ok(), clientType: 'other', clientTypeOther: 'x'.repeat(201) }).clientTypeOther)
+    assert.equal(toCreateArgs({ ...ok(), clientType: 'other', clientTypeOther: ' Furniture retailer ' }).p_client_type_other, 'Furniture retailer')
+    // a message typed before switching away from Other is not sent
+    assert.equal(toCreateArgs({ ...ok(), clientType: 'consultant', clientTypeOther: 'leftover' }).p_client_type_other, null)
+    assert.deepEqual(validateLeadForm({ ...ok(), clientType: 'consultant', clientTypeOther: '' }), {}, 'no message needed for other types')
   })
   test('optional fields default sensibly and are sent only when filled', () => {
     const a = toCreateArgs(ok())
-    assert.equal(a.p_priority, 'not_assessed')
+    assert.equal(a.p_lead_type, 'warm')
+    assert.equal(toCreateArgs({ ...ok(), leadType: 'long_term' }).p_lead_type, 'long_term')
     assert.equal(a.p_company_name, null)
     assert.equal(a.p_project_city, null)
     assert.equal(a.p_buying_timeline, null)
@@ -153,21 +183,22 @@ describe('list filters', () => {
     assert.deepEqual(dateWindow(parse('when=date&day=2026-02-30'), '2026-10-10'), { from: '2026-10-10', to: '2026-10-10' }, 'an impossible date falls back to today')
   })
   test('categories and values map to the database filter', () => {
-    const f = toRpcFilter(parse('type=dealer,other&priority=hot,not_assessed&status=follow_up&follow=overdue,due_today&q=zed&city=Mysuru|Chennai&req=chairs'), ctx)
-    assert.deepEqual(f.client_types, ['dealer', 'other'])
-    assert.deepEqual(f.priorities, ['hot', 'not_assessed'])
+    const f = toRpcFilter(parse('type=consultant,other&ltype=hot,long_term&status=follow_up&follow=overdue,due_today&q=zed&city=Mysuru|Chennai&req=hotel'), ctx)
+    assert.deepEqual(f.client_types, ['consultant', 'other'])
+    assert.deepEqual(f.lead_types, ['hot', 'long_term'])
     assert.deepEqual(f.statuses, ['follow_up'])
     assert.deepEqual(f.follow_ups, ['overdue', 'due_today'])
     assert.equal(f.search, 'zed')
     assert.deepEqual(f.cities, ['Mysuru', 'Chennai'])
-    assert.deepEqual(f.requirements, ['chairs'])
+    assert.deepEqual(f.requirements, ['hotel'])
     assert.equal(f.scope, 'mine')
     assert.equal(f.exhibition_id, 'e1')
     assert.equal(f.date_from, '2026-10-10')
   })
   test('unknown values are dropped, never sent', () => {
-    const f = toRpcFilter(parse('type=wizard,dealer&status=bogus&follow=never'), ctx)
-    assert.deepEqual(f.client_types, ['dealer'])
+    const f = toRpcFilter(parse('type=wizard,consultant&ltype=urgent,not_set&status=bogus&follow=never'), ctx)
+    assert.deepEqual(f.client_types, ['consultant'])
+    assert.equal(f.lead_types, undefined)
     assert.equal(f.statuses, undefined)
     assert.equal(f.follow_ups, undefined)
   })
@@ -185,17 +216,17 @@ describe('list filters', () => {
   })
   test('filter count and toggling', () => {
     assert.equal(activeFilterCount(parse(''), false), 0)
-    assert.equal(activeFilterCount(parse('type=dealer&q=x&status=new'), false), 3)
+    assert.equal(activeFilterCount(parse('type=consultant&q=x&status=new'), false), 3)
     assert.equal(activeFilterCount(parse('archived=archived', ALL_LIST_PARAMS), true), 1)
     assert.equal(activeFilterCount(parse('archived=archived', ALL_LIST_PARAMS), false), 0)
     assert.deepEqual(toggleIn(['a'], 'b'), ['a', 'b'])
     assert.deepEqual(toggleIn(['a', 'b'], 'a'), ['b'])
   })
   test('URL round trip: the state survives, and a filter change drops back to page 1', () => {
-    const next = buildListSearch(MY_LIST_PARAMS, 'page=3&type=dealer', { page: 1, status: ['new'] })
+    const next = buildListSearch(MY_LIST_PARAMS, 'page=3&type=consultant', { page: 1, status: ['new'] })
     assert.equal(new URLSearchParams(next).get('page'), null)
     assert.equal(new URLSearchParams(next).get('status'), 'new')
-    assert.equal(new URLSearchParams(next).get('type'), 'dealer')
+    assert.equal(new URLSearchParams(next).get('type'), 'consultant')
   })
   test('id and text list codecs are strict', () => {
     assert.deepEqual(uuidListParam().parse('nope,a1b00000-0000-4000-8000-000000000003'), ['a1b00000-0000-4000-8000-000000000003'])
@@ -259,8 +290,8 @@ describe('ranking leaders', () => {
 describe('CSV export', () => {
   const lead = (over: Partial<ExportLead> = {}): ExportLead => ({
     id: '1', exhibition_id: 'e', exhibition_name: 'Acetech Bangalore 2026', contact_name: 'Asha Rao', phone: '+919876543210',
-    client_type: 'architect_designer', requirements: ['chairs', 'tables'], company_name: null, project_city: 'Bengaluru',
-    buying_timeline: 'within_1_month', priority: 'hot', status: 'follow_up', next_follow_up_on: '2026-10-12',
+    client_type: 'architect_designer', client_type_other: null, requirements: ['restaurant_cafe', 'hotel'], company_name: null, project_city: 'Bengaluru',
+    buying_timeline: 'within_1_month', lead_type: 'hot', status: 'follow_up', next_follow_up_on: '2026-10-12',
     initial_note: 'Needs 40 chairs', collected_by: 'c', collected_by_name: 'S One', owner_id: 'o', owner_name: 'S Two',
     created_at: '2026-10-09T18:30:00Z', updated_at: '2026-10-09T18:30:00Z', archived_at: null, archive_reason: null,
     latest_note: 'Sent catalogue', latest_note_at: null, ...over,
@@ -268,7 +299,7 @@ describe('CSV export', () => {
   test('carries every requested column', () => {
     assert.deepEqual(LEAD_CSV_COLUMNS.map(c => c.header), [
       'Exhibition', 'Added (IST)', 'Original collector', 'Current owner', 'Contact name', 'Mobile', 'Company / project', 'City',
-      'Client type', 'Requirements', 'Buying timeline', 'Priority', 'Status', 'Next follow-up', 'Initial discussion note',
+      'Client type', 'Requirements', 'Buying timeline', 'Lead type', 'Status', 'Next follow-up', 'Initial discussion note',
       'Latest follow-up note', 'Archived', 'Archive reason'])
   })
   test('BOM, CRLF, readable labels, India time', () => {
@@ -277,9 +308,16 @@ describe('CSV export', () => {
     const lines = csv.trimEnd().split('\r\n')
     assert.equal(lines.length, 2)
     assert.ok(lines[1].includes('Architect / Interior Designer'))
-    assert.ok(lines[1].includes('"Chairs, Tables"'))
+    assert.ok(lines[1].includes('"Restaurant / Cafe, Hotel"'))
     assert.ok(lines[1].includes('2026-10-10 00:00:00'), 'the 18:30Z instant is midnight IST on the 10th')
     assert.ok(lines[1].includes('Hot') && lines[1].includes('Follow-up'))
+  })
+  test('"Other" carries its message into the export; lead type is the plain label, never the hint', () => {
+    const csv = buildLeadsCsv([lead({ client_type: 'other', client_type_other: 'Furniture retailer', lead_type: 'mismatched_retail' }), lead({ lead_type: 'long_term' })])
+    const rows = csv.trimEnd().split('\r\n')
+    assert.ok(rows[1].includes('Other: Furniture retailer'))
+    assert.ok(rows[1].includes('Mismatched / Retail Inquiries') && !rows[1].includes('Low Priority'))
+    assert.ok(rows[2].includes(',Long Term,') && !rows[2].includes('Networking'))
   })
   test('commas, quotes and line breaks are escaped', () => {
     const csv = buildLeadsCsv([lead({ contact_name: 'Rao, "Asha"', initial_note: 'line one\nline two' })])

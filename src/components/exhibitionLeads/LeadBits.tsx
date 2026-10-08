@@ -2,18 +2,18 @@
 
 import { Phone, MessageCircle } from 'lucide-react'
 import {
-  PRIORITIES, STATUSES, labelOf, isTerminalStatus, type Lead,
+  STATUSES, labelOf, isTerminalStatus, leadTypeLabel, type Lead,
 } from '@/lib/exhibitionLeads/constants'
 import { telHref, whatsappHref } from '@/lib/exhibitionLeads/phone'
 import { shortDate } from '@/lib/exhibitionLeads/format'
 import s from './leads.module.css'
 
-export function PriorityBadge({ priority }: { priority: string }) {
-  const cls = priority === 'hot' ? s.badgeHot
-    : priority === 'warm' ? s.badgeWarm
-    : priority === 'general_interest' ? s.badgeGeneral
+export function LeadTypeBadge({ leadType }: { leadType: string }) {
+  const cls = leadType === 'hot' ? s.badgeHot
+    : leadType === 'warm' ? s.badgeWarm
+    : leadType === 'long_term' ? s.badgeGeneral
     : s.badgeMuted
-  return <span className={`${s.badge} ${cls}`}>{labelOf(PRIORITIES, priority)}</span>
+  return <span className={`${s.badge} ${cls}`}>{leadTypeLabel(leadType)}</span>
 }
 
 export function StatusBadge({ status }: { status: string }) {

@@ -66,6 +66,19 @@
 .saveBtn:disabled { background: #9AA1AE; cursor: progress; }
 .saveBtn:focus-visible { outline: 3px solid #111318; outline-offset: 2px; }
 
+/* Options with a hidden explanation (Lead Type): a small "i" opens it. */
+.choiceCell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.choiceTile { position: relative; }
+.infoBtn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 18px; background: transparent; color: #4A5261; cursor: pointer;
+}
+.infoBtn:hover { background: #EEF0F4; color: #111318; }
+.infoBtn[aria-expanded="true"] { background: #111318; color: #fff; }
+.infoBtn:focus-visible { outline: 2px solid #111318; outline-offset: 1px; }
+.optionHint { font-size: 13px; color: #4A5261; background: #F4F6F9; border-radius: 8px; padding: 8px 12px; }
+
 /* ── Notices ─────────────────────────────────────────────────────────── */
 .notice { border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.4; border: 1px solid; }
 .noticeOk { background: #ECFDF3; border-color: #86D9A7; color: #0B5B2E; }
@@ -197,7 +210,7 @@
   .cards { display: none; }
   .tableWrap { display: block; overflow-x: auto; background: #fff; border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; margin-top: 8px; }
   .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .table th { text-align: left; padding: 9px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #4A5261; background: #F8F9FB; white-space: nowrap; }
+  .table th { text-align: left; padding: 9px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #4A5261; background: #F8F9FB; white-space: normal; vertical-align: bottom; }
   .table td { padding: 9px 6px; border-top: 1px solid rgba(0,0,0,0.07); vertical-align: top; overflow-wrap: break-word; }
   .table tr.rowArchived td { background: #F4F4F5; }
   .tableActions { display: flex; gap: 4px; white-space: nowrap; align-items: center; }

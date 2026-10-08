@@ -10,8 +10,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { useExhibitionLeads, useExhibitions } from '@/hooks/useExhibitionLeads'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import {
-  BUYING_TIMELINES, CLIENT_TYPES, FOLLOW_UP_FILTERS, PRIORITIES, REQUIREMENTS, STATUSES,
-  labelOf, requirementsLabel, type Lead,
+  BUYING_TIMELINES, CLIENT_TYPES, FOLLOW_UP_FILTERS, LEAD_TYPES, REQUIREMENTS, STATUSES,
+  clientTypeText, requirementsLabel, type Lead,
 } from '@/lib/exhibitionLeads/constants'
 import {
   EXHIBITION_LEADS_KEY, fetchExportPage, fetchLeadPage, fetchPeople, type LeadPage,
@@ -25,7 +25,7 @@ import { exhibitionDates, istDateTime, longDate, shortDate } from '@/lib/exhibit
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateOf, istToday } from '@/lib/istDate'
 import { LeadRequestError } from '@/lib/exhibitionLeads/api'
-import { ContactActions, FollowUpText, PriorityBadge, StatusBadge } from './LeadBits'
+import { ContactActions, FollowUpText, LeadTypeBadge, StatusBadge } from './LeadBits'
 import LeadDetailSheet from './LeadDetailSheet'
 import s from './leads.module.css'
 
@@ -243,7 +243,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
               />
             )}
             <Chips title="Buying timeline" options={BUYING_TIMELINES} selected={state.timeline} onToggle={v => setFilters({ timeline: toggleIn(state.timeline, v) })} />
-            <Chips title="Priority" options={PRIORITIES} selected={state.priority} onToggle={v => setFilters({ priority: toggleIn(state.priority, v) })} />
+            <Chips title="Lead type" options={LEAD_TYPES} selected={state.ltype} onToggle={v => setFilters({ ltype: toggleIn(state.ltype, v) })} />
             <Chips title="Status" options={STATUSES} selected={state.status} onToggle={v => setFilters({ status: toggleIn(state.status, v) })} />
             <Chips title="Follow-up" options={FOLLOW_UP_FILTERS} selected={state.follow} onToggle={v => setFilters({ follow: toggleIn(state.follow, v) })} />
             {mode === 'all' && isAdmin && (
@@ -273,7 +273,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
               onClick={() => {
                 setSearchText('')
                 setFilters({
-                  q: '', type: [], req: [], city: [], timeline: [], priority: [], status: [],
+                  q: '', type: [], req: [], city: [], timeline: [], ltype: [], status: [],
                   follow: [], collector: [], owner: [], archived: 'active',
                 })
               }}
@@ -317,9 +317,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                       <StatusBadge status={l.status} />
                     </div>
                     <div className={s.cardLine}>{formatPhone(l.phone)}</div>
-                    <div className={s.cardLine}>{labelOf(CLIENT_TYPES, l.client_type)} · {requirementsLabel(l.requirements)}</div>
+                    <div className={s.cardLine}>{clientTypeText(l)} · {requirementsLabel(l.requirements)}</div>
                     <div className={s.cardMeta}>
-                      <PriorityBadge priority={l.priority} />
+                      <LeadTypeBadge leadType={l.lead_type} />
                       {l.project_city && <span className={s.cardSub}>{l.project_city}</span>}
                       {l.archived_at && <span className={`${s.badge} ${s.badgeMuted}`}>Archived</span>}
                     </div>
@@ -340,7 +340,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                 <thead>
                   <tr>
                     <th>Added</th><th>Contact</th><th>Mobile</th><th>Client / requirement</th><th>City</th>
-                    <th>Priority</th><th>Status</th><th>Follow-up</th>{mode === 'all' && <th>Collected by / Owner</th>}<th>Actions</th>
+                    <th>Lead type</th><th>Status</th><th>Follow-up</th>{mode === 'all' && <th>Collected by / Owner</th>}<th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,9 +355,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                         <td style={{ minWidth: 72 }}>{istDateTime(l.created_at)}</td>
                         <td><strong>{l.contact_name}</strong>{l.company_name && <div className={s.cardSub}>{l.company_name}</div>}</td>
                         <td className={s.nowrap}>{formatPhone(l.phone)}</td>
-                        <td>{labelOf(CLIENT_TYPES, l.client_type)}<div className={s.cardSub}>{requirementsLabel(l.requirements)}</div></td>
+                        <td>{clientTypeText(l)}<div className={s.cardSub}>{requirementsLabel(l.requirements)}</div></td>
                         <td className={s.nowrap}>{l.project_city ?? ''}</td>
-                        <td><PriorityBadge priority={l.priority} /></td>
+                        <td><LeadTypeBadge leadType={l.lead_type} /></td>
                         <td><StatusBadge status={l.status} />{l.archived_at && <div className={s.cardSub}>Archived</div>}</td>
                         <td><FollowUpText lead={l} today={today} /></td>
                         {mode === 'all' && <td>{l.collected_by_name ?? '—'}<div className={s.cardSub}>{l.owner_name ?? '—'}</div></td>}

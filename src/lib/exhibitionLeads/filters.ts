@@ -1,5 +1,5 @@
 import {
-  BUYING_TIMELINES, CLIENT_TYPES, FOLLOW_UP_FILTERS, PRIORITIES, REQUIREMENTS, STATUSES,
+  BUYING_TIMELINES, CLIENT_TYPES, FOLLOW_UP_FILTERS, LEAD_TYPES, REQUIREMENTS, STATUSES,
   optionValues,
 } from './constants'
 import {
@@ -54,7 +54,7 @@ function listParams(defaultWhen: DateMode) {
     req: enumListParam(optionValues(REQUIREMENTS)),
     city: textListParam(),
     timeline: enumListParam(optionValues(BUYING_TIMELINES)),
-    priority: enumListParam(optionValues(PRIORITIES)),
+    ltype: enumListParam(optionValues(LEAD_TYPES)),
     status: enumListParam(optionValues(STATUSES)),
     follow: enumListParam(optionValues(FOLLOW_UP_FILTERS)),
     collector: uuidListParam(),
@@ -81,7 +81,7 @@ export type RpcFilter = {
   requirements?: string[]
   cities?: string[]
   timelines?: string[]
-  priorities?: string[]
+  lead_types?: string[]
   statuses?: string[]
   follow_ups?: string[]
   collector_ids?: string[]
@@ -117,7 +117,7 @@ export function toRpcFilter(
   if (state.req.length) f.requirements = state.req
   if (state.city.length) f.cities = state.city
   if (state.timeline.length) f.timelines = state.timeline
-  if (state.priority.length) f.priorities = state.priority
+  if (state.ltype.length) f.lead_types = state.ltype
   if (state.status.length) f.statuses = state.status
   if (state.follow.length) f.follow_ups = state.follow
   // Admin-only filters. The database ignores them for anyone else too.
@@ -133,7 +133,7 @@ export function toRpcFilter(
 export function activeFilterCount(state: ListFilterState, isAdmin: boolean): number {
   let n = 0
   if (state.q.trim()) n++
-  for (const key of ['type', 'req', 'city', 'timeline', 'priority', 'status', 'follow'] as const) {
+  for (const key of ['type', 'req', 'city', 'timeline', 'ltype', 'status', 'follow'] as const) {
     if (state[key].length) n++
   }
   if (isAdmin) {

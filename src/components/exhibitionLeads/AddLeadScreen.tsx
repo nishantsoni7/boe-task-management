@@ -8,14 +8,14 @@ import { ExhibitionLeadsLayout } from '@/components/layout/ExhibitionLeadsLayout
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useExhibitionLeads, useExhibitions } from '@/hooks/useExhibitionLeads'
 import {
-  BUYING_TIMELINES, CLIENT_TYPES, PRIORITIES, REQUIREMENTS,
+  BUYING_TIMELINES, CLIENT_TYPES, LEAD_TYPES, REQUIREMENTS,
 } from '@/lib/exhibitionLeads/constants'
 import {
   EXHIBITION_LEADS_KEY, createLead, fetchLeadPage, updateLead, LeadRequestError, type CreateResult,
 } from '@/lib/exhibitionLeads/api'
 import { exhibitionDates } from '@/lib/exhibitionLeads/format'
 import {
-  MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE,
+  MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER,
   emptyLeadForm, toCreateArgs, toggleRequirement, validateLeadForm,
   type LeadFormErrors, type LeadFormValues,
 } from '@/lib/exhibitionLeads/validation'
@@ -246,6 +246,20 @@ export default function AddLeadScreen() {
               invalid={!!errors.clientType} describedBy={errors.clientType ? 'err-type' : undefined}
             />
             {errors.clientType && <div id="err-type" className={s.err} role="alert">{errors.clientType}</div>}
+            {values.clientType === 'other' && (
+              <div className={s.field} style={{ marginTop: 8 }}>
+                <label className={s.label} htmlFor="lead-client-other">What kind of client?<Req /></label>
+                <input
+                  id="lead-client-other" className={`${s.input}${errors.clientTypeOther ? ` ${s.invalid}` : ''}`}
+                  value={values.clientTypeOther} maxLength={MAX_OTHER + 20} autoComplete="off"
+                  placeholder="Example: Furniture retailer"
+                  aria-invalid={!!errors.clientTypeOther} aria-describedby={errors.clientTypeOther ? 'err-other' : undefined}
+                  data-invalid={errors.clientTypeOther ? 'true' : undefined}
+                  onChange={e => set('clientTypeOther', e.target.value)}
+                />
+                {errors.clientTypeOther && <div id="err-other" className={s.err} role="alert">{errors.clientTypeOther}</div>}
+              </div>
+            )}
           </div>
 
           <div className={s.field} data-invalid={errors.requirements ? 'true' : undefined} tabIndex={-1}>
@@ -257,6 +271,16 @@ export default function AddLeadScreen() {
             />
             <div className={s.hint}>Choose all that apply.</div>
             {errors.requirements && <div id="err-req" className={s.err} role="alert">{errors.requirements}</div>}
+          </div>
+
+          <div className={s.field} data-invalid={errors.leadType ? 'true' : undefined} tabIndex={-1}>
+            <span className={s.label} id="lbl-lead">Lead type<Req /></span>
+            <ChoiceGroup
+              name="lead-type" legend="Lead type" options={LEAD_TYPES} columns={1} value={values.leadType}
+              onChange={v => set('leadType', v as LeadFormValues['leadType'])}
+              invalid={!!errors.leadType} describedBy={errors.leadType ? 'err-lead' : undefined}
+            />
+            {errors.leadType && <div id="err-lead" className={s.err} role="alert">{errors.leadType}</div>}
           </div>
 
           <div className={s.field}>
@@ -271,7 +295,7 @@ export default function AddLeadScreen() {
           </div>
 
           <details className={s.optional}>
-            <summary>More details (optional)</summary>
+            <summary>Advanced</summary>
             <div className={s.optionalBody}>
               <div className={s.field}>
                 <label className={s.label} htmlFor="lead-company">Company / project name</label>
@@ -286,13 +310,6 @@ export default function AddLeadScreen() {
                 <ChoiceGroup
                   name="timeline" legend="Buying timeline" options={BUYING_TIMELINES} value={values.buyingTimeline}
                   onChange={v => set('buyingTimeline', values.buyingTimeline === v ? '' : (v as LeadFormValues['buyingTimeline']))}
-                />
-              </div>
-              <div className={s.field}>
-                <span className={s.label}>Priority</span>
-                <ChoiceGroup
-                  name="priority" legend="Priority" options={PRIORITIES} value={values.priority}
-                  onChange={v => set('priority', v as LeadFormValues['priority'])}
                 />
               </div>
             </div>

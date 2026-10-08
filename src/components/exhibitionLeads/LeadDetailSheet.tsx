@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import type { createClient } from '@/lib/supabase/client'
 import {
-  BUYING_TIMELINES, CLIENT_TYPES, PRIORITIES, REQUIREMENTS, STATUSES,
+  BUYING_TIMELINES, CLIENT_TYPES, LEAD_TYPES, REQUIREMENTS, STATUSES,
   isTerminalStatus, labelOf, requirementsLabel, type Lead, type LeadEvent, type LeadStatus,
 } from '@/lib/exhibitionLeads/constants'
 import {
@@ -14,10 +14,10 @@ import {
 } from '@/lib/exhibitionLeads/api'
 import { formatPhone, normalizeLeadPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateTime, longDate } from '@/lib/exhibitionLeads/format'
-import { MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, toggleRequirement } from '@/lib/exhibitionLeads/validation'
+import { MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER, toggleRequirement } from '@/lib/exhibitionLeads/validation'
 import { istToday } from '@/lib/istDate'
 import { ChoiceGroup } from './ChoiceGroup'
-import { ContactActions, PriorityBadge, StatusBadge } from './LeadBits'
+import { ContactActions, LeadTypeBadge, StatusBadge } from './LeadBits'
 import s from './leads.module.css'
 
 type Supabase = ReturnType<typeof createClient>
@@ -96,11 +96,12 @@ function SheetBody({
   const [name, setName] = useState(lead.contact_name)
   const [phone, setPhone] = useState(formatPhone(lead.phone))
   const [clientType, setClientType] = useState<string>(lead.client_type)
+  const [clientOther, setClientOther] = useState(lead.client_type_other ?? '')
   const [reqs, setReqs] = useState<string[]>(lead.requirements)
   const [company, setCompany] = useState(lead.company_name ?? '')
   const [city, setCity] = useState(lead.project_city ?? '')
   const [timeline, setTimeline] = useState<string>(lead.buying_timeline ?? '')
-  const [priority, setPriority] = useState<string>(lead.priority)
+  const [leadType, setLeadType] = useState<string>(lead.lead_type)
   const [status, setStatus] = useState<string>(lead.status)
   const [nextOn, setNextOn] = useState(lead.next_follow_up_on ?? '')
   const [note, setNote] = useState('')
@@ -115,6 +116,7 @@ function SheetBody({
       const normalized = normalizeLeadPhone(phone)
       if (!normalized) e.phone = 'Enter a valid mobile number'
       if (reqs.length === 0) e.reqs = 'Choose at least one requirement'
+      if (clientType === 'other' && !clientOther.trim()) e.other = 'Say what kind of client this is'
       if (status === 'follow_up' && !nextOn) e.nextOn = 'Choose the next follow-up date'
       if (!terminal && nextOn && nextOn !== (lead.next_follow_up_on ?? '') && nextOn < today) {
         e.nextOn = 'The follow-up date cannot be in the past'
@@ -126,11 +128,12 @@ function SheetBody({
       if (name.trim() !== lead.contact_name) changes.contact_name = name.trim()
       if (normalized !== lead.phone) changes.phone = normalized
       if (clientType !== lead.client_type) changes.client_type = clientType
+      if (clientType === 'other' && clientOther.trim() !== (lead.client_type_other ?? '')) changes.client_type_other = clientOther.trim()
       if ([...reqs].sort().join() !== [...lead.requirements].sort().join()) changes.requirements = reqs
       if (company.trim() !== (lead.company_name ?? '')) changes.company_name = company.trim()
       if (city.trim() !== (lead.project_city ?? '')) changes.project_city = city.trim()
       if (timeline !== (lead.buying_timeline ?? '')) changes.buying_timeline = timeline
-      if (priority !== lead.priority) changes.priority = priority
+      if (leadType !== lead.lead_type) changes.lead_type = leadType
       if (status !== lead.status) changes.status = status
       if (!terminal && nextOn !== (lead.next_follow_up_on ?? '')) changes.next_follow_up_on = nextOn || null
       if (Object.keys(changes).length === 0 && !note.trim()) {
@@ -178,7 +181,7 @@ function SheetBody({
         <div className={s.phoneText}>{formatPhone(lead.phone)}</div>
         <div className={s.contactRow}><ContactActions phone={lead.phone} /></div>
         <div className={s.cardMeta}>
-          <StatusBadge status={lead.status} /> <PriorityBadge priority={lead.priority} />
+          <StatusBadge status={lead.status} /> <LeadTypeBadge leadType={lead.lead_type} />
           {archived && <span className={`${s.badge} ${s.badgeMuted}`}>Archived</span>}
         </div>
         <div className={s.facts}>
@@ -250,6 +253,13 @@ function SheetBody({
           <div className={s.field}>
             <span className={s.label}>Client type</span>
             <ChoiceGroup name="ed-type" legend="Client type" options={CLIENT_TYPES} value={clientType} onChange={setClientType} />
+            {clientType === 'other' && (
+              <>
+                <label className={s.label} htmlFor="ed-other">What kind of client?<span className={s.req} aria-hidden="true">*</span></label>
+                <input id="ed-other" className={`${s.input}${errors.other ? ` ${s.invalid}` : ''}`} value={clientOther} maxLength={MAX_OTHER + 20} onChange={e => setClientOther(e.target.value)} />
+                {err('other')}
+              </>
+            )}
           </div>
           <div className={s.field}>
             <span className={s.label}>Requirement<span className={s.req} aria-hidden="true">*</span></span>
@@ -276,10 +286,11 @@ function SheetBody({
               </select>
             </div>
             <div className={s.field}>
-              <label className={s.label} htmlFor="ed-priority">Priority</label>
-              <select id="ed-priority" className={s.select} value={priority} onChange={e => setPriority(e.target.value)}>
-                {PRIORITIES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <label className={s.label} htmlFor="ed-leadtype">Lead type<span className={s.req} aria-hidden="true">*</span></label>
+              <select id="ed-leadtype" className={s.select} value={leadType} onChange={e => setLeadType(e.target.value)}>
+                {LEAD_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+              <div className={s.hint}>{LEAD_TYPES.find(o => o.value === leadType)?.hint}</div>
             </div>
           </div>
 

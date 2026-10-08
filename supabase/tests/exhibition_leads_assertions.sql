@@ -94,12 +94,12 @@ create function public._t_rank(p_name text, p_day text default null) returns int
 
 -- Handy create call, run as the current JWT user.
 create function public._t_create(p_sub uuid, p_name text, p_phone text,
-  p_type text default 'dealer', p_reqs text[] default array['chairs'],
+  p_type text default 'consultant', p_reqs text[] default array['hotel'],
   p_company text default null, p_city text default null, p_timeline text default null,
-  p_priority text default null, p_note text default null) returns jsonb
+  p_lead_type text default 'warm', p_note text default null, p_other text default null) returns jsonb
 language sql as $$
   select public.create_exhibition_lead(p_sub, public._t_id('exh'), p_name, p_phone, p_type, p_reqs,
-                                       p_company, p_city, p_timeline, p_priority, p_note)
+                                       p_company, p_city, p_timeline, p_lead_type, p_note, p_other)
 $$;
 
 -- ═══ 1. ACCESS ══════════════════════════════════════════════════════════════
@@ -129,7 +129,7 @@ do $$
 declare r jsonb; l public.exhibition_leads;
 begin
   r := public._t_create('f0000000-0000-4000-8000-000000000001', '  Asha Rao ', '98765 43210',
-        'architect_designer', array['chairs','tables'], 'Rao Studio', 'Bengaluru', 'within_1_month', null,
+        'architect_designer', array['restaurant_cafe','hotel'], 'Rao Studio', 'Bengaluru', 'within_1_month', 'warm',
         'Needs 40 cafe chairs; send catalogue.');
   perform public._t_assert(r->>'outcome' = 'created', 'first save is created');
   perform set_config('t.l1', r->>'lead_id', true);
@@ -142,7 +142,7 @@ begin
   select * into l from public.exhibition_leads where id = public._t_id('l1');
   perform public._t_assert(l.collected_by = public._t_id('s1') and l.owner_id = public._t_id('s1'),
     'collector and owner come from the signed-in user');
-  perform public._t_assert(l.status = 'new' and l.priority = 'not_assessed', 'initial status New, priority Not Assessed');
+  perform public._t_assert(l.status = 'new' and l.lead_type = 'warm', 'initial status New, with the lead type that was chosen');
   perform public._t_assert(l.contact_name = 'Asha Rao', 'name is trimmed');
   perform public._t_assert(l.phone_e164 = '+919876543210', 'phone is stored canonical');
   perform public._t_assert(l.exhibition_id = public._t_id('exh'), 'the exhibition is stored on the lead');
@@ -161,7 +161,7 @@ begin
   -- Same submission, same details (requirements in another order, number in
   -- another format): the original result comes back.
   r := public._t_create('f0000000-0000-4000-8000-000000000001', '  Asha Rao ', '+91 98765-43210',
-        'architect_designer', array['tables','chairs'], 'Rao Studio', 'Bengaluru', 'within_1_month', null,
+        'architect_designer', array['hotel','restaurant_cafe'], 'Rao Studio', 'Bengaluru', 'within_1_month', 'warm',
         'Needs 40 cafe chairs; send catalogue.');
   perform public._t_assert(r->>'outcome' = 'replayed' and (r->>'lead_id')::uuid = public._t_id('l1'),
     'a retry of the same submission returns the original result');
@@ -169,9 +169,9 @@ end $$;
 select public._t_assert((select count(*) = 1 from public.exhibition_leads), 'still one lead after the retry');
 
 -- Same submission id, DIFFERENT details: refused, and nothing is overwritten.
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Someone Else', '98765 43210', 'architect_designer', array['chairs','tables'], 'Rao Studio', 'Bengaluru', 'within_1_month', null, 'Needs 40 cafe chairs; send catalogue.') $q$, 'SUBMISSION_CONFLICT');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Asha Rao', '98765 43210', 'architect_designer', array['chairs','tables'], 'Rao Studio', 'Bengaluru', 'within_1_month', null, 'A different note') $q$, 'SUBMISSION_CONFLICT');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Asha Rao', '98765 99999', 'architect_designer', array['chairs','tables'], 'Rao Studio', 'Bengaluru', 'within_1_month', null, 'Needs 40 cafe chairs; send catalogue.') $q$, 'SUBMISSION_CONFLICT');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Someone Else', '98765 43210', 'architect_designer', array['restaurant_cafe','hotel'], 'Rao Studio', 'Bengaluru', 'within_1_month', 'warm', 'Needs 40 cafe chairs; send catalogue.') $q$, 'SUBMISSION_CONFLICT');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Asha Rao', '98765 43210', 'architect_designer', array['restaurant_cafe','hotel'], 'Rao Studio', 'Bengaluru', 'within_1_month', 'warm', 'A different note') $q$, 'SUBMISSION_CONFLICT');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000001', 'Asha Rao', '98765 99999', 'architect_designer', array['restaurant_cafe','hotel'], 'Rao Studio', 'Bengaluru', 'within_1_month', 'warm', 'Needs 40 cafe chairs; send catalogue.') $q$, 'SUBMISSION_CONFLICT');
 select public._t_assert((select contact_name = 'Asha Rao' and initial_note = 'Needs 40 cafe chairs; send catalogue.' and phone_e164 = '+919876543210' from public.exhibition_leads where id = public._t_id('l1')),
   'a conflicting retry overwrote nothing');
 -- Another person cannot ride on this submission id either.
@@ -181,15 +181,15 @@ select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000
 select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '12345') $q$, 'valid mobile');
 select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '5876500002') $q$, 'valid mobile');
 select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'wizard') $q$, 'client type');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'dealer', '{}') $q$, 'requirement');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'dealer', array['sofa']) $q$, 'requirement');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'dealer', array['chairs'], null, null, 'soon') $q$, 'timeline');
-select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'dealer', array['chairs'], null, null, null, 'urgent') $q$, 'priority');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'consultant', '{}') $q$, 'requirement');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'consultant', array['sofa']) $q$, 'requirement');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'consultant', array['hotel'], null, null, 'soon') $q$, 'timeline');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000002', 'A', '9876500002', 'consultant', array['hotel'], null, null, null, 'urgent') $q$, 'lead type');
 select public._t_assert((select count(*) = 1 from public.exhibition_leads), 'invalid entries stored nothing');
 
 -- A client cannot write the tables directly, nor impersonate another collector.
 select public._t_raises($q$ insert into public.exhibition_leads (exhibition_id, submission_id, contact_name, phone_e164, client_type, requirements, collected_by, owner_id)
-  values (public._t_id('exh'), gen_random_uuid(), 'Direct', '+919876500009', 'dealer', array['chairs'], public._t_id('s1'), public._t_id('s1')) $q$, 'permission denied');
+  values (public._t_id('exh'), gen_random_uuid(), 'Direct', '+919876500009', 'consultant', array['hotel'], public._t_id('s1'), public._t_id('s1')) $q$, 'permission denied');
 select public._t_raises($q$ update public.exhibition_leads set owner_id = public._t_id('s2') $q$, 'permission denied');
 select public._t_raises($q$ delete from public.exhibition_leads $q$, 'permission denied');
 select public._t_raises($q$ insert into public.exhibition_lead_events (lead_id, event_type, actor_id) values (public._t_id('l1'), 'note', public._t_id('s1')) $q$, 'permission denied');
@@ -228,10 +228,10 @@ select public._t_assert((select count(*) = 0 from public.exhibition_leads), 'S2 
 do $$
 declare r jsonb;
 begin
-  r := public._t_create('f0000000-0000-4000-8000-000000000031', 'London Co', '+44 20 7946 0958', 'hotel_resort', array['complete_project']);
+  r := public._t_create('f0000000-0000-4000-8000-000000000031', 'London Co', '+44 20 7946 0958', 'property_owner', array['hotel']);
   perform public._t_assert(r->>'outcome' = 'created', 'a +44 number is accepted');
   perform set_config('t.l2', r->>'lead_id', true);
-  r := public._t_create('f0000000-0000-4000-8000-000000000032', 'US Dealer', '+1 202 555 0143', 'dealer', array['tables']);
+  r := public._t_create('f0000000-0000-4000-8000-000000000032', 'US Dealer', '+1 202 555 0143', 'consultant', array['restaurant_cafe']);
   perform public._t_assert(r->>'outcome' = 'created', 'a +1 number is accepted');
   perform set_config('t.l3', r->>'lead_id', true);
 end $$;
@@ -252,7 +252,7 @@ select public._t_as(public._t_id('s1'));
 select public._t_assert((select count(*) = 1 from public.exhibition_leads), 'S1 reads only the lead S1 owns');
 select public._t_assert((select count(*) = 1 from public.exhibition_lead_events), 'S1 reads only events of own leads');
 select public._t_raises($q$ select public.get_exhibition_lead(public._t_id('l2')) $q$, 'EXHIBITION_LEADS_NOT_FOUND');
-select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('l2'), '{"priority":"hot"}') $q$, 'EXHIBITION_LEADS_NOT_FOUND');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('l2'), '{"lead_type":"hot"}') $q$, 'EXHIBITION_LEADS_NOT_FOUND');
 select public._t_assert((public.exhibition_leads_page('{"scope":"all"}'::jsonb)->>'total')::int = 1,
   'scope=all cannot widen a salesperson');
 select public._t_assert((public.exhibition_leads_page('{"collector_ids":["e1ead000-0000-4000-8000-000000000003"]}'::jsonb)->>'total')::int = 1,
@@ -277,7 +277,7 @@ begin
   perform public._t_assert(r->>'outcome' = 'updated', 'a bare note is saved');
   r := public.update_exhibition_lead(public._t_id('l1'), json_build_object('status','follow_up')::jsonb);
   perform public._t_assert(r->>'outcome' = 'unchanged', 'a no-op reports unchanged');
-  r := public.update_exhibition_lead(public._t_id('l1'), '{"contact_name":"Asha R","priority":"hot","company_name":"","buying_timeline":"1_3_months"}');
+  r := public.update_exhibition_lead(public._t_id('l1'), '{"contact_name":"Asha R","lead_type":"hot","company_name":"","buying_timeline":"1_3_months"}');
   perform public._t_assert(r->>'outcome' = 'updated', 'details edited');
 end $$;
 
@@ -287,11 +287,11 @@ select public._t_assert(exists (select 1 from public.exhibition_lead_events wher
   'status change recorded with from/to');
 select public._t_assert(exists (select 1 from public.exhibition_lead_events where lead_id = public._t_id('l1') and event_type = 'follow_up_changed' and detail->>'from' is null),
   'follow-up date change recorded');
-select public._t_assert(exists (select 1 from public.exhibition_lead_events where lead_id = public._t_id('l1') and event_type = 'details_edited' and detail->'fields' @> '["contact_name","priority","company_name","buying_timeline"]'::jsonb),
+select public._t_assert(exists (select 1 from public.exhibition_lead_events where lead_id = public._t_id('l1') and event_type = 'details_edited' and detail->'fields' @> '["contact_name","lead_type","company_name","buying_timeline"]'::jsonb),
   'edited field names recorded, no values');
 select public._t_assert(not exists (select 1 from public.exhibition_lead_events where detail::text like '%9876543210%'),
   'no phone number ever lands in an event');
-select public._t_assert((select company_name is null and contact_name = 'Asha R' and priority = 'hot' from public.exhibition_leads where id = public._t_id('l1')), 'edits applied; blank company cleared');
+select public._t_assert((select company_name is null and contact_name = 'Asha R' and lead_type = 'hot' from public.exhibition_leads where id = public._t_id('l1')), 'edits applied; blank company cleared');
 
 -- Terminal status clears the schedule and keeps the history.
 do $$
@@ -354,14 +354,14 @@ select public._t_assert((public.archive_exhibition_lead(public._t_id('l2'), 'Tes
 select public._t_assert((public.archive_exhibition_lead(public._t_id('l2'), 'Test entry from setup')->>'outcome') = 'unchanged', 'archiving twice is a no-op');
 
 select public._t_as(public._t_id('s2'));
-select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('l2'), '{"priority":"hot"}') $q$, 'EXHIBITION_LEADS_ARCHIVED');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('l2'), '{"lead_type":"hot"}') $q$, 'EXHIBITION_LEADS_ARCHIVED');
 select public._t_assert((public.exhibition_leads_page('{}'::jsonb)->>'total')::int = 2, 'an archived lead leaves the owner''s list');
 
 -- Archived leads do not hold the number: a replacement can be captured.
 do $$
 declare r jsonb;
 begin
-  r := public._t_create('f0000000-0000-4000-8000-000000000040', 'London Co Again', '+442079460958', 'hotel_resort', array['tables']);
+  r := public._t_create('f0000000-0000-4000-8000-000000000040', 'London Co Again', '+442079460958', 'property_owner', array['restaurant_cafe']);
   perform public._t_assert(r->>'outcome' = 'created', 'a replacement for an archived number is created: ' || r::text);
   perform set_config('t.l4', r->>'lead_id', true);
 end $$;
@@ -383,11 +383,11 @@ select public._t_as(public._t_id('s1'));
 do $$
 declare r jsonb;
 begin
-  r := public._t_create('f0000000-0000-4000-8000-000000000051', 'Zed Cafe Owner', '9000000001', 'restaurant_cafe_bar', array['bar_chairs'], 'Zed Cafe Pvt', 'Mysuru', 'later', 'warm');
+  r := public._t_create('f0000000-0000-4000-8000-000000000051', 'Zed Cafe Owner', '9000000001', 'property_owner', array['restaurant_cafe'], 'Zed Cafe Pvt', 'Mysuru', 'later', 'warm');
   perform set_config('t.m1', r->>'lead_id', true);
-  r := public._t_create('f0000000-0000-4000-8000-000000000052', 'Bala', '9000000002', 'other', array['not_decided'], null, 'Bengaluru');
+  r := public._t_create('f0000000-0000-4000-8000-000000000052', 'Bala', '9000000002', 'other', array['hotel'], null, 'Bengaluru', null, 'long_term', null, 'Furniture retailer');
   perform set_config('t.m2', r->>'lead_id', true);
-  r := public._t_create('f0000000-0000-4000-8000-000000000053', 'Chitra', '9000000003', 'dealer', array['outdoor','chairs'], null, 'Chennai', null, 'hot');
+  r := public._t_create('f0000000-0000-4000-8000-000000000053', 'Chitra', '9000000003', 'consultant', array['restaurant_cafe','hotel'], null, 'Chennai', null, 'hot');
   perform set_config('t.m3', r->>'lead_id', true);
   -- m2 due today
   perform public.update_exhibition_lead(public._t_id('m2'),
@@ -432,10 +432,11 @@ select public._t_assert(
   (select string_agg(x->>'contact_name', ',') = 'Chitra,Bala,Zed Cafe Owner' from jsonb_array_elements(public.exhibition_leads_page('{}'::jsonb)->'rows') x),
   'newest entries first');
 -- OR inside a category, AND across categories.
-select public._t_assert(public._t_total('{"client_types":["dealer","other"]}') = 2, 'client types OR');
-select public._t_assert(public._t_total('{"client_types":["dealer","other"],"priorities":["hot"]}') = 1, 'categories AND');
-select public._t_assert(public._t_total('{"requirements":["chairs","bar_chairs"]}') = 2, 'requirements overlap (OR)');
-select public._t_assert(public._t_total('{"priorities":["not_assessed"]}') = 1, 'Not Assessed is a filterable priority');
+select public._t_assert(public._t_total('{"client_types":["consultant","other"]}') = 2, 'client types OR');
+select public._t_assert(public._t_total('{"client_types":["consultant","other"],"lead_types":["hot"]}') = 1, 'categories AND');
+select public._t_assert(public._t_total('{"requirements":["restaurant_cafe"]}') = 2, 'requirements overlap (OR)');
+select public._t_assert(public._t_total('{"lead_types":["long_term","warm"]}') = 2, 'lead types OR');
+select public._t_assert(public._t_total('{"lead_types":["mismatched_retail"]}') = 0, 'a lead type nobody has matches nothing');
 select public._t_assert(public._t_total('{"cities":["BENGALURU","mysuru"]}') = 2, 'city is case-insensitive and OR');
 select public._t_assert(public._t_total('{"timelines":["later"]}') = 1, 'timeline filter');
 select public._t_assert(public._t_total('{"statuses":["follow_up"]}') = 2, 'status filter');
@@ -450,7 +451,7 @@ select public._t_assert(public._t_total('{"search":"900000"}') = 3, 'search by n
 select public._t_assert(public._t_total('{"search":"+91 90000 00002"}') = 1, 'search by a formatted number');
 select public._t_assert(public._t_total('{"search":"%"}') = 0, 'a percent sign is not a wildcard');
 select public._t_assert(public._t_total('{"search":"_"}') = 0, 'an underscore is not a wildcard');
-select public._t_assert(public._t_total('{"search":"zed","priorities":["hot"]}') = 0, 'search ANDs with filters');
+select public._t_assert(public._t_total('{"search":"zed","lead_types":["hot"]}') = 0, 'search ANDs with filters');
 -- Paging never changes the matching total.
 select public._t_assert(
   (select (r->>'total')::int = 3 and jsonb_array_length(r->'rows') = 2 from (select public.exhibition_leads_page('{}'::jsonb, 2, 0) r) q), 'page 1 of 2');
@@ -559,9 +560,61 @@ select public._t_assert(
   + jsonb_array_length(public.export_exhibition_leads('{"scope":"all","archived":"all"}'::jsonb, 3, 9)) = public._t_total('{"scope":"all","archived":"all"}'),
   'pages of an export add up to the same set, none repeated or lost');
 select public._t_assert(
-  jsonb_array_length(public.export_exhibition_leads('{"scope":"all","client_types":["dealer"]}'::jsonb)) = public._t_total('{"scope":"all","client_types":["dealer"]}'),
+  jsonb_array_length(public.export_exhibition_leads('{"scope":"all","client_types":["consultant"]}'::jsonb)) = public._t_total('{"scope":"all","client_types":["consultant"]}'),
   'an export follows the filters');
 select public._t_assert((public.export_exhibition_leads('{"scope":"all"}'::jsonb, 1, 0)->0->>'exhibition_name') = 'Acetech Bangalore 2026', 'the export carries the exhibition name');
+
+select public._t_as(public._t_id('s1'));
+
+-- The agreed vocabularies, and "Other" needs its message.
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'dealer') $q$, 'client type');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'hotel_resort') $q$, 'client type');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'consultant', array['chairs']) $q$, 'requirement');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'consultant', array['hotel'], null, null, null, 'general_interest') $q$, 'lead type');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'other') $q$, 'what kind of client');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'other', array['hotel'], null, null, null, null, null, '   ') $q$, 'what kind of client');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000003', 'A', '9876500003', 'other', array['hotel'], null, null, null, null, null, repeat('x', 201)) $q$, 'too long');
+select public._t_assert((select count(*) = 0 from public.exhibition_leads where phone_e164 in ('+919876500003')), 'rejected vocabulary stored nothing');
+do $$
+declare r jsonb; l public.exhibition_leads;
+begin
+  r := public._t_create('f0000000-0000-4000-8000-000000000004', 'Other Client', '9876500004', 'other', array['restaurant_cafe'], null, null, null, 'long_term', null, '  Furniture retailer ');
+  perform public._t_assert(r->>'outcome' = 'created', 'Other with a message is created');
+  select * into l from public.exhibition_leads where id = (r->>'lead_id')::uuid;
+  perform public._t_assert(l.client_type_other = 'Furniture retailer' and l.lead_type = 'long_term', 'message trimmed and stored; lead type stored');
+  perform set_config('t.lo', r->>'lead_id', true);
+  -- a message supplied for a type that is not Other is dropped, not stored
+  r := public._t_create('f0000000-0000-4000-8000-000000000005', 'Consultant Client', '9876500005', 'consultant', array['hotel'], null, null, null, 'mismatched_retail', null, 'ignored');
+  perform public._t_assert((select client_type_other is null and lead_type = 'mismatched_retail' from public.exhibition_leads where id = (r->>'lead_id')::uuid), 'no message kept for a non-Other type');
+  -- the Other message is part of the entry: same id with a different message is a conflict
+end $$;
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000004', 'Other Client', '9876500004', 'other', array['restaurant_cafe'], null, null, null, 'long_term', null, 'Something else') $q$, 'SUBMISSION_CONFLICT');
+-- Lead type is mandatory: on create, on update, and in the table itself.
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000006', 'No Lead Type', '9876500006', 'consultant', array['hotel'], null, null, null, null) $q$, 'Choose a lead type');
+select public._t_raises($q$ select public._t_create('f0000000-0000-4000-8000-000000000006', 'No Lead Type', '9876500006', 'consultant', array['hotel'], null, null, null, '   ') $q$, 'Choose a lead type');
+select public._t_assert((select count(*) = 0 from public.exhibition_leads where phone_e164 = '+919876500006'), 'a lead without a lead type stored nothing');
+-- updating: Other keeps its message rule; switching away clears it; lead type can change but never be emptied
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"client_type_other":""}') $q$, 'what kind of client');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"lead_type":"urgent"}') $q$, 'Unknown lead type');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"client_type":"dealer"}') $q$, 'client type');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"requirements":["chairs"]}') $q$, 'Unknown requirement');
+select public._t_assert((public.update_exhibition_lead(public._t_id('lo'), '{"client_type_other":"Furniture wholesaler"}')->>'outcome') = 'updated', 'the Other message can be edited');
+select public._t_assert((public.update_exhibition_lead(public._t_id('lo'), '{"client_type":"consultant"}')->>'outcome') = 'updated', 'switch to Consultant');
+select public._t_assert((select client_type_other is null from public.exhibition_leads where id = public._t_id('lo')), 'switching away from Other clears the message');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"client_type":"other"}') $q$, 'what kind of client');
+select public._t_assert((public.update_exhibition_lead(public._t_id('lo'), '{"client_type":"other","client_type_other":"Gallery"}')->>'outcome') = 'updated', 'back to Other with a message');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"lead_type":""}') $q$, 'Choose a lead type');
+select public._t_raises($q$ select public.update_exhibition_lead(public._t_id('lo'), '{"lead_type":null}') $q$, 'Choose a lead type');
+select public._t_assert((public.update_exhibition_lead(public._t_id('lo'), '{"lead_type":"hot"}')->>'outcome') = 'updated', 'lead type can be changed');
+select public._t_assert((select lead_type = 'hot' from public.exhibition_leads where id = public._t_id('lo')), 'lead type is now hot');
+select public._t_assert(exists (select 1 from public.exhibition_lead_events where lead_id = public._t_id('lo') and event_type = 'details_edited' and detail->'fields' @> '["client_type_other"]'::jsonb), 'the message edit is in the history');
+-- the table itself refuses an Other without a message (even for a superuser)
+reset role;
+select public._t_raises($q$ update public.exhibition_leads set client_type = 'other', client_type_other = null where id = public._t_id('lo') $q$, 'exhibition_leads_other_has_message');
+select public._t_raises($q$ update public.exhibition_leads set client_type = 'consultant', client_type_other = 'x' where id = public._t_id('lo') $q$, 'exhibition_leads_other_has_message');
+select public._t_raises($q$ update public.exhibition_leads set lead_type = null where id = public._t_id('lo') $q$, 'not-null constraint');
+set local role authenticated;
+select public._t_as(public._t_id('s1'));
 
 -- ═══ 10. AUDIT TRAIL, MODULE GATE, FUNCTION HYGIENE ════════════════════════
 

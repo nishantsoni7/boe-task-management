@@ -58,7 +58,7 @@ SQL
 EXH=$(psqlq -c "select id from public.exhibitions where slug='acetech-bangalore-2026'")
 
 as_user() { echo "set local role authenticated; select set_config('request.jwt.claims', json_build_object('sub','$1','role','authenticated')::text, true);"; }
-create_sql() { echo "select public.create_exhibition_lead('$1'::uuid,'$EXH'::uuid,'Race','$2','dealer',array['chairs']);"; }
+create_sql() { echo "select public.create_exhibition_lead('$1'::uuid,'$EXH'::uuid,'Race','$2','consultant',array['hotel'],null,null,null,'warm');"; }
 
 if [ "${BOE_RACE_NEGATIVE_CONTROL:-}" = "1" ]; then
   echo "negative control: dropping the unique indexes"

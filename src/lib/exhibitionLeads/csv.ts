@@ -1,6 +1,6 @@
 import { csvCell, formatIst } from '@/lib/minop/incomingCsv'
 import {
-  BUYING_TIMELINES, CLIENT_TYPES, PRIORITIES, STATUSES, labelOf, requirementsLabel,
+  BUYING_TIMELINES, STATUSES, clientTypeText, labelOf, leadTypeLabel, requirementsLabel,
   type Lead,
 } from './constants'
 
@@ -32,10 +32,10 @@ export const LEAD_CSV_COLUMNS: Column[] = [
   { header: 'Mobile', cell: l => phoneCell(l.phone) },
   { header: 'Company / project', cell: l => csvCell(l.company_name) },
   { header: 'City', cell: l => csvCell(l.project_city) },
-  { header: 'Client type', cell: l => csvCell(labelOf(CLIENT_TYPES, l.client_type)) },
+  { header: 'Client type', cell: l => csvCell(clientTypeText(l)) },
   { header: 'Requirements', cell: l => csvCell(requirementsLabel(l.requirements)) },
   { header: 'Buying timeline', cell: l => csvCell(labelOf(BUYING_TIMELINES, l.buying_timeline)) },
-  { header: 'Priority', cell: l => csvCell(labelOf(PRIORITIES, l.priority)) },
+  { header: 'Lead type', cell: l => csvCell(leadTypeLabel(l.lead_type)) },
   { header: 'Status', cell: l => csvCell(labelOf(STATUSES, l.status)) },
   { header: 'Next follow-up', cell: l => csvCell(l.next_follow_up_on) },
   { header: 'Initial discussion note', cell: l => csvCell(l.initial_note) },
