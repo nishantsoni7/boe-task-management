@@ -23,6 +23,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { AlertBanner, Avatar } from '@/components/ui/atoms'
 import { cc, CcBadge, CcEmpty, CcTable, CcToolbar, ActiveBadge, type CcTone } from '@/components/controlCenter/CcPrimitives'
+import { TeamAccessCard } from '@/components/controlCenter/TeamAccessCard'
 import {
   ACCESS_LEVEL_LABELS,
   PRESET_LEVELS,
@@ -374,6 +375,13 @@ function ByModulePageInner() {
                 </AlertBanner>
               </div>
             )}
+
+            {/* A whole team in one move; the people below are individuals and win over their team. */}
+            <TeamAccessCard
+              moduleKey={selectedKey}
+              moduleName={matrix.module.displayName}
+              onSaved={() => { void matrixQuery.refetch() }}
+            />
 
             <CcToolbar>
               <div className={cc.search}>

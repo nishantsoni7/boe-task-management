@@ -52,6 +52,11 @@ export default function ExhibitionsScreen() {
       actions={<button className={`${s.btn} ${s.btnRed}`} onClick={() => setEditing('new')}><Plus size={16} aria-hidden="true" /> Add exhibition</button>}
     >
       <div className={s.wrapWide}>
+        <div className={s.noticeActions} style={{ marginTop: 0 }}>
+          <Link className={s.btn} href="/admin/control-center/permissions/modules?module=exhibition_leads">
+            Who can use Exhibition Leads? Manage access
+          </Link>
+        </div>
         <div className={s.scopeLine}>
           Leads are kept per exhibition. A <strong>closed</strong> exhibition takes no new leads, but its leads, ranking and
           export stay available. Nothing is ever deleted from here.
