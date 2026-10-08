@@ -17,7 +17,7 @@ import s from './leads.module.css'
 type Option = { readonly value: string; readonly label: string; readonly hint?: string }
 
 export function ChoiceGroup({
-  name, legend, options, columns = 2, multiple = false, value, onChange, invalid, describedBy,
+  name, legend, options, columns = 2, multiple = false, value, onChange, invalid, describedBy, accents,
 }: {
   name: string
   legend: string
@@ -28,6 +28,8 @@ export function ChoiceGroup({
   onChange: (next: string) => void
   invalid?: boolean
   describedBy?: string
+  /** A colour per option value: a dot before the text, and the chosen tile takes the colour. */
+  accents?: Readonly<Record<string, string>>
 }) {
   const [openHint, setOpenHint] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -60,13 +62,15 @@ export function ChoiceGroup({
       {options.map(o => {
         const hintId = `${name}-${o.value}-hint`
         const open = openHint === o.value
+        const accent = accents?.[o.value]
         return (
           <div key={o.value} className={s.choiceTile}>
             <label
-              className={`boe-choice ${s.choiceRegular}`}
+              className={`boe-choice ${s.choiceRegular}${accent ? ` ${s.accentChoice}` : ''}`}
               style={{
                 ...(invalid && !chosen(o.value) ? { borderColor: '#DC1F2E' } : null),
                 ...(o.hint ? { paddingRight: 48 } : null),
+                ...(accent ? { ['--accent' as string]: accent } : null),
               }}
             >
               <input
@@ -76,6 +80,7 @@ export function ChoiceGroup({
                 checked={chosen(o.value)}
                 onChange={() => onChange(o.value)}
               />
+              {accent && <span className={s.accentDot} aria-hidden="true" />}
               <span className="boe-choice-text">{o.label}</span>
               <Check size={15} strokeWidth={2.6} className="boe-choice-check" aria-hidden="true" />
             </label>

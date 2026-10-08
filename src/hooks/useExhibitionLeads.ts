@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istToday } from '@/lib/istDate'
-import { EXHIBITION_LEADS_KEY, fetchExhibitions } from '@/lib/exhibitionLeads/api'
+import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { pickDefaultExhibition } from '@/lib/exhibitionLeads/format'
 
 // Signed-in profile for every Exhibition Leads page. Authority is the SIGNED-IN
@@ -56,10 +56,11 @@ export function useExhibitionLeads(): {
 /** The active exhibitions, and the one to preselect today. */
 export function useExhibitions(supabase: ReturnType<typeof createClient>, enabled: boolean) {
   const q = useQuery({
-    queryKey: [...EXHIBITION_LEADS_KEY, 'exhibitions'],
-    queryFn: () => fetchExhibitions(supabase),
+    ...exhibitionsQuery(supabase),
     enabled,
-    staleTime: 5 * 60_000,
+    // The list kept from the last visit shows at once; a copy older than the stale time is replaced behind it.
+    initialData: () => readCachedExhibitions()?.data,
+    initialDataUpdatedAt: () => readCachedExhibitions()?.at,
   })
   const list = useMemo(() => q.data ?? [], [q.data])
   // Closed exhibitions stay listed (their leads are still there) but take no new leads.

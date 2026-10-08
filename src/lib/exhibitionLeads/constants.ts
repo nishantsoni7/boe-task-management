@@ -36,6 +36,14 @@ export const LEAD_TYPES = [
   { value: 'mismatched_retail', label: 'Mismatched / Retail Inquiries', hint: 'Low Priority' },
 ] as const
 
+/** The colour that goes with each lead type on the entry form (and nowhere that carries meaning alone: the name is always written). */
+export const LEAD_TYPE_ACCENTS: Readonly<Record<string, string>> = {
+  hot: '#DC1F2E',
+  warm: '#D97706',
+  long_term: '#2563EB',
+  mismatched_retail: '#7C8493',
+}
+
 export const leadTypeLabel = (value: string | null | undefined): string =>
   value ? (LEAD_TYPES.find(t => t.value === value)?.label ?? value) : ''
 

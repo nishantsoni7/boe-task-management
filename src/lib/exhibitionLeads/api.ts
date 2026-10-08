@@ -3,6 +3,7 @@ import { classifyLeadError, type LeadError } from './errors'
 import type { Exhibition, Lead, LeadEvent } from './constants'
 import type { RpcFilter } from './filters'
 import type { RankingData } from './ranking'
+import type { Standings } from './standings'
 import type { ExportLead } from './csv'
 
 // Thin typed wrappers over the database functions. There is no API route in
@@ -112,6 +113,9 @@ export const fetchPeople = (s: Supabase, exhibitionId: string | null) =>
 
 export const fetchRanking = (s: Supabase, exhibitionId: string) =>
   call<RankingData>(() => s.rpc('exhibition_lead_ranking', { p_exhibition_id: exhibitionId }))
+
+export const fetchStandings = (s: Supabase, exhibitionId: string) =>
+  call<Standings>(() => s.rpc('exhibition_lead_standings', { p_exhibition_id: exhibitionId }))
 
 export const fetchExportPage = (s: Supabase, filter: RpcFilter, offset: number, limit = 1000) =>
   call<ExportLead[]>(() => s.rpc('export_exhibition_leads', { p_filter: filter, p_limit: limit, p_offset: offset }))

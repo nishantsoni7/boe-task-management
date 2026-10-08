@@ -301,3 +301,10 @@ label.choiceRegular { font-weight: 400; font-size: 15px; }
 /* Exhibition form: a plain checkbox row with a comfortable tap target. */
 .checkRow { display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 15px; color: #111318; cursor: pointer; }
 .checkRow input { width: 22px; height: 22px; accent-color: #111318; flex: none; }
+
+/* ── Coloured options (Lead Type): a dot, and the chosen tile takes the colour ── */
+.accentDot { width: 10px; height: 10px; border-radius: 5px; background: var(--accent); flex: none; }
+label.accentChoice { justify-content: flex-start; text-align: left; padding-left: 14px; }
+label.accentChoice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, #fff); padding-left: 13px; }
+label.accentChoice:has(input:checked) :global(.boe-choice-check) { color: var(--accent); }
+label.accentChoice:has(input:checked) :global(.boe-choice-text) { font-weight: 600; }

@@ -23,7 +23,7 @@ const ranking = read(DIR + 'RankingScreen.tsx')
 
 describe('options and the "i" popup', () => {
   test('option text is regular weight; the group label is not touched', () => {
-    assert.match(choice, /className=\{`boe-choice \$\{s\.choiceRegular\}`\}/)
+    assert.match(choice, /className=\{`boe-choice \$\{s\.choiceRegular\}/)
     assert.match(css, /label\.choiceRegular\s*\{[^}]*font-weight:\s*400/)
     assert.match(css, /\.chip\s*\{[^}]*font-weight:\s*400/, 'filter chips are options too')
     assert.match(css, /\.label\s*\{[^}]*font-weight:\s*700/, 'field labels stay bold')
