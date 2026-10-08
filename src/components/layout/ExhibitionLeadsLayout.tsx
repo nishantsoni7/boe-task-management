@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart3, Home, ListChecks, Plus, Users } from 'lucide-react'
+import { BarChart3, CalendarDays, Home, ListChecks, Plus, Users } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: `${BASE}/my`, label: 'My Leads', icon: ListChecks, adminOnly: false },
   { href: `${BASE}/all`, label: 'All Exhibition Leads', icon: Users, adminOnly: true },
   { href: `${BASE}/ranking`, label: 'Ranking', icon: BarChart3, adminOnly: true },
+  { href: `${BASE}/exhibitions`, label: 'Exhibitions', icon: CalendarDays, adminOnly: true },
 ] as const
 
 type Props = {

@@ -21,11 +21,11 @@ import {
   type ListFilterState,
 } from '@/lib/exhibitionLeads/filters'
 import { buildLeadsCsv, type ExportLead } from '@/lib/exhibitionLeads/csv'
-import { exhibitionDates, istDateTime, longDate, shortDate } from '@/lib/exhibitionLeads/format'
+import { exhibitionDates, exhibitionLabel, istDateTime, longDate, shortDate } from '@/lib/exhibitionLeads/format'
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateOf, istToday } from '@/lib/istDate'
 import { LeadRequestError } from '@/lib/exhibitionLeads/api'
-import { ContactActions, FollowUpText, LeadTypeBadge, StatusBadge } from './LeadBits'
+import { ContactActions, FollowUpText, LeadTypeBadge, NoExhibitionNotice, StatusBadge } from './LeadBits'
 import dynamic from 'next/dynamic'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 // The update sheet is the heaviest piece and is only needed once a lead is opened.
@@ -72,7 +72,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     if (!loading && mode === 'all' && !isAdmin) router.replace('/exhibition-leads/my')
   }, [loading, mode, isAdmin, router])
 
-  const exhibitionId = state.ex || defaultExhibition?.id || null
+  // "all" lists the leads of every exhibition, each tagged with its exhibition.
+  const allExhibitions = state.ex === 'all'
+  const exhibitionId = allExhibitions ? null : (state.ex || defaultExhibition?.id || null)
   const exhibition = exhibitions.find(e => e.id === exhibitionId) ?? null
   const today = istToday()
 
@@ -96,7 +98,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     })
   }
 
-  const enabled = !loading && (mode === 'mine' || isAdmin) && (exhibitions.length === 0 ? false : !!exhibitionId)
+  const enabled = !loading && (mode === 'mine' || isAdmin) && (exhibitions.length === 0 ? false : (allExhibitions || !!exhibitionId))
   const page = useQuery<LeadPage>({
     queryKey: [...EXHIBITION_LEADS_KEY, 'page', filter, offset],
     queryFn: () => fetchLeadPage(supabase, filter, PAGE_SIZE, offset),
@@ -114,7 +116,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const data = page.data
   // Until the exhibition is known the query has not started (it is disabled), so
   // neither "loading" nor an error is set — say Loading rather than "0 matching".
-  const waiting = !data && !page.error && (exhibitionsLoading || !!exhibitionId)
+  const waiting = !data && !page.error && (exhibitionsLoading || !!exhibitionId || allExhibitions)
   const filterCount = activeFilterCount(state, isAdmin)
   const window_ = dateWindow(state, today)
   const total = data?.total ?? 0
@@ -123,7 +125,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const multiDate = (data?.date_counts.length ?? 0) > 1
 
   const scopeText = [
-    exhibition?.name ?? 'Exhibition',
+    allExhibitions ? 'All exhibitions' : (exhibition?.name ?? 'Exhibition'),
     window_ ? (window_.from === window_.to ? longDate(window_.from) : `${shortDate(window_.from)} – ${shortDate(window_.to)}`) : 'whole exhibition',
     filterCount ? `${filterCount} filter${filterCount === 1 ? '' : 's'} applied` : 'no other filters',
     state.archived === 'active' || mode === 'mine' ? 'active leads' : state.archived === 'archived' ? 'archived leads' : 'active + archived',
@@ -147,7 +149,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `exhibition-leads-${exhibition?.slug ?? 'all'}-${today}.csv`
+      a.download = `exhibition-leads-${allExhibitions ? 'all-exhibitions' : (exhibition?.slug ?? 'all')}-${today}.csv`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -183,7 +185,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     <ExhibitionLeadsLayout
       profile={profile} isAdmin={isAdmin} onSignOut={signOut}
       title={mode === 'all' ? 'All Exhibition Leads' : 'My Leads'}
-      subtitle={exhibition ? `${exhibition.name} · ${exhibitionDates(exhibition)}` : undefined}
+      subtitle={allExhibitions ? 'All exhibitions' : exhibition ? `${exhibition.name} · ${exhibitionDates(exhibition)}` : undefined}
       actions={header}
     >
       <div className={s.wrapWide}>
@@ -233,8 +235,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             </div>
           )}
           {exhibitions.length > 1 && (
-            <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setFilters({ ex: e.target.value })}>
-              {exhibitions.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+            <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={allExhibitions ? 'all' : (exhibitionId ?? '')} onChange={e => setFilters({ ex: e.target.value })}>
+              <option value="all">All exhibitions</option>
+              {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
             </select>
           )}
           <button type="button" className={s.btn} aria-expanded={filtersOpen} onClick={() => setFiltersOpen(o => !o)}>
@@ -308,8 +311,8 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             <div className={s.noticeActions}><button className={s.btn} onClick={() => page.refetch()}>Try again</button></div>
           </div>
         )}
-        {!exhibitionId && exhibitions.length === 0 && !page.isLoading && (
-          <div className={s.empty}>No exhibition is set up yet.</div>
+        {!exhibitionId && !allExhibitions && exhibitions.length === 0 && !exhibitionsLoading && (
+          <NoExhibitionNotice isAdmin={isAdmin} />
         )}
         {data && rows.length === 0 && (
           <div className={s.empty}>
@@ -332,6 +335,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                       <div>
                         <div className={s.cardName}>{l.contact_name}</div>
                         {l.company_name && <div className={s.cardSub}>{l.company_name}</div>}
+                        {allExhibitions && l.exhibition_name && <div className={s.cardSub}>{l.exhibition_name}</div>}
                       </div>
                       <StatusBadge status={l.status} />
                     </div>
@@ -372,7 +376,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                       )}
                       <tr className={l.archived_at ? s.rowArchived : undefined}>
                         <td style={{ minWidth: 72 }}>{istDateTime(l.created_at)}</td>
-                        <td><strong>{l.contact_name}</strong>{l.company_name && <div className={s.cardSub}>{l.company_name}</div>}</td>
+                        <td><strong>{l.contact_name}</strong>{l.company_name && <div className={s.cardSub}>{l.company_name}</div>}{allExhibitions && l.exhibition_name && <div className={s.cardSub}>{l.exhibition_name}</div>}</td>
                         <td className={s.nowrap}>{formatPhone(l.phone)}</td>
                         <td>{clientTypeText(l)}<div className={s.cardSub}>{requirementsLabel(l.requirements)}</div></td>
                         <td className={s.nowrap}>{l.project_city ?? ''}</td>

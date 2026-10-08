@@ -31,6 +31,14 @@ export function uuidListParam(): ParamCodec<string[]> {
   }
 }
 
+/** An exhibition id, or the word "all" (leads across every exhibition). */
+export function exParam(): ParamCodec<string> {
+  return {
+    parse: raw => (raw === 'all' ? 'all' : raw !== null && UUID_RE.test(raw) ? raw.toLowerCase() : ''),
+    serialize: value => (value === 'all' ? 'all' : UUID_RE.test(value) ? value.toLowerCase() : null),
+  }
+}
+
 /** Free-text values (cities). '|' separates, so a comma inside a name survives. */
 export function textListParam(): ParamCodec<string[]> {
   const clean = (values: readonly string[]) =>
@@ -43,7 +51,7 @@ export function textListParam(): ParamCodec<string[]> {
 
 function listParams(defaultWhen: DateMode) {
   return {
-    ex: idParam(),
+    ex: exParam(),
     lead: idParam(),
     when: enumParam(DATE_MODES, defaultWhen),
     day: dateParam(),

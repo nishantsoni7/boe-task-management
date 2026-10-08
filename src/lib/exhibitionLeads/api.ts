@@ -48,10 +48,28 @@ export type LeadPage = {
 export const fetchExhibitions = (s: Supabase) =>
   call<Exhibition[]>(async () => {
     const { data, error } = await s.from('exhibitions')
-      .select('id, slug, name, city, starts_on, ends_on')
+      .select('id, slug, name, city, starts_on, ends_on, is_active')
       .order('starts_on', { ascending: false })
     return { data: data as Exhibition[] | null, error }
   })
+
+export type AdminExhibition = Exhibition & { leads: number; archived: number }
+
+export const fetchExhibitionsAdmin = (s: Supabase) =>
+  call<AdminExhibition[]>(() => s.rpc('list_exhibitions_admin'))
+
+type ExhibitionInput = { name: string; city: string; startsOn: string; endsOn: string }
+
+export const createExhibition = (s: Supabase, v: ExhibitionInput) =>
+  call<{ id: string; slug: string }>(() => s.rpc('create_exhibition', {
+    p_name: v.name.trim(), p_city: v.city.trim() || null, p_starts_on: v.startsOn, p_ends_on: v.endsOn,
+  }))
+
+export const updateExhibition = (s: Supabase, id: string, v: ExhibitionInput & { isActive: boolean }) =>
+  call<{ id: string }>(() => s.rpc('update_exhibition', {
+    p_id: id, p_name: v.name.trim(), p_city: v.city.trim() || null,
+    p_starts_on: v.startsOn, p_ends_on: v.endsOn, p_is_active: v.isActive,
+  }))
 
 export const fetchLeadPage = (s: Supabase, filter: RpcFilter, limit: number, offset: number) =>
   call<LeadPage>(() => s.rpc('exhibition_leads_page', { p_filter: filter, p_limit: limit, p_offset: offset }))

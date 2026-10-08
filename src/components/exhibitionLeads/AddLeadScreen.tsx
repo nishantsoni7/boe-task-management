@@ -21,6 +21,7 @@ import {
 } from '@/lib/exhibitionLeads/validation'
 import { clearDraft, newSubmissionId, saveDraft, takeDraft } from '@/lib/exhibitionLeads/draft'
 import { ChoiceGroup } from './ChoiceGroup'
+import { NoExhibitionNotice } from './LeadBits'
 import dynamic from 'next/dynamic'
 // Only needed when a duplicate is found and the person opens the existing lead.
 const LeadDetailSheet = dynamic(() => import('./LeadDetailSheet'), { ssr: false })
@@ -33,7 +34,8 @@ const Req = () => <span className={s.req} aria-hidden="true">*</span>
 
 export default function AddLeadScreen() {
   const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
-  const { exhibitions, defaultExhibition } = useExhibitions(supabase, !loading)
+  // Only OPEN exhibitions take new leads; closed ones stay available in the lists.
+  const { exhibitions, open: openExhibitions, defaultOpenExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, !loading)
   const qc = useQueryClient()
 
   // A draft parked by a session expiry is picked up once, before the first paint
@@ -42,8 +44,8 @@ export default function AddLeadScreen() {
   const [parked] = useState(() => (typeof window === 'undefined' ? null : takeDraft()))
 
   const [chosenExhibition, setChosenExhibition] = useState<string | null>(parked?.exhibitionId ?? null)
-  const exhibitionId = chosenExhibition ?? defaultExhibition?.id ?? null
-  const exhibition = exhibitions.find(e => e.id === exhibitionId) ?? null
+  const exhibitionId = (openExhibitions.some(e => e.id === chosenExhibition) ? chosenExhibition : null) ?? defaultOpenExhibition?.id ?? null
+  const exhibition = openExhibitions.find(e => e.id === exhibitionId) ?? null
 
   const [values, setValues] = useState<LeadFormValues>(() => parked?.values ?? emptyLeadForm())
   const [showErrors, setShowErrors] = useState(false)
@@ -175,21 +177,19 @@ export default function AddLeadScreen() {
             <span className={s.countPill} aria-label={`${todayCount ?? 0} added today`}>{todayCount ?? '–'}</span>
             <span className={s.hint}>today</span>
           </Link>
-          {exhibitions.length > 1 ? (
+          {openExhibitions.length > 1 ? (
             <select
               className={`${s.select} ${s.exhibitionSelect}`} style={{ width: 'auto', maxWidth: '100%' }}
               aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setChosenExhibition(e.target.value)}
             >
-              {exhibitions.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+              {openExhibitions.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
           ) : exhibition ? (
             <div className={s.exhibitionTag}>Exhibition: <strong>{exhibition.name}</strong></div>
           ) : null}
         </div>
 
-        {!exhibitionId && (
-          <div className={`${s.notice} ${s.noticeWarn}`}>No active exhibition is set up yet. Ask Admin.</div>
-        )}
+        {!exhibitionId && !exhibitionsLoading && <NoExhibitionNotice isAdmin={isAdmin} closedOnly={exhibitions.length > 0} />}
 
         {saved && (
           <div className={`${s.notice} ${s.noticeOk}`} role="status">
@@ -304,8 +304,12 @@ export default function AddLeadScreen() {
                 <input id="lead-company" className={s.input} value={values.companyName} maxLength={MAX_COMPANY + 20} autoComplete="off" onChange={e => set('companyName', e.target.value)} />
               </div>
               <div className={s.field}>
-                <label className={s.label} htmlFor="lead-city">Project city</label>
-                <input id="lead-city" className={s.input} value={values.projectCity} maxLength={MAX_CITY + 20} autoComplete="off" onChange={e => set('projectCity', e.target.value)} />
+                <label className={s.label} htmlFor="lead-city">City</label>
+                <input
+                  id="lead-city" className={s.input} value={values.projectCity} maxLength={MAX_CITY + 20}
+                  autoComplete="off" autoCapitalize="words" enterKeyHint="next" placeholder="Type the city"
+                  onChange={e => set('projectCity', e.target.value)}
+                />
               </div>
               <div className={s.field}>
                 <span className={s.label}>Buying timeline</span>

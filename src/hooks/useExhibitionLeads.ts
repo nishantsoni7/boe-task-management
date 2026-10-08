@@ -62,6 +62,9 @@ export function useExhibitions(supabase: ReturnType<typeof createClient>, enable
     staleTime: 5 * 60_000,
   })
   const list = useMemo(() => q.data ?? [], [q.data])
+  // Closed exhibitions stay listed (their leads are still there) but take no new leads.
+  const open = useMemo(() => list.filter(e => e.is_active), [list])
   const fallback = useMemo(() => pickDefaultExhibition(list, istToday()), [list])
-  return { exhibitions: list, defaultExhibition: fallback, isLoading: q.isLoading, error: q.error as Error | null, refetch: q.refetch }
+  const fallbackOpen = useMemo(() => pickDefaultExhibition(open, istToday()), [open])
+  return { exhibitions: list, open, defaultExhibition: fallback, defaultOpenExhibition: fallbackOpen, isLoading: q.isLoading, error: q.error as Error | null, refetch: q.refetch }
 }

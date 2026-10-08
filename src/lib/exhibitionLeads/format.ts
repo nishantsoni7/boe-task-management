@@ -41,6 +41,10 @@ export function exhibitionDates(e: Pick<Exhibition, 'starts_on' | 'ends_on'>): s
     : `${shortDate(e.starts_on)} – ${shortDate(e.ends_on)} ${b.y}`
 }
 
+/** The name as listed in a picker: closed exhibitions say so. */
+export const exhibitionLabel = (e: Pick<Exhibition, 'name' | 'is_active'>): string =>
+  e.is_active ? e.name : `${e.name} (closed)`
+
 /**
  * The exhibition the form opens on: the one running today, else the next one
  * to start, else the most recent one that ended.
