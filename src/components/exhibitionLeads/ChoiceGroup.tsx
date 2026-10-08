@@ -1,15 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Info } from 'lucide-react'
 import s from './leads.module.css'
 
 // Tap-friendly single / multiple choice, on the shared .boe-choice styling
 // (48px tall, whole tile is the hit target, a check mark on the chosen ones).
+// The option text is regular weight: the bold is reserved for the field label
+// above the group.
 //
 // An option may carry a `hint`: longer explanatory text that is NOT shown by
-// default. A small "i" button on the tile opens it, so the choice itself stays a
-// short label (Lead Type uses this).
+// default. A small "i" button on the tile opens it in a small popup anchored to
+// that tile. The popup closes on a tap anywhere else, on Escape, or on a second
+// tap of the "i"; opening another one replaces it.
 
 type Option = { readonly value: string; readonly label: string; readonly hint?: string }
 
@@ -27,9 +30,27 @@ export function ChoiceGroup({
   describedBy?: string
 }) {
   const [openHint, setOpenHint] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const chosen = (v: string) => (multiple ? (value as readonly string[]).includes(v) : value === v)
+
+  useEffect(() => {
+    if (!openHint) return
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as Element | null
+      if (!el?.closest('[data-hint-ui]')) setOpenHint(null)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenHint(null) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openHint])
+
   return (
     <div
+      ref={rootRef}
       role={multiple ? 'group' : 'radiogroup'}
       aria-label={legend}
       aria-invalid={invalid || undefined}
@@ -40,39 +61,40 @@ export function ChoiceGroup({
         const hintId = `${name}-${o.value}-hint`
         const open = openHint === o.value
         return (
-          <div key={o.value} className={s.choiceCell}>
-            <div className={s.choiceTile}>
-              <label
-                className="boe-choice"
-                style={{
-                  ...(invalid && !chosen(o.value) ? { borderColor: '#DC1F2E' } : null),
-                  ...(o.hint ? { paddingRight: 44 } : null),
-                }}
+          <div key={o.value} className={s.choiceTile}>
+            <label
+              className={`boe-choice ${s.choiceRegular}`}
+              style={{
+                ...(invalid && !chosen(o.value) ? { borderColor: '#DC1F2E' } : null),
+                ...(o.hint ? { paddingRight: 48 } : null),
+              }}
+            >
+              <input
+                type={multiple ? 'checkbox' : 'radio'}
+                name={name}
+                value={o.value}
+                checked={chosen(o.value)}
+                onChange={() => onChange(o.value)}
+              />
+              <span className="boe-choice-text">{o.label}</span>
+              <Check size={15} strokeWidth={2.6} className="boe-choice-check" aria-hidden="true" />
+            </label>
+            {o.hint && (
+              <button
+                type="button"
+                data-hint-ui
+                className={s.infoBtn}
+                aria-label={`About ${o.label}`}
+                aria-expanded={open}
+                aria-controls={hintId}
+                onClick={() => setOpenHint(open ? null : o.value)}
               >
-                <input
-                  type={multiple ? 'checkbox' : 'radio'}
-                  name={name}
-                  value={o.value}
-                  checked={chosen(o.value)}
-                  onChange={() => onChange(o.value)}
-                />
-                <span className="boe-choice-text">{o.label}</span>
-                <Check size={15} strokeWidth={2.6} className="boe-choice-check" aria-hidden="true" />
-              </label>
-              {o.hint && (
-                <button
-                  type="button"
-                  className={s.infoBtn}
-                  aria-label={`About ${o.label}`}
-                  aria-expanded={open}
-                  aria-controls={hintId}
-                  onClick={() => setOpenHint(open ? null : o.value)}
-                >
-                  <Info size={16} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            {o.hint && open && <div id={hintId} className={s.optionHint} role="note">{o.hint}</div>}
+                <Info size={16} aria-hidden="true" />
+              </button>
+            )}
+            {o.hint && open && (
+              <div id={hintId} role="note" data-hint-ui className={s.hintPopup}>{o.hint}</div>
+            )}
           </div>
         )
       })}

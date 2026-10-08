@@ -21,7 +21,9 @@ import {
 } from '@/lib/exhibitionLeads/validation'
 import { clearDraft, newSubmissionId, saveDraft, takeDraft } from '@/lib/exhibitionLeads/draft'
 import { ChoiceGroup } from './ChoiceGroup'
-import LeadDetailSheet from './LeadDetailSheet'
+import dynamic from 'next/dynamic'
+// Only needed when a duplicate is found and the person opens the existing lead.
+const LeadDetailSheet = dynamic(() => import('./LeadDetailSheet'), { ssr: false })
 import s from './leads.module.css'
 
 type Duplicate = { mine: true; leadId: string } | { mine: false }

@@ -58,8 +58,11 @@ export default function RankingScreen() {
         <div className={s.scopeLine}>
           Scope: every active lead collected for {data?.exhibition.name ?? 'the exhibition'} on its own days
           {data ? ` (${shortDate(data.exhibition.starts_on)} – ${shortDate(data.exhibition.ends_on)}, India time)` : ''}.
-          Credit goes to the person who collected the lead — reassigning or editing it does not move it. Archived leads and
-          entries outside those days are not counted. The list filters do not apply here.
+          <details className={s.scopeMore}>
+            <summary>How is this counted?</summary>
+            Credit goes to the person who collected the lead — reassigning or editing it does not move it. Archived leads and
+            entries outside those days are not counted. The list filters do not apply here.
+          </details>
         </div>
 
         {q.isLoading && <div className={s.skeleton} />}

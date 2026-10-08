@@ -26,7 +26,10 @@ import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateOf, istToday } from '@/lib/istDate'
 import { LeadRequestError } from '@/lib/exhibitionLeads/api'
 import { ContactActions, FollowUpText, LeadTypeBadge, StatusBadge } from './LeadBits'
-import LeadDetailSheet from './LeadDetailSheet'
+import dynamic from 'next/dynamic'
+import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
+// The update sheet is the heaviest piece and is only needed once a lead is opened.
+const LeadDetailSheet = dynamic(() => import('./LeadDetailSheet'), { ssr: false })
 import s from './leads.module.css'
 
 type Mode = 'mine' | 'all'
@@ -85,6 +88,13 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   )
 
   const [searchText, setSearchText, flushSearch] = useUrlSearchInput(state.q, q => setFilters({ q }))
+  const clearFilters = () => {
+    setSearchText('')
+    setFilters({
+      q: '', type: [], req: [], city: [], timeline: [], ltype: [], status: [],
+      follow: [], collector: [], owner: [], archived: 'active',
+    })
+  }
 
   const enabled = !loading && (mode === 'mine' || isAdmin) && (exhibitions.length === 0 ? false : !!exhibitionId)
   const page = useQuery<LeadPage>({
@@ -233,7 +243,21 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
         </div>
 
         {filtersOpen && (
-          <div className={s.filterPanel}>
+          <ReviewSheet
+            title="Filters"
+            subtitle={waiting ? undefined : `${total} matching lead${total === 1 ? '' : 's'}`}
+            onClose={() => setFiltersOpen(false)}
+            maxWidth="560px"
+            footer={
+              <>
+                <button type="button" className={s.btn} disabled={filterCount === 0 && !state.q} onClick={clearFilters}>Clear all</button>
+                <button type="button" className={`${s.btn} ${s.btnRed}`} style={{ flex: 1 }} onClick={() => setFiltersOpen(false)}>
+                  {waiting ? 'Show leads' : `Show ${total} lead${total === 1 ? '' : 's'}`}
+                </button>
+              </>
+            }
+          >
+          <div className={s.filterSheetBody}>
             <Chips title="Client type" options={CLIENT_TYPES} selected={state.type} onToggle={v => setFilters({ type: toggleIn(state.type, v) })} />
             <Chips title="Requirement" options={REQUIREMENTS} selected={state.req} onToggle={v => setFilters({ req: toggleIn(state.req, v) })} />
             {(data?.cities.length ?? 0) > 0 && (
@@ -263,6 +287,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
               </>
             )}
           </div>
+          </ReviewSheet>
         )}
 
         <div className={s.matchRow} aria-live="polite">
@@ -270,13 +295,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
           {(filterCount > 0 || state.q) && (
             <button
               type="button" className={s.linkBtn}
-              onClick={() => {
-                setSearchText('')
-                setFilters({
-                  q: '', type: [], req: [], city: [], timeline: [], ltype: [], status: [],
-                  follow: [], collector: [], owner: [], archived: 'active',
-                })
-              }}
+              onClick={clearFilters}
             >Clear filters</button>
           )}
         </div>
