@@ -2889,6 +2889,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/exhibitionLeads/LeadsListScreen.tsx',
     'src/components/exhibitionLeads/RankingScreen.tsx',
     'src/components/exhibitionLeads/leads.module.css',
+    'src/components/exhibitionLeads/mobile.test.ts',
     'src/components/layout/ExhibitionLeadsLayout.tsx',
     'src/hooks/useExhibitionLeads.ts',
     'src/lib/exhibitionLeads/api.ts',
