@@ -764,6 +764,7 @@ describe('the migration is placed correctly', () => {
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
       '20270305000000_exhibition_leads.sql',
+      '20270306000000_exhibition_management.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

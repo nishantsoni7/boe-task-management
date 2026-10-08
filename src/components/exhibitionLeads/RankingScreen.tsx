@@ -10,7 +10,8 @@ import { useListUrlState } from '@/hooks/useListUrlState'
 import { idParam } from '@/lib/listState'
 import { EXHIBITION_LEADS_KEY, fetchRanking } from '@/lib/exhibitionLeads/api'
 import { joinNames, leadersOf, summariseRanking } from '@/lib/exhibitionLeads/ranking'
-import { exhibitionDates, longDate, shortDate } from '@/lib/exhibitionLeads/format'
+import { exhibitionDates, exhibitionLabel, longDate, shortDate } from '@/lib/exhibitionLeads/format'
+import { NoExhibitionNotice } from './LeadBits'
 import s from './leads.module.css'
 
 const PARAMS = { ex: idParam() }
@@ -18,7 +19,7 @@ const PARAMS = { ex: idParam() }
 export default function RankingScreen() {
   const router = useRouter()
   const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
-  const { exhibitions, defaultExhibition } = useExhibitions(supabase, !loading)
+  const { exhibitions, defaultExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, !loading)
   const { state, setState } = useListUrlState(PARAMS)
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export default function RankingScreen() {
       subtitle={data ? `${data.exhibition.name} · ${exhibitionDates(data.exhibition)}` : undefined}
       actions={exhibitions.length > 1 ? (
         <select className={s.select} style={{ width: 'auto' }} aria-label="Exhibition" value={exhibitionId ?? ''} onChange={e => setState({ ex: e.target.value })}>
-          {exhibitions.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+          {exhibitions.map(x => <option key={x.id} value={x.id}>{exhibitionLabel(x)}</option>)}
         </select>
       ) : undefined}
     >
@@ -65,6 +66,7 @@ export default function RankingScreen() {
           </details>
         </div>
 
+        {!exhibitionId && !exhibitionsLoading && exhibitions.length === 0 && <NoExhibitionNotice isAdmin={isAdmin} />}
         {q.isLoading && <div className={s.skeleton} />}
         {q.error && (
           <div className={`${s.notice} ${s.noticeErr}`} role="alert">

@@ -1068,6 +1068,7 @@ describe('the applied migrations are frozen', () => {
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
       '20270305000000_exhibition_leads.sql',
+      '20270306000000_exhibition_management.sql',
     ])
   })
 
@@ -1387,6 +1388,7 @@ describe('the applied migrations are frozen', () => {
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
       '20270305000000_exhibition_leads.sql',
+      '20270306000000_exhibition_management.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

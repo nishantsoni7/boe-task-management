@@ -893,6 +893,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
       '20270305000000_exhibition_leads.sql',
+      '20270306000000_exhibition_management.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

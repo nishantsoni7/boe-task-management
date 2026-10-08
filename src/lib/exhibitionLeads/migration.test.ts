@@ -16,23 +16,29 @@ import { join } from 'node:path'
 
 const ROOT = process.cwd()
 const FILE = '20270305000000_exhibition_leads.sql'
+const FILE2 = '20270306000000_exhibition_management.sql'
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '')
 const sql = read(`supabase/migrations/${FILE}`)
 const code = sql.replace(/--[^\n]*/g, '') // comments stripped
+const sql2 = read(`supabase/migrations/${FILE2}`)
+const code2 = sql2.replace(/--[^\n]*/g, '')
 
 function functions(): { name: string; header: string; body: string }[] {
   const out: { name: string; header: string; body: string }[] = []
   const re = /create (?:or replace )?function public\.(\w+)\(([\s\S]*?)\$\$([\s\S]*?)\$\$;/g
   let m: RegExpExecArray | null
-  while ((m = re.exec(code))) out.push({ name: m[1], header: m[0].slice(0, m[0].indexOf('$$')), body: m[3] })
+  for (const c of [code, code2]) {
+    re.lastIndex = 0
+    while ((m = re.exec(c))) out.push({ name: m[1], header: m[0].slice(0, m[0].indexOf('$$')), body: m[3] })
+  }
   return out
 }
 
 describe('numbering', () => {
-  test('sorts after every other migration and is unique', () => {
+  test('the module\'s two migrations are in order and each timestamp is unique', () => {
     const all = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all[all.length - 1], FILE, 'the newest migration in the tree')
-    assert.equal(all.filter(f => f.startsWith(FILE.slice(0, 14))).length, 1, 'no other migration shares the timestamp')
+    assert.ok(all.indexOf(FILE) >= 0 && all.indexOf(FILE2) === all.indexOf(FILE) + 1, 'management follows the module migration directly')
+    for (const f of [FILE, FILE2]) assert.equal(all.filter(x => x.startsWith(f.slice(0, 14))).length, 1, `no other migration shares ${f.slice(0, 14)}`)
   })
 })
 
@@ -163,5 +169,46 @@ describe('the migration checks itself', () => {
     const tail = code.slice(code.lastIndexOf('do $$'))
     assert.match(tail, /raise exception 'EXHIBITION_LEADS_ACL/)
     assert.match(tail, /raise exception 'EXHIBITION_LEADS_PHONE/)
+  })
+})
+
+describe('exhibition management (20270306000000)', () => {
+  const fns = functions()
+  const doors = ['create_exhibition', 'update_exhibition', 'list_exhibitions_admin']
+
+  test('it depends on, and never rewrites, the module migration', () => {
+    assert.match(code2, /DEPENDENCY MISSING: 20270305000000_exhibition_leads\.sql must be applied first/)
+    assert.doesNotMatch(code2, /create table/i, 'no new table')
+    assert.doesNotMatch(code2, /drop (table|function)/i, 'nothing is dropped')
+  })
+  test('the three doors exist, Admin only, with the check inside', () => {
+    for (const n of doors) {
+      const f = fns.find(x => x.name === n)!
+      assert.ok(f, n)
+      assert.match(f.header, /security definer/)
+      assert.match(f.header, /set search_path = public, pg_temp\s*$/m, n)
+      assert.ok(f.body.includes('exhibition_leads_actor()') && /not v_admin/.test(f.body) && f.body.includes('Admin only'), n)
+      assert.match(code2, new RegExp(`revoke all on function public\\.${n}\\([^)]*\\) from public, anon;\\s*grant execute on function public\\.${n}\\([^)]*\\) to authenticated;`), n)
+      assert.doesNotMatch(f.header, /\bp_(user|actor|owner|creator)[a-z_]*\b/, `${n} takes no identity`)
+    }
+  })
+  test('closing is not deleting: every exhibition stays readable, nothing can be removed', () => {
+    assert.match(code2, /create policy exhibitions_select on public\.exhibitions\s+for select to authenticated using \(true\)/)
+    assert.doesNotMatch(code2, /delete from public\.exhibitions/)
+    assert.doesNotMatch(code2, /grant (insert|update|delete)/i)
+  })
+  test('names are unique, a fair is at most 31 days, a slug is derived and made unique', () => {
+    assert.match(code2, /create unique index exhibitions_name_unique on public\.exhibitions \(lower\(btrim\(name\)\)\)/)
+    assert.match(code2, /check \(ends_on - starts_on <= 30\)/)
+    const c = fns.find(x => x.name === 'create_exhibition')!
+    assert.ok(c.body.includes('while exists (select 1 from public.exhibitions e where e.slug = v_slug)'))
+  })
+  test('a lead carries its exhibition name, and the helper stays closed to clients', () => {
+    assert.match(code2, /'exhibition_name', \(select e\.name from public\.exhibitions e where e\.id = p_lead\.exhibition_id\)/)
+    assert.match(code2, /revoke all on function public\.exhibition_lead_json\(uuid\) from public, anon, authenticated;/)
+  })
+  test('it checks itself', () => {
+    const tail = code2.slice(code2.lastIndexOf('do $$'))
+    assert.match(tail, /raise exception 'EXHIBITION_MANAGEMENT_ACL/)
   })
 })

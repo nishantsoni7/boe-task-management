@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Phone, MessageCircle } from 'lucide-react'
 import {
   STATUSES, labelOf, isTerminalStatus, leadTypeLabel, type Lead,
@@ -32,6 +33,33 @@ export function FollowUpText({ lead, today }: { lead: Pick<Lead, 'next_follow_up
   if (live && d < today) return <span className={s.followDue}>Follow-up overdue · {shortDate(d)}</span>
   if (live && d === today) return <span className={s.followToday}>Follow-up today</span>
   return <span>Follow-up {shortDate(d)}</span>
+}
+
+/**
+ * Nothing to capture leads against yet. An Admin is pointed at the screen that
+ * fixes it; everyone else is told to ask them. `closedOnly`: exhibitions exist
+ * but none is open for new leads.
+ */
+export function NoExhibitionNotice({ isAdmin, closedOnly = false }: { isAdmin: boolean; closedOnly?: boolean }) {
+  const text = closedOnly
+    ? (isAdmin
+      ? 'Every exhibition is closed for new leads. Open one, or add a new exhibition.'
+      : 'No exhibition is open for new leads right now. Please ask your Admin to open or add one.')
+    : (isAdmin
+      ? 'No exhibition has been added yet. Add one to start capturing leads.'
+      : 'No exhibition has been added yet. Please ask your Admin to add it.')
+  return (
+    <div className={`${s.notice} ${s.noticeWarn}`} role="status">
+      {text}
+      {isAdmin && (
+        <div className={s.noticeActions}>
+          <Link className={`${s.btn} ${s.btnRed}`} href="/exhibition-leads/exhibitions">
+            {closedOnly ? 'Manage exhibitions' : 'Add exhibition'}
+          </Link>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**

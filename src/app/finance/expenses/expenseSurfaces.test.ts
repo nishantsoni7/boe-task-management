@@ -747,6 +747,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And Exhibition Leads (20270305000000): its own tables, functions and module registration, held by
       // src/lib/exhibitionLeads/migration.test.ts and supabase/tests/exhibition_leads_assertions.sql.
       if (f === 'supabase/migrations/20270305000000_exhibition_leads.sql') continue
+      // And Exhibition management (20270306000000): Admin adds / closes exhibitions; same two guards.
+      if (f === 'supabase/migrations/20270306000000_exhibition_management.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2905,6 +2907,11 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/exhibitionLeads/ranking.ts',
     'src/lib/exhibitionLeads/validation.ts',
     'supabase/migrations/20270305000000_exhibition_leads.sql',
+    'supabase/migrations/20270306000000_exhibition_management.sql',
+    'src/components/exhibitionLeads/ExhibitionsScreen.tsx',
+    'src/lib/exhibitionLeads/exhibitions.ts',
+    'src/lib/exhibitionLeads/exhibitions.test.ts',
+    'src/app/exhibition-leads/exhibitions/page.tsx',
     'src/app/login/page.tsx',
     'src/app/modules/moduleCardSurface.test.ts',
     'src/lib/permissions/enforcement.ts',

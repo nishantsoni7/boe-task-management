@@ -127,6 +127,7 @@ describe('the migration', () => {
       '20270303000000_task_acknowledge_rpc.sql',
       '20270304000000_customer_review_admin_reject_and_delete.sql',
       '20270305000000_exhibition_leads.sql',
+      '20270306000000_exhibition_management.sql',
     ])
   })
 })

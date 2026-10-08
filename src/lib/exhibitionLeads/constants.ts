@@ -94,11 +94,15 @@ export type Exhibition = {
   city: string | null
   starts_on: string
   ends_on: string
+  /** false = closed: takes no new leads, but its leads and ranking stay available. */
+  is_active: boolean
 }
 
 export type Lead = {
   id: string
   exhibition_id: string
+  /** Which exhibition the lead belongs to (shown when a list spans exhibitions). */
+  exhibition_name?: string | null
   contact_name: string
   phone: string
   client_type: ClientType

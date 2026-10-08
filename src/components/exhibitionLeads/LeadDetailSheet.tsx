@@ -275,7 +275,7 @@ function SheetBody({
               <input id="ed-company" className={s.input} value={company} maxLength={MAX_COMPANY} onChange={e => setCompany(e.target.value)} />
             </div>
             <div className={s.field}>
-              <label className={s.label} htmlFor="ed-city">Project city</label>
+              <label className={s.label} htmlFor="ed-city">City</label>
               <input id="ed-city" className={s.input} value={city} maxLength={MAX_CITY} onChange={e => setCity(e.target.value)} />
             </div>
             <div className={s.field}>

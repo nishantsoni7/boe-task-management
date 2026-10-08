@@ -564,6 +564,68 @@ select public._t_assert(
   'an export follows the filters');
 select public._t_assert((public.export_exhibition_leads('{"scope":"all"}'::jsonb, 1, 0)->0->>'exhibition_name') = 'Acetech Bangalore 2026', 'the export carries the exhibition name');
 
+-- ═══ 9b. EXHIBITION MANAGEMENT (20270306000000) ════════════════════════════
+
+select public._t_as(public._t_id('s1'));
+select public._t_raises($q$ select public.create_exhibition('Nope Fair', 'Pune', date '2027-01-10', date '2027-01-12') $q$, 'Admin only');
+select public._t_raises($q$ select public.update_exhibition(public._t_id('exh'), 'X', 'Y', date '2026-10-09', date '2026-10-11', true) $q$, 'Admin only');
+select public._t_raises($q$ select public.list_exhibitions_admin() $q$, 'Admin only');
+select public._t_raises($q$ insert into public.exhibitions (slug, name, starts_on, ends_on) values ('x1', 'X', date '2027-01-01', date '2027-01-02') $q$, 'permission denied');
+select public._t_raises($q$ update public.exhibitions set is_active = false $q$, 'permission denied');
+
+select public._t_as(public._t_id('admin'));
+do $$
+declare r jsonb;
+begin
+  r := public.create_exhibition('  Test Fair 2027 ', ' Pune ', date '2027-01-10', date '2027-01-12');
+  perform set_config('t.fair2', r->>'id', true);
+  perform public._t_assert(r->>'slug' = 'test-fair-2027', 'slug derived from the name: ' || (r->>'slug'));
+  perform public._t_assert((select name = 'Test Fair 2027' and city = 'Pune' and is_active and created_by = public._t_id('admin')
+                              from public.exhibitions where id = public._t_id('fair2')), 'trimmed, active, created by the admin');
+  r := public.create_exhibition('Test Fair 2027!', null, date '2027-02-01', date '2027-02-02');
+  perform public._t_assert(r->>'slug' = 'test-fair-2027-2', 'a clashing slug gets a suffix: ' || (r->>'slug'));
+  perform set_config('t.fair3', r->>'id', true);
+end $$;
+select public._t_raises($q$ select public.create_exhibition('TEST FAIR 2027', null, date '2027-03-01', date '2027-03-02') $q$, 'already exists');
+select public._t_raises($q$ select public.create_exhibition('  test fair 2027  ', null, date '2027-03-01', date '2027-03-02') $q$, 'already exists');
+select public._t_raises($q$ select public.create_exhibition('   ', null, date '2027-03-01', date '2027-03-02') $q$, 'exhibition name');
+select public._t_raises($q$ select public.create_exhibition('Backwards', null, date '2027-03-05', date '2027-03-02') $q$, 'cannot be before');
+select public._t_raises($q$ select public.create_exhibition('Too Long', null, date '2027-03-01', date '2027-04-01') $q$, 'at most 31 days');
+select public._t_raises($q$ select public.create_exhibition('No Dates', null, null, date '2027-03-02') $q$, 'first and last day');
+select public._t_assert((public.create_exhibition('One Day', null, date '2027-04-01', date '2027-04-01')->>'slug') = 'one-day', 'a one-day exhibition is fine');
+select public._t_assert((public.create_exhibition('31 Days', null, date '2027-05-01', date '2027-05-31')->>'slug') = '31-days', 'exactly 31 days is fine');
+
+-- Closing: no NEW leads, but everything stays readable.
+select public._t_assert((public.update_exhibition(public._t_id('fair2'), 'Test Fair 2027', 'Pune', date '2027-01-10', date '2027-01-12', false)->>'id')::uuid = public._t_id('fair2'), 'closed');
+select public._t_as(public._t_id('s1'));
+select public._t_raises($q$ select public.create_exhibition_lead('f0000000-0000-4000-8000-000000000a01'::uuid, public._t_id('fair2'), 'Late Visitor', '9000000501', 'consultant', array['hotel'], null, null, null, 'warm', null, null) $q$, 'Unknown exhibition');
+select public._t_assert((select count(*) = 1 from public.exhibitions where id = public._t_id('fair2')), 'a salesperson can still read a closed exhibition');
+
+-- Re-open: leads can be added, and are scoped to that exhibition.
+select public._t_as(public._t_id('admin'));
+select public.update_exhibition(public._t_id('fair2'), 'Test Fair 2027', 'Pune', date '2027-01-10', date '2027-01-12', true);
+select public._t_as(public._t_id('s1'));
+select public._t_assert((public.create_exhibition_lead('f0000000-0000-4000-8000-000000000a02'::uuid, public._t_id('fair2'), 'Pune Visitor', '9000000502', 'consultant', array['hotel'], null, null, null, 'warm', null, null)->>'outcome') = 'created', 'a lead can be added to the re-opened exhibition');
+-- the same number is a different person at a different fair: one active lead per number PER exhibition
+select public._t_assert((public.create_exhibition_lead('f0000000-0000-4000-8000-000000000a03'::uuid, public._t_id('exh'), 'Pune Visitor Again', '9000000502', 'consultant', array['hotel'], null, null, null, 'warm', null, null)->>'outcome') = 'created', 'the same number can be captured at another exhibition');
+select public._t_assert((public.exhibition_leads_page(json_build_object('exhibition_id', public._t_id('fair2'))::jsonb)->>'total')::int = 1, 'the list is scoped to the exhibition');
+select public._t_as(public._t_id('admin'));
+select public._t_assert((select count(*) = 3 from jsonb_array_elements(public.exhibition_lead_ranking(public._t_id('fair2'))->'days')), 'ranking draws one column per day (3)');
+-- a closed exhibition keeps its leads, its list and its ranking
+select public.update_exhibition(public._t_id('fair2'), 'Test Fair 2027', 'Pune', date '2027-01-10', date '2027-01-14', false);
+select public._t_assert((public.exhibition_leads_page(json_build_object('exhibition_id', public._t_id('fair2'), 'scope', 'all')::jsonb)->>'total')::int = 1, 'closing hides no leads');
+select public._t_assert((select count(*) = 5 from jsonb_array_elements(public.exhibition_lead_ranking(public._t_id('fair2'))->'days')), 'changing the dates changes the ranking columns (5)');
+select public._t_raises($q$ select public.update_exhibition(public._t_id('fair2'), 'Acetech Bangalore 2026', 'Pune', date '2027-01-10', date '2027-01-12', true) $q$, 'already exists');
+select public._t_raises($q$ select public.update_exhibition(public._t_id('fair2'), 'Test Fair 2027', 'Pune', date '2027-01-10', date '2027-01-12', null) $q$, 'open for new leads');
+select public._t_raises($q$ select public.update_exhibition(gen_random_uuid(), 'X', null, date '2027-01-10', date '2027-01-12', true) $q$, 'Exhibition not found');
+select public._t_assert(
+  (select (e->>'leads')::int = 1 and e->>'is_active' = 'false' and e->>'city' = 'Pune'
+     from jsonb_array_elements(public.list_exhibitions_admin()) e where e->>'name' = 'Test Fair 2027'),
+  'the admin list shows its lead count and state');
+select public._t_assert((select count(*) >= 5 from jsonb_array_elements(public.list_exhibitions_admin())), 'the admin list holds every exhibition, closed or not');
+-- the table stays unwritable for clients (the migration self-checks it too)
+select public._t_assert(not has_table_privilege('authenticated', 'public.exhibitions', 'INSERT'), 'clients cannot insert exhibitions directly');
+
 select public._t_as(public._t_id('s1'));
 
 -- The agreed vocabularies, and "Other" needs its message.
