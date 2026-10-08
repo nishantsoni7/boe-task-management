@@ -320,7 +320,10 @@ export default function BoeOsHomePage() {
   // desktop sidebar and the small-screen page both render, so a second action
   // is an entry in QuickActions.tsx and no layout work here. An unauthorized
   // viewer gets an empty list and therefore no section in either place.
-  const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance })
+  // Exhibition Leads: the form is one tap from the first screen, on a phone and
+  // in the desktop sidebar, gated by the same parent gate as its launcher card.
+  const canAddExhibitionLead = canOpenModule('exhibition_leads')
+  const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance, canAddExhibitionLead })
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves

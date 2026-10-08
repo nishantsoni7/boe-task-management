@@ -39,15 +39,15 @@ export function FollowUpText({ lead, today }: { lead: Pick<Lead, 'next_follow_up
  * visitor, so neither touches the lead's status — "Contacted" is a decision the
  * owner records in the update panel.
  */
-export function ContactActions({ phone, small = false }: { phone: string; small?: boolean }) {
-  const cls = `${s.btn}${small ? ` ${s.btnSm}` : ''}`
+export function ContactActions({ phone, small = false, iconOnly = false }: { phone: string; small?: boolean; iconOnly?: boolean }) {
+  const cls = `${s.btn}${small ? ` ${s.btnSm}` : ''}${iconOnly ? ` ${s.btnIcon}` : ''}`
   return (
     <>
-      <a className={cls} href={telHref(phone)} aria-label={`Call ${phone}`}>
-        <Phone size={15} aria-hidden="true" /> Call
+      <a className={cls} href={telHref(phone)} aria-label={`Call ${phone}`} title="Call">
+        <Phone size={15} aria-hidden="true" />{!iconOnly && ' Call'}
       </a>
-      <a className={cls} href={whatsappHref(phone)} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${phone}`}>
-        <MessageCircle size={15} aria-hidden="true" /> WhatsApp
+      <a className={cls} href={whatsappHref(phone)} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${phone}`} title="WhatsApp">
+        <MessageCircle size={15} aria-hidden="true" />{!iconOnly && ' WhatsApp'}
       </a>
     </>
   )

@@ -1,7 +1,7 @@
 /* Exhibition Leads — mobile first; wider layouts are additions at 768px. */
 
 .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-.wrapWide { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.wrapWide { max-width: 1560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
 /* ── Top strip on the form ───────────────────────────────────────────── */
 .topStrip {
@@ -197,8 +197,13 @@
   .cards { display: none; }
   .tableWrap { display: block; overflow-x: auto; background: #fff; border: 1px solid rgba(0,0,0,0.10); border-radius: 12px; margin-top: 8px; }
   .table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .table th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #4A5261; background: #F8F9FB; white-space: nowrap; }
-  .table td { padding: 10px 12px; border-top: 1px solid rgba(0,0,0,0.07); vertical-align: top; overflow-wrap: anywhere; }
+  .table th { text-align: left; padding: 9px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #4A5261; background: #F8F9FB; white-space: nowrap; }
+  .table td { padding: 9px 6px; border-top: 1px solid rgba(0,0,0,0.07); vertical-align: top; overflow-wrap: break-word; }
   .table tr.rowArchived td { background: #F4F4F5; }
-  .tableActions { display: flex; gap: 6px; white-space: nowrap; }
+  .tableActions { display: flex; gap: 4px; white-space: nowrap; align-items: center; }
+  .nowrap { white-space: nowrap; }
+  /* Short columns may break a badge onto two lines rather than push Actions off screen. */
+  .table .badge { white-space: normal; text-align: left; overflow-wrap: normal; word-break: normal; }
+  .table td:nth-child(6), .table td:nth-child(7) { white-space: normal; }
+  .btnIcon { min-width: 34px; padding: 0 6px; }
 }

@@ -158,8 +158,10 @@ describe('Quick Add Expense on the launcher', () => {
     // the launcher still computes the gate, the shared list only draws it.
     assert.ok(modules.includes('deriveFinanceCapabilities('))
     assert.ok(modules.includes('financeCaps.canCreatePaymentRecord'))
-    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canRequestAttendance \}\)/.test(modules),
-      'the list is built from the two gates and from nothing else')
+    // The third gate is Exhibition Leads' own module access; it is NAMED here so
+    // a FOURTH gate appearing from anywhere else still fails.
+    assert.ok(/buildQuickActions\(\{ canQuickAddExpense, canRequestAttendance, canAddExhibitionLead \}\)/.test(modules),
+      'the list is built from the three named gates and from nothing else')
     assert.ok(/if \(gates\.canQuickAddExpense\)/.test(quickActions),
       'the definition enters the list only when its gate is true')
     assert.ok(/actions\.length === 0\) return null/.test(quickActions),

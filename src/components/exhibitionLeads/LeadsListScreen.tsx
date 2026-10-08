@@ -54,7 +54,7 @@ function Chips<T extends string>({
 export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const router = useRouter()
   const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
-  const { exhibitions, defaultExhibition } = useExhibitions(supabase, !loading)
+  const { exhibitions, defaultExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, !loading)
 
   const specs = mode === 'all' ? ALL_LIST_PARAMS : MY_LIST_PARAMS
   const { state: rawState, setState } = useListUrlState(specs)
@@ -102,6 +102,9 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   if (loading || (mode === 'all' && !isAdmin)) return <LoadingScreen />
 
   const data = page.data
+  // Until the exhibition is known the query has not started (it is disabled), so
+  // neither "loading" nor an error is set — say Loading rather than "0 matching".
+  const waiting = !data && !page.error && (exhibitionsLoading || !!exhibitionId)
   const filterCount = activeFilterCount(state, isAdmin)
   const window_ = dateWindow(state, today)
   const total = data?.total ?? 0
@@ -263,7 +266,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
         )}
 
         <div className={s.matchRow} aria-live="polite">
-          <div className={s.matchCount}>{page.isLoading ? 'Loading…' : `${total} matching lead${total === 1 ? '' : 's'}`}</div>
+          <div className={s.matchCount}>{waiting ? 'Loading…' : `${total} matching lead${total === 1 ? '' : 's'}`}</div>
           {(filterCount > 0 || state.q) && (
             <button
               type="button" className={s.linkBtn}
@@ -279,7 +282,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
         </div>
         {exportError && <div className={`${s.notice} ${s.noticeErr}`} role="alert">{exportError}</div>}
 
-        {page.isLoading && <div className={s.cards}><div className={s.skeleton} /><div className={s.skeleton} /><div className={s.skeleton} /></div>}
+        {waiting && <div className={s.cards}><div className={s.skeleton} /><div className={s.skeleton} /><div className={s.skeleton} /></div>}
         {page.error && !data && (
           <div className={`${s.notice} ${s.noticeErr}`} role="alert">
             {(page.error as Error).message}
@@ -349,18 +352,18 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                         </td></tr>
                       )}
                       <tr className={l.archived_at ? s.rowArchived : undefined}>
-                        <td>{istDateTime(l.created_at)}</td>
+                        <td style={{ minWidth: 72 }}>{istDateTime(l.created_at)}</td>
                         <td><strong>{l.contact_name}</strong>{l.company_name && <div className={s.cardSub}>{l.company_name}</div>}</td>
-                        <td>{formatPhone(l.phone)}</td>
+                        <td className={s.nowrap}>{formatPhone(l.phone)}</td>
                         <td>{labelOf(CLIENT_TYPES, l.client_type)}<div className={s.cardSub}>{requirementsLabel(l.requirements)}</div></td>
-                        <td>{l.project_city ?? ''}</td>
+                        <td className={s.nowrap}>{l.project_city ?? ''}</td>
                         <td><PriorityBadge priority={l.priority} /></td>
                         <td><StatusBadge status={l.status} />{l.archived_at && <div className={s.cardSub}>Archived</div>}</td>
                         <td><FollowUpText lead={l} today={today} /></td>
                         {mode === 'all' && <td>{l.collected_by_name ?? '—'}<div className={s.cardSub}>{l.owner_name ?? '—'}</div></td>}
                         <td>
                           <div className={s.tableActions}>
-                            <ContactActions phone={l.phone} small />
+                            <ContactActions phone={l.phone} small iconOnly />
                             <button className={`${s.btn} ${s.btnSm} ${s.btnDark}`} onClick={() => openLead(l.id)}>View / Update</button>
                           </div>
                         </td>
