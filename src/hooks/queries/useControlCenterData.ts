@@ -227,6 +227,33 @@ export function usePermissionModules() {
   })
 }
 
+export type TeamAccessDepartment = {
+  departmentKey: string
+  departmentName: string
+  isActive: boolean
+  people: number
+  state: 'allow' | 'block' | 'inherit'
+}
+export type ModuleTeamAccess = {
+  module: { moduleKey: string; displayName: string; entryAction: string }
+  departments: TeamAccessDepartment[]
+}
+
+export const moduleTeamsKey = (userId: string, moduleKey: string) =>
+  ['control-center', 'module-teams', userId, moduleKey] as const
+
+/** Which departments (teams) may open a module — Control Center › By Module › Team access. */
+export function useModuleTeamAccess(moduleKey: string | null) {
+  const { userId } = useControlCenterSession()
+  return useQuery<ModuleTeamAccess>({
+    queryKey: moduleTeamsKey(userId, moduleKey ?? ''),
+    enabled: !!moduleKey,
+    retry: false,
+    queryFn: () => adminGetJson<ModuleTeamAccess>(`/api/control-center/permissions/modules/${moduleKey}/departments`),
+    staleTime: CONTROL_CENTER_STALE_MS,
+  })
+}
+
 export function useModuleAccessMatrix(moduleKey: string | null) {
   const { userId } = useControlCenterSession()
   return useQuery<ModuleMatrix>({

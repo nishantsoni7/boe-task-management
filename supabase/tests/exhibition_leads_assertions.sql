@@ -626,6 +626,82 @@ select public._t_assert((select count(*) >= 5 from jsonb_array_elements(public.l
 -- the table stays unwritable for clients (the migration self-checks it too)
 select public._t_assert(not has_table_privilege('authenticated', 'public.exhibitions', 'INSERT'), 'clients cannot insert exhibitions directly');
 
+-- ═══ 9c. WHO MAY USE THE MODULE: team rules and individual overrides ═══════
+-- What Control Center › By Module › Team access writes (a department rule on the
+-- module's entry action) and what By Employee writes (an employee override).
+
+reset role;
+create function public._t_team(p_dept text, p_allowed boolean) returns void language plpgsql as $$
+begin
+  if p_allowed is null then
+    delete from public.department_permissions dp using public.departments d, public.permission_modules pm, public.permission_actions pa
+     where dp.department_id = d.id and d.department_key = p_dept and dp.module_id = pm.id and pm.module_key = 'exhibition_leads'
+       and dp.action_id = pa.id and pa.action_key = 'view';
+  else
+    insert into public.department_permissions (department_id, module_id, action_id, allowed)
+    select d.id, pm.id, pa.id, p_allowed from public.departments d, public.permission_modules pm, public.permission_actions pa
+     where d.department_key = p_dept and pm.module_key = 'exhibition_leads' and pa.action_key = 'view'
+    on conflict (department_id, module_id, action_id) do update set allowed = excluded.allowed;
+  end if;
+end $$;
+create function public._t_override(p_user uuid, p_allowed boolean) returns void language plpgsql as $$
+begin
+  delete from public.employee_permission_overrides o using public.permission_modules pm, public.permission_actions pa
+   where o.user_id = p_user and o.module_id = pm.id and pm.module_key = 'exhibition_leads' and o.action_id = pa.id and pa.action_key = 'view';
+  if p_allowed is not null then
+    insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+    select p_user, pm.id, pa.id, p_allowed, public._t_id('admin') from public.permission_modules pm, public.permission_actions pa
+     where pm.module_key = 'exhibition_leads' and pa.action_key = 'view';
+  end if;
+end $$;
+insert into public.users (id, full_name, email, role, team, is_active, employee_code) values
+  ('e1ead000-0000-4000-8000-000000000006', 'EXL BDM Person', 'exl-bdm@suite.test', 'member', 'bdm', true, 'EXL-BDM'),
+  ('e1ead000-0000-4000-8000-000000000007', 'EXL BDM Other',  'exl-bdm2@suite.test', 'member', 'bdm', true, 'EXL-BDM2');
+select set_config('t.bdm', 'e1ead000-0000-4000-8000-000000000006', true);
+select set_config('t.bdm2', 'e1ead000-0000-4000-8000-000000000007', true);
+create function public._t_can(p_user uuid) returns boolean language sql stable as $$
+  select public.exhibition_leads_user_eligible(p_user) $$;
+
+select public._t_assert(not public._t_can(public._t_id('bdm')), 'a team with no rule has no access by default');
+select public._t_team('bdm', true);
+select public._t_assert(public._t_can(public._t_id('bdm')) and public._t_can(public._t_id('bdm2')), 'allowing a team lets every member in');
+select public._t_assert(not public._t_can(public._t_id('x')), 'another team is unaffected');
+select public._t_override(public._t_id('bdm2'), false);
+select public._t_assert(public._t_can(public._t_id('bdm')) and not public._t_can(public._t_id('bdm2')), 'an individual block beats the team allow');
+select public._t_override(public._t_id('bdm2'), null);
+select public._t_team('bdm', false);
+select public._t_assert(not public._t_can(public._t_id('bdm')), 'blocking a team keeps every member out');
+select public._t_override(public._t_id('bdm'), true);
+select public._t_assert(public._t_can(public._t_id('bdm')) and not public._t_can(public._t_id('bdm2')), 'an individual allow beats the team block');
+select public._t_override(public._t_id('bdm'), null);
+select public._t_team('bdm', null);
+select public._t_assert(not public._t_can(public._t_id('bdm')), 'clearing the rule returns to the default');
+-- an individual in a team that has no rule: "other staff"
+select public._t_override(public._t_id('x'), true);
+select public._t_assert(public._t_can(public._t_id('x')), 'an individual can be given access on their own (design team, no team rule)');
+-- the sales team really gets it from its rule, and losing the rule loses the access
+select public._t_assert(public._t_can(public._t_id('s1')), 'sales has access from its department rule');
+select public._t_team('sales', null);
+select public._t_assert(not public._t_can(public._t_id('s1')) and public._t_can(public._t_id('admin')), 'without the rule sales has none; an administrator still does');
+select public._t_team('sales', true);
+select public._t_override(public._t_id('x'), null);
+
+-- And the doors really follow it: a person with no access is refused by the database itself.
+select public._t_team('bdm', true);
+set local role authenticated;
+select public._t_as(public._t_id('bdm'));
+select public._t_assert((public.exhibition_leads_page('{}'::jsonb)->>'total')::int = 0, 'a newly allowed team member can use the module (their list is empty)');
+reset role;
+select public._t_team('bdm', false);
+set local role authenticated;
+select public._t_as(public._t_id('bdm'));
+select public._t_raises($q$ select public.exhibition_leads_page('{}'::jsonb) $q$, 'EXHIBITION_LEADS_FORBIDDEN');
+select public._t_assert((select count(*) = 0 from public.exhibition_leads), 'a blocked team member reads no rows (module gate)');
+reset role;
+select public._t_team('bdm', null);
+set local role authenticated;
+select public._t_as(public._t_id('s1'));
+
 select public._t_as(public._t_id('s1'));
 
 -- The agreed vocabularies, and "Other" needs its message.
