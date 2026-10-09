@@ -7,6 +7,8 @@
 
 /* ── The scoreboard block on My Leads ────────────────────────────────── */
 .topGrid { display: flex; flex-direction: column; gap: 12px; }
+.sideSplit { display: flex; flex-direction: column; gap: 14px; }
+.mainCol { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 /* ── Exhibition picker (only when more than one is open) ─────────────── */
 .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #4A5261; }
@@ -146,9 +148,11 @@ a.tile:hover, button.tile:hover { border-color: #111318; }
 
 /* ── Wide screens ────────────────────────────────────────────────────── */
 @media (min-width: 1280px) {
-  /* My Leads: the three tiles stack beside the (always open) leaderboard. */
-  .topGrid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: stretch; }
-  .topGrid .stats { grid-template-columns: 1fr; grid-auto-rows: 1fr; }
+  /* My Leads: the leads fill the left; Today / Total / Rank and the (always open) leaderboard stack in a right sidebar. */
+  .sideSplit { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+  .sideSplit .topGrid { grid-column: 2; grid-row: 1; }
+  .sideSplit .mainCol { grid-column: 1; grid-row: 1; }
+  .stats { grid-template-columns: 1fr; }
   .tile { min-height: 96px; padding: 14px 20px; }
   .tileValue { font-size: 36px; }
   .tileSub { font-size: 13px; }

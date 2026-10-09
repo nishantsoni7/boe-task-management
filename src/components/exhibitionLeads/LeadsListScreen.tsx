@@ -219,6 +219,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
           </>
         )}
         {mode === 'mine' && <OutboxBanner entries={entries} justSaved={justSaved} addHref="/exhibition-leads/add" />}
+        <div className={a.split}>
         {showStats && (
           <div className={a.topGrid}>
             <StatTiles
@@ -234,6 +235,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             <Leaderboard data={standings} open={boardOpen} onToggle={() => setBoardOpen(v => !v)} />
           </div>
         )}
+        <div className={a.mainCol}>
         {mode === 'mine' && !showStats && data && (
           <div className={s.ownLine}>
             <span>Assigned to me now: <strong>{data.mine.owned_total}</strong></span>
@@ -444,6 +446,8 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             </div>
           </>
         )}
+        </div>
+        </div>
       </div>
 
       {state.lead && (

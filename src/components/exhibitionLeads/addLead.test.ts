@@ -80,11 +80,19 @@ describe('the scoreboard is on My Leads', () => {
     assert.match(provider, /withMyDelta\(d, 1\)/)
     assert.match(provider, /if \(res\.outcome === 'created'\)/, 'a replay was already counted by the server')
   })
-  test('the rank tile opens the board on a phone; the board is always open on a wide screen', () => {
+  test('on a wide screen the leads fill the left; Today / Total / Rank and the always-open leaderboard stack in a right sidebar', () => {
     assert.match(panel, /aria-controls="leaderboard"/)
+    assert.match(css, /\.sideSplit \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 380px;/)
+    assert.match(css, /\.sideSplit \.topGrid \{ grid-column: 2;/)
+    assert.match(css, /\.sideSplit \.mainCol \{ grid-column: 1;/)
     assert.match(css, /@media \(min-width: 1280px\)[\s\S]*\.boardBody \{ display: block; \}/)
+    assert.match(list, /<div className=\{a\.mainCol\}>/)
     assert.match(css, /\.boardOpen \.boardBody \{ display: block; \}/)
-    assert.match(css, /\.topGrid \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 380px;/)
+  })
+  test('someone not on the board shows 0, not a dash; a dash only means not known yet', () => {
+    assert.match(panel, /const today = me \? me\.today : data \? 0 : undefined/)
+    assert.match(panel, /const total = me \? me\.total : data \? 0 : undefined/)
+    assert.match(panel, /'Not on the board'/)
   })
   test('with no board available it shows the person\'s own numbers and no rank', () => {
     assert.match(panel, /!data \|\| data\.degraded \|\| data\.rows\.length < 2/)

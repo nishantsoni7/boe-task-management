@@ -261,3 +261,14 @@ describe('the leaderboard door (20270307000000)', () => {
     assert.match(tail, /raise exception 'EXHIBITION_STANDINGS_ACL/)
   })
 })
+
+describe('the Requirement options migration (20270308000000)', () => {
+  const sql4 = read('supabase/migrations/20270308000000_exhibition_lead_requirements_residential_others.sql')
+  test('it widens only the requirements CHECK to the four options', () => {
+    assert.match(sql4, /drop constraint if exists exhibition_leads_requirements_check/)
+    assert.ok(sql4.includes("array['restaurant_cafe','hotel','residential','others']"))
+    assert.ok(sql4.includes('cardinality(requirements) between 1 and 4'))
+    const code4 = sql4.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    assert.doesNotMatch(code4, /create or replace function|drop table|delete from/i)
+  })
+})

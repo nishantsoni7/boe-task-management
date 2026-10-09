@@ -36,8 +36,10 @@ export function StatTiles({
 }) {
   const sum = summarise(data)
   const me = sum.me
-  const today = me?.today
-  const total = me?.total
+  // Someone who is not on the board (an Admin who has collected nothing) has collected none: 0, not a dash.
+  // A dash is only for "not known yet".
+  const today = me ? me.today : data ? 0 : undefined
+  const total = me ? me.total : data ? 0 : undefined
   const todayPop = useChangePop(today)
   const totalPop = useChangePop(total)
   const rankPop = useChangePop(me?.rank)
@@ -83,7 +85,7 @@ export function StatTiles({
           : data && !loading ? <span className={`${a.tileValue} ${a.dim}`}>–</span>
           : <span className={a.skel} aria-hidden="true" />}
         <span className={a.tileSub}>
-          {ranked ? `of ${data?.participants}` : data && me?.total === 0 ? 'Add a lead' : ' '}
+          {ranked ? `of ${data?.participants}` : data && !data.degraded && (!me || me.total === 0) ? (me ? 'Add a lead' : 'Not on the board') : ' '}
         </span>
         <ChevronDown size={16} className={a.tileGo} aria-hidden="true" />
       </button>

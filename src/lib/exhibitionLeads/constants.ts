@@ -5,7 +5,7 @@
 export const EXHIBITION_LEADS_MODULE_KEY = 'exhibition_leads'
 
 export const CLIENT_TYPES = [
-  { value: 'architect_designer', label: 'Architect / Interior Designer' },
+  { value: 'architect_designer', label: 'Architect' },
   { value: 'property_owner', label: 'Property Owner' },
   { value: 'consultant', label: 'Consultant' },
   { value: 'other', label: 'Other' },
@@ -14,6 +14,8 @@ export const CLIENT_TYPES = [
 export const REQUIREMENTS = [
   { value: 'restaurant_cafe', label: 'Restaurant / Cafe' },
   { value: 'hotel', label: 'Hotel' },
+  { value: 'residential', label: 'Residential' },
+  { value: 'others', label: 'Others' },
 ] as const
 
 export const BUYING_TIMELINES = [
@@ -33,7 +35,7 @@ export const LEAD_TYPES = [
   { value: 'hot', label: 'Hot', hint: 'Immediate RFQs / Active Site Plan' },
   { value: 'warm', label: 'Warm', hint: 'Sourcing for Pipeline Projects' },
   { value: 'long_term', label: 'Long Term', hint: 'General Networking & Future Roster' },
-  { value: 'mismatched_retail', label: 'Mismatched / Retail Inquiries', hint: 'Low Priority' },
+  { value: 'mismatched_retail', label: 'Mismatched', hint: 'Low Priority' },
 ] as const
 
 /** The colour that goes with each lead type on the entry form (and nowhere that carries meaning alone: the name is always written). */

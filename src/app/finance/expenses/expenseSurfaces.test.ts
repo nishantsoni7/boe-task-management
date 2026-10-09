@@ -752,6 +752,8 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the Exhibition Leads standings door (20270307000000): one read-only function, held by
       // src/lib/exhibitionLeads/migration.test.ts and supabase/tests/exhibition_leads_assertions.sql.
       if (f === 'supabase/migrations/20270307000000_exhibition_lead_standings.sql') continue
+      // And the Exhibition Leads Requirement options (20270308000000): one CHECK widened, held by src/lib/exhibitionLeads/migration.test.ts.
+      if (f === 'supabase/migrations/20270308000000_exhibition_lead_requirements_residential_others.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2912,6 +2914,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270305000000_exhibition_leads.sql',
     'supabase/migrations/20270306000000_exhibition_management.sql',
     'supabase/migrations/20270307000000_exhibition_lead_standings.sql',
+    'supabase/migrations/20270308000000_exhibition_lead_requirements_residential_others.sql',
     'src/components/exhibitionLeads/EntryFeed.tsx',
     'src/components/exhibitionLeads/StandingsPanel.tsx',
     'src/components/exhibitionLeads/addLead.module.css',

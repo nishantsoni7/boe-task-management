@@ -112,10 +112,10 @@ describe('lead form validation', () => {
     assert.ok(validateLeadForm({ ...ok(), clientType: '' }).clientType)
   })
   test('the vocabularies are exactly the ones asked for', () => {
-    assert.deepEqual(CLIENT_TYPES.map(o => o.label), ['Architect / Interior Designer', 'Property Owner', 'Consultant', 'Other'])
-    assert.deepEqual(REQUIREMENTS.map(o => o.label), ['Restaurant / Cafe', 'Hotel'])
+    assert.deepEqual(CLIENT_TYPES.map(o => o.label), ['Architect', 'Property Owner', 'Consultant', 'Other'])
+    assert.deepEqual(REQUIREMENTS.map(o => o.label), ['Restaurant / Cafe', 'Hotel', 'Residential', 'Others'])
     // The visible label is the short name; the bracketed explanation is a hint behind the "i".
-    assert.deepEqual(LEAD_TYPES.map(o => o.label), ['Hot', 'Warm', 'Long Term', 'Mismatched / Retail Inquiries'])
+    assert.deepEqual(LEAD_TYPES.map(o => o.label), ['Hot', 'Warm', 'Long Term', 'Mismatched'])
     assert.deepEqual(LEAD_TYPES.map(o => o.hint), [
       'Immediate RFQs / Active Site Plan',
       'Sourcing for Pipeline Projects',
@@ -157,6 +157,7 @@ describe('lead form validation', () => {
   })
   test('the vocabularies are the ones the database checks', () => {
     const sql = read('supabase/migrations/20270305000000_exhibition_leads.sql')
+      + read('supabase/migrations/20270308000000_exhibition_lead_requirements_residential_others.sql')
     for (const v of [...optionValues(CLIENT_TYPES), ...optionValues(REQUIREMENTS), ...optionValues(STATUSES)]) {
       assert.ok(sql.includes(`'${v}'`), `${v} is in the migration`)
     }
@@ -307,7 +308,7 @@ describe('CSV export', () => {
     assert.ok(csv.startsWith('﻿Exhibition,'))
     const lines = csv.trimEnd().split('\r\n')
     assert.equal(lines.length, 2)
-    assert.ok(lines[1].includes('Architect / Interior Designer'))
+    assert.ok(lines[1].includes('Architect'))
     assert.ok(lines[1].includes('"Restaurant / Cafe, Hotel"'))
     assert.ok(lines[1].includes('2026-10-10 00:00:00'), 'the 18:30Z instant is midnight IST on the 10th')
     assert.ok(lines[1].includes('Hot') && lines[1].includes('Follow-up'))
@@ -316,7 +317,7 @@ describe('CSV export', () => {
     const csv = buildLeadsCsv([lead({ client_type: 'other', client_type_other: 'Furniture retailer', lead_type: 'mismatched_retail' }), lead({ lead_type: 'long_term' })])
     const rows = csv.trimEnd().split('\r\n')
     assert.ok(rows[1].includes('Other: Furniture retailer'))
-    assert.ok(rows[1].includes('Mismatched / Retail Inquiries') && !rows[1].includes('Low Priority'))
+    assert.ok(rows[1].includes('Mismatched') && !rows[1].includes('Low Priority'))
     assert.ok(rows[2].includes(',Long Term,') && !rows[2].includes('Networking'))
   })
   test('commas, quotes and line breaks are escaped', () => {
