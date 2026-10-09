@@ -1,15 +1,14 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { ChevronDown, ChevronRight, Trophy } from 'lucide-react'
+import { ChevronDown, Trophy } from 'lucide-react'
 import { boardRows, joinNames, ordinal, summarise, type Standings } from '@/lib/exhibitionLeads/standings'
 import a from './addLead.module.css'
 
-// The scoreboard at the top of Add Lead: Today, Total, and where I stand —
-// plus the leaderboard behind the rank tile. Today and Total are links to My
-// Leads; the rank tile opens the board on a phone (it is always open on a wide
-// screen). Numbers that change play a short pop so a save is felt, not read.
+// The scoreboard at the top of My Leads: Today, Total, and where I stand —
+// plus the leaderboard behind the rank tile. Today and Total set the list's date
+// window below them (so a tile is also a shortcut); the rank tile opens the board
+// on a phone (it is always open on a wide screen). Numbers that change play a short pop so a save is felt, not read.
 
 function useChangePop(value: number | null | undefined) {
   const [popKey, setPopKey] = useState(0)
@@ -22,14 +21,16 @@ function useChangePop(value: number | null | undefined) {
 }
 
 export function StatTiles({
-  data, loading, day, myLeadsHref, totalHref, boardOpen, onToggleBoard,
+  data, loading, day, activeWhen, onToday, onTotal, boardOpen, onToggleBoard,
 }: {
   data: Standings | undefined
   loading: boolean
   /** "Day 2 of 3" while the exhibition is running. */
   day: string | null
-  myLeadsHref: string
-  totalHref: string
+  /** The list's current date window; the matching tile is shown as pressed. */
+  activeWhen: string
+  onToday: () => void
+  onTotal: () => void
   boardOpen: boolean
   onToggleBoard: () => void
 }) {
@@ -50,19 +51,23 @@ export function StatTiles({
 
   return (
     <div className={a.stats}>
-      <Link href={myLeadsHref} className={a.tile} aria-label={`My leads today: ${today ?? 'loading'}`}>
+      <button
+        type="button" className={`${a.tile}${activeWhen === 'today' ? ` ${a.tileOn}` : ''}`} aria-pressed={activeWhen === 'today'}
+        aria-label={`Show my leads from today: ${today ?? 'loading'}`} onClick={onToday}
+      >
         <span className={a.tileLabel}>Today</span>
         {num(today, todayPop)}
-        <span className={a.tileSub}>{day ?? 'My leads'}</span>
-        <ChevronRight size={16} className={a.tileGo} aria-hidden="true" />
-      </Link>
+        <span className={a.tileSub}>{day ?? 'Added today'}</span>
+      </button>
 
-      <Link href={totalHref} className={a.tile} aria-label={`My total leads: ${total ?? 'loading'}`}>
+      <button
+        type="button" className={`${a.tile}${activeWhen === 'all' ? ` ${a.tileOn}` : ''}`} aria-pressed={activeWhen === 'all'}
+        aria-label={`Show all my leads: ${total ?? 'loading'}`} onClick={onTotal}
+      >
         <span className={a.tileLabel}>Total</span>
         {num(total, totalPop)}
         <span className={a.tileSub}>All days</span>
-        <ChevronRight size={16} className={a.tileGo} aria-hidden="true" />
-      </Link>
+      </button>
 
       <button
         type="button"

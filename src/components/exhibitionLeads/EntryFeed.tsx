@@ -116,3 +116,25 @@ export function RecentList({ entries }: { entries: readonly OutboxEntry[] }) {
     </section>
   )
 }
+
+/**
+ * For the pages that are not Add Lead (My Leads): what is still being sent, and
+ * a way back to the entries that need the person — the cards themselves live on
+ * Add Lead, where the form is.
+ */
+export function OutboxBanner({
+  entries, justSaved, addHref,
+}: { entries: readonly OutboxEntry[]; justSaved: string | null; addHref: string }) {
+  const attention = entries.filter(e => NEEDS_ATTENTION.includes(e.status)).length
+  return (
+    <>
+      <StatusLine entries={entries} justSaved={justSaved} />
+      {attention > 0 && (
+        <div className={`${s.notice} ${s.noticeWarn}`} role="alert">
+          {attention === 1 ? '1 lead you entered needs your attention.' : `${attention} leads you entered need your attention.`}
+          <div className={s.noticeActions}><a className={`${s.btn} ${s.btnDark}`} href={addHref}>Review on Add Lead</a></div>
+        </div>
+      )}
+    </>
+  )
+}

@@ -2921,6 +2921,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/exhibitionLeads/standings.test.ts',
     'src/lib/exhibitionLeads/queries.ts',
     'src/components/exhibitionLeads/addLead.test.ts',
+    'src/components/exhibitionLeads/OutboxProvider.tsx',
     'supabase/tests/exhibition_leads_standings_assertions.sql',
     'src/components/exhibitionLeads/ExhibitionsScreen.tsx',
     'src/components/controlCenter/TeamAccessCard.tsx',
