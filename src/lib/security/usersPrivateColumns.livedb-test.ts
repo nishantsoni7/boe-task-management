@@ -31,7 +31,7 @@ import assert from 'node:assert/strict'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 
-import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
+import { resolveLiveDbTestEnv, runCleanupSteps, fixtureUserCleanupSteps } from '@/lib/security/liveDbTestSupport'
 import { GET as employeeList }     from '@/app/api/employee-list/route'
 import { GET as adminProfile }     from '@/app/api/admin/employee-profile/route'
 import { GET as myResult }         from '@/app/api/payroll/my-result/route'
@@ -121,12 +121,9 @@ before(async () => {
 })
 
 after(async () => {
-  await runCleanupSteps(
-    createdAuthUserIds.flatMap(id => [
-      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
-      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
-    ]),
-  )
+  // Each account: dependants by user id, profile, verified absent, and only
+  // then the auth row. See fixtureUserCleanupSteps.
+  await runCleanupSteps(fixtureUserCleanupSteps(svc, createdAuthUserIds))
 })
 
 // ─── 1–4. The four shapes a column privilege must refuse ─────────────────────
