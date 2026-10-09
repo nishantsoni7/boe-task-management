@@ -17,17 +17,20 @@ import { join } from 'node:path'
 const ROOT = process.cwd()
 const FILE = '20270305000000_exhibition_leads.sql'
 const FILE2 = '20270306000000_exhibition_management.sql'
+const FILE3 = '20270307000000_exhibition_lead_standings.sql'
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '')
 const sql = read(`supabase/migrations/${FILE}`)
 const code = sql.replace(/--[^\n]*/g, '') // comments stripped
 const sql2 = read(`supabase/migrations/${FILE2}`)
 const code2 = sql2.replace(/--[^\n]*/g, '')
+const sql3 = read(`supabase/migrations/${FILE3}`)
+const code3 = sql3.replace(/--[^\n]*/g, '')
 
 function functions(): { name: string; header: string; body: string }[] {
   const out: { name: string; header: string; body: string }[] = []
   const re = /create (?:or replace )?function public\.(\w+)\(([\s\S]*?)\$\$([\s\S]*?)\$\$;/g
   let m: RegExpExecArray | null
-  for (const c of [code, code2]) {
+  for (const c of [code, code2, code3]) {
     re.lastIndex = 0
     while ((m = re.exec(c))) out.push({ name: m[1], header: m[0].slice(0, m[0].indexOf('$$')), body: m[3] })
   }
@@ -210,5 +213,51 @@ describe('exhibition management (20270306000000)', () => {
   test('it checks itself', () => {
     const tail = code2.slice(code2.lastIndexOf('do $$'))
     assert.match(tail, /raise exception 'EXHIBITION_MANAGEMENT_ACL/)
+  })
+})
+
+describe('the leaderboard door (20270307000000)', () => {
+  const fns = functions()
+  const f = fns.find(x => x.name === 'exhibition_lead_standings')!
+
+  test('it follows the management migration, depends on the module, and adds only one function', () => {
+    const all = readdirSync(join(ROOT, 'supabase/migrations')).filter(x => x.endsWith('.sql')).sort()
+    assert.ok(all.indexOf(FILE3) === all.indexOf(FILE2) + 1)
+    assert.equal(all.filter(x => x.startsWith(FILE3.slice(0, 14))).length, 1)
+    assert.match(code3, /DEPENDENCY MISSING: 20270305000000_exhibition_leads\.sql must be applied first/)
+    assert.doesNotMatch(code3, /create table|alter table|drop |insert into|update public|delete from/i, 'read-only: no table is touched')
+    assert.equal(fns.filter(x => code3.includes(`function public.${x.name}(`)).length, 1)
+  })
+  test('anyone who may use the module can read it — not only Admin — through the same actor check', () => {
+    assert.ok(f)
+    assert.match(f.header, /security definer/)
+    assert.match(f.header, /stable/)
+    assert.match(f.header, /set search_path = public, pg_temp\s*$/m)
+    assert.ok(f.body.includes('exhibition_leads_actor()'))
+    assert.doesNotMatch(f.body, /Admin only/)
+    assert.doesNotMatch(f.header, /\bp_(user|actor|owner|collector)[a-z_]*\b/, 'takes no identity')
+    assert.match(code3, /revoke all on function public\.exhibition_lead_standings\(uuid\) from public, anon;\s*grant execute on function public\.exhibition_lead_standings\(uuid\) to authenticated;/)
+  })
+  test('it counts exactly like the Admin ranking, so the two screens never disagree', () => {
+    const rank = fns.find(x => x.name === 'exhibition_lead_ranking')!
+    for (const part of [
+      'l.collected_by', 'l.archived_at is null', "at time zone 'Asia/Kolkata'", 'between v_exh.starts_on and v_exh.ends_on',
+      "(u.role <> 'admin' and public.exhibition_leads_user_eligible(u.id))", 'u.id in (select collected_by from credit)',
+    ]) {
+      assert.ok(f.body.includes(part), `standings: ${part}`)
+      assert.ok(rank.body.includes(part), `ranking: ${part}`)
+    }
+  })
+  test('it shows names and counts only: no id, phone, note or client detail leaves it', () => {
+    assert.doesNotMatch(f.body, /phone|contact_name|company|note|client_type|project_city|'user_id'|'id'/i)
+    const keys = [...f.body.matchAll(/'([a-z_]+)',\s/g)].map(m => m[1]).sort()
+    assert.deepEqual(keys, ['exhibition_id', 'is_final', 'is_me', 'name', 'participants', 'rank', 'rows', 'today', 'today', 'total'].sort())
+  })
+  test('equal totals share a position, and nobody with no leads has one', () => {
+    assert.match(f.body, /case when s\.total > 0 then rank\(\) over \(order by s\.total desc\) end/)
+  })
+  test('it checks its own grants', () => {
+    const tail = code3.slice(code3.lastIndexOf('do $$'))
+    assert.match(tail, /raise exception 'EXHIBITION_STANDINGS_ACL/)
   })
 })

@@ -328,6 +328,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270304000000_customer_review_admin_reject_and_delete.sql',
     '20270305000000_exhibition_leads.sql',
     '20270306000000_exhibition_management.sql',
+    '20270307000000_exhibition_lead_standings.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

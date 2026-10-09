@@ -95,7 +95,8 @@ describe('when there is nothing to capture against', () => {
     assert.doesNotMatch(add, /No active exhibition is set up yet/)
   })
   test('saving is impossible without an open exhibition', () => {
-    assert.match(add, /disabled=\{saving \|\| !exhibitionId\}/)
+    assert.match(add, /disabled=\{!exhibitionId\}/)
+    assert.match(add, /if \(!exhibitionId\) return/, 'submit itself refuses too')
     assert.match(add, /openExhibitions\.find\(e => e\.id === exhibitionId\)/, 'only open exhibitions can be chosen')
   })
 })

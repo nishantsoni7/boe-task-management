@@ -57,6 +57,22 @@ export function validateLeadForm(v: LeadFormValues): LeadFormErrors {
   return e
 }
 
+/**
+ * The required fields still open, by name, in form order — what the Save bar
+ * says is "still needed". Empty means the form can be saved (validateLeadForm
+ * remains the judge of the exact rules).
+ */
+export function missingRequired(v: LeadFormValues): string[] {
+  const out: string[] = []
+  if (!v.contactName.trim()) out.push('Name')
+  if (phoneError(v.countryCode, v.mobile)) out.push('Mobile')
+  if (!v.clientType) out.push('Client type')
+  else if (v.clientType === 'other' && !v.clientTypeOther.trim()) out.push('Kind of client')
+  if (v.requirements.length === 0) out.push('Requirement')
+  if (!v.leadType) out.push('Lead type')
+  return out
+}
+
 /** Arguments of create_exhibition_lead — minus the ids the caller supplies. */
 export function toCreateArgs(v: LeadFormValues) {
   return {

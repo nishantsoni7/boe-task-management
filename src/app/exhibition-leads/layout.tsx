@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import ModuleGuard from '@/components/layout/ModuleGuard'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { EXHIBITION_LEADS_MODULE_KEY } from '@/lib/exhibitionLeads/constants'
+import { warmStart } from '@/lib/exhibitionLeads/queries'
 
 // Two gates, in order.
 //
@@ -21,21 +23,25 @@ import { EXHIBITION_LEADS_MODULE_KEY } from '@/lib/exhibitionLeads/constants'
 // every function re-checks the caller and every table has the module gate.
 export default function ExhibitionLeadsRouteLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const qc = useQueryClient()
   const [signedIn, setSignedIn] = useState(false)
 
   useEffect(() => {
     let active = true
-    createClient().auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
       if (!active) return
       if (!session) {
         const here = `${window.location.pathname}${window.location.search}`
         router.replace(`/login?redirect=${encodeURIComponent(here)}`)
         return
       }
+      // Start the page's reads now, alongside the module check below, instead of after it.
+      warmStart(qc, supabase, window.location.pathname)
       setSignedIn(true)
     })
     return () => { active = false }
-  }, [router])
+  }, [router, qc])
 
   if (!signedIn) return <LoadingScreen />
   return <ModuleGuard moduleKey={EXHIBITION_LEADS_MODULE_KEY}>{children}</ModuleGuard>
