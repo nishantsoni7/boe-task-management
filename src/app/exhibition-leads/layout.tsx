@@ -8,6 +8,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { EXHIBITION_LEADS_MODULE_KEY } from '@/lib/exhibitionLeads/constants'
 import { warmStart } from '@/lib/exhibitionLeads/queries'
+import { OutboxProvider } from '@/components/exhibitionLeads/OutboxProvider'
 
 // Two gates, in order.
 //
@@ -24,12 +25,12 @@ import { warmStart } from '@/lib/exhibitionLeads/queries'
 export default function ExhibitionLeadsRouteLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const qc = useQueryClient()
-  const [signedIn, setSignedIn] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
     const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: { user: { id: string } } | null } }) => {
       if (!active) return
       if (!session) {
         const here = `${window.location.pathname}${window.location.search}`
@@ -38,11 +39,16 @@ export default function ExhibitionLeadsRouteLayout({ children }: { children: Rea
       }
       // Start the page's reads now, alongside the module check below, instead of after it.
       warmStart(qc, supabase, window.location.pathname)
-      setSignedIn(true)
+      setUserId(session.user.id)
     })
     return () => { active = false }
   }, [router, qc])
 
-  if (!signedIn) return <LoadingScreen />
-  return <ModuleGuard moduleKey={EXHIBITION_LEADS_MODULE_KEY}>{children}</ModuleGuard>
+  if (!userId) return <LoadingScreen />
+  // The outbox sits above every page: a lead saved on Add Lead keeps being sent after the person moves on.
+  return (
+    <ModuleGuard moduleKey={EXHIBITION_LEADS_MODULE_KEY}>
+      <OutboxProvider userId={userId}>{children}</OutboxProvider>
+    </ModuleGuard>
+  )
 }

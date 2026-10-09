@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { BarChart3, CalendarDays, Home, ListChecks, Plus, Users } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import a from '@/components/exhibitionLeads/addLead.module.css'
 
 // The Exhibition Leads module shell — the BOE Module Layout Standard: two
 // columns, a module header with Home → /modules, module-only navigation, and the
@@ -36,6 +38,8 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, title, subtitle, actio
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  // Adding a lead is the module's main job: on every other page a phone shows a big red bar to start one.
+  const showAddBar = !pathname.startsWith(`${BASE}/add`)
 
   return (
     <div className="boe-app-shell">
@@ -73,15 +77,19 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, title, subtitle, actio
           {NAV_ITEMS.filter(item => isAdmin || !item.adminOnly).map(item => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
+            // Add Lead is the primary action: it is always the filled red item.
+            const primary = item.href === `${BASE}/add`
             return (
               <button
                 key={item.href}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
                 onClick={() => { setSidebarOpen(false); router.push(item.href) }}
-                style={{ fontWeight: active ? 600 : undefined, marginBottom: '2px' }}
+                style={primary
+                  ? { background: '#DC1F2E', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 12px', marginBottom: '10px', boxShadow: '0 2px 6px rgba(220,31,46,0.30)' }
+                  : { fontWeight: active ? 600 : undefined, marginBottom: '2px' }}
               >
-                <span style={{ color: '#DC1F2E', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: primary ? '#fff' : '#DC1F2E', display: 'flex', alignItems: 'center' }}>
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 {item.label}
@@ -110,10 +118,15 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, title, subtitle, actio
             </div>
           )}
         </div>
-        <div className="boe-page-body">
+        <div className={`boe-page-body${showAddBar ? ` ${a.fabPad}` : ''}`}>
           <ViewModeBanner />
           {children}
         </div>
+        {showAddBar && (
+          <Link href={`${BASE}/add`} className={a.fab} aria-label="Add a new lead">
+            <Plus size={22} strokeWidth={2.8} aria-hidden="true" /> Add Lead
+          </Link>
+        )}
       </div>
     </div>
   )

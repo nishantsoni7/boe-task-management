@@ -1,15 +1,12 @@
-/* Add Lead — the entry screen. Phone first: one column, the scoreboard on top,
-   the form, a Save bar that stays in thumb reach. From 1024px the form sits
-   beside the leaderboard. Shared pieces (inputs, buttons, notices, choice tiles)
-   come from leads.module.css; this file only lays them out. */
+/* Add Lead — the entry screen, and nothing else: one column, the form, a Save
+   bar that stays in thumb reach. The scoreboard (Today / Total / Rank and the
+   leaderboard) is laid out by .topGrid and lives on My Leads. Shared pieces
+   (inputs, buttons, notices, choice tiles) come from leads.module.css. */
 
 .page { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-.aside { display: contents; }
-.head { order: 1; }
-.stats { order: 2; }
-.board { order: 3; }
-.main { order: 4; }
-.recent { order: 5; }
+
+/* ── The scoreboard block on My Leads ────────────────────────────────── */
+.topGrid { display: flex; flex-direction: column; gap: 12px; }
 
 /* ── Exhibition picker (only when more than one is open) ─────────────── */
 .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #4A5261; }
@@ -30,6 +27,7 @@ a.tile:hover, button.tile:hover { border-color: #111318; }
 .tileValue { font-size: 32px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .tileSub { font-size: 12px; color: #5B6475; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tileGo { position: absolute; top: 12px; right: 10px; color: #9AA1AE; }
+.tileOn { border-color: #111318; box-shadow: inset 0 0 0 1px #111318; }
 .tileRank { background: #111318; border-color: #111318; color: #fff; }
 .tileRank .tileLabel, .tileRank .tileSub { color: rgba(255, 255, 255, 0.72); }
 .tileRank .tileGo { color: rgba(255, 255, 255, 0.6); }
@@ -146,17 +144,13 @@ a.tile:hover, button.tile:hover { border-color: #111318; }
   .card { padding: 22px; }
 }
 
-/* ── Wide screens: the board beside the form ─────────────────────────── */
+/* ── Wide screens ────────────────────────────────────────────────────── */
 @media (min-width: 1280px) {
-  .page { max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
-  /* Explicit cells: the phone order (via `order`) must not decide where things land here. */
-  .head, .stats, .main { order: 0; }
-  .head { grid-column: 1 / -1; grid-row: 1; }
-  .stats { grid-column: 1 / -1; grid-row: 2; }
-  .main { grid-column: 1; grid-row: 3; }
-  .aside { display: flex; flex-direction: column; gap: 16px; grid-column: 2; grid-row: 3; }
-  .tile { min-height: 104px; padding: 16px 20px; }
-  .tileValue { font-size: 40px; }
+  /* My Leads: the three tiles stack beside the (always open) leaderboard. */
+  .topGrid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: stretch; }
+  .topGrid .stats { grid-template-columns: 1fr; grid-auto-rows: 1fr; }
+  .tile { min-height: 96px; padding: 14px 20px; }
+  .tileValue { font-size: 36px; }
   .tileSub { font-size: 13px; }
   .card { padding: 24px; gap: 20px; }
   .saveBar { position: static; margin: 0; padding: 4px 0 0; background: none; backdrop-filter: none; border-top: 0; }
@@ -166,7 +160,6 @@ a.tile:hover, button.tile:hover { border-color: #111318; }
   .boardBody { display: block; }
   .tileRank { cursor: default; }
   .tileRank:hover { border-color: #111318 !important; }
-  .aside { position: sticky; top: 12px; }
 }
 
 /* ── Phones ──────────────────────────────────────────────────────────── */
@@ -186,4 +179,29 @@ a.tile:hover, button.tile:hover { border-color: #111318; }
 
 @media (prefers-reduced-motion: reduce) {
   .pop, .status, .spin { animation: none; }
+}
+
+/* ── Adding a lead is the main job: on a phone it is always one tap away ───
+   A full-width red bar pinned to the bottom of every other Exhibition Leads
+   page. It steps aside while a sheet (filters, a lead) is open so it never
+   covers a sheet's own buttons. */
+.fab { display: none; }
+@media (max-width: 767px) {
+  .fab {
+    display: flex; position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 6;
+    min-height: 58px; align-items: center; justify-content: center; gap: 10px; border-radius: 16px;
+    background: #DC1F2E; color: #fff; font-size: 18px; font-weight: 800; text-decoration: none; letter-spacing: 0.01em;
+    box-shadow: 0 10px 24px rgba(220, 31, 46, 0.38), 0 2px 0 rgba(143, 16, 16, 0.4);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .fab:active { transform: translateY(1px); box-shadow: 0 4px 12px rgba(220, 31, 46, 0.35); }
+  .fab:focus-visible { outline: 3px solid #111318; outline-offset: 3px; }
+  :global(body):has(:global(.boe-sheet-overlay)) .fab { display: none; }
+  /* room under the last row so the bar never hides it */
+  .fabPad { padding-bottom: 92px; }
+}
+
+/* The page header's own "Add Lead" button is redundant beside the bar above. */
+@media (max-width: 767px) {
+  .hideOnPhone { display: none; }
 }

@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import { Check } from 'lucide-react'
 import { ExhibitionLeadsLayout } from '@/components/layout/ExhibitionLeadsLayout'
@@ -9,8 +9,7 @@ import { useExhibitionLeads, useExhibitions } from '@/hooks/useExhibitionLeads'
 import {
   BUYING_TIMELINES, CLIENT_TYPES, LEAD_TYPES, LEAD_TYPE_ACCENTS, REQUIREMENTS,
 } from '@/lib/exhibitionLeads/constants'
-import { EXHIBITION_LEADS_KEY, createLead, updateLead, LeadRequestError } from '@/lib/exhibitionLeads/api'
-import { standingsKey, standingsQuery } from '@/lib/exhibitionLeads/queries'
+import { EXHIBITION_LEADS_KEY, updateLead, LeadRequestError } from '@/lib/exhibitionLeads/api'
 import { exhibitionDates, exhibitionLabel } from '@/lib/exhibitionLeads/format'
 import {
   MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER,
@@ -18,15 +17,10 @@ import {
   type LeadFormErrors, type LeadFormValues,
 } from '@/lib/exhibitionLeads/validation'
 import { clearDraft, newSubmissionId, takeDraft } from '@/lib/exhibitionLeads/draft'
-import {
-  afterAnswer, afterError, isUnsent, loadOutbox, newEntry, nextToSend, resend, retryDelayMs,
-  storeOutbox, type OutboxEntry,
-} from '@/lib/exhibitionLeads/outbox'
-import { exhibitionDay, withMyDelta, type Standings } from '@/lib/exhibitionLeads/standings'
-import { istToday } from '@/lib/istDate'
+import { newEntry } from '@/lib/exhibitionLeads/outbox'
 import { ChoiceGroup } from './ChoiceGroup'
 import { NoExhibitionNotice } from './LeadBits'
-import { Leaderboard, StatTiles } from './StandingsPanel'
+import { useOutbox } from './OutboxProvider'
 import { Problems, RecentList, StatusLine } from './EntryFeed'
 // Only needed when a duplicate is found and the person opens the existing lead.
 const LeadDetailSheet = dynamic(() => import('./LeadDetailSheet'), { ssr: false })
@@ -35,15 +29,11 @@ import a from './addLead.module.css'
 
 const Req = () => <span className={s.req} aria-hidden="true">*</span>
 
-// How long the green "Saved" confirmation stays.
-const SAVED_FLASH_MS = 5000
-
 export default function AddLeadScreen() {
   // The form needs neither the profile nor the session round trip to be shown:
   // the route layout has already proved a session exists. It renders at once and
   // the account details fill in beside it.
   const { supabase, profile, isAdmin, signOut } = useExhibitionLeads()
-  const userId = profile?.id ?? null
   // Only OPEN exhibitions take new leads; closed ones stay available in the lists.
   const { exhibitions, open: openExhibitions, defaultOpenExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, true)
   const qc = useQueryClient()
@@ -58,9 +48,7 @@ export default function AddLeadScreen() {
   const [values, setValues] = useState<LeadFormValues>(() => parked?.values ?? emptyLeadForm())
   const [showErrors, setShowErrors] = useState(false)
   const [formKey, setFormKey] = useState(0)
-  const [boardOpen, setBoardOpen] = useState(false)
   const [openLeadId, setOpenLeadId] = useState<string | null>(null)
-  const [justSaved, setJustSaved] = useState<string | null>(null)
   const restored = parked !== null
 
   const topRef = useRef<HTMLDivElement>(null)
@@ -69,120 +57,8 @@ export default function AddLeadScreen() {
   const errors: LeadFormErrors = showErrors ? validateLeadForm(values) : {}
   const set = <K extends keyof LeadFormValues>(key: K, v: LeadFormValues[K]) => setValues(prev => ({ ...prev, [key]: v }))
 
-  // ── The scoreboard ─────────────────────────────────────────────────────
-  // (If the leaderboard door is missing, the person's own numbers still show: see loadStandings.)
-  const standingsQ = useQuery({
-    ...standingsQuery(supabase, exhibitionId as string),
-    enabled: !!exhibitionId,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
-    retry: 1,
-  })
-
-  // ── The outbox: entries made on this screen, and what became of them ───
-  const [entries, setEntries] = useState<OutboxEntry[]>([])
-  const inFlight = useRef<string | null>(null)
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
-  const dirty = useRef(false)
-  // Whose saved entries have been read back from storage (nothing is written before that).
-  const [outboxUser, setOutboxUser] = useState<string | null>(null)
-
-  const patch = useCallback((id: string, fn: (e: OutboxEntry) => OutboxEntry) => {
-    setEntries(list => list.map(e => (e.id === id ? fn(e) : e)))
-  }, [])
-
-  // Entries owed from an earlier visit (a closed tab, a dropped connection) come back and are sent.
-  // (Read after a microtask: the storage is an external system, and the state
-  // is set in a callback of that read, not while the effect body runs.)
-  useEffect(() => {
-    if (!userId) return
-    let live = true
-    void Promise.resolve().then(() => {
-      if (!live) return
-      const owed = loadOutbox(userId)
-      if (owed.length) setEntries(list => [...owed.filter(o => !list.some(e => e.id === o.id)), ...list])
-      setOutboxUser(userId)
-    })
-    return () => { live = false }
-  }, [userId])
-
-  // …and what is still owed is kept, so it survives a reload.
-  useEffect(() => {
-    if (userId && outboxUser === userId) storeOutbox(userId, entries)
-  }, [userId, outboxUser, entries])
-
-  // Send the oldest waiting entry; one at a time keeps the order and spares a weak connection.
-  useEffect(() => {
-    if (inFlight.current) return
-    const next = nextToSend(entries)
-    if (!next) return
-    inFlight.current = next.id
-    ;(async () => {
-      try {
-        const res = await createLead(supabase, { submissionId: next.id, exhibitionId: next.exhibitionId, ...next.args })
-        patch(next.id, e => afterAnswer(e, res))
-        if (res.outcome === 'created' || res.outcome === 'replayed') {
-          dirty.current = true
-          if (res.outcome === 'created') {
-            qc.setQueryData<Standings | undefined>(standingsKey(next.exhibitionId), d => withMyDelta(d, 1))
-          }
-          setJustSaved(next.name)
-        }
-      } catch (e) {
-        const err = e as LeadRequestError
-        patch(next.id, x => afterError(x, { kind: err.kind ?? 'unknown', message: err.message }))
-      } finally {
-        inFlight.current = null
-      }
-    })()
-  }, [entries, supabase, qc, patch])
-
-  // A failed send tries again by itself, a little later each time.
-  useEffect(() => {
-    for (const e of entries) {
-      if (e.status === 'retry' && !timers.current.has(e.id)) {
-        timers.current.set(e.id, setTimeout(() => {
-          timers.current.delete(e.id)
-          patch(e.id, resend)
-        }, retryDelayMs(e.attempts)))
-      }
-    }
-  }, [entries, patch])
-  useEffect(() => {
-    const t = timers.current
-    return () => { t.forEach(clearTimeout); t.clear() }
-  }, [])
-
-  // The connection came back: do not wait for the timer.
-  useEffect(() => {
-    const again = () => setEntries(list => list.map(e => (e.status === 'retry' ? resend(e) : e)))
-    window.addEventListener('online', again)
-    return () => window.removeEventListener('online', again)
-  }, [])
-
-  // Once everything has been answered, bring the numbers and the lists in line with the database.
-  const waiting = entries.some(isUnsent)
-  useEffect(() => {
-    if (!waiting && dirty.current) {
-      dirty.current = false
-      qc.invalidateQueries({ queryKey: EXHIBITION_LEADS_KEY })
-    }
-  }, [waiting, qc])
-
-  // Closing the tab while something is still on its way: ask first.
-  useEffect(() => {
-    if (!entries.some(e => e.status === 'saving' || e.status === 'retry')) return
-    const warn = (ev: BeforeUnloadEvent) => { ev.preventDefault() }
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [entries])
-
-  // The green confirmation fades by itself.
-  useEffect(() => {
-    if (!justSaved) return
-    const t = setTimeout(() => setJustSaved(null), SAVED_FLASH_MS)
-    return () => clearTimeout(t)
-  }, [justSaved])
+  // The outbox lives above every page (OutboxProvider): sending carries on after the person leaves this screen.
+  const { entries, justSaved, enqueue, remove, retry, flash, patch } = useOutbox()
 
   // ── Saving ─────────────────────────────────────────────────────────────
   function readyForNext() {
@@ -207,8 +83,7 @@ export default function AddLeadScreen() {
     // The entry is handed to the outbox and the form is free again at once.
     // The id is minted here, once, and every retry of this entry reuses it.
     clearDraft()
-    setJustSaved(null)
-    setEntries(list => [...list, newEntry({ id: newSubmissionId(), exhibitionId, values, args: toCreateArgs(values) })])
+    enqueue(newEntry({ id: newSubmissionId(), exhibitionId, values, args: toCreateArgs(values) }))
     readyForNext()
   }
 
@@ -219,7 +94,7 @@ export default function AddLeadScreen() {
     if (typing && !window.confirm('Replace what you are typing now with this entry?')) return
     setValues(e.values)
     setChosenExhibition(e.exhibitionId)
-    setEntries(list => list.filter(x => x.id !== id))
+    remove(id)
     setShowErrors(false)
     setFormKey(k => k + 1)
     topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
@@ -230,8 +105,8 @@ export default function AddLeadScreen() {
     if (!e?.leadId) return
     try {
       await updateLead(supabase, e.leadId, {}, e.values.note.trim() || null)
-      setEntries(list => list.filter(x => x.id !== id))
-      setJustSaved(`${e.name} — follow-up note added to the existing lead`)
+      remove(id)
+      flash(`${e.name} — follow-up note added to the existing lead`)
       qc.invalidateQueries({ queryKey: EXHIBITION_LEADS_KEY })
     } catch (err) {
       const le = err as LeadRequestError
@@ -239,15 +114,8 @@ export default function AddLeadScreen() {
     }
   }
 
-  // ── What the scoreboard shows: the database, plus what is still on its way ──
-  const pending = entries.filter(e => isUnsent(e) && e.exhibitionId === exhibitionId).length
-  const standings = useMemo(() => withMyDelta(standingsQ.data, pending), [standingsQ.data, pending])
-
   const required = missingRequired(values)
   const loginHref = `/login?redirect=${encodeURIComponent('/exhibition-leads/add')}`
-  const today = istToday()
-  const day = exhibition ? exhibitionDay(exhibition, today) : null
-  const exParam = exhibitionId ? `ex=${exhibitionId}&` : ''
 
   return (
     <ExhibitionLeadsLayout
@@ -268,33 +136,15 @@ export default function AddLeadScreen() {
           </div>
         )}
 
-        {exhibitionId && (
-          <StatTiles
-            data={standings}
-            loading={standingsQ.isLoading}
-            day={day ? `Day ${day.day} of ${day.of}` : null}
-            myLeadsHref="/exhibition-leads/my"
-            totalHref={`/exhibition-leads/my?${exParam}when=all`}
-            boardOpen={boardOpen}
-            onToggleBoard={() => setBoardOpen(v => !v)}
-          />
-        )}
-
-        {/* On a phone the two pieces flow between the tiles, the form and the end of the page; from 1280px they stack beside the form. */}
-        <div className={a.aside}>
-          <Leaderboard data={standings} open={boardOpen} onToggle={() => setBoardOpen(v => !v)} />
-          <RecentList entries={entries} />
-        </div>
-
         <div className={a.main}>
           {!exhibitionId && !exhibitionsLoading && <NoExhibitionNotice isAdmin={isAdmin} closedOnly={exhibitions.length > 0} />}
 
           <StatusLine entries={entries} justSaved={justSaved} />
           <Problems
             entries={entries} busy={false} loginHref={loginHref}
-            onRetry={id => patch(id, resend)}
+            onRetry={retry}
             onEdit={editEntry}
-            onDiscard={id => setEntries(list => list.filter(x => x.id !== id))}
+            onDiscard={remove}
             onOpenLead={setOpenLeadId}
             onAddNote={addNoteToExisting}
           />
@@ -449,6 +299,8 @@ export default function AddLeadScreen() {
             </div>
           </form>
         </div>
+
+        <RecentList entries={entries} />
       </div>
 
       {openLeadId && (

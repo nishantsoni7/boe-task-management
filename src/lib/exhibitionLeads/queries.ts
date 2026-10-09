@@ -97,7 +97,8 @@ export function cachedDefaultExhibitionId(): string | null {
  */
 export function warmStart(qc: QueryClient, supabase: Supabase, pathname: string): void {
   void qc.prefetchQuery(exhibitionsQuery(supabase))
-  if (pathname.startsWith('/exhibition-leads/add')) {
+  // The standings are shown on My Leads; the Add Lead page needs nothing but the exhibition.
+  if (pathname.startsWith('/exhibition-leads/my')) {
     const id = cachedDefaultExhibitionId()
     if (id) void qc.prefetchQuery(standingsQuery(supabase, id))
   }

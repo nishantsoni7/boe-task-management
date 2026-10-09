@@ -25,6 +25,12 @@ import { exhibitionDates, exhibitionLabel, istDateTime, longDate, shortDate } fr
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateOf, istToday } from '@/lib/istDate'
 import { LeadRequestError } from '@/lib/exhibitionLeads/api'
+import { standingsQuery } from '@/lib/exhibitionLeads/queries'
+import { exhibitionDay, withMyDelta } from '@/lib/exhibitionLeads/standings'
+import { Leaderboard, StatTiles } from './StandingsPanel'
+import { OutboxBanner } from './EntryFeed'
+import { useOutbox } from './OutboxProvider'
+import a from './addLead.module.css'
 import { ContactActions, FollowUpText, LeadTypeBadge, NoExhibitionNotice, StatusBadge } from './LeadBits'
 import dynamic from 'next/dynamic'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
@@ -105,6 +111,19 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     enabled,
     placeholderData: keepPreviousData,
   })
+  // The scoreboard: only for "my" leads of one exhibition. If the leaderboard door is missing, only my own numbers show (see loadStandings).
+  const showStats = mode === 'mine' && !allExhibitions && !!exhibitionId
+  const { entries, justSaved, pendingFor } = useOutbox()
+  const standingsQ = useQuery({
+    ...standingsQuery(supabase, exhibitionId as string),
+    enabled: showStats,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  })
+  const pending = pendingFor(exhibitionId)
+  const standings = useMemo(() => withMyDelta(standingsQ.data, pending), [standingsQ.data, pending])
+  const [boardOpen, setBoardOpen] = useState(false)
   const people = useQuery({
     queryKey: [...EXHIBITION_LEADS_KEY, 'people', exhibitionId],
     queryFn: () => fetchPeople(supabase, exhibitionId),
@@ -163,7 +182,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
 
   const header = (
     <>
-      <Link href="/exhibition-leads/add" className={`${s.btn} ${s.btnRed}`}><Plus size={16} aria-hidden="true" /> Add Lead</Link>
+      <Link href="/exhibition-leads/add" className={`${s.btn} ${s.btnRed} ${a.hideOnPhone}`}><Plus size={16} aria-hidden="true" /> Add Lead</Link>
       {mode === 'all' && (
         <button className={s.btn} onClick={exportCsv} disabled={!!exporting || total === 0}>
           <Download size={16} aria-hidden="true" /> {exporting ?? 'Export CSV'}
@@ -199,7 +218,23 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             <div className={s.scopeLine}>Figures cover all matching leads, not just this page — {scopeText}.</div>
           </>
         )}
-        {mode === 'mine' && data && (
+        {mode === 'mine' && <OutboxBanner entries={entries} justSaved={justSaved} addHref="/exhibition-leads/add" />}
+        {showStats && (
+          <div className={a.topGrid}>
+            <StatTiles
+              data={standings}
+              loading={standingsQ.isLoading}
+              day={exhibition ? (() => { const d = exhibitionDay(exhibition, today); return d ? `Day ${d.day} of ${d.of}` : null })() : null}
+              activeWhen={state.when}
+              onToday={() => setFilters({ when: 'today' })}
+              onTotal={() => setFilters({ when: 'all' })}
+              boardOpen={boardOpen}
+              onToggleBoard={() => setBoardOpen(v => !v)}
+            />
+            <Leaderboard data={standings} open={boardOpen} onToggle={() => setBoardOpen(v => !v)} />
+          </div>
+        )}
+        {mode === 'mine' && !showStats && data && (
           <div className={s.ownLine}>
             <span>Assigned to me now: <strong>{data.mine.owned_total}</strong></span>
             <span>Collected by me: <strong>{data.mine.collected_total}</strong></span>

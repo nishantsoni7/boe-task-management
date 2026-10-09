@@ -1,10 +1,12 @@
 /**
- * The Add Lead screen — the promises of the redesign, pinned in source.
+ * Add Lead is for adding leads, and nothing else; the scoreboard lives on My
+ * Leads. The promises of that split, pinned in source.
  *
- * Behaviour that needs a browser (layout, the thumb reach of the Save bar) was
- * checked in one at 390, 768 and 1440 px; what CI can do is fail when someone
- * removes the rules that check depended on. The logic underneath is tested
- * directly: standings.test.ts, outbox.test.ts, and the SQL suites.
+ * Behaviour that needs a browser (layout, the thumb reach of the Save bar, the
+ * Add bar on a phone) was checked in one at 390, 820 and 1440 px; what CI can do
+ * is fail when someone removes the rules that check depended on. The logic
+ * underneath is tested directly: standings.test.ts, outbox.test.ts, and the SQL
+ * suites.
  *
  * Run: npx tsx --test src/components/exhibitionLeads/addLead.test.ts
  */
@@ -17,10 +19,13 @@ import { join } from 'node:path'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const DIR = 'src/components/exhibitionLeads/'
 const add = read(DIR + 'AddLeadScreen.tsx')
+const list = read(DIR + 'LeadsListScreen.tsx')
 const panel = read(DIR + 'StandingsPanel.tsx')
 const feed = read(DIR + 'EntryFeed.tsx')
+const provider = read(DIR + 'OutboxProvider.tsx')
 const css = read(DIR + 'addLead.module.css')
-const layout = read('src/app/exhibition-leads/layout.tsx')
+const shell = read('src/components/layout/ExhibitionLeadsLayout.tsx')
+const routeLayout = read('src/app/exhibition-leads/layout.tsx')
 const hook = read('src/hooks/useExhibitionLeads.ts')
 const queries = read('src/lib/exhibitionLeads/queries.ts')
 
@@ -32,27 +37,100 @@ function fn(src: string, name: string): string {
   return src.slice(start, end)
 }
 
-describe('quick to open', () => {
+describe('Add Lead is only for adding leads', () => {
+  test('no scoreboard, ranking, leaderboard, today or total on the screen', () => {
+    for (const gone of ['StatTiles', 'Leaderboard', 'StandingsPanel', 'standingsQuery', 'fetchStandings', 'withMyDelta', 'boardOpen', 'exhibitionDay', 'Rank']) {
+      assert.ok(!add.includes(gone), `${gone} is not on Add Lead`)
+    }
+    assert.doesNotMatch(add, /\/exhibition-leads\/my/, 'no tile links off to My Leads either')
+  })
+  test('the page is one focused column', () => {
+    assert.match(css, /\.page \{ max-width: 720px; margin: 0 auto; display: flex; flex-direction: column;/)
+    assert.doesNotMatch(css, /\.aside/)
+    assert.doesNotMatch(css, /grid-row: 3/)
+  })
   test('the form does not wait for the profile or a loading screen', () => {
     assert.doesNotMatch(add, /LoadingScreen/)
     assert.doesNotMatch(add, /if \(loading\) return/)
     assert.match(add, /useExhibitions\(supabase, true\)/, 'exhibitions are asked for at once, not after the profile')
   })
-  test('the reads start before the module check ends, and the last exhibition list is kept', () => {
-    assert.match(layout, /warmStart\(qc, supabase, window\.location\.pathname\)/)
-    assert.ok(layout.indexOf('warmStart(') < layout.indexOf('setSignedIn(true)'), 'started alongside the guard')
-    assert.match(hook, /initialData: \(\) => readCachedExhibitions\(\)\?\.data/)
-    assert.match(queries, /if \(pathname\.startsWith\('\/exhibition-leads\/add'\)\)/, 'only this page pays for the standings read')
-    assert.match(queries, /cachedDefaultExhibitionId/)
-  })
-  test('the screen and the early start ask for the same thing under the same key', () => {
-    assert.match(add, /\.\.\.standingsQuery\(supabase, exhibitionId as string\)/)
-    assert.match(queries, /queryKey: standingsKey\(exhibitionId\)/)
-    assert.match(add, /standingsKey\(next\.exhibitionId\)/)
-  })
   test('the heavy sheet is still loaded only when a duplicate is opened', () => {
     assert.match(add, /dynamic\(\(\) => import\('\.\/LeadDetailSheet'\), \{ ssr: false \}\)/)
     assert.doesNotMatch(add, /^import LeadDetailSheet from/m)
+  })
+})
+
+describe('the scoreboard is on My Leads', () => {
+  test('Today, Total and Rank, and the leaderboard, are shown above "my" leads of one exhibition', () => {
+    assert.match(list, /const showStats = mode === 'mine' && !allExhibitions && !!exhibitionId/)
+    assert.match(list, /<StatTiles/)
+    assert.match(list, /<Leaderboard data=\{standings\}/)
+    assert.match(list, /\.\.\.standingsQuery\(supabase, exhibitionId as string\)/)
+  })
+  test('Today and Total are shortcuts for the date window just below them', () => {
+    assert.match(list, /onToday=\{\(\) => setFilters\(\{ when: 'today' \}\)\}/)
+    assert.match(list, /onTotal=\{\(\) => setFilters\(\{ when: 'all' \}\)\}/)
+    assert.match(list, /activeWhen=\{state\.when\}/)
+    assert.match(panel, /aria-pressed=\{activeWhen === 'today'\}/)
+    assert.match(panel, /aria-pressed=\{activeWhen === 'all'\}/)
+  })
+  test('the numbers move at once: what is still saving is added on top', () => {
+    assert.match(list, /withMyDelta\(standingsQ\.data, pending\)/)
+    assert.match(list, /pendingFor\(exhibitionId\)/)
+    assert.match(provider, /withMyDelta\(d, 1\)/)
+    assert.match(provider, /if \(res\.outcome === 'created'\)/, 'a replay was already counted by the server')
+  })
+  test('the rank tile opens the board on a phone; the board is always open on a wide screen', () => {
+    assert.match(panel, /aria-controls="leaderboard"/)
+    assert.match(css, /@media \(min-width: 1280px\)[\s\S]*\.boardBody \{ display: block; \}/)
+    assert.match(css, /\.boardOpen \.boardBody \{ display: block; \}/)
+    assert.match(css, /\.topGrid \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 380px;/)
+  })
+  test('with no board available it shows the person\'s own numbers and no rank', () => {
+    assert.match(panel, /!data \|\| data\.degraded \|\| data\.rows\.length < 2/)
+    assert.match(panel, /ranked = !!me && me\.rank != null && !data\?\.degraded/)
+    assert.match(queries, /degraded: true/)
+  })
+  test('the signed-in person is marked in words (a "You" tag), not by colour alone', () => {
+    assert.match(panel, /className=\{a\.you\}>You</)
+    assert.match(panel, /aria-current=\{r\.is_me \? 'true' : undefined\}/)
+  })
+  test('the standings read starts early on My Leads, not on Add Lead', () => {
+    assert.match(queries, /if \(pathname\.startsWith\('\/exhibition-leads\/my'\)\)/)
+    assert.doesNotMatch(queries, /startsWith\('\/exhibition-leads\/add'\)/)
+  })
+})
+
+describe('adding is always one tap away on a phone', () => {
+  test('every page but Add Lead carries a full-width red "Add Lead" bar on a phone', () => {
+    assert.match(shell, /const showAddBar = !pathname\.startsWith\(`\$\{BASE\}\/add`\)/)
+    assert.match(shell, /<Link href=\{`\$\{BASE\}\/add`\} className=\{a\.fab\} aria-label="Add a new lead">/)
+    assert.match(css, /\.fab \{ display: none; \}/, 'hidden unless a phone')
+    assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.fab \{[^}]*position: fixed;[^}]*min-height: 58px;[^}]*background: #DC1F2E/)
+    assert.match(css, /safe-area-inset-bottom/)
+  })
+  test('the bar steps aside for a sheet and leaves room under the last row', () => {
+    assert.match(css, /:global\(body\):has\(:global\(\.boe-sheet-overlay\)\) \.fab \{ display: none; \}/)
+    assert.match(css, /\.fabPad \{ padding-bottom: 92px; \}/)
+    assert.match(shell, /boe-page-body\$\{showAddBar \? ` \$\{a\.fabPad\}` : ''\}/)
+  })
+  test('in the menu, Add Lead is first and the one filled red item', () => {
+    assert.match(shell, /\{ href: `\$\{BASE\}\/add`, label: 'Add Lead'/)
+    assert.ok(shell.indexOf("label: 'Add Lead'") < shell.indexOf("label: 'My Leads'"))
+    assert.match(shell, /const primary = item\.href === `\$\{BASE\}\/add`/)
+    assert.match(shell, /background: '#DC1F2E', color: '#fff'/)
+  })
+  test('the module still opens on Add Lead', () => {
+    assert.match(read('src/app/exhibition-leads/page.tsx'), /redirect\('\/exhibition-leads\/add'\)/)
+  })
+})
+
+describe('quick to open', () => {
+  test('the reads start before the module check ends, and the last exhibition list is kept', () => {
+    assert.match(routeLayout, /warmStart\(qc, supabase, window\.location\.pathname\)/)
+    assert.ok(routeLayout.indexOf('warmStart(') < routeLayout.indexOf('setUserId('), 'started alongside the guard')
+    assert.match(hook, /initialData: \(\) => readCachedExhibitions\(\)\?\.data/)
+    assert.match(queries, /cachedDefaultExhibitionId/)
   })
 })
 
@@ -61,27 +139,34 @@ describe('quick to save', () => {
     const submit = fn(add, 'submit')
     assert.doesNotMatch(submit, /await /, 'no await in the save path')
     assert.doesNotMatch(submit, /createLead\(/)
-    assert.match(submit, /newEntry\(\{ id: newSubmissionId\(\)/)
+    assert.match(submit, /enqueue\(newEntry\(\{ id: newSubmissionId\(\)/)
     assert.match(submit, /readyForNext\(\)/)
     assert.match(fn(add, 'readyForNext'), /setValues\(emptyLeadForm\(\)\)/)
   })
   test('the idempotency key is minted once per Save, and every send of that entry reuses it', () => {
     assert.equal(add.split('newSubmissionId()').length - 1, 1, 'exactly one place mints an id')
-    assert.match(add, /createLead\(supabase, \{ submissionId: next\.id, exhibitionId: next\.exhibitionId, \.\.\.next\.args \}\)/)
+    assert.doesNotMatch(provider, /newSubmissionId/)
+    assert.match(provider, /createLead\(supabase, \{ submissionId: next\.id, exhibitionId: next\.exhibitionId, \.\.\.next\.args \}\)/)
+  })
+  test('the outbox is above every page, so sending carries on after the person leaves Add Lead', () => {
+    assert.match(routeLayout, /<OutboxProvider userId=\{userId\}>\{children\}<\/OutboxProvider>/)
+    assert.match(add, /useOutbox\(\)/)
+    assert.doesNotMatch(add, /createLead|storeOutbox|loadOutbox|nextToSend/, 'Add Lead does not own the sending')
+    assert.match(list, /useOutbox\(\)/)
   })
   test('entries are sent one at a time, oldest first, and a failure tries again by itself', () => {
-    assert.match(add, /if \(inFlight\.current\) return/)
-    assert.match(add, /nextToSend\(entries\)/)
-    assert.match(add, /retryDelayMs\(e\.attempts\)/)
-    assert.match(add, /addEventListener\('online'/)
+    assert.match(provider, /if \(inFlight\.current\) return/)
+    assert.match(provider, /nextToSend\(entries\)/)
+    assert.match(provider, /retryDelayMs\(e\.attempts\)/)
+    assert.match(provider, /addEventListener\('online'/)
   })
   test('what is owed survives a reload, per person, and is not written before it was read back', () => {
-    assert.match(add, /storeOutbox\(userId, entries\)/)
-    assert.match(add, /outboxUser === userId/)
-    assert.match(add, /loadOutbox\(userId\)/)
+    assert.match(provider, /storeOutbox\(userId, entries\)/)
+    assert.match(provider, /outboxUser === userId/)
+    assert.match(provider, /loadOutbox\(userId\)/)
   })
   test('closing the tab with something still on its way asks first', () => {
-    assert.match(add, /addEventListener\('beforeunload'/)
+    assert.match(provider, /addEventListener\('beforeunload'/)
   })
   test('Enter moves from name to mobile; the name field takes the focus after every save', () => {
     assert.match(add, /mobileRef\.current\?\.focus\(\)/)
@@ -94,34 +179,6 @@ describe('quick to save', () => {
   })
 })
 
-describe('where I stand', () => {
-  test('Today and Total are links to My Leads, Total across all days', () => {
-    assert.match(add, /myLeadsHref="\/exhibition-leads\/my"/)
-    assert.match(add, /totalHref=\{`\/exhibition-leads\/my\?\$\{exParam\}when=all`\}/)
-    assert.match(panel, /<Link href=\{myLeadsHref\}/)
-    assert.match(panel, /<Link href=\{totalHref\}/)
-  })
-  test('the numbers move at once: what is still saving is added on top, and a confirmed save is added to the cache', () => {
-    assert.match(add, /withMyDelta\(standingsQ\.data, pending\)/)
-    assert.match(add, /withMyDelta\(d, 1\)/)
-    assert.match(add, /if \(res\.outcome === 'created'\)/, 'a replay was already counted by the server')
-  })
-  test('the rank tile opens the board on a phone; the board is always open on a wide screen', () => {
-    assert.match(panel, /aria-controls="leaderboard"/)
-    assert.match(css, /@media \(min-width: 1280px\)[\s\S]*\.boardBody \{ display: block; \}/)
-    assert.match(css, /\.boardOpen \.boardBody \{ display: block; \}/)
-  })
-  test('with no board available it shows the person\'s own numbers and no rank', () => {
-    assert.match(panel, /!data \|\| data\.degraded \|\| data\.rows\.length < 2/)
-    assert.match(panel, /ranked = !!me && me\.rank != null && !data\?\.degraded/)
-    assert.match(queries, /degraded: true/)
-  })
-  test('the signed-in person is marked in words (a "You" tag), not by colour alone', () => {
-    assert.match(panel, /className=\{a\.you\}>You</)
-    assert.match(panel, /aria-current=\{r\.is_me \? 'true' : undefined\}/)
-  })
-})
-
 describe('nothing is hidden from the person', () => {
   test('every entry that needs a decision has a card with a way forward', () => {
     assert.match(feed, /Sign in again/)
@@ -130,6 +187,10 @@ describe('nothing is hidden from the person', () => {
     assert.match(feed, /Add my note to it/)
     assert.match(feed, /Edit details/)
     assert.match(feed, /Dismiss/)
+  })
+  test('on My Leads, what is still sending and what needs the person are shown, with a way back to Add Lead', () => {
+    assert.match(list, /<OutboxBanner entries=\{entries\} justSaved=\{justSaved\} addHref="\/exhibition-leads\/add" \/>/)
+    assert.match(feed, /Review on Add Lead/)
   })
   test('the status line is a polite live region; problems are alerts', () => {
     assert.match(feed, /role="status"/)
@@ -147,25 +208,12 @@ describe('nothing is hidden from the person', () => {
 })
 
 describe('layout rules', () => {
-  test('phone first: one column in the order tiles → board → form → recent', () => {
-    for (const [cls, order] of [['head', 1], ['stats', 2], ['board', 3], ['main', 4], ['recent', 5]] as const) {
-      assert.match(css, new RegExp(`\\.${cls} \\{ order: ${order}; \\}`), cls)
-    }
-    assert.match(css, /\.aside \{ display: contents; \}/)
-  })
-  test('wide screens place every part in an explicit cell, so `order` cannot misplace them', () => {
-    assert.match(css, /@media \(min-width: 1280px\)/)
-    for (const cell of ['.head { grid-column: 1 / -1; grid-row: 1; }', '.stats { grid-column: 1 / -1; grid-row: 2; }',
-      '.main { grid-column: 1; grid-row: 3; }', 'grid-column: 2; grid-row: 3;']) {
-      assert.ok(css.includes(cell), cell)
-    }
-  })
   test('the Save bar stays in thumb reach and clears the home indicator on a phone', () => {
     assert.match(css, /\.saveBar \{\s*position: sticky; bottom: 0;/)
     assert.match(css, /safe-area-inset-bottom/)
     assert.match(css, /\.saveBtn \{[^}]*min-height: 56px/)
   })
-  test('tiles are 44px+ touch targets and taps register at once', () => {
+  test('tiles are large touch targets and taps register at once', () => {
     assert.match(css, /\.tile \{[^}]*min-height: 92px/)
     assert.match(css, /touch-action: manipulation/)
     assert.match(css, /-webkit-tap-highlight-color: transparent/)
