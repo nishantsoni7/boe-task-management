@@ -51,4 +51,4 @@ export const SCAN_TOOL = {
   },
 } as const
 
-export const SCAN_INSTRUCTION = 'Read this photograph and record every detail on it.'
+export const SCAN_INSTRUCTION = 'Read this photograph and record every detail on it by calling the record_contact tool.'
