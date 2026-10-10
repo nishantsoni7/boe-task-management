@@ -758,6 +758,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And Exhibition Leads "View All Leads" (20270309000000): one action, one helper and six re-created read functions,
       // held by src/lib/exhibitionLeads/viewAll.test.ts and supabase/tests/exhibition_leads_view_all_assertions.sql.
       if (f === 'supabase/migrations/20270309000000_exhibition_leads_view_all.sql') continue
+      // And the Exhibition Leads Requirement option Residential (20270310000000): one CHECK and the two write functions' list,
+      // held by src/lib/exhibitionLeads/migration.test.ts.
+      if (f === 'supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2920,6 +2923,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270307000000_exhibition_lead_standings.sql',
     'supabase/migrations/20270308000000_exhibition_lead_email_and_card.sql',
     'supabase/migrations/20270309000000_exhibition_leads_view_all.sql',
+    'supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql',
     'supabase/tests/exhibition_leads_view_all_assertions.sql',
     'src/lib/exhibitionLeads/viewAll.test.ts',
     'src/lib/permissions/modules.ts',

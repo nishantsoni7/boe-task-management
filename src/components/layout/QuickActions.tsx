@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarClock, ContactRound, Receipt as ReceiptIcon } from 'lucide-react'
 import { AttendanceRequestFlow } from '@/components/attendanceRequests/AttendanceRequestFlow'
@@ -41,6 +41,11 @@ export type QuickAction = {
   /** Opens a shared form in place instead of navigating. */
   opens?: 'attendance-request'
   icon: React.ReactNode
+  /**
+   * Drawn as the one filled, larger button and listed first. For the action people
+   * need in seconds with a queue in front of them (a lead at an exhibition stand).
+   */
+  featured?: boolean
 }
 
 /**
@@ -70,6 +75,17 @@ export type QuickActionGates = {
 export function buildQuickActions(gates: QuickActionGates): QuickAction[] {
   const actions: QuickAction[] = []
 
+  // First and filled: people at a stand have seconds, not a menu to search.
+  if (gates.canAddExhibitionLead) {
+    actions.push({
+      key: 'add-exhibition-lead',
+      label: 'Add Exhibition Lead',
+      href: '/exhibition-leads/add',
+      icon: <ContactRound size={20} strokeWidth={2.2} aria-hidden="true" />,
+      featured: true,
+    })
+  }
+
   if (gates.canRequestAttendance) {
     actions.push({
       key: 'attendance-request',
@@ -85,15 +101,6 @@ export function buildQuickActions(gates: QuickActionGates): QuickAction[] {
       label: 'Quick Add Expense',
       href: '/finance/expenses/new',
       icon: <ReceiptIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
-    })
-  }
-
-  if (gates.canAddExhibitionLead) {
-    actions.push({
-      key: 'add-exhibition-lead',
-      label: 'Add Exhibition Lead',
-      href: '/exhibition-leads/add',
-      icon: <ContactRound size={16} strokeWidth={1.9} aria-hidden="true" />,
     })
   }
 
@@ -119,6 +126,13 @@ export function QuickActionList({
   // only one can ever be tapped.
   const [openForm, setOpenForm] = useState<QuickAction['opens'] | null>(null)
 
+  // Fetch each destination's code as soon as the button is on screen, so the tap
+  // only has to swap screens.
+  const hrefs = actions.map(a => a.href).filter(Boolean).join('|')
+  useEffect(() => {
+    for (const h of hrefs.split('|')) if (h) router.prefetch(h)
+  }, [hrefs, router])
+
   if (actions.length === 0) return null
 
   const isSidebar = variant === 'sidebar'
@@ -138,7 +152,7 @@ export function QuickActionList({
           <button
             key={action.key}
             type="button"
-            className="boe-btn boe-quick-action"
+            className={action.featured ? 'boe-btn boe-quick-action boe-quick-action-featured' : 'boe-btn boe-quick-action'}
             onClick={() => (action.opens ? setOpenForm(action.opens) : router.push(action.href!))}
           >
             {action.icon}

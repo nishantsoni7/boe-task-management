@@ -261,3 +261,25 @@ describe('the leaderboard door (20270307000000)', () => {
     assert.match(tail, /raise exception 'EXHIBITION_STANDINGS_ACL/)
   })
 })
+
+describe('the Residential requirement migration (20270310000000)', () => {
+  const sql5 = read('supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql')
+  const code5 = sql5.split(/\r?\n/).filter(l => !l.trim().startsWith('--')).join(' ')
+  const LIST = "array['restaurant_cafe','hotel','residential']"
+  test('it widens the CHECK to the three options', () => {
+    assert.match(sql5, /drop constraint if exists exhibition_leads_requirements_check/)
+    assert.ok(sql5.includes(LIST + '::text[]);'))
+    assert.ok(sql5.includes('cardinality(requirements) between 1 and 3'))
+  })
+  test('it re-issues create and update with the wider list and no other rule changed', () => {
+    assert.equal(code5.split(LIST).length - 1, 3)
+    assert.doesNotMatch(code5, /array\['restaurant_cafe','hotel'\]/)
+    assert.match(code5, /create or replace function public\.create_exhibition_lead\(/)
+    assert.match(code5, /create or replace function public\.update_exhibition_lead\(/)
+    assert.doesNotMatch(code5, /drop table|delete from|drop column/i)
+  })
+  test('it keeps both functions closed to anon and open to signed-in users only', () => {
+    assert.match(code5, /revoke all on function public\.create_exhibition_lead\([^)]*\) from public, anon;/)
+    assert.match(code5, /grant execute on function public\.update_exhibition_lead\(uuid, jsonb, text\) to authenticated;/)
+  })
+})

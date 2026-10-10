@@ -331,6 +331,7 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270307000000_exhibition_lead_standings.sql',
     '20270308000000_exhibition_lead_email_and_card.sql',
     '20270309000000_exhibition_leads_view_all.sql',
+    '20270310000000_exhibition_lead_requirement_residential.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

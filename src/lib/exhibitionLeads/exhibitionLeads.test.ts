@@ -113,7 +113,7 @@ describe('lead form validation', () => {
   })
   test('the vocabularies are exactly the ones asked for', () => {
     assert.deepEqual(CLIENT_TYPES.map(o => o.label), ['Architect / Interior Designer', 'Property Owner', 'Consultant', 'Other'])
-    assert.deepEqual(REQUIREMENTS.map(o => o.label), ['Restaurant / Cafe', 'Hotel'])
+    assert.deepEqual(REQUIREMENTS.map(o => o.label), ['Restaurant / Cafe', 'Hotel', 'Residential'])
     // The visible label is the short name; the bracketed explanation is a hint behind the "i".
     assert.deepEqual(LEAD_TYPES.map(o => o.label), ['Hot', 'Warm', 'Long Term', 'Mismatched / Retail Inquiries'])
     assert.deepEqual(LEAD_TYPES.map(o => o.hint), [
@@ -156,7 +156,9 @@ describe('lead form validation', () => {
     }
   })
   test('the vocabularies are the ones the database checks', () => {
+    // The original CHECK, widened for Residential by 20270310000000.
     const sql = read('supabase/migrations/20270305000000_exhibition_leads.sql')
+      + read('supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql')
     for (const v of [...optionValues(CLIENT_TYPES), ...optionValues(REQUIREMENTS), ...optionValues(STATUSES)]) {
       assert.ok(sql.includes(`'${v}'`), `${v} is in the migration`)
     }
