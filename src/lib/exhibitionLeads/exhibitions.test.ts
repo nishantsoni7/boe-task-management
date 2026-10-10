@@ -126,7 +126,7 @@ describe('the exhibitions screen', () => {
 describe('the city is typed, never picked', () => {
   const add = read('src/components/exhibitionLeads/AddLeadScreen.tsx')
   test('Advanced has a plain text box for the city: no list, no suggestions, no select', () => {
-    const block = /<label className=\{s\.label\} htmlFor="lead-city">City<\/label>[\s\S]*?\/>/.exec(add)![0]
+    const block = /<label className=\{s\.label\} htmlFor="lead-city">City<FromScan[^>]*\/><\/label>[\s\S]*?\/>/.exec(add)![0]
     assert.ok(block.includes('<input') && block.includes('placeholder="Type the city"'))
     assert.ok(block.includes('autoComplete="off"') && block.includes('autoCapitalize="words"'))
     assert.doesNotMatch(add.slice(add.indexOf('<summary>Advanced</summary>')), /<select|<datalist|list=/, 'nothing in Advanced offers choices for the city')

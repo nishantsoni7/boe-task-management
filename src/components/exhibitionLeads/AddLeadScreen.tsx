@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import { Check } from 'lucide-react'
@@ -18,7 +18,9 @@ import {
 } from '@/lib/exhibitionLeads/validation'
 import { clearDraft, newSubmissionId, takeDraft } from '@/lib/exhibitionLeads/draft'
 import { newEntry } from '@/lib/exhibitionLeads/outbox'
+import { applyScan, type ScanField, type ScanResult } from '@/lib/exhibitionLeads/scan'
 import { ChoiceGroup } from './ChoiceGroup'
+import { ScanPanel } from './ScanPanel'
 import { NoExhibitionNotice } from './LeadBits'
 import { useOutbox } from './OutboxProvider'
 import { Problems, RecentList, StatusLine } from './EntryFeed'
@@ -26,8 +28,18 @@ import { Problems, RecentList, StatusLine } from './EntryFeed'
 const LeadDetailSheet = dynamic(() => import('./LeadDetailSheet'), { ssr: false })
 import s from './leads.module.css'
 import a from './addLead.module.css'
+import sc from './scan.module.css'
 
 const Req = () => <span className={s.req} aria-hidden="true">*</span>
+
+/** Beside a label: this value was read from the photo, so it is worth a glance. */
+const FromScan = ({ show }: { show: boolean }) => show ? <span className={sc.fromScan}>From scan</span> : null
+
+/** Which form field each scan marker belongs to, so typing over a value clears its marker. */
+const MARKER_OF: Partial<Record<keyof LeadFormValues, ScanField>> = {
+  contactName: 'contactName', countryCode: 'mobile', mobile: 'mobile', companyName: 'companyName',
+  projectCity: 'projectCity', clientType: 'clientType', requirements: 'requirements', note: 'note',
+}
 
 export default function AddLeadScreen() {
   // The form needs neither the profile nor the session round trip to be shown:
@@ -49,13 +61,43 @@ export default function AddLeadScreen() {
   const [showErrors, setShowErrors] = useState(false)
   const [formKey, setFormKey] = useState(0)
   const [openLeadId, setOpenLeadId] = useState<string | null>(null)
+  // What a scan filled in, until the salesperson changes it or the next lead starts.
+  const [scanned, setScanned] = useState<ScanField[]>([])
+  const [scanDone, setScanDone] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const restored = parked !== null
 
   const topRef = useRef<HTMLDivElement>(null)
   const mobileRef = useRef<HTMLInputElement>(null)
 
   const errors: LeadFormErrors = showErrors ? validateLeadForm(values) : {}
-  const set = <K extends keyof LeadFormValues>(key: K, v: LeadFormValues[K]) => setValues(prev => ({ ...prev, [key]: v }))
+  const set = <K extends keyof LeadFormValues>(key: K, v: LeadFormValues[K]) => {
+    setValues(prev => ({ ...prev, [key]: v }))
+    const marker = MARKER_OF[key]
+    if (marker) setScanned(m => (m.includes(marker) ? m.filter(x => x !== marker) : m))
+  }
+  const marked = (f: ScanField) => scanned.includes(f)
+  // A scan answers seconds after it was started; what is in the form THEN is what it must respect.
+  const valuesRef = useRef(values)
+  useEffect(() => { valuesRef.current = values }, [values])
+
+  // The scan fills what is still empty and never touches the Lead type: that call is the salesperson's.
+  function onScanResult(result: ScanResult) {
+    const applied = applyScan(valuesRef.current, result)
+    setValues(applied.values)
+    setScanned(prev => [...new Set([...prev, ...applied.filled])])
+    setScanDone(true)
+    if (applied.filled.includes('companyName') || applied.filled.includes('projectCity')) setMoreOpen(true)
+    setShowErrors(false)
+    // Bring the first thing still needed into view, so the next tap is obvious.
+    requestAnimationFrame(() => {
+      const missing = missingRequired(applied.values)[0]
+      const id = missing === 'Name' ? 'lead-name' : missing === 'Mobile' ? 'lead-mobile' : missing === 'Client type' ? 'lbl-type' : missing === 'Requirement' ? 'lbl-req' : missing === 'Lead type' ? 'lbl-lead' : null
+      document.getElementById(id ?? '')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+    return { filled: applied.filled.length, unusablePhone: applied.unusablePhone }
+  }
+  function onScanClear() { setScanned([]); setScanDone(false) }
 
   // The outbox lives above every page (OutboxProvider): sending carries on after the person leaves this screen.
   const { entries, justSaved, enqueue, remove, retry, flash, patch } = useOutbox()
@@ -64,6 +106,9 @@ export default function AddLeadScreen() {
   function readyForNext() {
     setValues(emptyLeadForm())
     setShowErrors(false)
+    setScanned([])
+    setScanDone(false)
+    setMoreOpen(false)
     setFormKey(k => k + 1)
     // The form is rebuilt (its key changed), and its name field takes the focus by itself.
     topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
@@ -96,6 +141,8 @@ export default function AddLeadScreen() {
     setChosenExhibition(e.exhibitionId)
     remove(id)
     setShowErrors(false)
+    setScanned([])
+    setScanDone(false)
     setFormKey(k => k + 1)
     topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
@@ -154,15 +201,17 @@ export default function AddLeadScreen() {
             </div>
           )}
 
+          {exhibitionId && <ScanPanel key={`scan-${formKey}`} supabase={supabase} onResult={onScanResult} onClear={onScanClear} />}
+
           <form
             key={formKey} className={a.card} onSubmit={submit} noValidate
             onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit() }}
           >
             <div className={a.pair}>
               <div className={s.field}>
-                <label className={s.label} htmlFor="lead-name">Contact name<Req /></label>
+                <label className={s.label} htmlFor="lead-name">Contact name<Req /><FromScan show={marked('contactName')} /></label>
                 <input
-                  id="lead-name" className={`${s.input}${errors.contactName ? ` ${s.invalid}` : ''}`}
+                  id="lead-name" className={`${s.input}${errors.contactName ? ` ${s.invalid}` : ''}${marked('contactName') ? ` ${sc.scanFilled}` : ''}`}
                   value={values.contactName} maxLength={MAX_NAME + 20} autoComplete="off" autoCapitalize="words"
                   enterKeyHint="next" autoFocus
                   aria-invalid={!!errors.contactName} aria-describedby={errors.contactName ? 'err-name' : undefined}
@@ -174,7 +223,7 @@ export default function AddLeadScreen() {
               </div>
 
               <div className={s.field}>
-                <label className={s.label} htmlFor="lead-mobile">Mobile / WhatsApp<Req /></label>
+                <label className={s.label} htmlFor="lead-mobile">Mobile / WhatsApp<Req /><FromScan show={marked('mobile')} /></label>
                 <div className={s.phoneRow}>
                   <div className={s.ccWrap}>
                     <span className={s.ccPlus} aria-hidden="true">+</span>
@@ -185,7 +234,7 @@ export default function AddLeadScreen() {
                     />
                   </div>
                   <input
-                    id="lead-mobile" ref={mobileRef} className={`${s.input}${errors.mobile ? ` ${s.invalid}` : ''}`}
+                    id="lead-mobile" ref={mobileRef} className={`${s.input}${errors.mobile ? ` ${s.invalid}` : ''}${marked('mobile') ? ` ${sc.scanFilled}` : ''}`}
                     type="tel" inputMode="tel" autoComplete="off" placeholder="98765 43210" enterKeyHint="done"
                     value={values.mobile} maxLength={24}
                     aria-invalid={!!errors.mobile} aria-describedby={errors.mobile ? 'err-mobile' : 'hint-mobile'}
@@ -201,7 +250,7 @@ export default function AddLeadScreen() {
             </div>
 
             <div className={`${s.field} ${a.tiles4}`} data-invalid={errors.clientType ? 'true' : undefined} tabIndex={-1}>
-              <span className={s.label} id="lbl-type">Client type<Req /></span>
+              <span className={s.label} id="lbl-type">Client type<Req /><FromScan show={marked('clientType')} /></span>
               <ChoiceGroup
                 name="client-type" legend="Client type" options={CLIENT_TYPES} value={values.clientType}
                 onChange={v => set('clientType', v as LeadFormValues['clientType'])}
@@ -226,7 +275,7 @@ export default function AddLeadScreen() {
 
             <div className={s.field} data-invalid={errors.requirements ? 'true' : undefined} tabIndex={-1}>
               <div className={a.fieldHead}>
-                <span className={s.label} id="lbl-req">Requirement<Req /></span>
+                <span className={s.label} id="lbl-req">Requirement<Req /><FromScan show={marked('requirements')} /></span>
                 <span className={a.optionalTag}>Choose all that apply</span>
               </div>
               <ChoiceGroup
@@ -237,8 +286,8 @@ export default function AddLeadScreen() {
               {errors.requirements && <div id="err-req" className={s.err} role="alert">{errors.requirements}</div>}
             </div>
 
-            <div className={`${s.field} ${a.leadTiles}`} data-invalid={errors.leadType ? 'true' : undefined} tabIndex={-1}>
-              <span className={s.label} id="lbl-lead">Lead type<Req /></span>
+            <div className={`${s.field} ${a.leadTiles}${scanDone && !values.leadType ? ` ${sc.yourCall}` : ''}`} data-invalid={errors.leadType ? 'true' : undefined} tabIndex={-1}>
+              <span className={s.label} id="lbl-lead">Lead type<Req />{scanDone && !values.leadType && <span className={sc.callTag}>Your call</span>}</span>
               <ChoiceGroup
                 name="lead-type" legend="Lead type" options={LEAD_TYPES} columns={1} accents={LEAD_TYPE_ACCENTS} value={values.leadType}
                 onChange={v => set('leadType', v as LeadFormValues['leadType'])}
@@ -249,29 +298,29 @@ export default function AddLeadScreen() {
 
             <div className={s.field}>
               <div className={a.fieldHead}>
-                <label className={s.label} htmlFor="lead-note">Discussion note</label>
+                <label className={s.label} htmlFor="lead-note">Discussion note<FromScan show={marked('note')} /></label>
                 <span className={a.optionalTag}>Optional</span>
               </div>
               <textarea
-                id="lead-note" className={`${s.textarea} ${a.noteBox}${errors.note ? ` ${s.invalid}` : ''}`}
-                value={values.note} maxLength={MAX_NOTE + 100} rows={2}
+                id="lead-note" className={`${s.textarea} ${a.noteBox}${errors.note ? ` ${s.invalid}` : ''}${marked('note') ? ` ${sc.scanFilled}` : ''}`}
+                value={values.note} maxLength={MAX_NOTE + 100} rows={marked('note') ? 5 : 2}
                 placeholder="Example: Needs 40 café chairs; send catalogue."
                 onChange={e => set('note', e.target.value)}
               />
               {errors.note && <div className={s.err} role="alert">{errors.note}</div>}
             </div>
 
-            <details className={s.optional}>
+            <details className={s.optional} open={moreOpen} onToggle={e => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary>More details <span className={a.optionalTag} style={{ marginLeft: 8, fontWeight: 400 }}>Company, city, timeline</span></summary>
               <div className={s.optionalBody}>
                 <div className={s.field}>
-                  <label className={s.label} htmlFor="lead-company">Company / project name</label>
-                  <input id="lead-company" className={s.input} value={values.companyName} maxLength={MAX_COMPANY + 20} autoComplete="off" onChange={e => set('companyName', e.target.value)} />
+                  <label className={s.label} htmlFor="lead-company">Company / project name<FromScan show={marked('companyName')} /></label>
+                  <input id="lead-company" className={`${s.input}${marked('companyName') ? ` ${sc.scanFilled}` : ''}`} value={values.companyName} maxLength={MAX_COMPANY + 20} autoComplete="off" onChange={e => set('companyName', e.target.value)} />
                 </div>
                 <div className={s.field}>
-                  <label className={s.label} htmlFor="lead-city">City</label>
+                  <label className={s.label} htmlFor="lead-city">City<FromScan show={marked('projectCity')} /></label>
                   <input
-                    id="lead-city" className={s.input} value={values.projectCity} maxLength={MAX_CITY + 20}
+                    id="lead-city" className={`${s.input}${marked('projectCity') ? ` ${sc.scanFilled}` : ''}`} value={values.projectCity} maxLength={MAX_CITY + 20}
                     autoComplete="off" autoCapitalize="words" enterKeyHint="next" placeholder="Type the city"
                     onChange={e => set('projectCity', e.target.value)}
                   />
