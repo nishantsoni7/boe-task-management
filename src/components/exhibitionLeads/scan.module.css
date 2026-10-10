@@ -113,3 +113,19 @@ div.thumb { cursor: default; }
   .scanLine, .fromScan, .yourCall { animation: none; }
   .scanMain { transition: none; }
 }
+
+/* ── One scanner for both ─────────────────────────────────────────────── */
+.scanOne { display: flex; flex-direction: column; gap: 4px; }
+.scanBig {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 84px; padding: 12px 14px;
+  border: 1.5px solid #E1E5EC; border-radius: 14px; background: #fff; color: #111318; font-family: inherit; text-align: left;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.08s;
+}
+.scanBig:hover:not(:disabled) { border-color: #DC1F2E; box-shadow: 0 4px 14px rgba(220, 31, 46, 0.12); }
+.scanBig:active:not(:disabled) { transform: scale(0.99); }
+.scanBig:focus-visible { outline: 3px solid #111318; outline-offset: 2px; }
+.scanBig:disabled { opacity: 0.5; cursor: not-allowed; }
+.scanBig .scanIcon { margin: 0; flex: none; width: 48px; height: 48px; border-radius: 14px; }
+.scanBigText { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.scanKinds { display: inline-flex; gap: 6px; color: #9AA1AE; flex: none; }

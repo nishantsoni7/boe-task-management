@@ -1,5 +1,5 @@
 import type { createClient } from '@/lib/supabase/client'
-import { SCAN_LONG_SIDE, type ScanApiResponse, type ScanKind, type ScanResult } from './scan'
+import { SCAN_LONG_SIDE, type ScanApiResponse, type ScanResult } from './scan'
 
 // The browser's half of scanning: shrink the photograph, send it, hand back the
 // reading. A phone photo is 4–10 MB; at 1800 px on the long side a card is still
@@ -42,13 +42,12 @@ export async function shrinkPhoto(file: Blob): Promise<Blob> {
   }
 }
 
-export async function scanPhoto(supabase: Supabase, photo: Blob, kind: ScanKind): Promise<ScanResult> {
+export async function scanPhoto(supabase: Supabase, photo: Blob): Promise<ScanResult> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new ScanError('auth', 'Your session ended. Sign in again, then scan.')
 
   const body = new FormData()
   body.set('image', new File([photo], 'scan.jpg', { type: 'image/jpeg' }))
-  body.set('kind', kind)
 
   let res: Response
   try {

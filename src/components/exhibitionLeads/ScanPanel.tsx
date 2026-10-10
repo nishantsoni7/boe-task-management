@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, CircleAlert, ClipboardList, Contact, ImagePlus, RotateCcw, ScanLine, Sparkles, X } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
-import { SCAN_KINDS, type ScanKind, type ScanResult } from '@/lib/exhibitionLeads/scan'
+import { SCAN_KIND_SHORT, type ScanKind, type ScanResult } from '@/lib/exhibitionLeads/scan'
 import { ScanError, scanPhoto, shrinkPhoto } from '@/lib/exhibitionLeads/scanClient'
 import a from './scan.module.css'
 
-// "Scan to fill" — two ways to start a lead from a photograph instead of typing:
-// a visiting card, or the visitor form. The photograph is read, the form below
-// fills itself, and the salesperson only has to judge the lead (Hot / Warm / …).
+// "Scan to fill" — one scanner for both: point it at a visiting card or a visitor
+// form (it works out which). The photograph is read, the form below fills itself,
+// and the salesperson fills the rest and judges the lead (Hot / Warm / …).
 //
 // The panel owns the photo and the reading; the screen decides what goes where
 // (onResult) and says what it filled, so this component never touches the form.
@@ -19,15 +19,10 @@ type Supabase = ReturnType<typeof createClient>
 
 type Phase =
   | { name: 'idle' }
-  | { name: 'reading'; kind: ScanKind; photo: string }
+  | { name: 'reading'; photo: string }
   | { name: 'done'; kind: ScanKind; photo: string; filled: number; unusablePhone: boolean; kept?: boolean }
-  | { name: 'error'; kind: ScanKind; photo: string | null; message: string; code: ScanError['code'] }
+  | { name: 'error'; photo: string | null; message: string; code: ScanError['code'] }
 
-const KIND_ICON = { visiting_card: Contact, visitor_form: ClipboardList } as const
-const KIND_HINT: Record<ScanKind, string> = {
-  visiting_card: 'Name, number, company, city',
-  visitor_form: 'Details, requirement, city',
-}
 
 export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: {
   supabase: Supabase
@@ -46,7 +41,6 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
   const [big, setBig] = useState(false)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
-  const pending = useRef<ScanKind>('visiting_card')
   const photoUrl = useRef<string | null>(null)
   // A newer scan makes an older one's answer irrelevant.
   const run = useRef(0)
@@ -62,7 +56,7 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
     return photoUrl.current
   }
 
-  async function start(file: File, kind: ScanKind) {
+  async function start(file: File) {
     const mine = ++run.current
     setBig(false)
     let shrunk: Blob
@@ -72,33 +66,32 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
       if (mine !== run.current) return
       swapPhoto(null)
       const se = e as ScanError
-      setPhase({ name: 'error', kind, photo: null, message: se.message, code: se.code ?? 'failed' })
+      setPhase({ name: 'error', photo: null, message: se.message, code: se.code ?? 'failed' })
       return
     }
     const photo = swapPhoto(shrunk) as string
     if (mine !== run.current) return
-    setPhase({ name: 'reading', kind, photo })
+    setPhase({ name: 'reading', photo })
     try {
-      const result = await scanPhoto(supabase, shrunk, kind)
+      const result = await scanPhoto(supabase, shrunk)
       if (mine !== run.current) return
       const { filled, unusablePhone } = onResult(result, shrunk)
-      setPhase({ name: 'done', kind, photo, filled, unusablePhone })
+      setPhase({ name: 'done', kind: result.kind, photo, filled, unusablePhone })
     } catch (e) {
       if (mine !== run.current) return
       const se = e as ScanError
-      setPhase({ name: 'error', kind, photo, message: se.message ?? 'Could not read the photo.', code: se.code ?? 'failed' })
+      setPhase({ name: 'error', photo, message: se.message ?? 'Could not read the photo.', code: se.code ?? 'failed' })
     }
   }
 
-  function pick(kind: ScanKind, source: 'camera' | 'gallery') {
-    pending.current = kind
+  function pick(source: 'camera' | 'gallery') {
     const input = source === 'camera' ? cameraRef.current : galleryRef.current
     if (input) { input.value = ''; input.click() }
   }
 
   function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
     const file = ev.target.files?.[0]
-    if (file) void start(file, pending.current)
+    if (file) void start(file)
   }
 
   function clear() {
@@ -109,7 +102,6 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
   }
 
   const busy = phase.name === 'reading'
-  const kind = phase.name === 'idle' ? null : phase.kind
 
   return (
     <section className={a.scan} aria-label="Scan to fill">
@@ -125,29 +117,24 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
               <div className={a.scanSub}>Photograph it — the details fill in, you just judge the lead.</div>
             </div>
           </div>
-          <div className={a.scanTiles}>
-            {SCAN_KINDS.map(k => {
-              const Icon = KIND_ICON[k.value]
-              return (
-                <div key={k.value} className={a.scanTile}>
-                  <button
-                    type="button" className={a.scanMain} disabled={disabled}
-                    onClick={() => pick(k.value, 'camera')} aria-label={`Scan ${k.label.toLowerCase()} with the camera`}
-                  >
-                    <span className={a.scanIcon} aria-hidden="true"><Icon size={22} strokeWidth={1.9} /></span>
-                    <span className={a.scanName}>{k.label}</span>
-                    <span className={a.scanFor}>{KIND_HINT[k.value]}</span>
-                    <span className={a.scanGo} aria-hidden="true"><Camera size={14} strokeWidth={2.2} /> Scan</span>
-                  </button>
-                  <button
-                    type="button" className={a.scanAlt} disabled={disabled}
-                    onClick={() => pick(k.value, 'gallery')} aria-label={`Upload a photo of the ${k.label.toLowerCase()}`}
-                  >
-                    <ImagePlus size={14} strokeWidth={2} aria-hidden="true" /> Upload photo
-                  </button>
-                </div>
-              )
-            })}
+          <div className={a.scanOne}>
+            <button
+              type="button" className={a.scanBig} disabled={disabled}
+              onClick={() => pick('camera')} aria-label="Scan a visiting card or visitor form with the camera"
+            >
+              <span className={a.scanIcon} aria-hidden="true"><Camera size={24} strokeWidth={1.9} /></span>
+              <span className={a.scanBigText}>
+                <span className={a.scanName}>Scan visiting card or visitor form</span>
+                <span className={a.scanFor}>Point the camera at either — it works out which</span>
+              </span>
+              <span className={a.scanKinds} aria-hidden="true"><Contact size={16} strokeWidth={1.9} /><ClipboardList size={16} strokeWidth={1.9} /></span>
+            </button>
+            <button
+              type="button" className={a.scanAlt} disabled={disabled}
+              onClick={() => pick('gallery')} aria-label="Upload a photo of a visiting card or visitor form"
+            >
+              <ImagePlus size={14} strokeWidth={2} aria-hidden="true" /> Or upload a photo from the gallery
+            </button>
           </div>
         </>
       )}
@@ -160,7 +147,7 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
             <span className={a.scanLine} aria-hidden="true" />
           </div>
           <div className={a.scanText}>
-            <div className={a.scanState}>Reading the {SCAN_KINDS.find(k => k.value === phase.kind)?.short}…</div>
+            <div className={a.scanState}>Reading the photo…</div>
             <div className={a.scanSub}>A few seconds. You can already start on the Lead type below.</div>
           </div>
         </div>
@@ -182,7 +169,7 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
                 {phase.kept
                   ? 'Photo kept with this lead'
                   : phase.filled > 0
-                  ? `Filled ${phase.filled} ${phase.filled === 1 ? 'field' : 'fields'} from the ${SCAN_KINDS.find(k => k.value === phase.kind)?.short}`
+                  ? `Filled ${phase.filled} ${phase.filled === 1 ? 'field' : 'fields'} from the ${SCAN_KIND_SHORT[phase.kind]}`
                   : 'Read the photo — nothing new to fill'}
               </div>
               <div className={a.scanSub}>
@@ -194,7 +181,7 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
               </div>
             </div>
             <div className={a.scanActions}>
-              <button type="button" className={a.iconBtn} onClick={() => pick(phase.kind, 'camera')} aria-label="Scan again" title="Scan again">
+              <button type="button" className={a.iconBtn} onClick={() => pick('camera')} aria-label="Scan again" title="Scan again">
                 <RotateCcw size={17} strokeWidth={2} aria-hidden="true" />
               </button>
               <button type="button" className={a.iconBtn} onClick={clear} aria-label="Remove the scan" title="Remove the scan">
@@ -217,8 +204,8 @@ export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: 
           <div className={a.scanText}>
             <div>{phase.message}</div>
             <div className={a.scanErrActions}>
-              {phase.code !== 'not_configured' && phase.code !== 'auth' && kind && (
-                <button type="button" className={a.linkBtn} onClick={() => pick(kind, 'camera')} disabled={busy}>Try again</button>
+              {phase.code !== 'not_configured' && phase.code !== 'auth' && (
+                <button type="button" className={a.linkBtn} onClick={() => pick('camera')} disabled={busy}>Try again</button>
               )}
               <button type="button" className={a.linkBtn} onClick={clear}>Type it instead</button>
             </div>

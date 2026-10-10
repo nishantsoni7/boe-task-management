@@ -19,7 +19,7 @@ const BASE = '/exhibition-leads'
 const NAV_ITEMS = [
   { href: `${BASE}/add`, label: 'Add Lead', icon: Plus, adminOnly: false },
   { href: `${BASE}/my`, label: 'My Leads', icon: ListChecks, adminOnly: false },
-  { href: `${BASE}/all`, label: 'All Exhibition Leads', icon: Users, adminOnly: true },
+  { href: `${BASE}/all`, label: 'All Exhibition Leads', icon: Users, adminOnly: true, viewAll: true },
   { href: `${BASE}/ranking`, label: 'Ranking', icon: BarChart3, adminOnly: true },
   { href: `${BASE}/exhibitions`, label: 'Exhibitions', icon: CalendarDays, adminOnly: true },
 ] as const
@@ -27,6 +27,8 @@ const NAV_ITEMS = [
 type Props = {
   profile: UserProfile | null
   isAdmin: boolean
+  /** Admin, or a holder of View All Leads (read only): the all-leads list is theirs too. */
+  canViewAll?: boolean
   title: string
   subtitle?: string
   actions?: React.ReactNode
@@ -34,7 +36,7 @@ type Props = {
   children: React.ReactNode
 }
 
-export function ExhibitionLeadsLayout({ profile, isAdmin, title, subtitle, actions, onSignOut, children }: Props) {
+export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, title, subtitle, actions, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -74,7 +76,7 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, title, subtitle, actio
         </div>
 
         <div className="boe-sidebar-section">
-          {NAV_ITEMS.filter(item => isAdmin || !item.adminOnly).map(item => {
+          {NAV_ITEMS.filter(item => isAdmin || !item.adminOnly || ('viewAll' in item && item.viewAll && canViewAll)).map(item => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
             // Add Lead is the primary action: it is always the filled red item.

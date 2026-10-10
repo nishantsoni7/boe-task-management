@@ -62,6 +62,7 @@ const ACTION_DISPLAY_LABELS: Record<string, string> = {
  */
 const MODULE_SCOPED_ACTION_LABELS: Record<string, Record<string, string>> = {
   image_editor: { create: 'Use' },
+  exhibition_leads: { view_all: 'View All Leads' },
   // Performance is three separable capabilities, and an administrator has to be
   // able to read which is which off the screen. `view` is the personal report —
   // own score, own month, own EOD — and calling it "View" invited exactly the

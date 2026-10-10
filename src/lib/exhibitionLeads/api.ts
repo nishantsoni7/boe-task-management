@@ -46,6 +46,11 @@ export type LeadPage = {
   today: string
 }
 
+export type MyAccess = { is_admin: boolean; view_all: boolean }
+
+/** The caller's own answer: Admin, and whether they may see everyone's leads (read only). */
+export const fetchMyAccess = (s: Supabase) => call<MyAccess>(() => s.rpc('exhibition_leads_my_access'))
+
 export const fetchExhibitions = (s: Supabase) =>
   call<Exhibition[]>(async () => {
     const { data, error } = await s.from('exhibitions')

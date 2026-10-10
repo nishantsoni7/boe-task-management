@@ -15,10 +15,8 @@ import {
 
 export type ScanKind = 'visiting_card' | 'visitor_form'
 
-export const SCAN_KINDS: readonly { value: ScanKind; label: string; short: string }[] = [
-  { value: 'visiting_card', label: 'Visiting card', short: 'card' },
-  { value: 'visitor_form', label: 'Visitor form', short: 'form' },
-]
+/** What the photograph turned out to be, in a few words ("…from the card"). */
+export const SCAN_KIND_SHORT: Record<ScanKind, string> = { visiting_card: 'card', visitor_form: 'form' }
 
 export type ScanResult = {
   kind: ScanKind
@@ -36,14 +34,18 @@ export type ScanResult = {
   requirements: Requirement[]
   /** The requirement in the visitor's own words, when it does not fit the two options. */
   requirementText: string
+  /** Anything else written on the page worth keeping (GST no., other contacts, a handwritten remark). */
+  otherText: string
 }
 
 const text = (v: unknown, max: number): string =>
   typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : ''
 
 /** The model's answer, made safe: wrong types and unknown option values are dropped, not guessed at. */
-export function parseScanResult(raw: unknown, kind: ScanKind): ScanResult {
+export function parseScanResult(raw: unknown): ScanResult {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  // One scanner for both: the reader says which it was looking at.
+  const kind: ScanKind = o.document_type === 'visitor_form' ? 'visitor_form' : 'visiting_card'
   const clientType = optionValues(CLIENT_TYPES).find(v => v === o.client_type) ?? ''
   const reqs = Array.isArray(o.requirements)
     ? optionValues(REQUIREMENTS).filter(v => (o.requirements as unknown[]).includes(v))
@@ -65,6 +67,7 @@ export function parseScanResult(raw: unknown, kind: ScanKind): ScanResult {
     clientType,
     requirements: reqs,
     requirementText: text(o.requirement_text, 300),
+    otherText: text(o.other_text, 400),
   }
 }
 
@@ -103,6 +106,7 @@ export function scanNote(r: ScanResult): string {
   const spare = r.phones.filter(p => normalizeLeadPhone(p) !== firstUsablePhone(r.phones))
   if (spare.length) lines.push(`Other numbers: ${spare.join(', ')}`)
   if (r.requirementText) lines.push(`Requirement: ${r.requirementText}`)
+  if (r.otherText) lines.push(`Also on it: ${r.otherText}`)
   return lines.join('\n').slice(0, MAX_NOTE)
 }
 

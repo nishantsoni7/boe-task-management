@@ -396,5 +396,10 @@ registerModule({
     // Rows are written only by SECURITY DEFINER functions that read auth.uid(),
     // so there is no separate create/edit grant to drift out of step.
     { actionKey: 'view', displayName: 'View' },
+    // Read-only sight of EVERYONE's leads (the All Exhibition Leads list and any lead's sheet, with its
+    // photograph) for someone who is not Admin — and out of the ranking while held. Confers no edit,
+    // reassign, archive, export or ranking access. Registered by 20270309000000; off for everybody
+    // until an administrator grants it.
+    { actionKey: 'view_all', displayName: 'View All Records' },
   ],
 })

@@ -62,7 +62,7 @@ function Chips<T extends string>({
 
 export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const router = useRouter()
-  const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
+  const { supabase, profile, isAdmin, canViewAll, loading, signOut } = useExhibitionLeads()
   const { exhibitions, defaultExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, !loading)
 
   const specs = mode === 'all' ? ALL_LIST_PARAMS : MY_LIST_PARAMS
@@ -75,8 +75,8 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
 
   // The Admin list is for admins; anyone else lands on their own.
   useEffect(() => {
-    if (!loading && mode === 'all' && !isAdmin) router.replace('/exhibition-leads/my')
-  }, [loading, mode, isAdmin, router])
+    if (!loading && mode === 'all' && !canViewAll) router.replace('/exhibition-leads/my')
+  }, [loading, mode, canViewAll, router])
 
   // "all" lists the leads of every exhibition, each tagged with its exhibition.
   const allExhibitions = state.ex === 'all'
@@ -85,8 +85,8 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const today = istToday()
 
   const filter = useMemo(
-    () => toRpcFilter(state, { scope: mode, exhibitionId, today, isAdmin }),
-    [state, mode, exhibitionId, today, isAdmin],
+    () => toRpcFilter(state, { scope: mode, exhibitionId, today, isAdmin: canViewAll }),
+    [state, mode, exhibitionId, today, canViewAll],
   )
   const offset = (state.page - 1) * PAGE_SIZE
 
@@ -104,7 +104,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
     })
   }
 
-  const enabled = !loading && (mode === 'mine' || isAdmin) && (exhibitions.length === 0 ? false : (allExhibitions || !!exhibitionId))
+  const enabled = !loading && (mode === 'mine' || canViewAll) && (exhibitions.length === 0 ? false : (allExhibitions || !!exhibitionId))
   const page = useQuery<LeadPage>({
     queryKey: [...EXHIBITION_LEADS_KEY, 'page', filter, offset],
     queryFn: () => fetchLeadPage(supabase, filter, PAGE_SIZE, offset),
@@ -127,16 +127,16 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const people = useQuery({
     queryKey: [...EXHIBITION_LEADS_KEY, 'people', exhibitionId],
     queryFn: () => fetchPeople(supabase, exhibitionId),
-    enabled: enabled && isAdmin && mode === 'all',
+    enabled: enabled && canViewAll && mode === 'all',
   })
 
-  if (loading || (mode === 'all' && !isAdmin)) return <LoadingScreen />
+  if (loading || (mode === 'all' && !canViewAll)) return <LoadingScreen />
 
   const data = page.data
   // Until the exhibition is known the query has not started (it is disabled), so
   // neither "loading" nor an error is set — say Loading rather than "0 matching".
   const waiting = !data && !page.error && (exhibitionsLoading || !!exhibitionId || allExhibitions)
-  const filterCount = activeFilterCount(state, isAdmin)
+  const filterCount = activeFilterCount(state, canViewAll)
   const window_ = dateWindow(state, today)
   const total = data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -183,7 +183,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
   const header = (
     <>
       <Link href="/exhibition-leads/add" className={`${s.btn} ${s.btnRed} ${a.hideOnPhone}`}><Plus size={16} aria-hidden="true" /> Add Lead</Link>
-      {mode === 'all' && (
+      {mode === 'all' && isAdmin && (
         <button className={s.btn} onClick={exportCsv} disabled={!!exporting || total === 0}>
           <Download size={16} aria-hidden="true" /> {exporting ?? 'Export CSV'}
         </button>
@@ -202,7 +202,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
 
   return (
     <ExhibitionLeadsLayout
-      profile={profile} isAdmin={isAdmin} onSignOut={signOut}
+      profile={profile} isAdmin={isAdmin} canViewAll={canViewAll} onSignOut={signOut}
       title={mode === 'all' ? 'All Exhibition Leads' : 'My Leads'}
       subtitle={allExhibitions ? 'All exhibitions' : exhibition ? `${exhibition.name} · ${exhibitionDates(exhibition)}` : undefined}
       actions={header}
@@ -308,7 +308,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
             <Chips title="Lead type" options={LEAD_TYPES} selected={state.ltype} onToggle={v => setFilters({ ltype: toggleIn(state.ltype, v) })} />
             <Chips title="Status" options={STATUSES} selected={state.status} onToggle={v => setFilters({ status: toggleIn(state.status, v) })} />
             <Chips title="Follow-up" options={FOLLOW_UP_FILTERS} selected={state.follow} onToggle={v => setFilters({ follow: toggleIn(state.follow, v) })} />
-            {mode === 'all' && isAdmin && (
+            {mode === 'all' && canViewAll && (
               <>
                 <Chips
                   title="Original collector" options={(people.data ?? []).map(p => ({ value: p.id, label: p.name }))}
@@ -447,7 +447,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
       </div>
 
       {state.lead && (
-        <LeadDetailSheet leadId={state.lead} supabase={supabase} isAdmin={isAdmin} onClose={closeLead} />
+        <LeadDetailSheet leadId={state.lead} supabase={supabase} isAdmin={isAdmin} meId={profile?.id} onClose={closeLead} />
       )}
     </ExhibitionLeadsLayout>
   )
