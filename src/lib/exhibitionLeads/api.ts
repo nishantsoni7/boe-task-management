@@ -97,6 +97,11 @@ export const updateLead = (s: Supabase, id: string, changes: Record<string, unkn
   call<{ outcome: string; lead_id: string }>(() =>
     s.rpc('update_exhibition_lead', { p_lead_id: id, p_changes: changes, p_note: note }))
 
+/** Email and card photograph: attached after the lead exists, and edited later. */
+export const setLeadContact = (s: Supabase, id: string, changes: { email?: string | null; card_photo_path?: string | null }) =>
+  call<{ outcome: string; lead_id: string }>(() =>
+    s.rpc('set_exhibition_lead_contact', { p_lead_id: id, p_changes: changes }))
+
 export const reassignLead = (s: Supabase, id: string, newOwner: string, note: string | null) =>
   call<{ outcome: string }>(() =>
     s.rpc('reassign_exhibition_lead', { p_lead_id: id, p_new_owner: newOwner, p_note: note }))

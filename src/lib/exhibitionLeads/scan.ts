@@ -1,7 +1,7 @@
 import { CLIENT_TYPES, REQUIREMENTS, optionValues, type ClientType, type Requirement } from './constants'
 import { DEFAULT_COUNTRY_CODE, normalizeLeadPhone } from './phone'
 import {
-  MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER,
+  EMAIL_PATTERN, MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER,
   type LeadFormValues,
 } from './validation'
 
@@ -88,17 +88,16 @@ export function firstUsablePhone(phones: readonly string[]): string | null {
 }
 
 /** The fields the form shows as "read from the photo", for the little marker beside them. */
-export type ScanField = 'contactName' | 'mobile' | 'companyName' | 'projectCity' | 'clientType' | 'requirements' | 'note'
+export type ScanField = 'contactName' | 'mobile' | 'email' | 'companyName' | 'projectCity' | 'clientType' | 'requirements' | 'note'
 
 /**
- * What did not fit a column of its own (the lead has no email or designation
- * field) goes in the discussion note, once, headed by where it came from — so
- * it is on the lead for the follow-up call instead of lost with the photograph.
+ * What has no column of its own (designation, website, address, spare numbers)
+ * goes in the discussion note, once, headed by where it came from — so it is on
+ * the lead for the follow-up call instead of lost with the photograph.
  */
 export function scanNote(r: ScanResult): string {
   const lines = [r.kind === 'visiting_card' ? 'Scanned from visiting card' : 'Scanned from visitor form']
   if (r.designation) lines.push(`Designation: ${r.designation}`)
-  if (r.email) lines.push(`Email: ${r.email}`)
   if (r.website) lines.push(`Website: ${r.website}`)
   if (r.address) lines.push(`Address: ${r.address}`)
   const spare = r.phones.filter(p => normalizeLeadPhone(p) !== firstUsablePhone(r.phones))
@@ -126,6 +125,9 @@ export function applyScan(current: LeadFormValues, r: ScanResult): AppliedScan {
     next.mobile = mobile
     filled.push('mobile')
   }
+
+  // A misread address is left out rather than filled in: the form would refuse it on Save.
+  if (r.email && EMAIL_PATTERN.test(r.email) && !(current.email ?? '').trim()) { next.email = r.email; filled.push('email') }
 
   if (r.company && !current.companyName.trim()) { next.companyName = r.company; filled.push('companyName') }
   if (r.city && !current.projectCity.trim()) { next.projectCity = r.city; filled.push('projectCity') }

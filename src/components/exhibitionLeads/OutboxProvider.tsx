@@ -3,7 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import { EXHIBITION_LEADS_KEY, createLead, LeadRequestError } from '@/lib/exhibitionLeads/api'
+import { EXHIBITION_LEADS_KEY, createLead, setLeadContact, LeadRequestError } from '@/lib/exhibitionLeads/api'
+import { attachExtras } from '@/lib/exhibitionLeads/cardPhotos'
+import { emailOf } from '@/lib/exhibitionLeads/validation'
 import {
   afterAnswer, afterError, isUnsent, loadOutbox, nextToSend, resend, retryDelayMs, storeOutbox,
   type OutboxEntry,
@@ -100,6 +102,18 @@ export function OutboxProvider({ userId, children }: { userId: string; children:
             qc.setQueryData<Standings | undefined>(standingsKey(next.exhibitionId), d => withMyDelta(d, 1))
           }
           setJustSaved(next.name)
+          // The email and the card photograph go on the lead now that it exists. Save has already
+          // been answered on screen; this only adds to it, and never undoes the lead.
+          if (res.lead_id) {
+            const extras = await attachExtras(
+              supabase,
+              changes => setLeadContact(supabase, res.lead_id as string, changes),
+              { userId, submissionId: next.id, leadId: res.lead_id, email: emailOf(next.values) },
+            )
+            if (!extras.ok) {
+              setJustSaved(`${next.name} (${extras.missing.join(' and ')} not attached — add it from the lead)`)
+            }
+          }
         }
       } catch (e) {
         const err = e as LeadRequestError
@@ -108,7 +122,7 @@ export function OutboxProvider({ userId, children }: { userId: string; children:
         inFlight.current = null
       }
     })()
-  }, [entries, supabase, qc, patch])
+  }, [entries, supabase, qc, patch, userId])
 
   // A failed send tries again by itself, a little later each time.
   useEffect(() => {

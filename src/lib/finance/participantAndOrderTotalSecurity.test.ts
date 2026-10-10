@@ -1070,6 +1070,7 @@ describe('the applied migrations are frozen', () => {
       '20270305000000_exhibition_leads.sql',
       '20270306000000_exhibition_management.sql',
       '20270307000000_exhibition_lead_standings.sql',
+      '20270308000000_exhibition_lead_email_and_card.sql',
     ])
   })
 
@@ -1391,6 +1392,7 @@ describe('the applied migrations are frozen', () => {
       '20270305000000_exhibition_leads.sql',
       '20270306000000_exhibition_management.sql',
       '20270307000000_exhibition_lead_standings.sql',
+      '20270308000000_exhibition_lead_email_and_card.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

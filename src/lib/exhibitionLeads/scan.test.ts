@@ -51,6 +51,7 @@ describe('applyScan', () => {
     assert.equal(values.contactName, 'Asha Rao')
     assert.equal(values.mobile, '9876543210')
     assert.equal(values.countryCode, '91')
+    assert.equal(values.email, 'asha@studio.in')
     assert.equal(values.companyName, 'Rao Studio')
     assert.equal(values.projectCity, 'Pune')
     assert.equal(values.clientType, 'architect_designer')
@@ -78,6 +79,10 @@ describe('applyScan', () => {
     assert.match(values.note, /^Scanned from visitor form/)
     assert.match(values.note, /Requirement: 60 rooms, Jaipur/)
   })
+  it('leaves out an email that is not an address, and keeps one already typed', () => {
+    assert.equal(applyScan(emptyLeadForm(), card({ email: 'asha at studio' })).values.email, '')
+    assert.equal(applyScan({ ...emptyLeadForm(), email: 'me@mine.in' }, card()).values.email, 'me@mine.in')
+  })
   it('flags a number the form cannot use', () => {
     const r = parseScanResult({ name: 'Landline Larry', phones: ['022 2345 6789'] }, 'visiting_card')
     const out = applyScan(emptyLeadForm(), r)
@@ -89,7 +94,7 @@ describe('applyScan', () => {
     const r = card({ address: 'x'.repeat(5000) })
     assert.ok(scanNote(r).length <= 2000)
     assert.match(scanNote(card()), /Other numbers: 022 2345 6789/)
-    assert.match(scanNote(card()), /Email: asha@studio\.in/)
+    assert.ok(!scanNote(card()).includes('asha@studio.in'), 'the email has a field of its own')
   })
 })
 
