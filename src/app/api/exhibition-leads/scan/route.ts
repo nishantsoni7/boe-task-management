@@ -113,7 +113,6 @@ export async function POST(req: NextRequest) {
           max_tokens: 1500,
           system: SCAN_SYSTEM_PROMPT,
           tools: [SCAN_TOOL],
-          tool_choice: { type: 'tool', name: SCAN_TOOL.name },
           messages: [{
             role: 'user',
             content: [
