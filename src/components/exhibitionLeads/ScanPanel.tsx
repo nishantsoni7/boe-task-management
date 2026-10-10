@@ -20,7 +20,7 @@ type Supabase = ReturnType<typeof createClient>
 type Phase =
   | { name: 'idle' }
   | { name: 'reading'; kind: ScanKind; photo: string }
-  | { name: 'done'; kind: ScanKind; photo: string; filled: number; unusablePhone: boolean }
+  | { name: 'done'; kind: ScanKind; photo: string; filled: number; unusablePhone: boolean; kept?: boolean }
   | { name: 'error'; kind: ScanKind; photo: string | null; message: string; code: ScanError['code'] }
 
 const KIND_ICON = { visiting_card: Contact, visitor_form: ClipboardList } as const
@@ -29,15 +29,20 @@ const KIND_HINT: Record<ScanKind, string> = {
   visitor_form: 'Details, requirement, city',
 }
 
-export function ScanPanel({ supabase, disabled, onResult, onClear }: {
+export function ScanPanel({ supabase, disabled, keptPhoto, onResult, onClear }: {
   supabase: Supabase
   disabled?: boolean
-  /** The reading is ready: fill the form, and say how many fields that filled. */
-  onResult: (r: ScanResult) => { filled: number; unusablePhone: boolean }
+  /** An entry put back into the form for editing brings its photograph along. */
+  keptPhoto?: Blob
+  /** The reading is ready: fill the form, and say how many fields that filled. The photo is kept with the lead. */
+  onResult: (r: ScanResult, photo: Blob) => { filled: number; unusablePhone: boolean }
   /** The person removed the scan: take the "read from photo" markers off. */
   onClear: () => void
 }) {
-  const [phase, setPhase] = useState<Phase>({ name: 'idle' })
+  // A photograph that came back with an entry being edited starts the panel in its "kept" state.
+  const [phase, setPhase] = useState<Phase>(() => keptPhoto
+    ? { name: 'done', kind: 'visiting_card', photo: URL.createObjectURL(keptPhoto), filled: 0, unusablePhone: false, kept: true }
+    : { name: 'idle' })
   const [big, setBig] = useState(false)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -47,6 +52,9 @@ export function ScanPanel({ supabase, disabled, onResult, onClear }: {
   const run = useRef(0)
 
   useEffect(() => () => { if (photoUrl.current) URL.revokeObjectURL(photoUrl.current) }, [])
+
+  // …whose address is released with the panel, like any other.
+  useEffect(() => { if (keptPhoto && phase.name === 'done') photoUrl.current = phase.photo }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const swapPhoto = (blob: Blob | null): string | null => {
     if (photoUrl.current) URL.revokeObjectURL(photoUrl.current)
@@ -73,7 +81,7 @@ export function ScanPanel({ supabase, disabled, onResult, onClear }: {
     try {
       const result = await scanPhoto(supabase, shrunk, kind)
       if (mine !== run.current) return
-      const { filled, unusablePhone } = onResult(result)
+      const { filled, unusablePhone } = onResult(result, shrunk)
       setPhase({ name: 'done', kind, photo, filled, unusablePhone })
     } catch (e) {
       if (mine !== run.current) return
@@ -171,12 +179,16 @@ export function ScanPanel({ supabase, disabled, onResult, onClear }: {
             <div className={a.scanText} role="status" aria-live="polite">
               <div className={`${a.scanState} ${a.scanOk}`}>
                 <ScanLine size={16} strokeWidth={2.2} aria-hidden="true" style={{ verticalAlign: '-3px', marginRight: 6 }} />
-                {phase.filled > 0
+                {phase.kept
+                  ? 'Photo kept with this lead'
+                  : phase.filled > 0
                   ? `Filled ${phase.filled} ${phase.filled === 1 ? 'field' : 'fields'} from the ${SCAN_KINDS.find(k => k.value === phase.kind)?.short}`
                   : 'Read the photo — nothing new to fill'}
               </div>
               <div className={a.scanSub}>
-                {phase.unusablePhone
+                {phase.kept
+                  ? 'It is attached when you save.'
+                  : phase.unusablePhone
                   ? 'The number on it could not be read as a mobile — please type it.'
                   : 'Check the marked fields, then choose the Lead type.'}
               </div>

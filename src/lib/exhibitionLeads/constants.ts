@@ -113,6 +113,10 @@ export type Lead = {
   exhibition_name?: string | null
   contact_name: string
   phone: string
+  /** Optional; read from a card or typed. */
+  email: string | null
+  /** The photograph of the card / visitor form, in the private bucket (never a URL). */
+  card_photo_path: string | null
   client_type: ClientType
   /** The message that goes with client_type = 'other'; null for every other type. */
   client_type_other: string | null

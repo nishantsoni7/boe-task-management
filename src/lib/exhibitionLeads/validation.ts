@@ -9,11 +9,17 @@ export const MAX_COMPANY = 160
 export const MAX_CITY = 80
 export const MAX_NOTE = 2000
 export const MAX_OTHER = 200
+export const MAX_EMAIL = 120
+
+/** The same shape the database CHECK accepts: one address, no spaces. */
+export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 export type LeadFormValues = {
   contactName: string
   countryCode: string
   mobile: string
+  /** Optional. */
+  email: string
   clientType: ClientType | ''
   /** Required when clientType is 'other'. */
   clientTypeOther: string
@@ -27,11 +33,11 @@ export type LeadFormValues = {
 }
 
 export type LeadFormErrors = Partial<Record<
-  'contactName' | 'mobile' | 'clientType' | 'clientTypeOther' | 'requirements' | 'leadType' | 'companyName' | 'projectCity' | 'note', string>>
+  'contactName' | 'mobile' | 'email' | 'clientType' | 'clientTypeOther' | 'requirements' | 'leadType' | 'companyName' | 'projectCity' | 'note', string>>
 
 export function emptyLeadForm(): LeadFormValues {
   return {
-    contactName: '', countryCode: '91', mobile: '', clientType: '', clientTypeOther: '', requirements: [],
+    contactName: '', countryCode: '91', mobile: '', email: '', clientType: '', clientTypeOther: '', requirements: [],
     companyName: '', projectCity: '', buyingTimeline: '', leadType: '', note: '',
   }
 }
@@ -43,6 +49,8 @@ export function validateLeadForm(v: LeadFormValues): LeadFormErrors {
   else if (name.length > MAX_NAME) e.contactName = `At most ${MAX_NAME} characters`
   const mobile = phoneError(v.countryCode, v.mobile)
   if (mobile) e.mobile = mobile
+  const email = (v.email ?? '').trim()
+  if (email && (email.length > MAX_EMAIL || !EMAIL_PATTERN.test(email))) e.email = 'Enter a valid email address'
   if (!v.clientType || !optionValues(CLIENT_TYPES).includes(v.clientType)) e.clientType = 'Choose a client type'
   if (v.clientType === 'other') {
     if (!v.clientTypeOther.trim()) e.clientTypeOther = 'Say what kind of client this is'
@@ -88,6 +96,9 @@ export function toCreateArgs(v: LeadFormValues) {
     p_note: v.note.trim() || null,
   }
 }
+
+/** What set_exhibition_lead_contact takes besides the photo: sent right after the lead is created. */
+export const emailOf = (v: LeadFormValues): string => (v.email ?? '').trim().toLowerCase()
 
 export function toggleRequirement(current: Requirement[], value: Requirement): Requirement[] {
   return current.includes(value) ? current.filter(r => r !== value) : [...current, value]

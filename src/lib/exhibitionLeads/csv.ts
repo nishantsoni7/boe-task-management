@@ -30,6 +30,7 @@ export const LEAD_CSV_COLUMNS: Column[] = [
   { header: 'Current owner', cell: l => csvCell(l.owner_name) },
   { header: 'Contact name', cell: l => csvCell(l.contact_name) },
   { header: 'Mobile', cell: l => phoneCell(l.phone) },
+  { header: 'Email', cell: l => csvCell(l.email) },
   { header: 'Company / project', cell: l => csvCell(l.company_name) },
   { header: 'City', cell: l => csvCell(l.project_city) },
   { header: 'Client type', cell: l => csvCell(clientTypeText(l)) },
@@ -40,6 +41,7 @@ export const LEAD_CSV_COLUMNS: Column[] = [
   { header: 'Next follow-up', cell: l => csvCell(l.next_follow_up_on) },
   { header: 'Initial discussion note', cell: l => csvCell(l.initial_note) },
   { header: 'Latest follow-up note', cell: l => csvCell(l.latest_note) },
+  { header: 'Card photo on file', cell: l => (l.card_photo_path ? 'Yes' : 'No') },
   { header: 'Archived', cell: l => (l.archived_at ? 'Yes' : 'No') },
   { header: 'Archive reason', cell: l => csvCell(l.archive_reason) },
 ]

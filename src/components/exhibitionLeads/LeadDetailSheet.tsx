@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import type { createClient } from '@/lib/supabase/client'
@@ -9,12 +9,14 @@ import {
   isTerminalStatus, labelOf, requirementsLabel, type Lead, type LeadEvent, type LeadStatus,
 } from '@/lib/exhibitionLeads/constants'
 import {
-  EXHIBITION_LEADS_KEY, archiveLead, fetchLead, fetchPeople, reassignLead, restoreLead, updateLead,
+  EXHIBITION_LEADS_KEY, archiveLead, fetchLead, fetchPeople, reassignLead, restoreLead, setLeadContact, updateLead,
   LeadRequestError,
 } from '@/lib/exhibitionLeads/api'
 import { formatPhone, normalizeLeadPhone } from '@/lib/exhibitionLeads/phone'
 import { istDateTime, longDate } from '@/lib/exhibitionLeads/format'
-import { MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER, toggleRequirement } from '@/lib/exhibitionLeads/validation'
+import { EMAIL_PATTERN, MAX_CITY, MAX_COMPANY, MAX_EMAIL, MAX_NAME, MAX_NOTE, MAX_OTHER, toggleRequirement } from '@/lib/exhibitionLeads/validation'
+import { signedCardUrl, uploadCard } from '@/lib/exhibitionLeads/cardPhotos'
+import { shrinkPhoto } from '@/lib/exhibitionLeads/scanClient'
 import { istToday } from '@/lib/istDate'
 import { ChoiceGroup } from './ChoiceGroup'
 import { ContactActions, LeadTypeBadge, StatusBadge } from './LeadBits'
@@ -83,6 +85,61 @@ export default function LeadDetailSheet({
   )
 }
 
+// The photograph of the card / visitor form: shown small, opened full size on tap,
+// and — for the owner and Admin — added or replaced from here.
+function CardPhoto({ lead, supabase, canEdit, setResult }: {
+  lead: Lead; supabase: Supabase; canEdit: boolean; setResult: (r: Result) => void
+}) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const path = lead.card_photo_path
+  const url = useQuery({
+    queryKey: [...EXHIBITION_LEADS_KEY, 'card', path],
+    queryFn: () => signedCardUrl(supabase, path as string),
+    enabled: !!path,
+    staleTime: 4 * 60_000,
+  })
+  const attach = useMutation({
+    mutationFn: async (file: File) => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new LeadRequestError({ kind: 'auth', message: 'Your session ended. Sign in again.' })
+      const photo = await shrinkPhoto(file)
+      const newPath = await uploadCard(supabase, session.user.id, photo)
+      return setLeadContact(supabase, lead.id, { card_photo_path: newPath })
+    },
+    onSuccess: () => { setResult({ ok: true, text: 'Photo saved.' }); qc.invalidateQueries({ queryKey: EXHIBITION_LEADS_KEY }) },
+    onError: err => setResult({ ok: false, text: (err as Error).message || 'The photo could not be saved.' }),
+  })
+  if (!path && !canEdit) return null
+  return (
+    <div className={s.cardPhoto}>
+      <input
+        ref={fileRef} type="file" accept="image/*" hidden tabIndex={-1}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setResult(null); attach.mutate(f) } }}
+      />
+      {path && url.data && (
+        <button type="button" className={s.cardThumb} onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label={open ? 'Shrink the card photo' : 'Open the card photo'}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url.data} alt="Photo of the card or form" />
+        </button>
+      )}
+      {path && !url.data && <div className={s.hint}>{url.isLoading ? 'Loading the card photo…' : 'The card photo could not be loaded.'}</div>}
+      {canEdit && (
+        <button type="button" className={s.btn} disabled={attach.isPending} onClick={() => fileRef.current?.click()}>
+          {attach.isPending ? 'Saving photo…' : path ? 'Replace photo' : 'Add card photo'}
+        </button>
+      )}
+      {open && path && url.data && (
+        <div className={s.cardFull}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url.data} alt="Photo of the card or form, full size" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SheetBody({
   lead, events, supabase, isAdmin, result, setResult,
 }: {
@@ -95,6 +152,7 @@ function SheetBody({
 
   const [name, setName] = useState(lead.contact_name)
   const [phone, setPhone] = useState(formatPhone(lead.phone))
+  const [email, setEmail] = useState(lead.email ?? '')
   const [clientType, setClientType] = useState<string>(lead.client_type)
   const [clientOther, setClientOther] = useState(lead.client_type_other ?? '')
   const [reqs, setReqs] = useState<string[]>(lead.requirements)
@@ -115,6 +173,7 @@ function SheetBody({
       if (!name.trim()) e.name = 'Enter the contact name'
       const normalized = normalizeLeadPhone(phone)
       if (!normalized) e.phone = 'Enter a valid mobile number'
+      if (email.trim() && (email.trim().length > MAX_EMAIL || !EMAIL_PATTERN.test(email.trim()))) e.email = 'Enter a valid email address'
       if (reqs.length === 0) e.reqs = 'Choose at least one requirement'
       if (clientType === 'other' && !clientOther.trim()) e.other = 'Say what kind of client this is'
       if (status === 'follow_up' && !nextOn) e.nextOn = 'Choose the next follow-up date'
@@ -136,9 +195,13 @@ function SheetBody({
       if (leadType !== lead.lead_type) changes.lead_type = leadType
       if (status !== lead.status) changes.status = status
       if (!terminal && nextOn !== (lead.next_follow_up_on ?? '')) changes.next_follow_up_on = nextOn || null
-      if (Object.keys(changes).length === 0 && !note.trim()) {
+      const emailChanged = email.trim().toLowerCase() !== (lead.email ?? '')
+      if (Object.keys(changes).length === 0 && !note.trim() && !emailChanged) {
         throw new LeadRequestError({ kind: 'invalid', message: 'Nothing has changed yet.' })
       }
+      // Email lives beside the other contact details but is written by its own function.
+      if (emailChanged) await setLeadContact(supabase, lead.id, { email: email.trim() || null })
+      if (Object.keys(changes).length === 0 && !note.trim()) return { outcome: 'updated', lead_id: lead.id }
       return updateLead(supabase, lead.id, changes, note.trim() || null)
     },
     onSuccess: () => {
@@ -180,6 +243,8 @@ function SheetBody({
       <div className={s.sheetSection}>
         <div className={s.phoneText}>{formatPhone(lead.phone)}</div>
         <div className={s.contactRow}><ContactActions phone={lead.phone} /></div>
+        {lead.email && <div className={s.facts}><span>Email <a href={`mailto:${lead.email}`}><b>{lead.email}</b></a></span></div>}
+        <CardPhoto lead={lead} supabase={supabase} canEdit={!archived} setResult={setResult} />
         <div className={s.cardMeta}>
           <StatusBadge status={lead.status} /> <LeadTypeBadge leadType={lead.lead_type} />
           {archived && <span className={`${s.badge} ${s.badgeMuted}`}>Archived</span>}
@@ -249,6 +314,11 @@ function SheetBody({
             <label className={s.label} htmlFor="ed-phone">Mobile / WhatsApp<span className={s.req} aria-hidden="true">*</span></label>
             <input id="ed-phone" className={`${s.input}${errors.phone ? ` ${s.invalid}` : ''}`} type="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} />
             {err('phone')}
+          </div>
+          <div className={s.field}>
+            <label className={s.label} htmlFor="ed-email">Email</label>
+            <input id="ed-email" className={`${s.input}${errors.email ? ` ${s.invalid}` : ''}`} type="email" inputMode="email" autoCapitalize="none" spellCheck={false} value={email} maxLength={MAX_EMAIL + 20} onChange={e => setEmail(e.target.value)} />
+            {err('email')}
           </div>
           <div className={s.field}>
             <span className={s.label}>Client type</span>

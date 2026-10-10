@@ -289,7 +289,7 @@ describe('ranking leaders', () => {
 
 describe('CSV export', () => {
   const lead = (over: Partial<ExportLead> = {}): ExportLead => ({
-    id: '1', exhibition_id: 'e', exhibition_name: 'Acetech Bangalore 2026', contact_name: 'Asha Rao', phone: '+919876543210',
+    id: '1', exhibition_id: 'e', exhibition_name: 'Acetech Bangalore 2026', contact_name: 'Asha Rao', phone: '+919876543210', email: 'asha@raostudio.in', card_photo_path: null,
     client_type: 'architect_designer', client_type_other: null, requirements: ['restaurant_cafe', 'hotel'], company_name: null, project_city: 'Bengaluru',
     buying_timeline: 'within_1_month', lead_type: 'hot', status: 'follow_up', next_follow_up_on: '2026-10-12',
     initial_note: 'Needs 40 chairs', collected_by: 'c', collected_by_name: 'S One', owner_id: 'o', owner_name: 'S Two',
@@ -298,9 +298,9 @@ describe('CSV export', () => {
   })
   test('carries every requested column', () => {
     assert.deepEqual(LEAD_CSV_COLUMNS.map(c => c.header), [
-      'Exhibition', 'Added (IST)', 'Original collector', 'Current owner', 'Contact name', 'Mobile', 'Company / project', 'City',
+      'Exhibition', 'Added (IST)', 'Original collector', 'Current owner', 'Contact name', 'Mobile', 'Email', 'Company / project', 'City',
       'Client type', 'Requirements', 'Buying timeline', 'Lead type', 'Status', 'Next follow-up', 'Initial discussion note',
-      'Latest follow-up note', 'Archived', 'Archive reason'])
+      'Latest follow-up note', 'Card photo on file', 'Archived', 'Archive reason'])
   })
   test('BOM, CRLF, readable labels, India time', () => {
     const csv = buildLeadsCsv([lead()])

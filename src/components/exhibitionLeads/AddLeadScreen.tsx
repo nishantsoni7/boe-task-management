@@ -12,12 +12,13 @@ import {
 import { EXHIBITION_LEADS_KEY, updateLead, LeadRequestError } from '@/lib/exhibitionLeads/api'
 import { exhibitionDates, exhibitionLabel } from '@/lib/exhibitionLeads/format'
 import {
-  MAX_CITY, MAX_COMPANY, MAX_NAME, MAX_NOTE, MAX_OTHER,
+  MAX_CITY, MAX_COMPANY, MAX_EMAIL, MAX_NAME, MAX_NOTE, MAX_OTHER,
   emptyLeadForm, missingRequired, toCreateArgs, toggleRequirement, validateLeadForm,
   type LeadFormErrors, type LeadFormValues,
 } from '@/lib/exhibitionLeads/validation'
 import { clearDraft, newSubmissionId, takeDraft } from '@/lib/exhibitionLeads/draft'
 import { newEntry } from '@/lib/exhibitionLeads/outbox'
+import { stashCard, takeCard } from '@/lib/exhibitionLeads/cardPhotos'
 import { applyScan, type ScanField, type ScanResult } from '@/lib/exhibitionLeads/scan'
 import { ChoiceGroup } from './ChoiceGroup'
 import { ScanPanel } from './ScanPanel'
@@ -37,7 +38,7 @@ const FromScan = ({ show }: { show: boolean }) => show ? <span className={sc.fro
 
 /** Which form field each scan marker belongs to, so typing over a value clears its marker. */
 const MARKER_OF: Partial<Record<keyof LeadFormValues, ScanField>> = {
-  contactName: 'contactName', countryCode: 'mobile', mobile: 'mobile', companyName: 'companyName',
+  contactName: 'contactName', countryCode: 'mobile', mobile: 'mobile', email: 'email', companyName: 'companyName',
   projectCity: 'projectCity', clientType: 'clientType', requirements: 'requirements', note: 'note',
 }
 
@@ -65,6 +66,9 @@ export default function AddLeadScreen() {
   const [scanned, setScanned] = useState<ScanField[]>([])
   const [scanDone, setScanDone] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  // The photograph of the card / form, until Save hands it to the outbox.
+  const photoRef = useRef<Blob | null>(null)
+  const [keptPhoto, setKeptPhoto] = useState<Blob | undefined>(undefined)
   const restored = parked !== null
 
   const topRef = useRef<HTMLDivElement>(null)
@@ -82,12 +86,13 @@ export default function AddLeadScreen() {
   useEffect(() => { valuesRef.current = values }, [values])
 
   // The scan fills what is still empty and never touches the Lead type: that call is the salesperson's.
-  function onScanResult(result: ScanResult) {
+  function onScanResult(result: ScanResult, photo: Blob) {
+    photoRef.current = photo
     const applied = applyScan(valuesRef.current, result)
     setValues(applied.values)
     setScanned(prev => [...new Set([...prev, ...applied.filled])])
     setScanDone(true)
-    if (applied.filled.includes('companyName') || applied.filled.includes('projectCity')) setMoreOpen(true)
+    if (applied.filled.some(f => f === 'companyName' || f === 'projectCity' || f === 'email')) setMoreOpen(true)
     setShowErrors(false)
     // Bring the first thing still needed into view, so the next tap is obvious.
     requestAnimationFrame(() => {
@@ -97,7 +102,7 @@ export default function AddLeadScreen() {
     })
     return { filled: applied.filled.length, unusablePhone: applied.unusablePhone }
   }
-  function onScanClear() { setScanned([]); setScanDone(false) }
+  function onScanClear() { setScanned([]); setScanDone(false); photoRef.current = null; setKeptPhoto(undefined) }
 
   // The outbox lives above every page (OutboxProvider): sending carries on after the person leaves this screen.
   const { entries, justSaved, enqueue, remove, retry, flash, patch } = useOutbox()
@@ -109,6 +114,8 @@ export default function AddLeadScreen() {
     setScanned([])
     setScanDone(false)
     setMoreOpen(false)
+    photoRef.current = null
+    setKeptPhoto(undefined)
     setFormKey(k => k + 1)
     // The form is rebuilt (its key changed), and its name field takes the focus by itself.
     topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
@@ -128,7 +135,9 @@ export default function AddLeadScreen() {
     // The entry is handed to the outbox and the form is free again at once.
     // The id is minted here, once, and every retry of this entry reuses it.
     clearDraft()
-    enqueue(newEntry({ id: newSubmissionId(), exhibitionId, values, args: toCreateArgs(values) }))
+    const id = newSubmissionId()
+    if (photoRef.current) stashCard(id, photoRef.current)
+    enqueue(newEntry({ id, exhibitionId, values, args: toCreateArgs(values) }))
     readyForNext()
   }
 
@@ -137,12 +146,16 @@ export default function AddLeadScreen() {
     if (!e) return
     const typing = JSON.stringify(values) !== JSON.stringify(emptyLeadForm())
     if (typing && !window.confirm('Replace what you are typing now with this entry?')) return
-    setValues(e.values)
+    setValues({ ...emptyLeadForm(), ...e.values })
     setChosenExhibition(e.exhibitionId)
     remove(id)
     setShowErrors(false)
     setScanned([])
     setScanDone(false)
+    const photo = takeCard(id)
+    photoRef.current = photo ?? null
+    setKeptPhoto(photo)
+    if (e.values.email) setMoreOpen(true)
     setFormKey(k => k + 1)
     topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
@@ -201,7 +214,7 @@ export default function AddLeadScreen() {
             </div>
           )}
 
-          {exhibitionId && <ScanPanel key={`scan-${formKey}`} supabase={supabase} onResult={onScanResult} onClear={onScanClear} />}
+          {exhibitionId && <ScanPanel key={`scan-${formKey}`} supabase={supabase} keptPhoto={keptPhoto} onResult={onScanResult} onClear={onScanClear} />}
 
           <form
             key={formKey} className={a.card} onSubmit={submit} noValidate
@@ -313,6 +326,17 @@ export default function AddLeadScreen() {
             <details className={s.optional} open={moreOpen} onToggle={e => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary>More details <span className={a.optionalTag} style={{ marginLeft: 8, fontWeight: 400 }}>Company, city, timeline</span></summary>
               <div className={s.optionalBody}>
+                <div className={s.field}>
+                  <label className={s.label} htmlFor="lead-email">Email<FromScan show={marked('email')} /></label>
+                  <input
+                    id="lead-email" className={`${s.input}${errors.email ? ` ${s.invalid}` : ''}${marked('email') ? ` ${sc.scanFilled}` : ''}`}
+                    type="email" inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false}
+                    value={values.email} maxLength={MAX_EMAIL + 20} placeholder="name@company.com"
+                    aria-invalid={!!errors.email} data-invalid={errors.email ? 'true' : undefined}
+                    onChange={e => set('email', e.target.value)}
+                  />
+                  {errors.email && <div className={s.err} role="alert">{errors.email}</div>}
+                </div>
                 <div className={s.field}>
                   <label className={s.label} htmlFor="lead-company">Company / project name<FromScan show={marked('companyName')} /></label>
                   <input id="lead-company" className={`${s.input}${marked('companyName') ? ` ${sc.scanFilled}` : ''}`} value={values.companyName} maxLength={MAX_COMPANY + 20} autoComplete="off" onChange={e => set('companyName', e.target.value)} />
