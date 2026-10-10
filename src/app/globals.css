@@ -4899,6 +4899,40 @@ button.order-pay-metric--awaiting:hover { background: rgba(232,160,48,0.12); }
   border-radius: 999px;
 }
 
+/* ── THE FEATURED ACTION (Add Exhibition Lead) ──
+   One filled BOE-red button, larger than anything around it, on both
+   placements. The selectors repeat the placement class so they outrank the
+   sidebar's nav-row and the page's pill rules above. */
+.boe-quick-action.boe-quick-action-featured,
+.boe-quick-actions-sidebar .boe-quick-action.boe-quick-action-featured,
+.boe-quick-actions-page .boe-quick-action.boe-quick-action-featured {
+  width: 100%;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 18px;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: #DC1F2E;
+  border: 1px solid #DC1F2E;
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(220, 31, 46, 0.32);
+}
+.boe-quick-action.boe-quick-action-featured svg {
+  color: #fff;
+}
+.boe-quick-action.boe-quick-action-featured:hover:not(:disabled),
+.boe-quick-actions-sidebar .boe-quick-action.boe-quick-action-featured:hover:not(:disabled) {
+  background: #C21A28;
+  border-color: #C21A28;
+  color: #fff;
+}
+.boe-quick-action.boe-quick-action-featured:focus-visible {
+  outline: 2px solid #111318;
+  outline-offset: 2px;
+}
+
 /* ── A capped content column (BoeOsLayout contentMaxWidth) ──
    The header row and the page body keep their 22px gutters on a narrow
    screen and grow them symmetrically on a wide one, so both sit in one

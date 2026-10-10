@@ -14,6 +14,7 @@ export const CLIENT_TYPES = [
 export const REQUIREMENTS = [
   { value: 'restaurant_cafe', label: 'Restaurant / Cafe' },
   { value: 'hotel', label: 'Hotel' },
+  { value: 'residential', label: 'Residential' },
 ] as const
 
 export const BUYING_TIMELINES = [
