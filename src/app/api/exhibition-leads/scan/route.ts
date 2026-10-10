@@ -30,13 +30,16 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { MAX_SCAN_BYTES, parseScanResult, scanIsEmpty, type ScanApiResponse, type ScanKind } from '@/lib/exhibitionLeads/scan'
-import { SCAN_SYSTEM_PROMPT, SCAN_TOOL, scanInstruction } from '@/lib/exhibitionLeads/scanPrompt'
+import { MAX_SCAN_BYTES, parseScanResult, scanIsEmpty, type ScanApiResponse } from '@/lib/exhibitionLeads/scan'
+import { SCAN_INSTRUCTION, SCAN_SYSTEM_PROMPT, SCAN_TOOL } from '@/lib/exhibitionLeads/scanPrompt'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-const MODEL = process.env.EXHIBITION_SCAN_MODEL || 'claude-sonnet-5-5'
+// Tried in order: the first one this key can use answers. A model name the account
+// does not have (404) falls through to the next instead of failing the scan.
+const MODELS = [process.env.EXHIBITION_SCAN_MODEL, 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5']
+  .filter((m, i, all): m is string => !!m && all.indexOf(m) === i)
 const PROVIDER_TIMEOUT_MS = 25_000
 
 // A spend guard, not a security control: per person, in memory.
@@ -86,7 +89,6 @@ export async function POST(req: NextRequest) {
   let form: FormData
   try { form = await req.formData() } catch { return reply({ ok: false, code: 'failed', error: 'The photo did not arrive. Try again.' }, 400) }
   const file = form.get('image')
-  const kind: ScanKind = form.get('kind') === 'visitor_form' ? 'visitor_form' : 'visiting_card'
   if (!(file instanceof File)) return reply({ ok: false, code: 'failed', error: 'Choose a photo to scan.' }, 400)
   const mediaType = MEDIA_TYPES[file.type]
   if (!mediaType) return reply({ ok: false, code: 'failed', error: 'Use a JPG, PNG or WebP photo.' }, 415)
@@ -94,38 +96,65 @@ export async function POST(req: NextRequest) {
 
   const data = Buffer.from(await file.arrayBuffer()).toString('base64')
 
-  let res: Response
-  try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        system: SCAN_SYSTEM_PROMPT,
-        tools: [SCAN_TOOL],
-        tool_choice: { type: 'tool', name: SCAN_TOOL.name },
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
-            { type: 'text', text: scanInstruction(kind) },
-          ],
-        }],
-      }),
-    })
-  } catch {
-    return reply({ ok: false, code: 'failed', error: 'Scanning took too long. Try again, or type the details.' }, 504)
+  type Answer = { content?: { type: string; text?: string; input?: unknown }[] }
+  let answer: Answer | null = null
+  let lastStatus = 0
+  let timedOut = false
+
+  for (const model of MODELS) {
+    let res: Response
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1500,
+          system: SCAN_SYSTEM_PROMPT,
+          tools: [SCAN_TOOL],
+          tool_choice: { type: 'tool', name: SCAN_TOOL.name },
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
+              { type: 'text', text: SCAN_INSTRUCTION },
+            ],
+          }],
+        }),
+      })
+    } catch {
+      timedOut = true
+      break
+    }
+    lastStatus = res.status
+    if (res.ok) { answer = await res.json().catch(() => null) as Answer | null; break }
+    // Only a model this account does not have moves on to the next; a bad key or a busy service would fail them all.
+    const detail = await res.json().catch(() => null) as { error?: { type?: string; message?: string } } | null
+    console.error('exhibition-leads scan: provider refused', { model, status: res.status, type: detail?.error?.type, message: detail?.error?.message })
+    if (res.status !== 404) break
   }
 
-  if (!res.ok) {
+  if (!answer) {
+    if (timedOut) return reply({ ok: false, code: 'failed', error: 'Scanning took too long. Try again, or type the details.' }, 504)
+    if (lastStatus === 401 || lastStatus === 403) {
+      return reply({ ok: false, code: 'not_configured', error: 'Scanning is switched on, but its key was refused. Ask the admin to check ANTHROPIC_API_KEY. Type the details for now.' }, 502)
+    }
+    if (lastStatus === 429 || lastStatus === 529) {
+      return reply({ ok: false, code: 'rate_limited', error: 'The scanning service is busy. Wait a few seconds and try again.' }, 503)
+    }
     return reply({ ok: false, code: 'failed', error: 'Could not read the photo right now. Try again, or type the details.' }, 502)
   }
 
-  const body = await res.json().catch(() => null) as { content?: { type: string; input?: unknown }[] } | null
-  const tool = body?.content?.find(c => c.type === 'tool_use')
-  const result = parseScanResult(tool?.input, kind)
+  // The reading comes back as the tool call; if a model answered in plain text instead, take the JSON from it.
+  const tool = answer.content?.find(c => c.type === 'tool_use')
+  let raw: unknown = tool?.input
+  if (!raw) {
+    const text = answer.content?.find(c => c.type === 'text')?.text ?? ''
+    const m = /\{[\s\S]*\}/.exec(text)
+    if (m) { try { raw = JSON.parse(m[0]) } catch { /* nothing usable */ } }
+  }
+  const result = parseScanResult(raw)
   if (scanIsEmpty(result)) {
     return reply({ ok: false, code: 'unreadable', error: 'Could not find contact details in that photo. Hold the camera steady, fill the frame, and try again.' }, 200)
   }

@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istToday } from '@/lib/istDate'
-import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
+import { exhibitionsQuery, myAccessQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { pickDefaultExhibition } from '@/lib/exhibitionLeads/format'
 
 // Signed-in profile for every Exhibition Leads page. Authority is the SIGNED-IN
@@ -18,6 +18,8 @@ export function useExhibitionLeads(): {
   supabase: ReturnType<typeof createClient>
   profile: UserProfile | null
   isAdmin: boolean
+  /** Admin, or a holder of View All Leads: may read everyone's leads (never write them). */
+  canViewAll: boolean
   loading: boolean
   signOut: () => Promise<void>
 } {
@@ -50,7 +52,10 @@ export function useExhibitionLeads(): {
     router.push('/login')
   }, [supabase, router])
 
-  return { supabase, profile, isAdmin: profile?.role === 'admin', loading, signOut }
+  const isAdmin = profile?.role === 'admin'
+  // The database decides; this only says what to SHOW. Asked once and kept for the visit.
+  const access = useQuery({ ...myAccessQuery(supabase), enabled: !!profile })
+  return { supabase, profile, isAdmin, canViewAll: isAdmin || access.data?.view_all === true, loading, signOut }
 }
 
 /** The active exhibitions, and the one to preselect today. */

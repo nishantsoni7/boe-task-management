@@ -145,9 +145,9 @@ select public._t_assert((select bool_or(r->>'email' = 'asha2@raostudio.in' and r
   'the list rows carry email and card_photo_path');
 
 -- ═══ 6. STORAGE ═══════════════════════════════════════════════════════════
+reset role;  -- the bucket table is not the app's to read; look at it as the owner
 select public._t_assert((select public from storage.buckets where id = 'exhibition-lead-cards') = false, 'the bucket is private');
 select public._t_assert((select allowed_mime_types = array['image/jpeg'] from storage.buckets where id = 'exhibition-lead-cards'), 'JPEG only');
-reset role;
 set local role authenticated;
 select public._t_as(public._t_id('s1'));
 select public._t_assert(public.exhibition_lead_card_can_upload('57c0d000-0000-4000-8000-000000000002/57c0d000-0000-4000-9000-0000000000aa.jpg'), 'own folder, uuid.jpg: allowed');

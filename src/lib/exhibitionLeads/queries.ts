@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { createClient } from '@/lib/supabase/client'
 import { istToday } from '@/lib/istDate'
 import {
-  EXHIBITION_LEADS_KEY, LeadRequestError, fetchExhibitions, fetchLeadPage, fetchStandings,
+  EXHIBITION_LEADS_KEY, LeadRequestError, fetchExhibitions, fetchLeadPage, fetchMyAccess, fetchStandings,
 } from './api'
 import type { Exhibition } from './constants'
 import { pickDefaultExhibition } from './format'
@@ -26,6 +26,16 @@ type Supabase = ReturnType<typeof createClient>
 
 export const exhibitionsKey = [...EXHIBITION_LEADS_KEY, 'exhibitions'] as const
 export const standingsKey = (exhibitionId: string | null) => [...EXHIBITION_LEADS_KEY, 'standings', exhibitionId] as const
+
+export const myAccessKey = [...EXHIBITION_LEADS_KEY, 'my-access'] as const
+
+/** Whether the caller may see everyone's leads. If the door is not there yet (older database), nobody may. */
+export const myAccessQuery = (supabase: Supabase) => ({
+  queryKey: myAccessKey,
+  queryFn: () => fetchMyAccess(supabase),
+  staleTime: 5 * 60_000,
+  retry: false,
+})
 
 const CACHE_KEY = 'exhibition-leads:exhibitions:v1'
 const EXHIBITIONS_STALE_MS = 5 * 60_000

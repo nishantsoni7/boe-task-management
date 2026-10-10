@@ -119,7 +119,7 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // Entry: src/app/exhibition-leads/layout.tsx via ModuleGuard.
   exhibition_leads: {
     state: 'enforced',
-    detail: 'View is enforced in the screen and in the database; leads are scoped to their current owner, and Admin sees all.',
+    detail: 'View is enforced in the screen and in the database; leads are scoped to their current owner, and Admin sees all. View All Leads is enforced in the database (read functions only; every write still needs Admin or ownership) and in the screens; a holder is left out of the ranking.',
   },
 
   // sample_dispatches RLS resolves the four lifecycle actions

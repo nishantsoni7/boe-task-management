@@ -18,7 +18,7 @@ const PARAMS = { ex: idParam() }
 
 export default function RankingScreen() {
   const router = useRouter()
-  const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
+  const { supabase, profile, isAdmin, canViewAll, loading, signOut } = useExhibitionLeads()
   const { exhibitions, defaultExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, !loading)
   const { state, setState } = useListUrlState(PARAMS)
 
@@ -46,7 +46,7 @@ export default function RankingScreen() {
 
   return (
     <ExhibitionLeadsLayout
-      profile={profile} isAdmin={isAdmin} onSignOut={signOut}
+      profile={profile} isAdmin={isAdmin} canViewAll={canViewAll} onSignOut={signOut}
       title="Ranking"
       subtitle={data ? `${data.exhibition.name} · ${exhibitionDates(data.exhibition)}` : undefined}
       actions={exhibitions.length > 1 ? (

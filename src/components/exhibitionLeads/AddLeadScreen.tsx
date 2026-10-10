@@ -46,7 +46,7 @@ export default function AddLeadScreen() {
   // The form needs neither the profile nor the session round trip to be shown:
   // the route layout has already proved a session exists. It renders at once and
   // the account details fill in beside it.
-  const { supabase, profile, isAdmin, signOut } = useExhibitionLeads()
+  const { supabase, profile, isAdmin, canViewAll, signOut } = useExhibitionLeads()
   // Only OPEN exhibitions take new leads; closed ones stay available in the lists.
   const { exhibitions, open: openExhibitions, defaultOpenExhibition, isLoading: exhibitionsLoading } = useExhibitions(supabase, true)
   const qc = useQueryClient()
@@ -179,7 +179,7 @@ export default function AddLeadScreen() {
 
   return (
     <ExhibitionLeadsLayout
-      profile={profile} isAdmin={isAdmin} onSignOut={signOut}
+      profile={profile} isAdmin={isAdmin} canViewAll={canViewAll} onSignOut={signOut}
       title="Add Exhibition Lead"
       subtitle={exhibition ? `${exhibition.name} · ${exhibitionDates(exhibition)}` : undefined}
     >
@@ -377,7 +377,7 @@ export default function AddLeadScreen() {
       </div>
 
       {openLeadId && (
-        <LeadDetailSheet leadId={openLeadId} supabase={supabase} isAdmin={isAdmin} onClose={() => setOpenLeadId(null)} />
+        <LeadDetailSheet leadId={openLeadId} supabase={supabase} isAdmin={isAdmin} meId={profile?.id} onClose={() => setOpenLeadId(null)} />
       )}
     </ExhibitionLeadsLayout>
   )

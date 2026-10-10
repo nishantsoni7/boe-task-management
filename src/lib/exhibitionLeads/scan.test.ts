@@ -9,7 +9,7 @@ import { SCAN_TOOL } from './scanPrompt'
 const card = (extra: Record<string, unknown> = {}) => parseScanResult({
   name: '  Asha   Rao ', phones: ['+91 98765 43210', '022 2345 6789'], email: 'ASHA@Studio.IN',
   company: 'Rao Studio', designation: 'Principal Architect', city: 'Pune', client_type: 'architect_designer', ...extra,
-}, 'visiting_card')
+})
 
 describe('parseScanResult', () => {
   it('trims, collapses whitespace and lower-cases the email', () => {
@@ -19,18 +19,32 @@ describe('parseScanResult', () => {
     assert.equal(r.clientType, 'architect_designer')
   })
   it('drops unknown option values and wrong types instead of guessing', () => {
-    const r = parseScanResult({ name: 5, phones: 'x', client_type: 'billionaire', requirements: ['hotel', 'spa', 7] }, 'visitor_form')
+    const r = parseScanResult({ name: 5, phones: 'x', client_type: 'billionaire', requirements: ['hotel', 'spa', 7] })
     assert.equal(r.name, '')
     assert.deepEqual(r.phones, [])
     assert.equal(r.clientType, '')
     assert.deepEqual(r.requirements, ['hotel'])
   })
+  it('one scanner for both: the reader says which it was, and a card is the default', () => {
+    assert.equal(parseScanResult({ name: 'A', document_type: 'visitor_form' }).kind, 'visitor_form')
+    assert.equal(parseScanResult({ name: 'A', document_type: 'visiting_card' }).kind, 'visiting_card')
+    assert.equal(parseScanResult({ name: 'A' }).kind, 'visiting_card')
+    assert.equal(parseScanResult({ name: 'A', document_type: 'passport' }).kind, 'visiting_card')
+  })
+  it('keeps the other written details for the note, and says what it was scanned from', () => {
+    const r = parseScanResult({ name: 'A', document_type: 'visitor_form', other_text: ' GST 27AAAPL1234C1ZV ', requirement_text: '40 chairs' })
+    assert.equal(r.otherText, 'GST 27AAAPL1234C1ZV')
+    const note = scanNote(r)
+    assert.match(note, /^Scanned from visitor form/)
+    assert.match(note, /Also on it: GST 27AAAPL1234C1ZV/)
+    assert.match(note, /Requirement: 40 chairs/)
+  })
   it('survives null, arrays and strings', () => {
-    for (const bad of [null, undefined, [], 'text', 3]) assert.ok(scanIsEmpty(parseScanResult(bad, 'visiting_card')))
+    for (const bad of [null, undefined, [], 'text', 3]) assert.ok(scanIsEmpty(parseScanResult(bad)))
   })
   it('is "empty" only when nothing usable was read', () => {
     assert.ok(!scanIsEmpty(card()))
-    assert.ok(!scanIsEmpty(parseScanResult({ phones: ['9876543210'] }, 'visiting_card')))
+    assert.ok(!scanIsEmpty(parseScanResult({ phones: ['9876543210'] })))
   })
 })
 
@@ -71,9 +85,9 @@ describe('applyScan', () => {
   })
   it('a visitor form can complete every required field but the lead type', () => {
     const r = parseScanResult({
-      name: 'Imran', phones: ['9811122233'], city: 'Delhi', client_type: 'property_owner',
+      document_type: 'visitor_form', name: 'Imran', phones: ['9811122233'], city: 'Delhi', client_type: 'property_owner',
       requirements: ['hotel'], requirement_text: '60 rooms, Jaipur',
-    }, 'visitor_form')
+    })
     const { values } = applyScan(emptyLeadForm(), r)
     assert.deepEqual(missingRequired(values), ['Lead type'])
     assert.match(values.note, /^Scanned from visitor form/)
@@ -84,7 +98,7 @@ describe('applyScan', () => {
     assert.equal(applyScan({ ...emptyLeadForm(), email: 'me@mine.in' }, card()).values.email, 'me@mine.in')
   })
   it('flags a number the form cannot use', () => {
-    const r = parseScanResult({ name: 'Landline Larry', phones: ['022 2345 6789'] }, 'visiting_card')
+    const r = parseScanResult({ name: 'Landline Larry', phones: ['022 2345 6789'] })
     const out = applyScan(emptyLeadForm(), r)
     assert.equal(out.unusablePhone, true)
     assert.equal(out.values.mobile, '')

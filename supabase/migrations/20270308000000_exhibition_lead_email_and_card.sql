@@ -235,10 +235,11 @@ begin
 
   update public.exhibition_leads l set email = v_email, card_photo_path = v_path where l.id = v_old.id;
 
-  -- Filling these in right after the lead was created is part of creating it,
-  -- not an edit worth a line in the history.
+  -- Filling these in for the first time, by the collector, right after the lead was created is
+  -- part of creating it, not an edit worth a line in the history. Anything later is logged.
   select count(*) into v_events from public.exhibition_lead_events e where e.lead_id = v_old.id;
-  if not (v_events = 1 and v_uid = v_old.collected_by) then
+  if not (v_events = 1 and v_uid = v_old.collected_by
+          and v_old.email is null and v_old.card_photo_path is null) then
     insert into public.exhibition_lead_events (lead_id, event_type, actor_id, detail)
     values (v_old.id, 'details_edited', v_uid, jsonb_build_object('fields', to_jsonb(v_fields)));
   end if;

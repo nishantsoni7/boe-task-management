@@ -755,6 +755,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the Exhibition Leads email + card photograph (20270308000000): two columns, one private bucket and one
       // function, held by src/lib/exhibitionLeads/cardPhoto.test.ts and supabase/tests/exhibition_leads_card_assertions.sql.
       if (f === 'supabase/migrations/20270308000000_exhibition_lead_email_and_card.sql') continue
+      // And Exhibition Leads "View All Leads" (20270309000000): one action, one helper and six re-created read functions,
+      // held by src/lib/exhibitionLeads/viewAll.test.ts and supabase/tests/exhibition_leads_view_all_assertions.sql.
+      if (f === 'supabase/migrations/20270309000000_exhibition_leads_view_all.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2916,6 +2919,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270306000000_exhibition_management.sql',
     'supabase/migrations/20270307000000_exhibition_lead_standings.sql',
     'supabase/migrations/20270308000000_exhibition_lead_email_and_card.sql',
+    'supabase/migrations/20270309000000_exhibition_leads_view_all.sql',
+    'supabase/tests/exhibition_leads_view_all_assertions.sql',
+    'src/lib/exhibitionLeads/viewAll.test.ts',
+    'src/lib/permissions/modules.ts',
+    'src/lib/permissions/accessControlChanges.ts',
+    'src/lib/permissions/enforcement.ts',
+    'src/app/api/control-center/permissions/employees/[id]/route.ts',
+    'src/lib/exhibitionLeads/queries.ts',
+    'src/lib/exhibitionLeads/scanPrompt.ts',
+    'src/components/exhibitionLeads/LeadDetailSheet.tsx',
     'supabase/tests/exhibition_leads_card_assertions.sql',
     'src/lib/exhibitionLeads/cardPhotos.ts',
     'src/lib/exhibitionLeads/cardPhoto.test.ts',

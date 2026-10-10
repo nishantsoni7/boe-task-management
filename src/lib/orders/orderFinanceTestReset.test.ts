@@ -599,6 +599,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270306000000_exhibition_management.sql',
       '20270307000000_exhibition_lead_standings.sql',
       '20270308000000_exhibition_lead_email_and_card.sql',
+      '20270309000000_exhibition_leads_view_all.sql',
     ])
   })
 

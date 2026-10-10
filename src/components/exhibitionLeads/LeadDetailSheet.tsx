@@ -43,8 +43,8 @@ function describeEvent(e: LeadEvent): string {
 type Result = { ok: boolean; text: string } | null
 
 export default function LeadDetailSheet({
-  leadId, supabase, isAdmin, onClose,
-}: { leadId: string; supabase: Supabase; isAdmin: boolean; onClose: () => void }) {
+  leadId, supabase, isAdmin, meId, onClose,
+}: { leadId: string; supabase: Supabase; isAdmin: boolean; /** The signed-in person: a lead that is not theirs (and they are not Admin) opens read only. */ meId?: string; onClose: () => void }) {
   // Lifted out of SheetBody: a save refetches the lead, which remounts the body
   // (so its fields reset to what is now stored) and must not wipe the message.
   const [result, setResult] = useState<Result>(null)
@@ -77,6 +77,7 @@ export default function LeadDetailSheet({
           events={q.data.events}
           supabase={supabase}
           isAdmin={isAdmin}
+          canEdit={isAdmin || !meId || q.data.lead.owner_id === meId}
           result={result}
           setResult={setResult}
         />
@@ -141,9 +142,9 @@ function CardPhoto({ lead, supabase, canEdit, setResult }: {
 }
 
 function SheetBody({
-  lead, events, supabase, isAdmin, result, setResult,
+  lead, events, supabase, isAdmin, canEdit, result, setResult,
 }: {
-  lead: Lead; events: LeadEvent[]; supabase: Supabase; isAdmin: boolean
+  lead: Lead; events: LeadEvent[]; supabase: Supabase; isAdmin: boolean; canEdit: boolean
   result: Result; setResult: (r: Result) => void
 }) {
   const qc = useQueryClient()
@@ -244,7 +245,7 @@ function SheetBody({
         <div className={s.phoneText}>{formatPhone(lead.phone)}</div>
         <div className={s.contactRow}><ContactActions phone={lead.phone} /></div>
         {lead.email && <div className={s.facts}><span>Email <a href={`mailto:${lead.email}`}><b>{lead.email}</b></a></span></div>}
-        <CardPhoto lead={lead} supabase={supabase} canEdit={!archived} setResult={setResult} />
+        <CardPhoto lead={lead} supabase={supabase} canEdit={!archived && canEdit} setResult={setResult} />
         <div className={s.cardMeta}>
           <StatusBadge status={lead.status} /> <LeadTypeBadge leadType={lead.lead_type} />
           {archived && <span className={`${s.badge} ${s.badgeMuted}`}>Archived</span>}
@@ -258,6 +259,11 @@ function SheetBody({
         {lead.initial_note && (
           <div className={s.historyNote}><span className={s.hint}>First discussion note</span><br />{lead.initial_note}</div>
         )}
+        {!canEdit && !archived && (
+          <div className={`${s.notice} ${s.noticeWarn}`} role="status">
+            View only. This lead belongs to {lead.owner_name ?? 'another salesperson'}; only they or Admin can change it.
+          </div>
+        )}
         {archived && (
           <div className={`${s.notice} ${s.noticeWarn}`}>Archived: {lead.archive_reason}. An archived lead cannot be edited.</div>
         )}
@@ -267,7 +273,7 @@ function SheetBody({
         <div className={`${s.notice} ${result.ok ? s.noticeOk : s.noticeErr}`} role={result.ok ? 'status' : 'alert'}>{result.text}</div>
       )}
 
-      {!archived && (
+      {!archived && canEdit && (
         <form
           className={s.sheetSection}
           onSubmit={ev => { ev.preventDefault(); setResult(null); save.mutate() }}

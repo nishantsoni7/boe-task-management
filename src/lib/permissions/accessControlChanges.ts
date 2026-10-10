@@ -190,6 +190,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
 /** `view_all` means something different in Orders, Finance and Performance. */
 export const MODULE_SCOPED_ACTION_WORDS: Record<string, Record<string, string>> = {
   orders:  { view_all: 'View all company orders' },
+  exhibition_leads: { view_all: 'See every exhibition lead (read only) and leave the ranking' },
   finance: { view_all: 'View all company payments and finance information' },
   performance: {
     view_team: 'Open Team Performance',
