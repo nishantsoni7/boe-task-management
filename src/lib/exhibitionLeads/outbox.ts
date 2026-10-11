@@ -66,7 +66,7 @@ export function newEntry(init: {
 export type SendOutcome =
   | { outcome: 'created' | 'replayed' }
   | { outcome: 'duplicate'; mine: true; lead_id: string }
-  | { outcome: 'duplicate'; mine: false }
+  | { outcome: 'duplicate'; mine: false; owner_name?: string | null }
 
 /** The server answered. */
 export function afterAnswer(e: OutboxEntry, res: SendOutcome): OutboxEntry {
@@ -79,9 +79,12 @@ export function afterAnswer(e: OutboxEntry, res: SendOutcome): OutboxEntry {
       message: 'This contact is already in your leads for this exhibition. Nothing new was created.',
     }
   }
+  const holder = res.owner_name?.trim()
   return {
     ...e, status: 'duplicate_other', attempts: e.attempts + 1,
-    message: 'This contact is already recorded for this exhibition. Contact Admin for reassignment.',
+    message: holder
+      ? `This contact is already recorded for this exhibition and allocated to ${holder}. Check with them, or contact Admin for reassignment.`
+      : 'This contact is already recorded for this exhibition. Contact Admin for reassignment.',
   }
 }
 

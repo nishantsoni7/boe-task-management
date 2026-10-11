@@ -40,11 +40,25 @@ describe('what the server answers', () => {
     assert.equal(e.status, 'duplicate_mine')
     assert.equal(e.leadId, 'lead-9')
   })
-  test('a duplicate of someone else\'s lead carries no id and no name', () => {
+  test('a duplicate of someone else\'s lead carries no id and no contact detail', () => {
     const e = afterAnswer(entry(), { outcome: 'duplicate', mine: false })
     assert.equal(e.status, 'duplicate_other')
     assert.equal(e.leadId, undefined)
+    assert.doesNotMatch(e.message ?? '', /Rao|98765|allocated to/)
+  })
+  test('a duplicate names the salesperson it is allocated to, so it can be re-verified', () => {
+    const e = afterAnswer(entry(), { outcome: 'duplicate', mine: false, owner_name: ' Meera Shah ' })
+    assert.equal(e.status, 'duplicate_other')
+    assert.equal(e.leadId, undefined)
+    assert.match(e.message ?? '', /allocated to Meera Shah./)
     assert.doesNotMatch(e.message ?? '', /Rao|98765/)
+  })
+  test('a blank or missing holder name falls back to the plain message', () => {
+    for (const owner_name of [null, undefined, '   ']) {
+      const e = afterAnswer(entry(), { outcome: 'duplicate', mine: false, owner_name })
+      assert.doesNotMatch(e.message ?? '', /allocated to/)
+      assert.match(e.message ?? '', /already recorded/)
+    }
   })
 })
 

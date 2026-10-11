@@ -666,6 +666,7 @@ describe('the database half of this verification', () => {
       '20270308000000_exhibition_lead_email_and_card.sql',
       '20270309000000_exhibition_leads_view_all.sql',
       '20270310000000_exhibition_lead_requirement_residential.sql',
+      '20270311000000_exhibition_lead_duplicate_owner_name.sql',
     ], 'every migration after this one is accounted for')
   })
 })

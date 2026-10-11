@@ -283,3 +283,35 @@ describe('the Residential requirement migration (20270310000000)', () => {
     assert.match(code5, /grant execute on function public\.update_exhibition_lead\(uuid, jsonb, text\) to authenticated;/)
   })
 })
+
+describe('the duplicate-holder migration (20270311000000)', () => {
+  const sql6 = read('supabase/migrations/20270311000000_exhibition_lead_duplicate_owner_name.sql')
+  const code6 = sql6.split('\n').filter(l => !l.trim().startsWith('--')).join(' ')
+  const sql5 = read('supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql')
+  const body = (s: string) => s.slice(
+    s.indexOf('create or replace function public.create_exhibition_lead'),
+    s.indexOf('create or replace function public.update_exhibition_lead'))
+  test('it re-issues only create_exhibition_lead, keeping the Residential list', () => {
+    assert.equal((code6.match(/create or replace function/g) ?? []).length, 1)
+    assert.match(code6, /create or replace function public\.create_exhibition_lead\(/)
+    assert.ok(code6.includes("array['restaurant_cafe','hotel','residential']::text[]"))
+    assert.doesNotMatch(code6, /drop table|delete from|drop column|alter table/i)
+  })
+  test('a lead held by someone else now carries the holder name, and still no id', () => {
+    assert.match(code6, /'owner_name', \(select nullif\(btrim\(u\.full_name\), ''\) from public\.users u where u\.id = v_existing\.owner_id\)/)
+    const tail = code6.slice(code6.indexOf("'duplicate', 'mine', false"))
+    assert.doesNotMatch(tail.split('end;')[0], /lead_id|phone|note/)
+  })
+  test('apart from that answer it is the 20270310 function, line for line', () => {
+    const strip = (s: string) => body(s).split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('--')).join('\n')
+    const a = strip(sql5)
+    const b = strip(sql6)
+    const answer = "return jsonb_build_object('outcome', 'duplicate', 'mine', false);"
+    assert.ok(a.includes(answer))
+    assert.equal(b.replace(/return jsonb_build_object\('outcome', 'duplicate', 'mine', false,\n'owner_name'[^\n]*\);/, answer), a)
+  })
+  test('it keeps the function closed to anon and open to signed-in users only', () => {
+    assert.match(code6, /revoke all on function public\.create_exhibition_lead\([^)]*\) from public, anon;/)
+    assert.match(code6, /grant execute on function public\.create_exhibition_lead\([^)]*\) to authenticated;/)
+  })
+})
