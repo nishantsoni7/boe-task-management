@@ -16,7 +16,7 @@ import { join } from 'node:path'
 
 import { normalizeLeadPhone, joinPhone, phoneError, formatPhone, telHref, whatsappHref } from './phone'
 import {
-  emptyLeadForm, toCreateArgs, toggleRequirement, validateLeadForm, type LeadFormValues,
+  emptyLeadForm, missingRequired, toCreateArgs, toggleRequirement, validateLeadForm, type LeadFormValues,
 } from './validation'
 import {
   ALL_LIST_PARAMS, MY_LIST_PARAMS, activeFilterCount, dateWindow, toRpcFilter, toggleIn,
@@ -123,6 +123,29 @@ describe('lead form validation', () => {
       'Low Priority',
     ])
     for (const o of LEAD_TYPES) assert.ok(!o.label.includes('('), 'no bracket text in the visible label')
+  })
+  test('Residential alone is a complete requirement and is sent as it is', () => {
+    const v = { ...ok(), requirements: ['residential' as const] }
+    assert.deepEqual(validateLeadForm(v), {})
+    assert.deepEqual(missingRequired(v), [])
+    assert.deepEqual(toCreateArgs(v).p_requirements, ['residential'])
+  })
+  test('any mix of the three requirements is valid, and each is sent', () => {
+    const all = REQUIREMENTS.map(o => o.value)
+    for (const mask of [3, 5, 6, 7]) {
+      const picked = all.filter((_, i) => mask & (1 << i))
+      const v = { ...ok(), requirements: picked }
+      assert.deepEqual(validateLeadForm(v), {}, picked.join('+'))
+      assert.deepEqual(toCreateArgs(v).p_requirements, picked)
+    }
+    assert.ok(validateLeadForm({ ...ok(), requirements: ['residential', 'villa' as never] }).requirements)
+  })
+  test('tapping the three options builds the multi-select one at a time', () => {
+    let r = toggleRequirement([], 'residential')
+    r = toggleRequirement(r, 'hotel')
+    r = toggleRequirement(r, 'restaurant_cafe')
+    assert.deepEqual([...r].sort(), ['hotel', 'residential', 'restaurant_cafe'])
+    assert.deepEqual(toggleRequirement(r, 'residential').sort(), ['hotel', 'restaurant_cafe'])
   })
   test('requirements toggle independently', () => {
     assert.deepEqual(toggleRequirement(['hotel'], 'restaurant_cafe'), ['hotel', 'restaurant_cafe'])

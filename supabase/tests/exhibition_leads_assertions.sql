@@ -221,6 +221,8 @@ begin
   r := public._t_create('f0000000-0000-4000-8000-000000000030', 'Someone Else', '+91 98765 43210');
   perform public._t_assert(r->>'outcome' = 'duplicate' and (r->>'mine')::boolean = false and not (r ? 'lead_id'),
     'another owner learns the fact only — no id: ' || r::text);
+  perform public._t_assert(r->>'owner_name' = 'EXL Sales 1' and not (r ? 'phone') and not (r ? 'contact_name'),
+    'another owner is told WHO holds it, and nothing else: ' || r::text);
 end $$;
 select public._t_assert((select count(*) = 0 from public.exhibition_leads), 'S2 still sees nothing of S1''s lead');
 

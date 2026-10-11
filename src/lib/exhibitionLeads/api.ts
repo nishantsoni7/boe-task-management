@@ -86,7 +86,7 @@ export const fetchLead = (s: Supabase, id: string) =>
 export type CreateResult =
   | { outcome: 'created' | 'replayed'; lead_id: string; mine?: undefined }
   | { outcome: 'duplicate'; mine: true; lead_id: string }
-  | { outcome: 'duplicate'; mine: false; lead_id?: undefined }
+  | { outcome: 'duplicate'; mine: false; lead_id?: undefined; owner_name?: string | null }
 
 export const createLead = (
   s: Supabase,
