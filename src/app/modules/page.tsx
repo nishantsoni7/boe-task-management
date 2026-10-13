@@ -21,6 +21,8 @@ import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerRevi
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
+import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
+import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
 import Link from 'next/link'
 import { ArrowRight, ArrowUpRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
@@ -322,7 +324,22 @@ export default function BoeOsHomePage() {
   // viewer gets an empty list and therefore no section in either place.
   // Exhibition Leads: the form is one tap from the first screen, on a phone and
   // in the desktop sidebar, gated by the same parent gate as its launcher card.
-  const canAddExhibitionLead = canOpenModule('exhibition_leads')
+  //
+  // AND ONLY WHILE AN EXHIBITION IS OPEN. Admin closes an exhibition from
+  // Exhibition Leads → Exhibitions when the fair is over; once none is open the
+  // link is gone for everybody, and re-opening one brings it back. The answer is
+  // read from the exhibitions table, so it changes without a deploy. The list
+  // kept on the device from the last visit answers at once; a failed read keeps
+  // the link rather than taking it away (see showQuickLink).
+  const canOpenExhibitionLeads = canOpenModule('exhibition_leads')
+  const exhibitionsRead = useQuery({
+    ...exhibitionsQuery(supabase),
+    enabled: permsReady && canOpenExhibitionLeads,
+    initialData: () => readCachedExhibitions()?.data,
+    initialDataUpdatedAt: () => readCachedExhibitions()?.at,
+  })
+  const canAddExhibitionLead = canOpenExhibitionLeads
+    && showQuickLink(intakeState(exhibitionsRead.data), exhibitionsRead.isError)
   const quickActions = buildQuickActions({ canQuickAddExpense, canRequestAttendance, canAddExhibitionLead })
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by

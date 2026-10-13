@@ -764,6 +764,9 @@ describe('the migration is the one this work adds, and it is additive', () => {
       // And the Exhibition Leads duplicate answer naming the holder (20270311000000): create_exhibition_lead re-issued with one extra return key,
       // held by src/lib/exhibitionLeads/migration.test.ts.
       if (f === 'supabase/migrations/20270311000000_exhibition_lead_duplicate_owner_name.sql') continue
+      // And Admin closing / re-opening an exhibition (20270312000000): set_exhibition_open, a stamp trigger and the admin list re-issued,
+      // held by src/lib/exhibitionLeads/closeExhibition.test.ts.
+      if (f === 'supabase/migrations/20270312000000_exhibition_close_reopen.sql') continue
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
     }
@@ -2928,6 +2931,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'supabase/migrations/20270309000000_exhibition_leads_view_all.sql',
     'supabase/migrations/20270310000000_exhibition_lead_requirement_residential.sql',
     'supabase/migrations/20270311000000_exhibition_lead_duplicate_owner_name.sql',
+    'supabase/migrations/20270312000000_exhibition_close_reopen.sql',
+    'src/lib/exhibitionLeads/intake.ts',
+    'src/lib/exhibitionLeads/closeExhibition.test.ts',
     'supabase/tests/exhibition_leads_view_all_assertions.sql',
     'src/lib/exhibitionLeads/viewAll.test.ts',
     'src/lib/permissions/modules.ts',

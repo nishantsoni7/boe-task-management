@@ -51,6 +51,11 @@ export function NoExhibitionNotice({ isAdmin, closedOnly = false }: { isAdmin: b
   return (
     <div className={`${s.notice} ${s.noticeWarn}`} role="status">
       {text}
+      {!isAdmin && (
+        <div className={s.noticeActions}>
+          <Link className={`${s.btn} ${s.btnRed}`} href="/exhibition-leads/my">Go to My Leads</Link>
+        </div>
+      )}
       {isAdmin && (
         <div className={s.noticeActions}>
           <Link className={`${s.btn} ${s.btnRed}`} href="/exhibition-leads/exhibitions">
