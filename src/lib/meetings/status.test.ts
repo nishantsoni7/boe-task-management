@@ -14,7 +14,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   MEETING_TRANSITIONS, canTransitionMeeting, isMeetingEditable,
-  summarizeMeetingForCompletion, completionWarning,
+  summarizeMeetingForCompletion, completionWarning, isPastDueMeeting,
 } from './status'
 import type { MeetingOrder, MeetingOrderItem, MeetingStatus } from './types'
 
@@ -31,6 +31,7 @@ const item = (over: Partial<MeetingOrderItem> = {}): MeetingOrderItem => ({
   id: 'i1', meeting_order_id: 'o1', sku: 'SKU-1', product_name: 'Chair',
   quantity: null, current_stage: null, latest_update: null, issue: null,
   responsible_department: null, next_follow_up_date: null, status: 'open',
+  dimensions: null, spec_note: null, image_path: null,
   linked_task_id: null, linked_task_at: null, linked_task_by: null,
   created_by: 'u1', created_at: '', updated_at: '', ...over,
 })
@@ -143,5 +144,41 @@ describe('completion warning', () => {
     assert.ok(warning)
     assert.ok(warning.includes('2 items are still open'))
     assert.ok(warning.includes('2 items have no update'))
+  })
+})
+
+// ─── Past-due label ───────────────────────────────────────────────────────────
+//
+// Completing a meeting is a deliberate act, so reviews get held and left open.
+// The Active list flags those; it does NOT move them. History stays completed
+// meetings only, so a past-due meeting must never be in both places.
+
+describe('isPastDueMeeting', () => {
+  const TODAY = '2026-08-12'
+  const m = (status: MeetingStatus, meeting_date: string) => ({ status, meeting_date })
+
+  test('an open meeting dated before today is past due', () => {
+    assert.equal(isPastDueMeeting(m('in_progress', '2026-08-11'), TODAY), true)
+    assert.equal(isPastDueMeeting(m('draft', '2026-07-01'), TODAY), true)
+  })
+
+  test("today's meeting is not past due — it is simply today's", () => {
+    assert.equal(isPastDueMeeting(m('in_progress', TODAY), TODAY), false)
+    assert.equal(isPastDueMeeting(m('draft', TODAY), TODAY), false)
+  })
+
+  test('a future meeting is never past due', () => {
+    assert.equal(isPastDueMeeting(m('draft', '2026-09-01'), TODAY), false)
+  })
+
+  test('a COMPLETED meeting is never past due, however old', () => {
+    // It is finished. It belongs to History and carries no call to action.
+    assert.equal(isPastDueMeeting(m('completed', '2020-01-01'), TODAY), false)
+  })
+
+  test('it reads only status and date — it cannot become a list filter', () => {
+    // The guarantee: this is a label. If it ever starts consulting anything
+    // else, someone is building a third meeting list out of it.
+    assert.deepEqual(Object.keys(m('draft', TODAY)).sort(), ['meeting_date', 'status'])
   })
 })

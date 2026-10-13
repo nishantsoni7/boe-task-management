@@ -77,6 +77,12 @@ export type MeetingOrderItem = {
   issue: string | null
   responsible_department: string | null
   next_follow_up_date: string | null
+  /** Size/shape as written on the PI. Presentation text, never parsed. */
+  dimensions: string | null
+  /** Short OPERATIONAL instruction from the PI — a finish or fabric choice. */
+  spec_note: string | null
+  /** Object key in the private meeting-product-images bucket. Never a URL. */
+  image_path: string | null
   status: ItemStatus
   linked_task_id: string | null
   linked_task_at: string | null
@@ -142,6 +148,7 @@ export const MEETING_ORDER_COLUMNS = [
 export const MEETING_ORDER_ITEM_COLUMNS = [
   'id', 'meeting_order_id', 'sku', 'product_name', 'quantity', 'current_stage',
   'latest_update', 'issue', 'responsible_department', 'next_follow_up_date',
+  'dimensions', 'spec_note', 'image_path',
   'status', 'linked_task_id', 'linked_task_at', 'linked_task_by',
   'created_by', 'created_at', 'updated_at',
 ].join(', ')

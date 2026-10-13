@@ -32,6 +32,28 @@ export function isMeetingEditable(status: MeetingStatus): boolean {
   return status !== 'completed'
 }
 
+/**
+ * A meeting whose date has passed and which nobody closed.
+ *
+ * Completing a meeting is a deliberate act by someone holding the right grant,
+ * so reviews get held and then left open — and an open meeting from three weeks
+ * ago looks exactly like one scheduled for tomorrow in a list sorted by date.
+ * The Active list uses this to say "Past date · Close meeting" against it.
+ *
+ * It changes NO list membership. A past-dated open meeting stays in Active &
+ * Upcoming, where it can still be worked on, and never appears in Meeting
+ * History — history is completed meetings only. This is a label, not a filter.
+ *
+ * `today` is the IST business date, passed in so a list rendered either side of
+ * midnight cannot classify two rows against two different "todays".
+ */
+export function isPastDueMeeting(
+  meeting: { status: MeetingStatus; meeting_date: string },
+  today: string,
+): boolean {
+  return meeting.status !== 'completed' && meeting.meeting_date < today
+}
+
 // ─── Completion summary ───────────────────────────────────────────────────────
 
 export type MeetingCompletionSummary = {

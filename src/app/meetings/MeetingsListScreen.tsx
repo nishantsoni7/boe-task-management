@@ -14,6 +14,8 @@ import { useMeetings } from '@/hooks/useMeetings'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, optionParam, textParam } from '@/lib/listState'
 import { fetchAllRows } from '@/lib/supabasePaging'
+import { istToday } from '@/lib/istDate'
+import { isPastDueMeeting } from '@/lib/meetings/status'
 import {
   MEETING_COLUMNS, MEETING_STATUS_META, MEETING_TYPES, MEETING_TYPE_META,
   formatMeetingDate, type Meeting, type MeetingStatus, type MeetingType,
@@ -254,10 +256,14 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
 
   if (authLoading) return <LoadingScreen />
 
-  const title = scope === 'active' ? 'Active & Upcoming' : 'Completed Meetings'
+  // One 'today' for the whole render, so two rows cannot be judged against
+  // two different days.
+  const todayIst = istToday()
+
+  const title = scope === 'active' ? 'Active & Upcoming' : 'Meeting History'
   const subtitle = scope === 'active'
     ? 'Order review meetings you can start or continue.'
-    : 'Past reviews, kept as a permanent record.'
+    : 'Completed reviews and everything recorded in them. Read-only.'
 
   return (
     <MeetingsLayout
@@ -358,7 +364,13 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
         ) : isMobile ? (
           <div style={{ padding: '10px' }}>
             {visible.map(m => (
-              <MeetingCard key={m.id} meeting={m} counts={counts[m.id]} onOpen={() => router.push(`/meetings/${m.id}`)} />
+              <MeetingCard
+                key={m.id}
+                meeting={m}
+                counts={counts[m.id]}
+                pastDue={isPastDueMeeting(m, todayIst)}
+                onOpen={() => router.push(`/meetings/${m.id}`)}
+              />
             ))}
           </div>
         ) : (
@@ -403,6 +415,13 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
                       </td>
                       <td style={{ padding: '11px 16px' }}>
                         <MeetingBadge meta={MEETING_STATUS_META[m.status]} />
+                        {/* Held but never closed. A label, not a filter — the row stays
+                            here and never appears in Meeting History. */}
+                        {isPastDueMeeting(m, todayIst) && (
+                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.amber, marginTop: '3px', whiteSpace: 'nowrap' }}>
+                            Past date · Close meeting
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
@@ -448,8 +467,14 @@ function ReviewSummary({ counts }: { counts: MeetingCounts | undefined }) {
 }
 
 function MeetingCard({
-  meeting, counts, onOpen,
-}: { meeting: Meeting; counts: MeetingCounts | undefined; onOpen: () => void }) {
+  meeting, counts, pastDue, onOpen,
+}: {
+  meeting: Meeting
+  counts: MeetingCounts | undefined
+  /** Held but never closed — labelled here, still listed here. */
+  pastDue?: boolean
+  onOpen: () => void
+}) {
   return (
     <button
       onClick={onOpen}
@@ -470,6 +495,12 @@ function MeetingCard({
         <span style={{ fontSize: '12px', color: colors.secondary }}>{formatMeetingDate(meeting.meeting_date)}</span>
         {meeting.lead_name && (
           <span style={{ fontSize: '12px', color: colors.muted }}>· {meeting.lead_name}</span>
+        )}
+        {/* Same label as the desktop row, same meaning: still open, still here. */}
+        {pastDue && (
+          <span style={{ fontSize: '11.5px', fontWeight: 700, color: colors.amber }}>
+            · Past date · Close meeting
+          </span>
         )}
       </div>
       <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '6px' }}>
@@ -511,7 +542,8 @@ function EmptyMeetings({
           No completed meetings yet
         </p>
         <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
-          A review appears here once it has been completed. Completed meetings stay read-only.
+A meeting appears here once someone closes it. Open one to read everything
+          recorded in it — the orders discussed, every update, and the follow-ups set.
         </p>
       </div>
     )

@@ -14,6 +14,7 @@ import { MeetingBadge } from '@/components/meetings/MeetingModal'
 import { MeetingFormModal } from '@/components/meetings/MeetingFormModal'
 import { ItemUpdateModal } from '@/components/meetings/ItemUpdateModal'
 import { MeetingTaskModal } from '@/components/meetings/MeetingTaskModal'
+import { MeetingItemThumb, MeetingItemSpec, MeetingImageLightbox } from '@/components/meetings/MeetingItemMedia'
 import { MeetingHistoryModal } from '@/components/meetings/MeetingHistoryModal'
 import { MeetingActivityModal } from '@/components/meetings/MeetingActivityModal'
 import { MeetingImportModal } from '@/components/meetings/MeetingImportModal'
@@ -32,6 +33,7 @@ import {
   OrderDiscussion, fetchEvidenceRows, resetEarlierDiscussionCache,
 } from '@/components/meetings/OrderDiscussion'
 import { useMeetings } from '@/hooks/useMeetings'
+import type { createClient } from '@/lib/supabase/client'
 import {
   canEditThisMeeting, canReopenDiscussionItem, canSetThisMeetingStatus,
 } from '@/lib/permissions/meetings'
@@ -129,6 +131,8 @@ export function MeetingWorkScreen() {
   const [orders, setOrders]       = useState<MeetingOrder[]>([])
   const [items, setItems]         = useState<MeetingOrderItem[]>([])
   const [history, setHistory]     = useState<MeetingHistoryEntry[]>([])
+  /** The photograph currently shown full size, if any. */
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [activity, setActivity]   = useState<MeetingActivityEntry[]>([])
   const [tasks, setTasks]         = useState<Record<string, LinkedTask>>({})
   const [evidence, setEvidence]   = useState<MeetingOrderEvidence[]>([])
@@ -800,6 +804,8 @@ export function MeetingWorkScreen() {
 
           <div style={{ marginTop: '12px' }}>
             <OrderPanel
+              supabase={supabase}
+              onOpenImage={setLightboxUrl}
               showHeader={false}
               order={selectedOrder}
               items={selectedItems}
@@ -1046,6 +1052,8 @@ export function MeetingWorkScreen() {
         />
       )}
 
+      {lightboxUrl && <MeetingImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+
       <Toast toast={toast} onDismiss={dismiss} />
     </MeetingsLayout>
   )
@@ -1142,6 +1150,7 @@ function OrderWorkspaceHeader({
 // ─── Order panel ──────────────────────────────────────────────────────────────
 
 function OrderPanel({
+  supabase, onOpenImage,
   order, items, previousUpdates, tasks, editable, isMobile, showHeader = true,
   onOrderUpdate, onOrderHistory, onRemoveOrder, onAddItem,
   onUpdateItem, onCreateTask, onOpenTask, onResolve, onItemHistory,
@@ -1151,6 +1160,10 @@ function OrderPanel({
    * the Order's identity, position and actions.
    */
   showHeader?: boolean
+  /** Signs the private product-image URL. */
+  supabase: ReturnType<typeof createClient>
+  /** Opens the shared full-size photograph view. */
+  onOpenImage: (url: string) => void
   order: MeetingOrder
   items: MeetingOrderItem[]
   /** itemId -> the update the current one replaced. Precomputed once. */
@@ -1273,6 +1286,8 @@ function OrderPanel({
           {items.map(item => (
             <ItemCard
               key={item.id}
+              supabase={supabase}
+              onOpenImage={onOpenImage}
               item={item}
               previousUpdate={previousUpdates.get(item.id) ?? null}
               task={item.linked_task_id ? tasks[item.linked_task_id] : undefined}
@@ -1303,6 +1318,8 @@ function OrderPanel({
               {items.map(item => (
                 <ItemRow
                   key={item.id}
+                  supabase={supabase}
+                  onOpenImage={onOpenImage}
                   item={item}
                   previousUpdate={previousUpdates.get(item.id) ?? null}
                   task={item.linked_task_id ? tasks[item.linked_task_id] : undefined}
@@ -1325,6 +1342,10 @@ function OrderPanel({
 // ─── One SKU row ──────────────────────────────────────────────────────────────
 
 type ItemRowProps = {
+  /** For signing the private image URL. */
+  supabase: ReturnType<typeof createClient>
+  /** Opens the shared full-size preview. */
+  onOpenImage: (url: string) => void
   item: MeetingOrderItem
   previousUpdate: string | null
   task: LinkedTask | undefined
@@ -1345,10 +1366,16 @@ function ItemRow(props: ItemRowProps) {
   return (
     <tr style={{ borderBottom: `1px solid ${colors.border}`, verticalAlign: 'top' }}>
       <td style={{ padding: '10px 12px', minWidth: '150px' }}>
-        <div style={{ fontWeight: 700, color: colors.primary }}>{item.sku}</div>
-        <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
-          {item.product_name}
-          {item.quantity != null && ` · ${item.quantity}`}
+        <div style={{ display: 'flex', gap: '9px', alignItems: 'flex-start' }}>
+          <MeetingItemThumb supabase={props.supabase} path={item.image_path} onOpen={props.onOpenImage} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: colors.primary }}>{item.sku}</div>
+            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+              {item.product_name}
+              {item.quantity != null && ` · ${item.quantity}`}
+            </div>
+            <MeetingItemSpec dimensions={item.dimensions} specNote={item.spec_note} />
+          </div>
         </div>
       </td>
       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>

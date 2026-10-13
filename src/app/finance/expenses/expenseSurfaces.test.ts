@@ -3079,6 +3079,29 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/finance/expenses/expenseSurfaces.test.ts',
   ])
 
+  /**
+   * Meetings: import a PI workbook into a meeting (confirm route, workbook
+   * reader, request shape), and show product photographs and specifications on
+   * the meeting's item rows. Meetings files only — the migration it needs
+   * (20260831000000) is already on main. No Finance or Orders screen.
+   */
+  const ALLOWED_MEETINGS_PI_IMPORT = new Set([
+    'src/app/api/meetings/import-pi/confirm/route.ts',
+    'src/app/api/meetings/import-pi/route.ts',
+    'src/app/meetings/MeetingsListScreen.tsx',
+    'src/app/meetings/[id]/MeetingWorkScreen.tsx',
+    'src/components/meetings/MeetingImportModal.tsx',
+    'src/components/meetings/MeetingItemMedia.tsx',
+    'src/lib/meetings/piImport.test.ts',
+    'src/lib/meetings/piImport.ts',
+    'src/lib/meetings/piRequest.ts',
+    'src/lib/meetings/piWorkbook.ts',
+    'src/lib/meetings/status.test.ts',
+    'src/lib/meetings/status.ts',
+    'src/lib/meetings/taskDraft.test.ts',
+    'src/lib/meetings/types.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -3132,6 +3155,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
+    !ALLOWED_MEETINGS_PI_IMPORT.has(f) &&
     !ALLOWED_CONTROL_CENTER_NAV.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
     !ALLOWED_TASK_CHANGE_STATUS_RPC.has(f) &&
@@ -3605,6 +3629,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
         || ALLOWED_PI_DRAFT_TOP_LAYOUT.has(file)
         || ALLOWED_PI_COMPLETION_FLOW.has(file)
+        || ALLOWED_MEETINGS_PI_IMPORT.has(file)
         || ALLOWED_CONTROL_CENTER_NAV.has(file)
         || ALLOWED_EXPENSE_REIMBURSEMENTS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
