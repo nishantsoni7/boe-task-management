@@ -103,7 +103,7 @@ describe('the scoreboard is on My Leads', () => {
 
 describe('adding is always one tap away on a phone', () => {
   test('every page but Add Lead carries a full-width red "Add Lead" bar on a phone', () => {
-    assert.match(shell, /const showAddBar = !pathname\.startsWith\(`\$\{BASE\}\/add`\)/)
+    assert.match(shell, /const showAddBar = addAllowed && !pathname\.startsWith\(`\$\{BASE\}\/add`\)/)
     assert.match(shell, /<Link href=\{`\$\{BASE\}\/add`\} className=\{a\.fab\} aria-label="Add a new lead">/)
     assert.match(css, /\.fab \{ display: none; \}/, 'hidden unless a phone')
     assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.fab \{[^}]*position: fixed;[^}]*min-height: 58px;[^}]*background: #DC1F2E/)

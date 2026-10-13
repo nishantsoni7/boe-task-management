@@ -10,7 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { useExhibitionLeads } from '@/hooks/useExhibitionLeads'
 import {
-  EXHIBITION_LEADS_KEY, createExhibition, fetchExhibitionsAdmin, updateExhibition,
+  EXHIBITION_LEADS_KEY, createExhibition, fetchExhibitionsAdmin, setExhibitionOpen, updateExhibition,
   type AdminExhibition,
 } from '@/lib/exhibitionLeads/api'
 import { exhibitionDates } from '@/lib/exhibitionLeads/format'
@@ -29,6 +29,13 @@ export default function ExhibitionsScreen() {
   const { supabase, profile, isAdmin, loading, signOut } = useExhibitionLeads()
   const qc = useQueryClient()
   const [editing, setEditing] = useState<AdminExhibition | 'new' | null>(null)
+  // Closing takes the entry form away from every salesperson, so it asks first; re-opening does not.
+  const [closing, setClosing] = useState<AdminExhibition | null>(null)
+
+  const reopen = useMutation({
+    mutationFn: (x: AdminExhibition) => setExhibitionOpen(supabase, x.id, true),
+    onSuccess: () => qc.invalidateQueries({ queryKey: EXHIBITION_LEADS_KEY }),
+  })
 
   // Managing exhibitions is the Admin's. Anyone else lands on their own leads.
   useEffect(() => {
@@ -58,8 +65,8 @@ export default function ExhibitionsScreen() {
           </Link>
         </div>
         <div className={s.scopeLine}>
-          Leads are kept per exhibition. A <strong>closed</strong> exhibition takes no new leads, but its leads, ranking and
-          export stay available. Nothing is ever deleted from here.
+          Leads are kept per exhibition. <strong>Close</strong> an exhibition when it is over: it takes no new leads and, once none is open, the Add Lead quick link
+          disappears. Its leads, ranking and export stay available. Nothing is ever deleted from here.
         </div>
 
         {list.isLoading && <div className={s.cards}><div className={s.skeleton} /><div className={s.skeleton} /></div>}
@@ -89,10 +96,12 @@ export default function ExhibitionsScreen() {
                     <StateBadge open={x.is_active} />
                   </div>
                   <div className={s.cardLine}>{x.leads} active lead{x.leads === 1 ? '' : 's'}{x.archived ? ` · ${x.archived} archived` : ''}</div>
+                  {!x.is_active && x.closed_at && <div className={s.cardSub}>{closedLine(x)}</div>}
                   <div className={s.cardActions}>
                     <Link className={s.btn} href={`/exhibition-leads/all?ex=${x.id}&when=all`}>Leads</Link>
                     <Link className={s.btn} href={`/exhibition-leads/ranking?ex=${x.id}`}>Ranking</Link>
                     <button className={`${s.btn} ${s.btnDark}`} onClick={() => setEditing(x)}>Edit</button>
+                    <button className={s.btn} onClick={() => (x.is_active ? setClosing(x) : reopen.mutate(x))} disabled={reopen.isPending}>{x.is_active ? 'Close' : 'Re-open'}</button>
                   </div>
                 </article>
               ))}
@@ -109,13 +118,14 @@ export default function ExhibitionsScreen() {
                       <td><strong>{x.name}</strong></td>
                       <td>{x.city ?? ''}</td>
                       <td className={s.nowrap}>{exhibitionDates(x)}</td>
-                      <td><StateBadge open={x.is_active} /></td>
+                      <td><StateBadge open={x.is_active} />{!x.is_active && x.closed_at && <div className={s.cardSub}>{closedLine(x)}</div>}</td>
                       <td>{x.leads}{x.archived ? <div className={s.cardSub}>{x.archived} archived</div> : null}</td>
                       <td>
                         <div className={s.tableActions}>
                           <Link className={`${s.btn} ${s.btnSm}`} href={`/exhibition-leads/all?ex=${x.id}&when=all`}>Leads</Link>
                           <Link className={`${s.btn} ${s.btnSm}`} href={`/exhibition-leads/ranking?ex=${x.id}`}>Ranking</Link>
                           <button className={`${s.btn} ${s.btnSm} ${s.btnDark}`} onClick={() => setEditing(x)}>Edit</button>
+                          <button className={`${s.btn} ${s.btnSm}`} onClick={() => (x.is_active ? setClosing(x) : reopen.mutate(x))} disabled={reopen.isPending}>{x.is_active ? 'Close' : 'Re-open'}</button>
                         </div>
                       </td>
                     </tr>
@@ -126,6 +136,18 @@ export default function ExhibitionsScreen() {
           </>
         )}
       </div>
+
+      {closing && (
+        <CloseExhibitionSheet
+          exhibition={closing}
+          onClose={() => setClosing(null)}
+          onConfirm={async () => {
+            await setExhibitionOpen(supabase, closing.id, false)
+            await qc.invalidateQueries({ queryKey: EXHIBITION_LEADS_KEY })
+            setClosing(null)
+          }}
+        />
+      )}
 
       {editing && (
         <ExhibitionSheet
@@ -141,6 +163,46 @@ export default function ExhibitionsScreen() {
         />
       )}
     </ExhibitionLeadsLayout>
+  )
+}
+
+function closedLine(x: AdminExhibition): string {
+  const when = new Date(x.closed_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+  return `Closed ${when}${x.closed_by_name ? ` by ${x.closed_by_name}` : ''}`
+}
+
+function CloseExhibitionSheet({
+  exhibition, onClose, onConfirm,
+}: { exhibition: AdminExhibition; onClose: () => void; onConfirm: () => Promise<void> }) {
+  const close = useMutation({ mutationFn: onConfirm })
+  return (
+    <ReviewSheet
+      title="Close this exhibition?"
+      subtitle={exhibition.name}
+      onClose={onClose}
+      dismissOnBackdrop={false}
+      maxWidth="480px"
+      footer={
+        <>
+          <button type="button" className={s.btn} onClick={onClose}>Cancel</button>
+          <button type="button" className={`${s.btn} ${s.btnRed}`} style={{ flex: 1 }} disabled={close.isPending} onClick={() => close.mutate()}>
+            {close.isPending ? 'Closing…' : 'Close exhibition'}
+          </button>
+        </>
+      }
+    >
+      <div className={s.filterSheetBody}>
+        <div className={s.hint}>
+          Salespeople will no longer be able to add leads to it. When no exhibition is open, the
+          <strong> Add Exhibition Lead</strong> quick link and the Add Lead button disappear for everyone.
+        </div>
+        <div className={s.hint}>
+          Nothing is deleted. Its {exhibition.leads} lead{exhibition.leads === 1 ? '' : 's'}, ranking and export stay available, salespeople can
+          still edit their own leads, and only an Admin can remove one. You can re-open it at any time.
+        </div>
+        {close.error && <div className={`${s.notice} ${s.noticeErr}`} role="alert">{(close.error as Error).message}</div>}
+      </div>
+    </ReviewSheet>
   )
 }
 

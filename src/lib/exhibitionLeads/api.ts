@@ -59,7 +59,13 @@ export const fetchExhibitions = (s: Supabase) =>
     return { data: data as Exhibition[] | null, error }
   })
 
-export type AdminExhibition = Exhibition & { leads: number; archived: number }
+export type AdminExhibition = Exhibition & {
+  leads: number
+  archived: number
+  /** Set while the exhibition is closed: when, and by whom. */
+  closed_at?: string | null
+  closed_by_name?: string | null
+}
 
 export const fetchExhibitionsAdmin = (s: Supabase) =>
   call<AdminExhibition[]>(() => s.rpc('list_exhibitions_admin'))
@@ -76,6 +82,11 @@ export const updateExhibition = (s: Supabase, id: string, v: ExhibitionInput & {
     p_id: id, p_name: v.name.trim(), p_city: v.city.trim() || null,
     p_starts_on: v.startsOn, p_ends_on: v.endsOn, p_is_active: v.isActive,
   }))
+
+/** Admin closes (open = false) or re-opens one exhibition for new leads; nothing else about it changes. */
+export const setExhibitionOpen = (s: Supabase, id: string, open: boolean) =>
+  call<{ outcome: 'opened' | 'closed' | 'unchanged'; id: string; is_active: boolean }>(() =>
+    s.rpc('set_exhibition_open', { p_id: id, p_open: open }))
 
 export const fetchLeadPage = (s: Supabase, filter: RpcFilter, limit: number, offset: number) =>
   call<LeadPage>(() => s.rpc('exhibition_leads_page', { p_filter: filter, p_limit: limit, p_offset: offset }))

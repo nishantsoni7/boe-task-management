@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { BarChart3, CalendarDays, Home, ListChecks, Plus, Users } from 'lucide-react'
@@ -8,6 +8,9 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import a from '@/components/exhibitionLeads/addLead.module.css'
+import { useExhibitions } from '@/hooks/useExhibitionLeads'
+import { createClient } from '@/lib/supabase/client'
+import { intakeState, showAddLeadEntry } from '@/lib/exhibitionLeads/intake'
 
 // The Exhibition Leads module shell — the BOE Module Layout Standard: two
 // columns, a module header with Home → /modules, module-only navigation, and the
@@ -38,10 +41,14 @@ type Props = {
 
 export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, title, subtitle, actions, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // When Admin has closed every exhibition there is nothing to add a lead to: the entry points go too.
+  const supabase = useMemo(() => createClient(), [])
+  const { exhibitions, isLoading: exhibitionsLoading, error: exhibitionsError } = useExhibitions(supabase, true)
+  const addAllowed = showAddLeadEntry(intakeState(exhibitionsLoading || exhibitionsError ? undefined : exhibitions))
   const router = useRouter()
   const pathname = usePathname()
   // Adding a lead is the module's main job: on every other page a phone shows a big red bar to start one.
-  const showAddBar = !pathname.startsWith(`${BASE}/add`)
+  const showAddBar = addAllowed && !pathname.startsWith(`${BASE}/add`)
 
   return (
     <div className="boe-app-shell">
@@ -76,7 +83,7 @@ export function ExhibitionLeadsLayout({ profile, isAdmin, canViewAll = isAdmin, 
         </div>
 
         <div className="boe-sidebar-section">
-          {NAV_ITEMS.filter(item => isAdmin || !item.adminOnly || ('viewAll' in item && item.viewAll && canViewAll)).map(item => {
+          {NAV_ITEMS.filter(item => (addAllowed || item.href !== `${BASE}/add`)).filter(item => isAdmin || !item.adminOnly || ('viewAll' in item && item.viewAll && canViewAll)).map(item => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const Icon = item.icon
             // Add Lead is the primary action: it is always the filled red item.
