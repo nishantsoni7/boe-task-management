@@ -1413,11 +1413,15 @@ function ItemCard(props: ItemRowProps) {
       padding: '11px 13px', marginBottom: '8px', background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{item.sku}</div>
-          <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
-            {item.product_name}
-            {item.quantity != null && ` · ${item.quantity}`}
+        <div style={{ display: 'flex', gap: '9px', alignItems: 'flex-start', minWidth: 0 }}>
+          <MeetingItemThumb supabase={props.supabase} path={item.image_path} onOpen={props.onOpenImage} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{item.sku}</div>
+            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+              {item.product_name}
+              {item.quantity != null && ` · ${item.quantity}`}
+            </div>
+            <MeetingItemSpec dimensions={item.dimensions} specNote={item.spec_note} />
           </div>
         </div>
         <MeetingBadge meta={ITEM_STATUS_META[item.status]} />
