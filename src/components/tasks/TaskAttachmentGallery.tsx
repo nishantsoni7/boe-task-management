@@ -144,7 +144,7 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
     <section className="boe-card boe-task-gallery" aria-label="Task attachments" style={{ background: '#ffffff' }}>
       <div className="boe-task-gallery-head">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ fontSize: '15px', fontWeight: 600, color: '#20242D', letterSpacing: '-0.01em' }}>
+          <span style={{ fontSize: '15px', fontWeight: 600, color: '#303536', letterSpacing: '-0.01em' }}>
             Attachments
           </span>
           <span className="boe-task-gallery-count">{galleryCountLabel(entries)}</span>
@@ -229,7 +229,7 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0, maxWidth: '100%',
                   fontSize: '11.5px', fontWeight: 500, fontFamily: font.body,
-                  color: colors.blue, cursor: 'pointer',
+                  color: colors.brandInk, cursor: 'pointer',
                   padding: '4px 10px', borderRadius: '6px',
                   border: `1px solid ${colors.blue}28`,
                   background: colors.blueTint,
@@ -242,7 +242,7 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
                 fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase', color: colors.muted,
                 background: colors.float, border: `1px solid ${colors.border}`,
-                padding: '1px 7px', borderRadius: '20px', flexShrink: 0,
+                padding: '1px 7px', borderRadius: '12px', flexShrink: 0,
               }}>
                 {f.typeLabel}
               </span>

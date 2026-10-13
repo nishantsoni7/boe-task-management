@@ -43,22 +43,22 @@ function TeamProgressLoader({ progress }: { progress: number }) {
       pointerEvents: 'all',
     }}>
       <div style={{ textAlign: 'center', maxWidth: 420 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#111318', lineHeight: 1.6, marginBottom: 6 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#303536', lineHeight: 1.6, marginBottom: 6 }}>
           Good things take a little time.
         </div>
-        <div style={{ fontSize: 13, color: '#8C94A6', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: '#686D6C', lineHeight: 1.6 }}>
           Please wait while we prepare your team performance report.
         </div>
       </div>
       <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ width: '100%', height: 6, background: '#EEF0F4', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ width: '100%', height: 6, background: '#F1EEE9', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{
             width: `${pct}%`, height: '100%',
-            background: 'linear-gradient(90deg, #5585E8, #45A870)',
+            background: 'linear-gradient(90deg, #335A86, #2F7A52)',
             borderRadius: 999, transition: 'width 0.25s ease',
           }} />
         </div>
-        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>{pct}%</div>
+        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#686D6C' }}>{pct}%</div>
       </div>
     </div>
   )
@@ -69,16 +69,16 @@ function TeamProgressLoader({ progress }: { progress: number }) {
 // Same palette and shapes the rest of BOE uses; nothing new invented here.
 
 const C = {
-  ink:   '#111318',
-  muted: '#6B7384',
-  faint: '#8C94A6',
-  line:  '#EEF0F4',
-  hair:  '#F0F1F3',
-  panel: '#F8F9FB',
-  green: '#45A870',
-  red:   '#D94F4F',
-  amber: '#E8A030',
-  blue:  '#5585E8',
+  ink:   '#303536',
+  muted: '#686D6C',
+  faint: '#686D6C',
+  line:  '#F1EEE9',
+  hair:  '#F1EEE9',
+  panel: '#FBFAF8',
+  green: '#2F7A52',
+  red:   '#B42332',
+  amber: '#C48A1A',
+  blue:  '#335A86',
 } as const
 
 const PERIOD_LABEL: Record<PeriodKey, string> = {
@@ -123,7 +123,7 @@ function StatusPill({ status }: { status: OperationalStatus }) {
   const color = STATUS_COLOR[status]
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 20,
+      display: 'inline-block', padding: '2px 8px', borderRadius: 12,
       fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
       color, background: color + '14', border: '1px solid ' + color + '33',
     }}>{STATUS_LABEL[status]}</span>
@@ -159,7 +159,7 @@ function Explanation({ ex, tone = 'neutral' }: {
   const accent = tone === 'concern' ? C.red : C.blue
   return (
     <div style={{
-      background: C.panel, border: '1px solid ' + C.line, borderRadius: 10, padding: 12,
+      background: C.panel, border: '1px solid ' + C.line, borderRadius: 8, padding: 12,
     }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.ink, marginBottom: 6 }}>{ex.headline}</div>
       <ul style={{ margin: 0, padding: 0 }}>
@@ -192,7 +192,7 @@ function ConfidenceFlag({ data }: { data: TeamDataset }) {
       style={{
         fontSize: 10, fontWeight: 700, color: C.amber,
         background: C.amber + '14', border: '1px solid ' + C.amber + '33',
-        borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap',
+        borderRadius: 12, padding: '1px 7px', whiteSpace: 'nowrap',
       }}
     >limited confidence</span>
   )
@@ -245,7 +245,7 @@ function HowRankingWorksButton({ onOpen }: { onOpen: () => void }) {
   return (
     <button onClick={onOpen} style={{
       fontSize: 11, fontWeight: 600, color: C.blue, background: 'none',
-      border: '1px solid ' + C.line, borderRadius: 7, padding: '3px 9px',
+      border: '1px solid ' + C.line, borderRadius: 8, padding: '3px 9px',
       cursor: 'pointer', whiteSpace: 'nowrap',
     }}>How ranking works</button>
   )
@@ -307,9 +307,9 @@ function CoverageSection({ data, onOpen }: {
           thing this page could show. */}
       {hc.warning && (
         <div style={{
-          fontSize: 12, lineHeight: 1.5, color: '#92400E',
-          background: '#FFFBEB', border: '1px solid #FDE68A',
-          borderRadius: 9, padding: '9px 12px', marginBottom: 10,
+          fontSize: 12, lineHeight: 1.5, color: '#805B0D',
+          background: '#FAF0DA', border: '1px solid #E6D2A0',
+          borderRadius: 8, padding: '9px 12px', marginBottom: 10,
         }}>
           <strong style={{ fontWeight: 700 }}>Holiday calendar incomplete for this period.</strong>{' '}
           {/* The bolded lead-in already carries the headline, so strip it from the
@@ -432,7 +432,7 @@ function AdoptionSection({ data, rows, onOpen }: {
           </div>
 
           {a.anyProvisionalWindow && (
-            <div style={{ fontSize: 11.5, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 9, padding: '8px 11px', marginBottom: 10 }}>
+            <div style={{ fontSize: 11.5, color: '#805B0D', background: '#FAF0DA', border: '1px solid #E6D2A0', borderRadius: 8, padding: '8px 11px', marginBottom: 10 }}>
               Some employees have no configured shift, so their start window uses a provisional
               default of {formatMinutesOfDay(600)} + 30 minutes. Set Office Timing in
               Attendance → Employees to measure them against their real shift.
@@ -616,7 +616,7 @@ function Briefing({ data, onOpen }: {
           <button key={item.userId + item.issue} onClick={() => onOpen(item.userId)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
-                width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+                width: 6, height: 6, borderRadius: 6, flexShrink: 0,
                 background: item.severity === 'critical' ? C.red : C.amber,
               }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
@@ -637,7 +637,7 @@ function Briefing({ data, onOpen }: {
         ) : data.positives.map(item => (
           <button key={item.userId + item.headline} onClick={() => onOpen(item.userId)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: 3, background: C.green, flexShrink: 0 }} />
+              <span style={{ width: 6, height: 6, borderRadius: 6, background: C.green, flexShrink: 0 }} />
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
               <span style={{ fontSize: 12, color: C.muted }}>— {item.headline}</span>
             </div>
@@ -794,7 +794,7 @@ function Rankings({ data, onOpen }: { data: TeamDataset; onOpen: (userId: string
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {data.rankings.map(r => (
           <button key={r.key} onClick={() => setTab(r.key)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+            fontSize: 11, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  tab === r.key ? 700 : 500,
             color:       tab === r.key ? '#fff' : C.muted,
             background:  tab === r.key ? C.ink : '#fff',
@@ -868,7 +868,7 @@ function EodSection({ data, rows, onOpen }: {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {(['all', 'on_time', 'late', 'missed'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+            fontSize: 11, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  filter === f ? 700 : 500,
             color:       filter === f ? '#fff' : C.muted,
             background:  filter === f ? C.ink : '#fff',
@@ -961,11 +961,11 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
 
   const th: React.CSSProperties = {
     padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600,
-    color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em',
-    whiteSpace: 'nowrap', borderBottom: '1px solid #EEF0F4', background: '#F8F9FB',
+    color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.05em',
+    whiteSpace: 'nowrap', borderBottom: '1px solid #F1EEE9', background: '#FBFAF8',
   }
   const td = (extra?: React.CSSProperties): React.CSSProperties => ({
-    padding: '10px 12px', fontSize: 12, borderBottom: '1px solid #F0F1F3',
+    padding: '10px 12px', fontSize: 12, borderBottom: '1px solid #F1EEE9',
     verticalAlign: 'top', ...extra,
   })
 
@@ -983,7 +983,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 14,
+          background: '#fff', borderRadius: 12,
           width: '100%', maxWidth: 900, maxHeight: '82vh',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 8px 40px rgba(0,0,0,0.16)',
@@ -992,23 +992,23 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
       >
         {/* Header */}
         <div style={{
-          padding: '16px 20px', borderBottom: '1px solid #EEF0F4',
+          padding: '16px 20px', borderBottom: '1px solid #F1EEE9',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
           flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#111318' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#303536' }}>
               Stuck Tasks — {memberName}
             </div>
-            <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: '#686D6C', marginTop: 2 }}>
               {tasks.length} task{tasks.length !== 1 ? 's' : ''} waiting or stale-blocked
             </div>
           </div>
           <button
             onClick={onClose}
             style={{
-              background: '#F4F5F7', border: 'none', borderRadius: 7,
-              width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#6B7384',
+              background: '#F7F5F1', border: 'none', borderRadius: 8,
+              width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#686D6C',
               flexShrink: 0,
             }}
           >✕</button>
@@ -1017,7 +1017,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
         {/* Table */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {tasks.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#8C94A6', fontSize: 13 }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: '#686D6C', fontSize: 13 }}>
               No stuck tasks found.
             </div>
           ) : (
@@ -1036,16 +1036,16 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
               <tbody>
                 {tasks.map((t, i) => {
                   const isWaiting   = t.status === 'waiting'
-                  const statusColor = isWaiting ? '#E8A030' : '#D94F4F'
-                  const statusBg    = isWaiting ? '#E8A03014' : '#D94F4F14'
+                  const statusColor = isWaiting ? '#C48A1A' : '#B42332'
+                  const statusBg    = isWaiting ? '#C48A1A14' : '#B4233214'
                   const reason      = stuckReason(t)
                   const isOverdue   = !!t.due_date && t.due_date < todayStr
                   return (
-                    <tr key={t.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                    <tr key={t.id} style={{ background: i % 2 === 0 ? '#fff' : '#FBFAF8' }}>
                       {/* Task title */}
                       <td style={td({ maxWidth: 200 })}>
                         <div style={{
-                          fontWeight: 500, color: '#111318', fontSize: 12.5,
+                          fontWeight: 500, color: '#303536', fontSize: 12.5,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }} title={t.title}>{t.title}</div>
                       </td>
@@ -1059,14 +1059,14 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                         }}>{t.status}</span>
                       </td>
                       {/* Waiting On */}
-                      <td style={td({ color: '#6B7384', fontSize: 11.5, verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 11.5, verticalAlign: 'middle' })}>
                         {waitingOnLabel(t)}
                       </td>
                       {/* Reason / Note */}
                       <td style={td({ maxWidth: 280 })}>
                         <div style={{
                           fontSize: 12, lineHeight: 1.45,
-                          color: reason.faint ? '#BCC3D0' : '#3D4455',
+                          color: reason.faint ? '#686D6C' : '#4C5352',
                           fontStyle: reason.faint ? 'italic' : 'normal',
                           display: '-webkit-box',
                           WebkitLineClamp: 3,
@@ -1075,7 +1075,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                         }} title={reason.text}>{reason.text}</div>
                       </td>
                       {/* Last Update */}
-                      <td style={td({ color: '#8C94A6', fontSize: 11.5, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 11.5, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
                         {formatRelative(t.last_update_at)}
                       </td>
                       {/* Due Date */}
@@ -1084,18 +1084,18 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                           <span style={{
                             fontSize: 11.5,
                             fontWeight: isOverdue ? 600 : 400,
-                            color: isOverdue ? '#D94F4F' : '#6B7384',
+                            color: isOverdue ? '#B42332' : '#686D6C',
                           }}>{formatDate(t.due_date)}</span>
-                        ) : <span style={{ color: '#BCC3D0' }}>—</span>}
+                        ) : <span style={{ color: '#686D6C' }}>—</span>}
                       </td>
                       {/* Open link */}
                       <td style={td({ textAlign: 'right', verticalAlign: 'middle' })}>
                         <button
                           onClick={() => { onClose(); router.push(`/tasks/${t.id}`) }}
                           style={{
-                            fontSize: 10, fontWeight: 600, color: '#5585E8',
-                            background: '#5585E808', border: '1px solid #5585E820',
-                            borderRadius: 5, padding: '3px 8px',
+                            fontSize: 10, fontWeight: 600, color: '#335A86',
+                            background: '#335A8608', border: '1px solid #335A8620',
+                            borderRadius: 6, padding: '3px 8px',
                             cursor: 'pointer', whiteSpace: 'nowrap',
                           }}
                         >Open →</button>
@@ -1249,7 +1249,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                 </div>
                 <div style={{
                   fontSize: 13, color: C.ink, fontWeight: 600, lineHeight: 1.45,
-                  background: C.panel, border: '1px solid ' + C.line, borderRadius: 10, padding: 12,
+                  background: C.panel, border: '1px solid ' + C.line, borderRadius: 8, padding: 12,
                 }}>{action}</div>
               </div>
 
@@ -1426,7 +1426,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                         <span style={{ color: C.muted }}>{label}</span>
                         <span style={{ fontWeight: 700, color: C.ink }}>{val}/{max}</span>
                       </div>
-                      <div style={{ height: 5, background: C.line, borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: C.line, borderRadius: 6, overflow: 'hidden' }}>
                         <div style={{ width: (val / max * 100) + '%', height: '100%', background: C.green }} />
                       </div>
                     </div>
@@ -1649,7 +1649,7 @@ export default function TeamPerformancePage() {
       actions={
         <a href="/performance" style={{
           fontSize: 12, fontWeight: 600, color: C.faint, textDecoration: 'none',
-          border: '1px solid ' + C.line, padding: '6px 14px', borderRadius: 7,
+          border: '1px solid ' + C.line, padding: '6px 14px', borderRadius: 8,
         }}>← My Report</a>
       }
     >
@@ -1681,7 +1681,7 @@ export default function TeamPerformancePage() {
                 onClick={() => setRetryCount(n => n + 1)}
                 style={{
                   fontSize: 12, fontWeight: 600, color: '#fff', background: C.ink,
-                  border: 'none', borderRadius: 7, padding: '7px 16px', cursor: 'pointer',
+                  border: 'none', borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
                 }}
               >Retry</button>
             )}

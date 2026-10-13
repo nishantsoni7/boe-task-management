@@ -14,13 +14,13 @@ type SheetState =
   | { status: 'ready'; sheetNames: string[]; rowsBySheet: Record<string, string[][]> }
 
 const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
-  PDF:     { fg: '#D94F4F', bg: 'rgba(217,79,79,0.08)'   },
-  Image:   { fg: '#5585E8', bg: 'rgba(85,133,232,0.08)'  },
-  Excel:   { fg: '#45A870', bg: 'rgba(69,168,112,0.08)'  },
-  Word:    { fg: '#5585E8', bg: 'rgba(85,133,232,0.08)'  },
-  CSV:     { fg: '#45A870', bg: 'rgba(69,168,112,0.08)'  },
-  Archive: { fg: '#E8A030', bg: 'rgba(232,160,48,0.08)'  },
-  File:    { fg: '#8C94A6', bg: 'rgba(140,148,166,0.08)' },
+  PDF:     { fg: '#B42332', bg: 'rgba(180,35,50,0.08)'   },
+  Image:   { fg: '#335A86', bg: 'rgba(51,90,134,0.08)'  },
+  Excel:   { fg: '#2F7A52', bg: 'rgba(39,98,71,0.08)'  },
+  Word:    { fg: '#335A86', bg: 'rgba(51,90,134,0.08)'  },
+  CSV:     { fg: '#2F7A52', bg: 'rgba(39,98,71,0.08)'  },
+  Archive: { fg: '#C48A1A', bg: 'rgba(196,138,26,0.08)'  },
+  File:    { fg: '#686D6C', bg: 'rgba(140,148,166,0.08)' },
 }
 
 interface Props {
@@ -128,7 +128,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
             fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em',
             textTransform: 'uppercase',
             color: chip.fg, background: chip.bg,
-            padding: '2px 8px', borderRadius: '20px',
+            padding: '2px 8px', borderRadius: '12px',
             border: `1px solid ${chip.fg}30`,
             flexShrink: 0,
           }}>
@@ -184,7 +184,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               }}
               style={{
                 fontSize: '11px', fontWeight: 500,
-                color: colors.blue, textDecoration: 'none',
+                color: colors.brandInk, textDecoration: 'none',
                 padding: '4px 10px', borderRadius: '6px',
                 border: `1px solid ${colors.blue}40`,
                 background: colors.blueTint,
@@ -212,7 +212,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: colors.muted, fontSize: '18px', lineHeight: 1,
-                padding: '2px 6px', borderRadius: '4px',
+                padding: '2px 6px', borderRadius: '6px',
               }}
               aria-label="Close preview"
             >
@@ -257,7 +257,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                 style={{
                   display: 'inline-block',
                   fontSize: '13px', fontWeight: 500,
-                  color: colors.blue, textDecoration: 'none',
+                  color: colors.brandInk, textDecoration: 'none',
                   padding: '8px 18px', borderRadius: '8px',
                   border: `1px solid ${colors.blue}40`,
                   background: colors.blueTint,
@@ -338,7 +338,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                 style={{
                   display: 'inline-block',
                   fontSize: '13px', fontWeight: 500,
-                  color: colors.blue, textDecoration: 'none',
+                  color: colors.brandInk, textDecoration: 'none',
                   padding: '8px 18px', borderRadius: '8px',
                   border: `1px solid ${colors.blue}40`,
                   background: colors.blueTint,

@@ -74,10 +74,10 @@ function OrdersAccessDenied({ onBack }: { onBack: () => void }) {
   return (
     <div style={{ minHeight: '100vh', background: colors.void, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}>
       <div role="alert" style={{
-        background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '14px',
+        background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '12px',
         padding: '28px 24px', maxWidth: '440px', width: '100%', display: 'flex', flexDirection: 'column', gap: '10px',
       }}>
-        <Lock size={20} strokeWidth={1.8} color="#9A6212" aria-hidden="true" />
+        <Lock size={20} strokeWidth={1.8} color="#805B0D" aria-hidden="true" />
         <h1 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: colors.primary }}>{ORDERS_ACCESS_DENIED_TITLE}</h1>
         <p style={{ margin: 0, fontSize: '13px', color: colors.secondary, lineHeight: 1.55 }}>
           PI Drafts and Confirmed Orders are opened only by people given Order Management in Control Center.

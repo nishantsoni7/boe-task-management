@@ -528,7 +528,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             onClick={() => router.push('/customer-reviews')}
             style={{
               background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-              color: colors.blue, fontSize: '13px', textDecoration: 'underline',
+              color: colors.brandInk, fontSize: '13px', textDecoration: 'underline',
             }}
           >
             Back to the list
@@ -586,7 +586,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           */}
           <ReviewTypeBadge type={card.review_type} />
           <ReadinessBadge card={card} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: colors.tertiary }}>
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: colors.tertiary }}>
             {card.card_ref}
           </span>
         </div>
@@ -623,8 +623,8 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         {card.return_reason && card.status === 'booked' && (
           <div style={{
             padding: '10px 12px', borderRadius: '8px',
-            background: '#FFFBEB', border: '1px solid #FDE68A',
-            fontSize: '12px', color: '#92400E', lineHeight: 1.55,
+            background: '#FAF0DA', border: '1px solid #E6D2A0',
+            fontSize: '12px', color: '#805B0D', lineHeight: 1.55,
           }}>
             <strong>Returned by a verifier.</strong> {card.return_reason}
           </div>
@@ -1175,7 +1175,7 @@ export function verifiedQuery(data: unknown): string {
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
     <section id={id} style={{
-      padding: '14px', borderRadius: '10px',
+      padding: '14px', borderRadius: '8px',
       border: `1px solid ${colors.border}`, background: colors.raised,
     }}>
       <h2 style={{
@@ -1205,20 +1205,20 @@ function NextStepStrip({
 }) {
   const at = stageIndex(card)
   const toneColor =
-    step.tone === 'attention' ? '#9A3412'
-    : step.tone === 'act' ? '#1E40AF'
-    : step.tone === 'done' ? '#166534'
+    step.tone === 'attention' ? '#805B0D'
+    : step.tone === 'act' ? '#335A86'
+    : step.tone === 'done' ? '#276247'
     : colors.tertiary
   const toneBg =
-    step.tone === 'attention' ? '#FFF7ED'
-    : step.tone === 'act' ? '#EFF6FF'
-    : step.tone === 'done' ? '#F0FDF4'
+    step.tone === 'attention' ? '#FAF0DA'
+    : step.tone === 'act' ? '#EAF0F8'
+    : step.tone === 'done' ? '#E8F2EC'
     : colors.raised
   const target = card.status === 'booked' && !card.sent_confirmed_at ? 'review-send' : 'review-next-step'
 
   return (
     <div style={{
-      padding: '12px 14px', borderRadius: '10px',
+      padding: '12px 14px', borderRadius: '8px',
       background: toneBg, border: `1px solid ${colors.border}`,
       display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
@@ -1230,18 +1230,18 @@ function NextStepStrip({
             <li key={name} style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               fontSize: '11px', fontWeight: 600,
-              color: done ? '#166534' : current ? colors.primary : colors.muted,
+              color: done ? '#276247' : current ? colors.primary : colors.muted,
             }}>
               <span aria-hidden="true" style={{
                 width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 10, fontWeight: 700,
-                background: done ? '#BBF7D0' : current ? colors.primary : 'rgba(0,0,0,0.08)',
-                color: done ? '#166534' : current ? '#fff' : colors.muted,
+                background: done ? '#BCD8C8' : current ? colors.primary : 'rgba(0,0,0,0.08)',
+                color: done ? '#276247' : current ? '#fff' : colors.muted,
               }}>
                 {done ? '✓' : i + 1}
               </span>
               {name}
-              {i < REVIEW_STAGES.length - 1 && <span aria-hidden="true" style={{ color: '#C4C9D4', margin: '0 2px' }}>›</span>}
+              {i < REVIEW_STAGES.length - 1 && <span aria-hidden="true" style={{ color: '#686D6C', margin: '0 2px' }}>›</span>}
             </li>
           )
         })}

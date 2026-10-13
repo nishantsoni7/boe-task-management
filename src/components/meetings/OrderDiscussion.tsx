@@ -469,8 +469,8 @@ function DiscussionComposer({
                   src={item.preview}
                   alt={item.name}
                   style={{
-                    width: 108, height: 80, objectFit: 'cover', borderRadius: '7px', display: 'block',
-                    border: `1px solid ${item.state === 'failed' ? 'rgba(217,79,79,0.55)' : colors.border}`,
+                    width: 108, height: 80, objectFit: 'cover', borderRadius: '8px', display: 'block',
+                    border: `1px solid ${item.state === 'failed' ? 'rgba(180,35,50,0.55)' : colors.border}`,
                     opacity: item.state === 'ready' || item.state === 'failed' ? 1 : 0.6,
                   }}
                 />
@@ -483,7 +483,7 @@ function DiscussionComposer({
                     style={{
                       position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '6px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                      border: 'none', background: 'rgba(17,19,24,0.7)', color: '#FFFFFF',
+                      border: 'none', background: 'rgba(48,53,54,0.7)', color: '#FFFFFF',
                     }}
                   >
                     <X size={12} strokeWidth={2.4} />
@@ -541,8 +541,8 @@ function DiscussionComposer({
       {notice && (
         <div role={notice.tone === 'error' ? 'alert' : 'status'} style={{
           padding: '9px 12px', borderRadius: '8px', fontSize: '12px', whiteSpace: 'pre-wrap',
-          background: notice.tone === 'error' ? 'rgba(217,79,79,0.1)' : colors.greenTint,
-          color: notice.tone === 'error' ? '#C13030' : '#2E8A58',
+          background: notice.tone === 'error' ? 'rgba(180,35,50,0.1)' : colors.greenTint,
+          color: notice.tone === 'error' ? '#B42332' : '#276247',
         }}>
           {notice.message}
         </div>
@@ -707,7 +707,7 @@ function EarlierGroup({
   ].filter(Boolean).join(' · ') || 'Nothing recorded'
 
   return (
-    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden' }}>
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
       <button
         type="button"
         onClick={onToggle}
@@ -796,7 +796,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
       </div>
       {hasUpdateText(entry) && (
         <div style={{
-          marginTop: '5px', padding: '8px 10px', borderRadius: '7px',
+          marginTop: '5px', padding: '8px 10px', borderRadius: '8px',
           background: colors.raised, borderLeft: `2px solid ${colors.blue}`,
           fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
         }}>
@@ -817,7 +817,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
 function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section style={{
-      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
       {children}

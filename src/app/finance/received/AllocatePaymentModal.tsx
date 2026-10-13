@@ -550,10 +550,10 @@ export function KindBadge({ kind }: { kind: AllocationTargetKind }) {
   const isOrder = kind === 'order'
   return (
     <span style={{
-      display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-      background: isOrder ? colors.blueTint : '#F5F3FF',
+      display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
+      background: isOrder ? colors.blueTint : '#EAF0F8',
       color: isOrder ? colors.blue : '#5B21B6',
-      border: `1px solid ${isOrder ? 'rgba(85,133,232,0.25)' : '#DDD6FE'}`,
+      border: `1px solid ${isOrder ? 'rgba(51,90,134,0.25)' : '#DDD6FE'}`,
       fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
     }}>
       {isOrder ? 'Confirmed Order' : 'PI Draft'}

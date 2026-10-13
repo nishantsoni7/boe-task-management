@@ -190,7 +190,7 @@ export function ScreenshotManager({
             <div
               key={shot.id}
               style={{
-                width: '124px', borderRadius: '9px', overflow: 'hidden',
+                width: '124px', borderRadius: '8px', overflow: 'hidden',
                 border: `1px solid ${colors.border}`, background: colors.raised,
               }}
             >

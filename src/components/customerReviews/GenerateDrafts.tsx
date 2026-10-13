@@ -284,7 +284,7 @@ function CheckList({
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '7px 10px', minHeight: '36px', borderRadius: '6px',
               border: `1px solid ${on ? '#C4B5FD' : colors.border}`,
-              background: on ? '#F5F3FF' : '#FFFFFF',
+              background: on ? '#EAF0F8' : '#FFFFFF',
               color: on ? '#5B21B6' : colors.secondary,
               fontSize: '11.5px', fontWeight: on ? 700 : 500,
               cursor: disabled ? 'not-allowed' : 'pointer',
@@ -493,7 +493,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           Generate drafts
         </button>
         {done !== null && (
-          <span role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600 }}>
+          <span role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600 }}>
             {done} drafts created. They are waiting for your approval.
           </span>
         )}
@@ -871,13 +871,13 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
                 button than after a round trip.
               */}
               {!checked.ok && (
-                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
+                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#A12438', lineHeight: 1.55 }}>
                   {checked.error}
                 </p>
               )}
 
               {phase.kind === 'failed' && (
-                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
+                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#A12438', lineHeight: 1.55 }}>
                   {phase.message} Nothing was created, and your guidance is still here — press
                   the button again to retry the same request.
                 </p>
@@ -894,7 +894,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           {!showForm && (
             <div style={{
               display: 'grid', gap: '10px', padding: '14px',
-              border: '1px solid #DDD6FE', borderRadius: '8px', background: '#F5F3FF',
+              border: '1px solid #DDD6FE', borderRadius: '8px', background: '#EAF0F8',
             }}>
               <strong style={{ fontSize: '13px', color: '#4C1D95' }}>
                 This creates exactly {size} drafts, pending your approval.

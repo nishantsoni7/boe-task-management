@@ -470,7 +470,7 @@ export default function PayrollResultDetailPage() {
           onClick={() => router.push(`/payroll/results/${periodId}`)}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
+            color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
             padding: 0,
           }}
         >
@@ -481,7 +481,7 @@ export default function PayrollResultDetailPage() {
       {error && (
         <div style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+          background: 'rgba(239,68,68,0.08)', color: '#B42332',
           border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
         }}>
           {error}
@@ -515,8 +515,8 @@ export default function PayrollResultDetailPage() {
           )}
           notices={savedNotice && (
             <div style={{
-              marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-              background: 'rgba(5,150,105,0.09)', color: '#047857',
+              marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+              background: 'rgba(5,150,105,0.09)', color: '#276247',
               border: '1px solid rgba(5,150,105,0.28)', fontSize: 13,
               display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center',
             }}>
@@ -524,7 +524,7 @@ export default function PayrollResultDetailPage() {
               <button
                 onClick={() => setSavedNotice(null)}
                 aria-label="Dismiss"
-                style={{ background: 'none', border: 'none', color: '#047857', cursor: 'pointer', fontSize: 14 }}
+                style={{ background: 'none', border: 'none', color: '#276247', cursor: 'pointer', fontSize: 14 }}
               >✕</button>
             </div>
           )}

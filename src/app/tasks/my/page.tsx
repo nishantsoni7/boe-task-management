@@ -105,8 +105,8 @@ const LIST_GRID_COLUMNS =
 
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
-  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
-  { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
+  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#335A86' },
+  { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2F7A52' },
   { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
 ]
 
@@ -163,11 +163,11 @@ function TaskCard({
   const cardBackground = completed
     ? colors.base
     : isImportant
-      ? (hovered ? 'rgba(196,154,40,0.08)' : 'rgba(196,154,40,0.04)')
+      ? (hovered ? 'rgba(183,137,42,0.08)' : 'rgba(183,137,42,0.04)')
       : (hovered ? colors.raised : colors.base)
 
   const cardBorder = isImportant
-    ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
+    ? `1.5px solid rgba(183,137,42,${hovered ? '0.40' : '0.20'})`
     : `1.5px solid ${colors.border}`
 
   const titleColor = completed ? colors.muted : colors.primary
@@ -192,7 +192,7 @@ function TaskCard({
             on this card that cannot be guessed from the rest of it. The
             actions sit on row 2. */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
@@ -222,7 +222,7 @@ function TaskCard({
               </span>
             )}
             {!isSelf && assignerName && (
-              <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
                 {assignerName}
               </span>
             )}
@@ -297,7 +297,7 @@ function TaskCard({
         boxShadow: hovered
           ? '0 2px 8px rgba(0,0,0,0.09)'
           : isImportant
-            ? '0 1px 4px rgba(196,154,40,0.08)'
+            ? '0 1px 4px rgba(183,137,42,0.08)'
             : '0 1px 3px rgba(0,0,0,0.04)',
         opacity: completed ? 0.5 : 1,
         transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
@@ -310,7 +310,7 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {task.is_urgent
-          ? <Star size={11} fill="#C49A28" color="#C49A28" />
+          ? <Star size={11} fill="#B7892A" color="#B7892A" />
           : <div style={{ width: '11px' }} />
         }
       </div>
@@ -328,7 +328,7 @@ function TaskCard({
           {task.title}
         </span>
         {isPinned && (
-          <span style={{ fontSize: '9px', fontWeight: 700, color: '#92710A', background: 'rgba(196,154,40,0.12)', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
+          <span style={{ fontSize: '9px', fontWeight: 700, color: '#92710A', background: 'rgba(183,137,42,0.12)', borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
             Today&apos;s Focus
           </span>
         )}
@@ -347,7 +347,7 @@ function TaskCard({
             maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             fontSize: '10.5px', fontWeight: 600,
-            padding: '1px 7px', borderRadius: '20px',
+            padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
               ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'       }
               : { color: '#6B4FA0',     background: 'rgba(155,111,212,0.10)' }
@@ -364,7 +364,7 @@ function TaskCard({
       }}>
         {task.due_date ? (() => {
           const isToday = task.due_date === TODAY_STR
-          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#E8A030' : colors.secondary
+          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#C48A1A' : colors.secondary
           return (
             <span style={{ fontSize: '11px', color: dueDateColor, whiteSpace: 'nowrap', fontWeight: isOverdue(task) || isToday ? 600 : 400 }}>
               {formatDate(task.due_date)}
@@ -431,11 +431,11 @@ function TaskCard({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
               background: isPinned
-                ? 'rgba(196,154,40,0.10)'
+                ? 'rgba(183,137,42,0.10)'
                 : hoveredPin ? 'rgba(91,127,166,0.10)' : 'transparent',
-              border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : hoveredPin ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+              border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : hoveredPin ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
               cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-              color: isPinned ? '#C49A28' : hoveredPin ? '#5B7FA6' : colors.muted,
+              color: isPinned ? '#B7892A' : hoveredPin ? '#335A86' : colors.muted,
             }}
           >
             <Pin size={11} />
@@ -454,7 +454,7 @@ function TaskCard({
                 background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent',
                 border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
                 cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-                color: hoveredEdit ? '#5B7FA6' : colors.muted,
+                color: hoveredEdit ? '#335A86' : colors.muted,
               }}
             >
               <Pencil size={11} />
@@ -642,9 +642,9 @@ function CreateSelfTaskModal({
   }
 
   const PRIORITY_CFG = {
-    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',   text: '#16a34a' },
-    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',   text: '#d97706' },
-    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)',   text: '#dc2626' },
+    low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)',   text: '#2F7A52' },
+    medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)',   text: '#C48A1A' },
+    high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)',   text: '#B42332' },
   } as const
 
   return (
@@ -795,9 +795,9 @@ function CreateSelfTaskModal({
             <button
               onClick={() => attachInputRef.current?.click()}
               style={{
-                width: '100%', padding: '7px 0', borderRadius: '7px',
-                border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
-                background: attachDropActive ? colors.blueTint : colors.raised,
+                width: '100%', padding: '7px 0', borderRadius: '8px',
+                border: `1.5px dashed ${attachDropActive ? colors.brand : colors.border}`,
+                background: attachDropActive ? colors.brandTint : colors.raised,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
@@ -812,7 +812,7 @@ function CreateSelfTaskModal({
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 pointerEvents: 'none',
                 fontSize: '11px', fontWeight: 600, color: colors.blue,
-                background: 'rgba(255,255,255,0.6)', borderRadius: '7px',
+                background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
               }}>
                 Drop files to attach
               </div>
@@ -831,16 +831,16 @@ function CreateSelfTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
             {isUrgent ? 'Marked Important' : 'Mark Important'}
           </span>
           <div style={{
-            width: '30px', height: '17px', borderRadius: '9px',
-            background: isUrgent ? '#C49A28' : colors.float,
+            width: '30px', height: '17px', borderRadius: '8px',
+            background: isUrgent ? '#B7892A' : colors.float,
             position: 'relative', flexShrink: 0,
             transition: 'background 0.16s', border: `1px solid ${colors.border}`,
           }}>
@@ -861,7 +861,7 @@ function CreateSelfTaskModal({
           <button
             onClick={onClose}
             style={{
-              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`,
               background: 'transparent', cursor: 'pointer',
               fontSize: '12px', fontWeight: 600, color: colors.secondary,
             }}
@@ -872,7 +872,7 @@ function CreateSelfTaskModal({
             onClick={handleSubmit}
             disabled={!canSave}
             style={{
-              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              padding: '7px 18px', borderRadius: '8px', border: 'none',
               background: canSave ? colors.primary : colors.float,
               color: canSave ? '#fff' : colors.muted,
               cursor: canSave ? 'pointer' : 'not-allowed',
@@ -1023,16 +1023,16 @@ function EditTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
             Mark Important
           </span>
           <div style={{
-            width: '30px', height: '17px', borderRadius: '9px',
-            background: isUrgent ? '#C49A28' : colors.float,
+            width: '30px', height: '17px', borderRadius: '8px',
+            background: isUrgent ? '#B7892A' : colors.float,
             position: 'relative', flexShrink: 0,
             transition: 'background 0.16s', border: `1px solid ${colors.border}`,
           }}>
@@ -1053,7 +1053,7 @@ function EditTaskModal({
           <button
             onClick={onClose}
             style={{
-              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`,
               background: 'transparent', cursor: 'pointer',
               fontSize: '12px', fontWeight: 600, color: colors.secondary,
             }}
@@ -1064,7 +1064,7 @@ function EditTaskModal({
             onClick={handleSave}
             disabled={!canSave}
             style={{
-              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              padding: '7px 18px', borderRadius: '8px', border: 'none',
               background: canSave ? colors.primary : colors.float,
               color: canSave ? '#fff' : colors.muted,
               cursor: canSave ? 'pointer' : 'not-allowed',
@@ -1108,13 +1108,13 @@ function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: n
             padding: isMobile ? '10px 12px' : '0 14px',
           }}
         >
-          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: 'rgba(0,0,0,0.06)', flexShrink: 0 }} />
-          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.06)' }} />
+          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: '#E4DED7', flexShrink: 0 }} />
+          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
           {!isMobile && (
             <>
-              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
             </>
           )}
         </div>
@@ -1618,7 +1618,7 @@ function MyTasksContent() {
         <div style={{
           display: 'flex',
           flexDirection: isMobile ? 'column' : 'row',
-          borderRadius: '20px',
+          borderRadius: '12px',
           border: `1px solid ${colors.border}`,
           background: '#fff',
           overflow: 'hidden',
@@ -1661,7 +1661,7 @@ function MyTasksContent() {
                           padding: '7px 6px',
                           background: isActive ? item.accent : 'transparent',
                           border: `1.5px solid ${isActive ? item.accent : colors.border}`,
-                          borderRadius: '20px', cursor: 'pointer', outline: 'none',
+                          borderRadius: '12px', cursor: 'pointer', outline: 'none',
                           transition: 'all 0.12s', minWidth: 0,
                         }}
                       >
@@ -1686,7 +1686,7 @@ function MyTasksContent() {
                 background: 'rgba(248,250,252,0.6)',
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
-                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#EAF0F8', zIndex: 0 }} />
                 {/* Two lines, because 84px will not hold "TASK TYPE" on one. */}
                 <div style={{
                   height: RAIL_HEADING_HEIGHT, boxSizing: 'border-box',
@@ -1719,7 +1719,7 @@ function MyTasksContent() {
                         justifyContent: 'center', gap: '7px', padding: '12px 6px',
                         background: isActive ? '#fff' : 'transparent',
                         border: 'none',
-                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #eef2f7' : 'none',
+                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #EAF0F8' : 'none',
                         borderLeft: `3px solid ${isActive ? item.accent : 'transparent'}`,
                         cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
                         ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
@@ -1738,7 +1738,7 @@ function MyTasksContent() {
                         fontSize: '12px', fontWeight: 700,
                         color: typeCounts[item.key] > 0 ? item.accent : colors.muted,
                         background: isActive ? `${item.accent}18` : 'rgba(0,0,0,0.04)',
-                        padding: '1px 6px', borderRadius: '10px',
+                        padding: '1px 6px', borderRadius: '8px',
                         minWidth: '22px', textAlign: 'center',
                       }}>
                         {typeCounts[item.key]}
@@ -1862,7 +1862,7 @@ function MyTasksContent() {
                 alignItems: 'center',
                 margin: '8px 24px 0',
                 padding: '8px 0',
-                borderRadius: '10px',
+                borderRadius: '8px',
                 background: 'rgba(248,250,252,0.85)',
                 border: `1px solid ${colors.border}`,
                 fontSize: '10px', fontWeight: 700,

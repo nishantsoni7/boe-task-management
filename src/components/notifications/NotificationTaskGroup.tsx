@@ -268,7 +268,7 @@ function NotificationTaskGroupImpl({
         // enough to shout.
         background: '#ffffff',
         border: `1px solid ${colors.border}`,
-        borderLeft: hasUnread ? `3px solid ${colors.blue}` : `3px solid ${colors.border}`,
+        borderLeft: hasUnread ? `3px solid ${colors.brand}` : `3px solid ${colors.border}`,
       }}
     >
       <div style={{
@@ -466,9 +466,9 @@ function EventRow({
           width: isMobile ? '44px' : '18px',
           height: isMobile ? '44px' : '18px',
           marginTop: isMobile ? '0' : '2px',
-          borderRadius: '4px', padding: 0,
-          border: `1.5px solid ${selected ? colors.blue : colors.borderSoft ?? colors.border}`,
-          background: selected ? colors.blue : 'transparent',
+          borderRadius: '6px', padding: 0,
+          border: `1.5px solid ${selected ? colors.brand : colors.borderSoft ?? colors.border}`,
+          background: selected ? colors.brand : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer',
         }}

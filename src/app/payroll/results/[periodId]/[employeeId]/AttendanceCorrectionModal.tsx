@@ -156,7 +156,7 @@ export function AttendanceCorrectionModal({
   }
 
   const inputStyle: React.CSSProperties = {
-    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
+    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 8,
     background: colors.base, color: colors.primary, outline: 'none',
     padding: '8px 10px', boxSizing: 'border-box', width: '100%',
   }
@@ -172,7 +172,7 @@ export function AttendanceCorrectionModal({
           the admin corrects against the evidence rather than from memory. */}
       <div style={{
         background: colors.raised, border: `1px solid ${colors.border}`,
-        borderRadius: 9, padding: '11px 13px', fontSize: 12.5, color: colors.secondary,
+        borderRadius: 8, padding: '11px 13px', fontSize: 12.5, color: colors.secondary,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: colors.tertiary }}>Machine record</span>
@@ -190,14 +190,14 @@ export function AttendanceCorrectionModal({
             {day.lines.map((l, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: i > 0 ? 4 : 0 }}>
                 <span>{DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type} · {l.hours_deducted}h</span>
-                <span style={{ color: '#C13030', fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: '#B42332', fontVariantNumeric: 'tabular-nums' }}>
                   −{fmtMoney(l.amount_deducted)}
                 </span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 7, fontWeight: 700 }}>
               <span>Deducted for this date</span>
-              <span style={{ color: '#C13030', fontVariantNumeric: 'tabular-nums' }}>−{fmtMoney(day.total_amount)}</span>
+              <span style={{ color: '#B42332', fontVariantNumeric: 'tabular-nums' }}>−{fmtMoney(day.total_amount)}</span>
             </div>
           </div>
         )}

@@ -23,10 +23,10 @@ import type { AttendanceState } from './guideContent'
 // The same three tones Payroll Result Detail uses for a day, so a state looks
 // the same here as on the screen this page explains.
 export const TONE_COLOR: Record<AttendanceState['tone'], string> = {
-  good:    '#059669',
-  caution: '#B45309',
+  good:    '#276247',
+  caution: '#805B0D',
   half:    '#7C5CD6',
-  neutral: '#8C94A6',
+  neutral: '#686D6C',
 }
 
 /**
@@ -83,7 +83,7 @@ export function PayableDaysWeek() {
             key={cell.day}
             title={cell.label}
             style={{
-              border: `1px solid ${cell.tone === 'neutral' ? 'rgba(0,0,0,0.08)' : `${TONE_COLOR[cell.tone]}33`}`,
+              border: `1px solid ${cell.tone === 'neutral' ? '#E4DED7' : `${TONE_COLOR[cell.tone]}33`}`,
               background: cell.tone === 'neutral' ? 'rgba(0,0,0,0.02)' : `${TONE_COLOR[cell.tone]}0D`,
               borderRadius: 8,
               padding: '7px 4px 8px',
@@ -91,14 +91,14 @@ export function PayableDaysWeek() {
               minWidth: 0,
             }}
           >
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: '#8C94A6', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, color: '#686D6C', letterSpacing: '0.05em' }}>
               {cell.day.toUpperCase()}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '5px 0 4px' }}>
               <ToneGlyph tone={cell.tone} size={13} />
             </div>
             <div style={{
-              fontSize: 12.5, fontWeight: 700, color: '#111318',
+              fontSize: 12.5, fontWeight: 700, color: '#303536',
               fontVariantNumeric: 'tabular-nums', lineHeight: 1,
             }}>
               {cell.payable}
@@ -106,9 +106,9 @@ export function PayableDaysWeek() {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11.5, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
+      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 8, lineHeight: 1.55 }}>
         An illustration of the rule, not a real week. Six working days here, worth{' '}
-        <strong style={{ color: '#3D4455' }}>4½ payable days</strong> — the half day counts as
+        <strong style={{ color: '#4C5352' }}>4½ payable days</strong> — the half day counts as
         half, the absence as none, and the missing punch still counts as a present day. Sunday is
         not a working day at all.
       </div>
@@ -128,10 +128,10 @@ export function PayableDaysWeek() {
  */
 export function SalaryFunnel() {
   const stages = [
-    { label: 'Gross Salary',            width: '100%', color: '#4F6FD0', note: 'what the month starts at' },
-    { label: '− Attendance Deductions', width: '82%',  color: '#B45309', note: 'what attendance cost' },
-    { label: '± Net Adjustments',       width: '92%',  color: '#059669', note: 'balance brought forward, additions, recoveries' },
-    { label: '= Salary Payable',        width: '92%',  color: '#111318', note: 'what BOE settles' },
+    { label: 'Gross Salary',            width: '100%', color: '#335A86', note: 'what the month starts at' },
+    { label: '− Attendance Deductions', width: '82%',  color: '#805B0D', note: 'what attendance cost' },
+    { label: '± Net Adjustments',       width: '92%',  color: '#276247', note: 'balance brought forward, additions, recoveries' },
+    { label: '= Salary Payable',        width: '92%',  color: '#303536', note: 'what BOE settles' },
   ]
 
   return (
@@ -145,10 +145,10 @@ export function SalaryFunnel() {
             display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
             gap: 10, marginBottom: 4, flexWrap: 'wrap',
           }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#3D4455' }}>{stage.label}</span>
-            <span style={{ fontSize: 11, color: '#8C94A6' }}>{stage.note}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#4C5352' }}>{stage.label}</span>
+            <span style={{ fontSize: 11, color: '#686D6C' }}>{stage.note}</span>
           </div>
-          <div aria-hidden="true" style={{ height: 8, background: 'rgba(0,0,0,0.05)', borderRadius: 999 }}>
+          <div aria-hidden="true" style={{ height: 8, background: '#E4DED7', borderRadius: 999 }}>
             <div style={{
               width: stage.width, height: '100%', borderRadius: 999,
               background: stage.color, opacity: i === stages.length - 1 ? 1 : 0.75,
@@ -189,28 +189,28 @@ export function PaidLeaveAbsorption() {
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '9px 12px', borderRadius: 8, marginBottom: 7,
-              border: `1px solid ${covered ? 'rgba(5,150,105,0.28)' : 'rgba(0,0,0,0.08)'}`,
+              border: `1px solid ${covered ? 'rgba(5,150,105,0.28)' : '#E4DED7'}`,
               background: covered ? 'rgba(5,150,105,0.06)' : '#fff',
             }}
           >
             <span style={{
-              fontSize: 11, fontWeight: 700, color: '#8C94A6',
+              fontSize: 11, fontWeight: 700, color: '#686D6C',
               fontVariantNumeric: 'tabular-nums', minWidth: 46,
             }}>
               {item.date}
             </span>
-            <span style={{ fontSize: 12.5, color: '#3D4455', fontWeight: 500 }}>{item.label}</span>
+            <span style={{ fontSize: 12.5, color: '#4C5352', fontWeight: 500 }}>{item.label}</span>
             <span style={{
               marginLeft: 'auto', fontSize: 12, fontWeight: 700,
-              color: covered ? '#059669' : '#B45309', whiteSpace: 'nowrap',
+              color: covered ? '#276247' : '#805B0D', whiteSpace: 'nowrap',
             }}>
               {covered ? `Company paid · ${item.amount}` : `Charged · ${item.amount}`}
             </span>
           </div>
         )
       })}
-      <div style={{ fontSize: 11.5, color: '#5B6474', lineHeight: 1.55, marginTop: 2 }}>
-        The allowance settles the <strong style={{ color: '#3D4455' }}>earliest</strong> item of the
+      <div style={{ fontSize: 11.5, color: '#686D6C', lineHeight: 1.55, marginTop: 2 }}>
+        The allowance settles the <strong style={{ color: '#4C5352' }}>earliest</strong> item of the
         month it can cover — not the largest. The covered line stays on your payslip showing ₹0, so
         the month still adds up.
       </div>

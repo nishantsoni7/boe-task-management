@@ -271,7 +271,7 @@ export default function CreateSelfTaskPage() {
           padding: '11px 16px',
           borderRadius: '8px',
           background: colors.greenTint,
-          border: `1px solid rgba(69,168,112,0.25)`,
+          border: `1px solid rgba(39,98,71,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: '12px',
         }}>
@@ -313,7 +313,7 @@ export default function CreateSelfTaskPage() {
           padding: '11px 16px',
           borderRadius: '8px',
           background: colors.redTint,
-          border: `1px solid rgba(217,79,79,0.25)`,
+          border: `1px solid rgba(180,35,50,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: '12px',
         }}>
@@ -333,7 +333,7 @@ export default function CreateSelfTaskPage() {
           flex: 2.5, minWidth: 0,
           background: colors.base,
           border: `1px solid ${colors.border}`,
-          borderRadius: '10px',
+          borderRadius: '8px',
           boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
           padding: '24px',
         }}>
@@ -367,9 +367,9 @@ export default function CreateSelfTaskPage() {
                 {PRIORITIES.map(p => {
                   const selected = priority === p
                   const cfg = {
-                    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',  text: '#16a34a' },
-                    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',  text: '#d97706' },
-                    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)',  text: '#dc2626' },
+                    low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)',  text: '#2F7A52' },
+                    medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)',  text: '#C48A1A' },
+                    high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)',  text: '#B42332' },
                   }[p]!
                   return (
                     <button
@@ -435,16 +435,16 @@ export default function CreateSelfTaskPage() {
               padding: '11px 13px', cursor: 'pointer', height: '42px', boxSizing: 'border-box',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               borderRadius: '8px',
-              background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-              border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+              background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+              border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
             }}
           >
-            <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+            <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
               {isUrgent ? 'Marked Important' : 'Mark Important'}
             </p>
             <div style={{
-              width: '34px', height: '20px', borderRadius: '10px',
-              background: isUrgent ? '#C49A28' : colors.float,
+              width: '34px', height: '20px', borderRadius: '8px',
+              background: isUrgent ? '#B7892A' : colors.float,
               position: 'relative', flexShrink: 0,
               transition: 'background 0.16s',
               border: `1px solid ${colors.border}`,
@@ -502,8 +502,8 @@ export default function CreateSelfTaskPage() {
                 onClick={() => fileInputRef.current?.click()}
                 style={{
                   width: '100%', height: '40px', boxSizing: 'border-box',
-                  borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
-                  background: attachDropActive ? colors.blueTint : colors.raised, cursor: 'pointer',
+                  borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? colors.brand : colors.border}`,
+                  background: attachDropActive ? colors.brandTint : colors.raised, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                   transition: 'border-color 0.15s, background 0.15s',
                 }}
@@ -563,7 +563,7 @@ export default function CreateSelfTaskPage() {
           flex: 2, minWidth: 0,
           background: colors.base,
           border: `1px solid ${colors.border}`,
-          borderRadius: '10px',
+          borderRadius: '8px',
           boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
           padding: '20px',
           alignSelf: 'flex-start',

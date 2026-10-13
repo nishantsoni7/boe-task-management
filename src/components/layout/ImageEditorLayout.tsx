@@ -59,13 +59,13 @@ export function ImageEditorLayout({
             title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -78,7 +78,7 @@ export function ImageEditorLayout({
             onClick={() => { setSidebarOpen(false); router.push('/image-editor') }}
             style={{ fontWeight: 600, marginBottom: '2px' }}
           >
-            <span style={{ color: '#DC1F2E', display: 'flex', alignItems: 'center' }}>
+            <span style={{ color: '#B9472E', display: 'flex', alignItems: 'center' }}>
               <Wand2 size={15} strokeWidth={1.8} />
             </span>
             Studio Image

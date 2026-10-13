@@ -21,9 +21,9 @@ import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
 
 const PRIORITY_CFG = {
-  low:    { active: '#6B7280', activeBg: '#F9FAFB', border: 'rgba(107,114,128,0.30)' },
-  medium: { active: '#B45309', activeBg: '#FFFBEB', border: 'rgba(180,83,9,0.30)'   },
-  high:   { active: '#9B3D3D', activeBg: '#FEF2F2', border: 'rgba(155,61,61,0.35)'  },
+  low:    { active: '#686D6C', activeBg: '#FBFAF8', border: 'rgba(107,114,128,0.30)' },
+  medium: { active: '#805B0D', activeBg: '#FAF0DA', border: 'rgba(180,83,9,0.30)'   },
+  high:   { active: '#9B3D3D', activeBg: '#FBE9EC', border: 'rgba(155,61,61,0.35)'  },
 } as const
 
 export default function NewQuotationRequestPage() {
@@ -225,7 +225,7 @@ export default function NewQuotationRequestPage() {
         <div style={{
           maxWidth: '520px', marginBottom: '16px', padding: '11px 16px',
           borderRadius: '8px', background: colors.greenTint,
-          border: `1px solid rgba(69,168,112,0.25)`,
+          border: `1px solid rgba(39,98,71,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -252,7 +252,7 @@ export default function NewQuotationRequestPage() {
         <div style={{
           maxWidth: '520px', marginBottom: '16px', padding: '11px 16px',
           borderRadius: '8px', background: colors.redTint,
-          border: `1px solid rgba(217,79,79,0.25)`,
+          border: `1px solid rgba(180,35,50,0.25)`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         }}>
           <p style={{ fontSize: '13px', fontWeight: 500, color: colors.red }}>{submitError}</p>
@@ -329,7 +329,7 @@ export default function NewQuotationRequestPage() {
                         textTransform: 'capitalize',
                         border: `1px solid ${selected ? cfg.active : cfg.border}`,
                         background: selected ? cfg.activeBg : 'transparent',
-                        color: selected ? cfg.active : '#6B7280',
+                        color: selected ? cfg.active : '#686D6C',
                         transition: 'all 0.12s',
                       }}
                     >

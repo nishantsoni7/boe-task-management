@@ -127,10 +127,10 @@ export function ObjectionQueue({
         padding: '12px 16px', borderBottom: `1px solid ${colors.border}`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
       }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318' }}>{title}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#303536' }}>{title}</div>
         {pending.length > 0 && (
           <span style={{
-            padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+            padding: '2px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 600,
             background: statusTone('pending').bg, color: statusTone('pending').fg,
           }}>
             {pending.length} awaiting review
@@ -140,8 +140,8 @@ export function ObjectionQueue({
 
       {error && (
         <div role="alert" style={{
-          padding: '9px 16px', fontSize: 12.5, color: '#C13030',
-          background: 'rgba(217,79,79,0.08)',
+          padding: '9px 16px', fontSize: 12.5, color: '#B42332',
+          background: 'rgba(180,35,50,0.08)',
         }}>
           {error}
         </div>
@@ -168,7 +168,7 @@ export function ObjectionQueue({
             <tbody>
               {rows.map(r => (
                 <tr key={r.id} style={{ borderTop: `1px solid ${colors.border}` }}>
-                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#111318', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#303536', whiteSpace: 'nowrap' }}>
                     {r.employee?.full_name ?? '—'}
                     {r.employee?.employee_code && (
                       <span style={{ color: colors.muted }}> · {r.employee.employee_code}</span>
@@ -176,16 +176,16 @@ export function ObjectionQueue({
                   </td>
                   {/* The snapshot, so the row still reads sensibly after the
                       day it disputes has been corrected. */}
-                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#3D4455', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#4C5352', whiteSpace: 'nowrap' }}>
                     {r.attendance_date ?? r.subject_snapshot.split(' · ')[0]}
                   </td>
-                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#3D4455', minWidth: 220 }}>
+                  <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#4C5352', minWidth: 220 }}>
                     {r.reason}
                     <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                       As recorded: {r.subject_snapshot}
                     </div>
                     {r.review_note && (
-                      <div style={{ fontSize: 11, color: '#3B63B8', marginTop: 3 }}>
+                      <div style={{ fontSize: 11, color: '#335A86', marginTop: 3 }}>
                         Reply: {r.review_note}
                       </div>
                     )}
@@ -195,7 +195,7 @@ export function ObjectionQueue({
                   </td>
                   <td style={{ padding: '10px 16px' }}>
                     <span style={{
-                      display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+                      display: 'inline-block', padding: '2px 10px', borderRadius: 12,
                       fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
                       background: statusTone(r.status).bg, color: statusTone(r.status).fg,
                     }}>

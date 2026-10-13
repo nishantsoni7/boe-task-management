@@ -368,7 +368,7 @@ export function FollowUpsScreen() {
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -381,7 +381,7 @@ export function FollowUpsScreen() {
 
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}>
         <StatusTabs
           tabs={tabs}
@@ -556,7 +556,7 @@ function FollowUpCard({
 
   return (
     <div style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px',
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '11px 13px', marginBottom: '8px', background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>

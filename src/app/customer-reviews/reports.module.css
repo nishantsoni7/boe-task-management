@@ -19,8 +19,8 @@
   list-style: none;
   margin: 0;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.13);
+  border-radius: 8px;
+  border: 1px solid #CFC8BF;
   background: #FFFFFF;
   min-width: 0;
 }
@@ -40,5 +40,5 @@
 }
 
 .facts > div { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
-.facts dt { color: #4A5261; }
+.facts dt { color: #4C5352; }
 .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }

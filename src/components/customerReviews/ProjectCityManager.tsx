@@ -88,7 +88,7 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
   return (
     <section style={{
       marginTop: '18px', padding: '16px', border: `1px solid ${colors.border}`,
-      borderRadius: '10px', background: '#FFFFFF',
+      borderRadius: '8px', background: '#FFFFFF',
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 360px' }}>

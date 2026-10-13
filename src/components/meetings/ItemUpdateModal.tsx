@@ -263,7 +263,7 @@ export function ItemUpdateModal({
             onClick={() => setShowMore(true)}
             style={{
               alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
-              fontSize: '12px', fontWeight: 600, color: colors.blue, cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk, cursor: 'pointer',
             }}
           >
             More detail — stage and issue

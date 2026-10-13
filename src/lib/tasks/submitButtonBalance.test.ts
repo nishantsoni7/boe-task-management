@@ -55,23 +55,23 @@ const SUBMIT_CSS = (() => {
 describe('1-2. no saturated fill, no blue shadow', () => {
   test('1. it is no longer a solid-blue block', () => {
     // The old treatment, gone from both the inline style and the class.
-    assert.equal(SUBMIT.includes('background: colors.blue'), false)
-    assert.equal(/background:\s*#5585E8/i.test(SUBMIT_CSS), false)
+    assert.equal(SUBMIT.includes('background: colors.brand'), false)
+    assert.equal(/background:\s*#335A86/i.test(SUBMIT_CSS), false)
     assert.equal(SUBMIT.includes("color: '#ffffff'"), false, 'no white-on-blue label')
 
     // What it is instead: a pale fill with dark blue text and a soft border.
-    assert.match(SUBMIT_CSS, /background:\s*#EFF6FF/i)
-    assert.match(SUBMIT_CSS, /color:\s*#1E40AF/i)
-    assert.match(SUBMIT_CSS, /border:\s*1\.5px solid #BFDBFE/i)
+    assert.match(SUBMIT_CSS, /background:\s*#EAF0F8/i)
+    assert.match(SUBMIT_CSS, /color:\s*#335A86/i)
+    assert.match(SUBMIT_CSS, /border:\s*1\.5px solid #C3D3E6/i)
   })
 
   test('1b. and every colour it uses is one this project already ships', () => {
     // Tailwind blue-50 / 200 / 800 — the same trio the Orders status chips and
     // the permissions role badges already wear. Nothing invented here.
     for (const [hex, where] of [
-      ['#EFF6FF', 'src/app/orders/all/page.tsx'],
-      ['#1E40AF', 'src/app/orders/all/page.tsx'],
-      ['#BFDBFE', 'src/app/orders/all/page.tsx'],
+      ['#EAF0F8', 'src/app/orders/all/page.tsx'],
+      ['#335A86', 'src/app/orders/all/page.tsx'],
+      ['#C3D3E6', 'src/app/orders/all/page.tsx'],
     ] as const) {
       assert.ok(read(where).includes(hex), `${hex} must already exist in ${where}`)
     }
@@ -81,11 +81,11 @@ describe('1-2. no saturated fill, no blue shadow', () => {
     assert.equal(SUBMIT.includes('boxShadow'), false, 'no inline shadow')
     assert.match(SUBMIT_CSS, /box-shadow:\s*none/)
     // The exact glow it used to carry, gone from THIS button.
-    assert.equal(SUBMIT.includes('0 2px 6px rgba(85,133,232,0.25)'), false)
+    assert.equal(SUBMIT.includes('0 2px 6px rgba(51,90,134,0.25)'), false)
     // But NOT gone from Send Update, which keeps its solid blue and its shadow
     // and is explicitly out of scope. That it still matches this string is the
     // proof the change did not spill sideways.
-    assert.ok(PAGE.includes('0 2px 6px rgba(85,133,232,0.25)'),
+    assert.ok(PAGE.includes('0 2px 6px rgba(51,90,134,0.25)'),
       'Send Update must keep the treatment this button gave up')
   })
 })
@@ -96,7 +96,7 @@ describe('3-4. still the lead, still ahead of its siblings', () => {
   test('3. it is the only action in the row carrying a fill', () => {
     // Copy & Assign and Cancel are white. A tinted fill is what makes this one
     // read as the lead without shouting.
-    assert.match(SUBMIT_CSS, /background:\s*#EFF6FF/i)
+    assert.match(SUBMIT_CSS, /background:\s*#EAF0F8/i)
     assert.ok(SUBMIT.includes('boe-task-action-primary'),
       'and it keeps the primary role in the row layout')
     assert.ok(SUBMIT.includes('fontWeight: 700'), 'heavier than the secondaries\' 600')
@@ -108,8 +108,8 @@ describe('3-4. still the lead, still ahead of its siblings', () => {
       "border: `1.5px solid ${colors.blue}55`",
       "background: '#ffffff', color: colors.blue,",
       // Cancel — neutral.
-      "border: '1.5px solid #78716C33'",
-      "background: '#ffffff', color: '#78716C',",
+      "border: '1.5px solid #686D6C33'",
+      "background: '#ffffff', color: '#686D6C',",
     ]) {
       assert.ok(PAGE.includes(frag), `unchanged: ${frag}`)
     }
@@ -203,7 +203,7 @@ describe('7. nothing about how it behaves has moved', () => {
 
 describe('8. it still responds to a pointer and to a keyboard', () => {
   test('8. a restrained pale-blue hover, one step along the same ramp', () => {
-    assert.match(CSS, /\.boe-task-action-submit:not\(:disabled\):hover\s*\{\s*background:\s*#DBEAFE/i)
+    assert.match(CSS, /\.boe-task-action-submit:not\(:disabled\):hover\s*\{\s*background:\s*#EAF0F8/i)
     // And it can actually win: the fill is no longer an inline style, which an
     // author-level :hover rule cannot override.
     assert.equal(/style=\{\{[\s\S]*background:/.test(SUBMIT), false,
@@ -213,7 +213,7 @@ describe('8. it still responds to a pointer and to a keyboard', () => {
 
   test('8b. a visible keyboard focus ring, dark enough for a pale fill', () => {
     const focus = CSS.slice(CSS.indexOf('.boe-task-action-submit:focus-visible'))
-    assert.match(focus.slice(0, 140), /outline:\s*2px solid #1E40AF/i)
+    assert.match(focus.slice(0, 140), /outline:\s*2px solid #335A86/i)
     assert.match(focus.slice(0, 180), /outline-offset:\s*2px/)
   })
 

@@ -276,8 +276,8 @@ export function DayDateCell({ iso }: { iso: string }) {
   const { date, weekday } = dayDateParts(iso)
   return (
     <>
-      <span style={{ color: '#111318', fontWeight: 600 }}>{date}</span>
-      <span style={{ color: '#8C94A6', fontWeight: 400 }}>, {weekday}</span>
+      <span style={{ color: '#303536', fontWeight: 600 }}>{date}</span>
+      <span style={{ color: '#686D6C', fontWeight: 400 }}>, {weekday}</span>
     </>
   )
 }
@@ -328,17 +328,17 @@ export const CLASSIFICATION_LABELS: Record<string, string> = {
 function classificationTone(classification: string): string {
   switch (classification) {
     case 'full_present':
-      return '#059669'
+      return '#276247'
     case 'present_with_shortfall':
     case 'short_present':
     case 'missing_punch':
     case 'full_absent':
-      return '#B45309'
+      return '#805B0D'
     // Half day keeps the module's own purple, muted to text weight.
     case 'half_day':
       return '#7C5CD6'
     default:
-      return '#8C94A6'
+      return '#686D6C'
   }
 }
 
@@ -356,7 +356,7 @@ function DayStatus({ classification }: { classification: string }) {
 export function Pill({ tone, children }: { tone: { bg: string; color: string }; children: React.ReactNode }) {
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 9px', borderRadius: 20,
+      display: 'inline-block', padding: '2px 9px', borderRadius: 12,
       fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
       background: tone.bg, color: tone.color,
     }}>
@@ -370,9 +370,9 @@ function CorrectedBadge({ remark }: { remark?: string }) {
     <span
       title={remark ? `Manual override — ${remark}` : 'Manual override'}
       style={{
-        display: 'inline-block', marginLeft: 6, padding: '1px 7px', borderRadius: 20,
+        display: 'inline-block', marginLeft: 6, padding: '1px 7px', borderRadius: 12,
         fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
-        background: 'rgba(85,133,232,0.12)', color: '#3B63B8', cursor: 'help',
+        background: 'rgba(51,90,134,0.12)', color: '#335A86', cursor: 'help',
       }}
     >
       Corrected
@@ -382,8 +382,8 @@ function CorrectedBadge({ remark }: { remark?: string }) {
 
 function StatusBadge({ status }: { status: DetailResult['status'] }) {
   const map = {
-    draft:  { bg: 'rgba(140,148,166,0.12)', color: '#6B7280', label: 'Draft' },
-    locked: { bg: 'rgba(232,160,48,0.15)',  color: '#B45309', label: 'Locked' },
+    draft:  { bg: 'rgba(140,148,166,0.12)', color: '#686D6C', label: 'Draft' },
+    locked: { bg: 'rgba(196,138,26,0.15)',  color: '#805B0D', label: 'Locked' },
   }
   const s = map[status]
   return <Pill tone={s}>{s.label}</Pill>
@@ -405,13 +405,13 @@ export function MetaField({ label, children }: { label: string; children: React.
     <div style={{ minWidth: 0 }}>
       <div style={{
         fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.07em', color: '#8C94A6', lineHeight: 1.3,
+        letterSpacing: '0.07em', color: '#686D6C', lineHeight: 1.3,
         whiteSpace: 'nowrap',
       }}>
         {label}
       </div>
       <div style={{
-        marginTop: 1, fontSize: 13, fontWeight: 600, color: '#111318',
+        marginTop: 1, fontSize: 13, fontWeight: 600, color: '#303536',
         lineHeight: 1.3, display: 'flex', alignItems: 'center', minHeight: 17,
       }}>
         {children}
@@ -424,8 +424,8 @@ export function SectionHeader({ title }: { title: string }) {
   return (
     <div style={{
       fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '0.08em', color: '#8C94A6',
-      padding: '14px 20px 8px', borderBottom: '1px solid rgba(0,0,0,0.06)',
+      letterSpacing: '0.08em', color: '#686D6C',
+      padding: '14px 20px 8px', borderBottom: '1px solid #E4DED7',
     }}>
       {title}
     </div>
@@ -440,9 +440,9 @@ export function SummaryLine({ label, value, tone }: { label: string; value: stri
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
       gap: 12, padding: '5px 0',
     }}>
-      <span style={{ fontSize: 12.5, color: '#6B7280' }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: '#686D6C' }}>{label}</span>
       <span style={{
-        fontSize: 13.5, fontWeight: 600, color: tone ?? '#3D4455',
+        fontSize: 13.5, fontWeight: 600, color: tone ?? '#4C5352',
         fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
       }}>
         {value}
@@ -455,7 +455,7 @@ export function SummaryGroup({ title }: { title: string }) {
   return (
     <div style={{
       fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '0.09em', color: '#8C94A6', marginBottom: 3,
+      letterSpacing: '0.09em', color: '#686D6C', marginBottom: 3,
     }}>
       {title}
     </div>
@@ -468,20 +468,20 @@ export function SummaryDivider() {
 
 export const TH: React.CSSProperties = {
   padding: '10px 16px', textAlign: 'left',
-  fontSize: 10.5, fontWeight: 700, color: '#8C94A6',
+  fontSize: 10.5, fontWeight: 700, color: '#686D6C',
   textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
 }
 
-export const TD: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#3D4455', verticalAlign: 'top' }
+export const TD: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#4C5352', verticalAlign: 'top' }
 
 // The header rule is deliberately heavier than the row rules, so the head reads
 // as the table's edge and the body reads as one continuous ledger.
-export const THEAD_ROW: React.CSSProperties = { borderBottom: '1px solid rgba(0,0,0,0.10)' }
-export const ROW_DIVIDER = '1px solid rgba(0,0,0,0.045)'
+export const THEAD_ROW: React.CSSProperties = { borderBottom: '1px solid #CFC8BF' }
+export const ROW_DIVIDER = '1px solid #E4DED7'
 
 /** First line of a stacked attendance cell — the punch pair. */
 export const PUNCH_LINE: React.CSSProperties = {
-  fontSize: 13, fontWeight: 500, color: '#3D4455', fontVariantNumeric: 'tabular-nums',
+  fontSize: 13, fontWeight: 500, color: '#4C5352', fontVariantNumeric: 'tabular-nums',
 }
 
 // ── Aggregate (total) row ─────────────────────────────────────────────────────
@@ -491,12 +491,12 @@ export const PUNCH_LINE: React.CSSProperties = {
 // card's right edge, one column adrift from the numbers it totals.
 export const TFOOT_CELL: React.CSSProperties = {
   padding: '13px 16px 14px',
-  borderTop: '1px solid rgba(0,0,0,0.11)',
+  borderTop: '1px solid #CFC8BF',
   background: 'rgba(0,0,0,0.012)',
 }
 
 export const TFOOT_LABEL: React.CSSProperties = {
-  ...TFOOT_CELL, fontSize: 13, fontWeight: 600, color: '#3D4455', whiteSpace: 'nowrap',
+  ...TFOOT_CELL, fontSize: 13, fontWeight: 600, color: '#4C5352', whiteSpace: 'nowrap',
 }
 
 export const TFOOT_VALUE: React.CSSProperties = {
@@ -527,7 +527,7 @@ function ResultTabs({
   return (
     <div style={{
       display: 'flex', gap: 4, padding: '0 10px',
-      borderBottom: '1px solid rgba(0,0,0,0.09)',
+      borderBottom: '1px solid #E4DED7',
     }}>
       {tabs.map(({ key, label, count, accent, tint }) => {
         const isActive = active === key
@@ -543,19 +543,19 @@ function ResultTabs({
               borderBottom: `2px solid ${isActive ? accent : 'transparent'}`,
               marginBottom: -1,
               fontSize: 13, fontWeight: isActive ? 700 : 500,
-              color: isActive ? '#111318' : '#6B7384',
+              color: isActive ? '#303536' : '#686D6C',
               cursor: 'pointer', whiteSpace: 'nowrap',
               transition: 'color 0.12s',
             }}
-            onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#3D4455' }}
-            onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#6B7384' }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#4C5352' }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#686D6C' }}
           >
             {label}
             <span style={{
               minWidth: 19, height: 19, padding: '0 6px', borderRadius: 999,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               background: isActive ? tint : 'rgba(0,0,0,0.05)',
-              color: isActive ? accent : '#6B7384',
+              color: isActive ? accent : '#686D6C',
               fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
             }}>
               {count}
@@ -587,20 +587,20 @@ function WhyButton({ onClick, label }: { onClick: () => void; label: string }) {
       style={{
         fontSize: 13, fontWeight: 700, borderRadius: 999,
         width: 26, height: 26, marginRight: 2, padding: 0,
-        border: '1px solid rgba(0,0,0,0.12)', background: 'transparent',
-        color: '#8C94A6', cursor: 'pointer', lineHeight: 1,
+        border: '1px solid #CFC8BF', background: 'transparent',
+        color: '#686D6C', cursor: 'pointer', lineHeight: 1,
         transition: 'background 0.12s, color 0.12s, border-color 0.12s',
         verticalAlign: 'middle',
       }}
       onMouseEnter={e => {
         e.currentTarget.style.background = 'rgba(79,111,208,0.08)'
-        e.currentTarget.style.color = '#4F6FD0'
+        e.currentTarget.style.color = '#335A86'
         e.currentTarget.style.borderColor = 'rgba(79,111,208,0.35)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.background = 'transparent'
-        e.currentTarget.style.color = '#8C94A6'
-        e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)'
+        e.currentTarget.style.color = '#686D6C'
+        e.currentTarget.style.borderColor = '#CFC8BF'
       }}
     >
       ?
@@ -619,19 +619,19 @@ function EditButton({ onClick, disabled, title }: { onClick: () => void; disable
       style={{
         fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 6,
         minHeight: 30, minWidth: 44, border: 'none', background: 'transparent',
-        color: disabled ? '#A9AFBD' : '#6B7280',
+        color: disabled ? '#686D6C' : '#686D6C',
         cursor: disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
         transition: 'background 0.12s, color 0.12s',
       }}
       onMouseEnter={e => {
         if (disabled) return
         e.currentTarget.style.background = 'rgba(79,111,208,0.08)'
-        e.currentTarget.style.color = '#4F6FD0'
+        e.currentTarget.style.color = '#335A86'
       }}
       onMouseLeave={e => {
         if (disabled) return
         e.currentTarget.style.background = 'transparent'
-        e.currentTarget.style.color = '#6B7280'
+        e.currentTarget.style.color = '#686D6C'
       }}
     >
       Edit
@@ -656,7 +656,7 @@ function RedeemButton({ offer, onClick }: { offer: RedeemableDate; onClick: () =
       style={{
         fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 6,
         minHeight: 30, border: '1px solid rgba(79,111,208,0.35)', background: 'rgba(79,111,208,0.06)',
-        color: '#3B63B8', cursor: 'pointer', whiteSpace: 'nowrap',
+        color: '#963B27', cursor: 'pointer', whiteSpace: 'nowrap',
         transition: 'background 0.12s',
       }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(79,111,208,0.14)' }}
@@ -705,7 +705,7 @@ function PayrollSummaryCard({
   return (
     <div style={{
       background: '#fff', borderRadius: 12,
-      border: '1px solid rgba(0,0,0,0.08)', overflow: 'hidden',
+      border: '1px solid #E4DED7', overflow: 'hidden',
     }}>
       <SectionHeader title="Payroll Summary" />
 
@@ -716,7 +716,7 @@ function PayrollSummaryCard({
         <SummaryLine
           label="Deductions"
           value={deductions > 0 ? `−${fmt(result.total_deductions)}` : fmt(result.total_deductions)}
-          tone={deductions > 0 ? '#DC2626' : undefined}
+          tone={deductions > 0 ? '#B42332' : undefined}
         />
         {settlement && (
           <>
@@ -745,13 +745,13 @@ function PayrollSummaryCard({
         }}>
           <span style={{
             fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-            letterSpacing: '0.09em', color: '#6B7384',
+            letterSpacing: '0.09em', color: '#686D6C',
           }}>
             {headline.label}
           </span>
           {/* Body font, not the display face — this is an accounting figure. */}
           <span style={{
-            fontSize: 27, fontWeight: 700, lineHeight: 1.05, color: '#111318',
+            fontSize: 27, fontWeight: 700, lineHeight: 1.05, color: '#303536',
             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
           }}>
             {fmt(headline.value)}
@@ -775,8 +775,8 @@ function PayrollSummaryCard({
               </>
             ) : (
               <>
-                <SummaryLine label="Amount Paid" value={PAYMENT_NOT_RECORDED_LABEL} tone="#8C94A6" />
-                <SummaryLine label="Settlement Status" value={SETTLEMENT_STATUS_NOT_RECORDED} tone="#8C94A6" />
+                <SummaryLine label="Amount Paid" value={PAYMENT_NOT_RECORDED_LABEL} tone="#686D6C" />
+                <SummaryLine label="Settlement Status" value={SETTLEMENT_STATUS_NOT_RECORDED} tone="#686D6C" />
               </>
             )}
           </div>
@@ -823,7 +823,7 @@ export function SettlementRow({
         <span style={{
           fontSize: strong ? 13 : 12.5,
           fontWeight: strong ? 600 : 400,
-          color: muted ? '#8C94A6' : strong ? '#3D4455' : '#6B7280',
+          color: muted ? '#686D6C' : strong ? '#4C5352' : '#686D6C',
           minWidth: 0,
         }}>
           {label}
@@ -831,14 +831,14 @@ export function SettlementRow({
         <span style={{
           fontSize: strong ? 14 : 13.5,
           fontWeight: strong ? 700 : 600,
-          color: tone ?? (muted ? '#8C94A6' : '#3D4455'),
+          color: tone ?? (muted ? '#686D6C' : '#4C5352'),
           fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
         }}>
           {value}
         </span>
       </div>
       {remark && (
-        <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 2, lineHeight: 1.45, paddingRight: 60 }}>
+        <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 2, lineHeight: 1.45, paddingRight: 60 }}>
           {remark}
         </div>
       )}
@@ -855,12 +855,12 @@ function SettlementCard({ title, children }: { title: string; children: React.Re
   return (
     <div style={{
       background: '#fff', borderRadius: 12,
-      border: '1px solid rgba(0,0,0,0.08)', overflow: 'hidden',
+      border: '1px solid #E4DED7', overflow: 'hidden',
       padding: '13px 16px 15px',
     }}>
       <div style={{
         fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.09em', color: '#8C94A6', marginBottom: 5,
+        letterSpacing: '0.09em', color: '#686D6C', marginBottom: 5,
       }}>
         {title}
       </div>
@@ -872,7 +872,7 @@ function SettlementCard({ title, children }: { title: string; children: React.Re
 /** Tone for a signed figure. Never the only carrier of meaning — the sign is. */
 export function signTone(amount: number): string | undefined {
   if (Math.abs(amount) < 0.005) return undefined
-  return amount > 0 ? '#16A34A' : '#DC2626'
+  return amount > 0 ? '#2F7A52' : '#B42332'
 }
 
 export function AdjustmentsAndSettlement({
@@ -904,7 +904,7 @@ export function AdjustmentsAndSettlement({
         id="adjustments-settlement"
         style={{
           fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: '#8C94A6', marginBottom: 10,
+          letterSpacing: '0.08em', color: '#686D6C', marginBottom: 10,
         }}
       >
         Adjustments &amp; Settlement
@@ -916,8 +916,8 @@ export function AdjustmentsAndSettlement({
       {!settlement.adjustments_balance && (
         <div style={{
           marginBottom: 10, padding: '10px 13px', borderRadius: 8,
-          background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.35)',
-          fontSize: 12.5, color: '#92400E', lineHeight: 1.5,
+          background: 'rgba(196,138,26,0.10)', border: '1px solid rgba(196,138,26,0.35)',
+          fontSize: 12.5, color: '#805B0D', lineHeight: 1.5,
         }}>
           The individual adjustments below do not add up to the total applied to this payroll.
           Regenerate the period to bring them back in line.
@@ -938,7 +938,7 @@ export function AdjustmentsAndSettlement({
             <SettlementRow
               label="Attendance Deductions"
               value={f.attendance_deductions > 0 ? `−${fmt(f.attendance_deductions)}` : fmt(0)}
-              tone={f.attendance_deductions > 0 ? '#DC2626' : undefined}
+              tone={f.attendance_deductions > 0 ? '#B42332' : undefined}
             />
             <SettlementRule />
             <SettlementRow label="Salary After Attendance" value={fmt(f.salary_after_attendance)} strong />
@@ -1018,10 +1018,10 @@ export function AdjustmentsAndSettlement({
             }}>
               <div style={{
                 padding: '11px 16px 9px',
-                borderBottom: '1px solid rgba(0,0,0,0.06)',
+                borderBottom: '1px solid #E4DED7',
                 background: 'rgba(79,111,208,0.04)',
                 fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.09em', color: '#4F6FD0',
+                letterSpacing: '0.09em', color: '#335A86',
               }}>
                 Salary Settlement
               </div>
@@ -1052,12 +1052,12 @@ export function AdjustmentsAndSettlement({
                 }}>
                   <span style={{
                     fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.08em', color: '#3B63B8',
+                    letterSpacing: '0.08em', color: '#335A86',
                   }}>
                     Salary Payable
                   </span>
                   <span style={{
-                    fontSize: 24, fontWeight: 700, lineHeight: 1.05, color: '#111318',
+                    fontSize: 24, fontWeight: 700, lineHeight: 1.05, color: '#303536',
                     fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                   }}>
                     {fmt(f.salary_payable)}
@@ -1095,7 +1095,7 @@ export function AdjustmentsAndSettlement({
                     too — "+₹2,221.95" does not say who owes whom. */}
                 <div style={{
                   marginTop: 10, padding: '9px 12px', borderRadius: 8,
-                  background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#3D4455', lineHeight: 1.5,
+                  background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#4C5352', lineHeight: 1.5,
                 }}>
                   {settlement.sentence}
                 </div>
@@ -1114,7 +1114,7 @@ export function AdjustmentsAndSettlement({
                 {/* Why the controls are gone, said once, to the reader who would
                     otherwise have had them. */}
                 {isAdmin && !canEdit && (
-                  <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 10, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 10, lineHeight: 1.5 }}>
                     This period is locked. Unlock it to change the balance or the payment.
                   </div>
                 )}
@@ -1200,7 +1200,7 @@ function DeductionsTab({
   onRedeem?: (date: string) => void
 }) {
   if (days.length === 0) {
-    return <div style={{ padding: '28px 20px', fontSize: 13, color: '#8C94A6' }}>No deductions applied.</div>
+    return <div style={{ padding: '28px 20px', fontSize: 13, color: '#686D6C' }}>No deductions applied.</div>
   }
 
   return (
@@ -1247,18 +1247,18 @@ function DeductionsTab({
                       <div key={j} style={{ marginTop: j > 0 ? 3 : 0 }}>
                         {/* Neutral: red is reserved for the money column, so the
                             amounts stay the fastest thing to find on the row. */}
-                        <span style={{ color: '#3D4455', fontWeight: 500 }}>
+                        <span style={{ color: '#4C5352', fontWeight: 500 }}>
                           {l.waived_by === 'paid_leave'
                             ? 'Paid Leave · Company Paid'
                             : DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
                         </span>
                         {l.waived_by == null && l.hours_deducted > 0 && (
-                          <span style={{ color: '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
+                          <span style={{ color: '#686D6C', fontVariantNumeric: 'tabular-nums' }}>
                             {' · '}{fmtHours(l.hours_deducted)}
                           </span>
                         )}
                         {l.waived_by === 'paid_leave' && (
-                          <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1 }}>
+                          <div style={{ fontSize: 11.5, color: '#276247', marginTop: 1 }}>
                             {COMPANY_PAID_NOTE}
                           </div>
                         )}
@@ -1266,14 +1266,14 @@ function DeductionsTab({
                             note says who paid: the employee's BOE Credits. Both
                             readers see it; only the employee could act on it. */}
                         {l.waived_by === 'boe_credits' && (
-                          <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1, fontWeight: 600 }}>
+                          <div style={{ fontSize: 11.5, color: '#276247', marginTop: 1, fontWeight: 600 }}>
                             {coveredLabel(l.credits_redeemed ?? 0)}
                           </div>
                         )}
                       </div>
                     ))}
                     {correction && (
-                      <div style={{ fontSize: 11.5, color: '#6B7280', marginTop: 5, fontStyle: 'italic' }}>
+                      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 5, fontStyle: 'italic' }}>
                         {correction.remark}
                       </div>
                     )}
@@ -1288,7 +1288,7 @@ function DeductionsTab({
                   <td style={{
                     ...TD, textAlign: 'right', fontWeight: 600,
                     fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                    color: day.total_amount > 0 ? '#DC2626' : '#047857',
+                    color: day.total_amount > 0 ? '#B42332' : '#276247',
                   }}>
                     {day.total_amount > 0 ? `−${fmt(day.total_amount)}` : fmt(0)}
                   </td>
@@ -1327,7 +1327,7 @@ function DeductionsTab({
               {/* Same sign convention as the rows, so the column reads as one
                   continuous run of figures down to the total. Company-paid rows
                   carry ₹0 and therefore change nothing here. */}
-              <td style={{ ...TFOOT_VALUE, color: '#DC2626' }}>
+              <td style={{ ...TFOOT_VALUE, color: '#B42332' }}>
                 −{fmt(totalDeductions)}
               </td>
               <td style={TFOOT_CELL} />
@@ -1352,7 +1352,7 @@ function ConsideredTab({
   onEdit?: (date: string) => void
 }) {
   if (days.length === 0) {
-    return <div style={{ padding: '28px 20px', fontSize: 13, color: '#8C94A6' }}>No paid days in this period.</div>
+    return <div style={{ padding: '28px 20px', fontSize: 13, color: '#686D6C' }}>No paid days in this period.</div>
   }
 
   const payableTotal = days.reduce((sum, d) => sum + d.payable_day_value, 0)
@@ -1394,15 +1394,15 @@ function ConsideredTab({
                     <div style={PUNCH_LINE}>{fmtPunches(day.check_in_at, day.check_out_at)}</div>
                     <DayStatus classification={day.classification} />
                     {correction && (
-                      <div style={{ fontSize: 11.5, color: '#6B7280', marginTop: 4, fontStyle: 'italic', whiteSpace: 'normal' }}>
+                      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 4, fontStyle: 'italic', whiteSpace: 'normal' }}>
                         {correction.remark}
                       </div>
                     )}
                   </td>
-                  <td style={{ ...TD, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#6B7280' }}>
+                  <td style={{ ...TD, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#686D6C' }}>
                     {day.effective_hours_worked > 0 ? fmtHours(day.effective_hours_worked) : '—'}
                   </td>
-                  <td style={{ ...TD, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: day.payable_day_value > 0 ? '#3D4455' : '#8C94A6' }}>
+                  <td style={{ ...TD, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: day.payable_day_value > 0 ? '#4C5352' : '#686D6C' }}>
                     {day.payable_day_value > 0 ? `${day.payable_day_value}d` : '—'}
                   </td>
                   <td style={{ ...TD, textAlign: 'right' }}>
@@ -1421,7 +1421,7 @@ function ConsideredTab({
           <tfoot>
             <tr>
               <td style={TFOOT_LABEL} colSpan={3}>Payable Days Counted</td>
-              <td style={{ ...TFOOT_VALUE, color: '#111318' }}>{payableTotal}d</td>
+              <td style={{ ...TFOOT_VALUE, color: '#303536' }}>{payableTotal}d</td>
               <td style={TFOOT_CELL} />
             </tr>
           </tfoot>
@@ -1436,7 +1436,7 @@ function ConsideredTab({
 
 const card: React.CSSProperties = {
   background: '#fff', borderRadius: 12,
-  border: '1px solid rgba(0,0,0,0.08)',
+  border: '1px solid #E4DED7',
   overflow: 'hidden', marginBottom: 20,
 }
 
@@ -1485,14 +1485,14 @@ export function PayrollDetailWorkspace({
       key: 'deductions',
       label: 'Deductions',
       count: data.deduction_days.length,
-      accent: '#DC2626',
+      accent: '#B42332',
       tint:   'rgba(220,38,38,0.10)',
     },
     {
       key: 'considered',
       label: 'Days Considered',
       count: data.considered_days.length,
-      accent: '#059669',
+      accent: '#276247',
       tint:   'rgba(5,150,105,0.11)',
     },
   ]
@@ -1510,7 +1510,7 @@ export function PayrollDetailWorkspace({
           <Avatar name={result.employee_name} size={32} />
           <div style={{ minWidth: 0 }}>
             <div style={{
-              fontSize: 15, fontWeight: 700, color: '#111318',
+              fontSize: 15, fontWeight: 700, color: '#303536',
               letterSpacing: '-0.01em', lineHeight: 1.25,
               // The name is the one value here with no bound on its length.
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1518,7 +1518,7 @@ export function PayrollDetailWorkspace({
               {result.employee_name}
             </div>
             {result.employee_code && (
-              <div style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.3 }}>
+              <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.3 }}>
                 {result.employee_code}
               </div>
             )}
@@ -1546,9 +1546,9 @@ export function PayrollDetailWorkspace({
           someone who would otherwise have had an edit control. */}
       {canEdit === false && data.edit_blocked && onEdit && (
         <div style={{
-          marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-          background: 'rgba(232,160,48,0.10)', color: '#92400E',
-          border: '1px solid rgba(232,160,48,0.35)', fontSize: 13,
+          marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+          background: 'rgba(196,138,26,0.10)', color: '#805B0D',
+          border: '1px solid rgba(196,138,26,0.35)', fontSize: 13,
           display: 'flex', gap: 9, alignItems: 'center',
         }}>
           <span style={{ fontSize: 15 }}>🔒</span>
@@ -1558,9 +1558,9 @@ export function PayrollDetailWorkspace({
 
       {data.stale && (
         <div style={{
-          marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-          background: 'rgba(85,133,232,0.09)', color: '#3B63B8',
-          border: '1px solid rgba(85,133,232,0.3)', fontSize: 13,
+          marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+          background: 'rgba(51,90,134,0.09)', color: '#335A86',
+          border: '1px solid rgba(51,90,134,0.3)', fontSize: 13,
         }}>
           {onEdit
             ? 'Attendance for this month changed after this payroll was generated. The day rows below are up to date; the salary figures are not. Regenerate payroll for this period to bring them back in line.'
@@ -1570,8 +1570,8 @@ export function PayrollDetailWorkspace({
 
       {data.day_view_error && (
         <div style={{
-          marginBottom: 16, padding: '11px 16px', borderRadius: 9,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+          marginBottom: 16, padding: '11px 16px', borderRadius: 8,
+          background: 'rgba(239,68,68,0.08)', color: '#B42332',
           border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
         }}>
           The day-level breakdown could not be built: {data.day_view_error}

@@ -568,7 +568,7 @@ export function ReviewChangeRequestModal({
           onClick={() => decide('reject')}
           disabled={!!saving}
           className="boe-btn boe-btn-ghost"
-          style={{ padding: '8px 18px', fontSize: '13px', color: '#C13030', borderColor: 'rgba(217,79,79,0.45)', fontWeight: 600, opacity: saving ? 0.6 : 1 }}
+          style={{ padding: '8px 18px', fontSize: '13px', color: '#B42332', borderColor: 'rgba(180,35,50,0.45)', fontWeight: 600, opacity: saving ? 0.6 : 1 }}
         >
           {saving === 'reject' ? 'Rejecting…' : 'Reject'}
         </button>

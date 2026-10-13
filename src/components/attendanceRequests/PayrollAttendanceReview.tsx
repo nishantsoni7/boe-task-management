@@ -41,13 +41,13 @@ type Loaded = {
 }
 
 const STATUS_CHIP: Record<SalaryStatus, { label: string; fg: string; bg: string }> = {
-  upcoming:         { label: 'Upcoming',                    fg: '#4B5563', bg: 'rgba(107,114,128,0.12)' },
-  needs_decision:   { label: 'Needs decision',              fg: '#B45309', bg: 'rgba(232,160,48,0.15)' },
-  stale:            { label: 'Review again',                fg: '#DC2626', bg: 'rgba(239,68,68,0.10)' },
-  needs_correction: { label: 'Needs correction',            fg: '#B45309', bg: 'rgba(232,160,48,0.15)' },
-  no_draft:         { label: 'Waiting for draft',           fg: '#4B5563', bg: 'rgba(107,114,128,0.12)' },
-  action_required:  { label: 'Action required in payroll',  fg: '#DC2626', bg: 'rgba(239,68,68,0.10)' },
-  resolved:         { label: 'Matches payroll',             fg: '#059669', bg: 'rgba(16,185,129,0.12)' },
+  upcoming:         { label: 'Upcoming',                    fg: '#4C5352', bg: 'rgba(107,114,128,0.12)' },
+  needs_decision:   { label: 'Needs decision',              fg: '#805B0D', bg: 'rgba(196,138,26,0.15)' },
+  stale:            { label: 'Review again',                fg: '#B42332', bg: 'rgba(239,68,68,0.10)' },
+  needs_correction: { label: 'Needs correction',            fg: '#805B0D', bg: 'rgba(196,138,26,0.15)' },
+  no_draft:         { label: 'Waiting for draft',           fg: '#4C5352', bg: 'rgba(107,114,128,0.12)' },
+  action_required:  { label: 'Action required in payroll',  fg: '#B42332', bg: 'rgba(239,68,68,0.10)' },
+  resolved:         { label: 'Matches payroll',             fg: '#276247', bg: 'rgba(16,185,129,0.12)' },
 }
 
 export function PayrollAttendanceReview({
@@ -133,7 +133,7 @@ export function PayrollAttendanceReview({
         </label>
       </div>
 
-      {error && <div role="alert" style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+      {error && <div role="alert" style={{ color: '#B42332', fontSize: 13, marginBottom: 10 }}>{error}</div>}
       {notice && (
         <div role="status" style={{ fontSize: 12.5, color: colors.primary, background: 'rgba(37,99,235,0.08)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
           {notice}
@@ -145,10 +145,10 @@ export function PayrollAttendanceReview({
         <>
           <div style={{
             display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12.5, color: colors.primary,
-            padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: 10, marginBottom: 12, background: colors.base,
+            padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: 8, marginBottom: 12, background: colors.base,
           }}>
             <span><strong>{data.result.totals.unresolved}</strong> unresolved salary items</span>
-            <span style={{ color: data.result.totals.conflicts ? '#DC2626' : undefined }}>
+            <span style={{ color: data.result.totals.conflicts ? '#B42332' : undefined }}>
               <strong>{data.result.totals.conflicts}</strong> disagree with the draft
             </span>
             <span><strong>{data.result.totals.policy_flagged_employees}</strong> over the late-arrival flag</span>
@@ -176,27 +176,27 @@ export function PayrollAttendanceReview({
               const self = emp.employee.id === data.viewer_id
               return (
                 <details key={emp.employee.id} open={(emp.conflict_count > 0 || emp.unresolved_count > 0) && employees.length <= 6}
-                  style={{ border: `1px solid ${emp.conflict_count ? '#FCA5A5' : colors.border}`, borderRadius: 10, background: colors.base }}>
+                  style={{ border: `1px solid ${emp.conflict_count ? '#FCA5A5' : colors.border}`, borderRadius: 8, background: colors.base }}>
                   <summary style={{ padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
                     <strong style={{ fontSize: 14, color: colors.primary }}>{emp.employee.full_name ?? 'Employee'}</strong>
                     {emp.employee.employee_code && <span style={{ fontSize: 12, color: colors.muted }}>{emp.employee.employee_code}</span>}
-                    {!emp.employee.is_active && <span style={{ fontSize: 12, color: '#DC2626' }}>inactive</span>}
-                    <span style={{ fontSize: 12, color: emp.unresolved_count ? '#B45309' : '#059669' }}>
+                    {!emp.employee.is_active && <span style={{ fontSize: 12, color: '#B42332' }}>inactive</span>}
+                    <span style={{ fontSize: 12, color: emp.unresolved_count ? '#805B0D' : '#276247' }}>
                       {emp.unresolved_count ? `${emp.unresolved_count} unresolved` : 'all match payroll'}
                     </span>
                     {emp.conflict_count > 0 && (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}>{emp.conflict_count} disagree with draft</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#B42332' }}>{emp.conflict_count} disagree with draft</span>
                     )}
                     <span style={{ fontSize: 12, color: colors.tertiary }}>{emp.uninformed_late_count} uninformed late</span>
                     {emp.policy_flag_dates.length > 0 && (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#B42332' }}>
                         Review flag: {emp.policy_flag_dates.map(formatShortDate).join(', ')}
                       </span>
                     )}
                     {payslip && <Link href={payslip} style={{ fontSize: 12, marginLeft: 'auto' }}>Open payslip</Link>}
                   </summary>
                   {self && (
-                    <div style={{ fontSize: 12, color: '#B45309', padding: '0 12px 6px' }}>
+                    <div style={{ fontSize: 12, color: '#805B0D', padding: '0 12px 6px' }}>
                       This is your own attendance: another admin must record these decisions.
                     </div>
                   )}
@@ -233,8 +233,8 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
   onDecide: () => void
 }) {
   const chip = STATUS_CHIP[ev.salary_status]
-  const border = ev.salary_status === 'action_required' || ev.salary_status === 'stale' ? '#DC2626'
-    : ev.policy_flag ? '#DC2626' : ev.resolved ? colors.border : '#E8A030'
+  const border = ev.salary_status === 'action_required' || ev.salary_status === 'stale' ? '#B42332'
+    : ev.policy_flag ? '#B42332' : ev.resolved ? colors.border : '#C48A1A'
   return (
     <li style={{ borderLeft: `3px solid ${border}`, padding: '6px 0 6px 10px' }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
@@ -243,11 +243,11 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, color: chip.fg, background: chip.bg }}>
           {chip.label}
         </span>
-        {ev.policy_flag && <span style={{ fontSize: 11.5, fontWeight: 700, color: '#DC2626' }}>over monthly flag</span>}
-        {ev.informed === true && <span style={{ fontSize: 11.5, color: '#059669' }}>informed</span>}
-        {ev.informed === false && <span style={{ fontSize: 11.5, color: '#B45309' }}>uninformed</span>}
-        {ev.excused && <span style={{ fontSize: 11.5, color: '#059669' }}>excused</span>}
-        {ev.company_exception && <span style={{ fontSize: 11.5, color: '#2563EB' }}>company exception</span>}
+        {ev.policy_flag && <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42332' }}>over monthly flag</span>}
+        {ev.informed === true && <span style={{ fontSize: 11.5, color: '#276247' }}>informed</span>}
+        {ev.informed === false && <span style={{ fontSize: 11.5, color: '#805B0D' }}>uninformed</span>}
+        {ev.excused && <span style={{ fontSize: 11.5, color: '#276247' }}>excused</span>}
+        {ev.company_exception && <span style={{ fontSize: 11.5, color: '#335A86' }}>company exception</span>}
       </div>
       <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 2 }}>
         Actual: {ev.actual.check_in ? istClockOf(ev.actual.check_in) : '—'} → {ev.actual.check_out ? istClockOf(ev.actual.check_out) : '—'}
@@ -272,7 +272,7 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         <div style={{ fontSize: 12, color: colors.tertiary }}>Excused: {ev.excuse_reason}</div>
       )}
       <div style={{ fontSize: 12, color: colors.primary }}>{ev.payroll_state}</div>
-      {ev.flags.map(f => <div key={f} style={{ fontSize: 12, color: '#B45309' }}>• {f}</div>)}
+      {ev.flags.map(f => <div key={f} style={{ fontSize: 12, color: '#805B0D' }}>• {f}</div>)}
       {ev.decision && (
         <div style={{ fontSize: 12, color: colors.tertiary }}>
           Decision: {ev.decision.pay_decision ? PAY_DECISION_LABEL[ev.decision.pay_decision] : 'excuse only'}
@@ -282,7 +282,7 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
         </div>
       )}
       {ev.action_note && (
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#DC2626' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#B42332' }}>
           {ev.action_note}
           {ev.salary_status === 'action_required' && !ev.applies_in_one_step && payslip && (
             <> <Link href={payslip}>Open payslip to correct {formatShortDate(ev.date)}</Link></>

@@ -69,8 +69,8 @@ export function ResultCard({
 
       {failed ? (
         <div className="boe-alert-red" style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-          <AlertTriangle size={14} strokeWidth={2} color="#C13030" style={{ flexShrink: 0, marginTop: '1px' }} />
-          <div style={{ fontSize: '12px', color: '#C13030' }}>
+          <AlertTriangle size={14} strokeWidth={2} color="#B42332" style={{ flexShrink: 0, marginTop: '1px' }} />
+          <div style={{ fontSize: '12px', color: '#B42332' }}>
             {item.error ?? 'This image could not be generated.'}
           </div>
         </div>

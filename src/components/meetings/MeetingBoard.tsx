@@ -53,7 +53,7 @@ export function MeetingBoard({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', overflow: 'hidden',
+      borderRadius: '8px', overflow: 'hidden',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
@@ -77,11 +77,11 @@ export function MeetingBoard({
         <div style={{ fontSize: '12px', color: colors.secondary }}>
           {orders.length} order{orders.length !== 1 ? 's' : ''}
           {' · '}
-          <span style={{ color: '#2E8A58', fontWeight: 600 }}>{discussed} discussed</span>
+          <span style={{ color: '#276247', fontWeight: 600 }}>{discussed} discussed</span>
           {remaining > 0 && (
             <>
               {' · '}
-              <span style={{ color: '#92400E', fontWeight: 600 }}>{remaining} to go</span>
+              <span style={{ color: '#805B0D', fontWeight: 600 }}>{remaining} to go</span>
             </>
           )}
         </div>
@@ -188,7 +188,7 @@ function BoardCard({
       style={{
         width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', padding: '11px 13px',
+        borderRadius: '8px', padding: '11px 13px',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
@@ -228,12 +228,12 @@ function EarlierLine({ earlier, order }: { earlier: Map<string, EarlierPresence>
 
 function TodayLine({ state, latestUpdate }: { state: DiscussionState | undefined; latestUpdate: string | null }) {
   if (!state || !isDiscussed(state)) {
-    return <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>Not discussed yet</span>
+    return <span style={{ fontSize: '12px', color: '#805B0D', fontWeight: 600 }}>Not discussed yet</span>
   }
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '12px' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#2E8A58', fontWeight: 600 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#276247', fontWeight: 600 }}>
           <CheckCircle2 size={12} strokeWidth={2.2} /> Discussed
         </span>
         {state.updates > 0 && (

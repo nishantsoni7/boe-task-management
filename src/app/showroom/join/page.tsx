@@ -106,7 +106,7 @@ function JoinForm() {
         }}>
           <div style={{
             width: 48, height: 48, borderRadius: '12px',
-            background: 'rgba(217,79,79,0.08)',
+            background: 'rgba(180,35,50,0.08)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '22px',
           }}>
@@ -132,18 +132,18 @@ function JoinForm() {
           chosen from a list — so the inquiry, and later the quotation, is owned
           by the person actually standing with the customer. */}
       <div style={{
-        background: 'rgba(26,32,53,0.05)',
-        border: '1px solid rgba(26,32,53,0.10)',
-        borderRadius: '10px',
+        background: 'rgba(48,53,54,0.05)',
+        border: '1px solid rgba(48,53,54,0.10)',
+        borderRadius: '8px',
         padding: '12px 16px',
         marginBottom: '24px',
         display: 'flex', alignItems: 'center', gap: '10px',
       }}>
         <div style={{
           width: 32, height: 32, borderRadius: '8px',
-          background: '#1A2035',
+          background: '#303536',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '12px', fontWeight: 700, color: '#DC1F2E',
+          fontSize: '12px', fontWeight: 700, color: '#B9472E',
           flexShrink: 0,
         }}>
           {salespersonName?.[0]?.toUpperCase() ?? '?'}
@@ -234,8 +234,8 @@ function JoinForm() {
           style={{
             marginTop: '8px',
             width: '100%', padding: '14px',
-            background: '#1A2035', color: '#fff',
-            border: 'none', borderRadius: '10px',
+            background: '#303536', color: '#fff',
+            border: 'none', borderRadius: '8px',
             fontSize: '15px', fontWeight: 600,
             cursor: submitting ? 'default' : 'pointer',
             opacity: submitting ? 0.7 : 1,
@@ -272,11 +272,11 @@ function PageShell({ children }: { children: React.ReactNode }) {
             marginBottom: '8px',
           }}>
             <div style={{
-              width: 28, height: 28, borderRadius: '7px',
-              background: '#1A2035',
+              width: 28, height: 28, borderRadius: '8px',
+              background: '#303536',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC1F2E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B9472E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
@@ -299,7 +299,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
         <div style={{
           background: colors.base,
           border: `1.5px solid ${colors.border}`,
-          borderRadius: '16px',
+          borderRadius: '12px',
           padding: '24px 20px 28px',
           boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
         }}>
@@ -329,21 +329,21 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '12px 13px',
   fontSize: '15px',
-  color: '#111318',
+  color: '#303536',
   background: '#fff',
-  border: '1.5px solid rgba(0,0,0,0.13)',
+  border: '1.5px solid #CFC8BF',
   borderRadius: '8px',
   outline: 'none',
   boxSizing: 'border-box',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  fontFamily: 'var(--font-body)',
   WebkitAppearance: 'none',
 }
 
 /** The same field, marked. Border and tint only — the label stays readable. */
 const invalidInputStyle: React.CSSProperties = {
   ...inputStyle,
-  border: '1.5px solid rgba(217,79,79,0.6)',
-  background: 'rgba(217,79,79,0.04)',
+  border: '1.5px solid rgba(180,35,50,0.6)',
+  background: 'rgba(180,35,50,0.04)',
 }
 
 // ── Export with Suspense boundary (required for useSearchParams) ──────────────

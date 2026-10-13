@@ -44,7 +44,7 @@ export function NotificationsNavItem({
       aria-current={active ? 'page' : undefined}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
     >
-      <span aria-hidden="true" style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span aria-hidden="true" style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
         <Bell size={15} strokeWidth={1.8} />
       </span>
       Notifications
@@ -54,7 +54,7 @@ export function NotificationsNavItem({
           style={{
             marginLeft: 'auto',
             fontSize: '10px', fontWeight: 700, color: '#fff',
-            background: '#DC1F2E', borderRadius: '999px',
+            background: '#B9472E', borderRadius: '999px',
             padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
           }}
         >

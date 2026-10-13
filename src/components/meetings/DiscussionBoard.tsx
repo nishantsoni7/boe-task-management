@@ -62,7 +62,7 @@ export function DiscussionBoard({
         aria-labelledby="discussion-board-heading"
         style={{
           background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: '10px', overflow: 'hidden',
+          borderRadius: '8px', overflow: 'hidden',
         }}
       >
         <div style={{ padding: '11px 13px 9px', borderBottom: `1px solid ${colors.border}` }}>
@@ -103,7 +103,7 @@ export function DiscussionBoard({
       aria-labelledby="discussion-board-heading"
       style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}
     >
       <div style={{
@@ -123,15 +123,15 @@ export function DiscussionBoard({
           <p style={{ fontSize: '11.5px', color: colors.muted, margin: '2px 0 0' }}>
             {summary.total} item{summary.total === 1 ? '' : 's'}
             {' · '}
-            <span style={{ color: '#2E8A58', fontWeight: 600 }}>{summary.discussed} discussed</span>
+            <span style={{ color: '#276247', fontWeight: 600 }}>{summary.discussed} discussed</span>
             {' · '}
-            <span style={{ color: summary.toDiscuss > 0 ? '#92400E' : colors.muted, fontWeight: 600 }}>
+            <span style={{ color: summary.toDiscuss > 0 ? '#805B0D' : colors.muted, fontWeight: 600 }}>
               {summary.toDiscuss} still to discuss
             </span>
             {summary.resolvedHere > 0 && (
               <>
                 {' · '}
-                <span style={{ color: '#166534', fontWeight: 600 }}>
+                <span style={{ color: '#276247', fontWeight: 600 }}>
                   {summary.resolvedHere} {resolvedWords}
                 </span>
               </>
@@ -177,7 +177,7 @@ export function DiscussionBoard({
                 aria-pressed={selected}
                 onClick={() => onFilter(key)}
                 style={{
-                  padding: '5px 11px', borderRadius: '7px', cursor: 'pointer',
+                  padding: '5px 11px', borderRadius: '8px', cursor: 'pointer',
                   fontSize: '12px', fontWeight: selected ? 700 : 500,
                   border: `1px solid ${selected ? colors.borderMed : colors.border}`,
                   background: selected ? colors.float : 'transparent',
@@ -377,20 +377,20 @@ function StateCell({ row }: { row: DiscussionRow }) {
 function TodayCell({ row, resolvedWords }: { row: DiscussionRow; resolvedWords: string }) {
   if (row.recordedState === 'resolved' && row.resolvedHere) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#166534', fontWeight: 600 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#276247', fontWeight: 600 }}>
         <CheckCircle2 size={12} strokeWidth={2.2} aria-hidden="true" /> {resolvedWords.charAt(0).toUpperCase() + resolvedWords.slice(1)}
       </span>
     )
   }
   if (!isDiscussedHere(row.appearance)) {
     return (
-      <span style={{ fontSize: '12px', color: row.recordedState === 'open' ? '#92400E' : colors.muted, fontWeight: 600 }}>
+      <span style={{ fontSize: '12px', color: row.recordedState === 'open' ? '#805B0D' : colors.muted, fontWeight: 600 }}>
         {row.recordedState === 'open' ? 'Not discussed yet' : 'Resolved earlier'}
       </span>
     )
   }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#2E8A58', fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#276247', fontWeight: 600 }}>
       <CheckCircle2 size={12} strokeWidth={2.2} /> Discussed
     </span>
   )
@@ -431,7 +431,7 @@ function DiscussionCard({ row, resolvedWords, onOpen }: { row: DiscussionRow; re
       style={{
         width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', padding: '11px 13px',
+        borderRadius: '8px', padding: '11px 13px',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>

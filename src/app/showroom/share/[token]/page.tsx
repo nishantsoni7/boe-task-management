@@ -81,7 +81,7 @@ export default function SharePage() {
         }}>
           <div style={{
             width: 48, height: 48, borderRadius: '12px',
-            background: 'rgba(217,79,79,0.08)',
+            background: 'rgba(180,35,50,0.08)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '22px',
           }}>
@@ -144,7 +144,7 @@ export default function SharePage() {
                 <div key={item.id} style={{
                   background: colors.raised,
                   border: `1px solid ${colors.border}`,
-                  borderRadius: '10px',
+                  borderRadius: '8px',
                   padding: '12px 14px',
                 }}>
                   {/* Image + code + name. The photo leads: this is the copy the
@@ -160,8 +160,8 @@ export default function SharePage() {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <span style={{
                         fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-                        color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                        borderRadius: '3px', padding: '1px 5px',
+                        color: '#303536', background: 'rgba(48,53,54,0.07)',
+                        borderRadius: '6px', padding: '1px 5px',
                       }}>
                         {prod?.product_code ?? '—'}
                       </span>
@@ -236,10 +236,10 @@ function Shell({ children }: { children: React.ReactNode }) {
         marginBottom: '20px',
       }}>
         <div style={{
-          width: 26, height: 26, borderRadius: '6px', background: '#1A2035',
+          width: 26, height: 26, borderRadius: '6px', background: '#303536',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#DC1F2E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B9472E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
@@ -254,7 +254,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         width: '100%', maxWidth: '520px',
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '16px',
+        borderRadius: '12px',
         padding: '24px 20px 28px',
         boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
       }}>
@@ -273,7 +273,7 @@ function Chip({ children, muted }: { children: React.ReactNode; muted?: boolean 
       color: muted ? colors.muted : colors.secondary,
       background: colors.raised,
       border: `1px solid ${colors.border}`,
-      borderRadius: '4px', padding: '2px 8px',
+      borderRadius: '6px', padding: '2px 8px',
     }}>
       {children}
     </span>

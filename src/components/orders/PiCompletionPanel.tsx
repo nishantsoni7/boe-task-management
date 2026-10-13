@@ -191,7 +191,7 @@ export function PiLockedNotice({ title, body, onRequestChange }: {
       data-testid="pi-locked-notice"
       style={{
         display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap',
-        border: '1px solid rgba(85,133,232,0.45)', background: colors.blueTint,
+        border: '1px solid rgba(51,90,134,0.45)', background: colors.blueTint,
         borderRadius: '12px', padding: '12px 16px',
       }}
     >

@@ -198,13 +198,13 @@ export default function QuickAddExpensePage() {
           // ── AFTER A CAPTURE: where it went, and both onward moves ──
           <div className="boe-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#16A34A' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#2F7A52' }}>
                 {QUICK_CAPTURE_SAVED_MESSAGE}
               </div>
               <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '6px', lineHeight: 1.6 }}>
                 &ldquo;{captured.raw_text}&rdquo;
               </div>
-              <div style={{ fontSize: '11.5px', color: missing.length > 0 ? '#8A5A00' : colors.muted, marginTop: '6px', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '11.5px', color: missing.length > 0 ? '#805B0D' : colors.muted, marginTop: '6px', lineHeight: 1.6 }}>
                 {draftMissingSummary(missing)}
               </div>
             </div>
@@ -231,7 +231,7 @@ export default function QuickAddExpensePage() {
           // ── The confirmation after a full entry, with both onward moves ──
           <div className="boe-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#16A34A' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#2F7A52' }}>
                 Expense saved
               </div>
               <div style={{ fontSize: '13px', color: colors.secondary, marginTop: '5px', lineHeight: 1.6 }}>

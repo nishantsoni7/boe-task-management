@@ -62,13 +62,13 @@ export function SectionLabel({ children, count }: SectionLabelProps) {
       {count !== undefined && (
         <span style={{
           marginLeft: 'auto',
-          fontSize: '10px',
-          padding: '1px 6px',
-          borderRadius: '3px',
-          background: 'rgba(255,255,255,0.03)',
+          fontSize: '12px',
+          padding: '1px 8px',
+          borderRadius: '6px',
+          background: colors.float,
           border: `1px solid ${colors.border}`,
           color: colors.secondary,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-body)',
         }}>
           {count}
         </span>
@@ -88,7 +88,7 @@ export function EmptyState({ message, hint }: EmptyStateProps) {
     <div style={{ textAlign: 'center', padding: '64px 0' }}>
       <p style={{ color: colors.muted, fontSize: '13px' }}>{message}</p>
       {hint && (
-        <p style={{ color: '#2E3340', fontSize: '12px', marginTop: '4px' }}>{hint}</p>
+        <p style={{ color: colors.tertiary, fontSize: '12px', marginTop: '4px' }}>{hint}</p>
       )}
     </div>
   )

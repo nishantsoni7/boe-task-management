@@ -76,12 +76,12 @@ export function CarryForwardModal({
           decision taken against the proposal, not instead of seeing it. */}
       <div style={{
         padding: '10px 13px', borderRadius: 8, background: 'rgba(0,0,0,0.028)',
-        fontSize: 12.5, color: '#3D4455', lineHeight: 1.55,
+        fontSize: 12.5, color: '#4C5352', lineHeight: 1.55,
       }}>
         Proposed automatically from the previous payroll period:{' '}
         <strong>{signedLabel(proposedAmount)}</strong>
         {isManual && (
-          <div style={{ color: '#8C94A6', marginTop: 4 }}>
+          <div style={{ color: '#686D6C', marginTop: 4 }}>
             This balance is currently set manually. The proposed figure above is kept and can be restored.
           </div>
         )}
@@ -118,8 +118,8 @@ export function CarryForwardModal({
       {amount.trim() !== '' && Number.isFinite(magnitude) && (
         <div style={{
           padding: '9px 12px', borderRadius: 8,
-          background: direction === 'owed' ? 'rgba(69,168,112,0.09)' : 'rgba(232,160,48,0.10)',
-          fontSize: 12.5, color: '#3D4455', lineHeight: 1.5,
+          background: direction === 'owed' ? 'rgba(39,98,71,0.09)' : 'rgba(196,138,26,0.10)',
+          fontSize: 12.5, color: '#4C5352', lineHeight: 1.5,
         }}>
           This will be recorded as <strong>{signedLabel(signed)}</strong> —{' '}
           {direction === 'owed'
@@ -172,7 +172,7 @@ function DirectionButton({
         flex: '1 1 180px', padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
         border: `1px solid ${active ? 'rgba(79,111,208,0.5)' : colors.border}`,
         background: active ? 'rgba(79,111,208,0.08)' : '#fff',
-        color: active ? '#3B63B8' : '#6B7280',
+        color: active ? '#B9472E' : '#686D6C',
         fontSize: 12.5, fontWeight: active ? 600 : 500, textAlign: 'left', lineHeight: 1.4,
       }}
     >
@@ -229,10 +229,10 @@ export function PaymentModal({
           turns on: the payment does not change the salary. */}
       <div style={{
         padding: '10px 13px', borderRadius: 8, background: 'rgba(0,0,0,0.028)',
-        fontSize: 12.5, color: '#3D4455', lineHeight: 1.55,
+        fontSize: 12.5, color: '#4C5352', lineHeight: 1.55,
       }}>
         Salary Payable for this month is <strong>{fmtMoney(salaryPayable)}</strong>.
-        <div style={{ color: '#8C94A6', marginTop: 4 }}>
+        <div style={{ color: '#686D6C', marginTop: 4 }}>
           Recording a payment does not change attendance, deductions or Salary Payable. It sets
           the balance carried forward.
         </div>
@@ -254,12 +254,12 @@ export function PaymentModal({
         <div style={{
           padding: '9px 12px', borderRadius: 8,
           background: Math.abs(closing) < 0.005
-            ? 'rgba(69,168,112,0.09)'
-            : closing > 0 ? 'rgba(85,133,232,0.09)' : 'rgba(232,160,48,0.10)',
-          fontSize: 12.5, color: '#3D4455', lineHeight: 1.5,
+            ? 'rgba(39,98,71,0.09)'
+            : closing > 0 ? 'rgba(51,90,134,0.09)' : 'rgba(196,138,26,0.10)',
+          fontSize: 12.5, color: '#4C5352', lineHeight: 1.5,
         }}>
           Balance carried forward: <strong>{signedLabel(closing)}</strong>
-          <div style={{ color: '#5B6474', marginTop: 3 }}>
+          <div style={{ color: '#686D6C', marginTop: 3 }}>
             {Math.abs(closing) < 0.005
               ? 'This month will be fully settled.'
               : closing > 0

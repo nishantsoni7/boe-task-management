@@ -31,10 +31,10 @@ export function accentFromBadge(meta: { bg: string; color: string; border: strin
 // The BOE brand accent, for an "All"/"Total" tab that has no row-badge
 // equivalent of its own.
 export const BRAND_TAB_ACCENT: TabAccent = {
-  color: '#DC1F2E',
-  tint: 'rgba(220,31,46,0.055)',
-  badge: 'rgba(220,31,46,0.09)',
-  badgeActive: 'rgba(220,31,46,0.17)',
+  color: '#B9472E',
+  tint: 'rgba(185,71,46,0.055)',
+  badge: 'rgba(185,71,46,0.09)',
+  badgeActive: 'rgba(185,71,46,0.17)',
 }
 
 export type StatusTab<K extends string> = {

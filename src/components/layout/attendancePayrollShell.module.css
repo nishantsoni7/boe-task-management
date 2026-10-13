@@ -1,8 +1,8 @@
 /* Attendance & Payroll shell — header controls and the section tab row.
  *
- * Colours are the app's existing tokens (see src/lib/tokens.ts): the #F4F5F7
- * page ground, white surfaces, #111318 text, rgba(0,0,0,.08) borders and BOE
- * red #DC1F2E for the single active/attention accent. No amber: amber in this
+ * Colours are the app's existing tokens (see src/lib/tokens.ts): the #F7F5F1
+ * page ground, white surfaces, #303536 text, #E4DED7 borders and BOE
+ * red #B9472E for the single active/attention accent. No amber: amber in this
  * module means "warning" on a status badge, never "you are here".
  */
 
@@ -16,28 +16,28 @@
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border: 1px solid #CFC8BF;
   background: #fff;
-  color: #4A5261;
+  color: #4C5352;
   cursor: pointer;
   flex-shrink: 0;
   text-decoration: none;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .iconBtn:hover:not(:disabled) {
-  background: rgba(220, 31, 46, 0.06);
-  color: #DC1F2E;
-  border-color: rgba(220, 31, 46, 0.25);
+  background: rgba(185,71,46, 0.06);
+  color: #B9472E;
+  border-color: rgba(185,71,46, 0.25);
 }
 .iconBtn:focus-visible {
-  outline: 2px solid #5585E8;
+  outline: 2px solid #B9472E;
   outline-offset: 2px;
 }
 .iconBtn:disabled { cursor: default; }
 .iconBtnActive {
-  background: rgba(220, 31, 46, 0.08);
-  color: #DC1F2E;
-  border-color: rgba(220, 31, 46, 0.25);
+  background: rgba(185,71,46, 0.08);
+  color: #B9472E;
+  border-color: rgba(185,71,46, 0.25);
 }
 
 .bellBadge {
@@ -48,14 +48,14 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: #DC1F2E;
+  background: #B9472E;
   color: #fff;
   font-size: 10.5px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
   box-sizing: border-box;
-  border: 2px solid #F4F5F7;
+  border: 2px solid #F7F5F1;
 }
 
 .spin { animation: boe-spin 0.7s linear infinite; }
@@ -68,7 +68,7 @@
   gap: 2px;
   padding: 0 22px;
   background: #fff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #E4DED7;
   /* One row. On a phone it scrolls sideways inside itself, never the page. */
   overflow-x: auto;
   overflow-y: hidden;
@@ -86,24 +86,24 @@
   padding: 0 14px;
   font-size: 13px;
   font-weight: 500;
-  color: #4A5261;
+  color: #4C5352;
   text-decoration: none;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
-.tab:hover { color: #111318; background: rgba(0, 0, 0, 0.035); }
+.tab:hover { color: #303536; background: rgba(0, 0, 0, 0.035); }
 .tab:focus-visible {
-  outline: 2px solid #5585E8;
+  outline: 2px solid #B9472E;
   outline-offset: -2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 .tabActive,
 .tabActive:hover {
-  color: #111318;
+  color: #303536;
   font-weight: 700;
-  border-bottom-color: #DC1F2E;
+  border-bottom-color: #B9472E;
   background: transparent;
 }
 
@@ -112,9 +112,9 @@
   margin-left: auto;
   padding-left: 18px;
   gap: 6px;
-  color: #6B7384;
+  color: #686D6C;
 }
-.tabHelpActive { color: #111318; font-weight: 700; }
+.tabHelpActive { color: #303536; font-weight: 700; }
 
 @media (max-width: 767px) {
   .iconBtn { width: 44px; height: 44px; }

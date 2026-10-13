@@ -202,7 +202,7 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0F1422',
+        background: '#303536',
         zIndex: 9999,
         padding: '32px 24px',
         opacity: visible ? 1 : 0,
@@ -222,7 +222,7 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{
           fontSize: '64px',
           lineHeight: 1,
-          color: '#1A2A4A',
+          color: '#303536',
           fontFamily: 'Georgia, serif',
           marginBottom: '16px',
           alignSelf: 'flex-start',
@@ -236,7 +236,7 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <p style={{
           fontSize: 'clamp(18px, 4vw, 26px)',
           fontWeight: 500,
-          color: '#E2E8F0',
+          color: '#335A86',
           lineHeight: 1.55,
           textAlign: 'center',
           maxWidth: '520px',
@@ -250,13 +250,13 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{
           width: '40px',
           height: '2px',
-          background: '#1E3A5F',
+          background: '#303536',
           borderRadius: '999px',
           overflow: 'hidden',
         }}>
           <div style={{
             height: '100%',
-            background: '#4A90D9',
+            background: '#C3D3E6',
             borderRadius: '999px',
             animation: 'boe-progress 2.1s linear forwards',
           }} />

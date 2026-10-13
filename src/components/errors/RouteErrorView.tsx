@@ -20,10 +20,10 @@ export function RouteErrorView({ error, retry }: { error: Error & { digest?: str
 
   const reload = () => window.location.reload()
   const button = {
-    minHeight: 44, padding: '0 18px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    minHeight: 44, padding: '0 18px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
   } as const
-  const primary = { ...button, background: '#111318', color: '#fff', border: '1px solid #111318' }
-  const secondary = { ...button, background: '#fff', color: '#111318', border: '1px solid rgba(0,0,0,0.15)' }
+  const primary = { ...button, background: '#303536', color: '#fff', border: '1px solid #303536' }
+  const secondary = { ...button, background: '#fff', color: '#303536', border: '1px solid #CFC8BF' }
 
   return (
     <main
@@ -31,15 +31,15 @@ export function RouteErrorView({ error, retry }: { error: Error & { digest?: str
       data-testid={`route-error-${kind}`}
       style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, background: '#F4F5F7', fontFamily: 'var(--font-body, DM Sans, system-ui, sans-serif)',
+        padding: 16, background: '#F7F5F1', fontFamily: 'var(--font-body)',
       }}
     >
       <div style={{
-        width: '100%', maxWidth: 440, background: '#fff', border: '1px solid rgba(0,0,0,0.08)',
-        borderRadius: 16, padding: '28px 24px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        width: '100%', maxWidth: 440, background: '#fff', border: '1px solid #E4DED7',
+        borderRadius: 12, padding: '28px 24px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
       }}>
-        <h1 style={{ fontSize: 20, margin: '0 0 8px', color: '#111318' }}>{copy.title}</h1>
-        <p style={{ fontSize: 14, lineHeight: 1.5, margin: '0 0 20px', color: '#4A5261' }}>{copy.body}</p>
+        <h1 style={{ fontSize: 20, margin: '0 0 8px', color: '#303536' }}>{copy.title}</h1>
+        <p style={{ fontSize: 14, lineHeight: 1.5, margin: '0 0 20px', color: '#4C5352' }}>{copy.body}</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {copy.primary === 'reload'
             ? <button type="button" style={primary} onClick={reload}>Reload</button>
@@ -51,7 +51,7 @@ export function RouteErrorView({ error, retry }: { error: Error & { digest?: str
           </a>
         </div>
         {digest && (
-          <p style={{ fontSize: 12, color: '#8A909C', margin: '16px 0 0' }}>Reference: {digest}</p>
+          <p style={{ fontSize: 12, color: '#686D6C', margin: '16px 0 0' }}>Reference: {digest}</p>
         )}
       </div>
     </main>

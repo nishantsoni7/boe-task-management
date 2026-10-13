@@ -146,7 +146,7 @@ export default function DispatchPage() {
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Not authorized</div>
         <div style={{ fontSize: '13px' }}>You do not have permission to dispatch samples.</div>
-        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#1A2035', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           Go to Sample Tracking
         </button>
       </div>
@@ -159,7 +159,7 @@ export default function DispatchPage() {
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Request not found</div>
         <div style={{ fontSize: '13px' }}>This QR code may be invalid or the request was removed.</div>
-        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#1A2035', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           Go to Sample Tracking
         </button>
       </div>
@@ -170,7 +170,7 @@ export default function DispatchPage() {
 
   if (done) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
-      <div style={{ background: '#fff', borderRadius: '14px', maxWidth: 480, width: '100%', padding: '32px 28px', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', maxWidth: 480, width: '100%', padding: '32px 28px', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}>
         <div style={{ width: 56, height: 56, borderRadius: '50%', background: colors.greenTint, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: colors.green }}>
           <CheckCircle2 size={28} strokeWidth={2} />
         </div>
@@ -180,7 +180,7 @@ export default function DispatchPage() {
           {form.courier_name && <> Courier: <strong style={{ color: colors.secondary }}>{form.courier_name}</strong>.</>}
           {form.tracking_number && <> Tracking: <strong style={{ color: colors.secondary }}>{form.tracking_number}</strong>.</>}
         </div>
-        <button onClick={() => router.push('/samples')} style={{ padding: '9px 24px', borderRadius: '8px', border: 'none', background: '#1A2035', color: '#fff', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ padding: '9px 24px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer' }}>
           Back to Sample Tracking
         </button>
       </div>
@@ -206,7 +206,7 @@ export default function DispatchPage() {
         {/* Page title */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <div style={{ width: 36, height: 36, borderRadius: '9px', background: '#1A203514', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1A2035' }}>
+            <div style={{ width: 36, height: 36, borderRadius: '8px', background: '#30353614', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#303536' }}>
               <Truck size={17} strokeWidth={1.8} />
             </div>
             <div style={{ fontSize: '18px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Dispatch Sample</div>
@@ -218,7 +218,7 @@ export default function DispatchPage() {
 
         {/* Request details card */}
         <div style={{ background: '#fff', borderRadius: '12px', border: `1.5px solid ${colors.border}`, marginBottom: '16px', overflow: 'hidden' }}>
-          <div style={{ background: '#1A2035', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background: '#303536', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Package size={14} strokeWidth={2} />
             <span style={{ fontSize: '12.5px', fontWeight: 700, letterSpacing: '0.02em' }}>Request Details</span>
             <span style={{ marginLeft: 'auto', fontSize: '10.5px', opacity: 0.6 }}>{r.id.slice(0, 16).toUpperCase()}</span>
@@ -248,9 +248,9 @@ export default function DispatchPage() {
 
         {/* Status: already dispatched */}
         {alreadyDispatched && (
-          <div style={{ background: '#fff', borderRadius: '12px', border: `1.5px solid #1A203530`, padding: '20px 16px' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', border: `1.5px solid #30353630`, padding: '20px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <CheckCircle2 size={18} strokeWidth={2} color='#2E9E6B' />
+              <CheckCircle2 size={18} strokeWidth={2} color='#2F7A52' />
               <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Already Dispatched</span>
             </div>
             <div style={{ fontSize: '13px', color: colors.muted, display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -266,7 +266,7 @@ export default function DispatchPage() {
         {/* Status: not ready */}
         {!canDispatch && !alreadyDispatched && (
           <div style={{ background: '#fff', borderRadius: '12px', border: `1.5px solid ${colors.border}`, padding: '20px 16px', textAlign: 'center' }}>
-            <AlertTriangle size={24} strokeWidth={1.5} color='#B45309' style={{ margin: '0 auto 10px' }} />
+            <AlertTriangle size={24} strokeWidth={1.5} color='#805B0D' style={{ margin: '0 auto 10px' }} />
             <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Cannot dispatch</div>
             <div style={{ fontSize: '13px', color: colors.muted }}>
               This request has status <strong>{r.status.replace('_', ' ')}</strong> and is not ready for dispatch.
@@ -312,7 +312,7 @@ export default function DispatchPage() {
               </div>
 
               {error && (
-                <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px' }}>
+                <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px' }}>
                   {error}
                 </div>
               )}
@@ -322,7 +322,7 @@ export default function DispatchPage() {
                 disabled={saving}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                  background: '#1A2035', color: '#fff', border: 'none', borderRadius: '9px',
+                  background: '#303536', color: '#fff', border: 'none', borderRadius: '8px',
                   padding: '12px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.65 : 1, fontFamily: font.display,
                 }}

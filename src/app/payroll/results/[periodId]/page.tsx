@@ -263,7 +263,7 @@ export default function PayrollResultsPage() {
                 )}
               </div>
               {canLock && totalCount > 0 && (
-                <div className={styles.reviewLine} style={{ color: reviewedCount === totalCount ? '#047857' : '#B45309' }}>
+                <div className={styles.reviewLine} style={{ color: reviewedCount === totalCount ? '#276247' : '#805B0D' }}>
                   {reviewedCount} of {totalCount} employee{totalCount !== 1 ? 's' : ''} have reviewed their payslip.
                 </div>
               )}

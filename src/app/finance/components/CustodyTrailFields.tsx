@@ -158,7 +158,7 @@ export function CustodyTrailView({
       <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
       {ordered.length === 0 ? (
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           padding: '10px 12px', fontSize: '13px', color: colors.muted,
         }}>
           {emptyLabel ?? 'No collection or handover recorded yet.'}
@@ -166,7 +166,7 @@ export function CustodyTrailView({
       ) : (
         <ul style={{
           listStyle: 'none', margin: 0, padding: 0,
-          border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+          border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
         }}>
           {ordered.map((e, i) => (
             <li key={e.id} style={{ position: 'relative', marginTop: i === 0 ? '-1px' : 0 }}>

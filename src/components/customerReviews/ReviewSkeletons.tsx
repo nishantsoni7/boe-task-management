@@ -15,7 +15,7 @@ import { colors } from '@/lib/tokens'
 // yet. `aria-busy` is what actually announces the state.
 
 const BLOCK: React.CSSProperties = {
-  borderRadius: '10px',
+  borderRadius: '8px',
   border: `1px solid ${colors.border}`,
   background: colors.raised,
   opacity: 0.6,

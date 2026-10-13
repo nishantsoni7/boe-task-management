@@ -153,14 +153,14 @@ const TRANSFER_EVENT_LABEL: Record<string, string> = {
 
 const TONE_COLOR: Record<string, string> = {
   neutral:  colors.muted,
-  positive: '#15803D',
-  warning:  '#B45309',
-  critical: '#C13030',
+  positive: '#276247',
+  warning:  '#805B0D',
+  critical: '#B42332',
 }
 
 /** BOE red, the module's one accent. Used for primary, active and destructive. */
-const BOE_RED = '#DC1F2E'
-const DANGER_TEXT = '#B42318'
+const BOE_RED = '#B9472E'
+const DANGER_TEXT = '#B42332'
 
 /**
  * Above the sidebar (z-100, globals.css) so the menu panel is never clipped by
@@ -332,8 +332,8 @@ function Banner({ kind, message }: { kind: 'error' | 'success'; message: string 
   return (
     <div role={isError ? 'alert' : 'status'} style={{
       padding: '10px 12px', borderRadius: '8px',
-      background: isError ? 'rgba(217,79,79,0.1)' : 'rgba(22,163,74,0.10)',
-      color: isError ? '#C13030' : '#15803D',
+      background: isError ? 'rgba(180,35,50,0.1)' : 'rgba(22,163,74,0.10)',
+      color: isError ? '#B42332' : '#276247',
       fontSize: '12px',
     }}>
       {message}
@@ -439,7 +439,7 @@ function MoreActionsMenu({
           style={{
             position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: MENU_Z,
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: '9px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+            borderRadius: '8px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
             minWidth: '218px', padding: '4px 0', overflow: 'hidden',
           }}
         >
@@ -468,7 +468,7 @@ function MoreActionsMenu({
                   font: 'inherit', fontSize: '13px', cursor: 'pointer',
                   color: item.danger ? DANGER_TEXT : colors.secondary,
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = item.danger ? '#FEF3F2' : colors.raised }}
+                onMouseEnter={e => { e.currentTarget.style.background = item.danger ? '#FBE9EC' : colors.raised }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
               >
                 {ASSET_ACTION_LABEL[item.key]}
@@ -922,7 +922,7 @@ export default function AssetDetailPage() {
                 onKeyDown={e => onTabKeyDown(e, index)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '7px',
-                  padding: '6px 14px', borderRadius: '20px',
+                  padding: '6px 14px', borderRadius: '12px',
                   fontSize: '12px', fontWeight: 600,
                   border: `1.5px solid ${active ? BOE_RED : colors.border}`,
                   background: active ? BOE_RED : colors.base,
@@ -934,7 +934,7 @@ export default function AssetDetailPage() {
                 {count !== null && (
                   <span style={{
                     fontFamily: 'monospace', fontSize: '10.5px', lineHeight: 1,
-                    padding: '3px 6px', borderRadius: '10px',
+                    padding: '3px 6px', borderRadius: '8px',
                     background: active ? 'rgba(255,255,255,0.22)' : colors.float,
                     color: active ? '#fff' : colors.tertiary,
                   }}>
@@ -1020,7 +1020,7 @@ export default function AssetDetailPage() {
               display: 'inline-flex', alignItems: 'center', gap: '3px',
               background: 'none', border: 'none', padding: '2px 4px 2px 0',
               font: 'inherit', fontSize: '12px', fontWeight: 600,
-              color: colors.tertiary, cursor: 'pointer', borderRadius: '5px',
+              color: colors.tertiary, cursor: 'pointer', borderRadius: '6px',
             }}
             onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
             onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
@@ -1232,8 +1232,8 @@ function OverviewTab({
                 and this is where a reader sees it. */}
             {custody.inconsistent && (
               <div role="alert" style={{
-                padding: '8px 10px', borderRadius: '7px', fontSize: '11.5px',
-                background: 'rgba(217,79,79,0.08)', color: DANGER_TEXT,
+                padding: '8px 10px', borderRadius: '8px', fontSize: '11.5px',
+                background: 'rgba(180,35,50,0.08)', color: DANGER_TEXT,
               }}>
                 This asset&rsquo;s status and its custody records disagree. Review the assignment history.
               </div>
@@ -1269,8 +1269,8 @@ function OverviewTab({
                 {openAssignment.accepted_at ? (
                   <div style={{
                     display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
-                    padding: '8px 10px', borderRadius: '7px',
-                    background: 'rgba(69,168,112,0.10)',
+                    padding: '8px 10px', borderRadius: '8px',
+                    background: 'rgba(39,98,71,0.10)',
                   }}>
                     <span className="boe-badge boe-badge-completed" style={{ fontSize: '10px' }}>Accepted</span>
                     <span style={{ fontSize: '12px', color: colors.primary }}>
@@ -1423,7 +1423,7 @@ function OverviewTab({
               <SideFact label="Last service"   value={serviceSummary.lastServiceDate ? fmtDate(serviceSummary.lastServiceDate) : null} />
               <SideFact label="Next service"   value={serviceSummary.upcomingServiceDate ? fmtDate(serviceSummary.upcomingServiceDate) : null} />
               {serviceSummary.openRecordCount > 0 && (
-                <div style={{ fontSize: '11.5px', color: '#B45309' }}>
+                <div style={{ fontSize: '11.5px', color: '#805B0D' }}>
                   {serviceSummary.openRecordCount} record{serviceSummary.openRecordCount === 1 ? '' : 's'} still open.
                 </div>
               )}

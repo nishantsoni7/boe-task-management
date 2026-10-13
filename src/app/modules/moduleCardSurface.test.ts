@@ -525,16 +525,16 @@ describe('the header, and the latest announcement beneath it', () => {
 
 // ── A white page ─────────────────────────────────────────────────────────────
 describe('a neutral canvas under white surfaces, with red only in small accents', () => {
-  test('the canvas is #F4F5F7 and the header is white — scoped to this page', () => {
-    assert.match(CSS, /:global\(\.boe-app-shell\):has\(\.launcher\)\s*\{\s*background:\s*#F4F5F7;/)
+  test('the canvas is #F7F5F1 and the header is white — scoped to this page', () => {
+    assert.match(CSS, /:global\(\.boe-app-shell\):has\(\.launcher\)\s*\{\s*background:\s*#F7F5F1;/)
     assert.match(CSS, /:global\(\.boe-main-content\):has\(\.launcher\) :global\(\.boe-page-header\)\s*\{\s*background:\s*#FFFFFF;/)
   })
 
   test('the announcement row and every tile stay white, with neutral borders', () => {
     assert.match(baseRule('.announcement'), /background:\s*#fff/i)
-    assert.match(baseRule('.announcement'), /border:\s*1px solid #E3E6EB/i)
+    assert.match(baseRule('.announcement'), /border:\s*1px solid #E4DED7/i)
     assert.match(DESKTOP_CARD, /background:\s*#fff/i)
-    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E4DED7/i)
   })
 
   test('the sidebar is not restyled here', () => {
@@ -553,8 +553,8 @@ describe('a neutral canvas under white surfaces, with red only in small accents'
   })
 
   test('the announcement marker is its red edge; its icon box is neutral', () => {
-    assert.match(baseRule('.announcement'), /border-left:\s*3px solid #C8373F/)
-    assert.match(baseRule('.announcementIcon'), /background:\s*#F3F4F6/)
+    assert.match(baseRule('.announcement'), /border-left:\s*3px solid #B42332/)
+    assert.match(baseRule('.announcementIcon'), /background:\s*#F1EEE9/)
   })
 })
 
@@ -627,12 +627,12 @@ describe('one restrained palette, and every state in the stylesheet', () => {
   test('BOE red marks the tile being pointed at — icon and arrow — and nothing at rest', () => {
     const icon = CSS.match(/\.card:hover \.iconBox,\s*\.card:focus-visible \.iconBox\s*\{([^}]*)\}/)
     assert.ok(icon)
-    assert.match(icon[1], /color:\s*#DC1F2E/i)
+    assert.match(icon[1], /color:\s*#B9472E/i)
     const arrow = CSS.match(/\.card:hover \.cardArrow,\s*\.card:focus-visible \.cardArrow\s*\{([^}]*)\}/)
     assert.ok(arrow)
-    assert.match(arrow[1], /color:\s*#DC1F2E/i)
-    assert.equal(/#DC1F2E/i.test(baseRule('.iconBox')), false, 'a resting icon is ink')
-    assert.equal(/#DC1F2E/i.test(baseRule('.cardArrow')), false, 'a resting arrow is grey')
+    assert.match(arrow[1], /color:\s*#B9472E/i)
+    assert.equal(/#B9472E/i.test(baseRule('.iconBox')), false, 'a resting icon is ink')
+    assert.equal(/#B9472E/i.test(baseRule('.cardArrow')), false, 'a resting arrow is grey')
   })
 
   test('the card keeps no hover flag in React — :hover does that job', () => {
@@ -642,7 +642,7 @@ describe('one restrained palette, and every state in the stylesheet', () => {
 
   test('HOVER AND FOCUS ARE ONE LANGUAGE', () => {
     assert.ok(/\.card:hover,\s*\.card:focus-visible\s*\{/.test(CSS))
-    assert.ok(/\.card:focus-visible\s*\{[^}]*outline:\s*2px solid #141922/.test(CSS))
+    assert.ok(/\.card:focus-visible\s*\{[^}]*outline:\s*2px solid #303536/.test(CSS))
     assert.ok(/\.card:active\s*\{/.test(CSS))
   })
 
@@ -759,7 +759,7 @@ describe('this page has no dark variant, and adds none', () => {
 
   test('a compact tile is white with the neutral hairline', () => {
     assert.match(DESKTOP_CARD, /background:\s*#fff/i)
-    assert.match(DESKTOP_CARD, /border:\s*1px solid #E3E6EB/i)
+    assert.match(DESKTOP_CARD, /border:\s*1px solid #E4DED7/i)
   })
 
   test('reduced motion drops the movement and keeps the meaning', () => {

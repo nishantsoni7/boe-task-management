@@ -28,7 +28,7 @@ import { arrangeLanding } from '@/lib/customerReviews/leaderboardLanding'
 // Avatars are initials: the profile has no photo column, and looking one up per
 // person would be exactly the per-employee query this avoids.
 
-const GOLD = '#B45309'
+const GOLD = '#805B0D'
 const CARD: React.CSSProperties = {
   borderRadius: 12, border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0,
 }
@@ -67,7 +67,7 @@ export function ReviewsLeaderboardPanel() {
       {board.isPending ? (
         <p role="status" style={{ margin: 0, fontSize: 12.5, color: colors.muted }}>Loading the leaderboard…</p>
       ) : board.isError || !data ? (
-        <div role="alert" style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+        <div role="alert" style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
           <span>{board.error instanceof Error ? board.error.message : 'The leaderboard could not be loaded.'}</span>
           <button type="button" className="boe-btn boe-btn-ghost" onClick={() => { void board.refetch() }} style={{ minHeight: 44, padding: '7px 14px', fontSize: 12.5 }}>Try again</button>
         </div>

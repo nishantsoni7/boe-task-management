@@ -172,8 +172,8 @@ export function RequestReviewDrawer({
             <dt>Employee</dt>
             <dd>
               {employee?.full_name ?? 'Employee'}
-              {employee?.employee_code && <span style={{ color: '#6B7384' }}> · {employee.employee_code}</span>}
-              {employee && !employee.is_active && <span style={{ color: '#DC2626', fontWeight: 600 }}> · inactive</span>}
+              {employee?.employee_code && <span style={{ color: '#686D6C' }}> · {employee.employee_code}</span>}
+              {employee && !employee.is_active && <span style={{ color: '#B42332', fontWeight: 600 }}> · inactive</span>}
             </dd>
             <dt>Request</dt>
             <dd>{REQUEST_TYPE_LABEL[row.request_type]}</dd>
@@ -185,7 +185,7 @@ export function RequestReviewDrawer({
             <dd>
               {formatIstDateTime(row.submitted_at)}
               {' · '}
-              <span style={{ color: submissionTiming(row) === 'before_shift' ? '#047857' : '#B45309', fontWeight: 600 }}>
+              <span style={{ color: submissionTiming(row) === 'before_shift' ? '#276247' : '#805B0D', fontWeight: 600 }}>
                 {SUBMISSION_TIMING_LABEL[submissionTiming(row)]}
               </span>
             </dd>
@@ -220,7 +220,7 @@ export function RequestReviewDrawer({
                 onChange={e => { setNote(e.target.value); setNoteMissing(false) }} style={{ marginTop: 6 }}
               />
               {noteMissing && (
-                <div id="review-note-error" role="alert" style={{ color: '#B91C1C', fontSize: 12.5, marginTop: 6 }}>
+                <div id="review-note-error" role="alert" style={{ color: '#B42332', fontSize: 12.5, marginTop: 6 }}>
                   Add a reason — it is kept in the audit history.
                 </div>
               )}
@@ -237,7 +237,7 @@ export function RequestReviewDrawer({
           )}
 
           {own && row.status !== 'cancelled' && (
-            <div className={styles.shiftNote} style={{ color: '#B45309' }}>
+            <div className={styles.shiftNote} style={{ color: '#805B0D' }}>
               Your own request — another admin must decide it.
             </div>
           )}

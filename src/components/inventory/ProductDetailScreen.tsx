@@ -161,9 +161,9 @@ export default function ProductDetailScreen() {
                   <div className={s.barFree} style={{ width: `${pct(item.qty_available)}%` }} />
                 </div>
                 <div className={s.barLegend}>
-                  <span><i className={s.legendDot} style={{ background: '#111318' }} />Sold</span>
+                  <span><i className={s.legendDot} style={{ background: '#303536' }} />Sold</span>
                   <span><i className={s.legendDot} style={{ background: '#F5A524' }} />Reserved (waiting)</span>
-                  <span><i className={s.legendDot} style={{ background: '#22A559' }} />Available</span>
+                  <span><i className={s.legendDot} style={{ background: '#2F7A52' }} />Available</span>
                 </div>
               </div>
             </div>
@@ -190,7 +190,7 @@ export default function ProductDetailScreen() {
                 <ul className={s.history}>
                   {mineQ.data!.map(b => (
                     <li key={b.id} className={s.historyRow}>
-                      <span className={s.historyDot} style={{ background: b.status === 'confirmed' ? '#22A559' : '#F5A524' }} />
+                      <span className={s.historyDot} style={{ background: b.status === 'confirmed' ? '#2F7A52' : '#F5A524' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className={s.historyMain}>{b.qty} × for {b.customer_name} {b.customer_phone ? `· ${formatPhone(b.customer_phone)}` : ''}</div>
                         <div className={s.historySub}>{access.approve ? `${b.requester_name} · ` : ''}{shortDateTime(b.requested_at)}</div>

@@ -177,7 +177,7 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{
       padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px',
     }}>
       {message}
     </div>
@@ -188,7 +188,7 @@ function SuccessBanner({ message }: { message: string }) {
   return (
     <div role="status" style={{
       padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
-      background: 'rgba(22,163,74,0.10)', color: '#15803D', fontSize: '12px',
+      background: 'rgba(22,163,74,0.10)', color: '#276247', fontSize: '12px',
     }}>
       {message}
     </div>
@@ -1138,7 +1138,7 @@ function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
                 {busyId === row.id ? 'Working…' : 'Approve'}
               </button>
             )}
-            <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 14px', fontSize: '12px', color: '#C13030' }} disabled={busyId === row.id} onClick={() => setRejecting(row)}>
+            <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 14px', fontSize: '12px', color: '#B42332' }} disabled={busyId === row.id} onClick={() => setRejecting(row)}>
               Reject
             </button>
           </div>

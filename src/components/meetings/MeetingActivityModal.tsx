@@ -22,7 +22,7 @@ import { formatMeetingTimestamp, type MeetingActivityEntry } from '@/lib/meeting
 const TONE_COLOR: Record<'neutral' | 'blue' | 'green' | 'amber', string> = {
   neutral: colors.muted,
   blue:    colors.blue,
-  green:   '#2E8A58',
+  green:   '#276247',
   amber:   colors.amber,
 }
 
@@ -46,7 +46,7 @@ export function MeetingActivityModal({
       {reopened && (
         <div style={{
           padding: '9px 12px', borderRadius: '8px',
-          background: colors.amberTint, border: '1px solid rgba(232,160,48,0.28)',
+          background: colors.amberTint, border: '1px solid rgba(196,138,26,0.28)',
           fontSize: '12px', color: '#8A5A10', lineHeight: 1.45,
         }}>
           This meeting was reopened after being completed. Every completion is kept below —

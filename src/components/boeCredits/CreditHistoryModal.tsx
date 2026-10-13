@@ -53,10 +53,10 @@ function actorLabel(row: CreditHistoryRow): string | null {
 }
 
 const STATUS_TONE: Record<NonNullable<CreditTransactionDescription['status']>, { bg: string; fg: string }> = {
-  pending:   { bg: 'rgba(232,160,48,0.14)', fg: '#92400E' },
-  available: { bg: 'rgba(5,150,105,0.12)',  fg: '#047857' },
-  lapsed:    { bg: 'rgba(220,38,38,0.10)',  fg: '#B91C1C' },
-  reversed:  { bg: 'rgba(140,148,166,0.16)', fg: '#4B5563' },
+  pending:   { bg: 'rgba(196,138,26,0.14)', fg: '#805B0D' },
+  available: { bg: 'rgba(5,150,105,0.12)',  fg: '#276247' },
+  lapsed:    { bg: 'rgba(220,38,38,0.10)',  fg: '#B42332' },
+  reversed:  { bg: 'rgba(140,148,166,0.16)', fg: '#4C5352' },
 }
 
 export function CreditHistoryModal({
@@ -122,7 +122,7 @@ export function CreditHistoryModal({
         {provisional > 0 && (
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>Pending target</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#92400E', fontVariantNumeric: 'tabular-nums' }}>{formatCredits(provisional)}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#805B0D', fontVariantNumeric: 'tabular-nums' }}>{formatCredits(provisional)}</div>
           </div>
         )}
         <div>
@@ -135,7 +135,7 @@ export function CreditHistoryModal({
       </div>
 
       {error && (
-        <div role="alert" style={{ fontSize: 12.5, color: '#B91C1C', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
+        <div role="alert" style={{ fontSize: 12.5, color: '#B42332', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
           {error}
         </div>
       )}
@@ -164,12 +164,12 @@ export function CreditHistoryModal({
                     <span style={{ fontSize: 13, fontWeight: 600, color: t.fg }}>
                       {row.title ?? creditTransactionLabel(row.transaction_type)}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: row.credits < 0 ? '#B91C1C' : '#047857', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: row.credits < 0 ? '#B42332' : '#276247', fontVariantNumeric: 'tabular-nums' }}>
                       {formatCredits(row.credits, { signed: true })}
                     </span>
                     {row.status && (
                       <span style={{
-                        fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                        fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 12, whiteSpace: 'nowrap',
                         background: STATUS_TONE[row.status].bg, color: STATUS_TONE[row.status].fg,
                       }}>
                         {REWARD_STATUS_LABELS[row.status]}
@@ -183,7 +183,7 @@ export function CreditHistoryModal({
                     </span>
                   </div>
                   {(row.detail || actor) && (
-                    <div style={{ fontSize: 12, color: '#5B6474', lineHeight: 1.5, marginTop: 2, wordBreak: 'break-word' }}>
+                    <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5, marginTop: 2, wordBreak: 'break-word' }}>
                       {[row.detail, actor ? `by ${actor}` : null].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -193,7 +193,7 @@ export function CreditHistoryModal({
                       type="button"
                       onClick={() => { setReversing(row.id); setReason(''); setError(null) }}
                       disabled={busy}
-                      style={{ marginTop: 4, fontSize: 11.5, color: '#B45309', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                      style={{ marginTop: 4, fontSize: 11.5, color: '#805B0D', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
                     >
                       Reverse this entry
                     </button>

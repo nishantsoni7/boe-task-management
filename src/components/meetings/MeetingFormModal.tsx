@@ -288,15 +288,15 @@ export function MeetingFormModal({
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
                   padding: '7px 10px', border: 'none', textAlign: 'left',
-                  background: checked ? 'rgba(85,133,232,0.06)' : 'transparent',
+                  background: checked ? 'rgba(51,90,134,0.06)' : 'transparent',
                   cursor: locked ? 'default' : 'pointer',
                   borderBottom: `1px solid ${colors.border}`,
                 }}
               >
                 <span style={{
-                  width: 16, height: 16, borderRadius: '4px', flexShrink: 0,
-                  border: `1px solid ${checked ? colors.blue : colors.borderMed}`,
-                  background: checked ? colors.blue : 'transparent',
+                  width: 16, height: 16, borderRadius: '6px', flexShrink: 0,
+                  border: `1px solid ${checked ? colors.brand : colors.borderMed}`,
+                  background: checked ? colors.brand : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   {checked && <Check size={11} strokeWidth={3} color="#fff" />}

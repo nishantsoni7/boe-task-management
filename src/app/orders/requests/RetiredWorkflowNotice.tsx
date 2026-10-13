@@ -141,7 +141,7 @@ export function RetiredWorkflowNotice({ requestId }: { requestId?: string }) {
       >
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 40, height: 40, borderRadius: '10px',
+          width: 40, height: 40, borderRadius: '8px',
           background: colors.raised, border: `1px solid ${colors.border}`,
           color: colors.muted, flexShrink: 0,
         }}>

@@ -262,7 +262,7 @@ function MyIssues() {
       {error && (
         <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+          background: 'rgba(239,68,68,0.08)', color: '#B42332',
           border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
         }}>
           {error}
@@ -272,8 +272,8 @@ function MyIssues() {
       {deepLinkLost && (
         <div style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.30)',
-          fontSize: 12.5, color: '#8A5A12',
+          background: 'rgba(196,138,26,0.10)', border: '1px solid rgba(196,138,26,0.30)',
+          fontSize: 12.5, color: '#805B0D',
         }}>
           That issue is not available. Your own reports are listed below.
         </div>
@@ -284,7 +284,7 @@ function MyIssues() {
           border: `1px solid ${colors.border}`, borderRadius: 12,
           background: colors.base, padding: '34px 24px', textAlign: 'center',
         }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111318', marginBottom: 6 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#303536', marginBottom: 6 }}>
             You have not reported anything
           </div>
           <div style={{ fontSize: 13, color: colors.tertiary, lineHeight: 1.55 }}>
@@ -328,7 +328,7 @@ function MyIssues() {
                 return (
                   <tr key={key} style={{ borderTop: `1px solid ${colors.border}` }}>
                     <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#303536' }}>
                         {issueSubjectLabel(latest)}
                       </div>
                       <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
@@ -336,7 +336,7 @@ function MyIssues() {
                         {chain.length > 1 && ` · ${chain.length} submissions`}
                       </div>
                     </td>
-                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: '#3D4455', minWidth: 220 }}>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: '#4C5352', minWidth: 220 }}>
                       {latest.reason}
                     </td>
                     <td style={{ padding: '11px 14px', fontSize: 12, color: colors.muted, whiteSpace: 'nowrap' }}>
@@ -344,7 +344,7 @@ function MyIssues() {
                     </td>
                     <td style={{ padding: '11px 14px' }}>
                       <span style={{
-                        display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+                        display: 'inline-block', padding: '2px 10px', borderRadius: 12,
                         fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
                         background: tone.bg, color: tone.fg,
                       }}>

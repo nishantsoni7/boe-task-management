@@ -67,16 +67,16 @@ export function ObjectionReviewPanel({
 
   return (
     <div style={{
-      marginBottom: 16, borderRadius: 10, overflow: 'hidden',
-      border: `1px solid ${pending ? 'rgba(232,160,48,0.45)' : colors.border}`,
-      background: pending ? '#FFFBEB' : '#FAFBFC',
+      marginBottom: 16, borderRadius: 8, overflow: 'hidden',
+      border: `1px solid ${pending ? 'rgba(196,138,26,0.45)' : colors.border}`,
+      background: pending ? '#FAF0DA' : '#FBFAF8',
     }}>
       <div style={{
         padding: '11px 16px', display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
-        borderBottom: `1px solid ${pending ? 'rgba(232,160,48,0.3)' : colors.border}`,
+        borderBottom: `1px solid ${pending ? 'rgba(196,138,26,0.3)' : colors.border}`,
       }}>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#303536' }}>
           Employee reported an issue · {subjectLabel}
           {history.length > 1 && (
             <span style={{ fontWeight: 500, color: colors.muted }}>
@@ -94,7 +94,7 @@ export function ObjectionReviewPanel({
             View History
           </button>
           <span style={{
-            padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+            padding: '2px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 600,
             background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
           }}>
             {employeeStatusLabel(objection.status)}
@@ -103,7 +103,7 @@ export function ObjectionReviewPanel({
       </div>
 
       <div style={{ padding: '12px 16px' }}>
-        <div style={{ fontSize: 13, color: '#3D4455', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
           &ldquo;{objection.reason}&rdquo;
         </div>
         <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 6 }}>
@@ -112,13 +112,13 @@ export function ObjectionReviewPanel({
         </div>
 
         {objection.review_note && (
-          <div style={{ fontSize: 12.5, color: '#3B63B8', marginTop: 8 }}>
+          <div style={{ fontSize: 12.5, color: '#335A86', marginTop: 8 }}>
             Reply to employee: {objection.review_note}
           </div>
         )}
 
         {error && (
-          <div role="alert" style={{ fontSize: 12.5, color: '#C13030', marginTop: 8 }}>{error}</div>
+          <div role="alert" style={{ fontSize: 12.5, color: '#B42332', marginTop: 8 }}>{error}</div>
         )}
 
         {pending && (

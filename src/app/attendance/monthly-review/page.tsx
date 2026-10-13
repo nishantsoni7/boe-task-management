@@ -234,14 +234,14 @@ function AttendanceSummary({
   return (
     <div className={ui.stack} aria-busy={loading}>
       {/* One line of totals, not seven tiles: the table below is the content. */}
-      <p style={{ margin: 0, fontSize: 13, color: '#4A5261', lineHeight: 1.6 }}>
-        <strong style={{ color: '#111318' }}>{totals.employees}</strong> employees ·{' '}
-        <strong style={{ color: '#111318' }}>{totals.present}</strong> present days ·{' '}
-        <strong style={{ color: '#111318' }}>{totals.halfDays}</strong> half days ·{' '}
-        <strong style={{ color: totals.absent > 0 ? '#B91C1C' : '#111318' }}>{totals.absent}</strong> absent ·{' '}
-        <strong style={{ color: totals.missingPunch > 0 ? '#B45309' : '#111318' }}>{totals.missingPunch}</strong> missing punch ·{' '}
-        <strong style={{ color: '#111318' }}>{totals.late}</strong> late marks ·{' '}
-        <strong style={{ color: '#111318' }}>{fmtHours(totals.hours)}</strong> worked
+      <p style={{ margin: 0, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
+        <strong style={{ color: '#303536' }}>{totals.employees}</strong> employees ·{' '}
+        <strong style={{ color: '#303536' }}>{totals.present}</strong> present days ·{' '}
+        <strong style={{ color: '#303536' }}>{totals.halfDays}</strong> half days ·{' '}
+        <strong style={{ color: totals.absent > 0 ? '#B42332' : '#303536' }}>{totals.absent}</strong> absent ·{' '}
+        <strong style={{ color: totals.missingPunch > 0 ? '#805B0D' : '#303536' }}>{totals.missingPunch}</strong> missing punch ·{' '}
+        <strong style={{ color: '#303536' }}>{totals.late}</strong> late marks ·{' '}
+        <strong style={{ color: '#303536' }}>{fmtHours(totals.hours)}</strong> worked
       </p>
 
       {/* Desktop and tablet: the table, full width. */}
@@ -272,8 +272,8 @@ function AttendanceSummary({
                     </td>
                     <td className={ui.num}>{s.present}</td>
                     <td className={ui.num}>{s.half_day}</td>
-                    <td className={ui.num} style={{ color: s.absent > 0 ? '#B91C1C' : undefined, fontWeight: s.absent > 0 ? 600 : 400 }}>{s.absent}</td>
-                    <td className={ui.num} style={{ color: s.missing_punch > 0 ? '#B45309' : undefined, fontWeight: s.missing_punch > 0 ? 600 : 400 }}>{s.missing_punch}</td>
+                    <td className={ui.num} style={{ color: s.absent > 0 ? '#B42332' : undefined, fontWeight: s.absent > 0 ? 600 : 400 }}>{s.absent}</td>
+                    <td className={ui.num} style={{ color: s.missing_punch > 0 ? '#805B0D' : undefined, fontWeight: s.missing_punch > 0 ? 600 : 400 }}>{s.missing_punch}</td>
                     <td className={ui.num}>{s.late}</td>
                     <td className={ui.num}>{fmtHours(s.hours_worked)}</td>
                     <td className={ui.num}>
@@ -303,9 +303,9 @@ function AttendanceSummary({
                 </div>
                 {s.total_records > 0 && <Badge tone={pctTone(pct)}>{pct}%</Badge>}
               </div>
-              <div style={{ fontSize: 13, color: '#4A5261', lineHeight: 1.6 }}>
-                {s.present} present · {s.half_day} half · <span style={{ color: s.absent > 0 ? '#B91C1C' : undefined }}>{s.absent} absent</span> ·{' '}
-                <span style={{ color: s.missing_punch > 0 ? '#B45309' : undefined }}>{s.missing_punch} missing punch</span> · {s.late} late · {fmtHours(s.hours_worked)}
+              <div style={{ fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
+                {s.present} present · {s.half_day} half · <span style={{ color: s.absent > 0 ? '#B42332' : undefined }}>{s.absent} absent</span> ·{' '}
+                <span style={{ color: s.missing_punch > 0 ? '#805B0D' : undefined }}>{s.missing_punch} missing punch</span> · {s.late} late · {fmtHours(s.hours_worked)}
               </div>
               <Link href={detail(s.employee_id)} className={`boe-btn boe-btn-ghost ${ui.btnSm}`}>Open days</Link>
             </li>

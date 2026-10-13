@@ -76,7 +76,7 @@ export function ModuleMemberPicker({
     <>
       <label style={LABEL}>
         {label}
-        <span style={{ fontWeight: 400, color: '#8C94A6', marginLeft: 6 }}>
+        <span style={{ fontWeight: 400, color: '#686D6C', marginLeft: 6 }}>
           {selected.length > 0 ? `${selected.length} selected` : 'none selected'}
         </span>
       </label>
@@ -89,7 +89,7 @@ export function ModuleMemberPicker({
               key={m.id}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: '#F5F3FF', color: '#5B21B6',
+                background: '#EAF0F8', color: '#5B21B6',
                 border: '1px solid #DDD6FE', borderRadius: 999,
                 padding: '3px 6px 3px 10px', fontSize: 12.5, fontWeight: 600,
                 maxWidth: '100%',
@@ -123,14 +123,14 @@ export function ModuleMemberPicker({
       />
 
       <div style={{
-        border: '1.5px solid #D1D5DB', borderRadius: 8,
+        border: '1.5px solid #CFC8BF', borderRadius: 8,
         padding: '6px 8px', marginBottom: 8,
         maxHeight: 200, overflowY: 'auto',
       }}>
         {members.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: '#8C94A6', padding: '6px 4px' }}>No active members.</div>
+          <div style={{ fontSize: 12.5, color: '#686D6C', padding: '6px 4px' }}>No active members.</div>
         ) : matches.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: '#8C94A6', padding: '6px 4px' }}>
+          <div style={{ fontSize: 12.5, color: '#686D6C', padding: '6px 4px' }}>
             No member matches “{query.trim()}”.
           </div>
         ) : (
@@ -150,7 +150,7 @@ export function ModuleMemberPicker({
                   {m.full_name ?? m.email ?? m.id}
                 </span>
                 {m.team && (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#8C94A6', flexShrink: 0 }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#686D6C', flexShrink: 0 }}>
                     {m.team}
                   </span>
                 )}
@@ -162,13 +162,13 @@ export function ModuleMemberPicker({
         {/* The cap, stated. Without this line a member beyond the eighth is
             indistinguishable from a member who does not exist. */}
         {hidden > 0 && (
-          <div style={{ fontSize: 11.5, color: '#8C94A6', padding: '6px 4px 2px' }}>
+          <div style={{ fontSize: 11.5, color: '#686D6C', padding: '6px 4px 2px' }}>
             {hidden} more {hidden === 1 ? 'member' : 'members'} — type to narrow the list.
           </div>
         )}
       </div>
 
-      <div style={{ fontSize: 11.5, color: '#8C94A6', marginBottom: 16 }}>
+      <div style={{ fontSize: 11.5, color: '#686D6C', marginBottom: 16 }}>
         {describeSelection(selected.length)}
       </div>
     </>
@@ -188,7 +188,7 @@ const LABEL: React.CSSProperties = {
   display: 'block',
   fontSize: 12,
   fontWeight: 600,
-  color: '#6B7384',
+  color: '#686D6C',
   marginBottom: 6,
 }
 
@@ -196,7 +196,7 @@ const INPUT: React.CSSProperties = {
   width: '100%',
   padding: '9px 12px',
   fontSize: 13.5,
-  border: '1.5px solid #D1D5DB',
+  border: '1.5px solid #CFC8BF',
   borderRadius: 8,
   outline: 'none',
   boxSizing: 'border-box',

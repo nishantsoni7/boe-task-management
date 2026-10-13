@@ -53,7 +53,7 @@ export function CreditsSummaryCard({ token }: { token: string }) {
   return (
     <div style={{
       background: '#fff', borderRadius: 12,
-      border: '1px solid rgba(0,0,0,0.08)',
+      border: '1px solid #E4DED7',
       padding: '12px 16px', marginBottom: 16,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 12, flexWrap: 'wrap',

@@ -24,7 +24,7 @@ export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
       role="note"
       style={{
         display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '12.5px', color: colors.primary,
-        border: `1px solid ${colors.amber}`, background: colors.amberTint, borderRadius: '10px', padding: '10px 14px',
+        border: `1px solid ${colors.amber}`, background: colors.amberTint, borderRadius: '8px', padding: '10px 14px',
       }}
     >
       <AlertTriangle size={15} color={colors.amber} aria-hidden style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -85,7 +85,7 @@ export function PiSubmissionDetailsReview({ rows, missing, confirmation, confirm
         ))}
       </dl>
       {missing && (
-        <p role="alert" style={{ margin: '10px 0 0', fontSize: '12px', color: '#8a4b12', fontWeight: 600 }}>{missing}</p>
+        <p role="alert" style={{ margin: '10px 0 0', fontSize: '12px', color: '#805B0D', fontWeight: 600 }}>{missing}</p>
       )}
       {confirmation && !missing && (confirmation.needed ? (
         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>

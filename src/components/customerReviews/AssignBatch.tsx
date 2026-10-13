@@ -189,7 +189,7 @@ export function AssignBatch({
         peopleError
           ? <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0, lineHeight: 1.6 }}>{peopleError}</p>
           : (
-            <p role="status" style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.6 }}>
+            <p role="status" style={{ fontSize: '12px', color: '#805B0D', margin: 0, lineHeight: 1.6 }}>
               No employee currently holds the permission to use the Review Workflow, so there is
               nobody to assign this batch to. Grant it in Control Center first.
             </p>
@@ -396,15 +396,15 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             */}
             {row.intendedFor && names.get(row.intendedFor) && (
               <span style={{
-                padding: '2px 8px', borderRadius: '5px',
-                background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
+                padding: '2px 8px', borderRadius: '6px',
+                background: '#EAF0F8', color: '#5B21B6', border: '1px solid #DDD6FE',
                 fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
               }}>
                 Generated for {names.get(row.intendedFor)}
               </span>
             )}
             <span style={{
-              marginLeft: 'auto', fontFamily: 'var(--font-mono)',
+              marginLeft: 'auto', fontFamily: 'var(--font-body)',
               fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
             }}>
               {row.batchId.slice(0, 8)}

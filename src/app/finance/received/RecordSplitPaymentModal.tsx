@@ -686,8 +686,8 @@ export function RecordSplitPaymentModal({
           attached from the payment's own screen. */}
       {proofNotice && (
         <div style={{
-          fontSize: '12px', color: '#9A3412', background: '#FFF7ED',
-          border: '1px solid #FED7AA', borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
+          fontSize: '12px', color: '#805B0D', background: '#FAF0DA',
+          border: '1px solid #E6D2A0', borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
         }}>
           {proofNotice}
         </div>

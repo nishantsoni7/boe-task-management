@@ -41,7 +41,7 @@ type Ledger = {
   review_months: CreditReviewMonth[]
 }
 
-const ACCENT = '#4F6FD0'
+const ACCENT = '#335A86'
 
 const card: React.CSSProperties = {
   background: '#fff', borderRadius: 12, border: `1px solid ${colors.border}`, overflow: 'hidden',
@@ -57,10 +57,10 @@ function stamp(at: string): string {
 }
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
-  pending:   { bg: 'rgba(232,160,48,0.14)', fg: '#92400E' },
-  available: { bg: 'rgba(5,150,105,0.12)',  fg: '#047857' },
-  lapsed:    { bg: 'rgba(220,38,38,0.10)',  fg: '#B91C1C' },
-  reversed:  { bg: 'rgba(140,148,166,0.16)', fg: '#4B5563' },
+  pending:   { bg: 'rgba(196,138,26,0.14)', fg: '#805B0D' },
+  available: { bg: 'rgba(5,150,105,0.12)',  fg: '#276247' },
+  lapsed:    { bg: 'rgba(220,38,38,0.10)',  fg: '#B42332' },
+  reversed:  { bg: 'rgba(140,148,166,0.16)', fg: '#4C5352' },
 }
 
 export default function MyCreditsPage() {
@@ -152,7 +152,7 @@ export default function MyCreditsPage() {
             {ledger && ledger.provisional_credits > 0 && (
               <div>
                 <div style={eyebrow}>Pending this month&rsquo;s target</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#92400E', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#805B0D', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
                   {ledger.provisional_credits.toLocaleString('en-IN')}
                 </div>
               </div>
@@ -223,8 +223,8 @@ export default function MyCreditsPage() {
                       width: 26, height: 26, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 12, fontWeight: 700,
                       background: i < done ? 'rgba(5,150,105,0.14)' : 'rgba(0,0,0,0.05)',
-                      color: i < done ? '#047857' : '#A9AFBD',
-                      border: i < done ? '1px solid rgba(5,150,105,0.35)' : '1px dashed rgba(0,0,0,0.15)',
+                      color: i < done ? '#276247' : '#CFC8BF',
+                      border: i < done ? '1px solid rgba(5,150,105,0.35)' : '1px dashed #CFC8BF',
                     }}
                   >
                     {i < done ? '✓' : i + 1}
@@ -234,7 +234,7 @@ export default function MyCreditsPage() {
                   {done} of {target} approved
                 </span>
               </div>
-              <div style={{ fontSize: 12.5, color: '#5B6474', marginTop: 8, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 12.5, color: '#686D6C', marginTop: 8, lineHeight: 1.5 }}>
                 {month?.status === 'qualified'
                   ? 'Monthly target completed — this month’s review credits are available to spend.'
                   : month?.status === 'lapsed'
@@ -281,21 +281,21 @@ export default function MyCreditsPage() {
               {shownRows.map((row, i) => {
                 const tone = creditTransactionTone(row)
                 return (
-                  <li key={row.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0', borderBottom: i < shownRows.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                  <li key={row.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 0', borderBottom: i < shownRows.length - 1 ? '1px solid #E4DED7' : 'none' }}>
                     <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: tone.dot, marginTop: 7, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: colors.primary }}>{row.title ?? 'Credits'}</span>
                         {row.status && (
-                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: STATUS_TONE[row.status]?.bg, color: STATUS_TONE[row.status]?.fg, whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 12, background: STATUS_TONE[row.status]?.bg, color: STATUS_TONE[row.status]?.fg, whiteSpace: 'nowrap' }}>
                             {REWARD_STATUS_LABELS[row.status]}
                           </span>
                         )}
                       </div>
-                      {row.detail && <div style={{ fontSize: 12, color: '#5B6474', marginTop: 2 }}>{row.detail}</div>}
+                      {row.detail && <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2 }}>{row.detail}</div>}
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: row.credits < 0 ? '#B91C1C' : '#047857', fontVariantNumeric: 'tabular-nums' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: row.credits < 0 ? '#B42332' : '#276247', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCredits(row.credits, { signed: true })}
                       </div>
                       <div style={{ fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
@@ -320,7 +320,7 @@ export default function MyCreditsPage() {
           <Coins size={18} strokeWidth={1.9} color={ACCENT} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>How BOE Credits work</div>
-            <div style={{ fontSize: 12, color: '#5B6474', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2 }}>
               Earning, the monthly target, your salary, and what happens when a month closes — with today&rsquo;s numbers.
             </div>
           </div>
@@ -340,7 +340,7 @@ function UseTile({ icon, title, lines, note, href, cta }: {
         {icon}
         <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>{title}</span>
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#3D4455', lineHeight: 1.6 }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
         {lines.map(l => <li key={l}>{l}</li>)}
       </ul>
       <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>{note}</div>

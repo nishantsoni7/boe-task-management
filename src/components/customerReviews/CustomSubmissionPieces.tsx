@@ -57,7 +57,7 @@ export function CustomSubmissionProof({
   }, [supabase, path])
 
   const frame: React.CSSProperties = {
-    width: '100%', borderRadius: '9px', border: `1px solid ${colors.border}`,
+    width: '100%', borderRadius: '8px', border: `1px solid ${colors.border}`,
     background: colors.float, display: 'flex', alignItems: 'center', justifyContent: 'center',
     minHeight: large ? '240px' : '160px',
   }
@@ -167,14 +167,14 @@ export function CustomSubmissionFacts({
 }
 
 const EVENT_TONE: Record<CustomSubmissionEvent['event_type'], string> = {
-  submitted: '#4F6FD0',
-  reapplied: '#4F6FD0',
-  rejected:  '#B91C1C',
-  approved:  '#047857',
-  edited:    '#4F6FD0',
-  deleted:   '#6B7280',
-  duplicate_flagged: '#B45309',
-  duplicate_decided: '#6B7280',
+  submitted: '#335A86',
+  reapplied: '#335A86',
+  rejected:  '#B42332',
+  approved:  '#276247',
+  edited:    '#335A86',
+  deleted:   '#686D6C',
+  duplicate_flagged: '#805B0D',
+  duplicate_decided: '#686D6C',
 }
 
 function typeLabel(value: unknown): string | null {
@@ -246,18 +246,18 @@ export function CustomSubmissionTrail({
                     {' · '}{formatSubmissionMoment(e.created_at)}{actor ? ` · ${actor}` : ''}
                   </span>
                 </div>
-                {e.reason && <div style={{ color: '#B91C1C', overflowWrap: 'anywhere' }}>Reason: {e.reason}</div>}
+                {e.reason && <div style={{ color: '#B42332', overflowWrap: 'anywhere' }}>Reason: {e.reason}</div>}
                 {e.note && <div style={{ color: colors.secondary, overflowWrap: 'anywhere' }}>Note: {e.note}</div>}
                 {typeChange && <div style={{ color: colors.secondary }}>Type changed: {typeChange}</div>}
                 {e.details?.proof_replaced === true && <div style={{ color: colors.secondary }}>Screenshot replaced</div>}
                 {e.event_type === 'edited' && e.details?.sent_back_for_approval === true && (
-                  <div style={{ color: '#92400E' }}>Sent back for approval · credit stays in balance, not paid again</div>
+                  <div style={{ color: '#805B0D' }}>Sent back for approval · credit stays in balance, not paid again</div>
                 )}
                 {e.event_type === 'approved' && e.details?.reaffirmed_after_edit === true && (
                   <div style={{ color: colors.secondary }}>Approved again after an edit · nothing more awarded</div>
                 )}
                 {e.event_type === 'rejected' && e.details?.reversed_approval === true && (
-                  <div style={{ color: '#B91C1C' }}>
+                  <div style={{ color: '#B42332' }}>
                     Approval taken back · was Approved{typeof e.details.previous_approved_at === 'string'
                       ? ` on ${formatSubmissionMoment(e.details.previous_approved_at)}` : ''}
                     {typeof e.details.previous_approved_by === 'string' && who(e.details.previous_approved_by)
@@ -265,10 +265,10 @@ export function CustomSubmissionTrail({
                   </div>
                 )}
                 {e.event_type === 'rejected' && e.details?.credit_reversed === true && (
-                  <div style={{ color: '#B91C1C' }}>Credit withdrawn</div>
+                  <div style={{ color: '#B42332' }}>Credit withdrawn</div>
                 )}
                 {e.event_type === 'duplicate_flagged' && (
-                  <div style={{ color: '#92400E' }}>
+                  <div style={{ color: '#805B0D' }}>
                     {Number(e.details?.matches ?? 0)} possible {Number(e.details?.matches ?? 0) === 1 ? 'match' : 'matches'}
                     {e.details?.status === 'unavailable' ? ' · check unavailable' : ''}
                     {e.details?.employee_proceeded === true ? ' · the employee proceeded after the warning' : ''}
@@ -289,7 +289,7 @@ export function CustomSubmissionTrail({
                   </div>
                 )}
                 {e.event_type === 'approved' && e.details?.credits_awarded != null && (
-                  <div style={{ color: '#047857' }}>{formatCredits(Number(e.details.credits_awarded), { signed: true })}</div>
+                  <div style={{ color: '#276247' }}>{formatCredits(Number(e.details.credits_awarded), { signed: true })}</div>
                 )}
               </div>
             </li>

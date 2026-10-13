@@ -17,7 +17,7 @@ import { axisMax, barSegments } from '@/lib/customerReviews/reviewReport'
 // RESPONSIVE. The drawing is a viewBox scaled to its container, so it never widens
 // the page; on a phone the labels are thinned rather than shrunk.
 
-export const TYPE_FILL = { text: '#94A3B8', image: '#0891B2' } as const
+export const TYPE_FILL = { text: '#686D6C', image: '#335A86' } as const
 
 export type BarDatum = { key: string; label: string; text: number; image: number }
 

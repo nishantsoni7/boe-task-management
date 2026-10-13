@@ -50,14 +50,14 @@ export function OverviewCounts({ summary, onOpen, isMobile }: {
           onClick={() => onOpen(t.key)}
           style={{
             padding: isMobile ? '10px 12px' : '12px 16px', textAlign: 'left', cursor: 'pointer',
-            border: `1px solid ${t.alert ? 'rgba(217,79,79,0.35)' : colors.border}`,
+            border: `1px solid ${t.alert ? 'rgba(180,35,50,0.35)' : colors.border}`,
             display: 'flex', flexDirection: 'column', gap: '2px', font: 'inherit',
           }}
         >
           <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {t.label}
           </span>
-          <span style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#C13030' : colors.primary, lineHeight: 1.2 }}>
+          <span style={{ fontSize: isMobile ? '20px' : '22px', fontWeight: 700, color: t.alert ? '#B42332' : colors.primary, lineHeight: 1.2 }}>
             {t.value}
           </span>
           {t.hint && <span style={{ fontSize: '10.5px', color: colors.muted }}>{t.hint}</span>}
@@ -99,7 +99,7 @@ export function LensTabs({ lens, onChange, attentionCount, peopleCount }: {
               padding: '8px 12px', fontSize: '12.5px', font: 'inherit',
               fontWeight: active ? 600 : 500,
               color: active ? colors.primary : colors.muted,
-              borderBottom: `2px solid ${active ? '#DC1F2E' : 'transparent'}`,
+              borderBottom: `2px solid ${active ? '#B9472E' : 'transparent'}`,
               marginBottom: '-1px',
             }}
           >

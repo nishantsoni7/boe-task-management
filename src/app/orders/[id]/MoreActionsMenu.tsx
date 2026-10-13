@@ -107,7 +107,7 @@ export function MoreActionsMenu<K extends string>({ items, onSelect, label, aria
           style={{
             position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100,
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: '9px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+            borderRadius: '8px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
             minWidth: '224px', padding: '4px 0', overflow: 'hidden',
           }}
         >
@@ -122,7 +122,7 @@ export function MoreActionsMenu<K extends string>({ items, onSelect, label, aria
               onClick={() => { triggerRef.current?.focus(); setOpen(false); onSelect(item.key) }}
               onKeyDown={e => onMenuKeyDown(e, index)}
               className="order-menu-item"
-              style={{ color: item.danger ? '#B42318' : colors.secondary }}
+              style={{ color: item.danger ? '#B42332' : colors.secondary }}
             >
               {item.label}
             </button>

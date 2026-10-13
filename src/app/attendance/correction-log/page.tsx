@@ -202,8 +202,8 @@ export default function CorrectionLogPage() {
               ))}
             </select>
           </div>
-          <span style={{ fontSize: 13, color: '#4A5261' }} aria-live="polite">
-            {fetching ? 'Loading…' : <><strong style={{ color: '#111318' }}>{total}</strong> record{total !== 1 ? 's' : ''}</>}
+          <span style={{ fontSize: 13, color: '#4C5352' }} aria-live="polite">
+            {fetching ? 'Loading…' : <><strong style={{ color: '#303536' }}>{total}</strong> record{total !== 1 ? 's' : ''}</>}
           </span>
         </div>
 
@@ -281,7 +281,7 @@ export default function CorrectionLogPage() {
                     </div>
                     <ChangeTypeBadge type={r.change_type} />
                   </div>
-                  <div style={{ fontSize: 13, color: '#111318' }}>
+                  <div style={{ fontSize: 13, color: '#303536' }}>
                     {r.change_type !== 'New' && (
                       <span className={ui.muted}>{fmtTime(r.old_check_in_at)} → {fmtTime(r.old_check_out_at)} then </span>
                     )}
@@ -309,7 +309,7 @@ export default function CorrectionLogPage() {
             >
               Previous
             </button>
-            <span style={{ fontSize: 13, color: '#6B7384' }}>Page {page} of {totalPages}</span>
+            <span style={{ fontSize: 13, color: '#686D6C' }}>Page {page} of {totalPages}</span>
             <button
               type="button"
               className={`boe-btn boe-btn-ghost ${ui.btnSm}`}
@@ -321,8 +321,8 @@ export default function CorrectionLogPage() {
           </div>
         )}
 
-        <p style={{ margin: 0, fontSize: 12.5, color: '#6B7384', lineHeight: 1.6 }}>
-          <strong style={{ color: '#4A5261' }}>Note:</strong>{' '}Only records modified during import are logged here.
+        <p style={{ margin: 0, fontSize: 12.5, color: '#686D6C', lineHeight: 1.6 }}>
+          <strong style={{ color: '#4C5352' }}>Note:</strong>{' '}Only records modified during import are logged here.
           Unchanged records from re-uploads do not appear.
           &ldquo;New&rdquo; means the employee had no prior record for that date; &ldquo;Modified&rdquo; means an existing record was updated.
         </p>

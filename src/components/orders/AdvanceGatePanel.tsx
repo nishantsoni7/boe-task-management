@@ -32,7 +32,7 @@ export function AdvanceGatePanel({ readiness, versionNumber, isAdmin, approverNa
 
   if (view.kind === 'excepted') {
     return (
-      <section aria-label="Advance" style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', padding: '10px 14px', background: colors.base }}>
+      <section aria-label="Advance" style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '10px 14px', background: colors.base }}>
         <strong style={{ fontSize: '13px' }}>{view.headline}</strong>
         <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: colors.secondary }}>{view.figures} {view.note}</p>
       </section>
@@ -50,8 +50,8 @@ export function AdvanceGatePanel({ readiness, versionNumber, isAdmin, approverNa
 
   return (
     <section aria-label="Advance" role="status" id="order-advance-blocked"
-      style={{ border: '1px solid rgba(217,79,79,0.45)', borderRadius: '10px', padding: '12px 14px', background: colors.redTint, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <strong style={{ fontSize: '13.5px', color: '#991B1B' }}>{view.headline}</strong>
+      style={{ border: '1px solid rgba(180,35,50,0.45)', borderRadius: '8px', padding: '12px 14px', background: colors.redTint, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <strong style={{ fontSize: '13.5px', color: '#A12438' }}>{view.headline}</strong>
       {view.hold && <p data-advance-hold style={{ margin: 0, fontSize: '13px', color: colors.primary }}>{view.hold}</p>}
       <p style={{ margin: 0, fontSize: '13px', color: colors.primary }}>
         {view.figures} <strong>{view.shortfall}</strong>

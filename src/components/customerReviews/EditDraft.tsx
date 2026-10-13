@@ -247,7 +247,7 @@ export function DraftEditedNote({ card, compact = false }: { card: TestCard; com
       style={{
         display: 'inline-flex', alignItems: 'center',
         padding: compact ? '2px 6px' : '3px 8px',
-        borderRadius: '5px', background: '#FEF6E7', border: '1px solid #F5DFB0',
+        borderRadius: '6px', background: '#FEF6E7', border: '1px solid #F5DFB0',
         fontSize: compact ? '10px' : '11px', color: '#8A5A0B', lineHeight: 1.4,
       }}
     >

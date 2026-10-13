@@ -218,7 +218,7 @@ export function MeetingImportModal({
             onClick={downloadTemplate}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
-              padding: '12px 14px', borderRadius: '9px', cursor: 'pointer', textAlign: 'left',
+              padding: '12px 14px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
               border: `1px solid ${colors.border}`, background: colors.raised,
             }}
           >
@@ -250,7 +250,7 @@ export function MeetingImportModal({
             disabled={busy}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              width: '100%', padding: '22px 14px', borderRadius: '9px',
+              width: '100%', padding: '22px 14px', borderRadius: '8px',
               border: `1.5px dashed ${colors.borderMed}`, background: 'transparent',
               cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
             }}
@@ -278,7 +278,7 @@ export function MeetingImportModal({
             disabled={busy}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              width: '100%', padding: '18px 14px', borderRadius: '9px',
+              width: '100%', padding: '18px 14px', borderRadius: '8px',
               border: `1.5px dashed ${colors.borderMed}`, background: 'transparent',
               cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
             }}
@@ -308,7 +308,7 @@ export function MeetingImportModal({
               padding: '10px 12px', borderRadius: '8px',
               background: colors.amberTint, border: `1px solid ${colors.amber}33`,
             }}>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#8A5A12', marginBottom: '4px' }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#805B0D', marginBottom: '4px' }}>
                 Check before importing
               </div>
               <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
@@ -377,12 +377,12 @@ export function MeetingImportModal({
 
           {preview.errors.length > 0 && (
             <div style={{
-              border: '1px solid rgba(217,79,79,0.28)', borderRadius: '9px', overflow: 'hidden',
+              border: '1px solid rgba(180,35,50,0.28)', borderRadius: '8px', overflow: 'hidden',
             }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '7px',
                 padding: '8px 12px', background: colors.redTint,
-                fontSize: '12px', fontWeight: 700, color: '#991B1B',
+                fontSize: '12px', fontWeight: 700, color: '#A12438',
               }}>
                 <AlertTriangle size={13} strokeWidth={2.2} />
                 {preview.errors.length} {preview.errors.length === 1 ? 'row' : 'rows'} will NOT be imported
@@ -410,7 +410,7 @@ export function MeetingImportModal({
           )}
 
           {preview.valid.length > 0 ? (
-            <div style={{ border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden' }}>
+            <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
               <div style={{
                 padding: '7px 12px', background: colors.raised,
                 fontSize: '11px', fontWeight: 700, color: colors.muted,
@@ -449,7 +449,7 @@ export function MeetingImportModal({
           ) : (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '9px',
-              padding: '14px', borderRadius: '9px', background: colors.raised,
+              padding: '14px', borderRadius: '8px', background: colors.raised,
               fontSize: '12.5px', color: colors.secondary,
             }}>
               <FileSpreadsheet size={16} strokeWidth={1.8} color={colors.muted} />
@@ -483,7 +483,7 @@ function PreviewStat({
   label, value, tone,
 }: { label: string; value: number | string; tone: 'primary' | 'green' | 'blue' | 'red' | 'muted' }) {
   const color = {
-    primary: colors.primary, green: '#166534', blue: '#1E40AF', red: '#991B1B', muted: colors.muted,
+    primary: colors.primary, green: '#276247', blue: '#335A86', red: '#A12438', muted: colors.muted,
   }[tone]
   return (
     <div style={{

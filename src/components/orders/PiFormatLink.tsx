@@ -35,7 +35,7 @@ export function PiFormatNavLink({ onNavigate }: { onNavigate?: () => void }) {
       onClick={onNavigate}
       style={{ fontWeight: 400, marginBottom: '2px', textDecoration: 'none' }}
     >
-      <span aria-hidden="true" style={{ color: '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span aria-hidden="true" style={{ color: '#686D6C', display: 'flex', alignItems: 'center' }}>
         <Download size={15} strokeWidth={1.8} />
       </span>
       {PI_FORMAT_ACTION.label}

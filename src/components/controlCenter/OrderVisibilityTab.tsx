@@ -89,7 +89,7 @@ export function OrderVisibilityTab() {
             const others = rows.filter(r => r.userId !== row.userId)
             const msg = messages[row.userId]
             return (
-              <fieldset key={row.userId} style={{ border: '1px solid rgba(0,0,0,0.1)', borderRadius: 8, padding: '10px 14px', margin: 0, minWidth: 0 }}>
+              <fieldset key={row.userId} style={{ border: '1px solid #CFC8BF', borderRadius: 8, padding: '10px 14px', margin: 0, minWidth: 0 }}>
                 <legend style={{ fontSize: 13, fontWeight: 700, padding: '0 6px' }}>{row.fullName}</legend>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {SCOPE_MODES.map(mode => (
@@ -127,7 +127,7 @@ export function OrderVisibilityTab() {
                     {busy === row.userId ? 'Saving…' : 'Save'}
                   </button>
                   {msg && msg.text ? (
-                    <span role={msg.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? '#2F7A52' : '#B42318' }}>{msg.text}</span>
+                    <span role={msg.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, fontWeight: 600, color: msg.ok ? '#276247' : '#B42332' }}>{msg.text}</span>
                   ) : null}
                 </div>
               </fieldset>

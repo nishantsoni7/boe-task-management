@@ -64,11 +64,11 @@ function compareByUrgency(a: Task, b: Task): number {
 // Pill colours — reused verbatim from PriorityChip/StatusChip below so the
 // row-level badges match the rest of the app's badge language exactly.
 const PRIORITY_PILL: Record<string, { color: string; bg: string }> = {
-  high:   { color: '#991B1B', bg: '#FEF2F2' },
-  medium: { color: '#92400E', bg: '#FFFBEB' },
-  low:    { color: '#374151', bg: '#F3F4F6' },
+  high:   { color: '#A12438', bg: '#FBE9EC' },
+  medium: { color: '#805B0D', bg: '#FAF0DA' },
+  low:    { color: '#4C5352', bg: '#F1EEE9' },
 }
-const BLOCKED_PILL = { color: '#991B1B', bg: '#FEF2F2' }
+const BLOCKED_PILL = { color: '#A12438', bg: '#FBE9EC' }
 
 // ── The dashboard's own data, as ONE cache entry ─────────────────────────────
 //
@@ -669,7 +669,7 @@ export default function DashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ChevronRightIcon({ color = '#9CA3AF' }: { color?: string }) {
+function ChevronRightIcon({ color = '#686D6C' }: { color?: string }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flexShrink: 0 }}>
       <polyline points="9 18 15 12 9 6" />
@@ -693,21 +693,21 @@ type MetaSegment = { text: string; color: string; bg?: string; pill?: boolean; i
 function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: string }) {
   if (segments.length === 0) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: gap, rowGap: '3px', fontSize: '12px', fontWeight: 400, color: '#6B7280', lineHeight: 1.4 }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: gap, rowGap: '3px', fontSize: '12px', fontWeight: 400, color: '#686D6C', lineHeight: 1.4 }}>
       {segments.map((seg, i) => {
         const needsDot = !seg.pill && !seg.icon && i > 0 && !segments[i - 1].pill && !segments[i - 1].icon
         return seg.pill ? (
           <span key={i} style={{
             display: 'inline-flex', alignItems: 'center',
             fontSize: '11px', fontWeight: 500, color: seg.color,
-            background: seg.bg ?? '#F3F4F6',
-            borderRadius: '5px', padding: '1.5px 6px', lineHeight: 1.5,
+            background: seg.bg ?? '#F1EEE9',
+            borderRadius: '6px', padding: '1.5px 6px', lineHeight: 1.5,
           }}>
             {seg.text}
           </span>
         ) : (
           <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            {needsDot && <span style={{ color: '#D1D5DB' }}>·</span>}
+            {needsDot && <span style={{ color: '#CFC8BF' }}>·</span>}
             {seg.icon}
             <span style={{ color: seg.color }}>{seg.text}</span>
           </span>
@@ -740,7 +740,7 @@ function SectionHeading({
         <h2 style={{
           margin: 0,
           fontSize: isMobile ? '15px' : '16px',
-          fontWeight: 700, color: '#111318',
+          fontWeight: 700, color: '#303536',
           letterSpacing: '-0.015em', lineHeight: 1.2,
         }}>
           {title}
@@ -748,7 +748,7 @@ function SectionHeading({
         {/* The hint is the first thing to go when the line is short — it is
             context, never the heading itself. */}
         {hint && !isMobile && (
-          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '12px', color: '#686D6C', whiteSpace: 'nowrap' }}>
             {hint}
           </span>
         )}
@@ -757,13 +757,13 @@ function SectionHeading({
         <button
           onClick={onAction}
           style={{
-            fontSize: '12px', fontWeight: 500, color: '#6B7280',
+            fontSize: '12px', fontWeight: 500, color: '#686D6C',
             background: 'transparent', border: 'none', padding: '2px 0',
             cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.12s',
             flexShrink: 0,
           }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#111318' }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#6B7280' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#303536' }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#686D6C' }}
         >
           {actionLabel}
         </button>
@@ -802,19 +802,19 @@ function FocusReorderButton({
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: size + 'px', height: size + 'px', borderRadius: '6px',
         border: 'none', background: 'transparent',
-        color: disabled ? '#DDE1E9' : '#B0BAC8',
+        color: disabled ? '#686D6C' : '#CFC8BF',
         cursor: disabled ? 'default' : 'pointer',
         padding: 0, flexShrink: 0,
         transition: 'background 0.12s, color 0.12s',
       }}
       onMouseEnter={e => {
         if (disabled) return
-        e.currentTarget.style.background = '#F1F2F5'
-        e.currentTarget.style.color = '#6B7280'
+        e.currentTarget.style.background = '#F1EEE9'
+        e.currentTarget.style.color = '#686D6C'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.background = 'transparent'
-        e.currentTarget.style.color = disabled ? '#DDE1E9' : '#B0BAC8'
+        e.currentTarget.style.color = disabled ? '#686D6C' : '#CFC8BF'
       }}
     >
       {icon}
@@ -830,8 +830,8 @@ function RankBadge({ index, muted = false }: { index: number; muted?: boolean })
     <span style={{
       display: 'inline-block', flexShrink: 0,
       width: '20px', height: '20px', borderRadius: '6px',
-      background: muted ? '#F4F5F7' : '#F1F2F5',
-      color: muted ? '#C4C9D4' : '#8C94A6',
+      background: muted ? '#F7F5F1' : '#F1EEE9',
+      color: muted ? '#686D6C' : '#686D6C',
       fontSize: '11px', fontWeight: 600,
       lineHeight: '20px', textAlign: 'center',
       marginTop: '1px',
@@ -894,8 +894,8 @@ function TodaysFocusPanel({
                 tabIndex={0}
                 onKeyDown={e => e.key === 'Enter' && onGoToMyTasks()}
                 style={{
-                  background: '#FBFBFC',
-                  border: '1px dashed #DDE1E9',
+                  background: '#FBFAF8',
+                  border: '1px dashed #E4DED7',
                   borderRadius: '12px',
                   padding: isMobile ? '13px 14px' : '14px 16px',
                   display: 'flex', flexDirection: 'column', gap: '5px',
@@ -904,21 +904,21 @@ function TodaysFocusPanel({
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = '#F7F8FA'
-                  e.currentTarget.style.borderColor = '#C9CFDA'
+                  e.currentTarget.style.background = '#FBFAF8'
+                  e.currentTarget.style.borderColor = '#CFC8BF'
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.background = '#FBFBFC'
-                  e.currentTarget.style.borderColor = '#DDE1E9'
+                  e.currentTarget.style.background = '#FBFAF8'
+                  e.currentTarget.style.borderColor = '#E4DED7'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
                   <RankBadge index={idx} muted />
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', lineHeight: 1.35 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#686D6C', lineHeight: 1.35 }}>
                     Focus slot available
                   </div>
                 </div>
-                <div style={{ fontSize: '12px', color: '#C4C9D4', lineHeight: 1.35, marginLeft: '29px' }}>
+                <div style={{ fontSize: '12px', color: '#686D6C', lineHeight: 1.35, marginLeft: '29px' }}>
                   Open My Tasks to add one.
                 </div>
               </div>
@@ -943,12 +943,12 @@ function TodaysFocusPanel({
             ? '#C0432B'
             : priorityLower === 'medium'
               ? '#92700A'
-              : '#7B8494'
+              : '#686D6C'
 
           const chipStyle: React.CSSProperties = {
             fontSize: '10.5px',
-            background: '#F8F9FB',
-            border: '1px solid #E6E8EC',
+            background: '#FBFAF8',
+            border: '1px solid #E4DED7',
             borderRadius: '999px',
             padding: '1.5px 8px',
             lineHeight: 1.5,
@@ -965,7 +965,7 @@ function TodaysFocusPanel({
               onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
               style={{
                 background: '#ffffff',
-                border: '1px solid #E7E9EE',
+                border: '1px solid #E4DED7',
                 borderRadius: '12px',
                 padding: isMobile ? '13px 14px' : '14px 16px',
                 display: 'flex', flexDirection: 'column', gap: '10px',
@@ -974,12 +974,12 @@ function TodaysFocusPanel({
                 transition: 'background 0.15s, border-color 0.15s',
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = '#FCFCFD'
-                e.currentTarget.style.borderColor = '#C9CFDA'
+                e.currentTarget.style.background = '#FBFAF8'
+                e.currentTarget.style.borderColor = '#CFC8BF'
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = '#ffffff'
-                e.currentTarget.style.borderColor = '#E7E9EE'
+                e.currentTarget.style.borderColor = '#E4DED7'
               }}
             >
               {/* Rank, title and where the task came from */}
@@ -989,7 +989,7 @@ function TodaysFocusPanel({
                   <div style={{
                     fontSize: isMobile ? '13.5px' : '14px',
                     fontWeight: 600,
-                    color: '#111318',
+                    color: '#303536',
                     lineHeight: 1.35,
                     letterSpacing: '-0.01em',
                   }}>
@@ -997,17 +997,17 @@ function TodaysFocusPanel({
                   </div>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
-                    marginTop: '5px', fontSize: '12px', color: '#8A94A6', lineHeight: 1.3,
+                    marginTop: '5px', fontSize: '12px', color: '#686D6C', lineHeight: 1.3,
                   }}>
-                    <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />
+                    <User size={12} strokeWidth={2} color="#686D6C" style={{ flexShrink: 0 }} />
                     {isSelf
                       ? 'Self Task'
-                      : <span>Delegated by <span style={{ color: '#6B7280', fontWeight: 500 }}>{assignerDisplay}</span></span>
+                      : <span>Delegated by <span style={{ color: '#686D6C', fontWeight: 500 }}>{assignerDisplay}</span></span>
                     }
                   </div>
                 </div>
                 <span style={{ display: 'flex', flexShrink: 0, marginTop: '2px' }}>
-                  <ChevronRightIcon color="#C4C9D4" />
+                  <ChevronRightIcon color="#686D6C" />
                 </span>
               </div>
 
@@ -1027,9 +1027,9 @@ function TodaysFocusPanel({
                 {dueDateStr && (
                   <span style={{
                     display: 'flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11.5px', fontWeight: 500, color: '#6B7280',
+                    fontSize: '11.5px', fontWeight: 500, color: '#686D6C',
                   }}>
-                    <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
+                    <CalendarDays size={12} strokeWidth={2} color="#686D6C" style={{ flexShrink: 0 }} />
                     {`Due ${dueDateStr}`}
                   </span>
                 )}
@@ -1037,7 +1037,7 @@ function TodaysFocusPanel({
                   <span style={{ ...chipStyle, color: priorityColor }}>{priorityLabel}</span>
                 )}
                 {statusLabel && (
-                  <span style={{ ...chipStyle, color: '#7B8494', fontWeight: 400 }}>{statusLabel}</span>
+                  <span style={{ ...chipStyle, color: '#686D6C', fontWeight: 400 }}>{statusLabel}</span>
                 )}
                 </div>
 
@@ -1098,9 +1098,9 @@ function OperationalStatusPanel({
   // Overdue keeps its red — it is the one counter that reports a problem.
   // Waiting and Due Today are states, not alarms, and stay neutral.
   const items = [
-    { label: 'Overdue',   sub: 'Needs attention', count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#C0392B' },
-    { label: 'Waiting',   sub: 'Pending action',  count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#111318' },
-    { label: 'Due Today', sub: 'Finish today',    count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',     countColor: '#111318' },
+    { label: 'Overdue',   sub: 'Needs attention', count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#B42332' },
+    { label: 'Waiting',   sub: 'Pending action',  count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#303536' },
+    { label: 'Due Today', sub: 'Finish today',    count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',     countColor: '#303536' },
   ]
   return (
     <section style={{
@@ -1121,7 +1121,7 @@ function OperationalStatusPanel({
             onKeyDown={e => { if (isInteractive && e.key === 'Enter') open() }}
             style={{
               background: '#fff',
-              border: '1px solid #E7E9EE',
+              border: '1px solid #E4DED7',
               borderRadius: '12px',
               padding: '14px 16px',
               cursor: isInteractive ? 'pointer' : 'default',
@@ -1129,33 +1129,33 @@ function OperationalStatusPanel({
             }}
             onMouseEnter={e => {
               if (!isInteractive) return
-              e.currentTarget.style.background = '#FCFCFD'
-              e.currentTarget.style.borderColor = '#C9CFDA'
+              e.currentTarget.style.background = '#FBFAF8'
+              e.currentTarget.style.borderColor = '#CFC8BF'
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = '#fff'
-              e.currentTarget.style.borderColor = '#E7E9EE'
+              e.currentTarget.style.borderColor = '#E4DED7'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{
                 fontSize: '20px', fontWeight: 700, lineHeight: 1,
-                color: item.count > 0 ? item.countColor : '#D1D5DB',
+                color: item.count > 0 ? item.countColor : '#CFC8BF',
                 letterSpacing: '-0.03em',
                 minWidth: '20px',
               }}>
                 {item.count}
               </span>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#3D4455', lineHeight: 1 }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#4C5352', lineHeight: 1 }}>
                 {item.label}
               </span>
               {isInteractive && (
                 <span style={{ marginLeft: 'auto', display: 'flex' }}>
-                  <ChevronRightIcon color="#C4C9D4" />
+                  <ChevronRightIcon color="#686D6C" />
                 </span>
               )}
             </div>
-            <div style={{ fontSize: '11.5px', color: '#9CA3AF', marginTop: '6px', lineHeight: 1.2 }}>
+            <div style={{ fontSize: '11.5px', color: '#686D6C', marginTop: '6px', lineHeight: 1.2 }}>
               {item.sub}
             </div>
           </div>
@@ -1185,7 +1185,7 @@ function AttentionPanel({
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid #E7E9EE',
+      border: '1px solid #E4DED7',
       borderRadius: '12px',
       overflow: 'hidden',
     }}>
@@ -1195,24 +1195,24 @@ function AttentionPanel({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: '10px',
           padding: isMobile ? '12px 14px' : '12px 16px',
-          borderBottom: '1px solid #F0F1F4',
+          borderBottom: '1px solid #F1EEE9',
           cursor: interactive ? 'pointer' : 'default',
           transition: 'background 0.15s',
         }}
-        onMouseEnter={e => { if (interactive) e.currentTarget.style.background = '#FAFBFC' }}
+        onMouseEnter={e => { if (interactive) e.currentTarget.style.background = '#FBFAF8' }}
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <span style={{
-            fontWeight: 600, fontSize: '14px', color: '#3D4455',
+            fontWeight: 600, fontSize: '14px', color: '#4C5352',
             letterSpacing: '-0.01em', lineHeight: 1.2,
           }}>
             {title}
           </span>
           {count > 0 && (
             <span style={{
-              background: badgeTone === 'alert' ? '#FEF2F2' : '#F1F2F5',
-              color: badgeTone === 'alert' ? '#C0392B' : '#6B7280',
+              background: badgeTone === 'alert' ? '#FBE9EC' : '#F1EEE9',
+              color: badgeTone === 'alert' ? '#B42332' : '#686D6C',
               fontWeight: 600, fontSize: '11px',
               borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6,
             }}>
@@ -1221,7 +1221,7 @@ function AttentionPanel({
           )}
         </div>
         {interactive && (
-          <span style={{ fontSize: '11.5px', color: '#9CA3AF', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ fontSize: '11.5px', color: '#686D6C', whiteSpace: 'nowrap', flexShrink: 0 }}>
             View all →
           </span>
         )}
@@ -1245,10 +1245,10 @@ function PanelEmptyState({ headline, detail }: { headline: string; detail: strin
         <Check size={15} strokeWidth={2.2} />
       </span>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#3D4455', lineHeight: 1.3 }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: '#4C5352', lineHeight: 1.3 }}>
           {headline}
         </div>
-        <div style={{ fontSize: '12px', color: '#9CA3AF', lineHeight: 1.35, marginTop: '2px' }}>
+        <div style={{ fontSize: '12px', color: '#686D6C', lineHeight: 1.35, marginTop: '2px' }}>
           {detail}
         </div>
       </div>
@@ -1399,20 +1399,20 @@ function QuotationRequestsSection({
 
         // Date/created text, with a days-remaining framing for near-term due dates
         let dateText: string | null = null
-        let dateColor = '#6B7280'
+        let dateColor = '#686D6C'
         if (dueDate) {
-          if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#C0392B' }
-          else if (isToday)    { dateText = 'Due today';               dateColor = '#D97706' }
-          else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#6B7280' }
+          if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#B42332' }
+          else if (isToday)    { dateText = 'Due today';               dateColor = '#C48A1A' }
+          else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#686D6C' }
           else {
             const daysLeft = Math.round((dueDate.getTime() - todayStart.getTime()) / 86_400_000)
             dateText = daysLeft <= 7 ? `${daysLeft} days left` : `Due ${dueDateStr}`
-            dateColor = '#6B7280'
+            dateColor = '#686D6C'
           }
         } else {
           const created = new Date(task.created_at)
-          if (created >= todayStart)        { dateText = 'Created today';     dateColor = '#9CA3AF' }
-          else if (created >= yesterdayStart) { dateText = 'Created yesterday'; dateColor = '#9CA3AF' }
+          if (created >= todayStart)        { dateText = 'Created today';     dateColor = '#686D6C' }
+          else if (created >= yesterdayStart) { dateText = 'Created yesterday'; dateColor = '#686D6C' }
         }
 
         const priorityLower  = task.priority?.toLowerCase() ?? ''
@@ -1422,7 +1422,7 @@ function QuotationRequestsSection({
         // Creator/assigner → Due/Overdue → Priority — only these three metadata items
         const metaSegments: MetaSegment[] = []
         if (requesterName && requesterName !== 'Unknown') {
-          metaSegments.push({ text: requesterName, color: '#9CA3AF' })
+          metaSegments.push({ text: requesterName, color: '#686D6C' })
         }
         if (dateText) metaSegments.push({ text: dateText, color: dateColor })
         if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
@@ -1437,17 +1437,17 @@ function QuotationRequestsSection({
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
               padding: '8px 16px 8px 20px',
-              borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
+              borderBottom: isLast ? 'none' : '1px solid #F1EEE9',
               cursor: 'pointer',
               transition: 'background 0.12s',
               minHeight: '52px',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
             onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '14px', fontWeight: 600, color: '#111827',
+                fontSize: '14px', fontWeight: 600, color: '#303536',
                 letterSpacing: '-0.01em', lineHeight: 1.35,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 marginBottom: '3px',
@@ -1498,11 +1498,11 @@ function UnacknowledgedTasksSection({
         const dueDateStr   = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
 
         let dateText: string | null = null
-        let dateColor = '#6B7280'
+        let dateColor = '#686D6C'
         if (dueDate) {
-          if (isDueOverdue) { dateText = `Overdue · ${dueDateStr}`; dateColor = '#C0392B' }
-          else if (isToday) { dateText = 'Due today';               dateColor = '#D97706' }
-          else              { dateText = `Due ${dueDateStr}`;        dateColor = '#6B7280' }
+          if (isDueOverdue) { dateText = `Overdue · ${dueDateStr}`; dateColor = '#B42332' }
+          else if (isToday) { dateText = 'Due today';               dateColor = '#C48A1A' }
+          else              { dateText = `Due ${dueDateStr}`;        dateColor = '#686D6C' }
         }
 
         const priorityLower = task.priority?.toLowerCase() ?? ''
@@ -1518,14 +1518,14 @@ function UnacknowledgedTasksSection({
           // Assigner → Due/Overdue → Priority — only these three metadata items on the compact dashboard row
           if (assignedByName) {
             metaSegments.push({
-              text: assignedByName === 'Self' ? 'You' : assignedByName, color: '#9CA3AF',
-              icon: <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />,
+              text: assignedByName === 'Self' ? 'You' : assignedByName, color: '#686D6C',
+              icon: <User size={12} strokeWidth={2} color="#686D6C" style={{ flexShrink: 0 }} />,
             })
           }
           if (dateText) {
             metaSegments.push({
               text: dateText, color: dateColor,
-              icon: <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />,
+              icon: <CalendarDays size={12} strokeWidth={2} color="#686D6C" style={{ flexShrink: 0 }} />,
             })
           }
           if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
@@ -1534,7 +1534,7 @@ function UnacknowledgedTasksSection({
           if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
           if (dateText) metaSegments.push({ text: dateText, color: dateColor })
           if (assignedByName) {
-            metaSegments.push({ text: `by ${assignedByName === 'Self' ? 'you' : assignedByName}`, color: '#9CA3AF' })
+            metaSegments.push({ text: `by ${assignedByName === 'Self' ? 'you' : assignedByName}`, color: '#686D6C' })
           }
         }
         const isLast = idx === tasks.length - 1
@@ -1554,19 +1554,19 @@ function UnacknowledgedTasksSection({
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
               padding: '8px 16px 8px 20px',
-              borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
+              borderBottom: isLast ? 'none' : '1px solid #F1EEE9',
               cursor: 'pointer',
               transition: 'background 0.12s',
               minHeight: '52px',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
             onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
             {/* Title + compact metadata (priority/waiting/blocked pills, due date, assignee) —
                 given more visual weight than the action cluster on the right */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '14px', fontWeight: 600, color: '#111827',
+                fontSize: '14px', fontWeight: 600, color: '#303536',
                 letterSpacing: '-0.01em', lineHeight: 1.35,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 marginBottom: variant === 'acknowledgement' ? '8px' : '3px',
@@ -1587,13 +1587,13 @@ function UnacknowledgedTasksSection({
                     display: 'flex', alignItems: 'center', gap: '4px',
                     padding: '4px 8px',
                     fontSize: '12px', fontWeight: 500,
-                    color: isAcknowledging ? '#B9BFC9' : '#4E9B72',
+                    color: isAcknowledging ? '#686D6C' : '#4E9B72',
                     background: 'transparent',
                     border: 'none',
                     borderRadius: '6px', cursor: isAcknowledging ? 'default' : 'pointer',
                     transition: 'background 0.12s',
                   }}
-                  onMouseEnter={e => { if (!isAcknowledging) e.currentTarget.style.background = 'rgba(69,168,112,0.08)' }}
+                  onMouseEnter={e => { if (!isAcknowledging) e.currentTarget.style.background = 'rgba(39,98,71,0.08)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                 >
                   <Check size={11} strokeWidth={2.5} />
@@ -1647,18 +1647,18 @@ function TaskListDrawer({
         zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F1EEE9', flexShrink: 0 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '16px', color: '#111827', letterSpacing: '-0.01em', lineHeight: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '16px', color: '#303536', letterSpacing: '-0.01em', lineHeight: 1 }}>
               {title}
             </div>
-            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '6px' }}>
+            <div style={{ fontSize: '13px', color: '#686D6C', marginTop: '6px' }}>
               {subtitle}
             </div>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: '22px', lineHeight: 1, padding: '0 0 0 12px', flexShrink: 0 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#686D6C', fontSize: '22px', lineHeight: 1, padding: '0 0 0 12px', flexShrink: 0 }}
             aria-label="Close"
           >×</button>
         </div>
@@ -1667,8 +1667,8 @@ function TaskListDrawer({
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {items.length === 0 ? (
             <div style={{ padding: '52px 24px', textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>All clear</div>
-              <div style={{ fontSize: '13px', color: '#C4C9D4' }}>No tasks here right now.</div>
+              <div style={{ fontSize: '14px', fontWeight: 500, color: '#4C5352', marginBottom: '6px' }}>All clear</div>
+              <div style={{ fontSize: '13px', color: '#686D6C' }}>No tasks here right now.</div>
             </div>
           ) : (
             items.map((task, idx) => {
@@ -1679,13 +1679,13 @@ function TaskListDrawer({
               const assignedBy = getAssignedByDisplay(task, userMap)
 
               let dateLabel = ''
-              let dateColor = '#6B7280'
+              let dateColor = '#686D6C'
               if (isOverdueDrawer && dueDate && daysOver > 0) {
                 dateLabel = daysOver === 1 ? 'Overdue by 1 day' : `Overdue by ${daysOver} days`
-                dateColor = '#C0392B'
+                dateColor = '#B42332'
               } else if (dueDateStr) {
                 dateLabel = `Due ${dueDateStr}`
-                dateColor = '#6B7280'
+                dateColor = '#686D6C'
               }
 
               return (
@@ -1697,11 +1697,11 @@ function TaskListDrawer({
                   onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
                   style={{
                     display: 'flex', alignItems: 'stretch',
-                    borderBottom: isLast ? 'none' : '1px solid #F4F5F7',
+                    borderBottom: isLast ? 'none' : '1px solid #F7F5F1',
                     cursor: 'pointer',
                     transition: 'background 0.12s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#FBFAF8' }}
                   onMouseLeave={e => { e.currentTarget.style.background = '' }}
                 >
                   {/* Left accent strip — overdue drawer only */}
@@ -1713,7 +1713,7 @@ function TaskListDrawer({
                   <div style={{ flex: 1, minWidth: 0, padding: '18px 16px 18px 20px' }}>
                     {/* Title */}
                     <div style={{
-                      fontSize: '15px', fontWeight: 600, color: '#111827',
+                      fontSize: '15px', fontWeight: 600, color: '#303536',
                       letterSpacing: '-0.01em', lineHeight: 1.35,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       marginBottom: '8px',
@@ -1724,10 +1724,10 @@ function TaskListDrawer({
                     {/* Assigned by */}
                     {assignedBy && assignedBy !== 'Self' && (
                       <div style={{ marginBottom: '10px' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 500, color: '#C4C9D4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 500, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
                           Assigned by
                         </div>
-                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#4C5352' }}>
                           {assignedBy}
                         </div>
                       </div>
@@ -1763,17 +1763,17 @@ function TaskListDrawer({
 
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    pending:          { color: '#6B7280', bg: '#F3F4F6' },
-    started:          { color: '#7C3AED', bg: '#F5F3FF' },
-    working:          { color: '#1D4ED8', bg: '#EFF6FF' },
-    waiting:          { color: '#92400E', bg: '#FFFBEB' },
-    blocked:          { color: '#991B1B', bg: '#FEF2F2' },
-    pending_approval: { color: '#8A6B12', bg: '#FBF6E6' },
-    completed:        { color: '#166534', bg: '#F0FDF4' },
+    pending:          { color: '#686D6C', bg: '#F1EEE9' },
+    started:          { color: '#7C3AED', bg: '#EAF0F8' },
+    working:          { color: '#335A86', bg: '#EAF0F8' },
+    waiting:          { color: '#805B0D', bg: '#FAF0DA' },
+    blocked:          { color: '#A12438', bg: '#FBE9EC' },
+    pending_approval: { color: '#805B0D', bg: '#FBF6E6' },
+    completed:        { color: '#276247', bg: '#E8F2EC' },
   }
-  const s = map[status] ?? { color: '#374151', bg: '#F3F4F6' }
+  const s = map[status] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '5px', padding: '2px 8px', textTransform: 'capitalize' }}>
+    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {taskStatusLabel(status)}
     </span>
   )
@@ -1781,13 +1781,13 @@ function StatusChip({ status }: { status: string }) {
 
 function PriorityChip({ priority }: { priority: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    high:   { color: '#991B1B', bg: '#FEF2F2' },
-    medium: { color: '#92400E', bg: '#FFFBEB' },
-    low:    { color: '#374151', bg: '#F3F4F6' },
+    high:   { color: '#A12438', bg: '#FBE9EC' },
+    medium: { color: '#805B0D', bg: '#FAF0DA' },
+    low:    { color: '#4C5352', bg: '#F1EEE9' },
   }
-  const s = map[priority] ?? { color: '#374151', bg: '#F3F4F6' }
+  const s = map[priority] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '5px', padding: '2px 8px', textTransform: 'capitalize' }}>
+    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {priority}
     </span>
   )
@@ -1814,18 +1814,18 @@ function EscalationListDrawer({
         background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
         zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F1EEE9', flexShrink: 0 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>Escalations</div>
-            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>{items.length} task{items.length !== 1 ? 's' : ''} requiring attention</div>
+            <div style={{ fontWeight: 700, fontSize: '15px', color: '#303536' }}>Escalations</div>
+            <div style={{ fontSize: '13px', color: '#686D6C', marginTop: '2px' }}>{items.length} task{items.length !== 1 ? 's' : ''} requiring attention</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }} aria-label="Close">×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#686D6C', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }} aria-label="Close">×</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {items.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>No escalations right now.</div>
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#686D6C', fontSize: '14px' }}>No escalations right now.</div>
           ) : items.map(({ task, owner, days, reason }) => {
-            const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+            const daysColor = days >= 10 ? '#B42332' : days >= 7 ? '#D4893A' : '#4C5352'
             return (
               <div
                 key={task.id}
@@ -1833,17 +1833,17 @@ function EscalationListDrawer({
                 role="button"
                 tabIndex={0}
                 onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
-                style={{ padding: '14px 24px', borderBottom: '1px solid #F9FAFB', cursor: 'pointer', transition: 'background 0.1s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                style={{ padding: '14px 24px', borderBottom: '1px solid #FBFAF8', cursor: 'pointer', transition: 'background 0.1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#FBFAF8')}
                 onMouseLeave={e => (e.currentTarget.style.background = '')}
               >
-                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>{task.title}</div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#303536', marginBottom: '6px', lineHeight: 1.4 }}>{task.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#374151' }}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E4DED7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#4C5352' }}>
                       {owner.slice(0, 2).toUpperCase()}
                     </div>
-                    <span style={{ fontSize: '12px', color: '#374151' }}>{owner}</span>
+                    <span style={{ fontSize: '12px', color: '#4C5352' }}>{owner}</span>
                   </div>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: daysColor }}>{days}d</span>
                   <ReasonBadge reason={reason} />
@@ -1859,13 +1859,13 @@ function EscalationListDrawer({
 
 function ReasonBadge({ reason }: { reason: string }) {
   const styles: Record<string, { color: string; bg: string }> = {
-    Blocked: { color: '#991B1B', bg: '#FEF2F2' },
-    Waiting: { color: '#92400E', bg: '#FFFBEB' },
+    Blocked: { color: '#A12438', bg: '#FBE9EC' },
+    Waiting: { color: '#805B0D', bg: '#FAF0DA' },
     Stale:   { color: '#BE185D', bg: '#FDF2F8' },
   }
-  const s = styles[reason] ?? { color: '#374151', bg: '#F3F4F6' }
+  const s = styles[reason] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '10px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+    <span style={{ fontSize: '10px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
       {reason}
     </span>
   )

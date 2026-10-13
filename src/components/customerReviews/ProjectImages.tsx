@@ -193,7 +193,7 @@ export function ProjectImages({
     return (
       <p style={{
         margin: 0, padding: '14px 16px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
-        border: `1px dashed ${colors.border}`, color: '#92400E', background: '#FFFBEB',
+        border: `1px dashed ${colors.border}`, color: '#805B0D', background: '#FAF0DA',
       }}>
         <strong>{AWAITING_IMAGES_LABEL}.</strong>{' '}
         You can book and share this review once they are attached.

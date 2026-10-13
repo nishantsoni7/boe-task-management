@@ -111,10 +111,10 @@ export function OverduePrompt({
               className="boe-modal-counter"
               style={{
                 color: colors.red,
-                background: 'rgba(217,79,79,0.08)',
+                background: 'rgba(180,35,50,0.08)',
                 padding: '2px 7px',
-                borderRadius: '3px',
-                border: '1px solid rgba(217,79,79,0.15)',
+                borderRadius: '6px',
+                border: '1px solid rgba(180,35,50,0.15)',
               }}
             >
               Overdue · {currentIdx + 1} of {total}
@@ -149,9 +149,9 @@ export function OverduePrompt({
                 fontSize: '10px',
                 fontFamily: font.mono,
                 color: colors.red,
-                background: 'rgba(217,79,79,0.07)',
+                background: 'rgba(180,35,50,0.07)',
                 padding: '2px 6px',
-                borderRadius: '3px',
+                borderRadius: '6px',
               }}>
                 Due {formatShortDate(task.due_date)}
               </span>

@@ -201,7 +201,7 @@ export function MeetingModalActions({
         style={{
           padding: '8px 18px', fontSize: '13px',
           ...(destructive
-            ? { color: '#C13030', borderColor: 'rgba(217,79,79,0.45)', fontWeight: 600 }
+            ? { color: '#B42332', borderColor: 'rgba(180,35,50,0.45)', fontWeight: 600 }
             : {}),
           opacity: saving || disabled ? 0.6 : 1,
         }}
@@ -217,7 +217,7 @@ export function MeetingModalError({ message }: { message: string }) {
   return (
     <div role="alert" style={{
       padding: '10px 12px', borderRadius: '8px',
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px',
       whiteSpace: 'pre-wrap',
     }}>
       {message}
@@ -229,7 +229,7 @@ export function MeetingModalError({ message }: { message: string }) {
 export function MeetingBadge({ meta }: { meta: { label: string; bg: string; color: string; border: string } }) {
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>

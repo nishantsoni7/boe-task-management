@@ -147,11 +147,11 @@ function TaskCard({
   const isForApproval = task.status === 'pending_approval'
 
   const cardBackground = isImportant
-    ? (hovered ? 'rgba(196,154,40,0.08)' : 'rgba(196,154,40,0.04)')
+    ? (hovered ? 'rgba(183,137,42,0.08)' : 'rgba(183,137,42,0.04)')
     : (hovered ? colors.raised : colors.base)
 
   const cardBorder = isImportant
-    ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
+    ? `1.5px solid rgba(183,137,42,${hovered ? '0.40' : '0.20'})`
     : `1.5px solid ${colors.border}`
 
   // ── Desktop row only ──
@@ -159,13 +159,13 @@ function TaskCard({
   // stacking the two would leave the reader unable to tell which signal they
   // are looking at, and would quietly restyle every important row.
   const desktopBackground = (isForApproval && !isImportant)
-    ? (hovered ? 'rgba(232,160,48,0.07)' : 'rgba(232,160,48,0.035)')
+    ? (hovered ? 'rgba(196,138,26,0.07)' : 'rgba(196,138,26,0.035)')
     : cardBackground
 
   const elevation = hovered
     ? '0 2px 8px rgba(0,0,0,0.09)'
     : isImportant
-      ? '0 1px 4px rgba(196,154,40,0.08)'
+      ? '0 1px 4px rgba(183,137,42,0.08)'
       : '0 1px 3px rgba(0,0,0,0.04)'
 
   // The 3px accent is an INSET shadow, not a thicker left border: it paints
@@ -192,14 +192,14 @@ function TaskCard({
         style={{ background: cardBackground, border: cardBorder, borderRadius: '8px', boxShadow: mobileShadow, cursor: 'pointer', padding: '10px 12px' }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.title}
           </div>
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onEdit?.() }}
               onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
+              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#335A86' : colors.muted }}>
               <Pencil size={13} />
             </button>
             <button onClick={e => { e.stopPropagation(); onDelete?.() }}
@@ -215,7 +215,7 @@ function TaskCard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#2E7D6B', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
           {/* The mobile card names no status — with one exception, because
               "this one is waiting on you" is the only status on this screen
               that asks the reader for something. */}
@@ -258,7 +258,7 @@ function TaskCard({
       {/* Star indicator — also the gutter the 3px approval accent paints into */}
       <div style={{ width: STAR_GUTTER, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {task.is_urgent
-          ? <Star size={11} fill="#C49A28" color="#C49A28" />
+          ? <Star size={11} fill="#B7892A" color="#B7892A" />
           : <div style={{ width: '11px' }} />
         }
       </div>
@@ -286,14 +286,14 @@ function TaskCard({
         {(() => {
           const aging = getTaskAging(task)
           if (!aging) return null
-          const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
+          const color = aging.severity === 'danger' ? '#B42332' : '#C48A1A'
           return (
             <span style={{
               display: 'inline-block', marginTop: '3px',
               fontSize: '10px', fontWeight: 700,
               color, background: `${color}12`,
               border: `1px solid ${color}30`,
-              padding: '1px 6px', borderRadius: '4px',
+              padding: '1px 6px', borderRadius: '6px',
             }}>
               {aging.label}
             </span>
@@ -312,8 +312,8 @@ function TaskCard({
           style={{
             display: 'inline-block', maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px',
-            color: '#2E7D6B', background: 'rgba(46,158,107,0.10)',
+            fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
+            color: '#276247', background: 'rgba(46,158,107,0.10)',
           }}
         >
           {assigneeName}
@@ -366,7 +366,7 @@ function TaskCard({
             background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent',
             border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredEdit ? '#5B7FA6' : colors.muted,
+            color: hoveredEdit ? '#335A86' : colors.muted,
           }}
         >
           <Pencil size={11} />
@@ -564,9 +564,9 @@ function DelegateTaskModal({
   }
 
   const PRIORITY_CFG = {
-    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',  text: '#16a34a' },
-    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',  text: '#d97706' },
-    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)', text: '#dc2626' },
+    low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)',  text: '#2F7A52' },
+    medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)',  text: '#C48A1A' },
+    high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)', text: '#B42332' },
   } as const
 
   const LABEL_STYLE: React.CSSProperties = {
@@ -732,9 +732,9 @@ function DelegateTaskModal({
             <button
               onClick={() => attachInputRef.current?.click()}
               style={{
-                width: '100%', padding: '7px 0', borderRadius: '7px',
-                border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
-                background: attachDropActive ? colors.blueTint : colors.raised,
+                width: '100%', padding: '7px 0', borderRadius: '8px',
+                border: `1.5px dashed ${attachDropActive ? colors.brand : colors.border}`,
+                background: attachDropActive ? colors.brandTint : colors.raised,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 transition: 'border-color 0.15s, background 0.15s',
               }}
@@ -749,7 +749,7 @@ function DelegateTaskModal({
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 pointerEvents: 'none',
                 fontSize: '11px', fontWeight: 600, color: colors.blue,
-                background: 'rgba(255,255,255,0.6)', borderRadius: '7px',
+                background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
               }}>
                 Drop files to attach
               </div>
@@ -768,16 +768,16 @@ function DelegateTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
             {isUrgent ? 'Marked Important' : 'Mark Important'}
           </span>
           <div style={{
-            width: '30px', height: '17px', borderRadius: '9px',
-            background: isUrgent ? '#C49A28' : colors.float,
+            width: '30px', height: '17px', borderRadius: '8px',
+            background: isUrgent ? '#B7892A' : colors.float,
             position: 'relative', flexShrink: 0,
             transition: 'background 0.16s', border: `1px solid ${colors.border}`,
           }}>
@@ -798,7 +798,7 @@ function DelegateTaskModal({
           <button
             onClick={onClose}
             style={{
-              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`,
               background: 'transparent', cursor: 'pointer',
               fontSize: '12px', fontWeight: 600, color: colors.secondary,
             }}
@@ -809,7 +809,7 @@ function DelegateTaskModal({
             onClick={handleSubmit}
             disabled={!canSave}
             style={{
-              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              padding: '7px 18px', borderRadius: '8px', border: 'none',
               background: canSave ? colors.primary : colors.float,
               color: canSave ? '#fff' : colors.muted,
               cursor: canSave ? 'pointer' : 'not-allowed',
@@ -932,12 +932,12 @@ function EditTaskModal({
             marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderRadius: '8px',
-            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            background: isUrgent ? 'rgba(183,137,42,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>Mark Important</span>
-          <div style={{ width: '30px', height: '17px', borderRadius: '9px', background: isUrgent ? '#C49A28' : colors.float, position: 'relative', flexShrink: 0, transition: 'background 0.16s', border: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>Mark Important</span>
+          <div style={{ width: '30px', height: '17px', borderRadius: '8px', background: isUrgent ? '#B7892A' : colors.float, position: 'relative', flexShrink: 0, transition: 'background 0.16s', border: `1px solid ${colors.border}` }}>
             <div style={{ position: 'absolute', top: '1.5px', left: isUrgent ? '12px' : '1.5px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.16s' }} />
           </div>
         </div>
@@ -946,8 +946,8 @@ function EditTaskModal({
           <div style={{ fontSize: '12px', color: colors.red, marginBottom: '10px' }}>{saveError}</div>
         )}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`, background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: colors.secondary }}>Cancel</button>
-          <button onClick={handleSave} disabled={!canSave} style={{ padding: '7px 18px', borderRadius: '7px', border: 'none', background: canSave ? colors.primary : colors.float, color: canSave ? '#fff' : colors.muted, cursor: canSave ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 600, transition: 'background 0.12s' }}>
+          <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: '8px', border: `1px solid ${colors.border}`, background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: colors.secondary }}>Cancel</button>
+          <button onClick={handleSave} disabled={!canSave} style={{ padding: '7px 18px', borderRadius: '8px', border: 'none', background: canSave ? colors.primary : colors.float, color: canSave ? '#fff' : colors.muted, cursor: canSave ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 600, transition: 'background 0.12s' }}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -960,7 +960,7 @@ function EditTaskModal({
 function EmptyState({ label }: { label: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', gap: '6px' }}>
-      <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
+      <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#E4DED7', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
         <CheckCircle2 size={14} color={colors.muted} />
       </span>
       <span style={{ fontSize: '13px', fontWeight: 500, color: colors.secondary }}>No {label} tasks</span>
@@ -996,13 +996,13 @@ function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: n
             padding: isMobile ? '10px 12px' : '0 14px',
           }}
         >
-          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: 'rgba(0,0,0,0.06)', flexShrink: 0 }} />
-          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.06)' }} />
+          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: '#E4DED7', flexShrink: 0 }} />
+          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
           {!isMobile && (
             <>
-              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
-              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
+              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '6px', background: '#E4DED7' }} />
             </>
           )}
         </div>
@@ -1272,7 +1272,7 @@ function AssignedByMeContent() {
                       return (
                         <span style={{
                           fontSize: '11px', fontWeight: 700,
-                          padding: '1px 7px', borderRadius: '10px',
+                          padding: '1px 7px', borderRadius: '8px',
                           background: standOut ? `${item.color}18` : 'rgba(0,0,0,0.05)',
                           color: standOut ? item.color : colors.muted,
                           minWidth: '20px', textAlign: 'center',
@@ -1409,7 +1409,7 @@ function AssignedByMeContent() {
           padding: '10px 16px',
           borderRadius: '8px',
           background: colors.redTint,
-          border: `1px solid rgba(217,79,79,0.3)`,
+          border: `1px solid rgba(180,35,50,0.3)`,
           display: 'flex', alignItems: 'center', gap: '12px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
           whiteSpace: 'nowrap',

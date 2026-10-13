@@ -90,10 +90,10 @@ const LIST_LIMIT = 200
 
 const TONE_STYLE: Record<PiDraftStatusTone, { bg: string; color: string; border: string }> = {
   neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
-  blue:    { bg: colors.blueTint,  color: '#2F5BB7',        border: 'rgba(85,133,232,0.3)' },
-  amber:   { bg: colors.amberTint, color: '#9A6212',        border: 'rgba(232,160,48,0.3)' },
-  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(217,79,79,0.3)' },
-  green:   { bg: colors.greenTint, color: '#2F7A52',        border: 'rgba(69,168,112,0.25)' },
+  blue:    { bg: colors.blueTint,  color: '#335A86',        border: 'rgba(51,90,134,0.3)' },
+  amber:   { bg: colors.amberTint, color: '#805B0D',        border: 'rgba(196,138,26,0.3)' },
+  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(180,35,50,0.3)' },
+  green:   { bg: colors.greenTint, color: '#276247',        border: 'rgba(39,98,71,0.25)' },
 }
 
 function StatusPill({ label, tone }: { label: string; tone: PiDraftStatusTone }) {
@@ -101,7 +101,7 @@ function StatusPill({ label, tone }: { label: string; tone: PiDraftStatusTone })
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      padding: '2px 8px', borderRadius: '5px',
+      padding: '2px 8px', borderRadius: '6px',
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
       background: style.bg, color: style.color, border: `1px solid ${style.border}`,
     }}>
@@ -451,7 +451,7 @@ export default function PiDraftsPage() {
   )
 
   const failureState = (
-    <PiCard style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <PiCard style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
           These drafts could not be loaded
@@ -674,13 +674,13 @@ export default function PiDraftsPage() {
   const reviewSection = canReview && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 2px' }}>
-        <Inbox size={15} strokeWidth={1.9} color="#2F5BB7" />
+        <Inbox size={15} strokeWidth={1.9} color="#335A86" />
         <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
           {REVIEW_QUEUE_TITLE}
         </span>
         <span style={{
-          fontSize: '11px', fontWeight: 700, color: '#2F5BB7',
-          background: colors.blueTint, border: '1px solid rgba(85,133,232,0.3)',
+          fontSize: '11px', fontWeight: 700, color: '#335A86',
+          background: colors.blueTint, border: '1px solid rgba(51,90,134,0.3)',
           borderRadius: '999px', padding: '1px 8px',
         }}>
           {review.length}
@@ -743,7 +743,7 @@ export default function PiDraftsPage() {
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
             fontSize: '12px', color: colors.primary, lineHeight: 1.5,
-            background: colors.greenTint, border: '1px solid rgba(69,168,112,0.25)',
+            background: colors.greenTint, border: '1px solid rgba(39,98,71,0.25)',
             borderRadius: '6px', padding: '9px 12px',
           }} role="status">
             <span>{deleted}</span>

@@ -409,7 +409,7 @@ export function MarkLostModal({
     <AssetModal title="Mark Lost" onClose={onClose}>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '11.5px',
       }}>
         Writing an asset off is an accountability event. The last custodian and every administrator
         are notified, and the record is permanent — it can only be reversed by recording a recovery.
@@ -975,7 +975,7 @@ export function RemoveDocumentModal({
       <div style={{ fontSize: '12px', color: colors.secondary }}>{fileName}</div>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '11.5px',
       }}>
         The document is taken off the asset and the removal is recorded in the activity history.
         The stored file itself is retained.
@@ -1020,7 +1020,7 @@ export function RetireAssetModal({
     <AssetModal title={dispose ? 'Dispose Asset' : 'Retire Asset'} onClose={onClose}>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '11.5px',
       }}>
         {dispose
           ? 'Disposal ends this asset’s working life. It can be restored to service later, and its full history is kept either way.'
@@ -1108,7 +1108,7 @@ export function DeleteAssetModal({ asset, supabase, onClose, onDone }: CommonPro
       </div>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '11.5px',
       }}>
         Permanently delete this asset? The asset and its complete assignment, custody,
         service, warranty, and activity history will be erased. This action cannot be undone.

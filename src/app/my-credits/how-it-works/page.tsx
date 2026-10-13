@@ -34,9 +34,9 @@ import { DEFAULT_BOE_CREDIT_SETTINGS, formatCreditValue } from '@/lib/boeCredits
 import { MY_CREDITS_PATH } from '@/lib/boeCredits/paths'
 import type { BoeCreditSettings } from '@/lib/boeCredits/types'
 
-const ACCENT = '#4F6FD0'
-const GREEN  = '#047857'
-const AMBER  = '#92400E'
+const ACCENT = '#335A86'
+const GREEN  = '#276247'
+const AMBER  = '#805B0D'
 
 const card: React.CSSProperties = {
   background: '#fff', borderRadius: 12, border: `1px solid ${colors.border}`, overflow: 'hidden',
@@ -46,14 +46,14 @@ function SectionHeading({ id, title, note }: { id: string; title: string; note?:
   return (
     <div style={{ margin: '26px 0 10px' }}>
       <h2 id={id} style={{ margin: 0, fontSize: 16, fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>{title}</h2>
-      {note && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#5B6474', lineHeight: 1.55 }}>{note}</p>}
+      {note && <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>{note}</p>}
     </div>
   )
 }
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div style={{ borderRadius: 9, padding: '10px 12px', background: 'rgba(79,111,208,0.06)', border: '1px solid rgba(79,111,208,0.18)', minWidth: 0 }}>
+    <div style={{ borderRadius: 8, padding: '10px 12px', background: 'rgba(79,111,208,0.06)', border: '1px solid rgba(79,111,208,0.18)', minWidth: 0 }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color: colors.primary, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {note && <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{note}</div>}
@@ -64,7 +64,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 function Row({ label, value, tone, strong }: { label: string; value: string; tone?: string; strong?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', alignItems: 'baseline' }}>
-      <span style={{ fontSize: strong ? 13 : 12.5, fontWeight: strong ? 700 : 400, color: strong ? colors.primary : '#5B6474' }}>{label}</span>
+      <span style={{ fontSize: strong ? 13 : 12.5, fontWeight: strong ? 700 : 400, color: strong ? colors.primary : '#686D6C' }}>{label}</span>
       <span style={{ fontSize: strong ? 15 : 13.5, fontWeight: strong ? 700 : 600, color: tone ?? colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{value}</span>
     </div>
   )
@@ -153,7 +153,7 @@ export default function HowCreditsWorkPage() {
 
         {/* ── Hero: the live numbers ─────────────────────────────────────── */}
         <section style={{ ...card, padding: '16px 18px' }}>
-          <p style={{ margin: 0, fontSize: 13.5, color: '#3D4455', lineHeight: 1.6, maxWidth: 760 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: '#4C5352', lineHeight: 1.6, maxWidth: 760 }}>
             A verified review earns credits. Once your month reaches its target, those credits are yours to spend —
             {attendanceOn ? ` on ${halfDayOn && fullDayOn ? 'a Half Day or Absent' : halfDayOn ? 'a Half Day' : 'an Absent'} deduction, or as extra money on your salary.` : ' as extra money on your salary.'} Unused credits never expire.
           </p>
@@ -186,14 +186,14 @@ export default function HowCreditsWorkPage() {
                 <step.Icon size={15} strokeWidth={1.9} color={ACCENT} aria-hidden="true" />
                 <span style={{ fontSize: 13, fontWeight: 700, color: colors.primary }}>{step.title}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#5B6474', lineHeight: 1.5 }}>{step.text}</div>
+              <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{step.text}</div>
               {i < all.length - 1 && (
-                <ArrowRight size={14} color="#A8B0BF" aria-hidden="true" style={{ position: 'absolute', right: -13, top: 18 }} />
+                <ArrowRight size={14} color="#686D6C" aria-hidden="true" style={{ position: 'absolute', right: -13, top: 18 }} />
               )}
             </div>
           ))}
         </div>
-        <div style={{ ...card, marginTop: 10, padding: '11px 14px', fontSize: 12.5, color: '#3D4455', lineHeight: 1.55, background: 'rgba(0,0,0,0.02)' }}>
+        <div style={{ ...card, marginTop: 10, padding: '11px 14px', fontSize: 12.5, color: '#4C5352', lineHeight: 1.55, background: 'rgba(0,0,0,0.02)' }}>
           <strong>Which month does a credit belong to?</strong> The month you <em>first submitted</em> the review — not the month it was approved.
           Submitted on 30 September and approved on 2 October counts for <strong>September</strong>. If a review is rejected and you correct it and
           reapply, it stays in the month you first submitted it, and it still uses only one of that month&rsquo;s submissions.
@@ -206,7 +206,7 @@ export default function HowCreditsWorkPage() {
             <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>Example · target {target}</div>
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {Array.from({ length: target }, (_, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#3D4455' }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4C5352' }}>
                   <CheckCircle2 size={16} color={GREEN} aria-hidden="true" />
                   <span>Review {i + 1} verified · <strong style={{ color: colors.primary }}>{formatCredits(s.review_reward_credits, { signed: true })}</strong>{i + 1 < target ? ' · pending' : ''}</span>
                 </div>
@@ -225,7 +225,7 @@ export default function HowCreditsWorkPage() {
             <Row label="Credits you already had" value="17" />
             <Row label="September review 1 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
             <Row label="September review 2 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
-            <Row label="September earns nothing — no penalty" value={formatCredits(0)} tone="#B91C1C" />
+            <Row label="September earns nothing — no penalty" value={formatCredits(0)} tone="#B42332" />
             <div style={{ height: 1, background: 'rgba(0,0,0,0.12)', margin: '6px 0' }} />
             <Row label="Spendable after" value="17" strong />
             <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
@@ -251,7 +251,7 @@ export default function HowCreditsWorkPage() {
               </div>
               {halfDayOn && <Row label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />}
               {fullDayOn && <Row label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />}
-              <div style={{ fontSize: 12, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
+              <div style={{ fontSize: 12, color: '#686D6C', marginTop: 8, lineHeight: 1.55 }}>
                 Next to a chargeable {dayKinds} deduction on your payslip you will see <em>Use {coverExample} credits</em>.
                 Confirm, and the day is settled at ₹0. Late arrivals, missing punches and days already covered by paid leave cannot be covered.
               </div>
@@ -268,7 +268,7 @@ export default function HowCreditsWorkPage() {
             <Row label="BOE Credit Addition" value={`+${formatRupees(exampleAddition)}`} tone={GREEN} />
             <div style={{ height: 1, background: 'rgba(0,0,0,0.12)', margin: '6px 0' }} />
             <Row label="Final Salary Payable" value={formatRupees(examplePayable + exampleAddition)} strong />
-            <div style={{ fontSize: 12, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
+            <div style={{ fontSize: 12, color: '#686D6C', marginTop: 8, lineHeight: 1.55 }}>
               Choose how many credits to use on your payslip; the rupees are worked out for you.{' '}
               {attendanceOn
                 ? 'You can use credits this way even when you have no attendance deduction at all, and change or remove them until payroll is locked.'
@@ -281,7 +281,7 @@ export default function HowCreditsWorkPage() {
         <div className="payroll-guide-grid-2" style={{ marginTop: 12 }}>
           <div style={{ ...card, padding: '14px 16px', background: 'rgba(5,150,105,0.05)', border: '1px solid rgba(5,150,105,0.25)' }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: GREEN }}>Unused available credits do not expire.</div>
-            <div style={{ fontSize: 12.5, color: '#3D4455', marginTop: 4, lineHeight: 1.55 }}>
+            <div style={{ fontSize: 12.5, color: '#4C5352', marginTop: 4, lineHeight: 1.55 }}>
               They carry forward month after month until you use them. Only <em>pending</em> credits of a month that closes below target lapse.
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function HowCreditsWorkPage() {
               <Lock size={15} color={ACCENT} aria-hidden="true" />
               <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Old transactions keep their original values</span>
             </div>
-            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#3D4455', lineHeight: 1.6 }}>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#4C5352', lineHeight: 1.6 }}>
               <li>A payroll application made at {value} per credit stays at that rate even if the setting changes later.</li>
               {attendanceOn && <li>A day covered for {formatCredits(coverExample)} stays {formatCredits(coverExample)} in your history.</li>}
               <li>Regenerating payroll never re-prices credits already applied.</li>
@@ -304,13 +304,13 @@ export default function HowCreditsWorkPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
             <div style={{ display: 'flex', gap: 10 }}>
               <Undo2 size={16} color={AMBER} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
-              <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.55 }}>
+              <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55 }}>
                 <strong>Before the month closes:</strong> the credit comes off your ledger and the review no longer counts toward that month&rsquo;s target.
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <XCircle size={16} color={AMBER} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
-              <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.55 }}>
+              <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55 }}>
                 <strong>After a month closed as completed:</strong> only that review&rsquo;s credit comes off. The month stays completed and nothing else you earned is touched.
               </div>
             </div>
@@ -348,16 +348,16 @@ export default function HowCreditsWorkPage() {
             ['Cancellations',  'An invalid review’s credit is reversed on its own; a completed month is never reopened, and a lapsed month’s credit is never taken twice.'],
             ['Settings',       'An administrator sets the numbers above. Changes apply to future actions only.'],
           ].map(([term, meaning], i) => (
-            <div key={term} style={{ padding: '10px 16px', borderTop: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.05)', display: 'grid', gridTemplateColumns: 'minmax(110px, 150px) 1fr', gap: 12 }}>
+            <div key={term} style={{ padding: '10px 16px', borderTop: i === 0 ? 'none' : '1px solid #E4DED7', display: 'grid', gridTemplateColumns: 'minmax(110px, 150px) 1fr', gap: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.primary }}>{term}</div>
-              <div style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55 }}>{meaning}</div>
+              <div style={{ fontSize: 12.5, color: '#686D6C', lineHeight: 1.55 }}>{meaning}</div>
             </div>
           ))}
         </div>
 
         <div style={{ ...card, marginTop: 14, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <BookOpen size={16} color={ACCENT} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55 }}>
             <strong>Need help?</strong> If a credit on your ledger looks wrong, raise it with your admin the same way you raise a
             payroll issue — from <Link href="/my-payroll" style={{ color: ACCENT }}>My Payroll</Link>, with <em>Raise Issue</em> on the month it concerns.
           </div>

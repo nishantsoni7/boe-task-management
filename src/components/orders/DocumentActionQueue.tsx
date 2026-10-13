@@ -41,11 +41,11 @@ type Loaded = {
 }
 
 const TONE: Record<string, { bg: string; fg: string }> = {
-  pending_admin: { bg: '#FFF6E0', fg: '#9A6A12' },
-  awaiting_operations: { bg: '#FFF6E0', fg: '#9A6A12' },
-  rejected_admin: { bg: '#FDECEA', fg: '#B42318' },
-  rejected_operations: { bg: '#FDECEA', fg: '#B42318' },
-  accepted: { bg: '#E8F5EE', fg: '#2F7A52' },
+  pending_admin: { bg: '#FFF6E0', fg: '#805B0D' },
+  awaiting_operations: { bg: '#FFF6E0', fg: '#805B0D' },
+  rejected_admin: { bg: '#FDECEA', fg: '#B42332' },
+  rejected_operations: { bg: '#FDECEA', fg: '#B42332' },
+  accepted: { bg: '#E8F5EE', fg: '#276247' },
 }
 
 export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, formatWhen }: {
@@ -149,7 +149,7 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
       <div className="order-docq-main">
         <strong>Order {r.orderNumber}</strong> · Revised PI · PI V{r.versionNumber}
         {' '}
-        <span className="order-status-chip" style={{ background: '#FFF6E0', color: '#9A6A12', borderColor: 'transparent' }}>
+        <span className="order-status-chip" style={{ background: '#FFF6E0', color: '#805B0D', borderColor: 'transparent' }}>
           {r.status === 'pending' ? 'Pending Admin approval' : 'Approved by Admin — awaiting Operations'}
         </span>
         <span className="order-docq-meta">

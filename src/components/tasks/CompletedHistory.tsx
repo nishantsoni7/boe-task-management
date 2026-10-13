@@ -49,7 +49,7 @@ export function CompletionSummaryCard({
     <section aria-label="Completed summary" style={{
       width: '220px', flexShrink: 0, boxSizing: 'border-box',
       background: colors.base, border: `1.5px solid ${colors.border}`,
-      borderRadius: '10px', padding: '12px 14px',
+      borderRadius: '8px', padding: '12px 14px',
     }}>
       <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
         Completed

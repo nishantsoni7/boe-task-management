@@ -50,11 +50,11 @@ type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  running:            { label: 'Running',             bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
-  on_hold:            { label: 'On Hold',             bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
-  dispatched:         { label: 'Dispatched',          bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+  running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#5B21B6', border: '#DDD6FE' },
+  dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
+  cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
 }
 
 // 'requested' is gone (20260702000000): an Order exists only after its Order
@@ -86,8 +86,8 @@ const badgeAccent = (key: string): TabAccent => ({
 
 const TAB_ACCENT: Record<StatusFilter, TabAccent> = {
   all: {
-    color: '#DC1F2E', tint: 'rgba(220,31,46,0.055)',
-    badge: 'rgba(220,31,46,0.09)', badgeActive: 'rgba(220,31,46,0.17)',
+    color: '#B9472E', tint: 'rgba(185,71,46,0.055)',
+    badge: 'rgba(185,71,46,0.09)', badgeActive: 'rgba(185,71,46,0.17)',
   },
   running:            badgeAccent('running'),
   on_hold:            badgeAccent('on_hold'),
@@ -212,10 +212,10 @@ function compareValue(a: number | null, b: number | null, dir: 1 | -1): number {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  const meta = STATUS_META[status] ?? { label: status, bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' }
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color,
       border: `1px solid ${meta.border}`,
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
@@ -514,14 +514,14 @@ export default function AllOrdersPage() {
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: '13px', color: '#166534',
+          background: '#E8F2EC', border: '1px solid #BCD8C8',
+          fontSize: '13px', color: '#276247',
         }}>
           <span>Request deleted successfully.</span>
           <button
             onClick={() => setDeletedBanner(false)}
             aria-label="Dismiss"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#276247', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
           </button>
@@ -538,8 +538,8 @@ export default function AllOrdersPage() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
             padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
-            background: '#FFF7ED', border: '1px solid #FED7AA',
-            fontSize: '13px', color: '#9A3412',
+            background: '#FAF0DA', border: '1px solid #E6D2A0',
+            fontSize: '13px', color: '#805B0D',
           }}
         >
           <span>{OPERATIONS_REVIEW_QUEUE_BANNER}</span>
@@ -632,7 +632,7 @@ export default function AllOrdersPage() {
       <div style={{
         background: colors.base,
         border: `1px solid ${colors.border}`,
-        borderRadius: '10px',
+        borderRadius: '8px',
         overflow: 'hidden',
       }}>
         {/* Status navigation. Icon + status hue + count badge make each state
@@ -706,7 +706,7 @@ export default function AllOrdersPage() {
           <div role="alert" style={{
             display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
             margin: '12px 14px 0', padding: '9px 12px', borderRadius: '8px',
-            background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+            background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
           }}>
             <span style={{ flex: 1, minWidth: 0 }}>{loadError}</span>
             <button type="button" onClick={() => { void loadOrders() }} className="boe-btn boe-btn-ghost" style={{ padding: '4px 12px', fontSize: '12px' }}>

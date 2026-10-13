@@ -226,8 +226,8 @@ export default function AttendanceRecordsPage() {
         {/* ── Results header: count + export ── */}
         {total !== null && (
           <div className={ui.toolbar} style={{ marginBottom: 0 }}>
-            <span style={{ fontSize: 13, color: '#4A5261' }} aria-live="polite">
-              <strong style={{ color: '#111318' }}>{total}</strong> record{total !== 1 ? 's' : ''} found
+            <span style={{ fontSize: 13, color: '#4C5352' }} aria-live="polite">
+              <strong style={{ color: '#303536' }}>{total}</strong> record{total !== 1 ? 's' : ''} found
             </span>
             <div className={ui.toolbarEnd}>
               <button
@@ -290,7 +290,7 @@ export default function AttendanceRecordsPage() {
                     </div>
                     <StatusBadge status={rec.status} />
                   </div>
-                  <div style={{ fontSize: 13, color: '#4A5261' }}>
+                  <div style={{ fontSize: 13, color: '#4C5352' }}>
                     In {formatTime(rec.check_in_at)} · Out {formatTime(rec.check_out_at)}
                   </div>
                 </li>
@@ -298,7 +298,7 @@ export default function AttendanceRecordsPage() {
             </ul>
 
             <div className={ui.row} style={{ justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, color: '#6B7384' }}>Page {page} of {totalPages}</span>
+              <span style={{ fontSize: 13, color: '#686D6C' }}>Page {page} of {totalPages}</span>
               <div className={ui.row}>
                 <button
                   type="button"

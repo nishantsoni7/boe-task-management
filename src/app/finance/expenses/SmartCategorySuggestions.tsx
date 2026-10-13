@@ -62,7 +62,7 @@ export function SmartCategorySuggestions({
       data-testid="smart-category-suggestions"
       style={{
         display: 'flex', flexDirection: 'column', gap: '8px',
-        padding: '10px 12px', borderRadius: '10px',
+        padding: '10px 12px', borderRadius: '8px',
         border: `1px solid ${colors.border}`, background: colors.raised,
       }}
     >

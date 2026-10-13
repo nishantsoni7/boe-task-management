@@ -92,7 +92,7 @@ export function AfterSalesTagPicker({
             disabled={disabled}
             onClick={() => onChange(selected ? null : key)}
             style={{
-              flex: '1 1 84px', padding: '6px 8px', borderRadius: '7px', cursor: 'pointer',
+              flex: '1 1 84px', padding: '6px 8px', borderRadius: '8px', cursor: 'pointer',
               fontSize: '12px', fontWeight: selected ? 700 : 500,
               border: `1px solid ${selected ? colors.borderMed : colors.border}`,
               background: selected ? colors.float : 'transparent',

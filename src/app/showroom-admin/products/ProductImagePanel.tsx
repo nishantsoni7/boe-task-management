@@ -63,7 +63,7 @@ export function ProductImagePanel({ images, selectedIndex, onSelect, alt }: Prod
     <div style={{
       background: colors.base,
       border: `1.5px solid ${colors.border}`,
-      borderRadius: '16px',
+      borderRadius: '12px',
       padding: '16px',
       display: 'flex', flexDirection: 'column', gap: '12px',
     }}>
@@ -130,7 +130,7 @@ export function ProductImagePanel({ images, selectedIndex, onSelect, alt }: Prod
                   width: 52, height: 52, flexShrink: 0, padding: 0,
                   borderRadius: '8px', overflow: 'hidden',
                   background: colors.raised,
-                  border: `1.5px solid ${selected ? '#1A2035' : colors.border}`,
+                  border: `1.5px solid ${selected ? '#303536' : colors.border}`,
                   cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}

@@ -169,7 +169,7 @@ describe('the exact ID clears the mismatch at once, without submitting anything'
 
   test('the field returns to normal styling and is no longer marked invalid', () => {
     assert.ok(!html.includes('aria-invalid="true"'))
-    assert.ok(!html.includes('#DC2626'), 'the invalid border must be gone')
+    assert.ok(!html.includes('#B42332'), 'the invalid border must be gone')
   })
 
   test('the instruction stays — it is the label, not the error', () => {

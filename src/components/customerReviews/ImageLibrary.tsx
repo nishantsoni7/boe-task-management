@@ -327,7 +327,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
   return (
     <section style={{
       display: 'flex', flexDirection: 'column', gap: '12px',
-      border: `1px solid ${colors.borderSoft}`, borderRadius: '10px',
+      border: `1px solid ${colors.borderSoft}`, borderRadius: '8px',
       background: colors.base, padding: '14px',
     }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -372,7 +372,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
       </div>
 
       {error && <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0, lineHeight: 1.6 }}>{error}</p>}
-      {notice && <p role="status" style={{ fontSize: '12px', color: '#166534', margin: 0, lineHeight: 1.6 }}>{notice}</p>}
+      {notice && <p role="status" style={{ fontSize: '12px', color: '#276247', margin: 0, lineHeight: 1.6 }}>{notice}</p>}
 
       {groups === null ? (
         <StackSkeleton count={3} height={62} />
@@ -416,12 +416,12 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                   {/* WHETHER IT IS CURRENTLY ASSIGNED — the fact the requirement
                       asks for, said as a number rather than a yes/no, because
                       "used by 6 reviews" is what decides whether to archive it. */}
-                  <span style={{ fontSize: '11px', color: assigned > 0 ? '#1E40AF' : colors.muted }}>
+                  <span style={{ fontSize: '11px', color: assigned > 0 ? '#335A86' : colors.muted }}>
                     {assigned > 0 ? `In use by ${assigned} review${assigned === 1 ? '' : 's'}` : 'Not assigned'}
                   </span>
 
                   {count === 0 && !group.archived_at && (
-                    <span style={{ fontSize: '11px', color: '#92400E', fontWeight: 600 }}>
+                    <span style={{ fontSize: '11px', color: '#805B0D', fontWeight: 600 }}>
                       Not offered to reviews until it has an image
                     </span>
                   )}

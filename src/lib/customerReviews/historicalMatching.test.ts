@@ -27,7 +27,7 @@ function screenshot(name: string, stars: number, lines: string[]) {
   const starRow = Array.from({ length: 5 }, (_, i) => `<circle cx="${60 + i * 44}" cy="150" r="16" fill="${i < stars ? '#f5a623' : '#ddd'}"/>`).join('')
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="900"><rect width="100%" height="100%" fill="#fff"/>`
-    + `<circle cx="70" cy="70" r="30" fill="#4a90e2"/><text x="120" y="80" font-size="32" font-family="Arial" fill="#111">${name}</text>${starRow}${text}</svg>`)
+    + `<circle cx="70" cy="70" r="30" fill="#C3D3E6"/><text x="120" y="80" font-size="32" font-family="Arial" fill="#111">${name}</text>${starRow}${text}</svg>`)
 }
 const png = (svg: Buffer) => sharp(svg).png().toBuffer()
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')

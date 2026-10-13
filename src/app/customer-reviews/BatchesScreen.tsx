@@ -211,7 +211,7 @@ export function BatchesScreen() {
         <GenerateDrafts supabase={supabase} onGenerated={() => { void load() }} />
 
         {notice && (
-          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>
+          <p role="status" style={{ fontSize: '12px', color: '#276247', fontWeight: 600, margin: 0 }}>{notice}</p>
         )}
         {error && (
           <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
@@ -284,7 +284,7 @@ function SectionHeading({ title, hint }: { title: string; hint: string | null })
 function Empty({ children }: { children: React.ReactNode }) {
   return (
     <p style={{
-      margin: 0, padding: '18px', borderRadius: '9px', fontSize: '12px', lineHeight: 1.6,
+      margin: 0, padding: '18px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
       border: `1px dashed ${colors.border}`, color: colors.muted,
     }}>
       {children}

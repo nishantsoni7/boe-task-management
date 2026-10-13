@@ -386,7 +386,7 @@ function PiAttachmentColumn({ supabase, state, canEdit, category }: {
         <ul className="pi-attach-files">
           {files.map(f => (
             <li key={f.storage_path}>
-              <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
+              <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#686D6C' }} />
               <button type="button" className="pi-attach-name" title={f.file_name} onClick={() => void open(f.storage_path)}>
                 {f.file_name}
               </button>
@@ -441,7 +441,7 @@ export function PiSentColumns({ shown }: { shown: ReturnType<typeof sentWithPi> 
               <ul className="pi-attach-files">
                 {inCategory.map(f => (
                   <li key={f.storage_path}>
-                    <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#6b7384' }} />
+                    <FileText size={13} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: '#686D6C' }} />
                     <span className="pi-attach-plain">{f.file_name}</span>
                   </li>
                 ))}
@@ -485,7 +485,7 @@ export function PiSupportingDocumentsPicker({ state, disabled }: { state: Suppor
           </ul>
         )}
         {!state.missing.includes(category)
-          ? <span style={{ fontSize: '11.5px', color: '#2F7A52', fontWeight: 600 }}>Attached to this submission</span>
+          ? <span style={{ fontSize: '11.5px', color: '#276247', fontWeight: 600 }}>Attached to this submission</span>
           : <span style={{ fontSize: '11.5px', color: colors.muted }}>Nothing attached</span>}
       </div>
     )

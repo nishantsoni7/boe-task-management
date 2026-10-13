@@ -21,9 +21,9 @@ const STATE_LABEL: Record<QueueStatus, string> = {
 function StatusPill({ status }: { status: QueueStatus }) {
   const style: Record<QueueStatus, { color: string; background: string }> = {
     waiting:    { color: colors.tertiary, background: colors.float },
-    processing: { color: '#1D4ED8',       background: 'rgba(85,133,232,0.12)' },
-    done:       { color: '#1E7B4B',       background: 'rgba(69,168,112,0.14)' },
-    failed:     { color: '#C13030',       background: 'rgba(217,79,79,0.12)' },
+    processing: { color: '#335A86',       background: 'rgba(51,90,134,0.12)' },
+    done:       { color: '#1E7B4B',       background: 'rgba(39,98,71,0.14)' },
+    failed:     { color: '#B42332',       background: 'rgba(180,35,50,0.12)' },
   }
   const icon = {
     waiting:    <Clock size={11} strokeWidth={2} />,
@@ -36,7 +36,7 @@ function StatusPill({ status }: { status: QueueStatus }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
       fontSize: '10px', fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase',
-      padding: '2px 7px', borderRadius: '4px', whiteSpace: 'nowrap',
+      padding: '2px 7px', borderRadius: '6px', whiteSpace: 'nowrap',
       ...style[status],
     }}>
       {icon}
@@ -85,7 +85,7 @@ export function QueueList({
               display: 'flex', alignItems: 'center', gap: '10px',
               padding: '8px', borderRadius: '8px',
               background: colors.raised,
-              border: `1px solid ${item.status === 'failed' ? 'rgba(217,79,79,0.20)' : colors.border}`,
+              border: `1px solid ${item.status === 'failed' ? 'rgba(180,35,50,0.20)' : colors.border}`,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -108,7 +108,7 @@ export function QueueList({
               <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
                 {sizeLabel(item.size)}
                 {item.error && (
-                  <span style={{ color: '#C13030' }}> · {item.error}</span>
+                  <span style={{ color: '#B42332' }}> · {item.error}</span>
                 )}
               </div>
             </div>

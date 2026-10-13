@@ -39,9 +39,9 @@ const PRIORITIES = ['low', 'medium', 'high'] as const
 type Priority = typeof PRIORITIES[number]
 
 const PRIORITY_STYLE: Record<Priority, { bg: string; border: string; text: string }> = {
-  low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)', text: '#16a34a' },
-  medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)', text: '#d97706' },
-  high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)', text: '#dc2626' },
+  low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)', text: '#2F7A52' },
+  medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)', text: '#C48A1A' },
+  high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)', text: '#B42332' },
 }
 
 type MemberOption = { id: string; full_name: string; team: string }

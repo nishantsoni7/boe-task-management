@@ -79,11 +79,11 @@ function StepButton({
         maxWidth: '46%',
         padding: '5px 10px',
         fontSize: '12px', fontWeight: 600,
-        fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+        fontFamily: 'var(--font-body)',
         color: colors.secondary,
         background: colors.float,
         border: `1px solid ${colors.border}`,
-        borderRadius: '7px',
+        borderRadius: '8px',
         cursor: 'pointer',
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       }}

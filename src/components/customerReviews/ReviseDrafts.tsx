@@ -152,7 +152,7 @@ export function ReviseDrafts({ batchId, pendingCount, onRevised }: Props) {
         >
           <div style={{
             padding: '10px 12px', borderRadius: '8px',
-            background: colors.blueTint, border: '1px solid rgba(85,133,232,0.22)',
+            background: colors.blueTint, border: '1px solid rgba(51,90,134,0.22)',
             fontSize: '12px', color: colors.secondary, lineHeight: 1.55,
           }}>
             <strong style={{ color: colors.primary }}>
@@ -194,7 +194,7 @@ export function ReviseDrafts({ batchId, pendingCount, onRevised }: Props) {
           {confirming && (
             <div style={{
               display: 'grid', gap: '8px', padding: '12px',
-              border: '1px solid #DDD6FE', borderRadius: '8px', background: '#F5F3FF',
+              border: '1px solid #DDD6FE', borderRadius: '8px', background: '#EAF0F8',
             }}>
               <strong style={{ fontSize: '12px', color: '#4C1D95' }}>
                 This replaces the title and the body of {pendingCount} pending {noun}.
@@ -213,7 +213,7 @@ export function ReviseDrafts({ batchId, pendingCount, onRevised }: Props) {
           )}
 
           {error && (
-            <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
+            <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#A12438', lineHeight: 1.55 }}>
               {error} Your feedback is still here — press the button again to retry the same
               request.
             </p>

@@ -25,9 +25,9 @@ export function useToast() {
 }
 
 const VARIANT_BG: Record<ToastVariant, string> = {
-  success: '#16A34A',
-  error:   '#DC2626',
-  info:    '#2563EB',
+  success: '#2F7A52',
+  error:   '#B42332',
+  info:    '#335A86',
 }
 
 export function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void }) {

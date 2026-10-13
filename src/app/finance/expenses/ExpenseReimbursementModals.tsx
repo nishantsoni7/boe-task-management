@@ -108,7 +108,7 @@ export function RecordReimbursementModal({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }} data-testid="record-reimbursement">
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap',
-          padding: '10px 12px', borderRadius: '10px', border: `1px solid ${colors.border}`, background: colors.raised,
+          padding: '10px 12px', borderRadius: '8px', border: `1px solid ${colors.border}`, background: colors.raised,
         }}>
           <span style={{ fontSize: '12.5px', color: colors.secondary }}>
             {rows.length} {rows.length === 1 ? 'expense' : 'expenses'}
@@ -121,7 +121,7 @@ export function RecordReimbursementModal({
 
         <ul aria-label="Expenses in this reimbursement" style={{
           listStyle: 'none', margin: 0, padding: 0, maxHeight: '240px', overflowY: 'auto',
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
         }}>
           {rows.map(row => (
             <li key={row.id} style={{
@@ -143,21 +143,21 @@ export function RecordReimbursementModal({
           ))}
         </ul>
 
-        {selectionProblem && <div role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{selectionProblem}</div>}
+        {selectionProblem && <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{selectionProblem}</div>}
 
         <div className="expense-form-row">
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
             <span style={LABEL}>Reimbursement date<span style={{ color: colors.red }} aria-hidden="true">*</span></span>
             <input type="date" className="boe-input" value={form.reimbursedOn} max={todayIso} disabled={saving}
               onChange={e => setForm(p => ({ ...p, reimbursedOn: e.target.value }))} />
-            {shown.reimbursedOn && <span role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{shown.reimbursedOn}</span>}
+            {shown.reimbursedOn && <span role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{shown.reimbursedOn}</span>}
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
             <span style={LABEL}>Challan / payment reference<span style={{ color: colors.red }} aria-hidden="true">*</span></span>
             <input className="boe-input" value={form.reference} maxLength={REIMBURSEMENT_REFERENCE_MAX + 20} disabled={saving}
               autoComplete="off" placeholder="e.g. UTR or challan no."
               onChange={e => setForm(p => ({ ...p, reference: e.target.value }))} />
-            {shown.reference && <span role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{shown.reference}</span>}
+            {shown.reference && <span role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{shown.reference}</span>}
           </label>
         </div>
 
@@ -165,11 +165,11 @@ export function RecordReimbursementModal({
           <span style={LABEL}>Note <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>Optional</span></span>
           <input className="boe-input" value={form.note} maxLength={REIMBURSEMENT_NOTE_MAX + 20} disabled={saving}
             autoComplete="off" onChange={e => setForm(p => ({ ...p, note: e.target.value }))} />
-          {shown.note && <span role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{shown.note}</span>}
+          {shown.note && <span role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{shown.note}</span>}
         </label>
 
         {error && (
-          <div role="alert" style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px', lineHeight: 1.5 }}>
+          <div role="alert" style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px', lineHeight: 1.5 }}>
             {error}
           </div>
         )}
@@ -283,12 +283,12 @@ export function ReimbursementBatchModal({
     <FinanceModal title="Reimbursement" onClose={onClose} width="600px">
       <div data-testid="reimbursement-batch" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {state === 'loading' && <div style={{ fontSize: '12.5px', color: colors.muted }}>Loading…</div>}
-        {state === 'error' && <div role="alert" style={{ fontSize: '12.5px', color: '#C13030' }}>This reimbursement could not be loaded.</div>}
+        {state === 'error' && <div role="alert" style={{ fontSize: '12.5px', color: '#B42332' }}>This reimbursement could not be loaded.</div>}
         {state === 'ready' && batch && (
           <>
             <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(110px, auto) 1fr', gap: '6px 12px', fontSize: '12.5px' }}>
               <dt style={{ color: colors.muted }}>Status</dt>
-              <dd style={{ margin: 0, fontWeight: 600, color: batch.status === 'reversed' ? '#C13030' : '#1F7A3F' }}>
+              <dd style={{ margin: 0, fontWeight: 600, color: batch.status === 'reversed' ? '#B42332' : '#1F7A3F' }}>
                 {batch.status === 'reversed' ? 'Reversed' : 'Reimbursed'}
               </dd>
               <dt style={{ color: colors.muted }}>Paid to</dt><dd style={{ margin: 0, fontWeight: 600 }}>{nameOf(batch.payer_id)}</dd>
@@ -312,7 +312,7 @@ export function ReimbursementBatchModal({
 
             <div>
               <div style={{ ...LABEL, marginBottom: '6px' }}>Expenses covered</div>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0, border: `1px solid ${colors.border}`, borderRadius: '10px' }}>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, border: `1px solid ${colors.border}`, borderRadius: '8px' }}>
                 {shownItems.map(item => (
                   <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
                     <span style={{ minWidth: 0 }}>
@@ -329,11 +329,11 @@ export function ReimbursementBatchModal({
               </ul>
             </div>
 
-            {error && <div role="alert" style={{ fontSize: '12px', color: '#C13030' }}>{error}</div>}
+            {error && <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>}
 
             {mayReverse && batch.status === 'recorded' && (
               reversing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: '8px' }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={LABEL}>Why is it being reversed?</span>
                     <input className="boe-input" value={reason} maxLength={500} disabled={saving} autoComplete="off"
@@ -345,14 +345,14 @@ export function ReimbursementBatchModal({
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     <button type="button" className="boe-btn boe-btn-ghost" disabled={saving} onClick={() => setReversing(false)} style={{ minHeight: '44px' }}>Keep it</button>
                     <button type="button" className="boe-btn boe-btn-primary" disabled={saving} onClick={() => void reverse()}
-                      style={{ minHeight: '44px', background: '#C13030', borderColor: '#C13030' }}>
+                      style={{ minHeight: '44px', background: '#B42332', borderColor: '#B42332' }}>
                       {saving ? 'Reversing…' : 'Reverse reimbursement'}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setReversing(true)}
-                  style={{ alignSelf: 'flex-start', minHeight: '40px', fontSize: '12.5px', color: '#C13030' }}>
+                  style={{ alignSelf: 'flex-start', minHeight: '40px', fontSize: '12.5px', color: '#B42332' }}>
                   Reverse this reimbursement…
                 </button>
               )
@@ -422,7 +422,7 @@ export function ExpenseDetailModal({
         </dl>
 
         <div data-testid="expense-reimbursement-state" style={{
-          padding: '10px 12px', borderRadius: '10px', border: `1px solid ${tone.border}`, background: tone.bg,
+          padding: '10px 12px', borderRadius: '8px', border: `1px solid ${tone.border}`, background: tone.bg,
           display: 'flex', flexDirection: 'column', gap: '4px',
         }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: tone.fg }}>{REIMBURSEMENT_STATE_LABEL[state]}</span>
@@ -484,7 +484,7 @@ export function ExpenseDetailModal({
 
 export const STATE_TONE: Record<ReturnType<typeof reimbursementState>, { fg: string; bg: string; border: string }> = {
   company: { fg: colors.secondary, bg: colors.raised, border: colors.border },
-  pending: { fg: '#8A5A00', bg: 'rgba(217,148,0,0.10)', border: 'rgba(217,148,0,0.35)' },
+  pending: { fg: '#805B0D', bg: 'rgba(217,148,0,0.10)', border: 'rgba(217,148,0,0.35)' },
   reimbursed: { fg: '#1F7A3F', bg: 'rgba(31,122,63,0.08)', border: 'rgba(31,122,63,0.30)' },
   unknown: { fg: colors.tertiary, bg: colors.raised, border: colors.border },
 }

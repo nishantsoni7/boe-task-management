@@ -14,9 +14,9 @@ import type { CustomReviewMonthSummary, SubmissionAllowance } from '@/lib/custom
 // 1, 1.5, ₹50, 3 or 10; summarizeCustomReviewMonth() and the settings row are
 // the only sources, so a settings change reaches this screen on its next load.
 
-const GREEN = '#047857'
-const AMBER = '#92400E'
-const RED = '#B91C1C'
+const GREEN = '#276247'
+const AMBER = '#805B0D'
+const RED = '#B42332'
 
 /** The rules, as a row of small chips beside the primary action. */
 export function ReviewRewardRules({ settings }: { settings: BoeCreditSettings }) {
@@ -48,7 +48,7 @@ type Row = { label: string; value: string; tone?: string; detail?: string | null
 function Panel({ title, rows, footnote }: { title: string; rows: Row[]; footnote?: string | null }) {
   return (
     <section style={{
-      flex: '1 1 300px', minWidth: 0, padding: '12px 14px', borderRadius: '10px',
+      flex: '1 1 300px', minWidth: 0, padding: '12px 14px', borderRadius: '8px',
       border: `1px solid ${colors.borderSoft}`, background: colors.base,
       display: 'flex', flexDirection: 'column', gap: '8px',
     }}>

@@ -123,7 +123,7 @@ export function NeedsDetailsList({
                     {formatMoney(row.parsed_amount)}
                   </span>
                 ) : (
-                  <span style={{ fontWeight: 600, color: '#8A5A00' }}>Amount missing</span>
+                  <span style={{ fontWeight: 600, color: '#805B0D' }}>Amount missing</span>
                 )}
                 <span>{row.parsed_paid_to ?? 'Payee not heard'}</span>
                 <span style={{ color: colors.muted, fontSize: '11.5px' }}>
@@ -136,7 +136,7 @@ export function NeedsDetailsList({
                   with the answer already known. */}
               <div style={{
                 fontSize: '11.5px', lineHeight: 1.5,
-                color: missing.length > 0 ? '#8A5A00' : colors.tertiary,
+                color: missing.length > 0 ? '#805B0D' : colors.tertiary,
               }}>
                 {draftMissingSummary(missing)}
               </div>
@@ -244,7 +244,7 @@ function DiscardDraftModal({
     <FinanceModal title="Discard capture" onClose={onClose} width="400px" closeOnBackdropClick={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           background: colors.raised, padding: '11px 13px',
           fontSize: '12.5px', color: colors.primary, lineHeight: 1.5,
         }}>
@@ -256,7 +256,7 @@ function DiscardDraftModal({
         {error && (
           <div role="alert" style={{
             padding: '10px 12px', borderRadius: '8px',
-            background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px', lineHeight: 1.5,
+            background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px', lineHeight: 1.5,
           }}>
             {error}
           </div>
@@ -273,7 +273,7 @@ function DiscardDraftModal({
             className="boe-btn"
             style={{
               minHeight: '44px', fontSize: '13px', minWidth: '120px', fontWeight: 600,
-              background: busy ? 'rgba(217,79,79,0.18)' : '#C13030',
+              background: busy ? 'rgba(180,35,50,0.18)' : '#B42332',
               color: busy ? 'rgba(193,48,48,0.65)' : '#FFFFFF',
               border: '1px solid rgba(193,48,48,0.35)',
             }}
@@ -292,7 +292,7 @@ function Empty({ title, body, tone }: { title: string; body?: string; tone?: 'er
       padding: '36px 20px', textAlign: 'center',
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
     }}>
-      <div style={{ fontSize: '13px', fontWeight: 600, color: tone === 'error' ? '#C13030' : colors.secondary }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: tone === 'error' ? '#B42332' : colors.secondary }}>
         {title}
       </div>
       {body && <div style={{ fontSize: '12px', color: colors.muted, maxWidth: '340px', lineHeight: 1.55 }}>{body}</div>}

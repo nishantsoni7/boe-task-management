@@ -247,7 +247,7 @@ export function WhatsAppTestPanel({
         style={{
           display: 'flex', gap: '9px', alignItems: 'flex-start',
           padding: '10px 12px', borderRadius: '8px',
-          background: colors.blueTint, border: '1px solid rgba(85,133,232,0.22)',
+          background: colors.blueTint, border: '1px solid rgba(51,90,134,0.22)',
           fontSize: '12px', lineHeight: 1.55, color: colors.secondary,
           cursor: enabled ? 'pointer' : 'not-allowed',
         }}
@@ -282,7 +282,7 @@ export function WhatsAppTestPanel({
               data-testid="review-message-preview"
               style={{
                 margin: 0, padding: '12px', borderRadius: '8px',
-                background: '#F9FAFB',
+                background: '#FBFAF8',
                 border: `1px solid ${colors.border}`,
                 fontSize: '12px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word', fontFamily: 'inherit', color: colors.primary,
@@ -364,7 +364,7 @@ export function ConfirmSentControl({
     return (
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: '7px',
-        color: '#166534', fontSize: '12px', fontWeight: 600,
+        color: '#276247', fontSize: '12px', fontWeight: 600,
       }}>
         <CheckCircle2 size={14} strokeWidth={2.2} />
         You confirmed you sent this review.

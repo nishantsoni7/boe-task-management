@@ -100,11 +100,11 @@ export function DeletePayrollModal({
       >
         <div role="alert" style={{
           display: 'flex', gap: 10, padding: '11px 12px', borderRadius: 8,
-          background: 'rgba(217,79,79,0.09)', border: '1px solid rgba(192,57,43,0.25)',
+          background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(192,57,43,0.25)',
         }}>
-          <AlertTriangle size={16} strokeWidth={2.2} color="#C0392B" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+          <AlertTriangle size={16} strokeWidth={2.2} color="#B42332" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
           <div style={{ fontSize: 12.5, color: colors.secondary, lineHeight: 1.55 }}>
-            <div style={{ fontWeight: 600, color: '#C0392B' }}>This payroll cannot be deleted</div>
+            <div style={{ fontWeight: 600, color: '#B42332' }}>This payroll cannot be deleted</div>
             <div style={{ marginTop: 3 }}>{permission.message}</div>
             {permission.resolution && (
               <div style={{ marginTop: 6, color: colors.tertiary }}>{permission.resolution}</div>
@@ -150,11 +150,11 @@ export function DeletePayrollModal({
     >
       <div role="alert" style={{
         display: 'flex', gap: 10, padding: '11px 12px', borderRadius: 8,
-        background: 'rgba(217,79,79,0.09)', border: '1px solid rgba(192,57,43,0.25)',
+        background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(192,57,43,0.25)',
       }}>
-        <AlertTriangle size={16} strokeWidth={2.2} color="#C0392B" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+        <AlertTriangle size={16} strokeWidth={2.2} color="#B42332" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
         <div style={{ fontSize: 12.5, color: colors.secondary, lineHeight: 1.55 }}>
-          <div style={{ fontWeight: 600, color: '#C0392B' }}>This cannot be undone</div>
+          <div style={{ fontWeight: 600, color: '#B42332' }}>This cannot be undone</div>
           <div style={{ marginTop: 3 }}>
             {permission.removesEmployeeVisibleSalary
               ? `The generated salary records for ${preview.period_label} will permanently disappear from every affected employee’s account. Employees who have already seen this payslip will no longer find it.`
@@ -183,7 +183,7 @@ export function DeletePayrollModal({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
         <ScopeList
           heading="Will be deleted"
-          tone="#C0392B"
+          tone="#B42332"
           items={scope.removed}
         />
         <ScopeList
@@ -203,7 +203,7 @@ export function DeletePayrollModal({
           rows={2}
           placeholder="e.g. Test payroll created while configuring the module; not a real salary month."
           style={{
-            fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
+            fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 8,
             background: colors.base, color: colors.primary, outline: 'none',
             padding: '8px 10px', boxSizing: 'border-box', width: '100%',
             resize: 'vertical', fontFamily: 'inherit',
@@ -223,7 +223,7 @@ export function DeletePayrollModal({
           autoComplete="off"
           style={{
             fontSize: 13, border: `1px solid ${typedMatches ? 'rgba(31,122,77,0.5)' : colors.border}`,
-            borderRadius: 7, background: colors.base, color: colors.primary, outline: 'none',
+            borderRadius: 8, background: colors.base, color: colors.primary, outline: 'none',
             padding: '8px 10px', boxSizing: 'border-box', width: '100%',
           }}
         />
@@ -246,7 +246,7 @@ export function DeletePayrollModal({
           className="boe-btn"
           style={{
             padding: '8px 18px', fontSize: 13, fontWeight: 600,
-            background: '#C0392B', color: '#fff', border: '1px solid #C0392B',
+            background: '#B42332', color: '#fff', border: '1px solid #B42332',
             opacity: canSubmit ? 1 : 0.5,
             cursor: canSubmit ? 'pointer' : 'not-allowed',
           }}

@@ -287,7 +287,7 @@ export default function SalaryProcessingReportPage() {
 
 const card: React.CSSProperties = {
   border: `1px solid ${colors.border}`,
-  borderRadius: 10,
+  borderRadius: 8,
   padding: '14px 16px',
   background: colors.base,
 }

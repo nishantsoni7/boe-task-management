@@ -55,9 +55,9 @@ describe('ExpandableText', () => {
   })
 
   test('the caller typography survives the clamp', () => {
-    const html = render(LONG, { style: { fontSize: '12.5px', color: '#596273' } })
+    const html = render(LONG, { style: { fontSize: '12.5px', color: '#4C5352' } })
     assert.match(html, /font-size:12\.5px/)
-    assert.match(html, /color:#596273/)
+    assert.match(html, /color:#4C5352/)
   })
 
   test('the toggle is a real button carrying its own state', () => {

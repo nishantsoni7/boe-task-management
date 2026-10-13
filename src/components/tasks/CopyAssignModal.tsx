@@ -201,7 +201,7 @@ export function CopyAssignModal({
             onClick={onClose}
             disabled={submitting}
             style={{
-              padding: '8px 16px', borderRadius: '7px',
+              padding: '8px 16px', borderRadius: '8px',
               border: `1.5px solid ${colors.border}`,
               background: 'transparent', color: colors.tertiary,
               fontSize: '12px', fontWeight: 500,
@@ -214,9 +214,9 @@ export function CopyAssignModal({
             onClick={() => onSubmit({ assigneeId, dueDate, priority, description })}
             disabled={!canSubmit}
             style={{
-              padding: '8px 18px', borderRadius: '7px',
+              padding: '8px 18px', borderRadius: '8px',
               border: `1.5px solid ${colors.blue}`,
-              background: colors.blue, color: '#ffffff',
+              background: colors.brand, color: '#ffffff',
               fontSize: '12px', fontWeight: 600,
               cursor: canSubmit ? 'pointer' : 'not-allowed',
               fontFamily: font.body, opacity: canSubmit ? 1 : 0.5,

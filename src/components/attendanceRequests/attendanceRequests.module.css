@@ -1,7 +1,7 @@
 /* Admin attendance requests — the list and its review drawer.
  *
- * App colours only: white surfaces on the #F4F5F7 ground, #111318 text,
- * rgba(0,0,0,.08) borders, the amber the app already uses for its primary
+ * App colours only: white surfaces on the #F7F5F1 ground, #303536 text,
+ * #E4DED7 borders, the amber the app already uses for its primary
  * button. Status badges keep the request status tones from ./format.ts. Shared
  * pieces (filters, notices, state blocks) come from
  * src/components/attendancePayroll/ui. The employee request form lives in
@@ -10,41 +10,41 @@
 
 .surface {
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid #E4DED7;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.label { font-size: 12px; font-weight: 600; color: #4A5261; letter-spacing: 0.01em; padding: 0; }
-.optional { font-weight: 400; color: #6B7384; }
+.label { font-size: 12px; font-weight: 600; color: #4C5352; letter-spacing: 0.01em; padding: 0; }
+.optional { font-weight: 400; color: #686D6C; }
 .input {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
   font-size: 16px;
   font-family: inherit;
-  color: #111318;
+  color: #303536;
   background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid #CFC8BF;
   border-radius: 8px;
   box-sizing: border-box;
 }
-.input:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+.input:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
 textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
-.footnote { font-size: 12px; color: #6B7384; line-height: 1.5; }
+.footnote { font-size: 12px; color: #686D6C; line-height: 1.5; }
 .alert {
-  font-size: 13px; line-height: 1.45; color: #991B1B;
+  font-size: 13px; line-height: 1.45; color: #A12438;
   background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.28);
   border-radius: 8px; padding: 10px 12px;
 }
 .shiftNote {
-  font-size: 12.5px; color: #4A5261; background: #F8F9FB;
-  border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 8px; padding: 8px 10px; line-height: 1.4;
+  font-size: 12.5px; color: #4C5352; background: #FBFAF8;
+  border: 1px solid #E4DED7; border-radius: 8px; padding: 8px 10px; line-height: 1.4;
 }
 
 /* ── Admin queue ──────────────────────────────────────────────────────────── */
 
-.shiftLabel { font-size: 12px; color: #6B7384; margin-left: auto; }
+.shiftLabel { font-size: 12px; color: #686D6C; margin-left: auto; }
 
 .tableWrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -53,23 +53,23 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   text-align: left;
   font-size: 11px;
   font-weight: 600;
-  color: #6B7384;
+  color: #686D6C;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: #F8F9FB;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #FBFAF8;
+  border-bottom: 1px solid #E4DED7;
   white-space: nowrap;
 }
 .table td {
   padding: 12px 14px;
   vertical-align: top;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  color: #111318;
+  border-bottom: 1px solid #E4DED7;
+  color: #303536;
 }
 .table tbody tr:last-child td { border-bottom: 0; }
-.table tbody tr:hover { background: #FAFBFC; }
+.table tbody tr:hover { background: #FBFAF8; }
 .cellName { font-weight: 600; }
-.cellSub { font-size: 12px; color: #6B7384; margin-top: 2px; line-height: 1.4; }
+.cellSub { font-size: 12px; color: #686D6C; margin-top: 2px; line-height: 1.4; }
 .cellReason { max-width: 280px; }
 .clamp {
   display: -webkit-box;
@@ -116,7 +116,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   max-width: 100vw;
   z-index: 201;
   background: #fff;
-  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-left: 1px solid #E4DED7;
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.10);
   display: flex;
   flex-direction: column;
@@ -128,9 +128,9 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   justify-content: space-between;
   gap: 10px;
   padding: 16px 18px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #E4DED7;
 }
-.drawerTitle { font-size: 16px; font-weight: 700; color: #111318; margin: 0; }
+.drawerTitle { font-size: 16px; font-weight: 700; color: #303536; margin: 0; }
 .drawerBody {
   flex: 1;
   overflow-y: auto;
@@ -142,7 +142,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 }
 .drawerFoot {
   padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid #E4DED7;
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -150,12 +150,12 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   background: #fff;
 }
 .facts { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 13.5px; }
-.facts dt { color: #6B7384; }
-.facts dd { margin: 0; color: #111318; overflow-wrap: anywhere; }
+.facts dt { color: #686D6C; }
+.facts dd { margin: 0; color: #303536; overflow-wrap: anywhere; }
 .sectionTitle {
   font-size: 12px;
   font-weight: 700;
-  color: #4A5261;
+  color: #4C5352;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0 0 6px;
@@ -169,13 +169,13 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
   justify-content: center;
   border: 0;
   background: transparent;
-  color: #4A5261;
+  color: #4C5352;
   border-radius: 8px;
   cursor: pointer;
   font-size: 18px;
 }
-.iconBtn:hover { background: #EEF0F4; }
-.iconBtn:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.iconBtn:hover { background: #F1EEE9; }
+.iconBtn:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 
@@ -201,8 +201,8 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 }
 
 /* The request a notification or the salary review linked to. */
-.focusRow { background: rgba(232, 160, 48, 0.10); box-shadow: inset 3px 0 0 #E8A030; }
-.focusCard { border-color: #E8A030; box-shadow: 0 0 0 1px #E8A030; }
+.focusRow { background: rgba(196,138,26, 0.10); box-shadow: inset 3px 0 0 #C48A1A; }
+.focusCard { border-color: #C48A1A; box-shadow: 0 0 0 1px #C48A1A; }
 
 @media (max-width: 767px) {
   .desktopOnly { display: none; }

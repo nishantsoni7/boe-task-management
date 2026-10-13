@@ -52,14 +52,14 @@ const FILTER_TABS: { value: StageFilter; label: string }[] = [
 const STAGE_STYLE: Record<InquiryStage, {
   color: string; bg: string; border: string; dot: string; strip: string
 }> = {
-  selecting:       { color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', dot: '#F59E0B', strip: '#F59E0B' },
-  quotation_draft: { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', dot: '#94A3B8', strip: '#94A3B8' },
-  quotation_sent:  { color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', dot: '#3B82F6', strip: '#3B82F6' },
-  converted:       { color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', dot: '#22C55E', strip: '#22C55E' },
-  lost:            { color: '#BE123C', bg: '#FFF1F2', border: '#FDA4AF', dot: '#F43F5E', strip: '#F43F5E' },
+  selecting:       { color: '#805B0D', bg: '#FAF0DA', border: '#FCD34D', dot: '#C48A1A', strip: '#C48A1A' },
+  quotation_draft: { color: '#686D6C', bg: '#EAF0F8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
+  quotation_sent:  { color: '#335A86', bg: '#EAF0F8', border: '#C3D3E6', dot: '#C3D3E6', strip: '#C3D3E6' },
+  converted:       { color: '#276247', bg: '#E8F2EC', border: '#86EFAC', dot: '#22C55E', strip: '#22C55E' },
+  lost:            { color: '#BE123C', bg: '#FBE9EC', border: '#FDA4AF', dot: '#F43F5E', strip: '#F43F5E' },
   // Ended without an outcome recorded — deliberately duller than every open
   // stage and than both outcomes, so a closed row recedes in a mixed list.
-  closed:          { color: '#475569', bg: '#F1F5F9', border: '#CBD5E1', dot: '#64748B', strip: '#64748B' },
+  closed:          { color: '#4C5352', bg: '#EAF0F8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
 }
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -184,7 +184,7 @@ export default function ShowroomInboxPage() {
     >
       {error && (
         <div style={{
-          background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: '10px',
+          background: '#FBE9EC', border: '1px solid #FECDD3', borderRadius: '8px',
           padding: '11px 15px', fontSize: '13px', color: '#9F1239', marginBottom: '20px',
         }}>
           {error}
@@ -201,7 +201,7 @@ export default function ShowroomInboxPage() {
         {inquiries.length > 0 && (
           <>
             <SummaryChip label="Pipeline" value={inr(pipelineStats.activeValue)} sub={`${pipelineStats.total} inquiries`} />
-            <SummaryChip label="Converted" value={inr(pipelineStats.convertedValue)} sub={`${pipelineStats.converted} won`} accent="#15803D" />
+            <SummaryChip label="Converted" value={inr(pipelineStats.convertedValue)} sub={`${pipelineStats.converted} won`} accent="#276247" />
           </>
         )}
         <button
@@ -210,11 +210,11 @@ export default function ShowroomInboxPage() {
             marginLeft: 'auto',
             display: 'inline-flex', alignItems: 'center', gap: '7px',
             padding: '10px 16px', minHeight: '40px',
-            background: '#1A2035', color: '#fff',
-            border: 'none', borderRadius: '10px',
+            background: '#303536', color: '#fff',
+            border: 'none', borderRadius: '8px',
             fontSize: '13px', fontWeight: 600,
             cursor: 'pointer', fontFamily: font.body,
-            boxShadow: '0 2px 8px rgba(26,32,53,0.22)',
+            boxShadow: '0 2px 8px rgba(48,53,54,0.22)',
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -244,12 +244,12 @@ export default function ShowroomInboxPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
                   padding: '7px 14px',
-                  borderRadius: '8px', border: active ? 'none' : '1.5px solid rgba(0,0,0,0.10)',
-                  background: active ? '#1A2035' : '#ffffff',
-                  color: active ? '#FFFFFF' : '#4A5261',
+                  borderRadius: '8px', border: active ? 'none' : '1.5px solid #CFC8BF',
+                  background: active ? '#303536' : '#ffffff',
+                  color: active ? '#FFFFFF' : '#4C5352',
                   fontSize: '12.5px', fontWeight: active ? 700 : 500,
                   cursor: 'pointer', fontFamily: font.body,
-                  boxShadow: active ? '0 2px 8px rgba(26,32,53,0.22)' : '0 1px 3px rgba(0,0,0,0.05)',
+                  boxShadow: active ? '0 2px 8px rgba(48,53,54,0.22)' : '0 1px 3px rgba(0,0,0,0.05)',
                   transition: 'all 0.14s',
                   whiteSpace: 'nowrap',
                 }}
@@ -258,8 +258,8 @@ export default function ShowroomInboxPage() {
                 <span style={{
                   fontSize: '10.5px', fontWeight: 700, lineHeight: 1,
                   background: active ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
-                  color: active ? '#fff' : '#6B7384',
-                  borderRadius: '5px', padding: '2px 6px',
+                  color: active ? '#fff' : '#686D6C',
+                  borderRadius: '6px', padding: '2px 6px',
                   minWidth: '18px', textAlign: 'center',
                 }}>
                   {count}
@@ -302,15 +302,15 @@ export default function ShowroomInboxPage() {
 
 // ── Pipeline summary chip ─────────────────────────────────────────────────────
 
-function SummaryChip({ label, value, sub, accent = '#1A2035' }: {
+function SummaryChip({ label, value, sub, accent = '#303536' }: {
   label: string; value: string; sub: string; accent?: string
 }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '10px',
       background: '#ffffff',
-      border: '1px solid #E5E7EB',
-      borderRadius: '10px',
+      border: '1px solid #E4DED7',
+      borderRadius: '8px',
       padding: '8px 14px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
       borderLeft: `3px solid ${accent}`,
@@ -318,20 +318,20 @@ function SummaryChip({ label, value, sub, accent = '#1A2035' }: {
       <div>
         <div style={{
           fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
-          textTransform: 'uppercase', color: '#8C94A6', marginBottom: '2px',
+          textTransform: 'uppercase', color: '#686D6C', marginBottom: '2px',
         }}>
           {label}
         </div>
         <div style={{
-          fontSize: '16px', fontWeight: 700, color: '#0F1117',
-          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+          fontSize: '16px', fontWeight: 700, color: '#303536',
+          fontFamily: 'var(--font-body)',
           letterSpacing: '-0.02em', fontFeatureSettings: '"tnum" 1',
           lineHeight: 1.1,
         }}>
           {value}
         </div>
       </div>
-      <div style={{ fontSize: '11px', color: '#8C94A6', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E5E7EB' }}>
+      <div style={{ fontSize: '11px', color: '#686D6C', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
         {sub}
       </div>
     </div>
@@ -367,12 +367,12 @@ function InquiryCard({ inquiry, stage, onClick }: {
       onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
         background: '#FFFFFF',
-        border: `1px solid ${hovered ? '#1A2035' : '#E5E7EB'}`,
-        borderRadius: '16px',
+        border: `1px solid ${hovered ? '#303536' : '#E4DED7'}`,
+        borderRadius: '12px',
         cursor: 'pointer',
         transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s',
         boxShadow: hovered
-          ? '0 10px 32px rgba(26,32,53,0.12)'
+          ? '0 10px 32px rgba(48,53,54,0.12)'
           : '0 2px 8px rgba(0,0,0,0.06)',
         transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
         overflow: 'hidden',
@@ -394,8 +394,8 @@ function InquiryCard({ inquiry, stage, onClick }: {
           <div style={{ minWidth: 0 }}>
             <div style={{
               fontSize: '17px', fontWeight: 700,
-              color: '#0F1117',
-              fontFamily: 'var(--font-inter, Inter, sans-serif)',
+              color: '#303536',
+              fontFamily: 'var(--font-body)',
               letterSpacing: '-0.015em',
               lineHeight: 1.2,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -404,7 +404,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
             </div>
             <div style={{
               fontSize: '12px',
-              color: '#6B7384',
+              color: '#686D6C',
               fontWeight: 400,
               marginTop: '3px',
               fontFeatureSettings: '"tnum" 1',
@@ -419,7 +419,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
             fontSize: '10px', fontWeight: 700,
             color: qs.color, background: qs.bg,
             border: `1.5px solid ${qs.border}`,
-            borderRadius: '7px', padding: '4px 10px',
+            borderRadius: '8px', padding: '4px 10px',
             letterSpacing: '0.06em',
             textTransform: 'uppercase' as const,
             whiteSpace: 'nowrap', flexShrink: 0,
@@ -432,7 +432,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
         {/* Owner. An admin sees every salesperson's inquiries in one list, and
             until now the list did not say whose customer any of them was. */}
         <div style={{
-          fontSize: '11.5px', color: '#4A5261', fontWeight: 500,
+          fontSize: '11.5px', color: '#4C5352', fontWeight: 500,
           display: 'flex', alignItems: 'center', gap: '5px',
         }}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -447,7 +447,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
         {/* Context line (city / project) */}
         {contextLine && (
           <div style={{
-            fontSize: '11.5px', color: '#64748B', fontWeight: 500,
+            fontSize: '11.5px', color: '#686D6C', fontWeight: 500,
             display: 'flex', alignItems: 'center', gap: '5px',
           }}>
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -465,8 +465,8 @@ function InquiryCard({ inquiry, stage, onClick }: {
           <div>
             <div style={{
               fontSize: '18px', fontWeight: 700,
-              color: '#0F1117',
-              fontFamily: 'var(--font-inter, Inter, sans-serif)',
+              color: '#303536',
+              fontFamily: 'var(--font-body)',
               letterSpacing: '-0.02em',
               lineHeight: 1,
               fontFeatureSettings: '"tnum" 1',
@@ -476,7 +476,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
             {hasDiscount ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' }}>
                 <span style={{
-                  fontSize: '11px', color: '#9CA3AF',
+                  fontSize: '11px', color: '#686D6C',
                   textDecoration: 'line-through',
                   fontFeatureSettings: '"tnum" 1',
                 }}>
@@ -484,16 +484,16 @@ function InquiryCard({ inquiry, stage, onClick }: {
                 </span>
                 <span style={{
                   fontSize: '10px', fontWeight: 700,
-                  color: '#15803D', background: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: '4px', padding: '1px 5px',
+                  color: '#276247', background: '#E8F2EC',
+                  border: '1px solid #BCD8C8',
+                  borderRadius: '6px', padding: '1px 5px',
                   letterSpacing: '0.02em',
                 }}>
                   -{inquiry.discount_percent}%
                 </span>
               </div>
             ) : (
-              <div style={{ fontSize: '11px', color: '#C0C8D8', marginTop: '5px', fontWeight: 500 }}>
+              <div style={{ fontSize: '11px', color: '#686D6C', marginTop: '5px', fontWeight: 500 }}>
                 at MRP
               </div>
             )}
@@ -502,9 +502,9 @@ function InquiryCard({ inquiry, stage, onClick }: {
           <div style={{ textAlign: 'right' }}>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
-              fontSize: '12px', fontWeight: 600, color: '#4A5261',
-              background: '#F1F5F9', border: '1px solid #E2E8F0',
-              borderRadius: '7px', padding: '4px 10px',
+              fontSize: '12px', fontWeight: 600, color: '#4C5352',
+              background: '#EAF0F8', border: '1px solid #EAF0F8',
+              borderRadius: '8px', padding: '4px 10px',
             }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -513,7 +513,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
               {inquiry.item_count} {inquiry.item_count === 1 ? 'item' : 'items'}
             </div>
             <div style={{
-              fontSize: '10.5px', color: '#9CA3AF', marginTop: '4px',
+              fontSize: '10.5px', color: '#686D6C', marginTop: '4px',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {dateStr} · {timeStr}

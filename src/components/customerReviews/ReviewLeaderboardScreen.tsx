@@ -118,17 +118,17 @@ export function ReviewLeaderboardScreen() {
         {board.isPending ? (
           <p role="status" style={{ margin: 0, fontSize: 12.5, color: colors.muted }}>Loading the leaderboard…</p>
         ) : board.isError || !data ? (
-          <div role="alert" style={{ padding: '14px 16px', borderRadius: 10, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+          <div role="alert" style={{ padding: '14px 16px', borderRadius: 8, border: '1px solid #E9B9C1', background: '#FBE9EC', color: '#B42332', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
             <span>{board.error instanceof Error ? board.error.message : 'The leaderboard could not be loaded.'}</span>
             <button type="button" className="boe-btn boe-btn-ghost" onClick={() => { void board.refetch() }} style={{ minHeight: 44, padding: '7px 14px', fontSize: 12.5 }}>Try again</button>
           </div>
         ) : (
           <>
             <section aria-label="Your position" style={{
-              padding: '12px 14px', borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base,
+              padding: '12px 14px', borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base,
               display: 'flex', gap: 12, alignItems: 'flex-start',
             }}>
-              <Trophy size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: '#B45309', flexShrink: 0, marginTop: 2 }} />
+              <Trophy size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: '#805B0D', flexShrink: 0, marginTop: 2 }} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: colors.primary }}>
                   {data.month === data.current_month
@@ -147,7 +147,7 @@ export function ReviewLeaderboardScreen() {
             </section>
 
             {data.rows.length === 0 ? (
-              <p style={{ margin: 0, padding: '14px 16px', borderRadius: 10, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>
+              <p style={{ margin: 0, padding: '14px 16px', borderRadius: 8, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>
                 Nobody has an eligible review in {label} yet.
               </p>
             ) : (
@@ -174,7 +174,7 @@ function Table({ rows, showAll, onToggle }: { rows: LeaderboardRow[]; showAll: b
   const meOutside = !showAll && me && !top.some(r => r.employee_id === me.employee_id)
   const shown = showAll ? rows : top
   return (
-    <section aria-label="Leaderboard" style={{ borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base, overflow: 'hidden' }}>
+    <section aria-label="Leaderboard" style={{ borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 0, tableLayout: 'auto' }}>
           <thead>

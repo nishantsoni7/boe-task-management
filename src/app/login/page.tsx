@@ -48,15 +48,17 @@ function LoginForm() {
           <img
             src="/branding/boe-logo-full.png"
             alt="Best of Exports"
+            width={720}
+            height={543}
             style={{
-              maxWidth: 'min(200px, 56vw)',
+              maxWidth: 'min(188px, 54vw)',
               height: 'auto',
               marginBottom: '16px',
               display: 'block',
               margin: '0 auto 16px',
             }}
           />
-          <p style={{ color: colors.tertiary, fontSize: '12.5px', lineHeight: 1.5 }}>
+          <p style={{ color: colors.tertiary, fontSize: '13px', lineHeight: 1.5 }}>
             Tasks, follow-ups, accountability, and daily work tracking for the BOE team.
           </p>
         </div>
@@ -66,17 +68,19 @@ function LoginForm() {
           <h2 style={{
             color: colors.primary,
             fontFamily: font.display,
-            fontWeight: 600,
-            fontSize: '16px',
+            fontWeight: 700,
+            fontSize: '18px',
             marginBottom: '20px',
           }}>
             Sign in
           </h2>
 
           <div style={{ marginBottom: '12px' }}>
-            <label className="boe-input-label">Email</label>
+            <label className="boe-input-label" htmlFor="login-email">Email</label>
             <input
+              id="login-email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="you@bestofexports.com"
@@ -85,9 +89,11 @@ function LoginForm() {
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label className="boe-input-label">Password</label>
+            <label className="boe-input-label" htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -122,7 +128,7 @@ function LoginForm() {
         <p style={{
           textAlign: 'center',
           color: colors.muted,
-          fontSize: '11px',
+          fontSize: '12px',
           marginTop: '20px',
         }}>
           Best of Exports — Internal use only

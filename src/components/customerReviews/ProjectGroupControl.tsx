@@ -143,7 +143,7 @@ export function ProjectGroupControl({
         <>
           <p style={{
             margin: 0, fontSize: '12px', lineHeight: 1.6,
-            color: ready ? '#166534' : '#92400E', fontWeight: 600,
+            color: ready ? '#276247' : '#805B0D', fontWeight: 600,
           }}>
             {ready ? 'Ready — a project group is attached.' : AWAITING_IMAGES_LABEL}
           </p>

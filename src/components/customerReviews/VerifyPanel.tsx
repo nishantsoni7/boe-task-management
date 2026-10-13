@@ -78,7 +78,7 @@ export function VerifyPanel({
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: '8px',
-      padding: '11px 13px', borderRadius: '9px',
+      padding: '11px 13px', borderRadius: '8px',
       border: `1px solid ${meta.border}`, background: meta.bg,
     }}>
       <div style={{ fontSize: '13px', fontWeight: 700, color: meta.color, lineHeight: 1.5 }}>

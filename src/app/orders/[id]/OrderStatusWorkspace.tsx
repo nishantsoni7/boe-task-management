@@ -91,9 +91,9 @@ import {
 export type StatusTone = 'green' | 'amber' | 'red' | 'neutral'
 
 const TONE: Record<StatusTone, { bg: string; fg: string; border: string }> = {
-  green:   { bg: colors.greenTint, fg: '#2F7A52', border: 'rgba(69,168,112,0.32)' },
-  amber:   { bg: colors.amberTint, fg: '#9A6A12', border: 'rgba(190,140,40,0.30)' },
-  red:     { bg: colors.redTint,   fg: '#B42318', border: 'rgba(217,79,79,0.32)' },
+  green:   { bg: colors.greenTint, fg: '#276247', border: 'rgba(39,98,71,0.32)' },
+  amber:   { bg: colors.amberTint, fg: '#805B0D', border: 'rgba(190,140,40,0.30)' },
+  red:     { bg: colors.redTint,   fg: '#B42332', border: 'rgba(180,35,50,0.32)' },
   neutral: { bg: colors.raised,    fg: colors.secondary, border: colors.border },
 }
 

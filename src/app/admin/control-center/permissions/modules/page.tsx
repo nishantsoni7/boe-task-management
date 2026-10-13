@@ -358,11 +358,11 @@ function ByModulePageInner() {
               </div>
               <div className={styles.headerStats}>
                 <div className={styles.headerStat}>
-                  <div className={styles.headerStatValue} style={{ color: '#166534' }}>{visibleCount}</div>
+                  <div className={styles.headerStatValue} style={{ color: '#276247' }}>{visibleCount}</div>
                   <div className={styles.headerStatLabel}>Visible</div>
                 </div>
                 <div className={styles.headerStat}>
-                  <div className={styles.headerStatValue} style={{ color: '#4B5563' }}>{rows.length - visibleCount}</div>
+                  <div className={styles.headerStatValue} style={{ color: '#4C5352' }}>{rows.length - visibleCount}</div>
                   <div className={styles.headerStatLabel}>Hidden</div>
                 </div>
               </div>

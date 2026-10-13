@@ -180,7 +180,7 @@ function EndAnnouncementDialog({ announcement, onClose, onEnded }: {
   }
   return (
     <MeetingModal title="End this announcement now?" subtitle={announcement.title} onClose={onClose} width={440}>
-      <p style={{ margin: 0, fontSize: 13, color: '#4A5261' }}>
+      <p style={{ margin: 0, fontSize: 13, color: '#4C5352' }}>
         It disappears at once from every recipient&apos;s Modules page and Announcements list. This cannot be undone.
       </p>
       {error && <MeetingModalError message={error} />}

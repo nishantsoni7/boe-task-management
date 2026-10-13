@@ -77,7 +77,7 @@ export function EvidenceThumbs({
         const when = formatMeetingTimestamp(item.created_at)
         const title = `${item.file_name} — attached by ${who}, ${when}`
         const tile: React.CSSProperties = {
-          width: 108, height: 80, borderRadius: '7px', display: 'block',
+          width: 108, height: 80, borderRadius: '8px', display: 'block',
           border: `1px solid ${colors.border}`, background: colors.raised,
         }
         return (

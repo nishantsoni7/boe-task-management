@@ -62,9 +62,9 @@ export const SECTION_HEADER_STYLE: React.CSSProperties = { padding: '9px 16px' }
 const TONE: Record<WorkspaceTone, { dot: string; text: string }> = {
   neutral: { dot: colors.muted, text: colors.primary },
   blue:    { dot: colors.blue,  text: colors.primary },
-  green:   { dot: colors.green, text: '#2F7A52' },
-  amber:   { dot: colors.amber, text: '#9A6A12' },
-  red:     { dot: colors.red,   text: '#B42318' },
+  green:   { dot: colors.green, text: '#276247' },
+  amber:   { dot: colors.amber, text: '#805B0D' },
+  red:     { dot: colors.red,   text: '#B42332' },
 }
 
 // ── The attention bar ─────────────────────────────────────────────────────────
@@ -274,9 +274,9 @@ export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
 export const STATUS_PILL_TONE: Record<WorkspaceTone, { bg: string; fg: string; border: string }> = {
   neutral: { bg: colors.raised,    fg: colors.secondary, border: colors.border },
   blue:    { bg: colors.blueTint,  fg: colors.blue,      border: 'rgba(58,122,190,0.30)' },
-  green:   { bg: colors.greenTint, fg: '#2F7A52',        border: 'rgba(69,168,112,0.32)' },
-  amber:   { bg: colors.amberTint, fg: '#9A6A12',        border: 'rgba(190,140,40,0.30)' },
-  red:     { bg: colors.redTint,   fg: '#B42318',        border: 'rgba(217,79,79,0.32)' },
+  green:   { bg: colors.greenTint, fg: '#276247',        border: 'rgba(39,98,71,0.32)' },
+  amber:   { bg: colors.amberTint, fg: '#805B0D',        border: 'rgba(190,140,40,0.30)' },
+  red:     { bg: colors.redTint,   fg: '#B42332',        border: 'rgba(180,35,50,0.32)' },
 }
 
 export function OrderStatusPill({ label, tone }: { label: string; tone: WorkspaceTone }) {
@@ -865,7 +865,7 @@ export { MoreActionsMenu, type MoreActionItem } from './MoreActionsMenu'
 
 // ── Loading states ────────────────────────────────────────────────────────────
 
-const BLOCK = '#E8EBF0'
+const BLOCK = '#ECE7E0'
 
 export function SkeletonBlock({ w, h, radius = 4 }: { w: string | number; h: number; radius?: number }) {
   return <div style={{ width: w, height: h, borderRadius: radius, background: BLOCK, flexShrink: 0, maxWidth: '100%' }} />
@@ -875,7 +875,7 @@ export function SkeletonBlock({ w, h, radius = 4 }: { w: string | number; h: num
 export function SectionSkeleton({ rows = 3, label = 'Loading' }: { rows?: number; label?: string }) {
   return (
     <div role="status" aria-busy="true" aria-label={label} style={{
-      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
     }}>
       <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
         <SkeletonBlock w={140} h={12} />
@@ -883,7 +883,7 @@ export function SectionSkeleton({ rows = 3, label = 'Loading' }: { rows?: number
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} style={{
           display: 'flex', alignItems: 'center', gap: 14, padding: '11px 16px',
-          borderBottom: i < rows - 1 ? '1px solid #F0F2F5' : 'none',
+          borderBottom: i < rows - 1 ? '1px solid #F1EEE9' : 'none',
         }}>
           <SkeletonBlock w={36} h={36} radius={6} />
           <SkeletonBlock w="34%" h={11} />

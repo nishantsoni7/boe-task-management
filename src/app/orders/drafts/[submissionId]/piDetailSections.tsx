@@ -107,10 +107,10 @@ type ToneStyle = { bg: string; color: string; border: string }
 /** The five states this page ever colours, and nothing else. */
 export const TONE_STYLE: Record<PiDetailTone, ToneStyle> = {
   neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
-  blue:    { bg: colors.blueTint,  color: '#2F5BB7',        border: 'rgba(85,133,232,0.3)' },
-  amber:   { bg: colors.amberTint, color: '#9A6212',        border: 'rgba(232,160,48,0.3)' },
-  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(217,79,79,0.3)' },
-  green:   { bg: colors.greenTint, color: '#2F7A52',        border: 'rgba(69,168,112,0.25)' },
+  blue:    { bg: colors.blueTint,  color: '#335A86',        border: 'rgba(51,90,134,0.3)' },
+  amber:   { bg: colors.amberTint, color: '#805B0D',        border: 'rgba(196,138,26,0.3)' },
+  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(180,35,50,0.3)' },
+  green:   { bg: colors.greenTint, color: '#276247',        border: 'rgba(39,98,71,0.25)' },
 }
 
 /** The status vocabulary of the drafts list is the same one, by another name. */
@@ -131,7 +131,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      padding: '3px 10px', borderRadius: '5px',
+      padding: '3px 10px', borderRadius: '6px',
       fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
       background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
     }}>
@@ -226,7 +226,7 @@ export function PiTopCard({
             display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center',
             padding: '10px 18px', fontSize: '12.5px',
             background: '#fdf6ee', borderBottom: `1px solid ${colors.border}`,
-            color: '#8a4b12',
+            color: '#805B0D',
           }}
         >
           <span style={{ flex: '1 1 240px', minWidth: 0 }}>{missingSummary}</span>
@@ -489,11 +489,11 @@ function orderHeadline({ reservation, confirmedNumber, draftReference }: {
 
 /** The status dots, at the same intensity the activity trail uses. */
 const CONTEXT_DOT: Record<PiDetailTone, string> = {
-  neutral: '#A4ABB9',
-  blue: '#5585E8',
+  neutral: '#686D6C',
+  blue: '#335A86',
   amber: '#D9A552',
-  green: '#45A870',
-  red: '#D94F4F',
+  green: '#2F7A52',
+  red: '#B42332',
 }
 
 // ── 2. The commercial card ────────────────────────────────────────────────────
@@ -912,14 +912,14 @@ function QuotedNote({ heading, body, tone }: {
   tone: 'amber' | 'red' | 'neutral'
 }) {
   const ground = tone === 'red' ? colors.redTint : tone === 'amber' ? colors.amberTint : colors.raised
-  const border = tone === 'red' ? 'rgba(217,79,79,0.25)'
-    : tone === 'amber' ? 'rgba(232,160,48,0.3)'
+  const border = tone === 'red' ? 'rgba(180,35,50,0.25)'
+    : tone === 'amber' ? 'rgba(196,138,26,0.3)'
     : colors.border
-  const headingColor = tone === 'red' ? '#991B1B' : tone === 'amber' ? '#9A6212' : colors.muted
+  const headingColor = tone === 'red' ? '#A12438' : tone === 'amber' ? '#805B0D' : colors.muted
 
   return (
     <div style={{
-      padding: '9px 12px', borderRadius: '7px',
+      padding: '9px 12px', borderRadius: '8px',
       background: ground, border: `1px solid ${border}`,
     }}>
       <div style={{ fontSize: '11px', fontWeight: 700, color: headingColor, marginBottom: '2px' }}>
@@ -1231,7 +1231,7 @@ export function PiWorkflowPanel({
                   className="boe-btn boe-btn-ghost"
                   onClick={onReject}
                   disabled={acting}
-                  style={{ color: colors.red, borderColor: 'rgba(217,79,79,0.35)' }}
+                  style={{ color: colors.red, borderColor: 'rgba(180,35,50,0.35)' }}
                 >
                   <Ban size={13} strokeWidth={2} />
                   {REJECT_BUTTON_LABEL}
@@ -1498,7 +1498,7 @@ export function PiAdvanceBand({
  */
 export function PiBlockingPanel({ entries }: { entries: readonly PiDiagnosticEntry[] }) {
   return (
-    <PiCard style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <PiCard style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{
         padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
         background: colors.redTint,
@@ -1566,8 +1566,8 @@ export function PiWarningPanel({ entries }: { entries: readonly PiDiagnosticEntr
  * reader who cannot distinguish these five.
  */
 const TIMELINE_MARKER: Record<PiActivityTone, string> = {
-  neutral: '#A4ABB9',
-  blue: '#7A9DE0',
+  neutral: '#686D6C',
+  blue: '#C3D3E6',
   amber: '#D9A552',
   green: '#6BB68C',
   red: '#CE7272',
@@ -1582,7 +1582,7 @@ const TIMELINE_MARKER: Record<PiActivityTone, string> = {
  */
 const ACTIVITY_CARD_STYLE: React.CSSProperties = {
   background: colors.raised,
-  borderColor: 'rgba(0,0,0,0.09)',
+  borderColor: '#E4DED7',
   boxShadow: 'none',
 }
 
@@ -1735,8 +1735,8 @@ export function PiSavedStrip() {
   return (
     <div style={{
       display: 'flex', gap: '9px', alignItems: 'center',
-      padding: '9px 14px', borderRadius: '9px',
-      background: colors.greenTint, border: '1px solid rgba(69,168,112,0.35)',
+      padding: '9px 14px', borderRadius: '8px',
+      background: colors.greenTint, border: '1px solid rgba(39,98,71,0.35)',
     }}>
       <CheckCircle2 size={15} strokeWidth={1.9} color={colors.green} style={{ flexShrink: 0 }} />
       <span style={{ fontSize: '12px', color: colors.primary }}>

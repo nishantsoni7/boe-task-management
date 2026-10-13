@@ -240,7 +240,7 @@ function FailureNote({ message, alert = false }: { message: string; alert?: bool
   return (
     <div role={alert ? 'alert' : undefined} style={{
       fontSize: '12px', color: colors.primary, lineHeight: 1.5,
-      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+      background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
       borderRadius: '6px', padding: '9px 12px',
     }}>
       {message}
@@ -257,13 +257,13 @@ function Footer({ children }: { children: React.ReactNode }) {
 }
 
 const cancelStyle = (busy: boolean): React.CSSProperties => ({
-  padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
   background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
   cursor: busy ? 'not-allowed' : 'pointer',
 })
 
 const confirmStyle = (background: string, disabled: boolean): React.CSSProperties => ({
-  padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+  padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
   background, border: 'none', color: '#fff',
   cursor: disabled ? 'not-allowed' : 'pointer',
   opacity: disabled ? 0.5 : 1,
@@ -378,16 +378,16 @@ function PaymentPositionPanel({
 
       {summary === null ? (
         <div style={{
-          fontSize: '12px', color: '#991B1B', lineHeight: 1.45,
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
-          borderRadius: '7px', padding: '9px 11px',
+          fontSize: '12px', color: '#A12438', lineHeight: 1.45,
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
+          borderRadius: '8px', padding: '9px 11px',
         }} role="alert">
           {PAYMENT_POSITION_UNKNOWN}
         </div>
       ) : (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: '5px',
-          padding: '10px 11px', borderRadius: '7px',
+          padding: '10px 11px', borderRadius: '8px',
           border: `1px solid ${colors.border}`, background: colors.raised,
         }}>
           {lines.map(line => (
@@ -414,9 +414,9 @@ function PaymentPositionPanel({
         <div style={{
           fontSize: '12px', lineHeight: 1.45,
           background: meetsStandard ? colors.greenTint : colors.amberTint,
-          border: `1px solid ${meetsStandard ? 'rgba(69,168,112,0.3)' : 'rgba(232,160,48,0.3)'}`,
-          color: meetsStandard ? '#166534' : '#9A6212',
-          borderRadius: '7px', padding: '9px 11px',
+          border: `1px solid ${meetsStandard ? 'rgba(39,98,71,0.3)' : 'rgba(196,138,26,0.3)'}`,
+          color: meetsStandard ? '#276247' : '#805B0D',
+          borderRadius: '8px', padding: '9px 11px',
         }}>
           {/* MET BY ATTACHED MONEY IS NOT MET BY VERIFIED MONEY. The submission
               rule counts payment awaiting verification; the Order does not. Only
@@ -446,7 +446,7 @@ function PaymentPositionPanel({
       {meetsStandard === false && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: '9px',
-          padding: '10px 11px', borderRadius: '7px',
+          padding: '10px 11px', borderRadius: '8px',
           border: `1px solid ${colors.border}`, background: colors.raised,
         }}>
           {/* The sentence that names the figure the reason is about — "Only 27%
@@ -458,7 +458,7 @@ function PaymentPositionPanel({
             </div>
           )}
           {keptReason && terms.reasonChoice === '' && (
-            <div data-kept-exception style={{ fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+            <div data-kept-exception style={{ fontSize: '12px', color: '#276247', lineHeight: 1.5 }}>
               {exceptionReasonKept(keptReason)}
             </div>
           )}
@@ -764,7 +764,7 @@ export function PiSubmitConfirmModal({
                 <button type="button" onClick={() => onGoBack?.()} disabled={submitting} style={cancelStyle(submitting)}>
                   {PROCEED_GO_BACK_LABEL}
                 </button>
-                <button type="button" onClick={advance} disabled={submitting} style={confirmStyle('#DC1F2E', submitting)}>
+                <button type="button" onClick={advance} disabled={submitting} style={confirmStyle('#B9472E', submitting)}>
                   {PROCEED_CONTINUE_LABEL}
                 </button>
               </Footer>
@@ -786,7 +786,7 @@ export function PiSubmitConfirmModal({
                 <button type="button" onClick={() => dismiss('cancel')} disabled={submitting} style={cancelStyle(submitting)}>
                   Cancel
                 </button>
-                <button type="button" onClick={advance} disabled={submitting || !checked.ok} style={confirmStyle('#DC1F2E', submitting || !checked.ok)}>
+                <button type="button" onClick={advance} disabled={submitting || !checked.ok} style={confirmStyle('#B9472E', submitting || !checked.ok)}>
                   {PROCEED_CONTINUE_LABEL}
                 </button>
               </Footer>
@@ -865,7 +865,7 @@ export function PiSubmitConfirmModal({
                     rows={3}
                     style={{
                       padding: '7px 10px', borderRadius: '6px',
-                      border: `1px solid ${tooLong ? 'rgba(217,79,79,0.5)' : colors.border}`,
+                      border: `1px solid ${tooLong ? 'rgba(180,35,50,0.5)' : colors.border}`,
                       background: colors.raised, color: colors.primary,
                       fontSize: '13px', width: '100%', boxSizing: 'border-box',
                       outline: 'none', minHeight: '70px', resize: 'vertical',
@@ -895,7 +895,7 @@ export function PiSubmitConfirmModal({
                   type="button"
                   onClick={confirm}
                   disabled={finalBlocked}
-                  style={{ ...confirmStyle('#DC1F2E', finalBlocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+                  style={{ ...confirmStyle('#B9472E', finalBlocked), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
                 >
                   <Send size={13} strokeWidth={2} />
                   {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}
@@ -931,8 +931,8 @@ const INTENT_COPY: Record<PiNoteIntent, {
     placeholder: 'Say exactly what must be corrected in the PI…',
     warning:
       'The employee gets this note and can upload a corrected PI. Nothing is rejected and nothing is lost.',
-    tone: { background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)', color: '#9A6212' },
-    button: '#B45309',
+    tone: { background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)', color: '#805B0D' },
+    button: '#805B0D',
   },
   reject: {
     title: REJECT_BUTTON_LABEL,
@@ -944,8 +944,8 @@ const INTENT_COPY: Record<PiNoteIntent, {
     // transition out of 'rejected' in this phase.
     warning:
       'This cannot be undone. The PI is permanently marked Rejected, stays read-only, and cannot be resubmitted. Use Needs Changes if the employee should correct and resend it.',
-    tone: { background: colors.redTint, border: '1px solid rgba(217,79,79,0.3)', color: '#991B1B' },
-    button: '#991B1B',
+    tone: { background: colors.redTint, border: '1px solid rgba(180,35,50,0.3)', color: '#A12438' },
+    button: '#A12438',
   },
   // REFUSING THE PROPOSED ADVANCE IS NOT REJECTING THE PI, and the warning says
   // so first: this dialog sits beside "Reject This PI" in the same card, and the
@@ -959,8 +959,8 @@ const INTENT_COPY: Record<PiNoteIntent, {
     placeholder: 'Say why the proposed advance cannot be accepted…',
     warning:
       'The PI is NOT rejected. It goes back to the employee for correction with this reason, and they can resubmit under the standard advance or propose a different exception.',
-    tone: { background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)', color: '#9A6212' },
-    button: '#B45309',
+    tone: { background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)', color: '#805B0D' },
+    button: '#805B0D',
   },
 }
 
@@ -1158,7 +1158,7 @@ export function PiFinanceVerifyModal({
 
           {incompleteSummary !== null && (
             <div style={{
-              padding: '9px 11px', borderRadius: '7px',
+              padding: '9px 11px', borderRadius: '8px',
               border: `1px solid ${colors.border}`, background: colors.raised,
               fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55,
             }}>
@@ -1176,7 +1176,7 @@ export function PiFinanceVerifyModal({
           <div style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
             fontSize: '12px', lineHeight: 1.5, color: colors.primary,
-            background: colors.blueTint, border: '1px solid rgba(85,133,232,0.25)',
+            background: colors.blueTint, border: '1px solid rgba(51,90,134,0.25)',
             borderRadius: '6px', padding: '9px 12px',
           }}>
             <ShieldCheck size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -1197,7 +1197,7 @@ export function PiFinanceVerifyModal({
               type="button"
               onClick={() => { if (!saving) onConfirm() }}
               disabled={saving}
-              style={{ ...confirmStyle('#2F5BB7', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              style={{ ...confirmStyle('#335A86', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <ShieldCheck size={13} strokeWidth={2} />
               {saving ? VERIFY_FINANCE_BUSY_LABEL : VERIFY_FINANCE_BUTTON_LABEL}
@@ -1364,7 +1364,7 @@ export function PiApproveOrderModal({
 
   const fieldStyle = (field: OrderConfirmationField): React.CSSProperties => ({
     width: '100%',
-    borderColor: confirmationField === field ? 'rgba(217,79,79,0.65)' : undefined,
+    borderColor: confirmationField === field ? 'rgba(180,35,50,0.65)' : undefined,
   })
 
   /**
@@ -1561,7 +1561,7 @@ export function PiApproveOrderModal({
           <div style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
             fontSize: '12px', lineHeight: 1.5, color: colors.primary,
-            background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)',
+            background: colors.amberTint, border: '1px solid rgba(196,138,26,0.3)',
             borderRadius: '6px', padding: '9px 12px',
           }}>
             <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -1586,7 +1586,7 @@ export function PiApproveOrderModal({
               type="button"
               onClick={() => { if (!saving) onConfirm() }}
               disabled={saving}
-              style={{ ...confirmStyle('#2F7A52', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              style={{ ...confirmStyle('#276247', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <CheckCircle2 size={13} strokeWidth={2} />
               {saving ? APPROVE_ORDER_BUSY_LABEL : copy.confirm}
@@ -1708,7 +1708,7 @@ export function PiDeleteConfirmModal({
           <div style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
             fontSize: '12px', color: colors.primary, lineHeight: 1.5,
-            background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+            background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
             borderRadius: '6px', padding: '9px 12px',
           }}>
             <AlertTriangle size={14} strokeWidth={2} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -1730,7 +1730,7 @@ export function PiDeleteConfirmModal({
               href={PAYMENT_BLOCKER_HREF}
               style={{
                 alignSelf: 'flex-start', fontSize: '12px', fontWeight: 600,
-                color: colors.blue, textDecoration: 'none',
+                color: colors.brandInk, textDecoration: 'none',
               }}
             >
               {PAYMENT_BLOCKER_LINK_LABEL} →
@@ -1745,7 +1745,7 @@ export function PiDeleteConfirmModal({
               type="button"
               onClick={confirm}
               disabled={disabled}
-              style={{ ...confirmStyle('#DC1F2E', disabled), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              style={{ ...confirmStyle('#B9472E', disabled), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <Trash2 size={13} strokeWidth={2} />
               {confirmLabel}
@@ -1868,7 +1868,7 @@ export function PiClientDetailsModal({ client, onClose }: {
               glance, and a PI cannot be submitted without it. */}
           {row('City', client.city ?? absent)}
           {row('Client contact number', client.phone
-            ? <a href={`tel:${client.phone.tel}`} style={{ color: '#5585e8', textDecoration: 'none' }}>
+            ? <a href={`tel:${client.phone.tel}`} style={{ color: '#963B27', textDecoration: 'none' }}>
                 {client.phone.label}
               </a>
             /* Present but not dialable: shown as the text it is, never as a
@@ -2014,8 +2014,8 @@ export function PiBillingPercentageModal({
                 style={{
                   flex: '1 1 auto', minWidth: 0, padding: '7px 10px', fontSize: '14px',
                   fontVariantNumeric: 'tabular-nums',
-                  border: `1px solid ${showError ? '#d9534f' : colors.border}`,
-                  borderRadius: '7px', background: colors.base, color: colors.primary,
+                  border: `1px solid ${showError ? '#B42332' : colors.border}`,
+                  borderRadius: '8px', background: colors.base, color: colors.primary,
                 }}
               />
               <span aria-hidden="true" style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary }}>
@@ -2023,7 +2023,7 @@ export function PiBillingPercentageModal({
               </span>
             </div>
             {showError
-              ? <div id={errorId} role="alert" style={{ fontSize: '11.5px', color: '#d9534f' }}>
+              ? <div id={errorId} role="alert" style={{ fontSize: '11.5px', color: '#B42332' }}>
                   {parsed.ok ? '' : parsed.message}
                 </div>
               : <div style={{ fontSize: '11.5px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
@@ -2051,7 +2051,7 @@ export function PiBillingPercentageModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -2062,7 +2062,7 @@ export function PiBillingPercentageModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -2385,7 +2385,7 @@ export function PiClientDetailsEditModal({
                           style={{
                             padding: '7px 10px', fontSize: '13px', resize: 'vertical',
                             border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
-                            borderRadius: '7px', background: colors.base,
+                            borderRadius: '8px', background: colors.base,
                             color: colors.primary, fontFamily: 'inherit',
                           }}
                         />
@@ -2399,7 +2399,7 @@ export function PiClientDetailsEditModal({
                           style={{
                             padding: '7px 10px', fontSize: '13px',
                             border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
-                            borderRadius: '7px', background: colors.base, color: colors.primary,
+                            borderRadius: '8px', background: colors.base, color: colors.primary,
                           }}
                         />
                       )}
@@ -2413,7 +2413,7 @@ export function PiClientDetailsEditModal({
           {/* A submitted PI must keep a client name — the database refuses to
               clear it. Said here so the reader learns it before pressing Save. */}
           {clientNameEmptied && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>
               A client name is required. Payments and submission both depend on it.
             </div>
           )}
@@ -2433,7 +2433,7 @@ export function PiClientDetailsEditModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -2444,7 +2444,7 @@ export function PiClientDetailsEditModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -2589,7 +2589,7 @@ export function PiScheduleTermsEditModal({
                     maxLength={500}
                     style={{
                       padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      border: `1px solid ${colors.border}`, borderRadius: '8px',
                       background: colors.base, color: colors.primary, fontFamily: 'inherit',
                     }}
                   />
@@ -2606,7 +2606,7 @@ export function PiScheduleTermsEditModal({
                     maxLength={f.kind === 'date' ? undefined : 500}
                     style={{
                       padding: '7px 10px', fontSize: '13px',
-                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      border: `1px solid ${colors.border}`, borderRadius: '8px',
                       background: colors.base, color: colors.primary,
                     }}
                   />
@@ -2630,7 +2630,7 @@ export function PiScheduleTermsEditModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -2641,7 +2641,7 @@ export function PiScheduleTermsEditModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -2832,7 +2832,7 @@ export function PiTermsEditModal({
               disabled={saving}
               style={{
                 padding: '7px 10px', fontSize: '13px',
-                border: `1px solid ${dateMissing ? '#e0b089' : colors.border}`, borderRadius: '7px',
+                border: `1px solid ${dateMissing ? '#e0b089' : colors.border}`, borderRadius: '8px',
                 background: colors.base, color: colors.primary,
               }}
             />
@@ -2843,7 +2843,7 @@ export function PiTermsEditModal({
             style={{
               display: 'flex', flexDirection: 'column', gap: '7px',
               border: `1px solid ${fabricMissing ? '#e0b089' : colors.border}`,
-              borderRadius: '9px', padding: '11px 12px', margin: 0,
+              borderRadius: '8px', padding: '11px 12px', margin: 0,
             }}
           >
             <legend style={{ padding: '0 4px' }}>
@@ -2884,8 +2884,8 @@ export function PiTermsEditModal({
                 role="status"
                 style={{
                   display: 'flex', flexDirection: 'column', gap: '6px',
-                  padding: '9px 10px', borderRadius: '7px',
-                  background: '#fdf6ee', color: '#8a4b12', fontSize: '12px',
+                  padding: '9px 10px', borderRadius: '8px',
+                  background: '#fdf6ee', color: '#805B0D', fontSize: '12px',
                 }}
               >
                 <span>This PI carries a fabric cost. {FABRIC_RESPONSIBILITY_KEEPS_FIGURES}</span>
@@ -2913,7 +2913,7 @@ export function PiTermsEditModal({
               maxLength={COMMERCIAL_TERMS_MAX_LENGTH}
               style={{
                 padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                border: `1px solid ${termsMissing ? '#e0b089' : colors.border}`, borderRadius: '7px',
+                border: `1px solid ${termsMissing ? '#e0b089' : colors.border}`, borderRadius: '8px',
                 background: colors.base, color: colors.primary, fontFamily: 'inherit',
               }}
             />
@@ -2958,7 +2958,7 @@ export function PiTermsEditModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -2969,7 +2969,7 @@ export function PiTermsEditModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -3108,7 +3108,7 @@ export function PiRequestCorrectionModal({
               disabled={saving}
               style={{
                 padding: '7px 10px', fontSize: '13px',
-                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
                 background: colors.base, color: colors.primary,
               }}
             >
@@ -3133,7 +3133,7 @@ export function PiRequestCorrectionModal({
               placeholder="e.g. the shipping address is our old warehouse"
               style={{
                 padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
                 background: colors.base, color: colors.primary, fontFamily: 'inherit',
               }}
             />
@@ -3154,14 +3154,14 @@ export function PiRequestCorrectionModal({
               placeholder="e.g. we moved in July, after the PI was written"
               style={{
                 padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
                 background: colors.base, color: colors.primary, fontFamily: 'inherit',
               }}
             />
           </label>
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -3313,7 +3313,7 @@ export function PiProductEditModal({
                     maxLength={500}
                     style={{
                       padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      border: `1px solid ${colors.border}`, borderRadius: '8px',
                       background: colors.base, color: colors.primary, fontFamily: 'inherit',
                     }}
                   />
@@ -3326,7 +3326,7 @@ export function PiProductEditModal({
                     maxLength={120}
                     style={{
                       padding: '7px 10px', fontSize: '13px',
-                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      border: `1px solid ${colors.border}`, borderRadius: '8px',
                       background: colors.base, color: colors.primary,
                     }}
                   />
@@ -3344,7 +3344,7 @@ export function PiProductEditModal({
               true — the workbook computed these, and correcting them means
               correcting the workbook. */}
           <div style={{
-            padding: '10px 12px', borderRadius: '7px',
+            padding: '10px 12px', borderRadius: '8px',
             border: `1px solid ${colors.border}`, background: colors.raised,
             display: 'flex', flexDirection: 'column', gap: '7px',
           }}>
@@ -3394,7 +3394,7 @@ export function PiProductEditModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -3405,7 +3405,7 @@ export function PiProductEditModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
@@ -3528,7 +3528,7 @@ export function PiProductReorderModal({
 
           <ol style={{
             listStyle: 'none', margin: 0, padding: 0,
-            border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
+            border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
           }}>
             {ids.map((id, i) => {
               const line = byId.get(id)
@@ -3543,7 +3543,7 @@ export function PiProductReorderModal({
                   }}
                 >
                   <span style={{
-                    fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-mono)',
+                    fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-body)',
                     minWidth: '28px',
                   }}>
                     {i + 1}
@@ -3589,7 +3589,7 @@ export function PiProductReorderModal({
                 placeholder="Why is this being changed after submission?"
                 style={{
                   padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  border: `1px solid ${colors.border}`, borderRadius: '8px',
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
@@ -3600,7 +3600,7 @@ export function PiProductReorderModal({
           )}
 
           {failure && (
-            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+            <div role="alert" style={{ fontSize: '12px', color: '#B42332' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>

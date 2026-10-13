@@ -51,7 +51,7 @@ export function NotificationRow({
           ? `3px solid ${colors.blue}`
           : n.is_read ? '3px solid transparent' : `3px solid ${colors.blue}`,
         background: isSelected
-          ? 'rgba(85,133,232,0.10)'
+          ? 'rgba(51,90,134,0.10)'
           : n.is_read ? '#ffffff' : colors.blueTint,
         borderBottom: isLast ? 'none' : `1px solid ${colors.border}`,
         transition: 'background 0.12s',
@@ -71,9 +71,9 @@ export function NotificationRow({
         }}
       >
         <span style={{
-          width: '16px', height: '16px', borderRadius: '4px',
-          border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
-          background: isSelected ? colors.blue : 'transparent',
+          width: '16px', height: '16px', borderRadius: '6px',
+          border: `1.5px solid ${isSelected ? colors.brand : colors.borderSoft}`,
+          background: isSelected ? colors.brand : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
           transition: 'all 0.12s',
@@ -100,7 +100,7 @@ export function NotificationRow({
           </span>
           <span style={{
             display: 'inline-flex', alignItems: 'center',
-            padding: '2px 7px', borderRadius: '20px',
+            padding: '2px 7px', borderRadius: '12px',
             fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
             color: meta.badge.color, background: meta.badge.bg,
             letterSpacing: '0.01em',
@@ -155,7 +155,7 @@ export function NotificationRow({
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '5px 12px', borderRadius: '6px',
               fontSize: '11.5px', fontWeight: 600,
-              background: colors.blue,
+              background: colors.brand,
               color: '#fff',
               border: 'none', cursor: 'pointer',
               fontFamily: font.body, whiteSpace: 'nowrap',

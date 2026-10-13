@@ -156,7 +156,7 @@ export function MeetingInboxBody({
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -176,7 +176,7 @@ export function MeetingInboxBody({
       {!loadError && (
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}>
         <div style={{ padding: '11px 14px', borderBottom: `1px solid ${colors.border}` }}>
           <p style={{ margin: 0, fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
@@ -220,7 +220,7 @@ export function MeetingInboxBody({
                       <span style={{
                         fontSize: '11px', color: colors.secondary, fontWeight: 600,
                         background: colors.raised, border: `1px solid ${colors.borderSoft}`,
-                        padding: '2px 8px', borderRadius: '5px',
+                        padding: '2px 8px', borderRadius: '6px',
                       }}>
                         Waiting for a meeting
                       </span>

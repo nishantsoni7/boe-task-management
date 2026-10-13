@@ -158,11 +158,11 @@ const SKIP_LABELS: Record<string, string> = {
 
 const CARD: React.CSSProperties = {
   background: '#fff', borderRadius: 12,
-  border: '1px solid rgba(0,0,0,0.08)', overflow: 'hidden',
+  border: '1px solid #E4DED7', overflow: 'hidden',
   marginBottom: 16,
 }
 
-const PREVIEW_TONE = { bg: 'rgba(232,160,48,0.15)', color: '#B45309' }
+const PREVIEW_TONE = { bg: 'rgba(196,138,26,0.15)', color: '#805B0D' }
 
 /**
  * One explanatory row under the calculation: what the reason was, how many days
@@ -188,20 +188,20 @@ function ReasonRow({
       borderBottom: last ? 'none' : ROW_DIVIDER,
     }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: charged ? '#3D4455' : '#6B7280' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: charged ? '#4C5352' : '#686D6C' }}>
           {label}
         </div>
-        <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
           {meta}
         </div>
         {note && (
-          <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 2 }}>{note}</div>
+          <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 2 }}>{note}</div>
         )}
       </div>
       <div style={{
         fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap',
         fontVariantNumeric: 'tabular-nums',
-        color: charged ? '#DC2626' : '#8C94A6',
+        color: charged ? '#B42332' : '#686D6C',
       }}>
         {charged ? `−${fmt(amount)}` : fmt(0)}
       </div>
@@ -261,7 +261,7 @@ function AdjustmentsPanel({
       <SectionHeader title="Manual Adjustments" />
 
       {/* Add form */}
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid #E4DED7' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className={ui.field} style={{ flex: '1 1 130px' }}>
             <label htmlFor="adj-type" className={ui.label}>Type</label>
@@ -315,7 +315,7 @@ function AdjustmentsPanel({
 
       {/* History */}
       {adjustments.length === 0 ? (
-        <div style={{ padding: '20px 18px', fontSize: 13, color: '#8C94A6' }}>
+        <div style={{ padding: '20px 18px', fontSize: 13, color: '#686D6C' }}>
           No adjustments for this employee this month.
         </div>
       ) : (
@@ -330,13 +330,13 @@ function AdjustmentsPanel({
                   gap: 12, padding: '8px 0', borderBottom: ROW_DIVIDER,
                 }}
               >
-                <div style={{ minWidth: 0, fontSize: 13, color: '#3D4455' }}>
+                <div style={{ minWidth: 0, fontSize: 13, color: '#4C5352' }}>
                   {a.description}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexShrink: 0 }}>
                   <span style={{
                     fontSize: 13.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                    color: signTone(signed) ?? '#3D4455', whiteSpace: 'nowrap',
+                    color: signTone(signed) ?? '#4C5352', whiteSpace: 'nowrap',
                   }}>
                     {fmtSignedAmount(signed)}
                   </span>
@@ -521,14 +521,14 @@ export default function PayrollMonthlyReviewDetailPage() {
               <Avatar name={data.employee.full_name} size={32} />
               <div style={{ minWidth: 0 }}>
                 <div style={{
-                  fontSize: 15, fontWeight: 700, color: '#111318',
+                  fontSize: 15, fontWeight: 700, color: '#303536',
                   letterSpacing: '-0.01em', lineHeight: 1.25,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {data.employee.full_name}
                 </div>
                 {data.employee.employee_code && (
-                  <div style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.3 }}>
                     {data.employee.employee_code}
                   </div>
                 )}
@@ -590,14 +590,14 @@ export default function PayrollMonthlyReviewDetailPage() {
                             key={g.type}
                             label={`${deductionLabel(g.type)} · ${fmtDays(g.days)}`}
                             value={`−${fmt(g.amount)}`}
-                            tone="#DC2626"
+                            tone="#B42332"
                           />
                         ))}
                         {residual > 0.005 && (
                           <SettlementRow
                             label="Other Deductions"
                             value={`−${fmt(residual)}`}
-                            tone="#DC2626"
+                            tone="#B42332"
                           />
                         )}
                       </>
@@ -607,7 +607,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                     <SettlementRow
                       label="Total Deductions"
                       value={summary.total_deductions > 0.005 ? `−${fmt(summary.total_deductions)}` : fmt(0)}
-                      tone={summary.total_deductions > 0.005 ? '#DC2626' : undefined}
+                      tone={summary.total_deductions > 0.005 ? '#B42332' : undefined}
                       strong
                     />
 
@@ -644,12 +644,12 @@ export default function PayrollMonthlyReviewDetailPage() {
                     }}>
                       <span style={{
                         fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                        letterSpacing: '0.08em', color: '#3D4455',
+                        letterSpacing: '0.08em', color: '#4C5352',
                       }}>
                         Net Payable
                       </span>
                       <span style={{
-                        fontSize: 17, fontWeight: 700, color: '#111318',
+                        fontSize: 17, fontWeight: 700, color: '#303536',
                         fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                       }}>
                         {fmt(summary.net_salary)}
@@ -691,7 +691,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                     {(summary.late_deduction_hours > 0 || summary.missing_punch_hours > 0 || summary.short_hours_deduction > 0) && (
                       <div style={{
                         padding: '11px 18px 13px',
-                        borderTop: '1px solid rgba(0,0,0,0.06)',
+                        borderTop: '1px solid #E4DED7',
                         background: 'rgba(0,0,0,0.012)',
                       }}>
                         <SummaryGroup title="Hours measured before absorption" />
@@ -739,11 +739,11 @@ export default function PayrollMonthlyReviewDetailPage() {
                                 <DayDateCell iso={l.line_date} />
                               </td>
                               <td style={TD}>
-                                <span style={{ color: '#3D4455', fontWeight: 500 }}>
+                                <span style={{ color: '#4C5352', fontWeight: 500 }}>
                                   {deductionLabel(l.deduction_type)}
                                 </span>
                                 {l.hours_deducted > 0 && (
-                                  <span style={{ color: '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
+                                  <span style={{ color: '#686D6C', fontVariantNumeric: 'tabular-nums' }}>
                                     {' · '}{fmtHours(l.hours_deducted)}
                                   </span>
                                 )}
@@ -759,7 +759,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                               <td style={{
                                 ...TD, textAlign: 'right', fontWeight: 600,
                                 fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                                color: l.amount_deducted > 0 ? '#DC2626' : '#8C94A6',
+                                color: l.amount_deducted > 0 ? '#B42332' : '#686D6C',
                               }}>
                                 {l.amount_deducted > 0 ? `−${fmt(l.amount_deducted)}` : fmt(0)}
                               </td>
@@ -769,7 +769,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                         <tfoot>
                           <tr>
                             <td style={TFOOT_LABEL} colSpan={3}>Total Deductions</td>
-                            <td style={{ ...TFOOT_VALUE, color: summary.total_deductions > 0.005 ? '#DC2626' : '#3D4455' }}>
+                            <td style={{ ...TFOOT_VALUE, color: summary.total_deductions > 0.005 ? '#B42332' : '#4C5352' }}>
                               {summary.total_deductions > 0.005 ? `−${fmt(summary.total_deductions)}` : fmt(0)}
                             </td>
                           </tr>
@@ -792,8 +792,8 @@ export default function PayrollMonthlyReviewDetailPage() {
                   />
                 )}
 
-                <div style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#6B7280' }}>Preview only</strong> — adjustments are
+                <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.6 }}>
+                  <strong style={{ color: '#686D6C' }}>Preview only</strong> — adjustments are
                   included in net payable above, but payroll for this month has not been generated
                   or locked yet.
                 </div>
@@ -804,7 +804,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                 <div className="payroll-detail-aside-inner">
                   <div style={{
                     background: '#fff', borderRadius: 12,
-                    border: '1px solid rgba(0,0,0,0.08)', overflow: 'hidden',
+                    border: '1px solid #E4DED7', overflow: 'hidden',
                   }}>
                     <SectionHeader title="Payroll Summary" />
 
@@ -813,7 +813,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                       <SummaryLine
                         label="Deductions"
                         value={summary.total_deductions > 0.005 ? `−${fmt(summary.total_deductions)}` : fmt(0)}
-                        tone={summary.total_deductions > 0.005 ? '#DC2626' : undefined}
+                        tone={summary.total_deductions > 0.005 ? '#B42332' : undefined}
                       />
                       {summary.adjustment_total !== 0 && (
                         <SummaryLine
@@ -830,18 +830,18 @@ export default function PayrollMonthlyReviewDetailPage() {
                       }}>
                         <span style={{
                           fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                          letterSpacing: '0.09em', color: '#6B7384',
+                          letterSpacing: '0.09em', color: '#686D6C',
                         }}>
                           Net Payable
                         </span>
                         <span style={{
-                          fontSize: 27, fontWeight: 700, lineHeight: 1.05, color: '#111318',
+                          fontSize: 27, fontWeight: 700, lineHeight: 1.05, color: '#303536',
                           fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
                         }}>
                           {fmt(summary.net_salary)}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 5 }}>
+                      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 5 }}>
                         {monthLabel ? `${monthLabel} · Preview` : 'Preview'}
                       </div>
 
@@ -853,7 +853,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                       <SummaryLine
                         label="Absent"
                         value={fmtDays(summary.days_absent)}
-                        tone={summary.days_absent > 0 ? '#DC2626' : undefined}
+                        tone={summary.days_absent > 0 ? '#B42332' : undefined}
                       />
                       {summary.half_day_count > 0 && (
                         <SummaryLine label="Half Days" value={fmtDays(summary.half_day_count)} />
@@ -865,14 +865,14 @@ export default function PayrollMonthlyReviewDetailPage() {
                       <SummaryLine
                         label="Paid Leave Used"
                         value={summary.paid_leave_used > 0 ? fmtDays(summary.paid_leave_used) : 'Not used'}
-                        tone={summary.paid_leave_used > 0 ? undefined : '#8C94A6'}
+                        tone={summary.paid_leave_used > 0 ? undefined : '#686D6C'}
                       />
 
                       {summary.leave_absorbed_deductions && (
                         <div style={{
                           marginTop: 10, padding: '9px 12px', borderRadius: 8,
                           background: 'rgba(0,0,0,0.028)', fontSize: 12,
-                          color: '#3D4455', lineHeight: 1.5,
+                          color: '#4C5352', lineHeight: 1.5,
                         }}>
                           Paid leave absorbed all hourly deductions this month.
                         </div>

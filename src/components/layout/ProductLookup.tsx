@@ -113,7 +113,7 @@ export function ProductLookup({ onOpenProduct, enabled }: ProductLookupProps) {
           size={13}
           strokeWidth={2}
           aria-hidden="true"
-          style={{ position: 'absolute', left: 9, color: '#A0A9BE', pointerEvents: 'none' }}
+          style={{ position: 'absolute', left: 9, color: '#686D6C', pointerEvents: 'none' }}
         />
         <input
           ref={inputRef}
@@ -142,9 +142,9 @@ export function ProductLookup({ onOpenProduct, enabled }: ProductLookupProps) {
             minHeight: 36,
             padding: '7px 26px 7px 27px',
             fontSize: '12.5px',
-            color: '#111318',
+            color: '#303536',
             background: 'rgba(0,0,0,0.035)',
-            border: '1px solid rgba(0,0,0,0.08)',
+            border: '1px solid #E4DED7',
             borderRadius: '8px',
             outline: 'none',
             // The browser's own search reset would sit on top of the ✕ below.
@@ -162,8 +162,8 @@ export function ProductLookup({ onOpenProduct, enabled }: ProductLookupProps) {
               position: 'absolute', right: 6,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 18, height: 18, padding: 0,
-              color: '#8C94A6', background: 'transparent',
-              border: 'none', borderRadius: '4px', cursor: 'pointer',
+              color: '#686D6C', background: 'transparent',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
             }}
           >
             <X size={12} strokeWidth={2.2} />
@@ -211,14 +211,14 @@ export function ProductLookupResults({
     position: 'absolute', left: 4, right: 4, top: '100%', zIndex: 120,
     marginTop: 4, padding: '4px',
     background: '#FFFFFF',
-    border: '1px solid rgba(0,0,0,0.10)',
-    borderRadius: '10px',
+    border: '1px solid #CFC8BF',
+    borderRadius: '8px',
     boxShadow: '0 6px 20px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.06)',
     maxHeight: 300, overflowY: 'auto',
   }
 
   const note = (text: string) => (
-    <div style={{ ...shell, padding: '10px 12px', fontSize: '12px', color: '#707A92' }}>{text}</div>
+    <div style={{ ...shell, padding: '10px 12px', fontSize: '12px', color: '#686D6C' }}>{text}</div>
   )
 
   if (failed)              return note('Couldn’t search products. Try again.')
@@ -244,27 +244,27 @@ export function ProductLookupResults({
               onMouseEnter={() => onHighlight(i)}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
-                padding: '7px 9px', border: 'none', borderRadius: '7px',
+                padding: '7px 9px', border: 'none', borderRadius: '8px',
                 background: active ? 'rgba(0,0,0,0.055)' : 'transparent',
                 cursor: 'pointer',
               }}
             >
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 7,
-                fontSize: '11px', fontWeight: 600, color: '#1A2035',
-                fontFamily: "'DM Mono', monospace",
+                fontSize: '11px', fontWeight: 600, color: '#303536',
+                fontFamily: 'var(--font-body)',
               }}>
                 {result.product_code}
               </span>
               <span style={{
-                display: 'block', fontSize: '12.5px', color: '#111318',
+                display: 'block', fontSize: '12.5px', color: '#303536',
                 marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {result.name}
               </span>
               {/* Always rendered: it disambiguates two products with one name,
                   and names the category the click is about to navigate into. */}
-              <span style={{ display: 'block', fontSize: '11px', color: '#8C94A6', marginTop: 1 }}>
+              <span style={{ display: 'block', fontSize: '11px', color: '#686D6C', marginTop: 1 }}>
                 {result.category || 'Uncategorised'}
               </span>
             </button>

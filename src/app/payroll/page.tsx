@@ -692,7 +692,7 @@ function PayrollPeriodsPage() {
                           className="boe-payroll-row"
                           // Inline wins over the hover rule, which is what keeps a
                           // freshly created row highlighted while the cursor is on it.
-                          style={p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : undefined}
+                          style={p.id === highlightedPeriodId ? { background: 'rgba(196,138,26,0.14)' } : undefined}
                         >
                           <td className={`${ui.strong} ${ui.nowrap}`}>
                             {periodLabel(p.payroll_month, p.payroll_year)}
@@ -736,7 +736,7 @@ function PayrollPeriodsPage() {
                   <li
                     key={p.id}
                     className={`${ui.surface} ${ui.card}`}
-                    style={p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : undefined}
+                    style={p.id === highlightedPeriodId ? { background: 'rgba(196,138,26,0.14)' } : undefined}
                   >
                     <div className={ui.cardHead}>
                       <span className={ui.strong}>{periodLabel(p.payroll_month, p.payroll_year)}</span>

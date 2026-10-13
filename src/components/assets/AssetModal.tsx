@@ -174,7 +174,7 @@ export function AssetModalActions({
         style={{
           padding: '8px 18px', fontSize: '13px',
           ...(destructive
-            ? { color: '#C13030', borderColor: 'rgba(217,79,79,0.45)', fontWeight: 600 }
+            ? { color: '#B42332', borderColor: 'rgba(180,35,50,0.45)', fontWeight: 600 }
             : {}),
           opacity: saving || disabled ? 0.6 : 1,
         }}
@@ -190,7 +190,7 @@ export function AssetModalError({ message }: { message: string }) {
   return (
     <div role="alert" style={{
       padding: '10px 12px', borderRadius: '8px',
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: '12px',
     }}>
       {message}
     </div>

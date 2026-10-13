@@ -102,7 +102,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
       </div>
 
       {error && (
-        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#DC2626' }}>{error}</div>
+        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#B42332' }}>{error}</div>
       )}
 
       {loaded && rows.length === 0 && !error && (
@@ -115,7 +115,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
             const tone = statusTone(r.status)
             return (
               <li key={r.id} style={{
-                border: `1px solid ${colors.border}`, borderRadius: 10, padding: '10px 12px',
+                border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px',
                 display: 'flex', flexDirection: 'column', gap: 4,
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>

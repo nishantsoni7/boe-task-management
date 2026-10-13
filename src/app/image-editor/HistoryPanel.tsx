@@ -38,7 +38,7 @@ function Countdown({ result }: { result: HistoryResult }) {
     <div style={{
       display: 'flex', alignItems: 'center', gap: '5px',
       fontSize: '11px', fontWeight: 500,
-      color: kept ? colors.amber : urgent ? '#C13030' : colors.tertiary,
+      color: kept ? colors.amber : urgent ? '#B42332' : colors.tertiary,
     }}>
       {kept ? <Star size={11} strokeWidth={2} fill="currentColor" /> : <Clock size={11} strokeWidth={2} />}
       {label}
@@ -82,7 +82,7 @@ export function HistoryPanel({
     return (
       <div style={{
         padding: '18px', fontSize: '12px', color: colors.tertiary,
-        background: colors.raised, borderRadius: '10px', lineHeight: 1.5,
+        background: colors.raised, borderRadius: '8px', lineHeight: 1.5,
       }}>
         Nothing here yet. Studio images you generate are kept for {RETENTION_DAYS} days
         so you can come back for them. Mark one <strong>Keep</strong> to hold on to it
@@ -150,13 +150,13 @@ export function HistoryPanel({
 
             {confirming ? (
               <div className="boe-alert-red" style={{ marginTop: '10px' }}>
-                <div style={{ fontSize: '11px', color: '#C13030', lineHeight: 1.4 }}>
+                <div style={{ fontSize: '11px', color: '#B42332', lineHeight: 1.4 }}>
                   Delete this result permanently?
                 </div>
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                   <button
                     className="boe-btn boe-btn-ghost"
-                    style={{ fontSize: '11px', padding: '4px 8px', color: '#C13030' }}
+                    style={{ fontSize: '11px', padding: '4px 8px', color: '#B42332' }}
                     onClick={() => { setConfirmingDelete(null); onDelete(result) }}
                     disabled={busy}
                   >

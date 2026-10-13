@@ -77,11 +77,11 @@ export class ExpenseErrorBoundary extends Component<Props, State> {
         style={{
           padding: '22px 20px', display: 'flex', flexDirection: 'column',
           alignItems: 'flex-start', gap: '10px',
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           background: colors.raised,
         }}
       >
-        <div style={{ fontSize: '13px', fontWeight: 700, color: '#C13030' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: '#B42332' }}>
           {EXPENSE_ERROR_TITLE}
         </div>
         <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, maxWidth: '460px' }}>

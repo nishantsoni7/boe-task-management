@@ -102,7 +102,7 @@ export function MonthRequestsPanel({
       </div>
 
       {error && (
-        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#DC2626' }}>
+        <div role="alert" style={{ marginTop: 10, fontSize: 12.5, color: '#B42332' }}>
           Requests could not be loaded ({error}). The attendance above is unaffected.
         </div>
       )}
@@ -122,7 +122,7 @@ export function MonthRequestsPanel({
               <li
                 key={r.id}
                 style={{
-                  border: `1px solid ${colors.border}`, borderRadius: 10, padding: '10px 12px',
+                  border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px',
                   display: 'flex', flexDirection: 'column', gap: 3,
                   opacity: isLive(r) ? 1 : 0.8,
                 }}
@@ -142,7 +142,7 @@ export function MonthRequestsPanel({
                 <div style={{ fontSize: 12, color: colors.tertiary }}>
                   {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                 </div>
-                <div style={{ fontSize: 11.5, color: timing === 'after_date' ? '#B45309' : colors.muted }}>
+                <div style={{ fontSize: 11.5, color: timing === 'after_date' ? '#805B0D' : colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)} · {SUBMISSION_TIMING_LABEL[timing]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (

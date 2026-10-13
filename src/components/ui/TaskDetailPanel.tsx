@@ -43,9 +43,9 @@ const STATUS_COLOR: Record<string, string> = {
 
 // View Task Page — one look whether it renders as a link or a button.
 const FULL_PAGE_BUTTON: React.CSSProperties = {
-  width: '100%', padding: '9px 14px', borderRadius: '7px',
+  width: '100%', padding: '9px 14px', borderRadius: '8px',
   border: 'none',
-  background: colors.blue,
+  background: colors.brand,
   color: '#fff',
   cursor: 'pointer',
   fontSize: '13px', fontWeight: 600,
@@ -216,7 +216,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               <div style={{
                 fontSize: '9px', fontWeight: 600,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
-                color: '#C49A28', marginBottom: '4px',
+                color: '#B7892A', marginBottom: '4px',
               }}>
                 Important
               </div>
@@ -270,7 +270,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                 fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
                 color: statusColor,
                 background: `${statusColor}14`,
-                padding: '2px 8px', borderRadius: '4px',
+                padding: '2px 8px', borderRadius: '6px',
               }}>
                 {taskStatusLabel(task.status)}
               </span>
@@ -281,7 +281,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                 display: 'inline-block',
                 fontSize: '11px', fontWeight: 600,
                 color: priority.color, background: priority.bg,
-                padding: '2px 8px', borderRadius: '4px',
+                padding: '2px 8px', borderRadius: '6px',
               }}>
                 {priority.label}
               </span>
@@ -316,7 +316,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             {(() => {
               const aging = getTaskAging(task)
               if (!aging) return null
-              const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
+              const color = aging.severity === 'danger' ? '#B42332' : '#C48A1A'
               return (
                 <MetaRow label="Aging">
                   <span style={{
@@ -324,11 +324,11 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                     color,
                     background: `${color}12`,
                     border: `1px solid ${color}30`,
-                    padding: '2px 8px', borderRadius: '4px',
+                    padding: '2px 8px', borderRadius: '6px',
                   }}>
                     {aging.label}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#6B7384', marginLeft: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#686D6C', marginLeft: '6px' }}>
                     {aging.message}
                   </span>
                 </MetaRow>
@@ -341,7 +341,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           {task.status === 'waiting' && (task.waiting_on_type) && (
             <div style={{
               padding: '8px 10px',
-              borderRadius: '7px',
+              borderRadius: '8px',
               background: `${colors.amber}0d`,
               border: `1.5px solid ${colors.amber}40`,
               borderLeft: `3px solid ${colors.amber}`,
@@ -372,7 +372,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           {task.status === 'blocked' && task.blocker_reason && (
             <div style={{
               padding: '8px 10px',
-              borderRadius: '7px',
+              borderRadius: '8px',
               background: `${colors.red}0d`,
               border: `1.5px solid ${colors.red}40`,
               borderLeft: `3px solid ${colors.red}`,
@@ -583,7 +583,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           <button
             onClick={onClose}
             style={{
-              width: '100%', padding: '7px 14px', borderRadius: '7px',
+              width: '100%', padding: '7px 14px', borderRadius: '8px',
               border: `1px solid ${colors.borderSoft}`,
               background: 'transparent',
               color: colors.secondary,

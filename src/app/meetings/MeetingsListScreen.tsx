@@ -323,7 +323,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -336,7 +336,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
 
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
+        borderRadius: '8px', overflow: 'hidden',
       }}>
         {scope === 'active' && (
           <StatusTabs
@@ -481,7 +481,7 @@ function MeetingCard({
       style={{
         width: '100%', textAlign: 'left', display: 'block',
         background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '10px', padding: '12px 14px', marginBottom: '8px', cursor: 'pointer',
+        borderRadius: '8px', padding: '12px 14px', marginBottom: '8px', cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>

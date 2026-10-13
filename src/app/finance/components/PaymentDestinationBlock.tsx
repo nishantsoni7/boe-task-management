@@ -216,7 +216,7 @@ export function PaymentCustodyTrail({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={SECTION_LABEL}>{CUSTODY_TRAIL_TITLE}</div>
         <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '8px',
           padding: '10px 12px', fontSize: '13px', color: colors.muted,
         }}>
           {DESTINATION_LOADING}

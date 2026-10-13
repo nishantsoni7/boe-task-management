@@ -53,7 +53,7 @@ function InfoPanel() {
       flexShrink: 0,
       background: 'rgba(76,175,125,0.04)',
       border: '1.5px solid rgba(76,175,125,0.18)',
-      borderRadius: '10px',
+      borderRadius: '8px',
       padding: '16px 14px',
       display: 'flex',
       flexDirection: 'column',
@@ -61,7 +61,7 @@ function InfoPanel() {
       alignSelf: 'flex-start',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-        <CheckCircle2 size={14} color="#4CAF7D" />
+        <CheckCircle2 size={14} color="#2F7A52" />
         <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
           About Completed Tasks
         </span>
@@ -144,27 +144,27 @@ function CompletedTaskCard({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          {task.is_urgent && <Star size={11} fill="#B7892A" color="#B7892A" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 500, color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.title}
           </div>
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onRestore() }}
               onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#3a9e6d' : '#4CAF7D', fontSize: '11px', fontWeight: 600 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#2F7A52' : '#2F7A52', fontSize: '11px', fontWeight: 600 }}>
               <RotateCcw size={11} />
               Reopen Task
             </button>
             <button onClick={e => { e.stopPropagation(); onClick() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#4CAF7D' : colors.muted }}>
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#2F7A52' : colors.muted }}>
               <ExternalLink size={12} />
             </button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           {!isSelf && assignerName && (
-            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>{assignerName}</span>
+            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>{assignerName}</span>
           )}
           <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
           <span style={{ fontSize: '10.5px', color: completionInfo.warn ? '#C07820' : colors.muted, whiteSpace: 'nowrap' }}>
@@ -198,7 +198,7 @@ function CompletedTaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {task.is_urgent
-          ? <Star size={11} fill="#C49A28" color="#C49A28" />
+          ? <Star size={11} fill="#B7892A" color="#B7892A" />
           : <div style={{ width: '11px' }} />
         }
       </div>
@@ -237,7 +237,7 @@ function CompletedTaskCard({
             maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             fontSize: '10.5px', fontWeight: 600,
-            padding: '1px 7px', borderRadius: '20px',
+            padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
               ? { color: colors.muted, background: 'rgba(0,0,0,0.05)' }
               : { color: '#6B4FA0', background: 'rgba(155,111,212,0.10)' }
@@ -293,7 +293,7 @@ function CompletedTaskCard({
             background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)',
             border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredRestore ? '#3a9e6d' : '#4CAF7D',
+            color: hoveredRestore ? '#2F7A52' : '#2F7A52',
             fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
           }}
         >
@@ -311,7 +311,7 @@ function CompletedTaskCard({
             background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent',
             border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? '#4CAF7D' : colors.muted,
+            color: hoveredView ? '#2F7A52' : colors.muted,
           }}
         >
           <ExternalLink size={12} />
@@ -470,7 +470,7 @@ function CompletedTasksContent() {
 
         {/* The total for the filters as they stand */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#4CAF7D' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: '#2F7A52' }}>
             {`Completed · ${total}`}
           </span>
           {hasFilters && (
@@ -554,7 +554,7 @@ function CompletedTasksContent() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
                   padding: '10px 14px', marginBottom: '10px', borderRadius: '8px',
-                  background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+                  background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
                 }}
               >
                 <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>

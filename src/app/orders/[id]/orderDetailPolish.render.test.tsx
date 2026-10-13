@@ -146,8 +146,8 @@ describe('Activity: quiet, ordered, and complete', () => {
 describe('Documents and typography stay local to this page', () => {
   test('Design files and Client PO sit side by side below Main PI, divided; they stack on a narrow card', () => {
     assert.match(css, /@container \(min-width: 760px\) \{[\s\S]*?\.order-docs-side \{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/)
-    assert.match(css, /\.order-docs-side \{ border-top: 1px solid #F0F2F5; \}/)
-    assert.match(css, /\.order-docs-side \.order-doc-section \+ \.order-doc-section \{ grid-template-columns|\.order-docs-side \.order-doc-section \+ \.order-doc-section \{ border-top: 0; border-left: 1px solid #F0F2F5; \}/)
+    assert.match(css, /\.order-docs-side \{ border-top: 1px solid #F1EEE9; \}/)
+    assert.match(css, /\.order-docs-side \.order-doc-section \+ \.order-doc-section \{ grid-template-columns|\.order-docs-side \.order-doc-section \+ \.order-doc-section \{ border-top: 0; border-left: 1px solid #F1EEE9; \}/)
   })
 
   test('long file names wrap; nothing pushes a control off-screen', () => {
@@ -171,7 +171,7 @@ describe('Documents and typography stay local to this page', () => {
 
   test('supporting text is darker than it was (contrast)', () => {
     const note = css.slice(css.indexOf('\n.order-doc-note {'), css.indexOf('}', css.indexOf('\n.order-doc-note {')))
-    assert.match(note, /color: #5B6474/)
-    assert.doesNotMatch(note, /#8C94A6/)
+    assert.match(note, /color: #686D6C/)
+    assert.doesNotMatch(note, /#686D6C/)
   })
 })

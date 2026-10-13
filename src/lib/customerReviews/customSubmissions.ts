@@ -40,9 +40,9 @@ export const CUSTOM_REVIEW_TYPE_LABELS: Record<ReviewType, string> = {
 }
 
 export const CUSTOM_SUBMISSION_STATUS_META: Record<CustomSubmissionStatus, BadgeMeta> = {
-  pending_verification: { label: 'Pending Approval', bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  approved:             { label: 'Approved',         bg: '#ECFDF5', color: '#047857', border: '#A7F3D0' },
-  rejected:             { label: 'Rejected',         bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
+  pending_verification: { label: 'Pending Approval', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
+  approved:             { label: 'Approved',         bg: '#ECFDF5', color: '#276247', border: '#A7F3D0' },
+  rejected:             { label: 'Rejected',         bg: '#FBE9EC', color: '#B42332', border: '#E9B9C1' },
 }
 
 /** One row of public.customer_review_custom_submissions, as the screens read it. */

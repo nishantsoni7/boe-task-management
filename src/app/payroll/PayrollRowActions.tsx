@@ -39,7 +39,7 @@ import type { PeriodStatus } from '@/lib/payroll/correctionRules'
 export const PAYROLL_ROW_CSS = `
   .boe-payroll-row { transition: background 0.25s ease; }
   /* Subtle enough to read as "this row", not as a selection. */
-  .boe-payroll-row:hover { background: #FAFBFC; }
+  .boe-payroll-row:hover { background: #FBFAF8; }
 
   .boe-payroll-attention {
     -webkit-appearance: none;
@@ -54,13 +54,13 @@ export const PAYROLL_ROW_CSS = `
     cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease;
   }
-  .boe-payroll-attention:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+  .boe-payroll-attention:focus-visible { outline: 2px solid #335A86; outline-offset: 2px; }
 
-  .boe-payroll-attention--amber { background: rgba(232,160,48,0.14); border: 1px solid rgba(232,160,48,0.42); color: #B45309; }
-  .boe-payroll-attention--amber:hover { background: rgba(232,160,48,0.24); border-color: rgba(232,160,48,0.62); }
+  .boe-payroll-attention--amber { background: rgba(196,138,26,0.14); border: 1px solid rgba(196,138,26,0.42); color: #805B0D; }
+  .boe-payroll-attention--amber:hover { background: rgba(196,138,26,0.24); border-color: rgba(196,138,26,0.62); }
 
-  .boe-payroll-attention--info { background: rgba(85,133,232,0.10); border: 1px solid rgba(85,133,232,0.34); color: #3A6BD4; }
-  .boe-payroll-attention--info:hover { background: rgba(85,133,232,0.18); border-color: rgba(85,133,232,0.52); }
+  .boe-payroll-attention--info { background: rgba(51,90,134,0.10); border: 1px solid rgba(51,90,134,0.34); color: #335A86; }
+  .boe-payroll-attention--info:hover { background: rgba(51,90,134,0.18); border-color: rgba(51,90,134,0.52); }
 
   /* The actions cell never wraps — a row whose controls stack is a row whose
      height no longer matches its neighbours. The table scrolls inside its own
@@ -96,14 +96,14 @@ const ACTION_ICON: Record<PayrollPeriodAction, typeof RefreshCw> = {
 /** Per-action colour for the icon buttons. Neutral unless the action says otherwise. */
 const ICON_TONE: Partial<Record<PayrollPeriodAction, React.CSSProperties>> = {
   // Locking is the consequential one, so it reads darker than its neighbour.
-  lock:   { color: '#111318' },
+  lock:   { color: '#303536' },
   // Reopening a finalised month is an amber decision, outlined not filled: the
   // one filled button in the row stays the primary action.
-  unlock: { color: '#B45309', borderColor: 'rgba(232,160,48,0.55)' },
+  unlock: { color: '#805B0D', borderColor: 'rgba(196,138,26,0.55)' },
   // The only destructive control on the page, and the only red one. Outlined
   // rather than filled for the same reason as Unlock — a filled red button in
   // every row would read as the thing to click.
-  delete: { color: '#C0392B', borderColor: 'rgba(192,57,43,0.42)' },
+  delete: { color: '#B42332', borderColor: 'rgba(192,57,43,0.42)' },
 }
 
 export type PayrollRowActionBarProps = {
@@ -204,7 +204,7 @@ export function PayrollRowActionBar({
 
   // Nothing to show: a read-only viewer looking at a draft period.
   if (!canManage && status === 'draft') {
-    return <span style={{ fontSize: 12.5, color: '#A9AFBD' }}>—</span>
+    return <span style={{ fontSize: 12.5, color: '#686D6C' }}>—</span>
   }
 
   return (
@@ -228,7 +228,7 @@ export function PayrollAttentionIndicator({
   detail, onOpen,
 }: { detail: PayrollAttentionDetail | null; onOpen: () => void }) {
   if (!detail) {
-    return <span style={{ fontSize: 12.5, color: '#8C94A6' }}>—</span>
+    return <span style={{ fontSize: 12.5, color: '#686D6C' }}>—</span>
   }
 
   const Icon = detail.tone === 'amber' ? AlertTriangle : History
@@ -306,9 +306,9 @@ export function PayrollAttentionModal({
       {reopened && (
         <div style={{
           fontSize: 11.5, color: colors.secondary, lineHeight: 1.5,
-          background: 'rgba(85,133,232,0.08)', borderRadius: 8, padding: '8px 10px',
+          background: 'rgba(51,90,134,0.08)', borderRadius: 8, padding: '8px 10px',
         }}>
-          <span style={{ fontWeight: 600, color: '#3A6BD4' }}>Reopened after locking</span>
+          <span style={{ fontWeight: 600, color: '#335A86' }}>Reopened after locking</span>
           {' · '}
           {reopened.actorName ?? 'Unknown admin'} · {reopened.at}
           {reopened.reason && (

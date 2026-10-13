@@ -25,7 +25,7 @@ import {
 function Row({ label, value, tone, strong }: { label: string; value: string; tone?: string; strong?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '5px 0' }}>
-      <span style={{ fontSize: 12.5, color: strong ? '#3D4455' : colors.tertiary, fontWeight: strong ? 600 : 400 }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: strong ? '#4C5352' : colors.tertiary, fontWeight: strong ? 600 : 400 }}>{label}</span>
       <span style={{
         fontSize: strong ? 14 : 13.5, fontWeight: strong ? 700 : 600,
         color: tone ?? colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
@@ -74,20 +74,20 @@ export function RedeemCreditsModal({
 
       <div style={{
         background: colors.raised, border: `1px solid ${colors.border}`,
-        borderRadius: 10, padding: '10px 14px',
+        borderRadius: 8, padding: '10px 14px',
       }}>
-        <Row label="Deduction removed" value={`−${formatRupees(offer.amount)}`} tone="#DC2626" />
+        <Row label="Deduction removed" value={`−${formatRupees(offer.amount)}`} tone="#B42332" />
         <Row label="Credits used" value={creditsWord(offer.credits)} />
         <div style={{ height: 1, background: colors.borderSoft, margin: '6px 0' }} />
         <Row
           label="Credits after this"
           value={availableCredits == null ? '…' : after == null ? '—' : creditsWord(after)}
-          tone={availableCredits != null && !enough ? '#DC2626' : undefined}
+          tone={availableCredits != null && !enough ? '#B42332' : undefined}
           strong
         />
       </div>
 
-      <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.55 }}>
+      <div style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.55 }}>
         {enough
           ? 'The deduction for this day is removed from your salary and the credits are spent. The day still shows as it happened; this cannot be undone from here.'
           : availableCredits == null

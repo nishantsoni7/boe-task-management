@@ -760,9 +760,9 @@ function NewOrderPiImportPageInner() {
           </button>
         }
       >
-        <Card style={{ borderColor: 'rgba(232,160,48,0.35)' }}>
+        <Card style={{ borderColor: 'rgba(196,138,26,0.35)' }}>
           <div style={{ padding: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <Lock size={18} strokeWidth={1.8} color="#9A6212" style={{ flexShrink: 0, marginTop: '1px' }} />
+            <Lock size={18} strokeWidth={1.8} color="#805B0D" style={{ flexShrink: 0, marginTop: '1px' }} />
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
                 PI upload is not enabled for your account
@@ -799,9 +799,9 @@ function NewOrderPiImportPageInner() {
   // employee has no way to tell whether they are about to correct their returned
   // PI or start a second one beside it.
   const replaceNotice = replaceTarget.kind === 'ready' ? (
-    <Card style={{ borderColor: 'rgba(85,133,232,0.35)' }}>
+    <Card style={{ borderColor: 'rgba(51,90,134,0.35)' }}>
       <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-        <Info size={16} strokeWidth={1.9} color="#2F5BB7" style={{ flexShrink: 0, marginTop: '1px' }} />
+        <Info size={16} strokeWidth={1.9} color="#335A86" style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
             Replacing the PI on an existing record
@@ -823,7 +823,7 @@ function NewOrderPiImportPageInner() {
       </div>
     </Card>
   ) : replaceTarget.kind === 'unavailable' ? (
-    <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '16px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
         <AlertTriangle size={16} strokeWidth={1.9} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0 }}>
@@ -860,7 +860,7 @@ function NewOrderPiImportPageInner() {
           textAlign: 'center',
           background: dragging ? colors.blueTint : colors.base,
           border: dragging ? `2px dashed ${colors.blue}` : '2px dashed transparent',
-          borderRadius: '10px',
+          borderRadius: '8px',
           transition: 'background 0.15s, border-color 0.15s',
         }}
       >
@@ -900,7 +900,7 @@ function NewOrderPiImportPageInner() {
 
   // ── Failure ──
   const failureBlock = stage.kind === 'failed' && (
-    <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+    <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
       <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         <AlertTriangle size={18} strokeWidth={1.8} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -927,7 +927,7 @@ function NewOrderPiImportPageInner() {
                   marginTop: '6px', padding: '8px 10px',
                   background: colors.raised, border: `1px solid ${colors.border}`,
                   borderRadius: '6px',
-                  fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.secondary,
+                  fontFamily: 'var(--font-body)', fontSize: '11px', color: colors.secondary,
                   overflowWrap: 'anywhere',
                 }}>
                   {stage.failure.technical.map((line, i) => (
@@ -1009,7 +1009,7 @@ function NewOrderPiImportPageInner() {
           counts, entries, row and cell references, and the same Save Draft
           gate, loading state and failure note. Only where they sit moved. */}
       {preview.groups.blocking.length > 0 && (
-        <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+        <Card style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
           <div style={{
             padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
             background: colors.redTint,
@@ -1035,7 +1035,7 @@ function NewOrderPiImportPageInner() {
           PRIVATE DRAFT — it does not submit for approval, take a payment or
           allocate an order number, and the success state says so. */}
       {preview.groups.readyToSubmit && (
-        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
+        <Card style={{ borderColor: saveSuccess ? 'rgba(39,98,71,0.4)' : 'rgba(39,98,71,0.3)' }}>
           <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
             <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1111,7 +1111,7 @@ function NewOrderPiImportPageInner() {
                   {saveFailure && (
                     <div style={{
                       marginTop: '8px', padding: '10px 12px',
-                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                      background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
                       borderRadius: '8px',
                     }}>
                       <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
@@ -1123,7 +1123,7 @@ function NewOrderPiImportPageInner() {
                           This PI is not ready to save.
                         </div>
                       )}
-                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-body)' }}>
                         {saveFailure.code}
                       </div>
                     </div>
@@ -1248,11 +1248,11 @@ function NewOrderPiImportPageInner() {
                   four matched products, not one. */}
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '2px 8px', borderRadius: '5px',
+                padding: '2px 8px', borderRadius: '6px',
                 fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
                 background: preview.coverage.complete ? colors.greenTint : colors.redTint,
-                color: preview.coverage.complete ? '#2F7A52' : colors.red,
-                border: `1px solid ${preview.coverage.complete ? 'rgba(69,168,112,0.25)' : 'rgba(217,79,79,0.25)'}`,
+                color: preview.coverage.complete ? '#276247' : colors.red,
+                border: `1px solid ${preview.coverage.complete ? 'rgba(39,98,71,0.25)' : 'rgba(180,35,50,0.25)'}`,
               }}>
                 {preview.coverage.complete
                   ? <CheckCircle2 size={11} strokeWidth={2.2} />
@@ -1266,7 +1266,7 @@ function NewOrderPiImportPageInner() {
               {preview.customizationCount.count > 0 && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '2px 8px', borderRadius: '5px',
+                  padding: '2px 8px', borderRadius: '6px',
                   fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
                   background: colors.raised,
                   color: colors.secondary,

@@ -221,7 +221,7 @@ export function OrderHighlightRemarkBanner({ remark }: { remark: string | null }
     <section className="order-highlight" aria-label={ORDER_HIGHLIGHT_LABEL} style={{
       display: 'flex', gap: '12px', alignItems: 'flex-start',
       border: `1px solid ${colors.amber}`, background: colors.amberTint,
-      borderRadius: '10px', padding: '12px 16px', minWidth: 0,
+      borderRadius: '8px', padding: '12px 16px', minWidth: 0,
     }}>
       <Star size={16} color={colors.amber} aria-hidden style={{ flexShrink: 0, marginTop: '2px' }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>

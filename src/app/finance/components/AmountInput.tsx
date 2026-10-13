@@ -28,7 +28,7 @@ export function AmountInput({ value, onChange }: { value: string; onChange: (v: 
         placeholder="0"
         style={{ width: '100%' }}
       />
-      {problem && <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4 }}>{problem}</div>}
+      {problem && <div role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>{problem}</div>}
     </>
   )
 }

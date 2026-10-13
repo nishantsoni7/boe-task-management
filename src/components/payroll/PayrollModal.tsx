@@ -239,7 +239,7 @@ export function PayrollModalError({ message }: { message: string }) {
   return (
     <div role="alert" style={{
       padding: '10px 12px', borderRadius: 8,
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: 12,
+      background: 'rgba(180,35,50,0.1)', color: '#B42332', fontSize: 12,
     }}>
       {message}
     </div>

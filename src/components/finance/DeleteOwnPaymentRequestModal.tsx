@@ -91,7 +91,7 @@ export function DeleteOwnPaymentRequestModal({
       {message && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.55,
-          background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
+          background: '#FBE9EC', border: '1px solid #E9B9C1', color: '#B42332',
         }}>
           {message}
         </div>
@@ -106,7 +106,7 @@ export function DeleteOwnPaymentRequestModal({
           disabled={busy}
           style={{
             padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-            border: 'none', color: '#fff', background: '#DC1F2E',
+            border: 'none', color: '#fff', background: '#B42332',
             cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
           }}
         >

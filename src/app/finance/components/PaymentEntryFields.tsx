@@ -95,7 +95,7 @@ function DestinationCard({
       data-selected={selected ? 'true' : undefined}
       style={{
         display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left',
-        padding: '12px', borderRadius: '10px', cursor: 'pointer', flex: '1 1 180px',
+        padding: '12px', borderRadius: '8px', cursor: 'pointer', flex: '1 1 180px',
         border: `1px solid ${selected ? colors.primary : colors.border}`,
         background: selected ? colors.hover : '#FFFFFF',
         // The selected card is named by its border AND its check mark, never by

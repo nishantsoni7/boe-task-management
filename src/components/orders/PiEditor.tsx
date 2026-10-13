@@ -640,7 +640,7 @@ export function PiDiffView({ diff }: { diff: ReturnType<typeof diffPi> }) {
         </table>
       )}
       {diff.added.map(l => (
-        <div key={l.id} style={{ color: '#166534' }}>+ Added <strong>{l.name}</strong> · {l.quantity} × {l.rate === null ? '' : formatInr(l.rate)} = {l.total === null ? '' : formatInr(l.total)}</div>
+        <div key={l.id} style={{ color: '#276247' }}>+ Added <strong>{l.name}</strong> · {l.quantity} × {l.rate === null ? '' : formatInr(l.rate)} = {l.total === null ? '' : formatInr(l.total)}</div>
       ))}
       {diff.removed.map(l => (
         <div key={l.id} style={{ color: colors.red }}>− Removed <strong>{l.name}</strong>{l.total === null ? '' : ` (${formatInr(l.total)})`}</div>

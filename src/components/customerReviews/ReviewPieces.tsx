@@ -38,7 +38,7 @@ export function InternalTestWarning({ compact = false }: { compact?: boolean }) 
         display: 'flex', gap: compact ? '6px' : '8px', alignItems: 'center',
         padding: compact ? '5px 8px' : '9px 12px',
         borderRadius: compact ? '6px' : '8px',
-        background: '#F5F3FF',
+        background: '#EAF0F8',
         border: '1px solid #DDD6FE',
         color: '#5B21B6',
         fontSize: compact ? '10px' : '12px',
@@ -56,7 +56,7 @@ export function InternalTestWarning({ compact = false }: { compact?: boolean }) 
 export function ReviewBadge({ meta }: { meta: BadgeMeta }) {
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
@@ -106,7 +106,7 @@ export function ScreenshotIsNotProofNote() {
       style={{
         display: 'flex', gap: '8px', alignItems: 'flex-start',
         padding: '9px 12px', borderRadius: '8px',
-        background: colors.blueTint, border: '1px solid rgba(85,133,232,0.22)',
+        background: colors.blueTint, border: '1px solid rgba(51,90,134,0.22)',
         fontSize: '12px', lineHeight: 1.5, color: colors.secondary,
       }}
     >

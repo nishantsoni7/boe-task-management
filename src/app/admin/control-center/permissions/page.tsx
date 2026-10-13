@@ -240,7 +240,7 @@ function EffectiveBadge({ choice, action }: { choice: OverrideChoice; action: Ac
   if (choice === 'inherit') {
     if (action.source !== 'employee_override') {
       return (
-        <span className={styles.actionState} style={{ color: action.allowed ? '#166534' : '#B0364A' }}>
+        <span className={styles.actionState} style={{ color: action.allowed ? '#276247' : '#A12438' }}>
           {action.allowed ? 'Allowed' : 'Denied'}
           <span className={cc.muted}> · Inherited from {action.sourceLabel}</span>
         </span>
@@ -250,7 +250,7 @@ function EffectiveBadge({ choice, action }: { choice: OverrideChoice; action: Ac
   }
   const allowed = choice === 'allow'
   return (
-    <span className={styles.actionState} style={{ color: allowed ? '#166534' : '#B0364A' }}>
+    <span className={styles.actionState} style={{ color: allowed ? '#276247' : '#A12438' }}>
       {allowed ? 'Allowed' : 'Denied'}
       <span className={cc.muted}> · Employee Override</span>
     </span>
@@ -371,7 +371,7 @@ function ChangeAccessModal({
       </div>
 
       {pendingLevel && (
-        <div className={cc.note} style={{ marginBottom: 16, borderColor: '#F0C36D', background: '#FFFBEB' }}>
+        <div className={cc.note} style={{ marginBottom: 16, borderColor: '#F0C36D', background: '#FAF0DA' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#8C6D1F', marginBottom: 6 }}>
             Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
             {protectedActionWords(
@@ -538,11 +538,11 @@ function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; ov
       </div>
       <div className={styles.headerStats}>
         <div className={styles.headerStat}>
-          <div className={styles.headerStatValue} style={{ color: '#166534' }}>{accessible}</div>
+          <div className={styles.headerStatValue} style={{ color: '#276247' }}>{accessible}</div>
           <div className={styles.headerStatLabel}>Visible</div>
         </div>
         <div className={styles.headerStat}>
-          <div className={styles.headerStatValue} style={{ color: '#4B5563' }}>{noAccess}</div>
+          <div className={styles.headerStatValue} style={{ color: '#4C5352' }}>{noAccess}</div>
           <div className={styles.headerStatLabel}>Hidden</div>
         </div>
       </div>
@@ -576,7 +576,7 @@ function ModuleRow({
   onOpen: () => void
 }) {
   return (
-    <tr style={open ? { background: '#FAFBFC' } : undefined}>
+    <tr style={open ? { background: '#FBFAF8' } : undefined}>
       <td>
         <span style={{ fontWeight: 600 }}>{mod.displayName}</span>
         {unsaved && <span className={styles.unsaved}>Unsaved</span>}
@@ -640,7 +640,7 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
           {' '}Management access is restricted to system administrators.
         </div>
         {strayOverrides.length > 0 && (
-          <div className={cc.note} style={{ marginTop: 8, fontSize: 11.5, color: '#8C6D1F', borderColor: '#F0C36D', background: '#FFFBEB', padding: '6px 10px' }}>
+          <div className={cc.note} style={{ marginTop: 8, fontSize: 11.5, color: '#8C6D1F', borderColor: '#F0C36D', background: '#FAF0DA', padding: '6px 10px' }}>
             <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
             These grant nothing — management access is admin-only — and have been
             left exactly as they are.

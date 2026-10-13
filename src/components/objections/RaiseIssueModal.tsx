@@ -78,7 +78,7 @@ export function RaiseIssueModal({
       {subject.summary && (
         <div style={{
           background: colors.raised, border: `1px solid ${colors.border}`,
-          borderRadius: 10, padding: '11px 14px', flexShrink: 0,
+          borderRadius: 8, padding: '11px 14px', flexShrink: 0,
         }}>
           <div style={{
             fontSize: 11, fontWeight: 600, color: colors.muted,
@@ -86,7 +86,7 @@ export function RaiseIssueModal({
           }}>
             As recorded
           </div>
-          <div style={{ fontSize: 13, color: '#111318', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 13, color: '#303536', lineHeight: 1.5 }}>
             {subject.summary}
           </div>
         </div>
@@ -97,7 +97,7 @@ export function RaiseIssueModal({
           fontSize: 11, fontWeight: 600, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
-          What looks wrong? <span style={{ color: '#DC2626' }}>*</span>
+          What looks wrong? <span style={{ color: '#B42332' }}>*</span>
         </label>
         <textarea
           id="objection-reason"

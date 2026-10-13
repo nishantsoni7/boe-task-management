@@ -555,7 +555,7 @@ export function MeetingWorkScreen() {
       <MeetingsLayout profile={profile} title="Meeting" onSignOut={signOut}>
         <div style={{
           background: colors.base, border: `1px solid ${colors.border}`,
-          borderRadius: '10px', padding: '48px 24px', textAlign: 'center',
+          borderRadius: '8px', padding: '48px 24px', textAlign: 'center',
         }}>
           <AlertTriangle size={26} strokeWidth={1.5} color={colors.muted} />
           <p style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary, marginTop: '10px' }}>
@@ -676,7 +676,7 @@ export function MeetingWorkScreen() {
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-              fontSize: '11.5px', fontWeight: 600, color: colors.blue,
+              fontSize: '11.5px', fontWeight: 600, color: colors.brandInk,
             }}
           >
             <Pencil size={11} strokeWidth={2.2} /> Edit details
@@ -701,8 +701,8 @@ export function MeetingWorkScreen() {
         <div style={{
           display: 'flex', alignItems: 'center', gap: '9px',
           padding: '9px 13px', borderRadius: '8px', marginBottom: '10px',
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
-          fontSize: '12.5px', color: '#166534',
+          background: '#E8F2EC', border: '1px solid #BCD8C8',
+          fontSize: '12.5px', color: '#276247',
         }}>
           <CheckCircle2 size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
           This meeting is completed and read-only. Follow-ups it scheduled are still live on the
@@ -723,7 +723,7 @@ export function MeetingWorkScreen() {
       {loadError && (
         <div role="alert" style={{
           padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
-          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          background: colors.redTint, border: '1px solid rgba(180,35,50,0.25)',
           fontSize: '13px', color: colors.red,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
         }}>
@@ -1080,7 +1080,7 @@ function OrderWorkspaceHeader({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', padding: '10px 15px 13px', marginBottom: '12px',
+      borderRadius: '8px', padding: '10px 15px 13px', marginBottom: '12px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
         <button
@@ -1187,7 +1187,7 @@ function OrderPanel({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', overflow: 'hidden',
+      borderRadius: '8px', overflow: 'hidden',
     }}>
       {/* Order header — position, overall update and next review together, which
           is the whole order-level answer in one glance. */}
@@ -1229,7 +1229,7 @@ function OrderPanel({
 
           {order.latest_update && (
             <div style={{
-              marginTop: '9px', padding: '8px 11px', borderRadius: '7px',
+              marginTop: '9px', padding: '8px 11px', borderRadius: '8px',
               background: colors.raised, borderLeft: `2px solid ${posMeta.color}`,
               fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
             }}>
@@ -1261,7 +1261,7 @@ function OrderPanel({
             style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-              fontSize: '12px', fontWeight: 600, color: colors.blue,
+              fontSize: '12px', fontWeight: 600, color: colors.brandInk,
             }}
           >
             <Plus size={12} strokeWidth={2.4} /> Add Product
@@ -1409,7 +1409,7 @@ function ItemCard(props: ItemRowProps) {
 
   return (
     <div style={{
-      border: `1px solid ${colors.border}`, borderRadius: '10px',
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '11px 13px', marginBottom: '8px', background: colors.base,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
@@ -1470,7 +1470,7 @@ function UpdateCell({ item, previousUpdate }: { item: MeetingOrderItem; previous
       {item.issue && (
         <div style={{
           display: 'flex', gap: '5px', alignItems: 'flex-start',
-          fontSize: '11.5px', color: '#92400E', marginTop: '5px', lineHeight: 1.4,
+          fontSize: '11.5px', color: '#805B0D', marginTop: '5px', lineHeight: 1.4,
         }}>
           <AlertTriangle size={11} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: '2px' }} />
           <span>{item.issue}</span>
@@ -1600,7 +1600,7 @@ function IconAction({
   positive?: boolean
   disabled?: boolean
 }) {
-  const color = danger ? colors.red : positive ? '#2E8A58' : colors.secondary
+  const color = danger ? colors.red : positive ? '#276247' : colors.secondary
   return (
     <button
       onClick={onClick}
@@ -1609,7 +1609,7 @@ function IconAction({
       aria-label={label}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 28, height: 28, borderRadius: '7px', flexShrink: 0,
+        width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
         border: `1px solid ${colors.border}`, background: 'transparent',
         color, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
         transition: 'background 0.12s',
@@ -1634,7 +1634,7 @@ function EmptyReview({
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', padding: '48px 24px', textAlign: 'center',
+      borderRadius: '8px', padding: '48px 24px', textAlign: 'center',
     }}>
       <ClipboardList size={28} strokeWidth={1.4} color={colors.muted} />
       <p style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary, marginTop: '10px' }}>

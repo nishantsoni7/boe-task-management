@@ -291,7 +291,7 @@ function Header({
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
       borderLeft: `3px solid ${meta.color}`,
-      borderRadius: '10px', padding: '10px 15px 13px',
+      borderRadius: '8px', padding: '10px 15px 13px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
         <button
@@ -393,7 +393,7 @@ function Header({
 const LINK_BUTTON: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: '4px',
   background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0',
-  fontSize: '11.5px', fontWeight: 600, color: colors.blue, textAlign: 'left',
+  fontSize: '11.5px', fontWeight: 600, color: colors.brandInk, textAlign: 'left',
 }
 
 function IconAction({
@@ -413,7 +413,7 @@ function IconAction({
       title={label}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 26, height: 26, borderRadius: '7px',
+        width: 26, height: 26, borderRadius: '8px',
         border: `1px solid ${colors.border}`, background: colors.base,
         color: disabled ? colors.muted : colors.secondary,
         cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
@@ -773,7 +773,7 @@ function DiscussionComposer({
         <div role="alert" style={{
           padding: '8px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.5,
           background: notice.tone === 'error' ? colors.redTint : colors.greenTint,
-          color: notice.tone === 'error' ? colors.red : '#2E8A58',
+          color: notice.tone === 'error' ? colors.red : '#276247',
         }}>
           {notice.message}
         </div>
@@ -799,7 +799,7 @@ function EventList({ events }: { events: MeetingDiscussionEvent[] }) {
           </div>
           {event.new_update && (
             <div style={{
-              marginTop: '5px', padding: '8px 10px', borderRadius: '7px',
+              marginTop: '5px', padding: '8px 10px', borderRadius: '8px',
               background: colors.raised, borderLeft: `2px solid ${colors.blue}`,
               fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
             }}>
@@ -940,7 +940,7 @@ function EarlierMeetings({
           const key = group.appearanceId ?? `loose-${position}`
           const expanded = position === 0 ? !open.has(key) : open.has(key)
           return (
-            <div key={key} style={{ border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden' }}>
+            <div key={key} style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
               <button
                 type="button"
                 onClick={() => toggle(key)}
@@ -1035,7 +1035,7 @@ function summaryLine(group: DiscussionMeetingGroup): string {
 function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section style={{
-      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px',
+      background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '8px',
       padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
       {children}
@@ -1065,7 +1065,7 @@ function Quote({
     <div>
       <div style={FIELD_LABEL}>{label}</div>
       <div style={{
-        marginTop: '4px', padding: '8px 11px', borderRadius: '7px',
+        marginTop: '4px', padding: '8px 11px', borderRadius: '8px',
         background: colors.raised, borderLeft: `2px solid ${accent}`,
         fontSize: '12.5px', color: colors.primary, lineHeight: 1.5, whiteSpace: 'pre-wrap',
       }}>
@@ -1081,9 +1081,9 @@ function Banner({ tone, children }: { tone: 'success' | 'muted'; children: React
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: '7px',
       padding: '9px 12px', borderRadius: '8px',
-      background: success ? '#F0FDF4' : colors.raised,
-      border: `1px solid ${success ? '#BBF7D0' : colors.border}`,
-      fontSize: '12px', color: success ? '#166534' : colors.secondary, lineHeight: 1.55,
+      background: success ? '#E8F2EC' : colors.raised,
+      border: `1px solid ${success ? '#BCD8C8' : colors.border}`,
+      fontSize: '12px', color: success ? '#276247' : colors.secondary, lineHeight: 1.55,
     }}>
       {children}
     </div>

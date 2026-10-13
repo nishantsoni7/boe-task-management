@@ -83,7 +83,7 @@ export default function RolesPage() {
               style={{
                 background: colors.base,
                 border: `1px solid ${colors.border}`,
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: '16px 20px',
                 display: 'flex',
                 alignItems: 'flex-start',

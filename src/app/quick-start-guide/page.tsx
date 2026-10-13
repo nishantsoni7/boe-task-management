@@ -34,8 +34,8 @@ const sectionNumber: React.CSSProperties = {
   width: 24,
   height: 24,
   borderRadius: '6px',
-  background: '#1A2035',
-  color: '#E8A030',
+  background: '#303536',
+  color: '#C48A1A',
   fontSize: '11px',
   fontWeight: 800,
   flexShrink: 0,
@@ -82,7 +82,7 @@ function StatusBadge({ label, color, bg }: { label: string; color: string; bg: s
 
 // ── Highlight box ─────────────────────────────────────────────────────────────
 
-function Highlight({ children, accent = '#2563EB' }: { children: React.ReactNode; accent?: string }) {
+function Highlight({ children, accent = '#335A86' }: { children: React.ReactNode; accent?: string }) {
   return (
     <div style={{
       borderLeft: `3px solid ${accent}`,
@@ -106,26 +106,26 @@ function ExampleBox({ good, bad }: { good?: string; bad?: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
       {good && (
         <div style={{
-          background: '#F0FDF4', border: '1px solid #BBF7D0',
+          background: '#E8F2EC', border: '1px solid #BCD8C8',
           borderRadius: '8px', padding: '10px 14px',
         }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#276247', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Good update
           </span>
-          <div style={{ fontSize: '13px', color: '#166534', marginTop: '4px', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '13px', color: '#276247', marginTop: '4px', lineHeight: 1.5 }}>
             {good}
           </div>
         </div>
       )}
       {bad && (
         <div style={{
-          background: '#FEF2F2', border: '1px solid #FECACA',
+          background: '#FBE9EC', border: '1px solid #E9B9C1',
           borderRadius: '8px', padding: '10px 14px',
         }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#A12438', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Bad update
           </span>
-          <div style={{ fontSize: '13px', color: '#991B1B', marginTop: '4px', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '13px', color: '#A12438', marginTop: '4px', lineHeight: 1.5 }}>
             {bad}
           </div>
         </div>
@@ -161,11 +161,11 @@ export default function QuickStartGuidePage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: 26, height: 26, borderRadius: '7px',
-            background: '#1A2035',
+            width: 26, height: 26, borderRadius: '8px',
+            background: '#303536',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Briefcase size={12} color="#E8A030" strokeWidth={2} />
+            <Briefcase size={12} color="#C48A1A" strokeWidth={2} />
           </div>
           <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>
             Quick Start Guide
@@ -187,7 +187,7 @@ export default function QuickStartGuidePage() {
             color: colors.secondary,
             background: colors.float,
             border: `1px solid ${colors.border}`,
-            borderRadius: '7px',
+            borderRadius: '8px',
             padding: '6px 14px',
             cursor: 'pointer',
             transition: 'background 0.12s',
@@ -269,7 +269,7 @@ export default function QuickStartGuidePage() {
               }}>
                 <span style={{
                   width: 7, height: 7, borderRadius: '50%',
-                  background: '#E8A030', flexShrink: 0, marginTop: '6px',
+                  background: '#C48A1A', flexShrink: 0, marginTop: '6px',
                 }} />
                 <div>
                   <div style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary, lineHeight: 1.3 }}>{label}</div>
@@ -294,7 +294,7 @@ export default function QuickStartGuidePage() {
               'Start work or update status',
               'Do not ignore assigned tasks',
             ].map((item, i) => (
-              <li key={i} style={{ ...rule, fontWeight: item.startsWith('Do not') ? 600 : 400, color: item.startsWith('Do not') ? '#991B1B' : colors.secondary }}>
+              <li key={i} style={{ ...rule, fontWeight: item.startsWith('Do not') ? 600 : 400, color: item.startsWith('Do not') ? '#A12438' : colors.secondary }}>
                 {item}
               </li>
             ))}
@@ -309,11 +309,11 @@ export default function QuickStartGuidePage() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {[
-              { label: 'Pending',    color: '#6B7280', bg: '#F3F4F6', desc: 'Task is assigned but not yet acknowledged.' },
-              { label: 'Working',    color: '#1D4ED8', bg: '#EFF6FF', desc: 'Work has started.' },
-              { label: 'Waiting On', color: '#92400E', bg: '#FFFBEB', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
-              { label: 'Blocked',    color: '#991B1B', bg: '#FEF2F2', desc: 'Work cannot move forward because there is a serious issue that needs help or a decision.' },
-              { label: 'Completed',  color: '#166534', bg: '#F0FDF4', desc: 'Task is fully done. Do not mark complete if only partially done.' },
+              { label: 'Pending',    color: '#686D6C', bg: '#F1EEE9', desc: 'Task is assigned but not yet acknowledged.' },
+              { label: 'Working',    color: '#335A86', bg: '#EAF0F8', desc: 'Work has started.' },
+              { label: 'Waiting On', color: '#805B0D', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
+              { label: 'Blocked',    color: '#A12438', bg: '#FBE9EC', desc: 'Work cannot move forward because there is a serious issue that needs help or a decision.' },
+              { label: 'Completed',  color: '#276247', bg: '#E8F2EC', desc: 'Task is fully done. Do not mark complete if only partially done.' },
             ].map(({ label, color, bg, desc }) => (
               <div key={label} style={{
                 display: 'flex', alignItems: 'flex-start', gap: '12px',
@@ -339,7 +339,7 @@ export default function QuickStartGuidePage() {
             Use <strong>Waiting On</strong> when the task depends on another person, department, vendor, or client.
             Always mention who or what you are waiting for.
           </p>
-          <Highlight accent="#92400E">
+          <Highlight accent="#805B0D">
             <strong>Example:</strong> Waiting on client approval for final fabric shade.
           </Highlight>
         </div>
@@ -353,7 +353,7 @@ export default function QuickStartGuidePage() {
           <p style={bodyText}>
             Use <strong>Blocked</strong> only when normal work cannot continue and management help is required.
           </p>
-          <Highlight accent="#991B1B">
+          <Highlight accent="#A12438">
             <strong>Example:</strong> Production cannot start because final size and material are not confirmed.
           </Highlight>
         </div>
@@ -425,7 +425,7 @@ export default function QuickStartGuidePage() {
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E8A030', flexShrink: 0 }} />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#C48A1A', flexShrink: 0 }} />
                 {item}
               </div>
             ))}
@@ -433,7 +433,7 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 10 ── */}
-        <div style={{ ...card, borderLeft: '3px solid #E8A030', borderRadius: '0 12px 12px 12px' }}>
+        <div style={{ ...card, borderLeft: '3px solid #C48A1A', borderRadius: '0 12px 12px 12px' }}>
           <div style={sectionTitle}>
             <span style={sectionNumber}>10</span>
             Basic Rules for Everyone
@@ -450,16 +450,16 @@ export default function QuickStartGuidePage() {
               <div key={text} style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '9px 12px',
-                background: warn ? '#FEF2F2' : colors.raised,
-                border: `1px solid ${warn ? '#FECACA' : colors.border}`,
+                background: warn ? '#FBE9EC' : colors.raised,
+                border: `1px solid ${warn ? '#E9B9C1' : colors.border}`,
                 borderRadius: '8px',
                 fontSize: '13.5px',
                 fontWeight: warn ? 600 : 400,
-                color: warn ? '#991B1B' : colors.secondary,
+                color: warn ? '#A12438' : colors.secondary,
               }}>
                 {warn
                   ? <span style={{ fontSize: '14px', flexShrink: 0 }}>✕</span>
-                  : <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#45A870', flexShrink: 0 }} />
+                  : <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2F7A52', flexShrink: 0 }} />
                 }
                 {text}
               </div>
@@ -468,9 +468,9 @@ export default function QuickStartGuidePage() {
         </div>
 
         {/* ── Section 11 ── */}
-        <div style={{ ...card, background: '#1A2035', border: 'none' }}>
+        <div style={{ ...card, background: '#303536', border: 'none' }}>
           <div style={{ ...sectionTitle, color: '#fff' }}>
-            <span style={{ ...sectionNumber, background: '#E8A030', color: '#1A2035' }}>11</span>
+            <span style={{ ...sectionNumber, background: '#C48A1A', color: '#303536' }}>11</span>
             Launch Week Focus
           </div>
           <p style={{ ...bodyText, color: 'rgba(255,255,255,0.65)', marginBottom: '16px' }}>
@@ -488,18 +488,18 @@ export default function QuickStartGuidePage() {
               'Manager review',
             ].map(item => (
               <div key={item} style={{
-                background: 'rgba(232,160,48,0.1)',
-                border: '1px solid rgba(232,160,48,0.2)',
+                background: 'rgba(196,138,26,0.1)',
+                border: '1px solid rgba(196,138,26,0.2)',
                 borderRadius: '8px',
                 padding: '9px 12px',
                 fontSize: '13px',
                 fontWeight: 500,
-                color: '#E8A030',
+                color: '#C48A1A',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#E8A030', flexShrink: 0 }} />
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#C48A1A', flexShrink: 0 }} />
                 {item}
               </div>
             ))}
@@ -514,9 +514,9 @@ export default function QuickStartGuidePage() {
               display: 'inline-flex', alignItems: 'center', gap: '8px',
               fontSize: '13.5px', fontWeight: 600,
               color: '#fff',
-              background: '#1A2035',
+              background: '#303536',
               border: 'none',
-              borderRadius: '9px',
+              borderRadius: '8px',
               padding: '11px 24px',
               cursor: 'pointer',
               transition: 'opacity 0.15s',

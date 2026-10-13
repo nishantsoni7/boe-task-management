@@ -129,7 +129,7 @@ export default function ProjectListPage() {
         <div style={{ textAlign: 'center', padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
           <div style={{
             width: 48, height: 48, borderRadius: '12px',
-            background: 'rgba(232,160,48,0.10)',
+            background: 'rgba(196,138,26,0.10)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
           }}>
             ⚠
@@ -243,11 +243,11 @@ export default function ProjectListPage() {
       {/* Error */}
       {submitError && (
         <div style={{
-          background: 'rgba(217,79,79,0.07)',
-          border: '1px solid rgba(217,79,79,0.2)',
+          background: 'rgba(180,35,50,0.07)',
+          border: '1px solid rgba(180,35,50,0.2)',
           borderRadius: '8px',
           padding: '10px 14px',
-          fontSize: '13px', color: '#B91C1C',
+          fontSize: '13px', color: '#B42332',
           marginBottom: '14px',
         }}>
           {submitError}
@@ -261,7 +261,7 @@ export default function ProjectListPage() {
           style={{
             width: '100%', padding: '13px',
             background: 'none', color: colors.secondary,
-            border: `1.5px solid ${colors.border}`, borderRadius: '10px',
+            border: `1.5px solid ${colors.border}`, borderRadius: '8px',
             fontSize: '13px', fontWeight: 600,
             cursor: 'pointer', fontFamily: font.body,
           }}
@@ -295,7 +295,7 @@ function CartRow({
     <div style={{
       background: colors.raised,
       border: `1px solid ${colors.border}`,
-      borderRadius: '10px',
+      borderRadius: '8px',
       padding: '12px 14px',
     }}>
       {/* Top row: image + info + remove */}
@@ -310,8 +310,8 @@ function CartRow({
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{
             fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-            color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-            borderRadius: '3px', padding: '1px 5px',
+            color: '#303536', background: 'rgba(48,53,54,0.07)',
+            borderRadius: '6px', padding: '1px 5px',
           }}>
             {item.product_code}
           </span>
@@ -392,10 +392,10 @@ function Shell({ children, footer }: { children: React.ReactNode; footer?: React
         marginBottom: '20px',
       }}>
         <div style={{
-          width: 26, height: 26, borderRadius: '6px', background: '#1A2035',
+          width: 26, height: 26, borderRadius: '6px', background: '#303536',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#DC1F2E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B9472E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <polyline points="9 22 9 12 15 12 15 22" />
           </svg>
@@ -410,7 +410,7 @@ function Shell({ children, footer }: { children: React.ReactNode; footer?: React
         width: '100%', maxWidth: '480px',
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: '16px',
+        borderRadius: '12px',
         padding: '20px 18px 24px',
         boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
       }}>
@@ -441,8 +441,8 @@ function Shell({ children, footer }: { children: React.ReactNode; footer?: React
 
 const primaryBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  background: '#1A2035', color: '#fff',
-  border: 'none', borderRadius: '10px',
+  background: '#303536', color: '#fff',
+  border: 'none', borderRadius: '8px',
   fontSize: '14px', fontWeight: 600,
   cursor: 'pointer', fontFamily: font.body,
   letterSpacing: '-0.01em',
@@ -453,7 +453,7 @@ const qtyBtn: React.CSSProperties = {
   width: 32, height: 32,
   background: colors.float,
   border: `1px solid ${colors.border}`,
-  borderRadius: '7px',
+  borderRadius: '8px',
   fontSize: '16px', color: colors.primary,
   cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'center',

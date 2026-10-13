@@ -43,9 +43,9 @@ import {
 
 /** Danger styling, in one place so every destructive control matches. */
 const DANGER = {
-  bg: '#FEF2F2',
-  border: '#FECACA',
-  color: '#B91C1C',
+  bg: '#FBE9EC',
+  border: '#E9B9C1',
+  color: '#B42332',
 } as const
 
 const dangerButton = {
@@ -179,7 +179,7 @@ export function DeleteReviewsSheet({
           role="alert"
           style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
-            padding: '11px 12px', borderRadius: '9px',
+            padding: '11px 12px', borderRadius: '8px',
             background: DANGER.bg, border: `1px solid ${DANGER.border}`,
           }}
         >
@@ -210,7 +210,7 @@ export function DeleteReviewsSheet({
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: colors.tertiary }}>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: '10.5px', color: colors.tertiary }}>
                 {card.card_ref}
               </div>
               <div style={{
@@ -397,7 +397,7 @@ export function DeleteAllReviewsSheet({
       ) : (
         <>
           <div style={{
-            border: `1px solid ${colors.border}`, borderRadius: '9px', overflow: 'hidden',
+            border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
           }}>
             {rows.map((r, i) => (
               <div
@@ -430,7 +430,7 @@ export function DeleteAllReviewsSheet({
               role="alert"
               style={{
                 display: 'flex', gap: '9px', alignItems: 'flex-start',
-                padding: '11px 12px', borderRadius: '9px',
+                padding: '11px 12px', borderRadius: '8px',
                 background: DANGER.bg, border: `1px solid ${DANGER.border}`,
               }}
             >
@@ -454,7 +454,7 @@ export function DeleteAllReviewsSheet({
             display: 'flex', flexDirection: 'column', gap: '6px',
             fontSize: '12px', color: colors.secondary,
           }}>
-            Type <strong style={{ fontFamily: 'var(--font-mono)' }}>{DELETE_ALL_PHRASE}</strong> to confirm
+            Type <strong style={{ fontFamily: 'var(--font-body)' }}>{DELETE_ALL_PHRASE}</strong> to confirm
             <input
               type="text"
               value={typed}
@@ -465,7 +465,7 @@ export function DeleteAllReviewsSheet({
               spellCheck={false}
               aria-label={`Type ${DELETE_ALL_PHRASE} to confirm deleting every review`}
               className="boe-input"
-              style={{ minHeight: '44px', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}
+              style={{ minHeight: '44px', fontFamily: 'var(--font-body)', letterSpacing: '0.04em' }}
             />
           </label>
         </>

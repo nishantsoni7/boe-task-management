@@ -47,7 +47,7 @@ export function SubmitReviewHeaderButton() {
         <span
           id="header-submit-reason"
           role={availability.status === 'error' ? 'alert' : 'note'}
-          style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4, maxWidth: 280, color: availability.status === 'loading' ? '#6B7384' : availability.status === 'limit' ? '#92400E' : '#B91C1C' }}
+          style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.4, maxWidth: 280, color: availability.status === 'loading' ? '#686D6C' : availability.status === 'limit' ? '#805B0D' : '#B42332' }}
         >
           {availability.reason}
         </span>

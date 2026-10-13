@@ -74,7 +74,7 @@ function HistoryRow({ entry, isLast }: { entry: MeetingHistoryEntry; isLast: boo
 
       {hasUpdateText(entry) && (
         <div style={{
-          marginTop: '6px', padding: '8px 10px', borderRadius: '7px',
+          marginTop: '6px', padding: '8px 10px', borderRadius: '8px',
           background: colors.raised, borderLeft: `2px solid ${colors.blue}`,
           fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
         }}>

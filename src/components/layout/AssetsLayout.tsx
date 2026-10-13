@@ -149,7 +149,7 @@ export function AssetsLayout({
         onClick={() => handleNav(view)}
         style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
       >
-        <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+        <span style={{ color: active ? '#B9472E' : '#686D6C', display: 'flex', alignItems: 'center' }}>
           {icon}
         </span>
         {label}
@@ -183,13 +183,13 @@ export function AssetsLayout({
             title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
+              width: 28, height: 28, borderRadius: '8px',
+              background: 'rgba(185,71,46,0.08)',
+              border: '1px solid rgba(185,71,46,0.20)',
+              color: '#B9472E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(185,71,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -198,7 +198,7 @@ export function AssetsLayout({
         {/* Nav — self-entry (all users) */}
         <div className="boe-sidebar-section">
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: '#8C94A6',
+            fontSize: '10px', fontWeight: 700, color: '#686D6C',
             textTransform: 'uppercase', letterSpacing: '0.06em',
             padding: '4px 10px 6px',
           }}>
@@ -221,7 +221,7 @@ export function AssetsLayout({
           {managementNav.length > 0 && (
             <>
               <div style={{
-                fontSize: '10px', fontWeight: 700, color: '#8C94A6',
+                fontSize: '10px', fontWeight: 700, color: '#686D6C',
                 textTransform: 'uppercase', letterSpacing: '0.06em',
                 padding: '14px 10px 6px',
               }}>

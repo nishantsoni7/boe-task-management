@@ -113,7 +113,7 @@ export function AdminSubmissionAction({
             className="boe-btn boe-btn-primary"
             onClick={() => { void confirm() }}
             disabled={busy || (reject && reason.trim() === '')}
-            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B91C1C', borderColor: '#B91C1C' }}
+            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px', background: '#B42332', borderColor: '#B42332' }}
           >
             {busy
               ? (reject ? 'Rejecting…' : 'Deleting…')

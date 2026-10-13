@@ -285,7 +285,7 @@ export function ReviewImageManager({
                     border: 'none', cursor: busy ? 'default' : 'pointer',
                     // Slightly less opaque than the old 0.72 so a 44px square
                     // does not black out the corner of a 107px thumbnail.
-                    background: 'rgba(17,19,24,0.62)', color: '#FFFFFF',
+                    background: 'rgba(48,53,54,0.62)', color: '#FFFFFF',
                   }}
                 >
                   <Trash2 size={14} strokeWidth={2} />

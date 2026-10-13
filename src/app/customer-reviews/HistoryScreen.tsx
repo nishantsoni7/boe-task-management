@@ -95,9 +95,9 @@ export function HistoryScreen() {
         </div>
         {error && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: colors.red }}>{error}</p>}
         {rows === null ? <p role="status" style={{ margin: 0, fontSize: 12.5, color: colors.muted }}>Loading the history…</p>
-          : shown.length === 0 ? <p style={{ margin: 0, padding: '14px 16px', borderRadius: 10, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>No generated reviews match.</p>
+          : shown.length === 0 ? <p style={{ margin: 0, padding: '14px 16px', borderRadius: 8, border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: 13 }}>No generated reviews match.</p>
           : shown.map(r => (
-            <details key={r.id} style={{ borderRadius: 10, border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0 }}>
+            <details key={r.id} style={{ borderRadius: 8, border: `1px solid ${colors.borderSoft}`, background: colors.base, minWidth: 0 }}>
               <summary style={{ cursor: 'pointer', padding: '10px 14px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 13, color: colors.primary }}>{r.card_ref}</strong>
                 <ReviewBadge meta={TEST_CARD_STATUS_META[r.status]} />

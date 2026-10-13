@@ -731,7 +731,7 @@ export function CarryForwardOrdersModal({
                 disabled={saving}
                 style={{
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  fontSize: '12px', fontWeight: 600, color: colors.blue,
+                  fontSize: '12px', fontWeight: 600, color: colors.brandInk,
                 }}
               >
                 {allChosen ? 'Select none' : 'Select all'}
@@ -739,7 +739,7 @@ export function CarryForwardOrdersModal({
             )}
           </div>
           <div style={{
-            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
             maxHeight: '50vh', overflowY: 'auto',
           }}>
             {candidates.map((c, i) => {

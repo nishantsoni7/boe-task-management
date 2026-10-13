@@ -563,7 +563,7 @@ function TableSkeleton() {
     <div style={{
       background: colors.base,
       border: `1.5px solid ${colors.border}`,
-      borderRadius: '10px',
+      borderRadius: '8px',
       overflow: 'hidden',
     }}>
       {Array.from({ length: 6 }).map((_, i) => (
@@ -576,10 +576,10 @@ function TableSkeleton() {
           }}
         >
           <div style={{ width: 56, height: 56, borderRadius: '8px', background: colors.raised, flexShrink: 0 }} />
-          <div style={{ width: 90, height: 14, borderRadius: '4px', background: colors.raised }} />
-          <div style={{ width: 160, height: 14, borderRadius: '4px', background: colors.raised }} />
-          <div style={{ width: 100, height: 14, borderRadius: '4px', background: colors.raised }} />
-          <div style={{ width: 70, height: 14, borderRadius: '4px', background: colors.raised, marginLeft: 'auto' }} />
+          <div style={{ width: 90, height: 14, borderRadius: '6px', background: colors.raised }} />
+          <div style={{ width: 160, height: 14, borderRadius: '6px', background: colors.raised }} />
+          <div style={{ width: 100, height: 14, borderRadius: '6px', background: colors.raised }} />
+          <div style={{ width: 70, height: 14, borderRadius: '6px', background: colors.raised, marginLeft: 'auto' }} />
         </div>
       ))}
     </div>
@@ -607,9 +607,9 @@ function DeleteConfirmModal({
         padding: '20px',
       }}
     >
-      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '9px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '8px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Trash2 size={16} strokeWidth={2.2} color={colors.red} />
           </div>
           <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Delete Product</span>
@@ -619,7 +619,7 @@ function DeleteConfirmModal({
           This action cannot be undone.
         </p>
         {error && (
-          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
+          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px', marginBottom: '14px' }}>{error}</div>
         )}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} disabled={busy}
@@ -674,11 +674,11 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; }
-        .label { text-align: center; padding: 28px 32px; border: 1.5px solid #e5e7eb; border-radius: 12px; display: inline-block; }
-        .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; margin-bottom: 4px; }
-        .name { font-size: 17px; font-weight: 700; color: #111827; margin: 10px 0 2px; }
-        .code { font-size: 11px; font-family: monospace; color: #6b7280; margin-bottom: 2px; }
-        .mrp { font-size: 20px; font-weight: 700; color: #111827; margin: 6px 0 16px; }
+        .label { text-align: center; padding: 28px 32px; border: 1.5px solid #E4DED7; border-radius: 12px; display: inline-block; }
+        .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #686D6C; margin-bottom: 4px; }
+        .name { font-size: 17px; font-weight: 700; color: #303536; margin: 10px 0 2px; }
+        .code { font-size: 11px; font-family: monospace; color: #686D6C; margin-bottom: 2px; }
+        .mrp { font-size: 20px; font-weight: 700; color: #303536; margin: 6px 0 16px; }
         svg { display: block; margin: 0 auto; }
       </style></head><body>${content.innerHTML}</body></html>
     `)
@@ -703,7 +703,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
         onClick={e => e.stopPropagation()}
         style={{
           background: '#fff',
-          borderRadius: '14px',
+          borderRadius: '12px',
           padding: '28px 32px',
           width: '100%', maxWidth: '360px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
@@ -716,7 +716,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
           style={{
             position: 'absolute', top: '14px', right: '14px',
             background: 'transparent', border: 'none', cursor: 'pointer',
-            color: '#9ca3af', padding: '4px',
+            color: '#686D6C', padding: '4px',
           }}
         >
           <X size={18} />
@@ -724,17 +724,17 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
 
         {/* Label preview */}
         <div ref={printRef} className="label" style={{ textAlign: 'center' }}>
-          <div className="brand" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '4px' }}>
+          <div className="brand" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#686D6C', marginBottom: '4px' }}>
             {QR_LABEL_BRAND}
           </div>
           <QRCodeSVG value={qrUrl} size={160} style={{ display: 'block', margin: '0 auto' }} />
-          <div className="name" style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '12px 0 2px' }}>
+          <div className="name" style={{ fontSize: '17px', fontWeight: 700, color: '#303536', margin: '12px 0 2px' }}>
             {product.name}
           </div>
-          <div className="code" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#6b7280', marginBottom: '2px' }}>
+          <div className="code" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#686D6C', marginBottom: '2px' }}>
             {product.product_code}
           </div>
-          <div className="mrp" style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>
+          <div className="mrp" style={{ fontSize: '20px', fontWeight: 700, color: '#303536', marginTop: '4px' }}>
             {mrpText}
           </div>
         </div>
@@ -748,7 +748,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
             value={qrUrl}
             size={QR_PLAIN_CODE_SIZE}
             marginSize={QR_EXPORT_MARGIN_MODULES}
-            fgColor="#000000"
+            fgColor="#303536"
             bgColor="transparent"
           />
         </div>
@@ -765,7 +765,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 fontSize: '14px', fontWeight: 600,
                 color: '#fff',
-                background: '#1A2035',
+                background: '#303536',
                 border: 'none', borderRadius: '8px',
                 padding: '11px 0',
                 cursor: downloadingFormat ? 'wait' : 'pointer',

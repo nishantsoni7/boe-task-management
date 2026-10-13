@@ -106,8 +106,8 @@ export function PaymentDeleteConfirmIdField({
         aria-describedby={mismatch ? CONFIRM_ID_ERROR_ID : undefined}
         style={{
           fontSize: '13px', padding: '8px 10px', borderRadius: '8px',
-          border: `1px solid ${mismatch ? '#DC2626' : colors.border}`,
-          background: mismatch ? '#FEF2F2' : undefined,
+          border: `1px solid ${mismatch ? '#B42332' : colors.border}`,
+          background: mismatch ? '#FBE9EC' : undefined,
           fontFamily: 'monospace',
         }}
         // The one input on this dialog that is a code rather than prose: a phone
@@ -117,11 +117,11 @@ export function PaymentDeleteConfirmIdField({
         autoCorrect="off"
         spellCheck={false}
       />
-      {/* The BOE inline field error: 11px, #C13030, directly beneath the box —
+      {/* The BOE inline field error: 11px, #B42332, directly beneath the box —
           the same shape OrderField draws, and gone the moment it stops being
           true rather than at submit. */}
       {mismatch && (
-        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '11px', color: '#C13030', lineHeight: 1.5 }}>
+        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '11px', color: '#B42332', lineHeight: 1.5 }}>
           {mismatch}
         </div>
       )}
@@ -225,7 +225,7 @@ export function DeletePaymentModal({
       {allocationSummary && (
         <div style={{
           padding: '10px 12px', borderRadius: '8px',
-          background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412',
+          background: '#FAF0DA', border: '1px solid #E6D2A0', color: '#805B0D',
           fontSize: '12px', lineHeight: 1.55,
         }}>
           <div style={{ fontWeight: 600 }}>{allocationSummary}</div>
@@ -264,7 +264,7 @@ export function DeletePaymentModal({
       {message && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.55,
-          background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
+          background: '#FBE9EC', border: '1px solid #E9B9C1', color: '#B42332',
         }}>
           {message}
         </div>
@@ -286,7 +286,7 @@ export function DeletePaymentModal({
             disabled={deleting || !canSubmit}
             style={{
               padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-              border: 'none', color: '#fff', background: '#DC1F2E',
+              border: 'none', color: '#fff', background: '#B42332',
               cursor: (deleting || !canSubmit) ? 'not-allowed' : 'pointer', opacity: (deleting || !canSubmit) ? 0.6 : 1,
             }}
           >

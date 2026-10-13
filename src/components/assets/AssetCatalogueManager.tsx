@@ -315,8 +315,8 @@ function Banner({ tone, message }: { tone: 'error' | 'success'; message: string 
   return (
     <div role={tone === 'error' ? 'alert' : 'status'} style={{
       padding: '10px 12px', borderRadius: '8px', fontSize: '12px',
-      background: tone === 'error' ? 'rgba(217,79,79,0.1)' : 'rgba(22,163,74,0.10)',
-      color: tone === 'error' ? '#C13030' : '#15803D',
+      background: tone === 'error' ? 'rgba(180,35,50,0.1)' : 'rgba(22,163,74,0.10)',
+      color: tone === 'error' ? '#B42332' : '#276247',
     }}>
       {message}
     </div>
@@ -353,9 +353,9 @@ function NameField({ label, value, onChange, problem, max, autoFocus }: {
         onChange={e => { setTouched(true); onChange(e.target.value) }}
         maxLength={max + 10}
         aria-invalid={!!show}
-        style={{ width: '100%', borderColor: show ? '#C13030' : undefined }}
+        style={{ width: '100%', borderColor: show ? '#B42332' : undefined }}
       />
-      {show && <div style={{ fontSize: '11.5px', color: '#C13030' }}>{problem}</div>}
+      {show && <div style={{ fontSize: '11.5px', color: '#B42332' }}>{problem}</div>}
     </AssetField>
   )
 }
