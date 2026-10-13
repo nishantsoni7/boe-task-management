@@ -75,7 +75,7 @@ const CATALOG_TYPES = [
 const STATUS_META: Record<SampleStatus, { label: string; bg: string; color: string }> = {
   pending_approval: { label: 'Pending Approval', bg: '#FAF0DA14', color: '#805B0D' },
   approved:         { label: 'Approved',         bg: colors.blueTint,  color: colors.blue  },
-  qr_submitted:     { label: 'QR Submitted',     bg: '#F1EEE9',        color: '#335A86'    },
+  qr_submitted:     { label: 'QR Submitted',     bg: '#EAF0F8',        color: '#335A86'    },
   rejected:         { label: 'Rejected',         bg: colors.redTint,   color: colors.red   },
   dispatched:       { label: 'Dispatched',       bg: '#30353614',      color: '#303536'    },
   returned:         { label: 'Returned',         bg: colors.greenTint, color: colors.green },

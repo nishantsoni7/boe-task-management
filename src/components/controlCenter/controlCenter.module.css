@@ -88,8 +88,8 @@
 .badgeGreen  { color: #276247; background: #E8F2EC; }
 .badgeGray   { color: #4C5352; background: #F1EEE9; }
 .badgeAmber  { color: #805B0D; background: #FAF0DA; }
-.badgeBlue   { color: #335A86; background: #F1EEE9; }
-.badgeViolet { color: #335A86; background: #FBFAF8; }
+.badgeBlue   { color: #335A86; background: #EAF0F8; }
+.badgeViolet { color: #335A86; background: #EAF0F8; }
 .badgeRed    { color: #B42332; background: #FBE9EC; }
 
 /* Overview: stat tiles */

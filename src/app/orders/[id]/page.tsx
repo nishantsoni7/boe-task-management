@@ -356,9 +356,9 @@ function allowedTransitions(profile: UserProfile, currentStatus: string): OrderS
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  running:            { label: 'Running',             bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
+  running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#FBFAF8', color: '#335A86', border: '#C3D3E6' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
   cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
 }

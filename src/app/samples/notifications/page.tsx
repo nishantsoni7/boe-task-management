@@ -28,7 +28,7 @@ const EVENT_META: Record<string, { label: string; color: string; bg: string }> =
   sample_request_reapplied: { label: 'Reapplied',    color: colors.brand,  bg: colors.brandTint  },
   sample_request_edited:    { label: 'Edited',       color: colors.muted, bg: colors.float     },
   sample_request_deleted:   { label: 'Deleted',      color: colors.red,   bg: colors.redTint   },
-  sample_qr_submitted:      { label: 'QR Submitted', color: '#335A86',    bg: '#F1EEE9'        },
+  sample_qr_submitted:      { label: 'QR Submitted', color: '#335A86',    bg: '#EAF0F8'        },
   sample_dispatched:        { label: 'Dispatched',   color: '#303536',    bg: '#30353614'      },
   sample_followup:          { label: 'Follow-up',    color: colors.muted, bg: colors.float     },
   sample_returned:          { label: 'Returned',     color: colors.green, bg: colors.greenTint },

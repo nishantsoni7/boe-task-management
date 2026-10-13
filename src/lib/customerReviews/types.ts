@@ -696,10 +696,10 @@ export const TEST_CARD_STATUS_META: Record<TestCardStatus, BadgeMeta> = {
   // been through a person yet". It is deliberately NOT grey like Available —
   // the one distinction a verifier must never misread on a crowded screen is
   // "waiting for me" against "already released".
-  pending_approval: { label: 'Pending approval', bg: '#FBFAF8', color: '#335A86', border: '#C3D3E6' },
+  pending_approval: { label: 'Pending approval', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   available: { label: 'Available', bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' },
   booked:    { label: 'Booked',    bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  submitted: { label: 'Submitted', bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
+  submitted: { label: 'Submitted', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   verified:  { label: 'Verified',  bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }
 

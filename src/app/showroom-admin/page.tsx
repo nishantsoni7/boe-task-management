@@ -54,7 +54,7 @@ const STAGE_STYLE: Record<InquiryStage, {
 }> = {
   selecting:       { color: '#805B0D', bg: '#FAF0DA', border: '#FCD34D', dot: '#C48A1A', strip: '#C48A1A' },
   quotation_draft: { color: '#686D6C', bg: '#FBFAF8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
-  quotation_sent:  { color: '#335A86', bg: '#F1EEE9', border: '#C3D3E6', dot: '#C3D3E6', strip: '#C3D3E6' },
+  quotation_sent:  { color: '#335A86', bg: '#EAF0F8', border: '#C3D3E6', dot: '#C3D3E6', strip: '#C3D3E6' },
   converted:       { color: '#276247', bg: '#E8F2EC', border: '#86EFAC', dot: '#22C55E', strip: '#22C55E' },
   lost:            { color: '#BE123C', bg: '#FBE9EC', border: '#FDA4AF', dot: '#F43F5E', strip: '#F43F5E' },
   // Ended without an outcome recorded — deliberately duller than every open

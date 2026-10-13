@@ -292,7 +292,7 @@ function BatchGroup({
             */}
             <span style={{
               display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
-              background: '#FBFAF8', color: '#335A86', border: '1px solid #C3D3E6',
+              background: '#EAF0F8', color: '#335A86', border: '1px solid #C3D3E6',
               fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
             }}>
               Next: approve, then assign

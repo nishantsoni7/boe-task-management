@@ -1211,7 +1211,7 @@ function NextStepStrip({
     : colors.tertiary
   const toneBg =
     step.tone === 'attention' ? '#FAF0DA'
-    : step.tone === 'act' ? '#F1EEE9'
+    : step.tone === 'act' ? '#EAF0F8'
     : step.tone === 'done' ? '#E8F2EC'
     : colors.raised
   const target = card.status === 'booked' && !card.sent_confirmed_at ? 'review-send' : 'review-next-step'

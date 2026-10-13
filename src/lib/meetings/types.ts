@@ -233,13 +233,13 @@ export type BadgeMeta = { label: string; bg: string; color: string; border: stri
  * one word of difference.
  */
 export const MEETING_TYPE_META: Record<MeetingType, BadgeMeta> = {
-  new_order:    { label: 'New Order',    bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
+  new_order:    { label: 'New Order',    bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   repair_order: { label: 'Repair Order', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
 }
 
 export const MEETING_STATUS_META: Record<MeetingStatus, BadgeMeta> = {
   draft:       { label: 'Draft',       bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' },
-  in_progress: { label: 'In Progress', bg: '#FBFAF8', color: '#335A86', border: '#C3D3E6' },
+  in_progress: { label: 'In Progress', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   completed:   { label: 'Completed',   bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }
 
@@ -256,7 +256,7 @@ export const ORDER_POSITION_META: Record<OrderPosition, BadgeMeta> = {
  * its own column and never as a fourth status here.
  */
 export const ITEM_STATUS_META: Record<ItemStatus, BadgeMeta> = {
-  open:     { label: 'Open',     bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
+  open:     { label: 'Open',     bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   waiting:  { label: 'Waiting',  bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
   resolved: { label: 'Resolved', bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }

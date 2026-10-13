@@ -1764,8 +1764,8 @@ function TaskListDrawer({
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
     pending:          { color: '#686D6C', bg: '#F1EEE9' },
-    started:          { color: '#335A86', bg: '#FBFAF8' },
-    working:          { color: '#335A86', bg: '#F1EEE9' },
+    started:          { color: '#335A86', bg: '#EAF0F8' },
+    working:          { color: '#335A86', bg: '#EAF0F8' },
     waiting:          { color: '#805B0D', bg: '#FAF0DA' },
     blocked:          { color: '#A12438', bg: '#FBE9EC' },
     pending_approval: { color: '#805B0D', bg: '#FBF6E6' },

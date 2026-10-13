@@ -597,7 +597,7 @@ describe('no new colour enters the design system', () => {
     // These are the exact values ITEM_STATUS_META.open and .waiting already use, so
     // the guide, the board and every badge agree without a second palette.
     assert.deepEqual(DISCUSSION_CATEGORY_META.running_order,
-      { label: 'Running Order', bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' })
+      { label: 'Running Order', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' })
     assert.deepEqual(DISCUSSION_CATEGORY_META.after_sales,
       { label: 'After Sales', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' })
   })

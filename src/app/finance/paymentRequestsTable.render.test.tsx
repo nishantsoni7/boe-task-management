@@ -483,7 +483,7 @@ describe("7. the salesperson's list", () => {
     const btn = markup.match(/<button[^>]*aria-label="Delete payment request P-AA-0001"[^>]*>/)?.[0] ?? ''
     assert.ok(btn.length > 0)
     assert.match(btn, /color:\s*(var\([^)]*\)|#B42332)/i)
-    assert.match(btn, /font-size:\s*11px/)
+    assert.match(btn, /font-size:\s*12px/)
   })
 
   test('7j. the review list is unchanged for everyone else', () => {

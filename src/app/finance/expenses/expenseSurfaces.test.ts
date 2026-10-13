@@ -3174,6 +3174,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/components/ui/atoms.tsx',
     'src/components/ui/toast.tsx',
     'src/lib/tokens.ts',
+    'src/components/ui/StatusTabs.tsx',
+    'src/components/notifications/NotificationHeaderPolish.test.tsx',
   ])
 
   const isUnexpectedFile = (f: string) =>
@@ -3689,6 +3691,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_PI_NUMBERING_AND_EDITING.has(file)
         || ALLOWED_ACCOUNT_SETTINGS_LAYOUT.has(file)
         || ALLOWED_ANNOUNCEMENTS.has(file)
+        || ALLOWED_BOE_REBRAND.has(file)
         || ALLOWED_PERFORMANCE_PARALLEL_READS.has(file)
         || ALLOWED_PAYMENT_REFERENCE.has(file)
         || ALLOWED_GUARDS_RUN_AS_OWNER.has(file)

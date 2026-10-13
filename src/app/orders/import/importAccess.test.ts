@@ -1113,8 +1113,8 @@ describe('customization is marked in red, and only where there is one', () => {
   })
 
   test('a marked thumbnail keeps its own hue on hover', () => {
-    assert.ok(source.includes('e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.blue'),
-      'turning it blue would un-mark the one picture that was marked')
+    assert.ok(source.includes('e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.brand'),
+      'turning it brand-coloured would un-mark the one picture that was marked')
     assert.ok(source.includes('e.currentTarget.style.borderColor = restingBorder'),
       'and it returns to its own resting border, not to the neutral one')
   })

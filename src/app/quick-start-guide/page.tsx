@@ -310,7 +310,7 @@ export default function QuickStartGuidePage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {[
               { label: 'Pending',    color: '#686D6C', bg: '#F1EEE9', desc: 'Task is assigned but not yet acknowledged.' },
-              { label: 'Working',    color: '#335A86', bg: '#F1EEE9', desc: 'Work has started.' },
+              { label: 'Working',    color: '#335A86', bg: '#EAF0F8', desc: 'Work has started.' },
               { label: 'Waiting On', color: '#F1D5CB', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
               { label: 'Blocked',    color: '#A12438', bg: '#FBE9EC', desc: 'Work cannot move forward because there is a serious issue that needs help or a decision.' },
               { label: 'Completed',  color: '#276247', bg: '#E8F2EC', desc: 'Task is fully done. Do not mark complete if only partially done.' },
