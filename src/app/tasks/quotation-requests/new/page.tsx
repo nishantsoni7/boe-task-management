@@ -445,7 +445,7 @@ export default function NewQuotationRequestPage() {
             disabled={!canSubmit}
             style={{
               width: '100%', padding: '12px 0', borderRadius: '8px', border: 'none',
-              background: canSubmit ? '#335A86' : colors.float,
+              background: canSubmit ? '#B9472E' : colors.float,
               color: canSubmit ? '#fff' : colors.muted,
               fontSize: '13px', fontWeight: 600,
               cursor: canSubmit ? 'pointer' : 'not-allowed',

@@ -284,7 +284,7 @@ function CheckList({
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '7px 10px', minHeight: '36px', borderRadius: '6px',
               border: `1px solid ${on ? '#C4B5FD' : colors.border}`,
-              background: on ? '#EAF0F8' : '#FFFFFF',
+              background: on ? '#FBFAF8' : '#FFFFFF',
               color: on ? '#335A86' : colors.secondary,
               fontSize: '12px', fontWeight: on ? 700 : 500,
               cursor: disabled ? 'not-allowed' : 'pointer',
@@ -894,7 +894,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           {!showForm && (
             <div style={{
               display: 'grid', gap: '10px', padding: '14px',
-              border: '1px solid #C3D3E6', borderRadius: '8px', background: '#EAF0F8',
+              border: '1px solid #C3D3E6', borderRadius: '8px', background: '#FBFAF8',
             }}>
               <strong style={{ fontSize: '13px', color: '#335A86' }}>
                 This creates exactly {size} drafts, pending your approval.

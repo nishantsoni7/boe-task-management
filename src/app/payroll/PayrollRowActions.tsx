@@ -54,7 +54,7 @@ export const PAYROLL_ROW_CSS = `
     cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease;
   }
-  .boe-payroll-attention:focus-visible { outline: 2px solid #335A86; outline-offset: 2px; }
+  .boe-payroll-attention:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
 
   .boe-payroll-attention--amber { background: rgba(196,138,26,0.14); border: 1px solid rgba(196,138,26,0.42); color: #805B0D; }
   .boe-payroll-attention--amber:hover { background: rgba(196,138,26,0.24); border-color: rgba(196,138,26,0.62); }

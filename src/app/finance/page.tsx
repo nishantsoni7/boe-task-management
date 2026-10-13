@@ -1743,7 +1743,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
-          background: '#EAF0F8', border: '1px solid #C3D3E6',
+          background: '#F1EEE9', border: '1px solid #C3D3E6',
         }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
             Clarification Required

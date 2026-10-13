@@ -2944,7 +2944,7 @@ describe('the commercial breakdown outranks the activity trail', () => {
 
   test('the money card is warm-bordered and softly raised; the trail is neither', () => {
     assert.ok(commercial.includes('border-color:rgba(196,138,26,0.30)'), 'a warm hairline')
-    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(51,90,134,0.05)'), 'shallow and low-opacity')
+    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(48,53,54,0.05)'), 'shallow and low-opacity')
     assert.ok(activity.includes('border-color:#E4DED7'), 'a neutral grey hairline')
     assert.ok(activity.includes('box-shadow:none'))
     // Restraint: no gradient, no filled bar, no decorative icon on the money card.

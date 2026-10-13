@@ -68,7 +68,7 @@ export function followUpDue(
 export const FOLLOW_UP_DUE_META: Record<FollowUpDue, { label: string; bg: string; color: string; border: string }> = {
   overdue:  { label: 'Overdue',  bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
   today:    { label: 'Due Today', bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  upcoming: { label: 'Upcoming', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  upcoming: { label: 'Upcoming', bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
 }
 
 /** How many days late, for the "3 days overdue" hint. Never negative. */

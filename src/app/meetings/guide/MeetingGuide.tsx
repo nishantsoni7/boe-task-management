@@ -37,8 +37,8 @@ import {
 
 /** One tone per phase, from the existing BOE palette. */
 const PHASE_TONE: Record<Phase['id'], { bg: string; border: string; color: string }> = {
-  before: { bg: '#EAF0F8', border: '#C3D3E6', color: '#335A86' },
-  during: { bg: '#EAF0F8', border: '#C3D3E6', color: '#335A86' },
+  before: { bg: '#F1EEE9', border: '#C3D3E6', color: '#335A86' },
+  during: { bg: '#FBFAF8', border: '#C3D3E6', color: '#335A86' },
   after:  { bg: '#E8F2EC', border: '#BCD8C8', color: '#276247' },
 }
 

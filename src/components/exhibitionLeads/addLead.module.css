@@ -81,7 +81,7 @@ a.tile:hover, button.tile:hover { border-color: #303536; }
   font-size: 14px; border: 1px solid; animation: slideIn 0.18s ease-out;
 }
 .statusOk { background: #ECFDF3; border-color: #86D9A7; color: #0B5B2E; }
-.statusBusy { background: #EAF0F8; border-color: #CFC8BF; color: #303536; }
+.statusBusy { background: #F1EEE9; border-color: #CFC8BF; color: #303536; }
 .status strong { font-weight: 700; }
 @keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #CFC8BF; border-top-color: #303536; animation: rot 0.7s linear infinite; flex: none; }

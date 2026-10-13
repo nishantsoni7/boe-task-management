@@ -405,7 +405,7 @@ export default function LeadsListScreen({ mode }: { mode: Mode }) {
                   {rows.map((l, i) => (
                     <Fragment key={l.id}>
                       {multiDate && (i === 0 || istDateOf(rows[i - 1].created_at) !== istDateOf(l.created_at)) && (
-                        <tr><td colSpan={mode === 'all' ? 10 : 9} style={{ background: '#EAF0F8', fontWeight: 700 }}>
+                        <tr><td colSpan={mode === 'all' ? 10 : 9} style={{ background: '#F1EEE9', fontWeight: 700 }}>
                           {longDate(istDateOf(l.created_at))} · {dateCounts.get(istDateOf(l.created_at)) ?? 0} leads
                         </td></tr>
                       )}

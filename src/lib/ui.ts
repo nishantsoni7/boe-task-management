@@ -40,7 +40,7 @@ export function taskStatusLabel(
 export function priorityDotColor(priority: TaskPriority | string): string {
   const map: Record<string, string> = {
     high:   '#B42332',
-    medium: '#C48A1A',
+    medium: '#805B0D',
     low:    '#686D6C',
   }
   return map[priority] ?? '#686D6C'

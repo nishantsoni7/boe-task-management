@@ -397,7 +397,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             {row.intendedFor && names.get(row.intendedFor) && (
               <span style={{
                 padding: '2px 8px', borderRadius: '6px',
-                background: '#EAF0F8', color: '#335A86', border: '1px solid #C3D3E6',
+                background: '#FBFAF8', color: '#335A86', border: '1px solid #C3D3E6',
                 fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
               }}>
                 Generated for {names.get(row.intendedFor)}

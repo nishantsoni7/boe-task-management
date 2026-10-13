@@ -105,9 +105,9 @@ const LIST_GRID_COLUMNS =
 
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
-  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#335A86' },
+  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#B9472E' },
   { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#276247' },
-  { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#335A86' },
+  { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#B9472E' },
 ]
 
 // ─── URL-backed list state ────────────────────────────────────────────────────
@@ -435,7 +435,7 @@ function TaskCard({
                 : hoveredPin ? 'rgba(51,90,134,0.10)' : 'transparent',
               border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : hoveredPin ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
               cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-              color: isPinned ? '#B7892A' : hoveredPin ? '#335A86' : colors.muted,
+              color: isPinned ? '#B7892A' : hoveredPin ? '#963B27' : colors.muted,
             }}
           >
             <Pin size={11} />
@@ -454,7 +454,7 @@ function TaskCard({
                 background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
                 border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
                 cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-                color: hoveredEdit ? '#335A86' : colors.muted,
+                color: hoveredEdit ? '#963B27' : colors.muted,
               }}
             >
               <Pencil size={11} />
@@ -1683,10 +1683,10 @@ function MyTasksContent() {
               <div style={{
                 width: '84px', flexShrink: 0,
                 position: 'relative',
-                background: 'rgba(51,90,134,0.6)',
+                background: 'rgba(251,250,248,0.6)',
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
-                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#EAF0F8', zIndex: 0 }} />
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#F1EEE9', zIndex: 0 }} />
                 {/* Two lines, because 84px will not hold "TASK TYPE" on one. */}
                 <div style={{
                   height: RAIL_HEADING_HEIGHT, boxSizing: 'border-box',
@@ -1719,7 +1719,7 @@ function MyTasksContent() {
                         justifyContent: 'center', gap: '7px', padding: '12px 6px',
                         background: isActive ? '#fff' : 'transparent',
                         border: 'none',
-                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #EAF0F8' : 'none',
+                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #F1EEE9' : 'none',
                         borderLeft: `3px solid ${isActive ? item.accent : 'transparent'}`,
                         cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
                         ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
@@ -1863,7 +1863,7 @@ function MyTasksContent() {
                 margin: '8px 24px 0',
                 padding: '8px 0',
                 borderRadius: '8px',
-                background: 'rgba(51,90,134,0.85)',
+                background: 'rgba(251,250,248,0.85)',
                 border: `1px solid ${colors.border}`,
                 fontSize: '12px', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.07em',

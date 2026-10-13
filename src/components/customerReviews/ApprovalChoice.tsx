@@ -109,7 +109,7 @@ function ChoiceCard({
         width: '100%', minHeight: '44px', padding: '12px',
         borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer',
         border: `1px solid ${selected ? colors.brand : colors.border}`,
-        background: selected ? '#EAF0F8' : colors.raised,
+        background: selected ? '#FBFAF8' : colors.raised,
         boxShadow: selected ? `inset 0 0 0 1px ${colors.brand}` : 'none',
         fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
       }}

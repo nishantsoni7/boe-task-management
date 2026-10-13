@@ -210,7 +210,7 @@ export function CreditSettingsForm({
                         checked={on}
                         disabled={saving}
                         onChange={e => toggle(f.key, switchKey, e.target.checked)}
-                        style={{ width: 16, height: 16, margin: 0, accentColor: '#335A86', cursor: 'inherit' }}
+                        style={{ width: 16, height: 16, margin: 0, accentColor: '#B9472E', cursor: 'inherit' }}
                       />
                       <span>
                         <strong style={{ fontWeight: 700, color: on ? '#276247' : colors.muted }}>{on ? 'ON' : 'OFF'}</strong>

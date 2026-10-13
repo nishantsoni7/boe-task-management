@@ -567,9 +567,9 @@ table th, [role="columnheader"] {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  color: #335A86;
+  color: #686D6C;
   background: rgba(51,90,134,0.07);
-  border: 1px solid rgba(51,90,134,0.25);
+  border: 1px solid rgba(48,53,54,0.25);
   border-radius: 6px;
   padding: 5px 10px;
   cursor: pointer;
@@ -586,7 +586,7 @@ table th, [role="columnheader"] {
   font-size: 12px;
   line-height: 1.45;
   color: #B43C3C;
-  background: rgba(180,35,50,0.07);
+  background: rgba(251,250,248,0.07);
   border: 1px solid rgba(180,35,50,0.22);
   border-radius: 6px;
 }
@@ -957,8 +957,8 @@ table th, [role="columnheader"] {
   margin-bottom: 4px;
 }
 
-.boe-kpi-amber .boe-kpi-label { color: rgba(196,138,26,0.85); }
-.boe-kpi-red   .boe-kpi-label { color: rgba(180,35,50,0.85); }
+.boe-kpi-amber .boe-kpi-label { color: #805B0D; }
+.boe-kpi-red   .boe-kpi-label { color: #B42332; }
 
 .boe-kpi-value {
   font-family: var(--font-display);
@@ -1500,7 +1500,7 @@ table th, [role="columnheader"] {
 }
 
 .boe-filter-tab:hover  { background: #F1EEE9; color: #4C5352; border-color: #CFC8BF; }
-.boe-filter-tab-active { background: #C48A1A; color: #FFFFFF; font-weight: 600; border-color: transparent; }
+.boe-filter-tab-active { background: var(--boe-brand); color: #FFFFFF; font-weight: 600; border-color: transparent; }
 
 /* ─────────────────────────────────────────────────────
    ACTIVITY LOG TIMELINE
@@ -8498,7 +8498,7 @@ a.od-strip-item:hover { border-color: #CFC8BF; color: #303536; }
 .od-revenue-gaps { margin: 12px 0 0; padding: 0; list-style: none; font-size: 12px; color: #805B0D; }
 
 /* A failed read: said plainly, with a way to try again. */
-.od-error { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; background: #FDF3F2; border: 1px solid rgba(180,35,50,0.35); border-radius: 8px; padding: 14px 16px; }
+.od-error { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; background: #FBE9EC; border: 1px solid rgba(180,35,50,0.35); border-radius: 8px; padding: 14px 16px; }
 .od-error p { margin: 0; font-size: 13px; color: #303536; }
 .od-error-title { margin: 0; font-size: 14px; font-weight: 700; color: #B42332; }
 

@@ -1469,7 +1469,7 @@ function TimelineRow({
         </div>
         <div style={{
           fontSize: '12px', marginTop: '2px',
-          color: filled ? '#686D6C' : '#CFC8BF',
+          color: filled ? '#686D6C' : '#686D6C',
           fontFamily: 'var(--font-body)',
         }}>
           {timestamp ? fmtTimestamp(timestamp) : 'Not yet'}

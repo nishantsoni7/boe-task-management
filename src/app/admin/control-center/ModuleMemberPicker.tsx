@@ -89,7 +89,7 @@ export function ModuleMemberPicker({
               key={m.id}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: '#EAF0F8', color: '#335A86',
+                background: '#FBFAF8', color: '#335A86',
                 border: '1px solid #C3D3E6', borderRadius: 999,
                 padding: '3px 6px 3px 10px', fontSize: 12.5, fontWeight: 600,
                 maxWidth: '100%',

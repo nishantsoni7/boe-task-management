@@ -38,7 +38,7 @@ function BottomNavItem({
   badge?:   number
   onClick:  () => void
 }) {
-  const accent = '#335A86'
+  const accent = '#B9472E'
   const muted  = '#686D6C'
 
   return (
@@ -91,7 +91,7 @@ function BottomNavItem({
 // ─── More sheet item ──────────────────────────────────────────────────────────
 
 function MoreItem({
-  label, icon: Icon, accent = '#335A86', onClick,
+  label, icon: Icon, accent = '#B9472E', onClick,
 }: {
   label:   string
   icon:    React.ElementType

@@ -58,12 +58,12 @@ export const AFTER_SALES_TAGS: AfterSalesTag[] = ['repair', 'replacement', 'site
  * communicated by colour alone — the label travels with it everywhere.
  */
 export const DISCUSSION_CATEGORY_META: Record<DiscussionCategory, BadgeMeta> = {
-  running_order: { label: 'Running Order', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  running_order: { label: 'Running Order', bg: '#F1EEE9', color: '#335A86', border: '#C3D3E6' },
   after_sales:   { label: 'After Sales',   bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
 }
 
 export const DISCUSSION_STATE_META: Record<DiscussionItemState, BadgeMeta> = {
-  open:     { label: 'Open',     bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
+  open:     { label: 'Open',     bg: '#FBFAF8', color: '#335A86', border: '#C3D3E6' },
   resolved: { label: 'Resolved', bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }
 

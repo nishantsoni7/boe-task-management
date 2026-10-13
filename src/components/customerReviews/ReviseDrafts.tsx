@@ -194,7 +194,7 @@ export function ReviseDrafts({ batchId, pendingCount, onRevised }: Props) {
           {confirming && (
             <div style={{
               display: 'grid', gap: '8px', padding: '12px',
-              border: '1px solid #C3D3E6', borderRadius: '8px', background: '#EAF0F8',
+              border: '1px solid #C3D3E6', borderRadius: '8px', background: '#FBFAF8',
             }}>
               <strong style={{ fontSize: '12px', color: '#335A86' }}>
                 This replaces the title and the body of {pendingCount} pending {noun}.

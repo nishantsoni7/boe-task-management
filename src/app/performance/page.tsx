@@ -918,7 +918,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
                     }}>{dateLabel}</td>
                     <td style={{
                       padding: '11px 16px',
-                      color: isSubmitted ? '#303536' : '#CFC8BF',
+                      color: isSubmitted ? '#303536' : '#686D6C',
                       maxWidth: 0, width: '55%',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontSize: 13, fontWeight: isSubmitted ? 450 : 400,

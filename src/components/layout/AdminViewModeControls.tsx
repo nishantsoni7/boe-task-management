@@ -383,10 +383,10 @@ function UserMenu({
       >
         <span style={{
           width: 30, height: 30, borderRadius: '8px',
-          background: '#303536',
+          background: '#F8EAE4',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '12px', fontWeight: 700,
-          color: '#B9472E', flexShrink: 0,
+          color: '#963B27', flexShrink: 0,
           letterSpacing: '0.02em',
         }}>
           {initials(profile.full_name)}

@@ -601,7 +601,7 @@ function StageList({ scope, current }: { scope: ResetScope; current: ResetStage 
         <div key={entry} style={{
           fontSize: 12.5,
           fontWeight: position === index ? 700 : 500,
-          color: position < index ? '#276247' : position === index ? '#303536' : '#CFC8BF',
+          color: position < index ? '#276247' : position === index ? '#303536' : '#686D6C',
         }}>
           {position < index ? '✓ ' : position === index ? '• ' : '  '}
           {RESET_STAGE_LABEL[entry]}

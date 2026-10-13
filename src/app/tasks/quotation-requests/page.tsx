@@ -124,7 +124,7 @@ function RequestCard({
       {/* Customer */}
       <div style={{ minWidth: 0, padding: '10px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, padding: '1px 5px', borderRadius: '6px', color: '#B9472E', background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '1px 5px', borderRadius: '6px', color: '#963B27', background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
           <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.customer_name ?? task.title}
           </span>
@@ -505,7 +505,7 @@ function QuotationRequestsContent() {
             gridTemplateColumns: GRID_COLUMNS,
             columnGap: '12px',
             padding: '8px 4px',
-            background: 'rgba(51,90,134,0.9)',
+            background: 'rgba(251,250,248,0.9)',
             borderBottom: `1px solid ${colors.border}`,
             fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '0.07em', color: colors.muted,

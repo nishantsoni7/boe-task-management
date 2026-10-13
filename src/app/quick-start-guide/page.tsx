@@ -35,7 +35,7 @@ const sectionNumber: React.CSSProperties = {
   height: 24,
   borderRadius: '6px',
   background: '#303536',
-  color: '#963B27',
+  color: '#F1D5CB',
   fontSize: '12px',
   fontWeight: 800,
   flexShrink: 0,
@@ -310,8 +310,8 @@ export default function QuickStartGuidePage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {[
               { label: 'Pending',    color: '#686D6C', bg: '#F1EEE9', desc: 'Task is assigned but not yet acknowledged.' },
-              { label: 'Working',    color: '#335A86', bg: '#EAF0F8', desc: 'Work has started.' },
-              { label: 'Waiting On', color: '#963B27', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
+              { label: 'Working',    color: '#335A86', bg: '#F1EEE9', desc: 'Work has started.' },
+              { label: 'Waiting On', color: '#F1D5CB', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
               { label: 'Blocked',    color: '#A12438', bg: '#FBE9EC', desc: 'Work cannot move forward because there is a serious issue that needs help or a decision.' },
               { label: 'Completed',  color: '#276247', bg: '#E8F2EC', desc: 'Task is fully done. Do not mark complete if only partially done.' },
             ].map(({ label, color, bg, desc }) => (
@@ -494,7 +494,7 @@ export default function QuickStartGuidePage() {
                 padding: '9px 12px',
                 fontSize: '13px',
                 fontWeight: 500,
-                color: '#963B27',
+                color: '#F1D5CB',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',

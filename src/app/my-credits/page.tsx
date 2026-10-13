@@ -223,7 +223,7 @@ export default function MyCreditsPage() {
                       width: 26, height: 26, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 12, fontWeight: 700,
                       background: i < done ? 'rgba(39,98,71,0.14)' : 'rgba(0,0,0,0.05)',
-                      color: i < done ? '#276247' : '#CFC8BF',
+                      color: i < done ? '#276247' : '#686D6C',
                       border: i < done ? '1px solid rgba(39,98,71,0.35)' : '1px dashed #CFC8BF',
                     }}
                   >

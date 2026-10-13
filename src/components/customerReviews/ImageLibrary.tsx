@@ -559,7 +559,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                                 position: 'absolute', top: '4px', right: '4px',
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                 width: '26px', height: '26px', borderRadius: '6px',
-                                border: 'none', background: 'rgba(51,90,134,0.72)', color: '#FFFFFF',
+                                border: 'none', background: 'rgba(48,53,54,0.72)', color: '#FFFFFF',
                                 cursor: busy ? 'not-allowed' : 'pointer',
                               }}
                             >

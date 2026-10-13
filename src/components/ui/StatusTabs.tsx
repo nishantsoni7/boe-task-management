@@ -15,6 +15,35 @@ import type { LucideIcon } from 'lucide-react'
 // Pass the accent from the page's existing row-badge palette so a status wears
 // one colour in the strip, the row, and the modal.
 
+// A count chip sits on the accent's own pale fill; whatever accent a page passes in, its number must be
+// readable. Darken the foreground toward charcoal until it clears 4.5:1 (pale fills are blended over white).
+function channels(css: string): [number, number, number, number] | null {
+  const hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(css.trim())
+  if (hex) {
+    const n = parseInt(hex[1], 16)
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, hex[2] ? parseInt(hex[2], 16) / 255 : 1]
+  }
+  const rgba = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(css.trim())
+  return rgba ? [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), rgba[4] === undefined ? 1 : Number(rgba[4])] : null
+}
+function luminance([r, g, b]: [number, number, number]): number {
+  const f = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) }
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+}
+export function legibleOn(fg: string, fill: string): string {
+  const f = channels(fg)
+  const b = channels(fill)
+  if (!f || !b) return fg
+  const bg: [number, number, number] = [0, 1, 2].map((i) => Math.round(b[i] * b[3] + 255 * (1 - b[3]))) as [number, number, number]
+  const ink = [48, 53, 54]
+  for (let t = 0; t <= 1.0001; t += 0.1) {
+    const c = [0, 1, 2].map((i) => Math.round(f[i] * (1 - t) + ink[i] * t)) as [number, number, number]
+    const l1 = luminance(c), l2 = luminance(bg)
+    if ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) >= 4.5) return t === 0 ? fg : `rgb(${c[0]}, ${c[1]}, ${c[2]})`
+  }
+  return fg
+}
+
 export type TabAccent = {
   color: string        // text + icon + underline
   tint: string         // active tab background
@@ -128,7 +157,7 @@ export function StatusTabs<K extends string>({
               <span style={{
                 minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
                 background: isActive ? accent.badgeActive : accent.badge,
-                color: accent.color, fontSize: '12px', fontWeight: 700,
+                color: legibleOn(accent.color, isActive ? accent.badgeActive : accent.badge), fontSize: '12px', fontWeight: 700,
                 lineHeight: '15px', textAlign: 'center',
               }}>
                 {count ?? '—'}

@@ -101,7 +101,7 @@ function SavingOverlay({ message }: { message: string }) {
         position: 'fixed', inset: 0, zIndex: 300,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 16,
-        background: 'rgba(51,90,134,0.55)',
+        background: 'rgba(48,53,54,0.55)',
         backdropFilter: 'blur(2px)',
         outline: 'none',
         // Belt and braces with the keydown trap: nothing behind this layer can

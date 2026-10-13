@@ -796,7 +796,7 @@ function IssueFlow() {
               </span>
               <span style={{
                 fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: mine ? ACCENT : '#CFC8BF',
+                letterSpacing: '0.07em', color: mine ? ACCENT : '#686D6C',
               }}>
                 {mine ? 'You' : 'Admin'}
               </span>

@@ -75,7 +75,7 @@ const CATALOG_TYPES = [
 const STATUS_META: Record<SampleStatus, { label: string; bg: string; color: string }> = {
   pending_approval: { label: 'Pending Approval', bg: '#FAF0DA14', color: '#805B0D' },
   approved:         { label: 'Approved',         bg: colors.blueTint,  color: colors.blue  },
-  qr_submitted:     { label: 'QR Submitted',     bg: '#EAF0F8',        color: '#335A86'    },
+  qr_submitted:     { label: 'QR Submitted',     bg: '#F1EEE9',        color: '#335A86'    },
   rejected:         { label: 'Rejected',         bg: colors.redTint,   color: colors.red   },
   dispatched:       { label: 'Dispatched',       bg: '#30353614',      color: '#303536'    },
   returned:         { label: 'Returned',         bg: colors.greenTint, color: colors.green },
@@ -704,9 +704,9 @@ function RequestCard({
             {r.status === 'approved' && (
               <>
                 {isRequester && (
-                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={guard(handleQRSubmit)} />
+                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#F8EAE4' color='#963B27' border='#335A8633' onClick={guard(handleQRSubmit)} />
                 )}
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F8EAE4' color='#963B27' border='#335A8633' onClick={() => setSlipOpen(true)} />
               </>
             )}
             {r.status === 'qr_submitted' && (
@@ -719,12 +719,12 @@ function RequestCard({
                     QR submitted — waiting for dispatch team to add tracking details.
                   </div>
                 )}
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F8EAE4' color='#963B27' border='#335A8633' onClick={() => setSlipOpen(true)} />
               </>
             )}
             {r.status === 'dispatched' && (
               <>
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F8EAE4' color='#963B27' border='#335A8633' onClick={() => setSlipOpen(true)} />
                 {isRequester && !canReceive ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '6px 12px' }}>
                     <Info size={13} strokeWidth={1.8} />

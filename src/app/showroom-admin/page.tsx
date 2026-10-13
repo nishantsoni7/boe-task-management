@@ -53,13 +53,13 @@ const STAGE_STYLE: Record<InquiryStage, {
   color: string; bg: string; border: string; dot: string; strip: string
 }> = {
   selecting:       { color: '#805B0D', bg: '#FAF0DA', border: '#FCD34D', dot: '#C48A1A', strip: '#C48A1A' },
-  quotation_draft: { color: '#686D6C', bg: '#EAF0F8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
-  quotation_sent:  { color: '#335A86', bg: '#EAF0F8', border: '#C3D3E6', dot: '#C3D3E6', strip: '#C3D3E6' },
+  quotation_draft: { color: '#686D6C', bg: '#FBFAF8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
+  quotation_sent:  { color: '#335A86', bg: '#F1EEE9', border: '#C3D3E6', dot: '#C3D3E6', strip: '#C3D3E6' },
   converted:       { color: '#276247', bg: '#E8F2EC', border: '#86EFAC', dot: '#22C55E', strip: '#22C55E' },
   lost:            { color: '#BE123C', bg: '#FBE9EC', border: '#FDA4AF', dot: '#F43F5E', strip: '#F43F5E' },
   // Ended without an outcome recorded — deliberately duller than every open
   // stage and than both outcomes, so a closed row recedes in a mixed list.
-  closed:          { color: '#4C5352', bg: '#EAF0F8', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
+  closed:          { color: '#4C5352', bg: '#F1EEE9', border: '#CFC8BF', dot: '#686D6C', strip: '#686D6C' },
 }
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -503,7 +503,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               fontSize: '12px', fontWeight: 600, color: '#4C5352',
-              background: '#EAF0F8', border: '1px solid #EAF0F8',
+              background: '#F1EEE9', border: '1px solid #E4DED7',
               borderRadius: '8px', padding: '4px 10px',
             }}>
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">

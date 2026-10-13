@@ -62,7 +62,7 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
             aria-label="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '8px',
-              background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.20)', color: '#B9472E', cursor: 'pointer', flexShrink: 0,
+              background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.20)', color: '#963B27', cursor: 'pointer', flexShrink: 0,
             }}
           >
             <Home size={14} strokeWidth={2} />

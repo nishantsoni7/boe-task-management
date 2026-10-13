@@ -199,7 +199,7 @@ function TaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onEdit?.() }}
               onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#335A86' : colors.muted }}>
+              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#963B27' : colors.muted }}>
               <Pencil size={13} />
             </button>
             <button onClick={e => { e.stopPropagation(); onDelete?.() }}
@@ -366,7 +366,7 @@ function TaskCard({
             background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
             border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredEdit ? '#335A86' : colors.muted,
+            color: hoveredEdit ? '#963B27' : colors.muted,
           }}
         >
           <Pencil size={11} />

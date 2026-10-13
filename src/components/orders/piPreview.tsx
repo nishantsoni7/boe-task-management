@@ -751,7 +751,7 @@ export type PiCommercialVariant = 'preview' | 'detail'
  */
 const DETAIL_CARD_STYLE: React.CSSProperties = {
   borderColor: 'rgba(196,138,26,0.30)',
-  boxShadow: '0 1px 2px rgba(51,90,134,0.05), 0 2px 6px rgba(51,90,134,0.04)',
+  boxShadow: '0 1px 2px rgba(48,53,54,0.05), 0 2px 6px rgba(48,53,54,0.04)',
 }
 
 /** A very pale cream, so the header is distinguishable from Activity's without

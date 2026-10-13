@@ -38,7 +38,7 @@ export function InternalTestWarning({ compact = false }: { compact?: boolean }) 
         display: 'flex', gap: compact ? '6px' : '8px', alignItems: 'center',
         padding: compact ? '5px 8px' : '9px 12px',
         borderRadius: compact ? '6px' : '8px',
-        background: '#EAF0F8',
+        background: '#FBFAF8',
         border: '1px solid #C3D3E6',
         color: '#335A86',
         fontSize: compact ? '10px' : '12px',
