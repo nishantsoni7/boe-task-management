@@ -470,6 +470,8 @@ describe('it sorts after everything that was on disk when it was written', () =>
       '20270311000000_exhibition_lead_duplicate_owner_name.sql',
 
       '20270312000000_exhibition_close_reopen.sql',
+
+      '20270313000000_inventory_module.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

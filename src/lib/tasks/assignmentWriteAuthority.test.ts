@@ -901,6 +901,8 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270311000000_exhibition_lead_duplicate_owner_name.sql',
 
       '20270312000000_exhibition_close_reopen.sql',
+
+      '20270313000000_inventory_module.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

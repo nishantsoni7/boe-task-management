@@ -335,6 +335,8 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20270311000000_exhibition_lead_duplicate_owner_name.sql',
 
     '20270312000000_exhibition_close_reopen.sql',
+
+    '20270313000000_inventory_module.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

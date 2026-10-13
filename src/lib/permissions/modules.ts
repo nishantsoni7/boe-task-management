@@ -403,3 +403,20 @@ registerModule({
     { actionKey: 'view_all', displayName: 'View All Records' },
   ],
 })
+
+registerModule({
+  moduleKey: 'inventory',
+  displayName: 'Inventory',
+  description: 'Furniture stock for sale: stage, condition, availability and booking requests.',
+  actions: [
+    // view: open the module, see every product, ask to book stock and follow their own requests.
+    { actionKey: 'view', displayName: 'View' },
+    // create / edit / delete: the product record itself (the Manager). Delete is a soft delete.
+    { actionKey: 'create', displayName: 'Create' },
+    { actionKey: 'edit', displayName: 'Edit' },
+    { actionKey: 'delete', displayName: 'Delete' },
+    // approve: see EVERY booking request and confirm, reject or reverse them. Registered by 20270313000000;
+    // off for everybody until an administrator grants it.
+    { actionKey: 'approve', displayName: 'Approve' },
+  ],
+})
