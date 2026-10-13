@@ -16,7 +16,7 @@
     display: flex; position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 6;
     min-height: 56px; align-items: center; justify-content: center; gap: 10px; border-radius: 12px;
     background: #B9472E; color: #fff; font-size: 17px; font-weight: 800; text-decoration: none; letter-spacing: 0.01em;
-    box-shadow: 0 10px 24px rgba(185,71,46, 0.38), 0 2px 0 rgba(143, 16, 16, 0.4);
+    box-shadow: 0 10px 24px rgba(185,71,46, 0.38), 0 2px 0 rgba(180,35,50,0.4);
     touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   }
   .fab:active { transform: translateY(1px); }
@@ -41,8 +41,8 @@
 .btnDark:hover { background: #303536; border-color: #303536; }
 .btnWa { background: #1FA855; border-color: #1FA855; color: #fff; }
 .btnWa:hover { background: #178A45; border-color: #178A45; }
-.btnDanger { color: #B9472E; border-color: #F0B8BD; background: #FBE9EC; }
-.btnDanger:hover { border-color: #B9472E; }
+.btnDanger { color: #B42332; border-color: #F0B8BD; background: #FBE9EC; }
+.btnDanger:hover { border-color: #B42332; }
 .btnGhost { border-color: transparent; background: transparent; }
 .btnBlock { width: 100%; }
 .btnSm { min-height: 38px; padding: 0 12px; font-size: 14px; border-radius: 8px; }
@@ -62,7 +62,7 @@
 .badgeDot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .st_raw { background: #F1EEE9; color: #4C5352; }
 .st_in_production { background: #EAF0F8; color: #335A86; }
-.st_finishing { background: #EFE8FD; color: #6D28D9; }
+.st_finishing { background: #EFE8FD; color: #335A86; }
 .st_awaiting_upholstery { background: #FEF1CF; color: #A15207; }
 .st_under_repair { background: #FFE9D5; color: #C2410C; }
 .st_ready { background: #E8F2EC; color: #276247; }
@@ -70,7 +70,7 @@
 .stockIn { background: #E8F2EC; color: #276247; }
 .stockLow { background: #FEF1CF; color: #A15207; }
 .stockOut { background: #FDE6E8; color: #B9472E; }
-.late { color: #B9472E; }
+.late { color: #B42332; }
 
 /* ── Stat tiles ───────────────────────────────────────────────────────── */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -220,13 +220,13 @@
 .availNums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; text-align: center; }
 .availNum { display: flex; flex-direction: column; gap: 1px; padding: 8px 2px; border-radius: 8px; background: #F1EEE9; }
 .availNumVal { font-size: 20px; font-weight: 800; color: #303536; font-variant-numeric: tabular-nums; }
-.availNumLbl { font-size: 11px; font-weight: 700; color: #686D6C; text-transform: uppercase; letter-spacing: 0.04em; }
+.availNumLbl { font-size: 12px; font-weight: 700; color: #686D6C; text-transform: uppercase; letter-spacing: 0.04em; }
 .availGood .availNumVal { color: #276247; }
 .availOut .availNumVal { color: #B9472E; }
 .bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: #ECE7E0; }
 .barSold { background: #303536; }
 .barRes { background: #F5A524; }
-.barFree { background: #2F7A52; }
+.barFree { background: #276247; }
 .barLegend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #4C5352; font-weight: 600; }
 .legendDot { display: inline-block; width: 9px; height: 9px; border-radius: 6px; margin-right: 6px; vertical-align: -1px; }
 
@@ -236,13 +236,13 @@
 .trackStep::before { content: ''; position: absolute; top: 11px; left: -50%; right: 50%; height: 3px; background: #E4DED7; z-index: 0; }
 .trackStep:first-child::before { display: none; }
 .trackDot { width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 3px solid #E4DED7; z-index: 1; display: flex; align-items: center; justify-content: center; color: #fff; }
-.trackLbl { font-size: 11px; font-weight: 700; color: #686D6C; line-height: 1.2; padding: 0 2px; }
-.trackDone .trackDot { background: #2F7A52; border-color: #2F7A52; }
-.trackDone::before, .trackNow::before { background: #2F7A52; }
+.trackLbl { font-size: 12px; font-weight: 700; color: #686D6C; line-height: 1.2; padding: 0 2px; }
+.trackDone .trackDot { background: #276247; border-color: #276247; }
+.trackDone::before, .trackNow::before { background: #276247; }
 .trackDone .trackLbl { color: #4C5352; }
 .trackNow .trackDot { background: #fff; border-color: #B9472E; box-shadow: 0 0 0 4px rgba(185,71,46, 0.14); }
 .trackNow .trackLbl { color: #303536; }
-.trackNowReady .trackDot { background: #2F7A52; border-color: #2F7A52; box-shadow: 0 0 0 4px rgba(34, 165, 89, 0.18); }
+.trackNowReady .trackDot { background: #276247; border-color: #276247; box-shadow: 0 0 0 4px rgba(39,98,71,0.18); }
 .readyBox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 15px; font-weight: 700; }
 .readyOk { background: #E8F2EC; color: #146C37; }
 .readySoon { background: #EAF0F8; color: #335A86; }
@@ -274,7 +274,7 @@
   font: inherit; font-size: 14.5px; font-weight: 600; color: #303536; cursor: pointer; text-align: left; text-decoration: none;
 }
 .menuItem:hover { background: #F1EEE9; }
-.menuDanger { color: #B9472E; }
+.menuDanger { color: #B42332; }
 
 /* history */
 .history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -285,7 +285,7 @@
 .historySub { color: #686D6C; font-size: 12.5px; margin-top: 2px; }
 
 /* ── Lightbox ─────────────────────────────────────────────────────────── */
-.lightbox { position: fixed; inset: 0; z-index: 400; background: rgba(8, 9, 12, 0.96); display: flex; flex-direction: column; touch-action: pan-y; }
+.lightbox { position: fixed; inset: 0; z-index: 400; background: rgba(51,90,134,0.96); display: flex; flex-direction: column; touch-action: pan-y; }
 .lbTop { display: flex; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; color: #fff; }
 .lbCount { font-size: 14px; font-weight: 700; opacity: 0.9; }
 .lbBtn {
@@ -400,7 +400,7 @@
 .photo { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #F1EEE9; border: 1px solid #CFC8BF; }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .photoCover { border: 2px solid #B9472E; }
-.coverTag { position: absolute; left: 6px; bottom: 6px; height: 22px; padding: 0 8px; border-radius: 12px; background: #B9472E; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
+.coverTag { position: absolute; left: 6px; bottom: 6px; height: 22px; padding: 0 8px; border-radius: 12px; background: #B9472E; color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
 .photoX {
   position: absolute; right: 5px; top: 5px; width: 34px; height: 34px; border-radius: 17px; border: 0; background: rgba(48,53,54, 0.78); color: #fff;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
@@ -410,7 +410,7 @@
   font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
 }
 .photoBusy { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.75); display: flex; align-items: center; justify-content: center; color: #303536; }
-.photoFail { position: absolute; inset: 0; background: rgba(255, 241, 242, 0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #8E1620; font-size: 12px; font-weight: 700; text-align: center; padding: 6px; }
+.photoFail { position: absolute; inset: 0; background: rgba(180,35,50,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #8E1620; font-size: 12px; font-weight: 700; text-align: center; padding: 6px; }
 .addTiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .addTile {
   min-height: 84px; border-radius: 12px; border: 2px dashed #CFC8BF; background: #FBFAF8; color: #303536; cursor: pointer;
@@ -443,7 +443,7 @@
 .reqActions .btn { flex: 1 1 140px; }
 .sp_pending { background: #FEF1CF; color: #A15207; }
 .sp_confirmed { background: #E8F2EC; color: #276247; }
-.sp_rejected { background: #FDE6E8; color: #B9472E; }
+.sp_rejected { background: #FDE6E8; color: #B42332; }
 .sp_cancelled { background: #F1EEE9; color: #4C5352; }
 @media (min-width: 900px) { .reqList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }
 

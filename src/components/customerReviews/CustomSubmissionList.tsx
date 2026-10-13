@@ -111,7 +111,7 @@ export function CustomSubmissionList(props: ListProps) {
       <DuplicateBadge summary={duplicates?.get(row.id)} />
       {row.reward_held && !row.deleted_at && (
         <span style={{
-          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+          fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
           background: '#FAF0DA', color: '#805B0D', border: '1px solid #E6D2A0',
         }}>
           Edited after approval
@@ -119,8 +119,8 @@ export function CustomSubmissionList(props: ListProps) {
       )}
       {row.reapplication_count > 0 && row.status === 'pending_verification' && !row.deleted_at && (
         <span style={{
-          fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-          background: 'rgba(79,111,208,0.10)', color: '#335A86', border: '1px solid rgba(79,111,208,0.25)',
+          fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+          background: 'rgba(51,90,134,0.10)', color: '#335A86', border: '1px solid rgba(51,90,134,0.25)',
         }}>
           Reapplied
         </span>

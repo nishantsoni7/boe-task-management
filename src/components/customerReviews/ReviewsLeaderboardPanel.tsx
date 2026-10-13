@@ -94,8 +94,8 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
   return (
     <>
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: view.runnersUp.length ? 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))' : '1fr' }}>
-        <div style={{ ...CARD, padding: '16px 16px 14px', borderColor: 'rgba(180,83,9,0.35)', background: 'linear-gradient(180deg, #FFFBF2 0%, #FFFFFF 70%)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: GOLD }}>
+        <div style={{ ...CARD, padding: '16px 16px 14px', borderColor: 'rgba(196,138,26,0.35)', background: 'linear-gradient(180deg, #FFFBF2 0%, #FFFFFF 70%)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: GOLD }}>
             <Trophy size={15} strokeWidth={1.9} aria-hidden="true" />
             {view.joint ? `Joint leaders this month (${view.leaders.length})` : 'Leading this month'}
           </div>
@@ -103,7 +103,7 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
         </div>
         {view.runnersUp.length > 0 && (
           <div style={{ ...CARD, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.tertiary }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.tertiary }}>
               {view.runnersUp.length > 1 ? 'Joint runners-up' : 'Runner-up'}
             </div>
             {view.runnersUp.map(r => <Person key={r.employee_id} row={r} size={36} />)}
@@ -112,7 +112,7 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
       </div>
 
       {data.me ? (
-        <div style={{ ...CARD, padding: '10px 14px', background: 'rgba(79,111,208,0.06)', borderColor: 'rgba(79,111,208,0.25)' }}>
+        <div style={{ ...CARD, padding: '10px 14px', background: 'rgba(51,90,134,0.06)', borderColor: 'rgba(51,90,134,0.25)' }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>
             You are {data.rows.find(r => r.is_me)?.tied ? 'joint ' : ''}{ordinal(data.me.rank)} · {count(data.me.reviews)}
           </div>
@@ -120,7 +120,7 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
             {firstPlaceMessage(data.state, data.need, data.leaders)}
           </div>
           {(data.state === 'behind' || data.state === 'no_activity') && (
-            <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
+            <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
           )}
         </div>
       ) : null}
@@ -168,13 +168,13 @@ function Line({ row, divider }: { row: LeaderboardRow; divider: boolean }) {
       style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', minHeight: 44, minWidth: 0,
         borderTop: divider ? `1px solid ${colors.border}` : undefined,
-        background: row.is_me ? 'rgba(79,111,208,0.08)' : undefined,
+        background: row.is_me ? 'rgba(51,90,134,0.08)' : undefined,
       }}
     >
       <span style={{ width: 26, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: row.rank === 1 ? GOLD : colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>{row.rank}</span>
       <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: row.is_me ? 700 : 500, color: colors.primary, overflowWrap: 'anywhere' }}>
         {row.name}{row.is_me ? ' (you)' : ''}
-        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: colors.muted }}>tied</span>}
+        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, color: colors.muted }}>tied</span>}
       </div>
       <div style={{ flexShrink: 0, textAlign: 'right', fontSize: 12, color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
         <strong style={{ color: colors.primary }}>{row.reviews}</strong> · {formatPoints(row.points)} pts · {formatCredits(row.credits)}

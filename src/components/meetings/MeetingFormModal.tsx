@@ -304,7 +304,7 @@ export function MeetingFormModal({
                 <span style={{ fontSize: '12.5px', color: colors.primary, flex: 1, minWidth: 0 }}>
                   {m.full_name}
                 </span>
-                <span style={{ fontSize: '11px', color: colors.muted, textTransform: 'capitalize', flexShrink: 0 }}>
+                <span style={{ fontSize: '12px', color: colors.muted, textTransform: 'capitalize', flexShrink: 0 }}>
                   {locked ? 'Lead' : m.team}
                 </span>
               </button>

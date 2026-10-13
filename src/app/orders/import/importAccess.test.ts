@@ -1056,7 +1056,7 @@ describe('customization is marked in red, and only where there is one', () => {
   test('the accent is spent on the heading, the words and the pictures', () => {
     assert.ok(source.includes('PI_CUSTOMIZATION_TINT = colors.redTint'),
       'the column heading takes a light tint from the existing token')
-    assert.ok(source.includes("PI_CUSTOMIZATION_HEADER_RED = '#B3222E'"))
+    assert.ok(source.includes("PI_CUSTOMIZATION_HEADER_RED = '#B42332'"))
     assert.ok(source.includes("PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'"))
     assert.ok(source.includes("CUSTOMIZATION_BORDER = 'rgba(180,35,50,0.45)'"),
       'and a customization thumbnail is bordered, not filled')
@@ -1106,7 +1106,7 @@ describe('customization is marked in red, and only where there is one', () => {
     // rgba(180,35,50,0.07) composited over white.
     const tintOverWhite = '#FCF3F3'
 
-    assert.ok(contrast('#B3222E', tintOverWhite) >= 4.5,
+    assert.ok(contrast('#B42332', tintOverWhite) >= 4.5,
       'the tinted heading is legible on its own background')
     assert.ok(contrast('#9B1C25', '#FFFFFF') >= 4.5,
       'and the instruction is legible on the row')

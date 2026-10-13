@@ -120,7 +120,7 @@ export function DiscussionBoard({
           </h2>
           {/* The compact meeting summary. Every number is a word as well as a
               colour, so nothing here depends on colour to be understood. */}
-          <p style={{ fontSize: '11.5px', color: colors.muted, margin: '2px 0 0' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, margin: '2px 0 0' }}>
             {summary.total} item{summary.total === 1 ? '' : 's'}
             {' · '}
             <span style={{ color: '#276247', fontWeight: 600 }}>{summary.discussed} discussed</span>
@@ -234,7 +234,7 @@ export function DiscussionBoard({
                 {['Issue', 'Latest position', 'This meeting', 'History', 'Next review', 'Status', ''].map(head => (
                   <th key={head} scope="col" style={{
                     padding: '7px 12px', textAlign: 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                   }}>{head}</th>
                 ))}
@@ -319,7 +319,7 @@ function IssueCell({ row }: { row: DiscussionRow }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
         <MeetingBadge meta={DISCUSSION_CATEGORY_META[item.category]} />
         {item.after_sales_tag && (
-          <span style={{ fontSize: '11px', color: colors.muted }}>
+          <span style={{ fontSize: '12px', color: colors.muted }}>
             {AFTER_SALES_TAG_LABEL[item.after_sales_tag]}
           </span>
         )}
@@ -327,7 +327,7 @@ function IssueCell({ row }: { row: DiscussionRow }) {
       <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, marginTop: '3px', lineHeight: 1.35 }}>
         {item.title}
       </div>
-      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
         Order {item.order_number}
         {item.customer_name ? ` · ${item.customer_name}` : ''}
       </div>
@@ -366,7 +366,7 @@ function StateCell({ row }: { row: DiscussionRow }) {
     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px' }}>
       <MeetingBadge meta={DISCUSSION_STATE_META[row.recordedState]} />
       {row.changedSince && (
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           Now {DISCUSSION_STATE_META[row.item.state].label}
         </span>
       )}
@@ -405,7 +405,7 @@ function HistoryCell({ row }: { row: DiscussionRow }) {
     parts.push(`${row.linkedTaskIds.length} task${row.linkedTaskIds.length === 1 ? '' : 's'}`)
   }
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
       <span>{parts.join(' · ')}</span>
       {row.evidenceCount > 0 && (
         <span
@@ -443,7 +443,7 @@ function DiscussionCard({ row, resolvedWords, onOpen }: { row: DiscussionRow; re
       </div>
       <div style={{
         display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px',
-        fontSize: '11.5px', color: colors.muted, alignItems: 'center',
+        fontSize: '12px', color: colors.muted, alignItems: 'center',
       }}>
         <TodayCell row={row} resolvedWords={resolvedWords} />
         <HistoryCell row={row} />

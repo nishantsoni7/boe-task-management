@@ -265,7 +265,7 @@ const message: React.CSSProperties = {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <dt style={{ fontSize: 11.5, fontWeight: 500, color: colors.tertiary, marginBottom: 3 }}>{label}</dt>
+      <dt style={{ fontSize: 12, fontWeight: 500, color: colors.tertiary, marginBottom: 3 }}>{label}</dt>
       <dd style={{ margin: 0, fontSize: 13.5, color: colors.primary, overflowWrap: 'anywhere' }}>{value}</dd>
     </div>
   )
@@ -321,7 +321,7 @@ function PasswordField({
         </button>
       </div>
       {hint && (
-        <div id={`${id}-hint`} style={{ fontSize: 11.5, color: colors.tertiary }}>{hint}</div>
+        <div id={`${id}-hint`} style={{ fontSize: 12, color: colors.tertiary }}>{hint}</div>
       )}
     </div>
   )

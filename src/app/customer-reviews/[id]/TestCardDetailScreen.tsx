@@ -655,7 +655,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             the state map in src/lib/customerReviews/types.ts). Nothing about
             what may be edited changes here — only what the screen claims.
           */}
-          <p style={{ fontSize: '11px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
             This draft was written by AI for a customer to use, adapt or discard. It is not a
             record of anything that happened and is not attributed to anybody.
             {card.draft_edited_at
@@ -772,7 +772,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {caps.canVerify && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <p style={{ fontSize: '11px', color: colors.tertiary, margin: 0, lineHeight: 1.5 }}>
+                    <p style={{ fontSize: '12px', color: colors.tertiary, margin: 0, lineHeight: 1.5 }}>
                       Verifier rehearsal only — a real employee never sees this control. Share on
                       WhatsApp above already records the hand-off; this is a second way to rehearse
                       the same flow without a real share.
@@ -871,7 +871,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                 >
                   Unbook this review
                 </button>
-                <p style={{ fontSize: '11px', color: colors.muted, margin: '7px 0 0', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '12px', color: colors.muted, margin: '7px 0 0', lineHeight: 1.5 }}>
                   It goes back to Available for somebody else to book. You can do this until
                   you confirm you sent it — after that it stays yours.
                 </p>
@@ -1229,12 +1229,12 @@ function NextStepStrip({
           return (
             <li key={name} style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
-              fontSize: '11px', fontWeight: 600,
+              fontSize: '12px', fontWeight: 600,
               color: done ? '#276247' : current ? colors.primary : colors.muted,
             }}>
               <span aria-hidden="true" style={{
                 width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 700,
+                fontSize: 12, fontWeight: 700,
                 background: done ? '#BCD8C8' : current ? colors.primary : 'rgba(0,0,0,0.08)',
                 color: done ? '#276247' : current ? '#fff' : colors.muted,
               }}>

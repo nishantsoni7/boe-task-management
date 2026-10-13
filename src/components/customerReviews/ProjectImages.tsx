@@ -236,7 +236,7 @@ export function ProjectImages({
               <div style={{
                 width: '100%', aspectRatio: '1 / 1', display: 'flex',
                 alignItems: 'center', justifyContent: 'center', padding: '6px',
-                fontSize: '10px', color: colors.muted, textAlign: 'center',
+                fontSize: '12px', color: colors.muted, textAlign: 'center',
                 overflowWrap: 'anywhere',
               }}>
                 {image.file_name}
@@ -244,7 +244,7 @@ export function ProjectImages({
             )}
 
             <div style={{
-              padding: '5px 6px', fontSize: '10px', color: colors.tertiary,
+              padding: '5px 6px', fontSize: '12px', color: colors.tertiary,
               borderTop: `1px solid ${colors.border}`, background: '#FFFFFF',
             }}>
               {formatPhotoSize(image.byte_size)}

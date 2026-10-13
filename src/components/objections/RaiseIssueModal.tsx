@@ -81,7 +81,7 @@ export function RaiseIssueModal({
           borderRadius: 8, padding: '11px 14px', flexShrink: 0,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: colors.muted,
+            fontSize: 12, fontWeight: 600, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
           }}>
             As recorded
@@ -94,7 +94,7 @@ export function RaiseIssueModal({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
         <label htmlFor="objection-reason" style={{
-          fontSize: 11, fontWeight: 600, color: colors.muted,
+          fontSize: 12, fontWeight: 600, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
           What looks wrong? <span style={{ color: '#B42332' }}>*</span>
@@ -110,7 +110,7 @@ export function RaiseIssueModal({
           className="boe-input"
           style={{ resize: 'vertical', fontSize: 13, lineHeight: 1.5, padding: '9px 11px' }}
         />
-        <div style={{ fontSize: 11, color: colors.muted }}>
+        <div style={{ fontSize: 12, color: colors.muted }}>
           An admin will review this. Your attendance and salary are not changed by
           raising an issue. {REASON_MAX_LENGTH - reason.length} characters left.
         </div>

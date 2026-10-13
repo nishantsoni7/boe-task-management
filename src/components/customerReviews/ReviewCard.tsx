@@ -84,14 +84,14 @@ export function ReviewCard({
         <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
         <span style={{
           marginLeft: 'auto', fontFamily: 'var(--font-body)',
-          fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap',
+          fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap',
         }}>
           {card.card_ref}
         </span>
       </div>
 
       <div>
-        <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '3px' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '3px' }}>
           {testCategoryLabel(card.test_category)}
         </div>
         <h3 style={{
@@ -110,7 +110,7 @@ export function ReviewCard({
       </p>
 
       {assigneeName && (
-        <div style={{ fontSize: '11px', color: colors.tertiary }}>
+        <div style={{ fontSize: '12px', color: colors.tertiary }}>
           Assigned to <strong style={{ color: colors.secondary }}>{assigneeName}</strong>
         </div>
       )}

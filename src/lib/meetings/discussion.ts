@@ -63,7 +63,7 @@ export const DISCUSSION_CATEGORY_META: Record<DiscussionCategory, BadgeMeta> = {
 }
 
 export const DISCUSSION_STATE_META: Record<DiscussionItemState, BadgeMeta> = {
-  open:     { label: 'Open',     bg: '#EAF0F8', color: '#5B21B6', border: '#DDD6FE' },
+  open:     { label: 'Open',     bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   resolved: { label: 'Resolved', bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }
 

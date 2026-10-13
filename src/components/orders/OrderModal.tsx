@@ -126,15 +126,15 @@ export function OrderField({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <label style={{
-        fontSize: '11px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
       </label>
       {children}
       {error
-        ? <div style={{ fontSize: '11px', color: '#B42332' }}>{error}</div>
-        : hint && <div style={{ fontSize: '11px', color: colors.muted }}>{hint}</div>}
+        ? <div style={{ fontSize: '12px', color: '#B42332' }}>{error}</div>
+        : hint && <div style={{ fontSize: '12px', color: colors.muted }}>{hint}</div>}
     </div>
   )
 }
@@ -201,7 +201,7 @@ export function OrderModalNotice({ tone = 'info', children }: {
   children: React.ReactNode
 }) {
   const palette = tone === 'warning'
-    ? { bg: 'rgba(217,119,6,0.10)', fg: '#805B0D' }
+    ? { bg: 'rgba(196,138,26,0.10)', fg: '#805B0D' }
     : { bg: colors.raised, fg: colors.secondary }
   return (
     <div style={{

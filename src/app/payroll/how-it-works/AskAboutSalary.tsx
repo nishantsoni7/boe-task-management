@@ -121,7 +121,7 @@ export function AskAboutSalary({ token }: { token: string }) {
               }}
             />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11.5, color: '#686D6C', fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: 12, color: '#686D6C', fontVariantNumeric: 'tabular-nums' }}>
                 {question.length}/{MAX_QUESTION_LENGTH}
               </span>
               <button
@@ -143,7 +143,7 @@ export function AskAboutSalary({ token }: { token: string }) {
           {state.status === 'idle' && (
             <div style={{ marginTop: 14 }}>
               <div style={{
-                fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+                fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
                 letterSpacing: '0.09em', color: '#686D6C', marginBottom: 8,
               }}>
                 Try one of these
@@ -186,11 +186,11 @@ export function AskAboutSalary({ token }: { token: string }) {
               </div>
               <div style={{
                 padding: '13px 15px', borderRadius: 8,
-                background: 'rgba(79,111,208,0.05)', border: '1px solid rgba(79,111,208,0.22)',
+                background: 'rgba(51,90,134,0.05)', border: '1px solid rgba(51,90,134,0.22)',
               }}>
                 <AnswerText text={state.answer} />
               </div>
-              <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 7, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 12, color: '#686D6C', marginTop: 7, lineHeight: 1.5 }}>
                 Answered from BOE&rsquo;s payroll rules. It has no access to your payroll records —
                 open the month in My Payroll for your own figures.
               </div>
@@ -202,7 +202,7 @@ export function AskAboutSalary({ token }: { token: string }) {
               role="alert"
               style={{
                 marginTop: 14, padding: '12px 14px', borderRadius: 8,
-                background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)',
+                background: 'rgba(180,35,50,0.06)', border: '1px solid rgba(180,35,50,0.22)',
                 fontSize: 12.5, color: '#B42332', lineHeight: 1.55,
                 display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
               }}

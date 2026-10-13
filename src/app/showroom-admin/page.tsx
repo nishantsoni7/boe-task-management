@@ -256,7 +256,7 @@ export default function ShowroomInboxPage() {
               >
                 {tab.label}
                 <span style={{
-                  fontSize: '10.5px', fontWeight: 700, lineHeight: 1,
+                  fontSize: '12px', fontWeight: 700, lineHeight: 1,
                   background: active ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
                   color: active ? '#fff' : '#686D6C',
                   borderRadius: '6px', padding: '2px 6px',
@@ -317,7 +317,7 @@ function SummaryChip({ label, value, sub, accent = '#303536' }: {
     }}>
       <div>
         <div style={{
-          fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
+          fontSize: '12px', fontWeight: 700, letterSpacing: '0.07em',
           textTransform: 'uppercase', color: '#686D6C', marginBottom: '2px',
         }}>
           {label}
@@ -331,7 +331,7 @@ function SummaryChip({ label, value, sub, accent = '#303536' }: {
           {value}
         </div>
       </div>
-      <div style={{ fontSize: '11px', color: '#686D6C', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
+      <div style={{ fontSize: '12px', color: '#686D6C', fontWeight: 400, paddingLeft: '10px', borderLeft: '1px solid #E4DED7' }}>
         {sub}
       </div>
     </div>
@@ -416,7 +416,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
 
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px',
-            fontSize: '10px', fontWeight: 700,
+            fontSize: '12px', fontWeight: 700,
             color: qs.color, background: qs.bg,
             border: `1.5px solid ${qs.border}`,
             borderRadius: '8px', padding: '4px 10px',
@@ -432,7 +432,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
         {/* Owner. An admin sees every salesperson's inquiries in one list, and
             until now the list did not say whose customer any of them was. */}
         <div style={{
-          fontSize: '11.5px', color: '#4C5352', fontWeight: 500,
+          fontSize: '12px', color: '#4C5352', fontWeight: 500,
           display: 'flex', alignItems: 'center', gap: '5px',
         }}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -447,7 +447,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
         {/* Context line (city / project) */}
         {contextLine && (
           <div style={{
-            fontSize: '11.5px', color: '#686D6C', fontWeight: 500,
+            fontSize: '12px', color: '#686D6C', fontWeight: 500,
             display: 'flex', alignItems: 'center', gap: '5px',
           }}>
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -476,14 +476,14 @@ function InquiryCard({ inquiry, stage, onClick }: {
             {hasDiscount ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' }}>
                 <span style={{
-                  fontSize: '11px', color: '#686D6C',
+                  fontSize: '12px', color: '#686D6C',
                   textDecoration: 'line-through',
                   fontFeatureSettings: '"tnum" 1',
                 }}>
                   {inr(inquiry.mrp_total)}
                 </span>
                 <span style={{
-                  fontSize: '10px', fontWeight: 700,
+                  fontSize: '12px', fontWeight: 700,
                   color: '#276247', background: '#E8F2EC',
                   border: '1px solid #BCD8C8',
                   borderRadius: '6px', padding: '1px 5px',
@@ -493,7 +493,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
                 </span>
               </div>
             ) : (
-              <div style={{ fontSize: '11px', color: '#686D6C', marginTop: '5px', fontWeight: 500 }}>
+              <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '5px', fontWeight: 500 }}>
                 at MRP
               </div>
             )}
@@ -513,7 +513,7 @@ function InquiryCard({ inquiry, stage, onClick }: {
               {inquiry.item_count} {inquiry.item_count === 1 ? 'item' : 'items'}
             </div>
             <div style={{
-              fontSize: '10.5px', color: '#686D6C', marginTop: '4px',
+              fontSize: '12px', color: '#686D6C', marginTop: '4px',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {dateStr} · {timeStr}

@@ -48,7 +48,7 @@ const card: React.CSSProperties = {
 }
 
 const eyebrow: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted,
+  fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted,
 }
 
 function stamp(at: string): string {
@@ -58,9 +58,9 @@ function stamp(at: string): string {
 
 const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
   pending:   { bg: 'rgba(196,138,26,0.14)', fg: '#805B0D' },
-  available: { bg: 'rgba(5,150,105,0.12)',  fg: '#276247' },
-  lapsed:    { bg: 'rgba(220,38,38,0.10)',  fg: '#B42332' },
-  reversed:  { bg: 'rgba(140,148,166,0.16)', fg: '#4C5352' },
+  available: { bg: 'rgba(39,98,71,0.12)',  fg: '#276247' },
+  lapsed:    { bg: 'rgba(180,35,50,0.10)',  fg: '#B42332' },
+  reversed:  { bg: 'rgba(104,109,108,0.16)', fg: '#4C5352' },
 }
 
 export default function MyCreditsPage() {
@@ -140,7 +140,7 @@ export default function MyCreditsPage() {
       <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* ── 1. Balance ─────────────────────────────────────────────────── */}
-        <section aria-labelledby="credits-balance" style={{ ...card, border: '1px solid rgba(79,111,208,0.28)' }}>
+        <section aria-labelledby="credits-balance" style={{ ...card, border: '1px solid rgba(51,90,134,0.28)' }}>
           <div style={{ padding: '16px 18px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ minWidth: 160 }}>
               <div id="credits-balance" style={eyebrow}>Spendable now</div>
@@ -222,9 +222,9 @@ export default function MyCreditsPage() {
                     style={{
                       width: 26, height: 26, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 12, fontWeight: 700,
-                      background: i < done ? 'rgba(5,150,105,0.14)' : 'rgba(0,0,0,0.05)',
+                      background: i < done ? 'rgba(39,98,71,0.14)' : 'rgba(0,0,0,0.05)',
                       color: i < done ? '#276247' : '#CFC8BF',
-                      border: i < done ? '1px solid rgba(5,150,105,0.35)' : '1px dashed #CFC8BF',
+                      border: i < done ? '1px solid rgba(39,98,71,0.35)' : '1px dashed #CFC8BF',
                     }}
                   >
                     {i < done ? '✓' : i + 1}
@@ -287,7 +287,7 @@ export default function MyCreditsPage() {
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: colors.primary }}>{row.title ?? 'Credits'}</span>
                         {row.status && (
-                          <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 8px', borderRadius: 12, background: STATUS_TONE[row.status]?.bg, color: STATUS_TONE[row.status]?.fg, whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, padding: '1px 8px', borderRadius: 12, background: STATUS_TONE[row.status]?.bg, color: STATUS_TONE[row.status]?.fg, whiteSpace: 'nowrap' }}>
                             {REWARD_STATUS_LABELS[row.status]}
                           </span>
                         )}
@@ -298,7 +298,7 @@ export default function MyCreditsPage() {
                       <div style={{ fontSize: 13.5, fontWeight: 700, color: row.credits < 0 ? '#B42332' : '#276247', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCredits(row.credits, { signed: true })}
                       </div>
-                      <div style={{ fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 12, color: colors.muted, whiteSpace: 'nowrap' }}>
                         {stamp(row.created_at)}{typeof row.balance_after === 'number' ? ` · ${row.balance_after} after` : ''}
                       </div>
                     </div>
@@ -343,7 +343,7 @@ function UseTile({ icon, title, lines, note, href, cta }: {
       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
         {lines.map(l => <li key={l}>{l}</li>)}
       </ul>
-      <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>{note}</div>
+      <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5 }}>{note}</div>
       <Link href={href} style={{ fontSize: 12.5, fontWeight: 600, color: ACCENT, textDecoration: 'none', marginTop: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {cta} <ChevronRight size={14} />
       </Link>

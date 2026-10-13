@@ -25,7 +25,7 @@ export function useToast() {
 }
 
 const VARIANT_BG: Record<ToastVariant, string> = {
-  success: '#2F7A52',
+  success: '#276247',
   error:   '#B42332',
   info:    '#335A86',
 }
@@ -45,10 +45,10 @@ export function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () =
         background: VARIANT_BG[toast.variant],
         color: '#fff',
         padding: '10px 22px',
-        borderRadius: '8px',
-        fontSize: '13px',
+        borderRadius: '12px',
+        fontSize: '14px',
         fontWeight: 600,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        boxShadow: '0 8px 24px rgba(48,53,54,0.18)',
         cursor: 'pointer',
         userSelect: 'none',
         whiteSpace: 'nowrap',

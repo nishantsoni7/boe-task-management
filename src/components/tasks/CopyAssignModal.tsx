@@ -78,7 +78,7 @@ export function CopyAssignModal({
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
           <div>
             <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Copy &amp; Assign</div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
               Creates a new task from this one for another person.
             </div>
           </div>
@@ -101,17 +101,17 @@ export function CopyAssignModal({
           <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.secondary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {sourceTitle}
           </span>
-          <span style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, whiteSpace: 'nowrap' }}>
             {attachmentCount > 0 ? `📎 ${attachmentCount}` : 'No attachments'}
           </span>
         </div>
-        <p style={{ fontSize: '11.5px', color: colors.muted, margin: '-4px 0 0' }}>
+        <p style={{ fontSize: '12px', color: colors.muted, margin: '-4px 0 0' }}>
           Title and attachments are copied. Review the assignee, due date, priority and description below.
         </p>
 
         {/* Assign to */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
             Assign to <span style={{ color: colors.red }}>*</span>
           </label>
           <select
@@ -130,7 +130,7 @@ export function CopyAssignModal({
 
         {/* Due date */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
             Due date <span style={{ color: colors.red }}>*</span>
           </label>
           <input
@@ -144,7 +144,7 @@ export function CopyAssignModal({
 
         {/* Priority — prefilled from source, editable */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
             Priority
           </label>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -176,7 +176,7 @@ export function CopyAssignModal({
         {/* Description — prefilled from the source task, fully editable. Saved only on the
             copy; the source is never changed. Empty is allowed (same as normal task creation). */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
             Description
           </label>
           <textarea
@@ -193,7 +193,7 @@ export function CopyAssignModal({
           />
         </div>
 
-        {error && <p style={{ fontSize: '11.5px', color: colors.red, margin: 0 }}>{error}</p>}
+        {error && <p style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>}
 
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '2px' }}>
@@ -215,7 +215,7 @@ export function CopyAssignModal({
             disabled={!canSubmit}
             style={{
               padding: '8px 18px', borderRadius: '8px',
-              border: `1.5px solid ${colors.blue}`,
+              border: `1.5px solid ${colors.brand}`,
               background: colors.brand, color: '#ffffff',
               fontSize: '12px', fontWeight: 600,
               cursor: canSubmit ? 'pointer' : 'not-allowed',

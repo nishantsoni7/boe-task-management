@@ -140,7 +140,7 @@ export default function ScanPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ height: '1px', background: colors.border, flex: 1 }} />
             <span style={{
-              fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.08em',
+              fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
               textTransform: 'uppercase', color: colors.muted,
             }}>
               Or enter the code

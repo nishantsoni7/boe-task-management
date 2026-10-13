@@ -272,7 +272,7 @@ export function AddToMeetingModal({
           </div>
         </div>
 
-        <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
           The task is unchanged — its status, assignee and due date are exactly as they were. The
           issue stays linked to it for context.
         </p>

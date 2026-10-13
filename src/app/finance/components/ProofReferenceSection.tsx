@@ -23,12 +23,12 @@ import { colors } from '@/lib/tokens'
 export const PROOF_REFERENCE_TITLE = 'Payment Proof / Reference'
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, color: colors.muted,
+  fontSize: '12px', fontWeight: 700, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.07em',
 }
 
 const FIELD_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 

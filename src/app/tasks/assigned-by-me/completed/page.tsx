@@ -40,8 +40,8 @@ const NO_TASKS: Task[] = []
 const NO_NAMES: Record<string, string> = {}
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#B06035'    },
-  medium: { label: 'Med',  color: '#C07820'    },
+  high:   { label: 'High', color: '#805B0D'    },
+  medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
 
@@ -49,13 +49,13 @@ function InfoPanel() {
   return (
     <div style={{
       width: '220px', flexShrink: 0,
-      background: 'rgba(76,175,125,0.04)',
-      border: '1.5px solid rgba(76,175,125,0.18)',
+      background: 'rgba(39,98,71,0.04)',
+      border: '1.5px solid rgba(39,98,71,0.18)',
       borderRadius: '8px', padding: '16px 14px',
       display: 'flex', flexDirection: 'column', gap: '14px', alignSelf: 'flex-start',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-        <CheckCircle2 size={14} color="#2F7A52" />
+        <CheckCircle2 size={14} color="#276247" />
         <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>About Completed</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -64,8 +64,8 @@ function InfoPanel() {
           'You can reopen a task if it was closed by mistake or has issues.',
         ].map((text, i) => (
           <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-            <span style={{ marginTop: '3px', flexShrink: 0, width: '5px', height: '5px', borderRadius: '50%', background: 'rgba(76,175,125,0.5)', display: 'inline-block' }} />
-            <span style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: '1.5' }}>{text}</span>
+            <span style={{ marginTop: '3px', flexShrink: 0, width: '5px', height: '5px', borderRadius: '50%', background: 'rgba(39,98,71,0.5)', display: 'inline-block' }} />
+            <span style={{ fontSize: '12px', color: colors.secondary, lineHeight: '1.5' }}>{text}</span>
           </div>
         ))}
       </div>
@@ -121,20 +121,20 @@ function CompletedTaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onRestore() }}
               onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#2F7A52' : '#2F7A52', fontSize: '11px', fontWeight: 600 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(39,98,71,0.15)' : 'rgba(39,98,71,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(39,98,71,0.45)' : 'rgba(39,98,71,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#276247' : '#276247', fontSize: '12px', fontWeight: 600 }}>
               <RotateCcw size={11} />
             </button>
             <button onClick={e => { e.stopPropagation(); onClick() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#2F7A52' : colors.muted }}>
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(39,98,71,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(39,98,71,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#276247' : colors.muted }}>
               <ExternalLink size={12} />
             </button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
-          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
-          <span style={{ fontSize: '10.5px', color: completionInfo.warn ? '#C07820' : colors.muted, whiteSpace: 'nowrap' }}>{completionInfo.completedLabel}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(39,98,71,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
+          <span style={{ fontSize: '12px', color: completionInfo.warn ? '#805B0D' : colors.muted, whiteSpace: 'nowrap' }}>{completionInfo.completedLabel}</span>
         </div>
       </div>
     )
@@ -167,7 +167,7 @@ function CompletedTaskCard({
           {task.title}
         </div>
         {task.note && (
-          <div style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>
+          <div style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>
             {task.note}
           </div>
         )}
@@ -180,8 +180,8 @@ function CompletedTaskCard({
           style={{
             display: 'inline-block', maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
-            color: '#276247', background: 'rgba(46,158,107,0.10)',
+            fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
+            color: '#276247', background: 'rgba(39,98,71,0.10)',
           }}
         >
           {assigneeName}
@@ -190,15 +190,15 @@ function CompletedTaskCard({
 
       {/* Priority — fixed 52px */}
       <div style={{ flexShrink: 0, width: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
       </div>
 
       {/* Completion info — fixed 140px */}
       <div style={{ flexShrink: 0, width: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', paddingLeft: '4px' }}>
-        <span style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           <span style={{ opacity: 0.6 }}>Completed on: </span>{completionInfo.completedLabel}
         </span>
-        <span style={{ fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap', color: completionInfo.warn ? '#C07820' : colors.muted, opacity: completionInfo.warn ? 1 : 0.65 }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', color: completionInfo.warn ? '#805B0D' : colors.muted, opacity: completionInfo.warn ? 1 : 0.65 }}>
           {completionInfo.countdownLabel}
         </span>
       </div>
@@ -213,11 +213,11 @@ function CompletedTaskCard({
           style={{
             display: 'flex', alignItems: 'center', gap: '5px',
             padding: '4px 10px', borderRadius: '6px', height: '28px',
-            background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)',
-            border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`,
+            background: hoveredRestore ? 'rgba(39,98,71,0.15)' : 'rgba(39,98,71,0.07)',
+            border: `1px solid ${hoveredRestore ? 'rgba(39,98,71,0.45)' : 'rgba(39,98,71,0.25)'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredRestore ? '#2F7A52' : '#2F7A52',
-            fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
+            color: hoveredRestore ? '#276247' : '#276247',
+            fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
           }}
         >
           <RotateCcw size={11} />
@@ -231,10 +231,10 @@ function CompletedTaskCard({
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '28px', height: '28px', borderRadius: '6px',
-            background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent',
-            border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`,
+            background: hoveredView ? 'rgba(39,98,71,0.12)' : 'transparent',
+            border: `1px solid ${hoveredView ? 'rgba(39,98,71,0.35)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? '#2F7A52' : colors.muted,
+            color: hoveredView ? '#276247' : colors.muted,
           }}
         >
           <ExternalLink size={12} />
@@ -376,10 +376,10 @@ function AssignedByMeCompletedContent() {
       <DashboardLayout profile={profile} title="Assigned By Me" onSignOut={handleLogout}>
 
         <div style={{ marginBottom: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#2F7A52' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#276247' }}>
             {`Completed · ${total}`}
           </div>
-          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
             {hasFilters ? 'Delegated tasks matching the current filters' : 'Delegated tasks that have been completed'}
           </div>
         </div>
@@ -405,7 +405,7 @@ function AssignedByMeCompletedContent() {
             <select
               value={filterAssignee}
               onChange={e => setState({ assignee: e.target.value })}
-              style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
+              style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
             >
               <option value="">All Assignees</option>
               {assigneeOptions.map(opt => (
@@ -416,7 +416,7 @@ function AssignedByMeCompletedContent() {
           <select
             value={filterPriority}
             onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
-            style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+            style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
           >
             <option value="">All Priority</option>
             <option value="high">High</option>

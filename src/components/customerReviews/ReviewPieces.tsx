@@ -39,8 +39,8 @@ export function InternalTestWarning({ compact = false }: { compact?: boolean }) 
         padding: compact ? '5px 8px' : '9px 12px',
         borderRadius: compact ? '6px' : '8px',
         background: '#EAF0F8',
-        border: '1px solid #DDD6FE',
-        color: '#5B21B6',
+        border: '1px solid #C3D3E6',
+        color: '#335A86',
         fontSize: compact ? '10px' : '12px',
         fontWeight: 700,
         letterSpacing: '0.01em',
@@ -58,7 +58,7 @@ export function ReviewBadge({ meta }: { meta: BadgeMeta }) {
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -84,7 +84,7 @@ export function ReviewBadge({ meta }: { meta: BadgeMeta }) {
  */
 export function WhatsAppOpenedNote() {
   return (
-    <span style={{ color: colors.muted, fontSize: '11px' }}>
+    <span style={{ color: colors.muted, fontSize: '12px' }}>
       Opening WhatsApp prepares the message. It does not confirm it was sent.
     </span>
   )
@@ -106,7 +106,7 @@ export function ScreenshotIsNotProofNote() {
       style={{
         display: 'flex', gap: '8px', alignItems: 'flex-start',
         padding: '9px 12px', borderRadius: '8px',
-        background: colors.blueTint, border: '1px solid rgba(51,90,134,0.22)',
+        background: colors.brandTint, border: '1px solid rgba(51,90,134,0.22)',
         fontSize: '12px', lineHeight: 1.5, color: colors.secondary,
       }}
     >

@@ -108,7 +108,7 @@ export function VerifyPanel({
         <Row label="Evidence" value={hasEvidence ? 'A screenshot is attached below' : 'No screenshot attached'} />
       </dl>
 
-      <p style={{ margin: 0, fontSize: '11px', color: meta.color, opacity: 0.85, lineHeight: 1.6 }}>
+      <p style={{ margin: 0, fontSize: '12px', color: meta.color, opacity: 0.85, lineHeight: 1.6 }}>
         The credits are posted to the employee who booked this review, not to you, in the same
         transaction that verifies it. Verifying twice is refused — a verified review is final.
       </p>

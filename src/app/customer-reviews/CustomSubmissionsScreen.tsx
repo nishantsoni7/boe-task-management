@@ -311,7 +311,7 @@ export function CustomSubmissionsScreen() {
             const meta = s === 'deleted'
               ? { label: 'Deleted', bg: '#F1EEE9', color: '#4C5352', border: '#CFC8BF' }
               : s === 'all'
-                ? { label: 'All', bg: 'rgba(79,111,208,0.10)', color: '#335A86', border: 'rgba(79,111,208,0.25)' }
+                ? { label: 'All', bg: 'rgba(51,90,134,0.10)', color: '#335A86', border: 'rgba(51,90,134,0.25)' }
                 : CUSTOM_SUBMISSION_STATUS_META[s]
             return (
               <button
@@ -697,7 +697,7 @@ function DecisionSheet({
         {pending && row.reapplication_count > 0 && (
           <section style={{
             padding: '10px 12px', borderRadius: '8px',
-            border: '1px solid rgba(79,111,208,0.25)', background: 'rgba(79,111,208,0.06)',
+            border: '1px solid rgba(51,90,134,0.25)', background: 'rgba(51,90,134,0.06)',
             fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
           }}>
             <strong>Reapplied after a rejection</strong> — the same review, corrected. It still uses its one monthly slot.
@@ -773,9 +773,9 @@ function DecisionSheet({
               )}
             </label>
             {isAdmin && creditsText.trim() !== '' && creditsIssue && (
-              <span style={{ fontSize: '11.5px', color: colors.red }}>{creditsIssue}</span>
+              <span style={{ fontSize: '12px', color: colors.red }}>{creditsIssue}</span>
             )}
-            <p style={{ margin: 0, fontSize: '11.5px', color: typeMeta.color, lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: '12px', color: typeMeta.color, lineHeight: 1.6 }}>
               {configured != null
                 ? `The configured reward for a ${CUSTOM_REVIEW_TYPE_LABELS[row.review_type]} is ${formatCredits(configured)}. `
                 : ''}
@@ -805,7 +805,7 @@ function DecisionSheet({
                 fontFamily: 'inherit', boxSizing: 'border-box', minHeight: '80px',
               }}
             />
-            <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               The employee sees this reason and can correct the review and reapply it. No credits are awarded.
             </span>
           </label>

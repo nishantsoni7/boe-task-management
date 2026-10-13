@@ -66,15 +66,15 @@ type TabKey = 'all' | 'for_approval' | 'unacknowledged' | 'overdue' | 'needs_upd
 // `all`. Nothing else needs to know a tab was removed.
 const TABS: { key: TabKey; label: string; color: string }[] = [
   { key: 'all',            label: 'All',             color: colors.secondary },
-  { key: 'for_approval',   label: 'For Approval',    color: '#A57F14'        },
-  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
+  { key: 'for_approval',   label: 'For Approval',    color: '#805B0D'        },
+  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#335A86'        },
   { key: 'overdue',        label: 'Overdue',         color: colors.red       },
   { key: 'needs_update',   label: 'Pending Update',  color: colors.amber     },
 ]
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#B06035'    },
-  medium: { label: 'Med',  color: '#C07820'    },
+  high:   { label: 'High', color: '#805B0D'    },
+  medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
 
@@ -199,7 +199,7 @@ function TaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onEdit?.() }}
               onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#335A86' : colors.muted }}>
+              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#335A86' : colors.muted }}>
               <Pencil size={13} />
             </button>
             <button onClick={e => { e.stopPropagation(); onDelete?.() }}
@@ -215,22 +215,22 @@ function TaskCard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#276247', background: 'rgba(39,98,71,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
           {/* The mobile card names no status — with one exception, because
               "this one is waiting on you" is the only status on this screen
               that asks the reader for something. */}
           {isForApproval && (
             <span
               className={`${statusBadgeClass(task.status)} boe-badge-approval-review`}
-              style={{ fontSize: '9px', textTransform: 'capitalize' }}
+              style={{ fontSize: '12px', textTransform: 'capitalize' }}
             >
               <ClipboardCheck size={10} strokeWidth={2.4} style={{ flexShrink: 0 }} />
               {taskStatusLabel(task.status, 'creator')}
             </span>
           )}
-          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
           {dateStr && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '12px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
               {overdue && <AlertCircle size={9} />}{dateStr}
             </span>
           )}
@@ -277,7 +277,7 @@ function TaskCard({
         </div>
         {task.note && (
           <div style={{
-            fontSize: '11px', color: colors.muted,
+            fontSize: '12px', color: colors.muted,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px',
           }}>
             {task.note}
@@ -290,7 +290,7 @@ function TaskCard({
           return (
             <span style={{
               display: 'inline-block', marginTop: '3px',
-              fontSize: '10px', fontWeight: 700,
+              fontSize: '12px', fontWeight: 700,
               color, background: `${color}12`,
               border: `1px solid ${color}30`,
               padding: '1px 6px', borderRadius: '6px',
@@ -312,8 +312,8 @@ function TaskCard({
           style={{
             display: 'inline-block', maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
-            color: '#276247', background: 'rgba(46,158,107,0.10)',
+            fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
+            color: '#276247', background: 'rgba(39,98,71,0.10)',
           }}
         >
           {assigneeName}
@@ -322,7 +322,7 @@ function TaskCard({
 
       {/* Priority — 7% (min 52px) */}
       <div style={{ flexShrink: 0, width: COL.priority.width, minWidth: COL.priority.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
           {priority.label}
         </span>
       </div>
@@ -332,7 +332,7 @@ function TaskCard({
       <div style={{ flexShrink: 0, width: COL.status.width, minWidth: COL.status.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span
           className={`${statusBadgeClass(task.status)}${isForApproval ? ' boe-badge-approval-review' : ''}`}
-          style={{ fontSize: '9px', textTransform: 'capitalize' }}
+          style={{ fontSize: '12px', textTransform: 'capitalize' }}
         >
           {isForApproval && <ClipboardCheck size={10} strokeWidth={2.4} style={{ flexShrink: 0 }} />}
           {taskStatusLabel(task.status, 'creator')}
@@ -341,14 +341,14 @@ function TaskCard({
 
       {/* Created On — 8.5% (min 82px) */}
       <div style={{ flexShrink: 0, width: COL.created.width, minWidth: COL.created.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
       {/* Due Date — 8.5% (min 88px) */}
       <div style={{ flexShrink: 0, width: COL.due.width, minWidth: COL.due.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.due_date) ?? 'No due date'}
         </span>
       </div>
@@ -363,8 +363,8 @@ function TaskCard({
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent',
-            border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+            background: hoveredEdit ? 'rgba(51,90,134,0.10)' : 'transparent',
+            border: `1px solid ${hoveredEdit ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
             color: hoveredEdit ? '#335A86' : colors.muted,
           }}
@@ -564,13 +564,13 @@ function DelegateTaskModal({
   }
 
   const PRIORITY_CFG = {
-    low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)',  text: '#2F7A52' },
-    medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)',  text: '#C48A1A' },
-    high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)', text: '#B42332' },
+    low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',  text: '#276247' },
+    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#C48A1A' },
+    high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)', text: '#B42332' },
   } as const
 
   const LABEL_STYLE: React.CSSProperties = {
-    fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+    fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
     letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px',
   }
 
@@ -611,7 +611,7 @@ function DelegateTaskModal({
             autoFocus
           />
           {titleDirty && !title.trim() && (
-            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
+            <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
           )}
         </div>
 
@@ -630,7 +630,7 @@ function DelegateTaskModal({
             ))}
           </select>
           {assigneeDirty && !assigneeId && (
-            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Assignee is required</p>
+            <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Assignee is required</p>
           )}
         </div>
 
@@ -648,7 +648,7 @@ function DelegateTaskModal({
                     onClick={() => { setPriority(p); setPriorityDirty(true) }}
                     style={{
                       flex: 1, textAlign: 'center', textTransform: 'capitalize',
-                      fontSize: '11px', fontWeight: selected ? 700 : 500,
+                      fontSize: '12px', fontWeight: selected ? 700 : 500,
                       padding: '5px 2px', borderRadius: '6px',
                       border: `1px solid ${selected ? cfg.bg : cfg.border}`,
                       background: selected ? cfg.bg : 'transparent',
@@ -662,7 +662,7 @@ function DelegateTaskModal({
               })}
             </div>
             {priorityDirty && !priority && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Required</p>
             )}
           </div>
           <div>
@@ -675,7 +675,7 @@ function DelegateTaskModal({
               style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }}
             />
             {dateDirty && !dueDate && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Required</p>
             )}
           </div>
         </div>
@@ -710,8 +710,8 @@ function DelegateTaskModal({
               {attachFiles.map((f, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '6px', background: colors.raised, border: `1px solid ${colors.border}` }}>
                   <Paperclip size={11} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: '11px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                  <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                   <button
                     onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
@@ -740,25 +740,25 @@ function DelegateTaskModal({
               }}
             >
               <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
-              <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
-              <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
+              <span style={{ fontSize: '12px', color: colors.secondary }}>Add files</span>
+              <span style={{ fontSize: '12px', color: colors.muted }}>— 10 MB total</span>
             </button>
             {attachDropActive && (
               <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 pointerEvents: 'none',
-                fontSize: '11px', fontWeight: 600, color: colors.blue,
+                fontSize: '12px', fontWeight: 600, color: colors.brand,
                 background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
               }}>
                 Drop files to attach
               </div>
             )}
           </div>
-          <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
             Drop files here, paste copied files into the description, or browse
           </p>
-          {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
+          {attachError && <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
         </div>
 
         {/* Important toggle */}
@@ -896,14 +896,14 @@ function EditTaskModal({
         </div>
 
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Task Name <span style={{ color: colors.red }}>*</span>
           </label>
           <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="boe-input" style={{ width: '100%', boxSizing: 'border-box' }} />
         </div>
 
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
             Note <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
           </label>
           <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} className="boe-input" style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }} />
@@ -911,17 +911,17 @@ function EditTaskModal({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Priority</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Priority</label>
             <div style={{ display: 'flex', gap: '4px' }}>
               {PRIORITIES_EDIT.map(p => (
-                <button key={p} onClick={() => setPriority(p)} className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`} style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize', fontSize: '10px', padding: '3px 0' }}>
+                <button key={p} onClick={() => setPriority(p)} className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`} style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize', fontSize: '12px', padding: '3px 0' }}>
                   {p}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Due Date</label>
+            <label style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Due Date</label>
             <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="boe-input" style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }} />
           </div>
         </div>
@@ -1271,7 +1271,7 @@ function AssignedByMeContent() {
                         isActive || (item.key === 'for_approval' && counts[item.key] > 0)
                       return (
                         <span style={{
-                          fontSize: '11px', fontWeight: 700,
+                          fontSize: '12px', fontWeight: 700,
                           padding: '1px 7px', borderRadius: '8px',
                           background: standOut ? `${item.color}18` : 'rgba(0,0,0,0.05)',
                           color: standOut ? item.color : colors.muted,
@@ -1313,7 +1313,7 @@ function AssignedByMeContent() {
                 <select
                   value={filterAssignee}
                   onChange={e => setState({ assignee: e.target.value })}
-                  style={{ flex: '1 1 120px', minWidth: '110px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
+                  style={{ flex: '1 1 120px', minWidth: '110px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
                 >
                   <option value="">All Assignees</option>
                   {assigneeOptions.map(opt => (
@@ -1325,7 +1325,7 @@ function AssignedByMeContent() {
               <select
                 value={filterPriority}
                 onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
-                style={{ flex: '1 1 100px', minWidth: '95px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+                style={{ flex: '1 1 100px', minWidth: '95px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
               >
                 <option value="">All Priority</option>
                 <option value="high">High</option>
@@ -1339,7 +1339,7 @@ function AssignedByMeContent() {
               <div style={{
                 display: 'flex', alignItems: 'center',
                 padding: '5px 0 5px 0', marginBottom: '4px',
-                fontSize: '10px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.07em',
                 color: colors.muted,
               }}>
@@ -1374,7 +1374,7 @@ function AssignedByMeContent() {
                     isMobile={isMobile}
                   />
                 ))}
-                <div style={{ padding: '4px 4px', fontSize: '11px', color: colors.muted }}>
+                <div style={{ padding: '4px 4px', fontSize: '12px', color: colors.muted }}>
                   {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
                 </div>
               </div>

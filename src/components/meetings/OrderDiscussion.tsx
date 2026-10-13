@@ -50,7 +50,7 @@ const INITIAL_EARLIER_MEETINGS = 3
 const EARLIER_ORDER_ROW_LIMIT = 200
 
 const FIELD_LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
@@ -491,7 +491,7 @@ function DiscussionComposer({
                 )}
               </div>
               <div style={{
-                fontSize: '10.5px', marginTop: '3px', lineHeight: 1.3,
+                fontSize: '12px', marginTop: '3px', lineHeight: 1.3,
                 color: item.state === 'failed' ? colors.red : colors.muted,
               }}>
                 {item.state === 'failed' && item.error ? item.error : STAGE_LABEL[item.state]}
@@ -524,7 +524,7 @@ function DiscussionComposer({
             <ImagePlus size={14} strokeWidth={2} /> Attach image
           </button>
           {!isMobile && (
-            <span style={{ fontSize: '11.5px', color: colors.muted }}>or paste a screenshot here (Ctrl+V)</span>
+            <span style={{ fontSize: '12px', color: colors.muted }}>or paste a screenshot here (Ctrl+V)</span>
           )}
         </div>
         <button
@@ -730,12 +730,12 @@ function EarlierGroup({
           {m.title}
         </span>
         {m.status !== 'completed' && <MeetingBadge meta={MEETING_STATUS_META[m.status]} />}
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>{counts}</span>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>{counts}</span>
       </button>
 
       {open ? (
         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.muted }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', fontSize: '12px', color: colors.muted }}>
             <span>Position recorded</span>
             <MeetingBadge meta={ORDER_POSITION_META[meetingOrder.position]} />
             {meetingOrder.next_review_date && <span>· Next review {formatMeetingDate(meetingOrder.next_review_date)}</span>}
@@ -790,7 +790,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
           {HISTORY_ENTRY_LABEL[entry.entry_type]}
           {entry.sku && <span style={{ fontWeight: 500, color: colors.muted }}> · {entry.sku}</span>}
         </span>
-        <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           {entry.actor_name ?? 'Unknown'} · {formatMeetingTimestamp(entry.created_at)}
         </span>
       </div>
@@ -806,7 +806,7 @@ function EntryRow({ entry }: { entry: MeetingHistoryEntry }) {
       {changes.length > 0 && (
         <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {changes.map((line, i) => (
-            <div key={i} style={{ fontSize: '11.5px', color: colors.secondary }}>{line}</div>
+            <div key={i} style={{ fontSize: '12px', color: colors.secondary }}>{line}</div>
           ))}
         </div>
       )}
@@ -829,7 +829,7 @@ function PanelHeading({ title, detail }: { title: string; detail?: string }) {
   return (
     <div>
       <div style={{ fontSize: '13.5px', fontWeight: 700, color: colors.primary }}>{title}</div>
-      {detail && <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>{detail}</div>}
+      {detail && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>{detail}</div>}
     </div>
   )
 }

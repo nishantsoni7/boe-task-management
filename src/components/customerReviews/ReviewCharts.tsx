@@ -84,7 +84,7 @@ export function StackedBarChart({
         })}
       </svg>
 
-      <figcaption style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', alignItems: 'center', marginTop: '6px', fontSize: '11.5px', color: colors.secondary }}>
+      <figcaption style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', alignItems: 'center', marginTop: '6px', fontSize: '12px', color: colors.secondary }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
           <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 2, background: TYPE_FILL.text }} /> Text
         </span>

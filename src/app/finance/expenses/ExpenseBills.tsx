@@ -197,7 +197,7 @@ export function ExpenseBills({
                 <div style={{ fontSize: '12.5px', color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={bill.file_name}>
                   {bill.file_name}
                 </div>
-                <div style={{ fontSize: '11px', color: colors.muted }}>
+                <div style={{ fontSize: '12px', color: colors.muted }}>
                   {formatFileSize(bill.size_bytes)} · {personName(bill.uploaded_by)} · Uploaded
                 </div>
               </div>
@@ -256,7 +256,7 @@ export function UploadStatusList({ uploads }: { uploads: readonly UploadStatus[]
   return (
     <ul aria-live="polite" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
       {uploads.map(u => (
-        <li key={u.key} style={{ fontSize: '11.5px', color: u.state === 'failed' ? '#B42332' : colors.tertiary }}>
+        <li key={u.key} style={{ fontSize: '12px', color: u.state === 'failed' ? '#B42332' : colors.tertiary }}>
           {u.state === 'uploading' ? `Uploading ${u.name}…` : u.state === 'done' ? `${u.name} uploaded` : (u.message ?? `${u.name} failed`)}
         </li>
       ))}

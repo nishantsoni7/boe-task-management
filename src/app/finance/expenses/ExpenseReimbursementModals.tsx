@@ -45,7 +45,7 @@ function fmtExpenseDate(value: string | null | undefined): string {
 }
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
+  fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
 // ── Record ───────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ export function RecordReimbursementModal({
                 <span style={{ display: 'block', fontSize: '12.5px', color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {row.paid_to}
                 </span>
-                <span style={{ display: 'block', fontSize: '11px', color: colors.muted }}>
+                <span style={{ display: 'block', fontSize: '12px', color: colors.muted }}>
                   {fmtExpenseDate(row.expense_date)} · paid by {personName(row.paid_by)}
                 </span>
               </span>
@@ -319,7 +319,7 @@ export function ReimbursementBatchModal({
                       <span style={{ display: 'block', fontSize: '12.5px', color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.expense?.paid_to ?? 'Expense'}
                       </span>
-                      <span style={{ display: 'block', fontSize: '11px', color: colors.muted }}>
+                      <span style={{ display: 'block', fontSize: '12px', color: colors.muted }}>
                         {fmtExpenseDate(item.expense?.expense_date)} · paid by {nameOf(item.paid_by)}
                       </span>
                     </span>
@@ -339,7 +339,7 @@ export function ReimbursementBatchModal({
                     <input className="boe-input" value={reason} maxLength={500} disabled={saving} autoComplete="off"
                       placeholder="e.g. wrong reference entered" onChange={e => setReason(e.target.value)} />
                   </label>
-                  <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
                     The reimbursement stays on record as reversed, and its {batch.expense_count} expenses return to pending.
                   </div>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -443,7 +443,7 @@ export function ExpenseDetailModal({
                 <span style={{ fontSize: '12px', color: colors.secondary }}>
                   {formatMoney(reimbursement.amount)} on {fmtExpenseDate(reimbursement.reimbursed_on)} · Ref {reimbursement.reference}
                 </span>
-                <span style={{ fontSize: '11.5px', color: colors.muted }}>
+                <span style={{ fontSize: '12px', color: colors.muted }}>
                   Recorded by {personName(reimbursement.recorded_by)} on {fmtExpenseDate(reimbursement.recorded_at)}
                 </span>
                 {onOpenReimbursement && (
@@ -484,7 +484,7 @@ export function ExpenseDetailModal({
 
 export const STATE_TONE: Record<ReturnType<typeof reimbursementState>, { fg: string; bg: string; border: string }> = {
   company: { fg: colors.secondary, bg: colors.raised, border: colors.border },
-  pending: { fg: '#805B0D', bg: 'rgba(217,148,0,0.10)', border: 'rgba(217,148,0,0.35)' },
-  reimbursed: { fg: '#1F7A3F', bg: 'rgba(31,122,63,0.08)', border: 'rgba(31,122,63,0.30)' },
+  pending: { fg: '#805B0D', bg: 'rgba(196,138,26,0.10)', border: 'rgba(196,138,26,0.35)' },
+  reimbursed: { fg: '#1F7A3F', bg: 'rgba(39,98,71,0.08)', border: 'rgba(39,98,71,0.30)' },
   unknown: { fg: colors.tertiary, bg: colors.raised, border: colors.border },
 }

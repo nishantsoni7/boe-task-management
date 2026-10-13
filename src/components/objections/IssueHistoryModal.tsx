@@ -69,7 +69,7 @@ export function IssueHistoryModal({
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0,
       }}>
         <span style={{
-          padding: '2px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 600,
+          padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
           background: tone.bg, color: tone.fg,
         }}>
           {employeeStatusLabel(latest.status)}
@@ -100,7 +100,7 @@ export function IssueHistoryModal({
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: t.fg }}>{e.title}</span>
-                  <span style={{ fontSize: 11.5, color: colors.muted }}>
+                  <span style={{ fontSize: 12, color: colors.muted }}>
                     {e.actor} · {stamp(e.at)}
                   </span>
                 </div>
@@ -113,7 +113,7 @@ export function IssueHistoryModal({
                   </div>
                 )}
                 {e.snapshot && (
-                  <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 3 }}>
+                  <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
                     As recorded: {e.snapshot}
                   </div>
                 )}
@@ -123,7 +123,7 @@ export function IssueHistoryModal({
         })}
       </ol>
 
-      <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5, flexShrink: 0 }}>
+      <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5, flexShrink: 0 }}>
         Reviewing an issue records the outcome. It never changes attendance or
         salary by itself — an applied correction shows on the record itself.
       </div>

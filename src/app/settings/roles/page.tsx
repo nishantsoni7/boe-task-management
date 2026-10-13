@@ -98,7 +98,7 @@ export default function RolesPage() {
                 <div style={{ fontSize: 14, fontWeight: 600, color: colors.primary, marginBottom: 4 }}>
                   {role.name}
                   <span style={{
-                    marginLeft: 8, fontSize: 11, fontWeight: 500,
+                    marginLeft: 8, fontSize: 12, fontWeight: 500,
                     color: colors.muted, fontFamily: 'monospace',
                   }}>
                     {role.value}

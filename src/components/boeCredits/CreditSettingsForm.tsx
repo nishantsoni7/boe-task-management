@@ -138,7 +138,7 @@ export function CreditSettingsForm({
       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <div id="credit-settings-heading" style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>BOE Credits Settings</div>
         {updatedAt && (
-          <span style={{ fontSize: 11.5, color: colors.muted }}>
+          <span style={{ fontSize: 12, color: colors.muted }}>
             Last changed {new Date(updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
           </span>
         )}
@@ -150,12 +150,12 @@ export function CreditSettingsForm({
         ) : (
           <>
             {error && (
-              <div role="alert" style={{ fontSize: 12.5, color: '#B42332', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
+              <div role="alert" style={{ fontSize: 12.5, color: '#B42332', background: 'rgba(180,35,50,0.08)', border: '1px solid rgba(180,35,50,0.2)', borderRadius: 8, padding: '8px 12px' }}>
                 {error}
               </div>
             )}
             {saved && !error && (
-              <div role="status" style={{ fontSize: 12.5, color: '#276247', background: 'rgba(5,150,105,0.09)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 8, padding: '8px 12px' }}>
+              <div role="status" style={{ fontSize: 12.5, color: '#276247', background: 'rgba(39,98,71,0.09)', border: '1px solid rgba(39,98,71,0.3)', borderRadius: 8, padding: '8px 12px' }}>
                 Settings saved. They apply to future reviews, redemptions and payroll applications.
               </div>
             )}
@@ -184,7 +184,7 @@ export function CreditSettingsForm({
                   </span>
                 )
                 const hint = (
-                  <span style={{ fontSize: 11.5, color: issue ? '#B42332' : colors.muted, lineHeight: 1.45 }}>
+                  <span style={{ fontSize: 12, color: issue ? '#B42332' : colors.muted, lineHeight: 1.45 }}>
                     {issue ?? (on ? f.hint : OFF_HINT)}
                   </span>
                 )

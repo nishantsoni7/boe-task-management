@@ -381,7 +381,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
                   {['Meeting', 'Type', 'Date', 'Lead', 'Under Review', 'Status'].map(h => (
                     <th key={h} style={{
                       padding: '8px 16px', textAlign: 'left',
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
+                      fontSize: '12px', fontWeight: 600, color: colors.muted,
                       textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
@@ -418,7 +418,7 @@ export function MeetingsListScreen({ scope }: { scope: Scope }) {
                         {/* Held but never closed. A label, not a filter — the row stays
                             here and never appears in Meeting History. */}
                         {isPastDueMeeting(m, todayIst) && (
-                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.amber, marginTop: '3px', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: colors.amber, marginTop: '3px', whiteSpace: 'nowrap' }}>
                             Past date · Close meeting
                           </div>
                         )}
@@ -498,7 +498,7 @@ function MeetingCard({
         )}
         {/* Same label as the desktop row, same meaning: still open, still here. */}
         {pastDue && (
-          <span style={{ fontSize: '11.5px', fontWeight: 700, color: colors.amber }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: colors.amber }}>
             · Past date · Close meeting
           </span>
         )}

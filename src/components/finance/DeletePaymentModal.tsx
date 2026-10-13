@@ -52,7 +52,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <span style={{
-        fontSize: '10px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{label}</span>
       <span style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{value}</span>
@@ -93,7 +93,7 @@ export function PaymentDeleteConfirmIdField({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label htmlFor={CONFIRM_ID_INPUT_ID} style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+      <label htmlFor={CONFIRM_ID_INPUT_ID} style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
         {paymentDeleteConfirmIdLabel(humanPaymentId)}
       </label>
       <input
@@ -121,7 +121,7 @@ export function PaymentDeleteConfirmIdField({
           the same shape OrderField draws, and gone the moment it stops being
           true rather than at submit. */}
       {mismatch && (
-        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '11px', color: '#B42332', lineHeight: 1.5 }}>
+        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.5 }}>
           {mismatch}
         </div>
       )}
@@ -236,7 +236,7 @@ export function DeletePaymentModal({
       {!settled && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
               {PAYMENT_DELETE_REASON_LABEL}
             </span>
             <textarea

@@ -89,17 +89,17 @@ type Employee = { id: string; full_name: string | null; position: string | null 
 // ─── Small shared pieces, in the module's existing visual language ────────────
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '11px', fontWeight: 600,
+  display: 'block', fontSize: '12px', fontWeight: 600,
   color: colors.secondary, marginBottom: '4px',
 }
 
 const helpStyle: React.CSSProperties = {
-  margin: 0, fontSize: '11px', color: colors.tertiary, lineHeight: 1.5,
+  margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.5,
 }
 
 /** The small uppercase heading over an always-visible group of controls. */
 const groupLabelStyle: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+  fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
   letterSpacing: '0.08em', color: colors.tertiary,
 }
 
@@ -153,7 +153,7 @@ function NumberField({
           style={{ minHeight: '40px' }}
         />
         {suffix && (
-          <span style={{ fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap' }}>{suffix}</span>
+          <span style={{ fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap' }}>{suffix}</span>
         )}
       </div>
     </div>
@@ -207,7 +207,7 @@ function PercentField({
           style={{ minHeight: '40px' }}
         />
         <span style={{
-          fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap',
+          fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap',
           fontVariantNumeric: 'tabular-nums',
         }}>
           % · ≈{count} {unit}
@@ -240,7 +240,7 @@ function Section({
       >
         <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>{title}</span>
         <span style={{
-          marginLeft: 'auto', fontSize: '11px', color: colors.tertiary,
+          marginLeft: 'auto', fontSize: '12px', color: colors.tertiary,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {summary}
@@ -285,14 +285,14 @@ function CheckList({
               padding: '7px 10px', minHeight: '36px', borderRadius: '6px',
               border: `1px solid ${on ? '#C4B5FD' : colors.border}`,
               background: on ? '#EAF0F8' : '#FFFFFF',
-              color: on ? '#5B21B6' : colors.secondary,
-              fontSize: '11.5px', fontWeight: on ? 700 : 500,
+              color: on ? '#335A86' : colors.secondary,
+              fontSize: '12px', fontWeight: on ? 700 : 500,
               cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
             {option.label}
             {option.note && (
-              <span style={{ fontWeight: 400, color: on ? '#7C3AED' : colors.muted }}>
+              <span style={{ fontWeight: 400, color: on ? '#335A86' : colors.muted }}>
                 {option.note}
               </span>
             )}
@@ -620,7 +620,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
                     fontFamily: 'inherit', resize: 'vertical', minHeight: '80px',
                   }}
                 />
-                <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'right', marginTop: '-8px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, textAlign: 'right', marginTop: '-8px' }}>
                   {guidance.length} / {MAX_GUIDANCE}
                 </div>
 
@@ -894,15 +894,15 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           {!showForm && (
             <div style={{
               display: 'grid', gap: '10px', padding: '14px',
-              border: '1px solid #DDD6FE', borderRadius: '8px', background: '#EAF0F8',
+              border: '1px solid #C3D3E6', borderRadius: '8px', background: '#EAF0F8',
             }}>
-              <strong style={{ fontSize: '13px', color: '#4C1D95' }}>
+              <strong style={{ fontSize: '13px', color: '#335A86' }}>
                 This creates exactly {size} drafts, pending your approval.
               </strong>
               <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}>
                 {summaryLines.map(line => (
                   <li key={line} style={{
-                    fontSize: '12.5px', color: '#5B21B6', lineHeight: 1.5,
+                    fontSize: '12.5px', color: '#335A86', lineHeight: 1.5,
                     display: 'flex', alignItems: 'baseline', gap: '6px',
                   }}>
                     <span aria-hidden style={{ color: '#B794F4' }}>•</span>
@@ -918,7 +918,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
                 thing that IS still true and is the thing the reader needs:
                 nobody outside BOE sees any of this until they approve.
               */}
-              <p style={{ margin: 0, fontSize: '12px', color: '#4C1D95', lineHeight: 1.55 }}>
+              <p style={{ margin: 0, fontSize: '12px', color: '#335A86', lineHeight: 1.55 }}>
                 No candidate can see any of them until you approve. You can edit a draft&rsquo;s
                 words, regenerate the whole set from new feedback, or approve them one at a time.
               </p>

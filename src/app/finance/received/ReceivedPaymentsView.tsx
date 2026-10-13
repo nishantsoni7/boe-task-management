@@ -498,7 +498,7 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
       </label>
       {children}
@@ -577,7 +577,7 @@ export function ConfirmedListEmptyState({
 // matches the Payment Requests page's DetailsModal styling exactly.
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+    <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
       {children}
     </div>
   )
@@ -639,7 +639,7 @@ function StatusBadge({ status, destination }: {
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -662,7 +662,7 @@ function VerificationBadge({ status, destination }: {
       style={{
         display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
         background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+        fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
       }}
     >
       {meta.label}
@@ -1263,7 +1263,7 @@ function EditPaymentModal({
       <Field label="Customer">
         <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
           style={{ width: '100%' }} />
-        <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
           Read from the records this payment is allocated to. Allocate or
           reverse an allocation to change it.
         </span>
@@ -1313,7 +1313,7 @@ function EditPaymentModal({
           placeholder="Order number" style={{ width: '100%' }}
           readOnly={isLinkageStatus} disabled={isLinkageStatus} />
         {isLinkageStatus && (
-          <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          <span style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
             Set when the payment was recorded. Funds are attached with Allocate Funds.
           </span>
         )}
@@ -1341,7 +1341,7 @@ function EditPaymentModal({
 const TH_STYLE: React.CSSProperties = {
   padding: '8px 12px',
   textAlign: 'left',
-  fontSize: '10px',
+  fontSize: '12px',
   fontWeight: 700,
   color: colors.muted,
   textTransform: 'uppercase',
@@ -1398,12 +1398,12 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   onOpen?: () => void
 }) {
   if (status === 'loading') {
-    return <span aria-label="Loading allocation status" style={{ fontSize: '11px', color: colors.muted }}>…</span>
+    return <span aria-label="Loading allocation status" style={{ fontSize: '12px', color: colors.muted }}>…</span>
   }
   if (!status || status === 'unavailable') {
     return (
       <span title="The complete allocation status could not be loaded. Open the payment for details."
-            style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+            style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
         Status unavailable
       </span>
     )
@@ -1427,7 +1427,7 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   const chip: React.CSSProperties = {
     display: 'inline-block', padding: '1px 6px', borderRadius: '6px',
     background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '10.5px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
+    fontSize: '12px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
   }
 
   if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
@@ -1532,7 +1532,7 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
         : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: '200px', contain: 'inline-size' }}
     >
       {view.lines.length > 1 && (
-        <div style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
           {allocationCountLabel(view.lines.length)}
         </div>
       )}
@@ -1702,7 +1702,7 @@ export function ReceivedPaymentsTable({
                   {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
                       primary identifier now; request_number is retained in the
                       database but is no longer shown prominently. */}
-                  <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                     {r.human_payment_id}
                   </td>
 
@@ -2134,7 +2134,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
               onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
               onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = r.id === highlightId ? colors.amberTint : 'transparent' }}
             >
-              <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+              <td style={{ ...TD, fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                 {r.human_payment_id}
               </td>
               <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
@@ -2164,7 +2164,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
                   <button
                     onClick={() => onView(r)}
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
+                    style={{ padding: '3px 8px', fontSize: '12px', fontWeight: 500 }}
                   >
                     Review
                   </button>
@@ -2220,22 +2220,22 @@ function PaymentsToVerifyCards({ rows, canManage, highlightId, onView, onEdit }:
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <VerificationBadge status={r.status} />
-            <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
               {r.human_payment_id}
             </span>
-            <span style={{ fontSize: '11px', color: colors.muted }}>
+            <span style={{ fontSize: '12px', color: colors.muted }}>
               {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} · {fmtDate(r.payment_date)}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: colors.muted, marginRight: 'auto' }} title={r.submitted_by_name ?? undefined}>
+            <span style={{ fontSize: '12px', color: colors.muted, marginRight: 'auto' }} title={r.submitted_by_name ?? undefined}>
               {conciseName(r.submitted_by_name)}
             </span>
             {canManage && (
               <button
                 onClick={e => { e.stopPropagation(); onEdit(r) }}
                 className="boe-btn boe-btn-ghost"
-                style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 500 }}
+                style={{ padding: '3px 10px', fontSize: '12px', fontWeight: 500 }}
               >
                 Edit
               </button>
@@ -2316,7 +2316,7 @@ export function ReceivedPaymentsCards({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', color: colors.muted }}>
+              <span style={{ fontSize: '12px', color: colors.muted }}>
                 {fmtDate(r.payment_date)} · {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
               </span>
             </div>
@@ -2326,7 +2326,7 @@ export function ReceivedPaymentsCards({
                 the status). Initiated by / Approved by are no longer on the
                 card; both are in the payment's details. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-              <span style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 {ALLOCATED_AGAINST_LABEL}
               </span>
               <AllocatedAgainstCell
@@ -3528,7 +3528,7 @@ function ReceivedPaymentsViewInner(
           <button
             onClick={() => setRecordNotice(null)}
             className="boe-btn boe-btn-ghost"
-            style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '11px', flexShrink: 0 }}
+            style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '12px', flexShrink: 0 }}
           >
             Dismiss
           </button>

@@ -161,7 +161,7 @@ function MemberGroup({
   return (
     <div>
       <div style={{
-        fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+        fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.09em', color: colors.muted, marginBottom: 7,
       }}>
         {title}
@@ -192,7 +192,7 @@ function MemberGroup({
                 }}>
                   {m.full_name}
                 </div>
-                <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 1 }}>
+                <div style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
                   {m.employee_code ?? 'No employee code'}
                   {/* Worth saying out loud: an inactive account is already out of
                       payroll for a different reason, and re-including it here

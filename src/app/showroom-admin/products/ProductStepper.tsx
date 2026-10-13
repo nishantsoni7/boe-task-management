@@ -43,7 +43,7 @@ export function ProductStepper({
 
       {position !== null && total > 0 && (
         <span style={{
-          fontSize: '11.5px', color: colors.muted,
+          fontSize: '12px', color: colors.muted,
           whiteSpace: 'nowrap',
         }}>
           {position} of {total}

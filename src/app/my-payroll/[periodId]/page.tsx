@@ -309,8 +309,8 @@ export default function MyPayrollDetailPage() {
       {(error || reviewError) && (
         <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#B42332',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+          background: 'rgba(180,35,50,0.08)', color: '#B42332',
+          border: '1px solid rgba(180,35,50,0.2)', fontSize: 13,
         }}>
           {error ?? reviewError}
         </div>
@@ -333,8 +333,8 @@ export default function MyPayrollDetailPage() {
           notices={redeemNotice && (
             <div role="status" style={{
               marginBottom: 16, padding: '11px 16px', borderRadius: 8,
-              background: 'rgba(5,150,105,0.09)', color: '#276247',
-              border: '1px solid rgba(5,150,105,0.3)', fontSize: 13,
+              background: 'rgba(39,98,71,0.09)', color: '#276247',
+              border: '1px solid rgba(39,98,71,0.3)', fontSize: 13,
             }}>
               {redeemNotice}
             </div>
@@ -370,7 +370,7 @@ export default function MyPayrollDetailPage() {
                 {objection ? (
                   <span style={{
                     display: 'inline-block', padding: '3px 11px', borderRadius: 12,
-                    fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                    fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
                     background: objectionTone(objection.status).bg,
                     color: objectionTone(objection.status).fg,
                   }}>

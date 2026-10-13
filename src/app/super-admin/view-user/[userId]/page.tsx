@@ -202,7 +202,7 @@ export default function ViewUserPage() {
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#805B0D' }}>
               Admin View Mode: Viewing dashboard as <strong>{targetProfile?.full_name}</strong>
             </span>
-            <span style={{ fontSize: '11px', color: '#805B0D', background: '#FAF0DA', borderRadius: '6px', padding: '1px 7px', fontWeight: 600 }}>
+            <span style={{ fontSize: '12px', color: '#805B0D', background: '#FAF0DA', borderRadius: '6px', padding: '1px 7px', fontWeight: 600 }}>
               Read Only
             </span>
           </div>
@@ -225,25 +225,25 @@ export default function ViewUserPage() {
         }}>
           <ViewSummaryCard
             onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date, t.status)) })}
-            icon={<AlertIcon />} iconBg="rgba(220,53,53,0.10)"
+            icon={<AlertIcon />} iconBg="rgba(180,35,50,0.10)"
             count={totalOverdue} countColor="#B42332"
             label="Total Overdue Tasks" sublabel="Tasks past their due date"
           />
           <ViewSummaryCard
             onClick={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
-            icon={<BellIcon />} iconBg="rgba(234,136,33,0.12)"
-            count={unacknowledgedForMe.length} countColor="#D4893A"
+            icon={<BellIcon />} iconBg="rgba(196,138,26,0.12)"
+            count={unacknowledgedForMe.length} countColor="#C48A1A"
             label="Total Unacknowledged Tasks" sublabel="Waiting for acknowledgement"
           />
           <ViewSummaryCard
             onClick={() => setPreviewList({ title: 'Blocked Tasks', items: tasks.filter(t => t.status === 'blocked') })}
-            icon={<FlagIcon />} iconBg="rgba(59,130,246,0.10)"
+            icon={<FlagIcon />} iconBg="rgba(51,90,134,0.10)"
             count={blockedCount} countColor="#335A86"
             label="Blocked Tasks" sublabel="Tasks currently blocked"
           />
           <ViewSummaryCard
             onClick={() => setPreviewList({ title: 'Waiting Tasks', items: waitingTasks })}
-            icon={<HourglassIcon />} iconBg="rgba(146,64,14,0.10)"
+            icon={<HourglassIcon />} iconBg="rgba(196,138,26,0.10)"
             count={waitingTasks.length} countColor="#805B0D"
             label="Waiting Tasks" sublabel="Tasks waiting on someone"
           />
@@ -265,7 +265,7 @@ export default function ViewUserPage() {
                 <span style={{ fontWeight: 700, fontSize: '14px', color: '#303536', letterSpacing: '-0.01em' }}>
                   Unacknowledged Tasks
                 </span>
-                <span style={{ background: '#FBE9EC', color: '#B42332', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
+                <span style={{ background: '#FBE9EC', color: '#B42332', fontWeight: 700, fontSize: '12px', borderRadius: '999px', padding: '1px 8px' }}>
                   {unacknowledgedForMe.length}
                 </span>
               </div>
@@ -295,12 +295,12 @@ export default function ViewUserPage() {
                   onMouseEnter={e => (e.currentTarget.style.background = '#FBFAF8')}
                   onMouseLeave={e => (e.currentTarget.style.background = '')}
                 >
-                  <div style={{ width: '3px', height: '38px', flexShrink: 0, background: isOverdueRow ? '#EF4444' : 'transparent', borderRadius: '2px', marginLeft: '1px' }} />
+                  <div style={{ width: '3px', height: '38px', flexShrink: 0, background: isOverdueRow ? '#B42332' : 'transparent', borderRadius: '2px', marginLeft: '1px' }} />
                   <div style={{ flex: 1, minWidth: 0, padding: '10px 14px' }}>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#303536', lineHeight: 1.3, marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {task.title}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#686D6C' }}>
+                    <div style={{ fontSize: '12px', color: '#686D6C' }}>
                       From {assignedByName.split(' ')[0]}
                       {task.due_date && <span style={{ color: isDueOverdue ? '#B42332' : '#686D6C' }}> · Due {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
                     </div>
@@ -338,7 +338,7 @@ export default function ViewUserPage() {
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</div>
-                  <div style={{ fontSize: '11px', color: '#686D6C', marginTop: '1px' }}>{item.subtext}</div>
+                  <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '1px' }}>{item.subtext}</div>
                 </div>
                 <div style={{ fontSize: '20px', fontWeight: 800, color: '#303536', lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>{item.count}</div>
               </div>
@@ -381,9 +381,9 @@ export default function ViewUserPage() {
                   >
                     <div style={{ fontSize: '14px', fontWeight: 500, color: '#303536', marginBottom: '6px', lineHeight: 1.4 }}>{task.title}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#4C5352', background: '#F1EEE9', borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>{task.status}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352', background: '#F1EEE9', borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>{task.status}</span>
                       {task.due_date && (
-                        <span style={{ fontSize: '11px', fontWeight: 500, color: isOverdueTask ? '#B42332' : '#686D6C' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 500, color: isOverdueTask ? '#B42332' : '#686D6C' }}>
                           Due {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </span>
                       )}
@@ -432,7 +432,7 @@ function ViewSummaryCard({ onClick, icon, iconBg, count, countColor, label, subl
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#303536', lineHeight: 1.3 }}>{label}</div>
-        <div style={{ fontSize: '11px', color: '#686D6C', marginTop: '2px' }}>{sublabel}</div>
+        <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '2px' }}>{sublabel}</div>
       </div>
       <div style={{ fontSize: '26px', fontWeight: 800, color: countColor, lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>{count}</div>
     </div>
@@ -440,10 +440,10 @@ function ViewSummaryCard({ onClick, icon, iconBg, count, countColor, label, subl
 }
 
 function AlertIcon() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C48A1A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
 }
 function BellIcon() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C48A1A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
 }
 function FlagIcon() {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B42332" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>

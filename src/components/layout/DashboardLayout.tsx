@@ -382,11 +382,11 @@ export function DashboardLayout({
               }}>
                 {unreadNotifs > 99 ? '99+' : unreadNotifs}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#4C5352' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadNotifs === 1 ? 'notification' : 'notifications'}
               </div>
               <div style={{
-                fontSize: '10px', fontWeight: 600, color: '#B9472E',
+                fontSize: '12px', fontWeight: 600, color: '#B9472E',
                 letterSpacing: '0.05em', textTransform: 'uppercase',
               }}>
                 Tap to review →
@@ -536,7 +536,7 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
           {label}
           {count != null && count > 0 && (
             <span style={{
-              fontSize: '10px', fontWeight: 600, color: '#686D6C',
+              fontSize: '12px', fontWeight: 600, color: '#686D6C',
               background: '#E4DED7', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
             }}>{count}</span>
           )}
@@ -565,7 +565,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
       {badge != null && badge > 0 && (
         <span style={{
           marginLeft: 'auto',
-          fontSize: '10px', fontWeight: 600, color: '#686D6C',
+          fontSize: '12px', fontWeight: 600, color: '#686D6C',
           background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
         }}>
@@ -598,7 +598,7 @@ function NavChild({ label, active, onClick, count }: NavChildProps) {
       <span style={{ flex: 1 }}>{label}</span>
       {count != null && count > 0 && (
         <span style={{
-          fontSize: '10px', fontWeight: 600, color: '#686D6C',
+          fontSize: '12px', fontWeight: 600, color: '#686D6C',
           background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', marginLeft: 'auto',
         }}>{count}</span>

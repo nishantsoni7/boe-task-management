@@ -22,8 +22,8 @@ export type SectionKey = TabKey | 'notifications'
 export const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementType }[] = [
   { key: 'all',              label: 'All Requests',     accent: '#335A86', Icon: LayoutList  },
   { key: 'pending_approval', label: 'Pending Approval', accent: '#805B0D', Icon: Clock       },
-  { key: 'approved',         label: 'Approved',         accent: '#2F7A52', Icon: CheckCheck  },
-  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#7C3AED', Icon: Send        },
+  { key: 'approved',         label: 'Approved',         accent: '#276247', Icon: CheckCheck  },
+  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#335A86', Icon: Send        },
   { key: 'dispatched',       label: 'Dispatched / Out', accent: '#303536', Icon: Truck       },
   { key: 'rejected',         label: 'Rejected',         accent: '#B42332', Icon: ThumbsDown  },
   { key: 'closed',           label: 'Closed',           accent: '#686D6C', Icon: Archive     },
@@ -127,7 +127,7 @@ export function SamplesLayout({
                 {count > 0 && (
                   <span style={{
                     marginLeft: 'auto',
-                    fontSize: '10px', fontWeight: 600, color: '#686D6C',
+                    fontSize: '12px', fontWeight: 600, color: '#686D6C',
                     background: '#E4DED7', borderRadius: '999px',
                     padding: '1px 6px', lineHeight: '15px',
                   }}>
@@ -152,10 +152,10 @@ export function SamplesLayout({
               <div style={{ fontSize: '28px', fontWeight: 800, color: '#303536', lineHeight: 1 }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#4C5352' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadCount === 1 ? 'notification' : 'notifications'}
               </div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: '#B9472E', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#B9472E', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Tap to review →
               </div>
             </button>

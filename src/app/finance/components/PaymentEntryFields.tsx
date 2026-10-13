@@ -108,7 +108,7 @@ function DestinationCard({
         <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{option.label}</span>
         {selected && <Check size={14} aria-hidden="true" style={{ color: colors.primary, marginLeft: 'auto' }} />}
       </span>
-      <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+      <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.4 }}>
         {option.description}
       </span>
     </button>
@@ -227,7 +227,7 @@ export function PaymentEntryFields({
       {kind && !state.target && (
         <div>
           <label htmlFor={`${groupId}-search`} style={{
-            fontSize: '11px', fontWeight: 600, color: colors.muted,
+            fontSize: '12px', fontWeight: 600, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px',
           }}>
             {state.destination === 'pi_draft' ? 'PI Draft' : 'Confirmed Order'}
@@ -250,7 +250,7 @@ export function PaymentEntryFields({
             />
           </div>
           {searching && (
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: colors.muted }}>Searching…</p>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: colors.muted }}>Searching…</p>
           )}
           {results.length > 0 && (
             <ul style={{
@@ -290,7 +290,7 @@ export function PaymentEntryFields({
             onClick={() => onChange({ ...state, target: null })}
             disabled={disabled}
             className="boe-btn boe-btn-ghost"
-            style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: '11px' }}
+            style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: '12px' }}
           >
             Change
           </button>

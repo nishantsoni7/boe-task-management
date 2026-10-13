@@ -252,7 +252,7 @@ function Stat({ label, value, tone, onClick }: {
       }}>
         {value ?? '—'}
       </span>
-      <span style={{ fontSize: '11px', color: colors.secondary }}>{label}</span>
+      <span style={{ fontSize: '12px', color: colors.secondary }}>{label}</span>
     </button>
   )
 }

@@ -105,7 +105,7 @@ function CountBadge({
 }: { value: number; suffix?: string; style?: React.CSSProperties }) {
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 600, color: '#686D6C',
+      fontSize: '12px', fontWeight: 600, color: '#686D6C',
       fontFamily: 'var(--font-body)',
       background: '#E4DED7', borderRadius: '999px',
       padding: '1px 6px', lineHeight: '15px',
@@ -115,7 +115,7 @@ function CountBadge({
     }}>
       {value}
       {suffix && (
-        <span style={{ fontSize: '9px', fontWeight: 500, opacity: 0.75, marginLeft: '2px' }}>{suffix}</span>
+        <span style={{ fontSize: '12px', fontWeight: 500, opacity: 0.75, marginLeft: '2px' }}>{suffix}</span>
       )}
     </span>
   )

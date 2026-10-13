@@ -60,7 +60,7 @@ function plural(n: number, word: string): string {
 
 function InactiveBadge() {
   return (
-    <span className="boe-badge boe-badge-pending" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+    <span className="boe-badge boe-badge-pending" style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
       Retired
     </span>
   )
@@ -180,14 +180,14 @@ export function AssetCatalogueManager({ supabase, isMobile, openAddCategory, onA
                       <span style={{ fontWeight: 600, color: colors.primary, fontSize: '14px' }}>{cat.name}</span>
                       {!cat.is_active && <InactiveBadge />}
                     </div>
-                    <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                       {plural(allProducts.filter(p => p.is_active).length, 'product')}
                       {usageLoaded && ` · used by ${plural(used, 'asset')}`}
                     </div>
                   </div>
                   <button
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '4px 10px', fontSize: '11.5px', flexShrink: 0 }}
+                    style={{ padding: '4px 10px', fontSize: '12px', flexShrink: 0 }}
                     onClick={() => setEditingCategory(cat)}
                     aria-label={`Edit category ${cat.name}`}
                   >
@@ -205,13 +205,13 @@ export function AssetCatalogueManager({ supabase, isMobile, openAddCategory, onA
                         <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12.5px', color: colors.primary }}>{p.name}</span>
                           {!p.is_active && <InactiveBadge />}
-                          <span style={{ fontSize: '11px', color: colors.muted }}>
+                          <span style={{ fontSize: '12px', color: colors.muted }}>
                             {!usageLoaded ? '' : usage.byProduct[p.id] ? plural(usage.byProduct[p.id], 'asset') : 'unused'}
                           </span>
                         </div>
                         <button
                           className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 9px', fontSize: '11px', flexShrink: 0 }}
+                          style={{ padding: '3px 9px', fontSize: '12px', flexShrink: 0 }}
                           onClick={() => setEditingProduct(p)}
                           aria-label={`Edit product ${p.name}`}
                         >
@@ -225,7 +225,7 @@ export function AssetCatalogueManager({ supabase, isMobile, openAddCategory, onA
                 {cat.is_active && (
                   <button
                     className="boe-btn boe-btn-ghost"
-                    style={{ padding: '5px 10px', fontSize: '11.5px', alignSelf: 'flex-start' }}
+                    style={{ padding: '5px 10px', fontSize: '12px', alignSelf: 'flex-start' }}
                     onClick={() => setAddingProductTo(cat.key)}
                   >
                     + Add product
@@ -245,7 +245,7 @@ export function AssetCatalogueManager({ supabase, isMobile, openAddCategory, onA
           style={{
             background: 'none', border: 'none', padding: 0, cursor: 'pointer', width: '100%',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            fontSize: '11.5px', fontWeight: 700, color: colors.muted,
+            fontSize: '12px', fontWeight: 700, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em',
           }}
         >
@@ -262,7 +262,7 @@ export function AssetCatalogueManager({ supabase, isMobile, openAddCategory, onA
               {activity.map(a => (
                 <div key={a.id} style={{ fontSize: '12px', color: colors.secondary }}>
                   <div style={{ color: colors.primary }}>{a.summary}</div>
-                  <div style={{ fontSize: '11px', color: colors.muted }}>
+                  <div style={{ fontSize: '12px', color: colors.muted }}>
                     {a.actor_name ?? 'Unknown user'} · {fmtDateTime(a.created_at)}
                   </div>
                 </div>
@@ -315,7 +315,7 @@ function Banner({ tone, message }: { tone: 'error' | 'success'; message: string 
   return (
     <div role={tone === 'error' ? 'alert' : 'status'} style={{
       padding: '10px 12px', borderRadius: '8px', fontSize: '12px',
-      background: tone === 'error' ? 'rgba(180,35,50,0.1)' : 'rgba(22,163,74,0.10)',
+      background: tone === 'error' ? 'rgba(180,35,50,0.1)' : 'rgba(39,98,71,0.10)',
       color: tone === 'error' ? '#B42332' : '#276247',
     }}>
       {message}
@@ -355,7 +355,7 @@ function NameField({ label, value, onChange, problem, max, autoFocus }: {
         aria-invalid={!!show}
         style={{ width: '100%', borderColor: show ? '#B42332' : undefined }}
       />
-      {show && <div style={{ fontSize: '11.5px', color: '#B42332' }}>{problem}</div>}
+      {show && <div style={{ fontSize: '12px', color: '#B42332' }}>{problem}</div>}
     </AssetField>
   )
 }
@@ -373,7 +373,7 @@ function ActiveSwitch({ checked, onChange, kind, usedBy }: {
         Offer this {kind} for new assets
       </label>
       {!checked && (
-        <div style={{ fontSize: '11.5px', color: colors.muted }}>
+        <div style={{ fontSize: '12px', color: colors.muted }}>
           Retired. It stays readable on {usedBy > 0 ? `the ${plural(usedBy, 'asset')} that use it` : 'any record that names it'},
           and can be reactivated here at any time.
         </div>
@@ -447,7 +447,7 @@ function CategoryModal({
               </div>
             )}
           </AssetField>
-          <div style={{ fontSize: '11.5px', color: colors.muted }}>
+          <div style={{ fontSize: '12px', color: colors.muted }}>
             Used by {plural(usedBy, 'asset')}. A new name shows on all of them at once.
           </div>
         </>
@@ -535,7 +535,7 @@ function ProductModal({
         max={PRODUCT_NAME_MAX}
         autoFocus
       />
-      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '-6px' }}>
+      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '-6px' }}>
         A model or type, e.g. &ldquo;Dell Latitude 5420&rdquo;. Individual items and their serial numbers are added as assets.
       </div>
       {product && <ActiveSwitch checked={active} onChange={setActive} kind="product" usedBy={usedBy} />}

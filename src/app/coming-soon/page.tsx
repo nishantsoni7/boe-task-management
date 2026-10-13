@@ -67,7 +67,7 @@ export default function ComingSoonPage() {
 
         <div style={{
           display: 'inline-block',
-          fontSize: '11px', fontWeight: 700,
+          fontSize: '12px', fontWeight: 700,
           color: '#C48A1A',
           background: 'rgba(196,138,26,0.1)',
           border: '1px solid rgba(196,138,26,0.25)',

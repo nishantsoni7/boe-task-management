@@ -37,8 +37,8 @@ const TASK_COLUMNS = [
 ].join(', ')
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#B06035'    },
-  medium: { label: 'Med',  color: '#C07820'    },
+  high:   { label: 'High', color: '#805B0D'    },
+  medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
 
@@ -58,8 +58,8 @@ function InfoPanel() {
   return (
     <div style={{
       width: '220px', flexShrink: 0,
-      background: 'rgba(120,113,108,0.04)',
-      border: '1.5px solid rgba(120,113,108,0.18)',
+      background: 'rgba(104,109,108,0.04)',
+      border: '1.5px solid rgba(104,109,108,0.18)',
       borderRadius: '8px', padding: '16px 14px',
       display: 'flex', flexDirection: 'column', gap: '14px', alignSelf: 'flex-start',
     }}>
@@ -78,10 +78,10 @@ function InfoPanel() {
             <span style={{
               marginTop: '3px', flexShrink: 0,
               width: '5px', height: '5px', borderRadius: '50%',
-              background: 'rgba(120,113,108,0.4)',
+              background: 'rgba(104,109,108,0.4)',
               display: 'inline-block',
             }} />
-            <span style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: '1.5' }}>
+            <span style={{ fontSize: '12px', color: colors.secondary, lineHeight: '1.5' }}>
               {text}
             </span>
           </div>
@@ -138,19 +138,19 @@ function CancelledTaskCard({
             onClick={e => { e.stopPropagation(); onClick() }}
             onMouseEnter={() => setHoveredView(true)}
             onMouseLeave={() => setHoveredView(false)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(120,113,108,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(120,113,108,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#686D6C' : colors.muted, flexShrink: 0 }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(104,109,108,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(104,109,108,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#686D6C' : colors.muted, flexShrink: 0 }}
           >
             <ExternalLink size={12} />
           </button>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           {!isSelf && assignerName && (
-            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>{assignerName}</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px', color: '#335A86', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>{assignerName}</span>
           )}
-          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
-          <span style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap' }}>{cancelledLabel}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
+          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>{cancelledLabel}</span>
           {task.cancellation_reason && (
-            <span style={{ fontSize: '10.5px', color: '#686D6C', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
+            <span style={{ fontSize: '12px', color: '#686D6C', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
               {task.cancellation_reason}
             </span>
           )}
@@ -187,7 +187,7 @@ function CancelledTaskCard({
           {task.title}
         </div>
         {task.cancellation_reason && (
-          <div style={{ fontSize: '11px', color: '#686D6C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px', fontStyle: 'italic' }}>
+          <div style={{ fontSize: '12px', color: '#686D6C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px', fontStyle: 'italic' }}>
             {task.cancellation_reason}
           </div>
         )}
@@ -200,10 +200,10 @@ function CancelledTaskCard({
           style={{
             display: 'inline-block', maxWidth: '100%',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
+            fontSize: '12px', fontWeight: 600, padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
               ? { color: colors.muted, background: 'rgba(0,0,0,0.05)' }
-              : { color: '#6B4FA0', background: 'rgba(155,111,212,0.10)' }),
+              : { color: '#335A86', background: 'rgba(155,111,212,0.10)' }),
           }}
         >
           {isSelf ? 'Self' : assignerName}
@@ -212,12 +212,12 @@ function CancelledTaskCard({
 
       {/* Priority — fixed 52px */}
       <div style={{ flexShrink: 0, width: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: priority.color, opacity: 0.6 }}>{priority.label}</span>
       </div>
 
       {/* Cancelled on — fixed 140px */}
       <div style={{ flexShrink: 0, width: '140px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', paddingLeft: '4px' }}>
-        <span style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           <span style={{ opacity: 0.6 }}>Cancelled: </span>{cancelledLabel}
         </span>
       </div>
@@ -232,8 +232,8 @@ function CancelledTaskCard({
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '28px', height: '28px', borderRadius: '6px',
-            background: hoveredView ? 'rgba(120,113,108,0.12)' : 'transparent',
-            border: `1px solid ${hoveredView ? 'rgba(120,113,108,0.35)' : 'transparent'}`,
+            background: hoveredView ? 'rgba(104,109,108,0.12)' : 'transparent',
+            border: `1px solid ${hoveredView ? 'rgba(104,109,108,0.35)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
             color: hoveredView ? '#686D6C' : colors.muted,
           }}
@@ -378,7 +378,7 @@ function MyCancelledTasksContent() {
 
         <div style={{ marginBottom: '14px' }}>
           <div style={{ fontSize: '13px', fontWeight: 600, color: '#686D6C' }}>Cancelled Tasks</div>
-          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
             {allTasks.length} task{allTasks.length !== 1 ? 's' : ''} cancelled
           </div>
         </div>
@@ -402,7 +402,7 @@ function MyCancelledTasksContent() {
             <select
               value={filterAssignedBy}
               onChange={e => setState({ assignedBy: e.target.value })}
-              style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted, cursor: 'pointer' }}
+              style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterAssignedBy ? colors.primary : colors.muted, cursor: 'pointer' }}
             >
               <option value="">All Assigners</option>
               {assignerOptions.map(opt => (
@@ -413,7 +413,7 @@ function MyCancelledTasksContent() {
           <select
             value={filterPriority}
             onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
-            style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+            style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '12px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
           >
             <option value="">All Priority</option>
             <option value="high">High</option>
@@ -455,7 +455,7 @@ function MyCancelledTasksContent() {
                     isMobile={isMobile}
                   />
                 ))}
-                <div style={{ padding: '4px', fontSize: '11px', color: colors.muted }}>
+                <div style={{ padding: '4px', fontSize: '12px', color: colors.muted }}>
                   {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
                 </div>
               </div>

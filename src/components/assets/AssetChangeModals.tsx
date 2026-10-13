@@ -516,7 +516,7 @@ export function RequestEditModal({
 
   return (
     <AssetModal title="Request Edit" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         An administrator reviews this request before anything changes. Only the four fields below
         can be proposed this way.
       </div>
@@ -593,7 +593,7 @@ export function RequestRemovalModal({
       </div>
       <div style={{
         padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '11.5px',
+        background: 'rgba(180,35,50,0.08)', color: '#B42332', fontSize: '12px',
       }}>
         This request needs administrator approval. The asset is not removed now, and it cannot be
         removed at all if it has assignment, movement, service or document history.

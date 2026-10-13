@@ -130,7 +130,7 @@ export function ObjectionQueue({
         <div style={{ fontSize: 13.5, fontWeight: 700, color: '#303536' }}>{title}</div>
         {pending.length > 0 && (
           <span style={{
-            padding: '2px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 600,
+            padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
             background: statusTone('pending').bg, color: statusTone('pending').fg,
           }}>
             {pending.length} awaiting review
@@ -156,7 +156,7 @@ export function ObjectionQueue({
               <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                 {['Employee', subject === 'attendance' ? 'Date' : 'Period', 'Issue', 'Submitted', 'Status', ''].map((h, i) => (
                   <th key={h || `a${i}`} style={{
-                    textAlign: 'left', padding: '9px 16px', fontSize: 11, fontWeight: 600,
+                    textAlign: 'left', padding: '9px 16px', fontSize: 12, fontWeight: 600,
                     color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
                     whiteSpace: 'nowrap',
                   }}>
@@ -181,11 +181,11 @@ export function ObjectionQueue({
                   </td>
                   <td style={{ padding: '10px 16px', fontSize: 12.5, color: '#4C5352', minWidth: 220 }}>
                     {r.reason}
-                    <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
                       As recorded: {r.subject_snapshot}
                     </div>
                     {r.review_note && (
-                      <div style={{ fontSize: 11, color: '#335A86', marginTop: 3 }}>
+                      <div style={{ fontSize: 12, color: '#335A86', marginTop: 3 }}>
                         Reply: {r.review_note}
                       </div>
                     )}
@@ -196,7 +196,7 @@ export function ObjectionQueue({
                   <td style={{ padding: '10px 16px' }}>
                     <span style={{
                       display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                      fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                      fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
                       background: statusTone(r.status).bg, color: statusTone(r.status).fg,
                     }}>
                       {employeeStatusLabel(r.status)}

@@ -463,9 +463,9 @@ describe('no new colour enters the BOE palette', () => {
   })
 
   test('the phase tones are the families already used for type and status badges', () => {
-    // #EAF0F8/#335A86 is MEETING_TYPE_META.new_order, #EAF0F8/#5B21B6 is
+    // #EAF0F8/#335A86 is MEETING_TYPE_META.new_order, #EAF0F8/#335A86 is
     // MEETING_STATUS_META.in_progress, #E8F2EC/#276247 is .completed.
-    for (const hex of ['#EAF0F8', '#335A86', '#EAF0F8', '#5B21B6', '#E8F2EC', '#276247']) {
+    for (const hex of ['#EAF0F8', '#335A86', '#EAF0F8', '#335A86', '#E8F2EC', '#276247']) {
       assert.ok(PAGE.includes(hex), `${hex} should be reused, not replaced`)
     }
   })

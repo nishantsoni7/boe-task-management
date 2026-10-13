@@ -89,7 +89,7 @@ describe('MultilineText', () => {
   test('a label span followed by note text keeps the note structure', () => {
     // Mirrors the "Blocker: " / "Reason: " rows on the task detail page.
     const html = renderToStaticMarkup(
-      <MultilineText style={{ fontSize: '11.5px' }}>
+      <MultilineText style={{ fontSize: '12px' }}>
         <span style={{ fontWeight: 700 }}>Reason: </span>
         {'Client unreachable.\n\nRetrying tomorrow.'}
       </MultilineText>,

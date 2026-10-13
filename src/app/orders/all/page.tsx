@@ -52,7 +52,7 @@ type SortKey = 'newest' | 'oldest' | 'number_desc' | 'number_asc' | 'value_desc'
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
   running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#5B21B6', border: '#DDD6FE' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
   cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
 }
@@ -218,7 +218,7 @@ function StatusBadge({ status }: { status: string }) {
       display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color,
       border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>
@@ -678,7 +678,7 @@ export default function AllOrdersPage() {
                   <span style={{
                     minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
                     background: active ? accent.badgeActive : accent.badge,
-                    color: accent.color, fontSize: '10px', fontWeight: 700,
+                    color: accent.color, fontSize: '12px', fontWeight: 700,
                     lineHeight: '15px', textAlign: 'center',
                   }}>
                     {tabCounts[key]}
@@ -689,7 +689,7 @@ export default function AllOrdersPage() {
           </div>
           <div aria-live="polite" style={{
             display: 'flex', alignItems: 'center', flexShrink: 0,
-            fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap',
+            fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
           }}>
             {listLoading
               ? 'Loading…'
@@ -786,7 +786,7 @@ export default function AllOrdersPage() {
                   {['Order #', 'Client', 'Requested By', 'Assigned To', 'Confirm Date', 'Due Date', 'Value', 'Status'].map(h => (
                     <th key={h} style={{
                       padding: '8px 16px', textAlign: 'left',
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
+                      fontSize: '12px', fontWeight: 600, color: colors.muted,
                       textTransform: 'uppercase', letterSpacing: '0.05em',
                       whiteSpace: 'nowrap',
                     }}>{h}</th>
@@ -814,8 +814,8 @@ export default function AllOrdersPage() {
                            the animation is on the small dot in the badge and
                            nowhere else. */
                         ...(updateLabel ? {
-                          background: colors.blueTint,
-                          boxShadow: `inset 3px 0 0 ${colors.blue}`,
+                          background: colors.brandTint,
+                          boxShadow: `inset 3px 0 0 ${colors.brand}`,
                         } : null),
                       }}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
@@ -834,7 +834,7 @@ export default function AllOrdersPage() {
                       }}
                       onMouseLeave={e => {
                         (e.currentTarget as HTMLTableRowElement).style.background =
-                          updateLabel ? colors.blueTint : 'transparent'
+                          updateLabel ? colors.brandTint : 'transparent'
                       }}
                     >
                       <td style={{ padding: '11px 16px', fontWeight: updateLabel ? 800 : 600, color: colors.primary, whiteSpace: 'nowrap' }}>
@@ -873,7 +873,7 @@ export default function AllOrdersPage() {
                       </td>
                       <td style={{ padding: '11px 16px', whiteSpace: 'nowrap', color: overdue ? colors.red : colors.secondary, fontWeight: overdue ? 600 : 400 }}>
                         {fmtDate(o.due_date)}
-                        {overdue && <span style={{ marginLeft: '4px', fontSize: '10px' }}>overdue</span>}
+                        {overdue && <span style={{ marginLeft: '4px', fontSize: '12px' }}>overdue</span>}
                       </td>
                       <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                         {fmtAmount(o.total_value)}

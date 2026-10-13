@@ -358,7 +358,7 @@ function allowedTransitions(profile: UserProfile, currentStatus: string): OrderS
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
   running:            { label: 'Running',             bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   on_hold:            { label: 'On Hold',             bg: '#FAF0DA', color: '#805B0D', border: '#E6D2A0' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#5B21B6', border: '#DDD6FE' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   dispatched:         { label: 'Dispatched',          bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
   cancelled:          { label: 'Cancelled',           bg: '#FBE9EC', color: '#A12438', border: '#E9B9C1' },
 }
@@ -3300,11 +3300,11 @@ export default function OrderDetailPage() {
                       <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
                         {r.reason}
                       </div>
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
                         {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
                       </div>
                       {r.review_note && (
-                        <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
+                        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
                           Review note: {r.review_note}
                         </div>
                       )}

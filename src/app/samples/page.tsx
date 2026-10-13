@@ -73,11 +73,11 @@ const CATALOG_TYPES = [
 ]
 
 const STATUS_META: Record<SampleStatus, { label: string; bg: string; color: string }> = {
-  pending_approval: { label: 'Pending Approval', bg: '#FEF3C714', color: '#B45309' },
+  pending_approval: { label: 'Pending Approval', bg: '#FAF0DA14', color: '#805B0D' },
   approved:         { label: 'Approved',         bg: colors.blueTint,  color: colors.blue  },
-  qr_submitted:     { label: 'QR Submitted',     bg: '#EDE9FE',        color: '#7C3AED'    },
+  qr_submitted:     { label: 'QR Submitted',     bg: '#EAF0F8',        color: '#335A86'    },
   rejected:         { label: 'Rejected',         bg: colors.redTint,   color: colors.red   },
-  dispatched:       { label: 'Dispatched',       bg: '#1A203514',      color: '#1A2035'    },
+  dispatched:       { label: 'Dispatched',       bg: '#30353614',      color: '#303536'    },
   returned:         { label: 'Returned',         bg: colors.greenTint, color: colors.green },
   lost:             { label: 'Lost',             bg: colors.redTint,   color: colors.red   },
 }
@@ -287,7 +287,7 @@ export default function SamplesPage() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: '#1A2035', color: '#fff',
+              background: '#303536', color: '#fff',
               fontSize: '12px', fontWeight: 600, cursor: 'pointer',
               transition: 'opacity 0.12s', whiteSpace: 'nowrap',
               opacity: inViewMode ? 0.6 : 1,
@@ -307,9 +307,9 @@ export default function SamplesPage() {
               {activeTabMeta.label}
             </span>
             <span style={{
-              fontSize: '11px', fontWeight: 600,
+              fontSize: '12px', fontWeight: 600,
               color: counts[activeTab] > 0 ? activeTabMeta.accent : colors.muted,
-              background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '999px',
+              background: '#E4DED7', padding: '2px 8px', borderRadius: '999px',
             }}>
               {counts[activeTab]}
             </span>
@@ -521,14 +521,14 @@ function RequestCard({
   }
 
   const borderColor = overdue ? colors.red + '50'
-    : r.status === 'pending_approval' ? '#B45309' + '30'
+    : r.status === 'pending_approval' ? '#805B0D' + '30'
     : r.status === 'rejected' ? colors.red + '28'
     : colors.border
 
   return (
     <div style={{
       background: '#fff', border: `1.5px solid ${borderColor}`,
-      borderRadius: '10px', overflow: 'hidden', opacity: isClosed ? 0.75 : 1,
+      borderRadius: '8px', overflow: 'hidden', opacity: isClosed ? 0.75 : 1,
     }}>
       {overdue && (
         <div style={{ background: colors.redTint, borderBottom: `1px solid ${colors.red}22`, padding: '5px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: colors.red }}>
@@ -538,7 +538,7 @@ function RequestCard({
       )}
 
       {r.status === 'pending_approval' && (
-        <div style={{ background: '#FFFBEB', borderBottom: `1px solid #B4530922`, padding: '5px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#B45309' }}>
+        <div style={{ background: '#FAF0DA', borderBottom: `1px solid #805B0D22`, padding: '5px 16px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#805B0D' }}>
           <Clock size={13} strokeWidth={2.2} />
           Awaiting admin approval
         </div>
@@ -553,13 +553,13 @@ function RequestCard({
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Identity */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '9px', flexShrink: 0, background: `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color }}>
+              <div style={{ width: 36, height: 36, borderRadius: '8px', flexShrink: 0, background: `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color }}>
                 <Package size={16} strokeWidth={1.8} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>{r.catalog_name}</span>
-                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: meta.bg, color: meta.color }}>{meta.label}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: meta.bg, color: meta.color }}>{meta.label}</span>
                 </div>
                 <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>{catalogLabel(r.catalog_type)}</div>
               </div>
@@ -568,7 +568,7 @@ function RequestCard({
             {/* Client + Accountability 2-column grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
               <div>
-                <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Client</div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Client</div>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{r.client_name}</div>
                 {r.client_phone && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.tertiary, marginTop: '3px' }}>
@@ -582,7 +582,7 @@ function RequestCard({
                 )}
               </div>
               <div>
-                <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Accountability</div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Accountability</div>
                 <div style={{ fontSize: '12px', color: colors.secondary }}>Req: <strong>{r.requested_by_name ?? 'Staff'}</strong></div>
                 {r.approved_by_name && <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>Approved: <strong>{r.approved_by_name}</strong></div>}
                 {r.received_by_name && (
@@ -607,30 +607,30 @@ function RequestCard({
           {/* Right column: dates */}
           <div style={{ flexShrink: 0, fontSize: '12px', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '5px', minWidth: '130px', paddingTop: '2px' }}>
             <div>
-              <div style={{ color: colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Requested</div>
+              <div style={{ color: colors.muted, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Requested</div>
               <strong style={{ color: colors.secondary }}>{formatDate(r.created_at)}</strong>
             </div>
             {r.dispatched_at && (
               <div style={{ marginTop: '4px' }}>
-                <div style={{ color: colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Dispatched</div>
+                <div style={{ color: colors.muted, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Dispatched</div>
                 <strong style={{ color: colors.secondary }}>{formatDate(r.dispatched_at)}</strong>
               </div>
             )}
             {r.status === 'dispatched' && r.expected_return_date && (
               <div style={{ marginTop: '4px' }}>
-                <div style={{ color: overdue ? colors.red : colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Return by</div>
+                <div style={{ color: overdue ? colors.red : colors.muted, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Return by</div>
                 <strong style={{ color: overdue ? colors.red : colors.secondary }}>{formatDate(r.expected_return_date)}</strong>
               </div>
             )}
             {r.status === 'returned' && r.returned_date && (
               <div style={{ marginTop: '4px' }}>
-                <div style={{ color: colors.green, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Returned</div>
+                <div style={{ color: colors.green, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Returned</div>
                 <strong style={{ color: colors.green }}>{formatDate(r.returned_date)}</strong>
               </div>
             )}
             {r.status === 'rejected' && r.rejected_at && (
               <div style={{ marginTop: '4px' }}>
-                <div style={{ color: colors.red, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rejected</div>
+                <div style={{ color: colors.red, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rejected</div>
                 <strong style={{ color: colors.red }}>{formatDate(r.rejected_at)}</strong>
               </div>
             )}
@@ -640,8 +640,8 @@ function RequestCard({
 
         {/* Dispatch audit details */}
         {(r.status === 'dispatched' || r.status === 'returned' || r.status === 'lost') && (r.courier_name || r.dispatched_by_name) && (
-          <div style={{ marginTop: '10px', padding: '10px 12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203520' }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <div style={{ marginTop: '10px', padding: '10px 12px', background: '#3035360A', borderRadius: '8px', border: '1px solid #30353620' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#303536', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Truck size={12} strokeWidth={2.2} />
               Dispatch Details
             </div>
@@ -660,7 +660,7 @@ function RequestCard({
         {/* Lost details */}
         {r.status === 'lost' && (r.lost_by_name || r.lost_note) && (
           <div style={{ marginTop: '10px', padding: '10px 12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}28` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.red, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <X size={12} strokeWidth={2.2} /> Lost Details
             </div>
             {r.lost_by_name && (
@@ -676,7 +676,7 @@ function RequestCard({
         {/* Rejection details */}
         {r.status === 'rejected' && (r.rejected_by_name || r.rejection_reason) && (
           <div style={{ marginTop: '10px', padding: '10px 12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}28` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.red, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Rejection Details
             </div>
             {r.rejected_by_name && (
@@ -704,29 +704,29 @@ function RequestCard({
             {r.status === 'approved' && (
               <>
                 {isRequester && (
-                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EDE9FE' color='#7C3AED' border='#7C3AED33' onClick={guard(handleQRSubmit)} />
+                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={guard(handleQRSubmit)} />
                 )}
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
               </>
             )}
             {r.status === 'qr_submitted' && (
               <>
                 {canDispatch ? (
-                  <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={guard(() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) })} />
+                  <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#30353614' color='#303536' border='#30353630' onClick={guard(() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) })} />
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#7C3AED', background: '#EDE9FE', border: '1px solid #7C3AED33', borderRadius: '7px', padding: '6px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#335A86', background: '#EAF0F8', border: '1px solid #335A8633', borderRadius: '8px', padding: '6px 12px' }}>
                     <CheckCircle2 size={13} strokeWidth={1.8} />
                     QR submitted — waiting for dispatch team to add tracking details.
                   </div>
                 )}
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
               </>
             )}
             {r.status === 'dispatched' && (
               <>
-                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#EAF0F8' color='#335A86' border='#335A8633' onClick={() => setSlipOpen(true)} />
                 {isRequester && !canReceive ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '6px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '6px 12px' }}>
                     <Info size={13} strokeWidth={1.8} />
                     Ask Admin / HR / Dispatch to verify receipt and close this request.
                   </div>
@@ -749,8 +749,8 @@ function RequestCard({
 
         {/* Dispatch details panel */}
         {dispatchOpen && canDispatch && r.status === 'qr_submitted' && (
-          <div style={{ marginTop: '12px', padding: '12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203530' }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <div style={{ marginTop: '12px', padding: '12px', background: '#3035360A', borderRadius: '8px', border: '1px solid #30353630' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#303536', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Truck size={13} strokeWidth={2} /> Enter Dispatch Details
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -759,7 +759,7 @@ function RequestCard({
                 placeholder="Courier / Carrier Name *"
                 value={dispatchForm.courier_name}
                 onChange={e => setDispatchForm(f => ({ ...f, courier_name: e.target.value }))}
-                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1.5px solid ${dispatchForm.courier_name.trim() ? '#1A203344' : '#1A203366'}`, background: '#fff', color: colors.primary, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1.5px solid ${dispatchForm.courier_name.trim() ? '#30353644' : '#30353666'}`, background: '#fff', color: colors.primary, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
               />
               <input
                 type="text"
@@ -782,13 +782,13 @@ function RequestCard({
                 <button
                   onClick={handleDispatchWithDetails}
                   disabled={busy === 'dispatch_details' || !dispatchForm.courier_name.trim()}
-                  style={{ background: dispatchForm.courier_name.trim() ? '#1A2035' : colors.muted, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: dispatchForm.courier_name.trim() && busy !== 'dispatch_details' ? 'pointer' : 'not-allowed', opacity: busy === 'dispatch_details' || !dispatchForm.courier_name.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
+                  style={{ background: dispatchForm.courier_name.trim() ? '#303536' : colors.muted, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: dispatchForm.courier_name.trim() && busy !== 'dispatch_details' ? 'pointer' : 'not-allowed', opacity: busy === 'dispatch_details' || !dispatchForm.courier_name.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
                 >
                   <Truck size={13} strokeWidth={2.5} />{busy === 'dispatch_details' ? 'Saving…' : 'Confirm Dispatch'}
                 </button>
                 <button
                   onClick={() => { setDispatchOpen(false); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }}
-                  style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
+                  style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
                 >Cancel</button>
               </div>
             </div>
@@ -798,7 +798,7 @@ function RequestCard({
         {/* Rejection panel */}
         {rejectOpen && isAdmin && r.status === 'pending_approval' && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}33` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <ThumbsDown size={13} strokeWidth={2} /> Rejection Reason
             </div>
             <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Required — explain why this request is being rejected…" rows={2}
@@ -807,11 +807,11 @@ function RequestCard({
             {!rejectReason.trim() && <div style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>A rejection reason is required.</div>}
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={handleReject} disabled={busy === 'reject' || !rejectReason.trim()}
-                style={{ background: rejectReason.trim() ? colors.red : colors.muted, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: rejectReason.trim() && busy !== 'reject' ? 'pointer' : 'not-allowed', opacity: busy === 'reject' || !rejectReason.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                style={{ background: rejectReason.trim() ? colors.red : colors.muted, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: rejectReason.trim() && busy !== 'reject' ? 'pointer' : 'not-allowed', opacity: busy === 'reject' || !rejectReason.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <ThumbsDown size={13} strokeWidth={2.5} />{busy === 'reject' ? 'Saving…' : 'Confirm Reject'}
               </button>
               <button onClick={() => { setRejectOpen(false); setRejectReason('') }}
-                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         )}
@@ -819,7 +819,7 @@ function RequestCard({
         {/* Reapply panel */}
         {reapplyOpen && r.status === 'rejected' && isRequester && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.blueTint, borderRadius: '8px', border: `1px solid ${colors.blue}33` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.blue, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.blue, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <RotateCcw size={13} strokeWidth={2} /> Reapply — Additional Details
             </div>
             <textarea value={reapplyNote} onChange={e => setReapplyNote(e.target.value)} placeholder="Optional — any additional context for your reapplication…" rows={2}
@@ -827,11 +827,11 @@ function RequestCard({
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={handleReapply} disabled={busy === 'reapply'}
-                style={{ background: colors.blue, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'reapply' ? 'not-allowed' : 'pointer', opacity: busy === 'reapply' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                style={{ background: colors.brand, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'reapply' ? 'not-allowed' : 'pointer', opacity: busy === 'reapply' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <RotateCcw size={13} strokeWidth={2.5} />{busy === 'reapply' ? 'Saving…' : 'Submit Reapplication'}
               </button>
               <button onClick={() => { setReapplyOpen(false); setReapplyNote('') }}
-                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         )}
@@ -846,7 +846,7 @@ function RequestCard({
             'receive' and nothing else. */}
         {verifyOpen && r.status === 'dispatched' && canReceive && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.greenTint, borderRadius: '8px', border: `1px solid ${colors.green}33` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.green, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.green, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <ShieldCheck size={13} strokeWidth={2} /> Verify Received & Close
             </div>
             <textarea value={receivedNote} onChange={e => setReceivedNote(e.target.value)} placeholder="Optional — condition on receipt, any remarks…" rows={2}
@@ -854,11 +854,11 @@ function RequestCard({
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={handleVerifyReceived} disabled={busy === 'verify'}
-                style={{ background: colors.green, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'verify' ? 'not-allowed' : 'pointer', opacity: busy === 'verify' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                style={{ background: colors.green, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'verify' ? 'not-allowed' : 'pointer', opacity: busy === 'verify' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <CheckCircle2 size={13} strokeWidth={2.5} />{busy === 'verify' ? 'Saving…' : 'Confirm Received'}
               </button>
               <button onClick={() => setVerifyOpen(false)}
-                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         )}
@@ -866,7 +866,7 @@ function RequestCard({
         {/* Mark Lost confirmation panel */}
         {lostOpen && r.status === 'dispatched' && (isAdmin || canLost) && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}33` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <X size={13} strokeWidth={2} /> Mark Sample as Lost
             </div>
             <div style={{ fontSize: '13px', color: colors.secondary, marginBottom: '10px' }}>
@@ -883,13 +883,13 @@ function RequestCard({
               <button
                 onClick={handleConfirmLost}
                 disabled={busy === 'lost'}
-                style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'lost' ? 'not-allowed' : 'pointer', opacity: busy === 'lost' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
+                style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'lost' ? 'not-allowed' : 'pointer', opacity: busy === 'lost' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
               >
                 <X size={13} strokeWidth={2.5} />{busy === 'lost' ? 'Saving…' : 'Confirm Lost'}
               </button>
               <button
                 onClick={() => { setLostOpen(false); setLostNote('') }}
-                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
               >Cancel</button>
             </div>
           </div>
@@ -903,7 +903,7 @@ function RequestCard({
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 background: 'none', color: colors.muted,
-                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
                 padding: '5px 11px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = colors.red; e.currentTarget.style.borderColor = colors.red + '55' }}
@@ -945,7 +945,7 @@ function RequestCard({
         {/* Follow-up panel */}
         {followupOpen && r.status === 'dispatched' && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.raised, borderRadius: '8px', border: `1px solid ${colors.border}` }}>
-            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.secondary, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: colors.secondary, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Log Follow-up
             </div>
             <input type="date" value={followupDate} onChange={e => setFollowupDate(e.target.value)}
@@ -956,11 +956,11 @@ function RequestCard({
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={handleSaveFollowup} disabled={busy === 'followup' || !followupNote.trim()}
-                style={{ background: '#1A2035', color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 600, cursor: followupNote.trim() ? 'pointer' : 'not-allowed', opacity: busy === 'followup' || !followupNote.trim() ? 0.5 : 1 }}>
+                style={{ background: '#303536', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 600, cursor: followupNote.trim() ? 'pointer' : 'not-allowed', opacity: busy === 'followup' || !followupNote.trim() ? 0.5 : 1 }}>
                 {busy === 'followup' ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => setFollowupOpen(false)}
-                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         )}
@@ -977,7 +977,7 @@ function ActionBtn({ icon, label, busy, bg, color, border, onClick }: {
 }) {
   return (
     <button onClick={onClick} disabled={busy}
-      style={{ display: 'flex', alignItems: 'center', gap: '5px', background: bg, color, border: `1px solid ${border}`, borderRadius: '7px', padding: '6px 12px', fontSize: '12.5px', fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+      style={{ display: 'flex', alignItems: 'center', gap: '5px', background: bg, color, border: `1px solid ${border}`, borderRadius: '8px', padding: '6px 12px', fontSize: '12.5px', fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
       {icon}{busy ? 'Saving…' : label}
     </button>
   )

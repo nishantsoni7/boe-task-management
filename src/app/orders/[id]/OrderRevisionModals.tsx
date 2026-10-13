@@ -355,7 +355,7 @@ export function OperationsHandoffDecisionModal({
               onChange={e => setChecked(e.target.checked)} />
             <span>{REALIGN_CHECK_LABEL}</span>
           </label>
-          {touched && !checked && <div style={{ fontSize: '11px', color: '#B42332' }}>{REALIGN_CHECK_REQUIRED}</div>}
+          {touched && !checked && <div style={{ fontSize: '12px', color: '#B42332' }}>{REALIGN_CHECK_REQUIRED}</div>}
         </div>
       )}
       {alsoAccepts && !withdrawing && !realign && (

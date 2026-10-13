@@ -75,7 +75,7 @@ function PriorityBadge({ priority }: { priority: string }) {
       : { color: '#4C5352', bg: '#F1EEE9' }
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 600,
+      fontSize: '12px', fontWeight: 600,
       color: cfg.color, background: cfg.bg,
       borderRadius: '6px', padding: '1px 6px',
       textTransform: 'capitalize', flexShrink: 0,
@@ -124,7 +124,7 @@ function RequestCard({
       {/* Customer */}
       <div style={{ minWidth: 0, padding: '10px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '6px', color: '#B9472E', background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '1px 5px', borderRadius: '6px', color: '#B9472E', background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
           <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.customer_name ?? task.title}
           </span>
@@ -132,7 +132,7 @@ function RequestCard({
         {task.company_name && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Building2 size={10} color={colors.muted} />
-            <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {task.company_name}
             </span>
           </div>
@@ -144,7 +144,7 @@ function RequestCard({
       <div style={{ minWidth: 0, padding: '0 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <User size={10} color={colors.muted} />
-          <span style={{ fontSize: '11px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '12px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {assignerName(task, userMap)}
           </span>
         </div>
@@ -159,14 +159,14 @@ function RequestCard({
 
       {/* Created Date — the request's own created_at, not last_update_at. */}
       <div style={{ minWidth: 0, padding: '0 4px' }}>
-        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
       {/* Notes */}
       <div style={{ minWidth: 0, padding: '0 4px' }}>
-        <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+        <span style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
           {task.note?.trim() || '—'}
         </span>
       </div>
@@ -400,7 +400,7 @@ function QuotationRequestsContent() {
                 >
                   {tab.label}
                   <span style={{
-                    fontSize: '11px', fontWeight: 700,
+                    fontSize: '12px', fontWeight: 700,
                     padding: '1px 6px', borderRadius: '12px',
                     background: active ? 'rgba(255,255,255,0.22)' : '#E4DED7',
                     color: active ? '#fff' : '#686D6C',
@@ -505,9 +505,9 @@ function QuotationRequestsContent() {
             gridTemplateColumns: GRID_COLUMNS,
             columnGap: '12px',
             padding: '8px 4px',
-            background: 'rgba(248,250,252,0.9)',
+            background: 'rgba(51,90,134,0.9)',
             borderBottom: `1px solid ${colors.border}`,
-            fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+            fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
             letterSpacing: '0.07em', color: colors.muted,
           }}>
             <div style={{ paddingLeft: '6px' }}>Customer</div>

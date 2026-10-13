@@ -191,11 +191,11 @@ function ReasonRow({
         <div style={{ fontSize: 13, fontWeight: 500, color: charged ? '#4C5352' : '#686D6C' }}>
           {label}
         </div>
-        <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
           {meta}
         </div>
         {note && (
-          <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 2 }}>{note}</div>
+          <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2 }}>{note}</div>
         )}
       </div>
       <div style={{
@@ -643,7 +643,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                       alignItems: 'baseline', gap: 10,
                     }}>
                       <span style={{
-                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                        fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
                         letterSpacing: '0.08em', color: '#4C5352',
                       }}>
                         Net Payable
@@ -829,7 +829,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                         alignItems: 'baseline', gap: 10,
                       }}>
                         <span style={{
-                          fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+                          fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
                           letterSpacing: '0.09em', color: '#686D6C',
                         }}>
                           Net Payable
@@ -841,7 +841,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                           {fmt(summary.net_salary)}
                         </span>
                       </div>
-                      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 5 }}>
+                      <div style={{ fontSize: 12, color: '#686D6C', marginTop: 5 }}>
                         {monthLabel ? `${monthLabel} · Preview` : 'Preview'}
                       </div>
 

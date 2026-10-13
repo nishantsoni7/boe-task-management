@@ -216,7 +216,7 @@ export default function SettingsPage() {
               <p style={{ margin: 0, fontSize: 13, color: '#B42332' }}>{pwError}</p>
             )}
             {pwSuccess && (
-              <p style={{ margin: 0, fontSize: 13, color: '#2F7A52' }}>{pwSuccess}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#276247' }}>{pwSuccess}</p>
             )}
 
             <div>

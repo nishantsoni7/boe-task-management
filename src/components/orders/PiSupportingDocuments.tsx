@@ -247,13 +247,13 @@ function Row({ file }: { file: { name: string; size: number } }) {
     <li style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.primary }}>
       <FileText size={12} strokeWidth={2} aria-hidden="true" />
       <span style={{ overflowWrap: 'anywhere' }}>{file.name}</span>
-      <span style={{ color: colors.muted, fontSize: '11px' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+      <span style={{ color: colors.muted, fontSize: '12px' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
     </li>
   )
 }
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
+  fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
 /**
@@ -485,8 +485,8 @@ export function PiSupportingDocumentsPicker({ state, disabled }: { state: Suppor
           </ul>
         )}
         {!state.missing.includes(category)
-          ? <span style={{ fontSize: '11.5px', color: '#276247', fontWeight: 600 }}>Attached to this submission</span>
-          : <span style={{ fontSize: '11.5px', color: colors.muted }}>Nothing attached</span>}
+          ? <span style={{ fontSize: '12px', color: '#276247', fontWeight: 600 }}>Attached to this submission</span>
+          : <span style={{ fontSize: '12px', color: colors.muted }}>Nothing attached</span>}
       </div>
     )
   }
@@ -498,10 +498,10 @@ export function PiSupportingDocumentsPicker({ state, disabled }: { state: Suppor
       <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>{SUPPORTING_DOCUMENTS_TITLE}</div>
       {section('design_files')}
       {section('client_po')}
-      <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.45 }}>
+      <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
         PDF, PNG, JPEG or WebP, up to 10 MB each. {SUPPORTING_DOCUMENTS_NOTE}
       </div>
-      {state.error && <div role="alert" style={{ fontSize: '11.5px', color: colors.red }}>{state.error}</div>}
+      {state.error && <div role="alert" style={{ fontSize: '12px', color: colors.red }}>{state.error}</div>}
     </section>
   )
 }

@@ -102,7 +102,7 @@ function StatusPill({ label, tone }: { label: string; tone: PiDraftStatusTone })
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       padding: '2px 8px', borderRadius: '6px',
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
       background: style.bg, color: style.color, border: `1px solid ${style.border}`,
     }}>
       {label}
@@ -501,7 +501,7 @@ export default function PiDraftsPage() {
                   // The two money columns, and only those, are right-aligned so
                   // the figures line up digit for digit against each other.
                   textAlign: i === 3 || i === 4 ? 'right' : 'left',
-                  fontSize: '10px', fontWeight: 600, color: colors.muted,
+                  fontSize: '12px', fontWeight: 600, color: colors.muted,
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                   whiteSpace: 'nowrap',
                 }}>{h}</th>
@@ -516,7 +516,7 @@ export default function PiDraftsPage() {
                   {/* THE DRAFT'S OWN REFERENCE AND ITS NUMBER (20270114000000): a
                       reserved number only where an older draft genuinely holds one,
                       otherwise the plain statement that none is allotted yet. */}
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', fontWeight: 400, whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px', fontWeight: 400, whiteSpace: 'nowrap' }}>
                     {entry.reference} · {entry.numberLine}
                   </div>
                 </td>
@@ -524,14 +524,14 @@ export default function PiDraftsPage() {
                     carries. Two facts about the PI, not about this system. */}
                 <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
                   <div>{entry.authoredBy}</div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
                     {entry.authoredOn}
                   </div>
                 </td>
                 {/* The app user who put it here, and when. */}
                 <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
                   <div>{entry.uploader}</div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
                     {entry.uploadedAt}
                   </div>
                 </td>
@@ -559,7 +559,7 @@ export default function PiDraftsPage() {
                         columns they were what pushed the table past its card. */}
                     <td style={{ padding: '10px 14px', color: colors.secondary, fontSize: '12px', minWidth: '110px' }}>
                       <div>{entry.submitter}</div>
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
                         {entry.submittedAt}
                       </div>
                     </td>
@@ -601,7 +601,7 @@ export default function PiDraftsPage() {
                 <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
                   {entry.client}
                 </div>
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                   {entry.reference} · {entry.numberLine}
                 </div>
                 {/* The workbook's own author, under the client. The narrow
@@ -609,7 +609,7 @@ export default function PiDraftsPage() {
                     become two labelled lines below rather than a guessing game
                     between two bare names. */}
                 <div style={{
-                  fontSize: '11px', color: colors.muted, marginTop: '2px',
+                  fontSize: '12px', color: colors.muted, marginTop: '2px',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {entry.authoredOn}
@@ -631,11 +631,11 @@ export default function PiDraftsPage() {
                 the narrow layout has no columns to align them in. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontSize: '11px', color: colors.muted }}>Product value</span>
+                <span style={{ fontSize: '12px', color: colors.muted }}>Product value</span>
                 <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontSize: '11px', color: colors.muted }}>Grand total</span>
+                <span style={{ fontSize: '12px', color: colors.muted }}>Grand total</span>
                 <span
                   style={{ fontSize: '14px', fontWeight: 700, color: entry.grandTotalMissing ? colors.red : colors.primary }}
                   title={entry.grandTotalMissing ? GRAND_TOTAL_UNAVAILABLE_NOTE : undefined}
@@ -644,7 +644,7 @@ export default function PiDraftsPage() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '11px', color: colors.muted }}>
+              <span style={{ fontSize: '12px', color: colors.muted }}>
                 {showSubmission
                   ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
                   : entry.uploadedAt}
@@ -679,8 +679,8 @@ export default function PiDraftsPage() {
           {REVIEW_QUEUE_TITLE}
         </span>
         <span style={{
-          fontSize: '11px', fontWeight: 700, color: '#335A86',
-          background: colors.blueTint, border: '1px solid rgba(51,90,134,0.3)',
+          fontSize: '12px', fontWeight: 700, color: '#335A86',
+          background: colors.brandTint, border: '1px solid rgba(51,90,134,0.3)',
           borderRadius: '999px', padding: '1px 8px',
         }}>
           {review.length}

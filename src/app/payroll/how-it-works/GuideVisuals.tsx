@@ -25,7 +25,7 @@ import type { AttendanceState } from './guideContent'
 export const TONE_COLOR: Record<AttendanceState['tone'], string> = {
   good:    '#276247',
   caution: '#805B0D',
-  half:    '#7C5CD6',
+  half:    '#335A86',
   neutral: '#686D6C',
 }
 
@@ -91,7 +91,7 @@ export function PayableDaysWeek() {
               minWidth: 0,
             }}
           >
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: '#686D6C', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#686D6C', letterSpacing: '0.05em' }}>
               {cell.day.toUpperCase()}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '5px 0 4px' }}>
@@ -106,7 +106,7 @@ export function PayableDaysWeek() {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11.5, color: '#686D6C', marginTop: 8, lineHeight: 1.55 }}>
+      <div style={{ fontSize: 12, color: '#686D6C', marginTop: 8, lineHeight: 1.55 }}>
         An illustration of the rule, not a real week. Six working days here, worth{' '}
         <strong style={{ color: '#4C5352' }}>4½ payable days</strong> — the half day counts as
         half, the absence as none, and the missing punch still counts as a present day. Sunday is
@@ -146,7 +146,7 @@ export function SalaryFunnel() {
             gap: 10, marginBottom: 4, flexWrap: 'wrap',
           }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#4C5352' }}>{stage.label}</span>
-            <span style={{ fontSize: 11, color: '#686D6C' }}>{stage.note}</span>
+            <span style={{ fontSize: 12, color: '#686D6C' }}>{stage.note}</span>
           </div>
           <div aria-hidden="true" style={{ height: 8, background: '#E4DED7', borderRadius: 999 }}>
             <div style={{
@@ -189,12 +189,12 @@ export function PaidLeaveAbsorption() {
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '9px 12px', borderRadius: 8, marginBottom: 7,
-              border: `1px solid ${covered ? 'rgba(5,150,105,0.28)' : '#E4DED7'}`,
-              background: covered ? 'rgba(5,150,105,0.06)' : '#fff',
+              border: `1px solid ${covered ? 'rgba(39,98,71,0.28)' : '#E4DED7'}`,
+              background: covered ? 'rgba(39,98,71,0.06)' : '#fff',
             }}
           >
             <span style={{
-              fontSize: 11, fontWeight: 700, color: '#686D6C',
+              fontSize: 12, fontWeight: 700, color: '#686D6C',
               fontVariantNumeric: 'tabular-nums', minWidth: 46,
             }}>
               {item.date}
@@ -209,7 +209,7 @@ export function PaidLeaveAbsorption() {
           </div>
         )
       })}
-      <div style={{ fontSize: 11.5, color: '#686D6C', lineHeight: 1.55, marginTop: 2 }}>
+      <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.55, marginTop: 2 }}>
         The allowance settles the <strong style={{ color: '#4C5352' }}>earliest</strong> item of the
         month it can cover — not the largest. The covered line stays on your payslip showing ₹0, so
         the month still adds up.

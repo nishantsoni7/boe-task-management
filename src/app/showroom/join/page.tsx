@@ -149,7 +149,7 @@ function JoinForm() {
           {salespersonName?.[0]?.toUpperCase() ?? '?'}
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: colors.muted, fontWeight: 500 }}>Salesperson</div>
+          <div style={{ fontSize: '12px', color: colors.muted, fontWeight: 500 }}>Salesperson</div>
           <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{salespersonName}</div>
         </div>
       </div>

@@ -57,7 +57,7 @@ const CELL: React.CSSProperties = {
 }
 
 const HEAD: React.CSSProperties = {
-  ...CELL, fontSize: '11px', fontWeight: 700, color: colors.secondary,
+  ...CELL, fontSize: '12px', fontWeight: 700, color: colors.secondary,
   textTransform: 'uppercase', letterSpacing: '0.04em',
 }
 

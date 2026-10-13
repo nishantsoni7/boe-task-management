@@ -54,7 +54,7 @@ const inp: React.CSSProperties = {
 }
 
 const lbl: React.CSSProperties = {
-  fontSize: '11.5px', fontWeight: 700, color: colors.secondary,
+  fontSize: '12px', fontWeight: 700, color: colors.secondary,
   textTransform: 'uppercase', letterSpacing: '0.05em',
   display: 'block', marginBottom: '5px',
 }
@@ -221,7 +221,7 @@ export default function DispatchPage() {
           <div style={{ background: '#303536', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Package size={14} strokeWidth={2} />
             <span style={{ fontSize: '12.5px', fontWeight: 700, letterSpacing: '0.02em' }}>Request Details</span>
-            <span style={{ marginLeft: 'auto', fontSize: '10.5px', opacity: 0.6 }}>{r.id.slice(0, 16).toUpperCase()}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>{r.id.slice(0, 16).toUpperCase()}</span>
           </div>
           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '0' }}>
             {([
@@ -250,7 +250,7 @@ export default function DispatchPage() {
         {alreadyDispatched && (
           <div style={{ background: '#fff', borderRadius: '12px', border: `1.5px solid #30353630`, padding: '20px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <CheckCircle2 size={18} strokeWidth={2} color='#2F7A52' />
+              <CheckCircle2 size={18} strokeWidth={2} color='#276247' />
               <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Already Dispatched</span>
             </div>
             <div style={{ fontSize: '13px', color: colors.muted, display: 'flex', flexDirection: 'column', gap: '6px' }}>

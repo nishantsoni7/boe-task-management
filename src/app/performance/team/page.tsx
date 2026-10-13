@@ -54,7 +54,7 @@ function TeamProgressLoader({ progress }: { progress: number }) {
         <div style={{ width: '100%', height: 6, background: '#F1EEE9', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{
             width: `${pct}%`, height: '100%',
-            background: 'linear-gradient(90deg, #335A86, #2F7A52)',
+            background: 'linear-gradient(90deg, #335A86, #276247)',
             borderRadius: 999, transition: 'width 0.25s ease',
           }} />
         </div>
@@ -75,7 +75,7 @@ const C = {
   line:  '#F1EEE9',
   hair:  '#F1EEE9',
   panel: '#FBFAF8',
-  green: '#2F7A52',
+  green: '#276247',
   red:   '#B42332',
   amber: '#C48A1A',
   blue:  '#335A86',
@@ -109,11 +109,11 @@ function Rate({ value, suffix = '%' }: { value: number | null; suffix?: string }
 }
 
 function Delta({ value, unit = 'pts' }: { value: number | null; unit?: string }) {
-  if (value === null) return <span style={{ fontSize: 11, color: C.faint }}>no prior data</span>
-  if (value === 0)    return <span style={{ fontSize: 11, color: C.faint }}>no change</span>
+  if (value === null) return <span style={{ fontSize: 12, color: C.faint }}>no prior data</span>
+  if (value === 0)    return <span style={{ fontSize: 12, color: C.faint }}>no change</span>
   const up = value > 0
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, color: up ? C.green : C.red }}>
+    <span style={{ fontSize: 12, fontWeight: 600, color: up ? C.green : C.red }}>
       {up ? '↑' : '↓'} {Math.abs(value)} {unit}
     </span>
   )
@@ -124,7 +124,7 @@ function StatusPill({ status }: { status: OperationalStatus }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 12,
-      fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+      fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
       color, background: color + '14', border: '1px solid ' + color + '33',
     }}>{STATUS_LABEL[status]}</span>
   )
@@ -138,7 +138,7 @@ function SectionTitle({ children, hint, aside }: {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
       <h2 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{children}</h2>
-      {hint && <span style={{ fontSize: 11, color: C.faint }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 12, color: C.faint }}>{hint}</span>}
       {aside && <span style={{ marginLeft: 'auto' }}>{aside}</span>}
     </div>
   )
@@ -190,7 +190,7 @@ function ConfidenceFlag({ data }: { data: TeamDataset }) {
     <span
       title={data.coverage.holidayCoverage.warning ?? 'Calendar coverage is incomplete for this period.'}
       style={{
-        fontSize: 10, fontWeight: 700, color: C.amber,
+        fontSize: 12, fontWeight: 700, color: C.amber,
         background: C.amber + '14', border: '1px solid ' + C.amber + '33',
         borderRadius: 12, padding: '1px 7px', whiteSpace: 'nowrap',
       }}
@@ -229,7 +229,7 @@ function HowRankingWorks({ onClose }: { onClose: () => void }) {
         <div style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {HOW_RANKING_WORKS.map(s => (
             <div key={s.heading}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                 {s.heading}
               </div>
               <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.55 }}>{s.body}</div>
@@ -244,7 +244,7 @@ function HowRankingWorks({ onClose }: { onClose: () => void }) {
 function HowRankingWorksButton({ onOpen }: { onOpen: () => void }) {
   return (
     <button onClick={onOpen} style={{
-      fontSize: 11, fontWeight: 600, color: C.blue, background: 'none',
+      fontSize: 12, fontWeight: 600, color: C.blue, background: 'none',
       border: '1px solid ' + C.line, borderRadius: 8, padding: '3px 9px',
       cursor: 'pointer', whiteSpace: 'nowrap',
     }}>How ranking works</button>
@@ -268,14 +268,14 @@ function CoverageSection({ data, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, note?: string) => (
     <div key={label} style={{ flex: '1 1 120px', minWidth: 108 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{value}</div>
-      {note && <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 
   const linkish: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: C.blue, background: 'none',
+    fontSize: 12, fontWeight: 600, color: C.blue, background: 'none',
     border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit',
   }
 
@@ -296,7 +296,7 @@ function CoverageSection({ data, onOpen }: {
       {/* The working-day rule, stated where the calendar figures are, so the reader
           does not have to open a modal to learn what "eligible working day" means.
           One line, because Coverage has to stay compact. */}
-      <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
         Working days are Monday to Saturday. <strong style={{ fontWeight: 600 }}>Sundays are excluded</strong> for
         everyone, as are <strong style={{ fontWeight: 600 }}>company holidays recorded in the holiday calendar</strong> and
         any dates before an employee joined or after they left. Excluded days count neither for nor against anyone.
@@ -323,7 +323,7 @@ function CoverageSection({ data, onOpen }: {
 
       {/* Approved leave is not available. Said out loud, next to the numbers it
           affects, rather than buried in a code comment. */}
-      <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
         {cov.attendanceNote}
       </div>
 
@@ -350,7 +350,7 @@ function CoverageSection({ data, onOpen }: {
               background: 'none', cursor: 'pointer', font: 'inherit', textAlign: 'left',
             }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: C.ink }}>{u.userName}</span>
-              <span style={{ fontSize: 11, color: C.muted, textAlign: 'right' }}>{u.reason}</span>
+              <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>{u.reason}</span>
             </button>
           ))}
         </div>
@@ -358,7 +358,7 @@ function CoverageSection({ data, onOpen }: {
 
       {showExcluded && cov.excluded && (
         <div style={{ marginTop: 10, borderTop: '1px solid ' + C.hair, paddingTop: 8 }}>
-          <div style={{ fontSize: 10.5, color: C.faint, marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: C.faint, marginBottom: 6 }}>
             Administrator view. These accounts keep full system access, task history and View As —
             they are simply not measured. Change this per employee in Attendance → Employees.
           </div>
@@ -371,7 +371,7 @@ function CoverageSection({ data, onOpen }: {
                 {u.userName}
                 <span style={{ fontWeight: 400, color: C.faint }}> · {u.team}</span>
               </span>
-              <span style={{ fontSize: 11, color: C.muted, textAlign: 'right' }}>{u.note ?? 'No reason recorded'}</span>
+              <span style={{ fontSize: 12, color: C.muted, textAlign: 'right' }}>{u.note ?? 'No reason recorded'}</span>
             </div>
           ))}
         </div>
@@ -395,9 +395,9 @@ function AdoptionSection({ data, rows, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, note?: string) => (
     <div key={label} style={{ flex: '1 1 130px', minWidth: 116 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{value}</div>
-      {note && <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 
@@ -413,7 +413,7 @@ function AdoptionSection({ data, rows, onOpen }: {
           {a.recordingFrom
             ? ` Recording began on ${a.recordingFrom}; select a period on or after that date to see adoption.`
             : ' Recording starts from the first time an employee opens Task Management after this release.'}
-          <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
             Days before recording began are excluded from adoption rather than counted as missed opens.
           </div>
         </div>
@@ -432,7 +432,7 @@ function AdoptionSection({ data, rows, onOpen }: {
           </div>
 
           {a.anyProvisionalWindow && (
-            <div style={{ fontSize: 11.5, color: '#805B0D', background: '#FAF0DA', border: '1px solid #E6D2A0', borderRadius: 8, padding: '8px 11px', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: '#805B0D', background: '#FAF0DA', border: '1px solid #E6D2A0', borderRadius: 8, padding: '8px 11px', marginBottom: 10 }}>
               Some employees have no configured shift, so their start window uses a provisional
               default of {formatMinutesOfDay(600)} + 30 minutes. Set Office Timing in
               Attendance → Employees to measure them against their real shift.
@@ -526,7 +526,7 @@ function FilterBar({
           <span style={{ fontSize: 12, color: C.faint }}>to</span>
           <input type="date" value={customTo} max={istToday()}
                  onChange={e => onCustom(customFrom, e.target.value)} style={control} />
-          {rangeError && <span style={{ fontSize: 11, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
+          {rangeError && <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{rangeError}</span>}
         </div>
       )}
 
@@ -574,7 +574,7 @@ function SummaryCard({ label, value, context, reason, delta, flag, onClick }: {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {label}
         </div>
         {flag}
@@ -583,7 +583,7 @@ function SummaryCard({ label, value, context, reason, delta, flag, onClick }: {
         {value}
       </div>
       {context && <div style={{ fontSize: 12, color: C.muted, overflowWrap: 'anywhere' }}>{context}</div>}
-      {reason  && <div style={{ fontSize: 11, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
+      {reason  && <div style={{ fontSize: 12, color: C.faint, overflowWrap: 'anywhere' }}>{reason}</div>}
       {delta}
     </button>
   )
@@ -622,8 +622,8 @@ function Briefing({ data, onOpen }: {
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
               <span style={{ fontSize: 12, color: C.muted }}>— {item.issue}</span>
             </div>
-            <div style={{ fontSize: 11, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
-            <div style={{ fontSize: 11, color: C.blue, fontWeight: 600, paddingLeft: 12 }}>{item.action} →</div>
+            <div style={{ fontSize: 12, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
+            <div style={{ fontSize: 12, color: C.blue, fontWeight: 600, paddingLeft: 12 }}>{item.action} →</div>
           </button>
         ))}
       </div>
@@ -641,7 +641,7 @@ function Briefing({ data, onOpen }: {
               <span style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{item.userName}</span>
               <span style={{ fontSize: 12, color: C.muted }}>— {item.headline}</span>
             </div>
-            <div style={{ fontSize: 11, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
+            <div style={{ fontSize: 12, color: C.muted, paddingLeft: 12 }}>{item.evidence}</div>
           </button>
         ))}
       </div>
@@ -652,7 +652,7 @@ function Briefing({ data, onOpen }: {
 // ─── Table primitives ─────────────────────────────────────────────────────────
 
 const TH: React.CSSProperties = {
-  padding: '8px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700,
+  padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700,
   color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
   whiteSpace: 'nowrap', borderBottom: '1px solid ' + C.line, background: C.panel,
 }
@@ -730,7 +730,7 @@ function MemberTable({ rows, data, onOpen }: {
                       title={cmp.note ?? undefined}>
                     {cmp.comparable
                       ? <Delta value={cmp.delta} />
-                      : <span style={{ fontSize: 11, color: C.faint }}>—</span>}
+                      : <span style={{ fontSize: 12, color: C.faint }}>—</span>}
                   </td>
                   <td style={TD({ textAlign: 'right', color: active !== null && active < 60 ? C.red : C.ink })}>
                     {m.eligibleDays === 0 ? '—' : m.activeDays + '/' + m.eligibleDays}
@@ -770,7 +770,7 @@ function Rankings({ data, onOpen }: { data: TeamDataset; onOpen: (userId: string
 
   const list = (title: string, rows: { userId: string; userName: string; value: string }[]) => (
     <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
         {title}
       </div>
       {rows.map((r, i) => (
@@ -794,7 +794,7 @@ function Rankings({ data, onOpen }: { data: TeamDataset; onOpen: (userId: string
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {data.rankings.map(r => (
           <button key={r.key} onClick={() => setTab(r.key)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
+            fontSize: 12, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  tab === r.key ? 700 : 500,
             color:       tab === r.key ? '#fff' : C.muted,
             background:  tab === r.key ? C.ink : '#fff',
@@ -848,7 +848,7 @@ function EodSection({ data, rows, onOpen }: {
 
   const stat = (label: string, value: React.ReactNode, color: string = C.ink) => (
     <div key={label} style={{ flex: '1 1 90px', minWidth: 80 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color }}>{value}</div>
     </div>
   )
@@ -868,7 +868,7 @@ function EodSection({ data, rows, onOpen }: {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {(['all', 'on_time', 'late', 'missed'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
-            fontSize: 11, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
+            fontSize: 12, padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
             fontWeight:  filter === f ? 700 : 500,
             color:       filter === f ? '#fff' : C.muted,
             background:  filter === f ? C.ink : '#fff',
@@ -960,7 +960,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
   }
 
   const th: React.CSSProperties = {
-    padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 600,
+    padding: '8px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600,
     color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.05em',
     whiteSpace: 'nowrap', borderBottom: '1px solid #F1EEE9', background: '#FBFAF8',
   }
@@ -1000,7 +1000,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
             <div style={{ fontSize: 14, fontWeight: 700, color: '#303536' }}>
               Stuck Tasks — {memberName}
             </div>
-            <div style={{ fontSize: 11, color: '#686D6C', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: '#686D6C', marginTop: 2 }}>
               {tasks.length} task{tasks.length !== 1 ? 's' : ''} waiting or stale-blocked
             </div>
           </div>
@@ -1052,14 +1052,14 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                       {/* Status pill */}
                       <td style={td({ verticalAlign: 'middle' })}>
                         <span style={{
-                          fontSize: 10, fontWeight: 600,
+                          fontSize: 12, fontWeight: 600,
                           color: statusColor, background: statusBg,
                           padding: '2px 8px', borderRadius: 999,
                           textTransform: 'capitalize',
                         }}>{t.status}</span>
                       </td>
                       {/* Waiting On */}
-                      <td style={td({ color: '#686D6C', fontSize: 11.5, verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 12, verticalAlign: 'middle' })}>
                         {waitingOnLabel(t)}
                       </td>
                       {/* Reason / Note */}
@@ -1075,14 +1075,14 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                         }} title={reason.text}>{reason.text}</div>
                       </td>
                       {/* Last Update */}
-                      <td style={td({ color: '#686D6C', fontSize: 11.5, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
+                      <td style={td({ color: '#686D6C', fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
                         {formatRelative(t.last_update_at)}
                       </td>
                       {/* Due Date */}
                       <td style={td({ whiteSpace: 'nowrap', verticalAlign: 'middle' })}>
                         {t.due_date ? (
                           <span style={{
-                            fontSize: 11.5,
+                            fontSize: 12,
                             fontWeight: isOverdue ? 600 : 400,
                             color: isOverdue ? '#B42332' : '#686D6C',
                           }}>{formatDate(t.due_date)}</span>
@@ -1093,7 +1093,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
                         <button
                           onClick={() => { onClose(); router.push(`/tasks/${t.id}`) }}
                           style={{
-                            fontSize: 10, fontWeight: 600, color: '#335A86',
+                            fontSize: 12, fontWeight: 600, color: '#335A86',
                             background: '#335A8608', border: '1px solid #335A8620',
                             borderRadius: 6, padding: '3px 8px',
                             cursor: 'pointer', whiteSpace: 'nowrap',
@@ -1157,7 +1157,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
   const metric = (label: string, value: React.ReactNode) => (
     <div key={label} style={{ flex: '1 1 108px', minWidth: 96 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{value}</div>
     </div>
   )
@@ -1209,10 +1209,10 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
             </div>
             {cmp.comparable
               ? <Delta value={cmp.delta} />
-              : <span style={{ fontSize: 11, color: C.faint }}>not comparable</span>}
+              : <span style={{ fontSize: 12, color: C.faint }}>not comparable</span>}
             {cls && <StatusPill status={cls.status} />}
           </div>
-          {cls && <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>{cls.reason}</div>}
+          {cls && <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>{cls.reason}</div>}
         </div>
 
         {/* Tabs */}
@@ -1237,14 +1237,14 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Why this rank — first, because it is the question the drawer was
                   opened to answer. Server-built from the same values shown below. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   {rank ? 'Why this rank' : 'Ranking eligibility'}
                 </div>
                 <Explanation ex={explanation} />
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   Recommended action
                 </div>
                 <div style={{
@@ -1266,7 +1266,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
               {/* Inclusion and eligibility state, stated plainly. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
                   Eligibility
                 </div>
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.55 }}>
@@ -1278,7 +1278,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                     <> Measured window: {dateFacts.firstDate} to {dateFacts.lastDate}.</>
                   )}
                 </div>
-                <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.55, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.55, marginTop: 4 }}>
                   {member.eligibleDays} expected working days
                   {' · '}{dateFacts.missed} expected day{dateFacts.missed === 1 ? '' : 's'} with no activity
                   {' · '}Sundays, recorded company holidays and dates outside employment are
@@ -1289,7 +1289,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Period comparison, with both day counts so the reader can see it
                   was like-for-like. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   Versus previous period
                 </div>
                 <Explanation ex={movementExplanation(member)} />
@@ -1297,14 +1297,14 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
 
               {/* Adoption, kept visually separate from the score above. */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 8 }}>
                   System adoption
                 </div>
                 <Explanation ex={adoptEx} />
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.green, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.green, textTransform: 'uppercase', marginBottom: 6 }}>
                   Doing well
                 </div>
                 {strengths.length === 0
@@ -1313,7 +1313,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               </div>
 
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 6 }}>
                   Needs attention
                 </div>
                 {concerns.length === 0
@@ -1324,10 +1324,10 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
               {/* Evidence: the actual dates behind "active on N of M". */}
               {dateFacts.idleDates.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase', marginBottom: 6 }}>
                     Expected working days with no activity
                   </div>
-                  <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.6, overflowWrap: 'anywhere' }}>
+                  <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, overflowWrap: 'anywhere' }}>
                     {dateFacts.idleDates.join(', ')}
                   </div>
                 </div>
@@ -1412,7 +1412,7 @@ function EmployeeDrawer({ data, member, onClose, onViewStuck, onViewFullReport }
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 11, color: C.faint, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: C.faint, marginBottom: 10 }}>
                     Most recent scored day in this period. The period score above is the
                     average across {member.scoredDays} scored day{member.scoredDays === 1 ? '' : 's'}.
                   </div>
@@ -1671,7 +1671,7 @@ export default function TeamPerformancePage() {
             display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
           }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.red }}>{state.message}</div>
-            <div style={{ fontSize: 11, color: C.muted }}>
+            <div style={{ fontSize: 12, color: C.muted }}>
               {state.kind === 'forbidden'
                 ? 'Ask an administrator if you need access to this page.'
                 : 'The technical details have been written to the browser console.'}
@@ -1788,7 +1788,7 @@ export default function TeamPerformancePage() {
                   ['EOD without tasks',   data.activitySummary.eodOnly,       data.activitySummary.eodOnly > 0 ? C.amber : C.ink],
                 ] as const).map(([label, value, color]) => (
                   <div key={label} style={{ flex: '1 1 110px', minWidth: 100 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.faint, textTransform: 'uppercase' }}>{label}</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color }}>{value}</div>
                   </div>
                 ))}

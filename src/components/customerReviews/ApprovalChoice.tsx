@@ -110,7 +110,7 @@ function ChoiceCard({
         borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer',
         border: `1px solid ${selected ? colors.brand : colors.border}`,
         background: selected ? '#EAF0F8' : colors.raised,
-        boxShadow: selected ? `inset 0 0 0 1px ${colors.blue}` : 'none',
+        boxShadow: selected ? `inset 0 0 0 1px ${colors.brand}` : 'none',
         fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
       }}
     >
@@ -145,7 +145,7 @@ function ChoiceCard({
         {note && (
           <span style={{
             display: 'block', marginTop: '4px',
-            fontSize: '11px', color: colors.muted, lineHeight: 1.5,
+            fontSize: '12px', color: colors.muted, lineHeight: 1.5,
           }}>
             {note}
           </span>

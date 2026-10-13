@@ -239,7 +239,7 @@ export const MEETING_TYPE_META: Record<MeetingType, BadgeMeta> = {
 
 export const MEETING_STATUS_META: Record<MeetingStatus, BadgeMeta> = {
   draft:       { label: 'Draft',       bg: '#F1EEE9', color: '#4C5352', border: '#E4DED7' },
-  in_progress: { label: 'In Progress', bg: '#EAF0F8', color: '#5B21B6', border: '#DDD6FE' },
+  in_progress: { label: 'In Progress', bg: '#EAF0F8', color: '#335A86', border: '#C3D3E6' },
   completed:   { label: 'Completed',   bg: '#E8F2EC', color: '#276247', border: '#BCD8C8' },
 }
 

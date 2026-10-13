@@ -72,7 +72,7 @@ export function PiFieldRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
       <div style={{
-        fontSize: '10px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
@@ -111,14 +111,14 @@ export function PiFieldRow({ label, value }: { label: string; value: string }) {
 // lands at 4.50:1 — exactly on the AA line, for 10px uppercase text, which is not
 // a margin worth having. These are darker members of the same family:
 //
-//   header  #B3222E   6.59:1 on white, 6.05:1 on the tint
+//   header  #B42332   6.59:1 on white, 6.05:1 on the tint
 //   text    #9B1C25   8.12:1 on white
 //
 // Both clear AA for normal text with room to spare, and the deeper of the two
 // carries the value rather than the label.
 
 export const PI_CUSTOMIZATION_TINT = colors.redTint
-export const PI_CUSTOMIZATION_HEADER_RED = '#B3222E'
+export const PI_CUSTOMIZATION_HEADER_RED = '#B42332'
 export const PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'
 const CUSTOMIZATION_BORDER = 'rgba(180,35,50,0.45)'
 const CUSTOMIZATION_RING = '0 0 0 2px rgba(180,35,50,0.16)'
@@ -203,7 +203,7 @@ export function PiProductThumbnail({
           borderStyle: 'dashed',
           borderColor: 'rgba(180,35,50,0.35)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '9px', color: colors.red, textAlign: 'center', padding: '4px', lineHeight: 1.2,
+          fontSize: '12px', color: colors.red, textAlign: 'center', padding: '4px', lineHeight: 1.2,
         }}
       >
         No image
@@ -230,7 +230,7 @@ export function PiProductThumbnail({
         // A customization thumbnail keeps its own hue on hover. Turning it blue
         // would make the one picture that is marked look like every other one at
         // the moment somebody reaches for it.
-        e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.blue
+        e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.brand
         e.currentTarget.style.boxShadow = marked ? CUSTOMIZATION_RING : '0 0 0 2px rgba(51,90,134,0.18)'
       }}
       onMouseLeave={e => {
@@ -294,7 +294,7 @@ export function PiCustomizationCell({
 
   const heading = label && (
     <div style={{
-      fontSize: '10px', fontWeight: marked ? 700 : 600,
+      fontSize: '12px', fontWeight: marked ? 700 : 600,
       color: marked ? PI_CUSTOMIZATION_HEADER_RED : colors.muted,
       textTransform: 'uppercase', letterSpacing: '0.05em',
     }}>
@@ -390,7 +390,7 @@ export function PiProductTableHead() {
               style={{
                 padding: '8px 14px',
                 textAlign: column.align,
-                fontSize: '10px', fontWeight: marked ? 700 : 600,
+                fontSize: '12px', fontWeight: marked ? 700 : 600,
                 // A light tint, not a filled column: the heading is what is
                 // marked, and the cells below stay white so an ordinary product
                 // line reads as ordinary.
@@ -440,7 +440,7 @@ export function PiDiagnosticList({ entries, tone }: {
           }} />
           <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {entry.location && (
-              <div style={{ fontSize: '11px', fontWeight: 600, color: accent }}>{entry.location}</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: accent }}>{entry.location}</div>
             )}
             <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
               {entry.message}
@@ -600,15 +600,15 @@ export function PiImageViewer({
                   a reviewer must never have to infer which. */}
               <span style={{
                 padding: '1px 6px', borderRadius: '6px',
-                fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
+                fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
                 textTransform: 'uppercase', letterSpacing: '0.04em',
-                background: item.role === 'customization' ? colors.amberTint : colors.blueTint,
+                background: item.role === 'customization' ? colors.amberTint : colors.brandTint,
                 color: item.role === 'customization' ? '#805B0D' : '#335A86',
                 border: `1px solid ${item.role === 'customization' ? 'rgba(196,138,26,0.3)' : 'rgba(51,90,134,0.3)'}`,
               }}>
                 {item.roleLabel}
               </span>
-              <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-body)' }}>
+              <span style={{ fontSize: '12px', color: colors.muted, fontFamily: 'var(--font-body)' }}>
                 {item.sequence}
               </span>
             </div>
@@ -620,7 +620,7 @@ export function PiImageViewer({
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
               {nav.position}
             </span>
             <button
@@ -751,7 +751,7 @@ export type PiCommercialVariant = 'preview' | 'detail'
  */
 const DETAIL_CARD_STYLE: React.CSSProperties = {
   borderColor: 'rgba(196,138,26,0.30)',
-  boxShadow: '0 1px 2px rgba(16,24,40,0.05), 0 2px 6px rgba(16,24,40,0.04)',
+  boxShadow: '0 1px 2px rgba(51,90,134,0.05), 0 2px 6px rgba(51,90,134,0.04)',
 }
 
 /** A very pale cream, so the header is distinguishable from Activity's without
@@ -876,7 +876,7 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                     that carries one still prints it, so the contract between
                     the builder and this component holds whatever it adds. */}
                 {row.note && (
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                     {row.note}
                   </div>
                 )}
@@ -931,7 +931,7 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
               </div>
             </div>
             {advance.note && (
-              <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+              <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
                 {advance.note}
               </div>
             )}

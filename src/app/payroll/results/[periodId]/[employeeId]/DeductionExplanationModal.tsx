@@ -44,7 +44,7 @@ export type ExplanationDayContext = {
 }
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+  fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
   letterSpacing: '0.09em', color: '#686D6C', marginBottom: 4,
 }
 
@@ -102,7 +102,7 @@ export function DeductionExplanationModal({
         <div
           key={item.key}
           style={{
-            border: `1px solid ${item.coverageNote ? 'rgba(5,150,105,0.3)' : colors.border}`,
+            border: `1px solid ${item.coverageNote ? 'rgba(39,98,71,0.3)' : colors.border}`,
             borderRadius: 8, overflow: 'hidden',
             // The dialog is a column flex box that scrolls. Without this, a date
             // with more than one reason makes these cards shrink instead, and
@@ -113,13 +113,13 @@ export function DeductionExplanationModal({
           <div style={{
             display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
             padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
-            background: item.coverageNote ? 'rgba(5,150,105,0.05)' : 'transparent',
+            background: item.coverageNote ? 'rgba(39,98,71,0.05)' : 'transparent',
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: '#303536' }}>{item.title}</div>
               {/* Company paid, or covered with BOE Credits — the same green note. */}
               {item.coverageNote && (
-                <div style={{ fontSize: 11.5, color: '#276247', marginTop: 2 }}>{item.coverageNote}</div>
+                <div style={{ fontSize: 12, color: '#276247', marginTop: 2 }}>{item.coverageNote}</div>
               )}
             </div>
             <div style={{

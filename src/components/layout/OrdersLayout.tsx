@@ -201,11 +201,11 @@ export function OrdersLayout({
               }}>
                 {unreadOrders > 99 ? '99+' : unreadOrders}
               </div>
-              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#4C5352' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#4C5352' }}>
                 unread {unreadOrders === 1 ? 'notification' : 'notifications'}
               </div>
               <div style={{
-                fontSize: '10px', fontWeight: 600, color: '#B9472E',
+                fontSize: '12px', fontWeight: 600, color: '#B9472E',
                 letterSpacing: '0.05em', textTransform: 'uppercase',
               }}>
                 Tap to review →

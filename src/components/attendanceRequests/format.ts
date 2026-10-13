@@ -16,9 +16,9 @@ export function formatIstDateTime(instant: string): string {
 
 export function statusTone(status: RequestStatus): { bg: string; fg: string } {
   switch (status) {
-    case 'approved':  return { bg: 'rgba(16,185,129,0.12)', fg: '#276247' }
-    case 'rejected':  return { bg: 'rgba(239,68,68,0.10)',  fg: '#B42332' }
-    case 'cancelled': return { bg: 'rgba(107,114,128,0.12)', fg: '#4C5352' }
+    case 'approved':  return { bg: 'rgba(39,98,71,0.12)', fg: '#276247' }
+    case 'rejected':  return { bg: 'rgba(180,35,50,0.10)',  fg: '#B42332' }
+    case 'cancelled': return { bg: 'rgba(104,109,108,0.12)', fg: '#4C5352' }
     default:          return { bg: 'rgba(196,138,26,0.15)', fg: '#805B0D' }
   }
 }

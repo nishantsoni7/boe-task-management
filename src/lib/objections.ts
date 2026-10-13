@@ -386,8 +386,8 @@ export function employeeStatusLabel(status: ObjectionStatus): string {
 export function statusTone(status: ObjectionStatus): { bg: string; fg: string } {
   switch (status) {
     case 'pending':  return { bg: 'rgba(196,138,26,0.15)', fg: '#805B0D' }
-    case 'approved': return { bg: 'rgba(16,185,129,0.12)', fg: '#276247' }
-    case 'rejected': return { bg: 'rgba(140,148,166,0.14)', fg: '#686D6C' }
+    case 'approved': return { bg: 'rgba(39,98,71,0.12)', fg: '#276247' }
+    case 'rejected': return { bg: 'rgba(104,109,108,0.14)', fg: '#686D6C' }
   }
 }
 

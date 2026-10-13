@@ -92,7 +92,7 @@ export function TaskCard({
       {/* Important flag */}
       {task.is_urgent && (
         <p style={{
-          fontSize: '10px', color: '#B7892A', fontWeight: 600,
+          fontSize: '12px', color: '#B7892A', fontWeight: 600,
           letterSpacing: '0.04em', marginBottom: '5px',
         }}>
           ⭐ Important
@@ -113,7 +113,7 @@ export function TaskCard({
 
         {task.status === 'blocked' && task.blocker_reason && (
           <span style={{
-            fontSize: '11px', color: colors.red,
+            fontSize: '12px', color: colors.red,
             background: 'rgba(180,35,50,0.06)',
             padding: '2px 6px', borderRadius: '6px',
             fontFamily: font.mono,
@@ -124,7 +124,7 @@ export function TaskCard({
 
         {task.status === 'waiting' && task.waiting_on_type && (
           <span style={{
-            fontSize: '11px', color: colors.amber,
+            fontSize: '12px', color: colors.amber,
             background: 'rgba(196,138,26,0.08)',
             padding: '2px 6px', borderRadius: '6px',
             fontFamily: font.mono,
@@ -143,7 +143,7 @@ export function TaskCard({
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
           {task.due_date && (
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               fontFamily: font.mono,
               color:      overdue ? colors.red  : colors.muted,
               background: overdue ? 'rgba(180,35,50,0.07)' : 'transparent',
@@ -177,12 +177,12 @@ export function TaskCard({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Avatar name={task.assignee_name} size={20} />
-            <span style={{ fontSize: '11px', color: colors.tertiary }}>
+            <span style={{ fontSize: '12px', color: colors.tertiary }}>
               {task.assignee_name}
             </span>
           </div>
           {task.last_update_at && (
-            <span style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono }}>
+            <span style={{ fontSize: '12px', color: colors.muted, fontFamily: font.mono }}>
               {timeAgo(task.last_update_at)}
             </span>
           )}
@@ -203,14 +203,14 @@ export function TaskCard({
 // ─── PriorityBadge ────────────────────────────────────────────────────────────
 function PriorityBadge({ priority }: { priority: string }) {
   const cfg: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    high:   { label: 'High',   color: '#B03030', bg: 'rgba(180,35,50,0.12)',  border: 'rgba(180,35,50,0.30)' },
-    medium: { label: 'Medium', color: '#A06010', bg: 'rgba(196,138,26,0.12)', border: 'rgba(196,138,26,0.30)' },
+    high:   { label: 'High',   color: '#B42332', bg: 'rgba(180,35,50,0.12)',  border: 'rgba(180,35,50,0.30)' },
+    medium: { label: 'Medium', color: '#805B0D', bg: 'rgba(196,138,26,0.12)', border: 'rgba(196,138,26,0.30)' },
     low:    { label: 'Low',    color: '#686D6C', bg: '#E4DED7',       border: '#CFC8BF'     },
   }
   const { label, color, bg, border } = cfg[priority] ?? cfg.low
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em',
+      fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em',
       textTransform: 'uppercase', color, background: bg,
       border: `1px solid ${border}`,
       padding: '1px 6px', borderRadius: '6px', flexShrink: 0,
@@ -227,7 +227,7 @@ function AgingBadge({ task }: { task: Task }) {
   const color = aging.severity === 'danger' ? colors.red : colors.amber
   return (
     <span style={{
-      fontSize: '10px', fontWeight: 700,
+      fontSize: '12px', fontWeight: 700,
       color,
       background: `${color}12`,
       border: `1px solid ${color}30`,
@@ -244,7 +244,7 @@ function AgingBadge({ task }: { task: Task }) {
 function EscalationBanner({ color, text }: { color: string; text: string }) {
   return (
     <p style={{
-      fontSize: '10px', color, fontWeight: 700,
+      fontSize: '12px', color, fontWeight: 700,
       textTransform: 'uppercase', letterSpacing: '0.04em',
       marginBottom: '6px',
     }}>
@@ -291,7 +291,7 @@ export function TaskSection({
         <span style={{
           marginLeft: 'auto',
           fontFamily: font.mono,
-          fontSize: '10px',
+          fontSize: '12px',
           padding: '1px 6px',
           borderRadius: '6px',
           background: 'rgba(255,255,255,0.03)',

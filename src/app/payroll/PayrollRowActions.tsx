@@ -103,7 +103,7 @@ const ICON_TONE: Partial<Record<PayrollPeriodAction, React.CSSProperties>> = {
   // The only destructive control on the page, and the only red one. Outlined
   // rather than filled for the same reason as Unlock — a filled red button in
   // every row would read as the thing to click.
-  delete: { color: '#B42332', borderColor: 'rgba(192,57,43,0.42)' },
+  delete: { color: '#B42332', borderColor: 'rgba(180,35,50,0.42)' },
 }
 
 export type PayrollRowActionBarProps = {
@@ -305,7 +305,7 @@ export function PayrollAttentionModal({
 
       {reopened && (
         <div style={{
-          fontSize: 11.5, color: colors.secondary, lineHeight: 1.5,
+          fontSize: 12, color: colors.secondary, lineHeight: 1.5,
           background: 'rgba(51,90,134,0.08)', borderRadius: 8, padding: '8px 10px',
         }}>
           <span style={{ fontWeight: 600, color: '#335A86' }}>Reopened after locking</span>

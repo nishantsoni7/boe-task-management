@@ -128,7 +128,7 @@ export function DeleteExpenseModal({
         <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
           {EXPENSE_DELETE_EXPLANATION}
         </div>
-        <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.6 }}>
+        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
           {EXPENSE_DELETE_RETENTION_NOTE}
         </div>
 
@@ -188,8 +188,8 @@ export function DeleteExpenseModal({
             style={{
               minHeight: '44px', fontSize: '13px', minWidth: '130px', fontWeight: 600,
               background: armed && !deleting ? '#B42332' : 'rgba(180,35,50,0.18)',
-              color: armed && !deleting ? '#FFFFFF' : 'rgba(193,48,48,0.65)',
-              border: '1px solid rgba(193,48,48,0.35)',
+              color: armed && !deleting ? '#FFFFFF' : 'rgba(180,35,50,0.65)',
+              border: '1px solid rgba(180,35,50,0.35)',
               cursor: armed && !deleting ? 'pointer' : 'not-allowed',
             }}
           >

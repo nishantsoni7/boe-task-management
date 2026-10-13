@@ -16,11 +16,11 @@ type SheetState =
 const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
   PDF:     { fg: '#B42332', bg: 'rgba(180,35,50,0.08)'   },
   Image:   { fg: '#335A86', bg: 'rgba(51,90,134,0.08)'  },
-  Excel:   { fg: '#2F7A52', bg: 'rgba(39,98,71,0.08)'  },
+  Excel:   { fg: '#276247', bg: 'rgba(39,98,71,0.08)'  },
   Word:    { fg: '#335A86', bg: 'rgba(51,90,134,0.08)'  },
-  CSV:     { fg: '#2F7A52', bg: 'rgba(39,98,71,0.08)'  },
+  CSV:     { fg: '#276247', bg: 'rgba(39,98,71,0.08)'  },
   Archive: { fg: '#C48A1A', bg: 'rgba(196,138,26,0.08)'  },
-  File:    { fg: '#686D6C', bg: 'rgba(140,148,166,0.08)' },
+  File:    { fg: '#686D6C', bg: 'rgba(104,109,108,0.08)' },
 }
 
 interface Props {
@@ -125,7 +125,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
         }}>
           {/* File type chip */}
           <span style={{
-            fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em',
+            fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em',
             textTransform: 'uppercase',
             color: chip.fg, background: chip.bg,
             padding: '2px 8px', borderRadius: '12px',
@@ -151,7 +151,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               value={activeSheet ?? ''}
               onChange={e => setActiveSheet(e.target.value)}
               style={{
-                fontSize: '11px', fontWeight: 500,
+                fontSize: '12px', fontWeight: 500,
                 color: colors.primary,
                 padding: '4px 8px', borderRadius: '6px',
                 border: `1px solid ${colors.border}`,
@@ -183,11 +183,11 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                 }
               }}
               style={{
-                fontSize: '11px', fontWeight: 500,
+                fontSize: '12px', fontWeight: 500,
                 color: colors.brandInk, textDecoration: 'none',
                 padding: '4px 10px', borderRadius: '6px',
-                border: `1px solid ${colors.blue}40`,
-                background: colors.blueTint,
+                border: `1px solid ${colors.brand}40`,
+                background: colors.brandTint,
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
@@ -198,7 +198,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                fontSize: '11px', fontWeight: 500,
+                fontSize: '12px', fontWeight: 500,
                 color: colors.secondary, textDecoration: 'none',
                 padding: '4px 10px', borderRadius: '6px',
                 border: `1px solid ${colors.border}`,
@@ -259,8 +259,8 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                   fontSize: '13px', fontWeight: 500,
                   color: colors.brandInk, textDecoration: 'none',
                   padding: '8px 18px', borderRadius: '8px',
-                  border: `1px solid ${colors.blue}40`,
-                  background: colors.blueTint,
+                  border: `1px solid ${colors.brand}40`,
+                  background: colors.brandTint,
                 }}
               >
                 ⬇ Download {label}
@@ -292,7 +292,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                 </tbody>
               </table>
               {sheetState.rowsBySheet[activeSheet].length >= MAX_PREVIEW_ROWS && (
-                <p style={{ fontSize: '11px', color: colors.muted, marginTop: '10px' }}>
+                <p style={{ fontSize: '12px', color: colors.muted, marginTop: '10px' }}>
                   Showing first {MAX_PREVIEW_ROWS} rows. Download the file to see more.
                 </p>
               )}
@@ -340,8 +340,8 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
                   fontSize: '13px', fontWeight: 500,
                   color: colors.brandInk, textDecoration: 'none',
                   padding: '8px 18px', borderRadius: '8px',
-                  border: `1px solid ${colors.blue}40`,
-                  background: colors.blueTint,
+                  border: `1px solid ${colors.brand}40`,
+                  background: colors.brandTint,
                 }}
               >
                 ⬇ Download {label}

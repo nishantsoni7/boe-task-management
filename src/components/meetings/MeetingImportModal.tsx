@@ -222,12 +222,12 @@ export function MeetingImportModal({
               border: `1px solid ${colors.border}`, background: colors.raised,
             }}
           >
-            <Download size={16} strokeWidth={1.9} color={colors.blue} style={{ flexShrink: 0 }} />
+            <Download size={16} strokeWidth={1.9} color={colors.brand} style={{ flexShrink: 0 }} />
             <span style={{ minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                 Download the blank template
               </span>
-              <span style={{ display: 'block', fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+              <span style={{ display: 'block', fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
                 {IMPORT_TEMPLATE_COLUMNS.length} columns, with a “How to fill” sheet
               </span>
             </span>
@@ -283,13 +283,13 @@ export function MeetingImportModal({
               cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
             }}
           >
-            <Upload size={16} strokeWidth={1.9} color={colors.blue} />
-            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.blue }}>
+            <Upload size={16} strokeWidth={1.9} color={colors.brand} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.brand }}>
               {busy ? 'Reading the PI…' : 'Or import a BOE PI (.xlsx)'}
             </span>
           </button>
 
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Rows are matched on <strong>Order Number + SKU</strong>. A matching line is updated, a new
             one is added, and a blank cell leaves the existing value alone. Nothing is ever deleted,
             and no update history or linked task is touched.
@@ -308,14 +308,14 @@ export function MeetingImportModal({
               padding: '10px 12px', borderRadius: '8px',
               background: colors.amberTint, border: `1px solid ${colors.amber}33`,
             }}>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#805B0D', marginBottom: '4px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#805B0D', marginBottom: '4px' }}>
                 Check before importing
               </div>
-              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
                 {piPreview.warnings.slice(0, 6).map((w, i) => <li key={i}>{w.message}</li>)}
               </ul>
               {piPreview.warnings.length > 6 && (
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
                   and {piPreview.warnings.length - 6} more
                 </div>
               )}
@@ -326,7 +326,7 @@ export function MeetingImportModal({
             maxHeight: '260px', overflowY: 'auto',
             border: `1px solid ${colors.border}`, borderRadius: '8px',
           }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <tbody>
                 {piPreview.products.map(product => (
                   <tr key={product.row} style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -343,7 +343,7 @@ export function MeetingImportModal({
                     <td style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top', color: colors.secondary }}>
                       {product.quantity ?? '—'}
                       {!product.imageHash && (
-                        <div style={{ fontSize: '10px', color: colors.amber, fontWeight: 600 }}>no photo</div>
+                        <div style={{ fontSize: '12px', color: colors.amber, fontWeight: 600 }}>no photo</div>
                       )}
                     </td>
                   </tr>
@@ -352,7 +352,7 @@ export function MeetingImportModal({
             </table>
           </div>
 
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Nothing has been saved yet. Confirming creates one order for this PI with its products
             and photographs. Importing the same PI again updates it rather than creating a second copy.
           </div>
@@ -391,7 +391,7 @@ export function MeetingImportModal({
                 {preview.errors.map(err => (
                   <div key={err.rowNumber} style={{
                     display: 'flex', gap: '10px', padding: '6px 12px',
-                    fontSize: '11.5px', borderTop: `1px solid ${colors.border}`,
+                    fontSize: '12px', borderTop: `1px solid ${colors.border}`,
                   }}>
                     <span style={{ fontWeight: 700, color: colors.secondary, flexShrink: 0, minWidth: '52px' }}>
                       Row {err.rowNumber}
@@ -404,7 +404,7 @@ export function MeetingImportModal({
           )}
 
           {preview.unknownHeaders.length > 0 && (
-            <div style={{ fontSize: '11.5px', color: colors.muted }}>
+            <div style={{ fontSize: '12px', color: colors.muted }}>
               Ignored columns not in the template: {preview.unknownHeaders.join(', ')}
             </div>
           )}
@@ -413,19 +413,19 @@ export function MeetingImportModal({
             <div style={{ border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden' }}>
               <div style={{
                 padding: '7px 12px', background: colors.raised,
-                fontSize: '11px', fontWeight: 700, color: colors.muted,
+                fontSize: '12px', fontWeight: 700, color: colors.muted,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 Preview — first {Math.min(8, preview.valid.length)} of {preview.valid.length}
               </div>
               <div style={{ overflowX: 'auto', maxHeight: '190px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr>
                       {['Order', 'SKU', 'Product', 'Update', 'Follow-up'].map(h => (
                         <th key={h} style={{
                           padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap',
-                          fontSize: '10px', fontWeight: 600, color: colors.muted,
+                          fontSize: '12px', fontWeight: 600, color: colors.muted,
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                           borderBottom: `1px solid ${colors.border}`,
                         }}>{h}</th>
@@ -493,7 +493,7 @@ function PreviewStat({
       <div style={{ fontSize: '17px', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>
         {value}
       </div>
-      <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>{label}</div>
+      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>{label}</div>
     </div>
   )
 }

@@ -61,12 +61,12 @@ function Panel({ title, rows, footnote }: { title: string; rows: Row[]; footnote
             <dt style={{ color: colors.secondary }}>{r.label}</dt>
             <dd style={{ margin: 0, textAlign: 'right', minWidth: 0 }}>
               <span style={{ fontWeight: 700, color: r.tone ?? colors.primary, fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
-              {r.detail && <span style={{ display: 'block', fontSize: '11.5px', color: colors.muted }}>{r.detail}</span>}
+              {r.detail && <span style={{ display: 'block', fontSize: '12px', color: colors.muted }}>{r.detail}</span>}
             </dd>
           </div>
         ))}
       </dl>
-      {footnote && <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>{footnote}</p>}
+      {footnote && <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{footnote}</p>}
     </section>
   )
 }

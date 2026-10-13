@@ -181,7 +181,7 @@ export function RetiredWorkflowNotice({ requestId }: { requestId?: string }) {
         </div>
 
         {converted && (
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.6 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
             This request was converted before the workflow was retired. Its Confirmed
             Order is unaffected.
           </div>

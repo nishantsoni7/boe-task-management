@@ -45,15 +45,15 @@ function formatDate(d: string | null) {
 }
 
 const PRIORITY_PILL: Record<string, { label: string; fg: string; bg: string }> = {
-  high:   { label: 'High',   fg: '#B42332', bg: 'rgba(192,57,43,0.09)'  },
-  medium: { label: 'Medium', fg: '#D4831A', bg: 'rgba(212,131,26,0.09)' },
+  high:   { label: 'High',   fg: '#B42332', bg: 'rgba(180,35,50,0.09)'  },
+  medium: { label: 'Medium', fg: '#C48A1A', bg: 'rgba(196,138,26,0.09)' },
   low:    { label: 'Low',    fg: colors.muted, bg: 'rgba(0,0,0,0.04)'   },
 }
 
 function col(label: string, width?: number, align: 'left' | 'right' | 'center' = 'left') {
   return (
     <div style={{
-      fontSize: '10.5px', fontWeight: 600, letterSpacing: '0.06em',
+      fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em',
       textTransform: 'uppercase', color: colors.muted,
       width, flex: width ? undefined : 1,
       textAlign: align, padding: '0 8px', whiteSpace: 'nowrap',
@@ -201,7 +201,7 @@ function ViewAllTasksContent() {
           <span style={{ fontSize: 12, color: '#335A86', fontWeight: 500 }}>
             Filtered — {filterContext}
           </span>
-          <Link href="/tasks/all" style={{ fontSize: 11, color: '#686D6C', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/tasks/all" style={{ fontSize: 12, color: '#686D6C', textDecoration: 'none', fontWeight: 500 }}>
             Clear filter ✕
           </Link>
         </div>
@@ -245,12 +245,12 @@ function ViewAllTasksContent() {
                 </div>
                 {/* Row 2: meta */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                  <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px' }} />
-                  <span style={{ fontSize: '10.5px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '1px 7px', borderRadius: '6px' }}>
+                  <span className={statusBadgeClass(task.status)} style={{ fontSize: '12px' }} />
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '1px 7px', borderRadius: '6px' }}>
                     {pill.label}
                   </span>
                   {task.due_date && (
-                    <span style={{ fontSize: '11px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
+                    <span style={{ fontSize: '12px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
                       {formatDate(task.due_date)}
                     </span>
                   )}
@@ -258,12 +258,12 @@ function ViewAllTasksContent() {
                 {/* Row 3: assignee + creator */}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
                   {task.assigned_to && userMap[task.assigned_to] && (
-                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                    <span style={{ fontSize: '12px', color: colors.muted }}>
                       To: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.assigned_to]}</span>
                     </span>
                   )}
                   {task.created_by && userMap[task.created_by] && task.created_by !== task.assigned_to && (
-                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                    <span style={{ fontSize: '12px', color: colors.muted }}>
                       By: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.created_by]}</span>
                     </span>
                   )}
@@ -271,7 +271,7 @@ function ViewAllTasksContent() {
               </div>
             )
           })}
-          <div style={{ padding: '4px 2px', fontSize: '11px', color: colors.muted }}>
+          <div style={{ padding: '4px 2px', fontSize: '12px', color: colors.muted }}>
             {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}
           </div>
         </div>
@@ -324,7 +324,7 @@ function ViewAllTasksContent() {
                   {/* Task name */}
                   <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {task.is_urgent && (
-                      <span style={{ fontSize: '11px', color: '#B7892A', flexShrink: 0 }}>⭐</span>
+                      <span style={{ fontSize: '12px', color: '#B7892A', flexShrink: 0 }}>⭐</span>
                     )}
                     <span style={{
                       fontSize: '13px', fontWeight: 500,
@@ -353,7 +353,7 @@ function ViewAllTasksContent() {
                   </div>
                   {/* Priority */}
                   <div style={{ width: '72px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
                       {pill.label}
                     </span>
                   </div>
@@ -369,7 +369,7 @@ function ViewAllTasksContent() {
           )}
 
           <div style={{
-            padding: '9px 20px', fontSize: '11px', color: colors.muted,
+            padding: '9px 20px', fontSize: '12px', color: colors.muted,
             borderTop: `1px solid ${colors.border}`, background: colors.raised,
           }}>
             {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}

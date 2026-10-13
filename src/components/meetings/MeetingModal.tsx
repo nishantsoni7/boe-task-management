@@ -146,14 +146,14 @@ export function MeetingField({
   const body = (
     <>
       <span style={{
-        fontSize: '11px', fontWeight: 600, color: colors.muted,
+        fontSize: '12px', fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
         {optional && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}> (optional)</span>}
       </span>
       {children}
-      {hint && <div style={{ fontSize: '11px', color: colors.muted }}>{hint}</div>}
+      {hint && <div style={{ fontSize: '12px', color: colors.muted }}>{hint}</div>}
     </>
   )
 
@@ -231,7 +231,7 @@ export function MeetingBadge({ meta }: { meta: { label: string; bg: string; colo
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '6px',
       background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
     </span>

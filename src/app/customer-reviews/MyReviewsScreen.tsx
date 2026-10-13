@@ -364,7 +364,7 @@ function Summary({ counts }: { counts: ReviewCounts }) {
           }}>
             {s.value}
           </div>
-          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '3px' }}>{s.label}</div>
+          <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '3px' }}>{s.label}</div>
         </div>
       ))}
     </div>

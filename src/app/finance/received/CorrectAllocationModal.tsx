@@ -373,7 +373,7 @@ export function CorrectAllocationBody(props: {
             placeholder="e.g. Customer asked for this advance to be adjusted against Order 529"
             style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
           />
-          <span style={{ fontSize: '11px', color: colors.muted }}>Kept permanently with the payment’s history.</span>
+          <span style={{ fontSize: '12px', color: colors.muted }}>Kept permanently with the payment’s history.</span>
         </label>
       )}
 
@@ -435,7 +435,7 @@ function ReversedHistory({ entries }: { entries: AllocationLedgerEntry[] }) {
             </span>
             <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{formatMoney(e.amount)}</span>
           </div>
-          <div style={{ fontSize: '11.5px', color: colors.muted }}>
+          <div style={{ fontSize: '12px', color: colors.muted }}>
             Reversed{e.reversedByName ? ` by ${e.reversedByName}` : ''}{e.reversedAt ? ` on ${fmtDateTime(e.reversedAt)}` : ''}
           </div>
           {e.reversalReason && (
@@ -492,7 +492,7 @@ function fmtDateTime(iso: string) {
 }
 
 const LABEL: React.CSSProperties = {
-  fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 const MUTED: React.CSSProperties = { margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }

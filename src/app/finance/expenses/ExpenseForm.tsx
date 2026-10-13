@@ -445,7 +445,7 @@ export function ExpenseForm({
               <Mic size={16} strokeWidth={1.9} />
               {voice.listening ? 'Listening…' : 'Speak'}
             </button>
-            <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.45, minWidth: 0 }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.45, minWidth: 0 }}>
               {voice.listening
                 ? 'Say the expense, then stop.'
                 : <>Try: <span style={{ color: colors.secondary }}>&ldquo;{VOICE_EXAMPLE_PHRASE}&rdquo;</span></>}
@@ -467,7 +467,7 @@ export function ExpenseForm({
           {/* WHAT COULD NOT BE IDENTIFIED — highlighted rather than guessed. */}
           {voiceNotes.length > 0 && (
             <ul style={{
-              margin: 0, paddingLeft: '18px', fontSize: '11.5px',
+              margin: 0, paddingLeft: '18px', fontSize: '12px',
               color: '#805B0D', lineHeight: 1.6,
             }}>
               {voiceNotes.map(note => <li key={note}>{note}</li>)}
@@ -489,7 +489,7 @@ export function ExpenseForm({
           )}
 
           {voice.message && (
-            <div role="status" style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
+            <div role="status" style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
               {voice.message}
             </div>
           )}
@@ -499,7 +499,7 @@ export function ExpenseForm({
       {/* When the browser has no speech recognition at all, one quiet line — the
           form below is complete and unchanged. */}
       {!voice.supported && (
-        <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+        <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           {VOICE_UNSUPPORTED_MESSAGE}
         </div>
       )}
@@ -647,7 +647,7 @@ export function ExpenseForm({
         aria-describedby={reimbursed ? 'expense-reimbursed-lock' : undefined}
       >
         <legend style={{
-          fontSize: '11px', fontWeight: 600, color: colors.muted,
+          fontSize: '12px', fontWeight: 600, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em', padding: 0, marginBottom: '4px',
         }}>
           How was it paid?
@@ -677,14 +677,14 @@ export function ExpenseForm({
                 />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{option.label}</span>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>{option.hint}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{option.hint}</span>
                 </span>
               </label>
             )
           })}
         </div>
         {mode === 'edit' && !expense?.paid_from && !form.paidFrom && (
-          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             Not recorded for this older expense. Leave it, or choose one if you know.
           </div>
         )}
@@ -730,7 +730,7 @@ export function ExpenseForm({
       {/* ── BILLS ── Optional. On a new expense they are uploaded right after it
           is saved; on a correction they are managed in place. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Bill / invoice <span style={{ textTransform: 'none', letterSpacing: 0, marginLeft: '6px', fontWeight: 500 }}>Optional — PDF or photo, up to 10 MB each</span>
         </span>
         {mode === 'edit' && expense ? (
@@ -850,7 +850,7 @@ function FormField({
     </>
   )
   const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    fontSize: '12px', fontWeight: 600, color: colors.muted,
     textTransform: 'uppercase', letterSpacing: '0.05em',
   }
   return (

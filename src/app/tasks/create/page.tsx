@@ -370,9 +370,9 @@ export default function CreateTaskPage() {
               className="boe-input"
             />
             {titleDirty && !title.trim() ? (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
             ) : title.length > 0 && title.length < 20 ? (
-              <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>Be specific: who, what, and by when</p>
+              <p style={{ fontSize: '12px', color: colors.amber, marginTop: '4px' }}>Be specific: who, what, and by when</p>
             ) : null}
           </div>
 
@@ -403,9 +403,9 @@ export default function CreateTaskPage() {
                 {PRIORITIES.map(p => {
                   const selected = priority === p
                   const cfg = {
-                    low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)',  text: '#2F7A52' },
-                    medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)',  text: '#C48A1A' },
-                    high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)',  text: '#B42332' },
+                    low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',  text: '#276247' },
+                    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#C48A1A' },
+                    high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)',  text: '#B42332' },
                   }[p]!
                   return (
                     <button
@@ -429,7 +429,7 @@ export default function CreateTaskPage() {
                 })}
               </div>
               {priorityDirty && !priority && (
-                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Priority is required</p>
+                <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Priority is required</p>
               )}
             </div>
             <div>
@@ -444,7 +444,7 @@ export default function CreateTaskPage() {
                 style={{ colorScheme: 'light' }}
               />
               {dateDirty && !dueDate && (
-                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Due date is required</p>
+                <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Due date is required</p>
               )}
             </div>
           </div>
@@ -516,7 +516,7 @@ export default function CreateTaskPage() {
                   }}>
                     <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
                     <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                    <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                    <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
                     <button
                       onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
@@ -546,28 +546,28 @@ export default function CreateTaskPage() {
               >
                 <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} />
                 <span style={{ fontSize: '12px', color: colors.secondary }}>Add files</span>
-                <span style={{ fontSize: '11px', color: colors.muted }}>— 10 MB total</span>
+                <span style={{ fontSize: '12px', color: colors.muted }}>— 10 MB total</span>
               </button>
               {attachDropActive && (
                 <div style={{
                   position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   pointerEvents: 'none',
-                  fontSize: '12px', fontWeight: 600, color: colors.blue,
+                  fontSize: '12px', fontWeight: 600, color: colors.brand,
                   background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
                 }}>
                   Drop files to attach
                 </div>
               )}
             </div>
-            <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+            <p style={{ fontSize: '12px', color: colors.muted, marginTop: '4px' }}>
               Drop files here, paste copied files into the description, or browse
             </p>
-            {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
+            {attachError && <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
           </div>
 
           {/* Required fields note */}
-          <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>
             <span style={{ color: colors.red }}>*</span> Required fields must be completed before creating a task.
           </p>
 
@@ -605,11 +605,11 @@ export default function CreateTaskPage() {
           alignSelf: 'flex-start',
           position: 'sticky', top: '16px',
         }}>
-          <p style={{ fontSize: '11px', fontWeight: 700, color: colors.secondary, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <p style={{ fontSize: '12px', fontWeight: 700, color: colors.secondary, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Tips for a good task
           </p>
           {([
-            [Target,      colors.blueTint,  colors.blue,  'Be specific',    'Include who, what, and by when in the task name.'],
+            [Target,      colors.brandTint,  colors.brand,  'Be specific',    'Include who, what, and by when in the task name.'],
             [CalendarDays,colors.amberTint, colors.amber, 'Set a deadline', 'Tasks without deadlines are easy to overlook.'],
             [FileText,    colors.greenTint, colors.green, 'Use Description','Add context that the assignee needs to act on this.'],
           ] as const).map(([Icon, bg, iconColor, heading, body], i, arr) => (
@@ -626,8 +626,8 @@ export default function CreateTaskPage() {
                 <Icon size={14} color={iconColor} strokeWidth={1.8} />
               </div>
               <div style={{ paddingTop: '2px' }}>
-                <p style={{ fontSize: '11px', fontWeight: 600, color: colors.primary, lineHeight: 1.3 }}>{heading}</p>
-                <p style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', lineHeight: 1.45 }}>{body}</p>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, lineHeight: 1.3 }}>{heading}</p>
+                <p style={{ fontSize: '12px', color: colors.muted, marginTop: '2px', lineHeight: 1.45 }}>{body}</p>
               </div>
             </div>
           ))}

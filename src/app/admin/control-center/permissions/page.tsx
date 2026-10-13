@@ -372,7 +372,7 @@ function ChangeAccessModal({
 
       {pendingLevel && (
         <div className={cc.note} style={{ marginBottom: 16, borderColor: '#F0C36D', background: '#FAF0DA' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8C6D1F', marginBottom: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#805B0D', marginBottom: 6 }}>
             Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
             {protectedActionWords(
               protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
@@ -635,12 +635,12 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
     <tr>
       <td>
         <span style={{ fontWeight: 600 }}>{COMBINED_ATTENDANCE_PAYROLL_LABEL}</span>
-        <div className={cc.muted} style={{ fontSize: 11.5, marginTop: 2, lineHeight: 1.45 }}>
+        <div className={cc.muted} style={{ fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>
           Employees can view their own attendance and payroll and raise issues.
           {' '}Management access is restricted to system administrators.
         </div>
         {strayOverrides.length > 0 && (
-          <div className={cc.note} style={{ marginTop: 8, fontSize: 11.5, color: '#8C6D1F', borderColor: '#F0C36D', background: '#FAF0DA', padding: '6px 10px' }}>
+          <div className={cc.note} style={{ marginTop: 8, fontSize: 12, color: '#805B0D', borderColor: '#F0C36D', background: '#FAF0DA', padding: '6px 10px' }}>
             <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
             These grant nothing — management access is admin-only — and have been
             left exactly as they are.
@@ -1080,7 +1080,7 @@ function PermissionsPageInner() {
                 </tbody>
               </CcTable>
 
-              <div className={cc.muted} style={{ fontSize: 11.5, marginTop: 8 }}>
+              <div className={cc.muted} style={{ fontSize: 12, marginTop: 8 }}>
                 Visible means this person can open the module. The level says how much they can do inside it; Custom keeps individually chosen permissions.
                 {' '}<Link href="/admin/control-center/permissions/modules" className={cc.linkBtn}>See one module across everyone <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} /></Link>
               </div>

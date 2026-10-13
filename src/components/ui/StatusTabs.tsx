@@ -128,7 +128,7 @@ export function StatusTabs<K extends string>({
               <span style={{
                 minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
                 background: isActive ? accent.badgeActive : accent.badge,
-                color: accent.color, fontSize: '10px', fontWeight: 700,
+                color: accent.color, fontSize: '12px', fontWeight: 700,
                 lineHeight: '15px', textAlign: 'center',
               }}>
                 {count ?? '—'}
@@ -140,7 +140,7 @@ export function StatusTabs<K extends string>({
       {summary && (
         <div style={{
           display: 'flex', alignItems: 'center', flexShrink: 0,
-          fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap',
+          fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap',
         }}>
           {summary}
         </div>

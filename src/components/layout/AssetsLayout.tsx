@@ -198,7 +198,7 @@ export function AssetsLayout({
         {/* Nav — self-entry (all users) */}
         <div className="boe-sidebar-section">
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: '#686D6C',
+            fontSize: '12px', fontWeight: 700, color: '#686D6C',
             textTransform: 'uppercase', letterSpacing: '0.06em',
             padding: '4px 10px 6px',
           }}>
@@ -221,7 +221,7 @@ export function AssetsLayout({
           {managementNav.length > 0 && (
             <>
               <div style={{
-                fontSize: '10px', fontWeight: 700, color: '#686D6C',
+                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                 textTransform: 'uppercase', letterSpacing: '0.06em',
                 padding: '14px 10px 6px',
               }}>

@@ -170,8 +170,8 @@ function DirectionButton({
       aria-pressed={active}
       style={{
         flex: '1 1 180px', padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
-        border: `1px solid ${active ? 'rgba(79,111,208,0.5)' : colors.border}`,
-        background: active ? 'rgba(79,111,208,0.08)' : '#fff',
+        border: `1px solid ${active ? 'rgba(51,90,134,0.5)' : colors.border}`,
+        background: active ? 'rgba(51,90,134,0.08)' : '#fff',
         color: active ? '#B9472E' : '#686D6C',
         fontSize: 12.5, fontWeight: active ? 600 : 500, textAlign: 'left', lineHeight: 1.4,
       }}

@@ -39,7 +39,7 @@ export function ProgressScreen() {
     >
       <div style={{ maxWidth: '900px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <EmployeeProgress supabase={supabase} />
-        <p style={{ margin: 0, fontSize: '11px', color: colors.muted, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.6 }}>
           Sorted by outstanding work. Text and Image show posted of assigned.
         </p>
       </div>

@@ -225,13 +225,13 @@ export default function ProductPage() {
       {/* Code + category */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
         <span style={{
-          fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
+          fontFamily: font.mono, fontSize: '12px', fontWeight: 600,
           color: '#303536', background: 'rgba(48,53,54,0.07)',
           borderRadius: '6px', padding: '2px 7px',
         }}>
           {product.product_code}
         </span>
-        <span style={{ fontSize: '11px', color: colors.muted }}>
+        <span style={{ fontSize: '12px', color: colors.muted }}>
           {product.category}
         </span>
       </div>
@@ -289,7 +289,7 @@ export default function ProductPage() {
           marginBottom: '24px',
         }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
+            fontSize: '12px', fontWeight: 700, letterSpacing: '0.07em',
             textTransform: 'uppercase', color: colors.muted, marginBottom: '10px',
           }}>
             Specifications
@@ -345,7 +345,7 @@ export default function ProductPage() {
           disabled={added}
           style={{
             width: '100%', padding: '15px',
-            background: added ? '#2F7A52' : '#303536',
+            background: added ? '#276247' : '#303536',
             color: '#fff',
             border: 'none', borderRadius: '8px',
             fontSize: '15px', fontWeight: 600,
@@ -395,7 +395,7 @@ export default function ProductPage() {
               knows how much is on the list without opening it. */}
           {selectionLabel && !selectionLabel.startsWith('0 ') && (
             <span style={{
-              fontSize: '11.5px', fontWeight: 600, color: colors.secondary,
+              fontSize: '12px', fontWeight: 600, color: colors.secondary,
               background: colors.float, borderRadius: '6px', padding: '2px 7px',
             }}>
               {selectionLabel}

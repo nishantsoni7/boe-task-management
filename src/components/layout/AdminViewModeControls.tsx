@@ -38,12 +38,12 @@ export function ViewModeBanner() {
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#78350F', letterSpacing: '-0.01em' }}>
             ADMIN VIEW MODE — Viewing as <strong>{viewAsProfile.full_name}</strong>
           </div>
-          <div style={{ fontSize: '11.5px', color: '#805B0D', marginTop: '1px' }}>
+          <div style={{ fontSize: '12px', color: '#805B0D', marginTop: '1px' }}>
             You are observing this user&apos;s workspace. All actions are disabled.
           </div>
         </div>
         <span style={{
-          fontSize: '10px', fontWeight: 700,
+          fontSize: '12px', fontWeight: 700,
           color: '#805B0D', background: '#FAF0DA',
           borderRadius: '6px', padding: '2px 8px',
           border: '1px solid #E6D2A0',
@@ -135,7 +135,7 @@ export function ViewModeSidebarSection({
         /* ── View mode active: show viewed-user chip + Exit button ── */
         <div style={{ padding: '8px 10px 6px' }}>
           <div style={{
-            fontSize: '10px', fontWeight: 700, color: '#C48A1A',
+            fontSize: '12px', fontWeight: 700, color: '#C48A1A',
             textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px',
           }}>
             Viewing As
@@ -145,7 +145,7 @@ export function ViewModeSidebarSection({
               width: 28, height: 28, borderRadius: '8px',
               background: '#FAF0DA',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '11px', fontWeight: 700, color: '#C48A1A', flexShrink: 0,
+              fontSize: '12px', fontWeight: 700, color: '#C48A1A', flexShrink: 0,
             }}>
               {initials(viewAsProfile?.full_name ?? '')}
             </div>
@@ -153,7 +153,7 @@ export function ViewModeSidebarSection({
               <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#303536', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {viewAsProfile?.full_name}
               </div>
-              <div style={{ fontSize: '10.5px', color: '#C48A1A' }}>
+              <div style={{ fontSize: '12px', color: '#C48A1A' }}>
                 {viewAsProfile ? employeeSubtitle(viewAsProfile) : ''}
               </div>
             </div>
@@ -216,7 +216,7 @@ export function ViewModeSidebarSection({
                     overflowY: 'auto',
                     padding: '6px',
                   }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
                       View as member
                     </div>
                     {members
@@ -238,7 +238,7 @@ export function ViewModeSidebarSection({
                             width: 26, height: 26, borderRadius: '6px',
                             background: '#303536',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '10px', fontWeight: 700, color: '#B9472E', flexShrink: 0,
+                            fontSize: '12px', fontWeight: 700, color: '#B9472E', flexShrink: 0,
                           }}>
                             {initials(member.full_name)}
                           </div>
@@ -248,7 +248,7 @@ export function ViewModeSidebarSection({
                             </div>
                             {/* Their designation, not `member` — the switcher
                                 names people the way the rest of the app does. */}
-                            <div style={{ fontSize: '10.5px', color: '#686D6C' }}>
+                            <div style={{ fontSize: '12px', color: '#686D6C' }}>
                               {employeeSubtitle(member)}
                             </div>
                           </div>
@@ -385,7 +385,7 @@ function UserMenu({
           width: 30, height: 30, borderRadius: '8px',
           background: '#303536',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '11px', fontWeight: 700,
+          fontSize: '12px', fontWeight: 700,
           color: '#B9472E', flexShrink: 0,
           letterSpacing: '0.02em',
         }}>
@@ -400,7 +400,7 @@ function UserMenu({
           </span>
           {subtitle && (
             <span style={{
-              display: 'block', fontSize: '10.5px', color: '#686D6C',
+              display: 'block', fontSize: '12px', color: '#686D6C',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {subtitle}

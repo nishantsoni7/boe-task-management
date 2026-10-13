@@ -192,13 +192,13 @@ export function PayrollField({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <label style={{
-        fontSize: 11, fontWeight: 600, color: colors.muted,
+        fontSize: 12, fontWeight: 600, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         {label}
       </label>
       {children}
-      {hint && <div style={{ fontSize: 11, color: colors.muted }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: colors.muted }}>{hint}</div>}
     </div>
   )
 }

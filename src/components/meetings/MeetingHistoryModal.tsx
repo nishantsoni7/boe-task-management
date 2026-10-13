@@ -29,7 +29,7 @@ export function MeetingHistoryModal({
   return (
     <MeetingModal title={title} subtitle={subtitle} onClose={onClose} width={560}>
       <div style={{
-        fontSize: '11px', color: colors.muted,
+        fontSize: '12px', color: colors.muted,
         display: 'flex', alignItems: 'center', gap: '6px',
       }}>
         <span>{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</span>
@@ -67,7 +67,7 @@ function HistoryRow({ entry, isLast }: { entry: MeetingHistoryEntry; isLast: boo
             <span style={{ fontWeight: 500, color: colors.muted }}> · {entry.sku}</span>
           )}
         </div>
-        <div style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
           {entry.actor_name ?? 'Unknown'} · {formatMeetingTimestamp(entry.created_at)}
         </div>
       </div>
@@ -87,7 +87,7 @@ function HistoryRow({ entry, isLast }: { entry: MeetingHistoryEntry; isLast: boo
           the trail backwards to reconstruct "before" is exactly what this
           column exists to spare people. */}
       {entry.previous_update && (
-        <div style={{ marginTop: '5px', fontSize: '11.5px', color: colors.muted, lineHeight: 1.45 }}>
+        <div style={{ marginTop: '5px', fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
           <span style={{ fontWeight: 600 }}>Replaced: </span>
           <span style={{ whiteSpace: 'pre-wrap' }}>{entry.previous_update}</span>
         </div>
@@ -96,7 +96,7 @@ function HistoryRow({ entry, isLast }: { entry: MeetingHistoryEntry; isLast: boo
       {changes.length > 0 && (
         <div style={{ marginTop: '5px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {changes.map((line, i) => (
-            <div key={i} style={{ fontSize: '11.5px', color: colors.secondary }}>{line}</div>
+            <div key={i} style={{ fontSize: '12px', color: colors.secondary }}>{line}</div>
           ))}
         </div>
       )}

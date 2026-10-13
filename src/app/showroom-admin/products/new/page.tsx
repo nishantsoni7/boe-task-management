@@ -435,7 +435,7 @@ function ImagesEditor({ images, onChange }: { images: string[]; onChange: (imgs:
       <div>
         <button type="button" onClick={add} style={addSpecBtnStyle}>+ Add Image URL</button>
       </div>
-      <span style={{ fontSize: '11px', color: '#686D6C' }}>First URL is the primary display image</span>
+      <span style={{ fontSize: '12px', color: '#686D6C' }}>First URL is the primary display image</span>
     </div>
   )
 }
@@ -466,7 +466,7 @@ function DimsEditor({ dims, onChange }: { dims: DimState; onChange: (d: DimState
           </select>
         </div>
       </div>
-      <span style={{ fontSize: '11px', color: '#686D6C' }}>Leave blank for any dimension you don&apos;t want to display</span>
+      <span style={{ fontSize: '12px', color: '#686D6C' }}>Leave blank for any dimension you don&apos;t want to display</span>
     </div>
   )
 }

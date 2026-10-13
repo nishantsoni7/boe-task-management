@@ -327,7 +327,7 @@ function ByModulePageInner() {
             )
           })}
         </div>
-        <div className={cc.muted} style={{ fontSize: 11.5, lineHeight: 1.45, padding: '0 2px' }}>
+        <div className={cc.muted} style={{ fontSize: 12, lineHeight: 1.45, padding: '0 2px' }}>
           Attendance &amp; Payroll are self-service; their management access is restricted to system administrators and is not granted here.
         </div>
       </div>
@@ -498,14 +498,14 @@ function ByModulePageInner() {
                                   itself is made in By Employee — which is
                                   what the Open link goes to. */}
                               {selectedKey && moduleHasAdminEditableActions(selectedKey) && (
-                                <span className={cc.muted} style={{ fontSize: 11.5, marginLeft: 6 }}>
+                                <span className={cc.muted} style={{ fontSize: 12, marginLeft: 6 }}>
                                   except Order Approval — open to set it
                                 </span>
                               )}
                             </>
                           : <>
                               <SourceBadge summary={row.source} />
-                              {row.level === 'custom' && <span className={cc.muted} style={{ fontSize: 11.5, marginLeft: 6 }}><CcBadge tone={LEVEL_TONE.custom}>Custom</CcBadge></span>}
+                              {row.level === 'custom' && <span className={cc.muted} style={{ fontSize: 12, marginLeft: 6 }}><CcBadge tone={LEVEL_TONE.custom}>Custom</CcBadge></span>}
                             </>}
                       </td>
                       <td className={cc.right}>

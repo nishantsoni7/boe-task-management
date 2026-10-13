@@ -251,7 +251,7 @@ export function ProductLookupResults({
             >
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 7,
-                fontSize: '11px', fontWeight: 600, color: '#303536',
+                fontSize: '12px', fontWeight: 600, color: '#303536',
                 fontFamily: 'var(--font-body)',
               }}>
                 {result.product_code}
@@ -264,7 +264,7 @@ export function ProductLookupResults({
               </span>
               {/* Always rendered: it disambiguates two products with one name,
                   and names the category the click is about to navigate into. */}
-              <span style={{ display: 'block', fontSize: '11px', color: '#686D6C', marginTop: 1 }}>
+              <span style={{ display: 'block', fontSize: '12px', color: '#686D6C', marginTop: 1 }}>
                 {result.category || 'Uncategorised'}
               </span>
             </button>

@@ -30,9 +30,9 @@ const PRIORITIES = ['low', 'medium', 'high'] as const
 type Priority = typeof PRIORITIES[number]
 
 const PRIORITY_STYLE: Record<Priority, { bg: string; border: string; text: string }> = {
-  low:    { bg: '#2F7A52', border: 'rgba(22,163,74,0.4)', text: '#2F7A52' },
-  medium: { bg: '#C48A1A', border: 'rgba(217,119,6,0.4)', text: '#C48A1A' },
-  high:   { bg: '#B42332', border: 'rgba(220,38,38,0.4)', text: '#B42332' },
+  low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)', text: '#276247' },
+  medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)', text: '#C48A1A' },
+  high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)', text: '#B42332' },
 }
 
 type MemberOption = { id: string; full_name: string; team: string }
@@ -238,7 +238,7 @@ export function MeetingTaskModal({
         />
       </MeetingField>
 
-      <div style={{ fontSize: '11px', color: colors.muted }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>
         The task lives in Task Management. Its status, updates and completion stay there — this
         screen only shows where it stands.
       </div>

@@ -37,7 +37,7 @@ const STATUS_COLOR: Record<string, string> = {
   working:          colors.blue,
   waiting:          colors.amber,
   blocked:          colors.red,
-  pending_approval: '#A57F14',
+  pending_approval: '#805B0D',
   completed:        colors.green,
 }
 
@@ -59,7 +59,7 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minHeight: '22px' }}>
       <span style={{
         flexShrink: 0, width: '90px',
-        fontSize: '10.5px', fontWeight: 600,
+        fontSize: '12px', fontWeight: 600,
         textTransform: 'uppercase', letterSpacing: '0.06em',
         color: colors.muted, paddingTop: '1px',
       }}>
@@ -214,7 +214,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           <div style={{ flex: 1 }}>
             {task.is_urgent && (
               <div style={{
-                fontSize: '9px', fontWeight: 600,
+                fontSize: '12px', fontWeight: 600,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
                 color: '#B7892A', marginBottom: '4px',
               }}>
@@ -267,7 +267,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             <MetaRow label="Status">
               <span style={{
                 display: 'inline-block',
-                fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+                fontSize: '12px', fontWeight: 600, textTransform: 'capitalize',
                 color: statusColor,
                 background: `${statusColor}14`,
                 padding: '2px 8px', borderRadius: '6px',
@@ -279,7 +279,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             <MetaRow label="Priority">
               <span style={{
                 display: 'inline-block',
-                fontSize: '11px', fontWeight: 600,
+                fontSize: '12px', fontWeight: 600,
                 color: priority.color, background: priority.bg,
                 padding: '2px 8px', borderRadius: '6px',
               }}>
@@ -296,7 +296,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                 }}>
                   {formatShortDate(task.due_date)}
                   {overdue && (
-                    <span style={{ marginLeft: '5px', fontSize: '10px', color: colors.red }}>
+                    <span style={{ marginLeft: '5px', fontSize: '12px', color: colors.red }}>
                       Overdue
                     </span>
                   )}
@@ -320,7 +320,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               return (
                 <MetaRow label="Aging">
                   <span style={{
-                    fontSize: '11px', fontWeight: 700,
+                    fontSize: '12px', fontWeight: 700,
                     color,
                     background: `${color}12`,
                     border: `1px solid ${color}30`,
@@ -328,7 +328,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                   }}>
                     {aging.label}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#686D6C', marginLeft: '6px' }}>
+                  <span style={{ fontSize: '12px', color: '#686D6C', marginLeft: '6px' }}>
                     {aging.message}
                   </span>
                 </MetaRow>
@@ -347,7 +347,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               borderLeft: `3px solid ${colors.amber}`,
             }}>
               <div style={{
-                fontSize: '9.5px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 letterSpacing: '0.08em', textTransform: 'uppercase',
                 color: colors.amber, marginBottom: '5px',
               }}>
@@ -362,7 +362,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                   : (task.waiting_on_text ?? '—')
                 }
               </p>
-              <p style={{ fontSize: '10px', color: colors.muted, margin: '3px 0 0' }}>
+              <p style={{ fontSize: '12px', color: colors.muted, margin: '3px 0 0' }}>
                 {task.waiting_on_type === 'team_member' ? 'Team Member' : 'External Dependency'}
               </p>
             </div>
@@ -378,7 +378,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               borderLeft: `3px solid ${colors.red}`,
             }}>
               <div style={{
-                fontSize: '9.5px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 letterSpacing: '0.08em', textTransform: 'uppercase',
                 color: colors.red, marginBottom: '5px',
               }}>
@@ -399,7 +399,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           {/* Task Description */}
           <div>
             <div style={{
-              fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+              fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: colors.muted, marginBottom: '7px',
             }}>
               Task Description
@@ -434,7 +434,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               background: `${colors.amber}0a`,
             }}>
               <div style={{
-                fontSize: '9px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 letterSpacing: '0.1em', textTransform: 'uppercase',
                 color: colors.amber, marginBottom: '8px',
               }}>
@@ -471,16 +471,16 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
           {/* Recent Update */}
           <div>
             <div style={{
-              fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+              fontSize: '12px', fontWeight: 600, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
             }}>
               Recent Update
             </div>
 
             {logLoading ? (
-              <p style={{ fontSize: '11.5px', color: colors.muted, margin: 0 }}>Loading…</p>
+              <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading…</p>
             ) : activityLog.length === 0 ? (
-              <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+              <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                 No activity recorded yet.
               </p>
             ) : (() => {
@@ -497,11 +497,11 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                     display: 'flex', justifyContent: 'space-between',
                     alignItems: 'flex-start', gap: '8px', marginBottom: entry.note ? '4px' : 0,
                   }}>
-                    <span style={{ fontSize: '11px', fontWeight: 500, color: colors.secondary }}>
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: colors.secondary }}>
                       {label}
                     </span>
                     <span style={{
-                      fontSize: '10px', color: colors.muted,
+                      fontSize: '12px', color: colors.muted,
                       whiteSpace: 'nowrap', flexShrink: 0,
                     }}
                       title={formatDateTime(entry.created_at)}
@@ -511,13 +511,13 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
                   </div>
                   {entry.note && (
                     <MultilineText style={{
-                      fontSize: '11px', color: colors.muted,
+                      fontSize: '12px', color: colors.muted,
                       margin: '0 0 3px', lineHeight: 1.5,
                     }}>
                       {entry.note}
                     </MultilineText>
                   )}
-                  <span style={{ fontSize: '10px', color: colors.muted }}>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>
                     by {actorName}
                   </span>
                 </div>

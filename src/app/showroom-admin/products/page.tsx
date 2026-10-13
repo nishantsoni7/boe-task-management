@@ -724,14 +724,14 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
 
         {/* Label preview */}
         <div ref={printRef} className="label" style={{ textAlign: 'center' }}>
-          <div className="brand" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#686D6C', marginBottom: '4px' }}>
+          <div className="brand" style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#686D6C', marginBottom: '4px' }}>
             {QR_LABEL_BRAND}
           </div>
           <QRCodeSVG value={qrUrl} size={160} style={{ display: 'block', margin: '0 auto' }} />
           <div className="name" style={{ fontSize: '17px', fontWeight: 700, color: '#303536', margin: '12px 0 2px' }}>
             {product.name}
           </div>
-          <div className="code" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#686D6C', marginBottom: '2px' }}>
+          <div className="code" style={{ fontSize: '12px', fontFamily: 'monospace', color: '#686D6C', marginBottom: '2px' }}>
             {product.product_code}
           </div>
           <div className="mrp" style={{ fontSize: '20px', fontWeight: 700, color: '#303536', marginTop: '4px' }}>

@@ -101,7 +101,7 @@ export function HistoryScreen() {
               <summary style={{ cursor: 'pointer', padding: '10px 14px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong style={{ fontSize: 13, color: colors.primary }}>{r.card_ref}</strong>
                 <ReviewBadge meta={TEST_CARD_STATUS_META[r.status]} />
-                {r.deleted_at && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.red }}>Deleted</span>}
+                {r.deleted_at && <span style={{ fontSize: 12, fontWeight: 700, color: colors.red }}>Deleted</span>}
                 <span style={{ fontSize: 12.5, color: colors.secondary, overflowWrap: 'anywhere', flex: '1 1 160px', minWidth: 0 }}>{r.test_title}</span>
               </summary>
               <dl style={{ margin: 0, padding: '4px 14px 14px', display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '4px 12px', fontSize: 12.5, color: colors.secondary }}>

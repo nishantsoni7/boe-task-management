@@ -179,7 +179,7 @@ export function CustomerReviewsLayout({
                     aria-label={`${count} waiting for approval`}
                     style={{
                       marginLeft: 'auto', flexShrink: 0,
-                      fontSize: '10px', fontWeight: 700, color: '#4C5352',
+                      fontSize: '12px', fontWeight: 700, color: '#4C5352',
                       background: '#E4DED7', borderRadius: '999px',
                       padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
                     }}

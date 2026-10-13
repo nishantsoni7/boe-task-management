@@ -156,7 +156,7 @@ export default function ProjectListPage() {
       footer={cart.length > 0 ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '11px', color: colors.muted, fontWeight: 500 }}>
+            <div style={{ fontSize: '12px', color: colors.muted, fontWeight: 500 }}>
               {summary.units} {summary.units === 1 ? 'item' : 'items'} · Estimated (MRP)
             </div>
             <div style={{
@@ -271,7 +271,7 @@ export default function ProjectListPage() {
       )}
 
       {cart.length === 0 && (
-        <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'center', marginTop: '8px' }}>
+        <div style={{ fontSize: '12px', color: colors.muted, textAlign: 'center', marginTop: '8px' }}>
           Add at least one product to submit
         </div>
       )}
@@ -309,7 +309,7 @@ function CartRow({
         {/* Code + name + dims + price */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{
-            fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
+            fontFamily: font.mono, fontSize: '12px', fontWeight: 600,
             color: '#303536', background: 'rgba(48,53,54,0.07)',
             borderRadius: '6px', padding: '1px 5px',
           }}>
@@ -319,7 +319,7 @@ function CartRow({
             {item.name}
           </div>
           {item.dim_str && (
-            <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '2px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, fontFamily: font.mono, marginTop: '2px' }}>
               {item.dim_str}
             </div>
           )}

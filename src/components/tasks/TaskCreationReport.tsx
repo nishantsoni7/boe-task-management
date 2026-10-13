@@ -29,7 +29,7 @@ export function TaskCreationReportCard({
     width: isMobile ? '84px' : '120px',
   }
   const header: React.CSSProperties = {
-    padding: '10px 14px', fontSize: '11.5px', fontWeight: 600, color: '#686D6C',
+    padding: '10px 14px', fontSize: '12px', fontWeight: 600, color: '#686D6C',
     textAlign: 'right', whiteSpace: 'nowrap',
   }
 

@@ -624,7 +624,7 @@ export default function ImageEditorPage() {
         {/* ── Progress ────────────────────────────────────────────────────── */}
         {running && (
           <div className="boe-card" style={{ padding: '14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Loader2 size={16} strokeWidth={2} color={colors.blue} />
+            <Loader2 size={16} strokeWidth={2} color={colors.brand} />
             <div>
               <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                 Processing {counts.position} of {counts.total}
@@ -644,7 +644,7 @@ export default function ImageEditorPage() {
               marginBottom: '10px',
             }}>
               <div style={{
-                fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+                fontSize: '12px', fontWeight: 600, color: colors.tertiary,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 {counts.done} completed{counts.failed > 0 ? `, ${counts.failed} failed` : ''}
@@ -718,12 +718,12 @@ export default function ImageEditorPage() {
             marginBottom: '10px',
           }}>
             <div style={{
-              fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+              fontSize: '12px', fontWeight: 600, color: colors.tertiary,
               textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>
               Recent results
             </div>
-            <div style={{ fontSize: '11px', color: colors.tertiary }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary }}>
               Only you can see these. Kept for {RETENTION_DAYS} days unless you mark them Keep.
             </div>
           </div>

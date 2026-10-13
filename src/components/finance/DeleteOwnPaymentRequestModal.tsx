@@ -32,7 +32,7 @@ export type DeleteOwnPaymentRequestModalPayment = {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
       <span style={{ fontSize: '13px', color: colors.primary, fontWeight: 600, overflowWrap: 'anywhere' }}>{value}</span>

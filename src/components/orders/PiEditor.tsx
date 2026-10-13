@@ -627,7 +627,7 @@ export function PiDiffView({ diff }: { diff: ReturnType<typeof diffPi> }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12.5px' }}>
       {diff.fields.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ color: colors.muted, fontSize: '11px', textAlign: 'left' }}><th>Field</th><th>Current</th><th>Proposed</th></tr></thead>
+          <thead><tr style={{ color: colors.muted, fontSize: '12px', textAlign: 'left' }}><th>Field</th><th>Current</th><th>Proposed</th></tr></thead>
           <tbody>
             {diff.fields.map(f => (
               <tr key={f.key} style={{ borderTop: `1px solid ${colors.border}` }}>

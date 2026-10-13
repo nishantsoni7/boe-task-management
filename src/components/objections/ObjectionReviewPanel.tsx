@@ -94,7 +94,7 @@ export function ObjectionReviewPanel({
             View History
           </button>
           <span style={{
-            padding: '2px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 600,
+            padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
             background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
           }}>
             {employeeStatusLabel(objection.status)}
@@ -106,7 +106,7 @@ export function ObjectionReviewPanel({
         <div style={{ fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>
           &ldquo;{objection.reason}&rdquo;
         </div>
-        <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
           Submitted {new Date(objection.created_at).toLocaleString('en-IN')}
           {' · '}As recorded: {objection.subject_snapshot}
         </div>
@@ -150,7 +150,7 @@ export function ObjectionReviewPanel({
         )}
 
         {pending && (
-          <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
             Resolving records the outcome. It does not change attendance or salary —
             make any actual correction with the tools on this page.
           </div>

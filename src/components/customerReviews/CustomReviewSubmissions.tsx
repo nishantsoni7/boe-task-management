@@ -373,10 +373,10 @@ function SubmissionRow({
           </span>
           <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
           {row.reapplication_count > 0 && row.status === 'pending_verification' && (
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#335A86' }}>Reapplied</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#335A86' }}>Reapplied</span>
           )}
           {row.edit_count > 0 && (
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#335A86' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#335A86' }}>
               {row.reward_held ? 'Edited · Pending Approval again · credit on hold' : 'Edited'}
             </span>
           )}
@@ -581,7 +581,7 @@ function DuplicateWarning({ view }: { view: EmployeeDuplicateView }) {
 }
 
 const labelStyle: React.CSSProperties = { fontSize: '12.5px', fontWeight: 600, color: colors.primary }
-const hintStyle: React.CSSProperties = { fontSize: '11px', color: colors.muted, lineHeight: 1.5 }
+const hintStyle: React.CSSProperties = { fontSize: '12px', color: colors.muted, lineHeight: 1.5 }
 const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 11px', borderRadius: '8px', fontSize: '13.5px', minHeight: '44px',

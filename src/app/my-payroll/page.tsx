@@ -54,8 +54,8 @@ function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
     return (
       <span style={{
         display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-        fontSize: 11.5, fontWeight: 600,
-        background: 'rgba(16,185,129,0.12)', color: '#276247',
+        fontSize: 12, fontWeight: 600,
+        background: 'rgba(39,98,71,0.12)', color: '#276247',
       }}>
         Reviewed
       </span>
@@ -64,8 +64,8 @@ function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-      fontSize: 11.5, fontWeight: 600,
-      background: 'rgba(140,148,166,0.12)', color: '#686D6C',
+      fontSize: 12, fontWeight: 600,
+      background: 'rgba(104,109,108,0.12)', color: '#686D6C',
     }}>
       Pending Review
     </span>
@@ -176,8 +176,8 @@ export default function MyPayrollPage() {
       {error && (
         <div style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#B42332',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+          background: 'rgba(180,35,50,0.08)', color: '#B42332',
+          border: '1px solid rgba(180,35,50,0.2)', fontSize: 13,
         }}>
           {error}
         </div>
@@ -207,7 +207,7 @@ export default function MyPayrollPage() {
                   {['Month', 'Gross Salary', 'Deductions', 'Net Payable', 'Review Status', ''].map(h => (
                     <th key={h} style={{
                       padding: '11px 16px', textAlign: 'left',
-                      fontSize: 11.5, fontWeight: 700,
+                      fontSize: 12, fontWeight: 700,
                       color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.05em',
                       whiteSpace: 'nowrap',
                     }}>
@@ -248,7 +248,7 @@ export default function MyPayrollPage() {
                             fontSize: 12.5, fontWeight: 600,
                             color: '#963B27', cursor: 'pointer',
                             padding: '4px 10px', borderRadius: 6,
-                            border: '1px solid rgba(79,111,208,0.3)',
+                            border: '1px solid rgba(51,90,134,0.3)',
                             background: 'none', whiteSpace: 'nowrap',
                           }}
                         >
@@ -270,7 +270,7 @@ export default function MyPayrollPage() {
                                     title={objection.review_note ?? undefined}
                                     style={{
                                       display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                                      fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                                      fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
                                       background: objectionTone(objection.status).bg,
                                       color: objectionTone(objection.status).fg,
                                     }}

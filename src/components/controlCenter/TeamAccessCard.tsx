@@ -96,8 +96,8 @@ export function TeamAccessCard({ moduleKey, moduleName, onSaved }: {
               <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                 <div className={cc.personName}>
                   {d.departmentName}
-                  {!d.isActive && <span className={cc.muted} style={{ marginLeft: 6, fontSize: 11 }}>inactive</span>}
-                  {unsaved && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#805B0D' }}>Unsaved</span>}
+                  {!d.isActive && <span className={cc.muted} style={{ marginLeft: 6, fontSize: 12 }}>inactive</span>}
+                  {unsaved && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: '#805B0D' }}>Unsaved</span>}
                 </div>
                 <div className={cc.personSub}>{d.people} {d.people === 1 ? 'person' : 'people'}</div>
               </div>
@@ -128,7 +128,7 @@ export function TeamAccessCard({ moduleKey, moduleName, onSaved }: {
           <button type="button" className="boe-btn" onClick={() => { setPending({}); setError('') }}>Discard</button>
         )}
         {saved && <span role="status" style={{ fontSize: 12.5, color: '#276247', fontWeight: 600 }}>Saved.</span>}
-        {error && <span role="alert" style={{ fontSize: 12.5, color: '#B9472E', fontWeight: 600 }}>{error}</span>}
+        {error && <span role="alert" style={{ fontSize: 12.5, color: '#B42332', fontWeight: 600 }}>{error}</span>}
       </div>
     </CcSection>
   )

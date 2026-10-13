@@ -46,7 +46,7 @@ export function ProductTable({
                 {['Image', 'Product Code', 'Product Name', 'Category', 'MRP', 'Status', 'Actions'].map(h => (
                   <th key={h} style={{
                     padding: '8px 16px', textAlign: h === 'MRP' ? 'right' : 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
                     whiteSpace: 'nowrap',
                   }}>{h}</th>
@@ -208,7 +208,7 @@ export function ProductRow({
           onClick={onToggle}
           disabled={toggling}
           style={{
-            fontSize: '11px', fontWeight: 600,
+            fontSize: '12px', fontWeight: 600,
             color: product.is_active ? '#276247' : colors.muted,
             background: product.is_active ? '#E8F2EC' : colors.float,
             border: `1px solid ${product.is_active ? '#BCD8C8' : colors.border}`,

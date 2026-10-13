@@ -102,7 +102,7 @@ export function ExpandableText({
           style={{
             display: 'block', marginTop: '4px', padding: 0,
             background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: '11.5px', fontWeight: 600, color: colors.brandInk,
+            fontSize: '12px', fontWeight: 600, color: colors.brandInk,
             fontFamily: font.body, textAlign: 'left',
             ...toggleStyle,
           }}

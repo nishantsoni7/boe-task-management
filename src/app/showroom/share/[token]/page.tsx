@@ -106,7 +106,7 @@ export default function SharePage() {
       {/* Customer / project info */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{
-          fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em',
+          fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
           textTransform: 'uppercase', color: colors.muted, marginBottom: '4px',
         }}>
           Product List
@@ -159,7 +159,7 @@ export default function SharePage() {
                     />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <span style={{
-                        fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
+                        fontFamily: font.mono, fontSize: '12px', fontWeight: 600,
                         color: '#303536', background: 'rgba(48,53,54,0.07)',
                         borderRadius: '6px', padding: '1px 5px',
                       }}>
@@ -169,7 +169,7 @@ export default function SharePage() {
                         {prod?.name ?? 'Unknown product'}
                       </div>
                       {prod?.category && (
-                        <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
                           {prod.category}
                         </div>
                       )}
@@ -269,7 +269,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Chip({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
   return (
     <span style={{
-      fontSize: '11px', fontWeight: 500,
+      fontSize: '12px', fontWeight: 500,
       color: muted ? colors.muted : colors.secondary,
       background: colors.raised,
       border: `1px solid ${colors.border}`,

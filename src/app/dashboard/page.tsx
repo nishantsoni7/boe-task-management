@@ -699,7 +699,7 @@ function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: st
         return seg.pill ? (
           <span key={i} style={{
             display: 'inline-flex', alignItems: 'center',
-            fontSize: '11px', fontWeight: 500, color: seg.color,
+            fontSize: '12px', fontWeight: 500, color: seg.color,
             background: seg.bg ?? '#F1EEE9',
             borderRadius: '6px', padding: '1.5px 6px', lineHeight: 1.5,
           }}>
@@ -832,7 +832,7 @@ function RankBadge({ index, muted = false }: { index: number; muted?: boolean })
       width: '20px', height: '20px', borderRadius: '6px',
       background: muted ? '#F7F5F1' : '#F1EEE9',
       color: muted ? '#686D6C' : '#686D6C',
-      fontSize: '11px', fontWeight: 600,
+      fontSize: '12px', fontWeight: 600,
       lineHeight: '20px', textAlign: 'center',
       marginTop: '1px',
     }}>
@@ -946,7 +946,7 @@ function TodaysFocusPanel({
               : '#686D6C'
 
           const chipStyle: React.CSSProperties = {
-            fontSize: '10.5px',
+            fontSize: '12px',
             background: '#FBFAF8',
             border: '1px solid #E4DED7',
             borderRadius: '999px',
@@ -1027,7 +1027,7 @@ function TodaysFocusPanel({
                 {dueDateStr && (
                   <span style={{
                     display: 'flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11.5px', fontWeight: 500, color: '#686D6C',
+                    fontSize: '12px', fontWeight: 500, color: '#686D6C',
                   }}>
                     <CalendarDays size={12} strokeWidth={2} color="#686D6C" style={{ flexShrink: 0 }} />
                     {`Due ${dueDateStr}`}
@@ -1155,7 +1155,7 @@ function OperationalStatusPanel({
                 </span>
               )}
             </div>
-            <div style={{ fontSize: '11.5px', color: '#686D6C', marginTop: '6px', lineHeight: 1.2 }}>
+            <div style={{ fontSize: '12px', color: '#686D6C', marginTop: '6px', lineHeight: 1.2 }}>
               {item.sub}
             </div>
           </div>
@@ -1213,7 +1213,7 @@ function AttentionPanel({
             <span style={{
               background: badgeTone === 'alert' ? '#FBE9EC' : '#F1EEE9',
               color: badgeTone === 'alert' ? '#B42332' : '#686D6C',
-              fontWeight: 600, fontSize: '11px',
+              fontWeight: 600, fontSize: '12px',
               borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6,
             }}>
               {count}
@@ -1221,7 +1221,7 @@ function AttentionPanel({
           )}
         </div>
         {interactive && (
-          <span style={{ fontSize: '11.5px', color: '#686D6C', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span style={{ fontSize: '12px', color: '#686D6C', whiteSpace: 'nowrap', flexShrink: 0 }}>
             View all →
           </span>
         )}
@@ -1239,7 +1239,7 @@ function PanelEmptyState({ headline, detail }: { headline: string; detail: strin
     <div style={{ padding: '18px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
       <span style={{
         width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
-        background: '#F1F4F2', color: '#5A8468',
+        background: '#F1EEE9', color: '#5A8468',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <Check size={15} strokeWidth={2.2} />
@@ -1706,7 +1706,7 @@ function TaskListDrawer({
                 >
                   {/* Left accent strip — overdue drawer only */}
                   {isOverdueDrawer && (
-                    <div style={{ width: '3px', flexShrink: 0, background: '#EF4444' }} />
+                    <div style={{ width: '3px', flexShrink: 0, background: '#B42332' }} />
                   )}
 
                   {/* Card content */}
@@ -1724,7 +1724,7 @@ function TaskListDrawer({
                     {/* Assigned by */}
                     {assignedBy && assignedBy !== 'Self' && (
                       <div style={{ marginBottom: '10px' }}>
-                        <div style={{ fontSize: '10px', fontWeight: 500, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 500, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
                           Assigned by
                         </div>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#4C5352' }}>
@@ -1764,7 +1764,7 @@ function TaskListDrawer({
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
     pending:          { color: '#686D6C', bg: '#F1EEE9' },
-    started:          { color: '#7C3AED', bg: '#EAF0F8' },
+    started:          { color: '#335A86', bg: '#EAF0F8' },
     working:          { color: '#335A86', bg: '#EAF0F8' },
     waiting:          { color: '#805B0D', bg: '#FAF0DA' },
     blocked:          { color: '#A12438', bg: '#FBE9EC' },
@@ -1773,7 +1773,7 @@ function StatusChip({ status }: { status: string }) {
   }
   const s = map[status] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {taskStatusLabel(status)}
     </span>
   )
@@ -1787,7 +1787,7 @@ function PriorityChip({ priority }: { priority: string }) {
   }
   const s = map[priority] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {priority}
     </span>
   )
@@ -1825,7 +1825,7 @@ function EscalationListDrawer({
           {items.length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: '#686D6C', fontSize: '14px' }}>No escalations right now.</div>
           ) : items.map(({ task, owner, days, reason }) => {
-            const daysColor = days >= 10 ? '#B42332' : days >= 7 ? '#D4893A' : '#4C5352'
+            const daysColor = days >= 10 ? '#B42332' : days >= 7 ? '#C48A1A' : '#4C5352'
             return (
               <div
                 key={task.id}
@@ -1840,7 +1840,7 @@ function EscalationListDrawer({
                 <div style={{ fontSize: '14px', fontWeight: 500, color: '#303536', marginBottom: '6px', lineHeight: 1.4 }}>{task.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E4DED7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#4C5352' }}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E4DED7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#4C5352' }}>
                       {owner.slice(0, 2).toUpperCase()}
                     </div>
                     <span style={{ fontSize: '12px', color: '#4C5352' }}>{owner}</span>
@@ -1865,7 +1865,7 @@ function ReasonBadge({ reason }: { reason: string }) {
   }
   const s = styles[reason] ?? { color: '#4C5352', bg: '#F1EEE9' }
   return (
-    <span style={{ fontSize: '10px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '6px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
       {reason}
     </span>
   )

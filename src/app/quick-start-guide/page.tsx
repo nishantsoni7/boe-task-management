@@ -36,7 +36,7 @@ const sectionNumber: React.CSSProperties = {
   borderRadius: '6px',
   background: '#303536',
   color: '#C48A1A',
-  fontSize: '11px',
+  fontSize: '12px',
   fontWeight: 800,
   flexShrink: 0,
 }
@@ -68,7 +68,7 @@ function StatusBadge({ label, color, bg }: { label: string; color: string; bg: s
   return (
     <span style={{
       display: 'inline-block',
-      fontSize: '11.5px', fontWeight: 700,
+      fontSize: '12px', fontWeight: 700,
       color, background: bg,
       borderRadius: '6px',
       padding: '2px 10px',
@@ -109,7 +109,7 @@ function ExampleBox({ good, bad }: { good?: string; bad?: string }) {
           background: '#E8F2EC', border: '1px solid #BCD8C8',
           borderRadius: '8px', padding: '10px 14px',
         }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#276247', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#276247', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Good update
           </span>
           <div style={{ fontSize: '13px', color: '#276247', marginTop: '4px', lineHeight: 1.5 }}>
@@ -122,7 +122,7 @@ function ExampleBox({ good, bad }: { good?: string; bad?: string }) {
           background: '#FBE9EC', border: '1px solid #E9B9C1',
           borderRadius: '8px', padding: '10px 14px',
         }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#A12438', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#A12438', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Bad update
           </span>
           <div style={{ fontSize: '13px', color: '#A12438', marginTop: '4px', lineHeight: 1.5 }}>
@@ -171,7 +171,7 @@ export default function QuickStartGuidePage() {
             Quick Start Guide
           </span>
           <span style={{
-            fontSize: '10px', fontWeight: 700, color: colors.muted,
+            fontSize: '12px', fontWeight: 700, color: colors.muted,
             background: colors.float, border: `1px solid ${colors.border}`,
             borderRadius: '999px', padding: '2px 8px', letterSpacing: '0.04em',
             textTransform: 'uppercase',
@@ -207,7 +207,7 @@ export default function QuickStartGuidePage() {
 
         {/* Hero */}
         <div style={{ marginBottom: '32px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: colors.muted, textTransform: 'uppercase', marginBottom: '8px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', color: colors.muted, textTransform: 'uppercase', marginBottom: '8px' }}>
             BOE Internal Platform
           </div>
           <h1 style={{
@@ -459,7 +459,7 @@ export default function QuickStartGuidePage() {
               }}>
                 {warn
                   ? <span style={{ fontSize: '14px', flexShrink: 0 }}>✕</span>
-                  : <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2F7A52', flexShrink: 0 }} />
+                  : <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#276247', flexShrink: 0 }} />
                 }
                 {text}
               </div>

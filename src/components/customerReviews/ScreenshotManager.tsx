@@ -203,18 +203,18 @@ export function ScreenshotManager({
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 ) : (
-                  <span style={{ fontSize: '11px', color: colors.muted }}>Loading…</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>Loading…</span>
                 )}
               </div>
               <div style={{ padding: '6px 8px' }}>
                 <div style={{
-                  fontSize: '11px', color: colors.secondary, fontWeight: 600,
+                  fontSize: '12px', color: colors.secondary, fontWeight: 600,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {shot.file_name}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px' }}>
-                  <span style={{ fontSize: '10px', color: colors.muted }}>{formatPhotoSize(shot.byte_size)}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{formatPhotoSize(shot.byte_size)}</span>
                   {canRemove && (
                     <button
                       type="button"
@@ -263,7 +263,7 @@ export function ScreenshotManager({
             <ImagePlus size={14} strokeWidth={2} />
             {busy ? 'Checking and uploading…' : 'Attach screenshot'}
           </label>
-          <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
+          <p style={{ fontSize: '12px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
             {TEST_SCREENSHOT_TYPES_LABEL}, up to 5 MB. Kept in a private bucket that
             only you and a verifier can read.
           </p>

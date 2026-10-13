@@ -41,13 +41,13 @@ type Loaded = {
 }
 
 const STATUS_CHIP: Record<SalaryStatus, { label: string; fg: string; bg: string }> = {
-  upcoming:         { label: 'Upcoming',                    fg: '#4C5352', bg: 'rgba(107,114,128,0.12)' },
+  upcoming:         { label: 'Upcoming',                    fg: '#4C5352', bg: 'rgba(104,109,108,0.12)' },
   needs_decision:   { label: 'Needs decision',              fg: '#805B0D', bg: 'rgba(196,138,26,0.15)' },
-  stale:            { label: 'Review again',                fg: '#B42332', bg: 'rgba(239,68,68,0.10)' },
+  stale:            { label: 'Review again',                fg: '#B42332', bg: 'rgba(180,35,50,0.10)' },
   needs_correction: { label: 'Needs correction',            fg: '#805B0D', bg: 'rgba(196,138,26,0.15)' },
-  no_draft:         { label: 'Waiting for draft',           fg: '#4C5352', bg: 'rgba(107,114,128,0.12)' },
-  action_required:  { label: 'Action required in payroll',  fg: '#B42332', bg: 'rgba(239,68,68,0.10)' },
-  resolved:         { label: 'Matches payroll',             fg: '#276247', bg: 'rgba(16,185,129,0.12)' },
+  no_draft:         { label: 'Waiting for draft',           fg: '#4C5352', bg: 'rgba(104,109,108,0.12)' },
+  action_required:  { label: 'Action required in payroll',  fg: '#B42332', bg: 'rgba(180,35,50,0.10)' },
+  resolved:         { label: 'Matches payroll',             fg: '#276247', bg: 'rgba(39,98,71,0.12)' },
 }
 
 export function PayrollAttendanceReview({
@@ -135,7 +135,7 @@ export function PayrollAttendanceReview({
 
       {error && <div role="alert" style={{ color: '#B42332', fontSize: 13, marginBottom: 10 }}>{error}</div>}
       {notice && (
-        <div role="status" style={{ fontSize: 12.5, color: colors.primary, background: 'rgba(37,99,235,0.08)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+        <div role="status" style={{ fontSize: 12.5, color: colors.primary, background: 'rgba(51,90,134,0.08)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
           {notice}
         </div>
       )}
@@ -240,14 +240,14 @@ function EventRow({ ev, names, payslip, canDecide, onDecide }: {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <strong style={{ fontSize: 13, color: colors.primary }}>{formatShortDate(ev.date)}</strong>
         <span style={{ fontSize: 13, color: colors.primary }}>{ev.title}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, color: chip.fg, background: chip.bg }}>
+        <span style={{ fontSize: 12, fontWeight: 700, padding: '1px 7px', borderRadius: 999, color: chip.fg, background: chip.bg }}>
           {chip.label}
         </span>
-        {ev.policy_flag && <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42332' }}>over monthly flag</span>}
-        {ev.informed === true && <span style={{ fontSize: 11.5, color: '#276247' }}>informed</span>}
-        {ev.informed === false && <span style={{ fontSize: 11.5, color: '#805B0D' }}>uninformed</span>}
-        {ev.excused && <span style={{ fontSize: 11.5, color: '#276247' }}>excused</span>}
-        {ev.company_exception && <span style={{ fontSize: 11.5, color: '#335A86' }}>company exception</span>}
+        {ev.policy_flag && <span style={{ fontSize: 12, fontWeight: 700, color: '#B42332' }}>over monthly flag</span>}
+        {ev.informed === true && <span style={{ fontSize: 12, color: '#276247' }}>informed</span>}
+        {ev.informed === false && <span style={{ fontSize: 12, color: '#805B0D' }}>uninformed</span>}
+        {ev.excused && <span style={{ fontSize: 12, color: '#276247' }}>excused</span>}
+        {ev.company_exception && <span style={{ fontSize: 12, color: '#335A86' }}>company exception</span>}
       </div>
       <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 2 }}>
         Actual: {ev.actual.check_in ? istClockOf(ev.actual.check_in) : '—'} → {ev.actual.check_out ? istClockOf(ev.actual.check_out) : '—'}
@@ -346,7 +346,7 @@ function ReviewModal({ emp, ev, onClose, onSave }: {
       )}
       <div style={{ fontSize: 12.5, color: colors.tertiary }}>{ev.payroll_state}</div>
       {ev.charge && (
-        <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>{ev.charge.rule_text}</div>
+        <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5 }}>{ev.charge.rule_text}</div>
       )}
 
       {isLate && (
@@ -362,7 +362,7 @@ function ReviewModal({ emp, ev, onClose, onSave }: {
                 onChange={e => setExcuseReason(e.target.value)} />
             </PayrollField>
           )}
-          <div style={{ fontSize: 11.5, color: colors.muted }}>
+          <div style={{ fontSize: 12, color: colors.muted }}>
             Excusing affects only the monthly review flag. Whether the minutes are paid is the salary treatment below.
           </div>
         </div>
@@ -390,7 +390,7 @@ function ReviewModal({ emp, ev, onClose, onSave }: {
         </PayrollField>
       )}
       <div style={{ fontSize: 12, color: colors.primary, lineHeight: 1.5 }}>{effect}</div>
-      <div style={{ fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.5 }}>
         There is no &quot;use paid leave&quot; choice: payroll applies earned paid leave automatically to the
         earliest eligible item of the month and cannot be told which day to use it on.
       </div>

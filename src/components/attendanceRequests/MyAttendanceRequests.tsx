@@ -123,7 +123,7 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                     {REQUEST_TYPE_LABEL[r.request_type]}
                   </div>
                   <span style={{
-                    fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                     background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
                   }}>
                     {REQUEST_STATUS_LABEL[r.status]}
@@ -133,18 +133,18 @@ export function MyAttendanceRequests({ getToken }: { getToken: () => Promise<str
                 <div style={{ fontSize: 12, color: colors.tertiary }}>
                   {REASON_LABEL[r.reason_code]}{r.reason_note ? ` — ${r.reason_note}` : ''}
                 </div>
-                <div style={{ fontSize: 11.5, color: colors.muted }}>
+                <div style={{ fontSize: 12, color: colors.muted }}>
                   Submitted {formatIstDateTime(r.submitted_at)}
                   {' · '}{SUBMISSION_TIMING_LABEL[submissionTiming(r)]}
                 </div>
                 {r.decided_at && (r.status === 'approved' || r.status === 'rejected') && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>
+                  <div style={{ fontSize: 12, color: colors.muted }}>
                     {REQUEST_STATUS_LABEL[r.status]} by {r.decider?.full_name ?? 'Admin'} · {formatIstDateTime(r.decided_at)}
                     {r.decision_note ? ` — ${r.decision_note}` : ''}
                   </div>
                 )}
                 {r.status === 'cancelled' && r.cancel_reason && (
-                  <div style={{ fontSize: 11.5, color: colors.muted }}>{r.cancel_reason}</div>
+                  <div style={{ fontSize: 12, color: colors.muted }}>{r.cancel_reason}</div>
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
                   {canEmployeeCorrect(r, now) && (

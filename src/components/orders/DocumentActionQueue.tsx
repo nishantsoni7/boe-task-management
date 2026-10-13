@@ -43,8 +43,8 @@ type Loaded = {
 const TONE: Record<string, { bg: string; fg: string }> = {
   pending_admin: { bg: '#FFF6E0', fg: '#805B0D' },
   awaiting_operations: { bg: '#FFF6E0', fg: '#805B0D' },
-  rejected_admin: { bg: '#FDECEA', fg: '#B42332' },
-  rejected_operations: { bg: '#FDECEA', fg: '#B42332' },
+  rejected_admin: { bg: '#FBE9EC', fg: '#B42332' },
+  rejected_operations: { bg: '#FBE9EC', fg: '#B42332' },
   accepted: { bg: '#E8F5EE', fg: '#276247' },
 }
 

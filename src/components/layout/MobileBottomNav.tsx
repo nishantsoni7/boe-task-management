@@ -62,7 +62,7 @@ function BottomNavItem({
             position: 'absolute', top: -5, right: -8,
             minWidth: 16, height: 16,
             background: '#C48A1A', color: '#fff',
-            fontSize: 9, fontWeight: 700,
+            fontSize: 12, fontWeight: 700,
             borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 3px', lineHeight: 1,
           }}>
@@ -71,7 +71,7 @@ function BottomNavItem({
         )}
       </span>
       <span style={{
-        fontSize: 9.5, fontWeight: active ? 700 : 500,
+        fontSize: 12, fontWeight: active ? 700 : 500,
         color: active ? accent : muted,
         letterSpacing: '0.01em',
       }}>
@@ -189,7 +189,7 @@ export function MobileBottomNav({
         </div>
 
         <div style={{ padding: '6px 0 12px' }}>
-          <MoreItem label="Assigned By Me"  icon={CheckSquare} accent="#2F7A52" onClick={() => go('/tasks/assigned-by-me')} />
+          <MoreItem label="Assigned By Me"  icon={CheckSquare} accent="#276247" onClick={() => go('/tasks/assigned-by-me')} />
           <MoreItem label="Assets & Access" icon={Briefcase}   accent="#C48A1A" onClick={() => go('/assets-access')} />
 
           {/* Account Settings, for everybody — the mobile counterpart of the

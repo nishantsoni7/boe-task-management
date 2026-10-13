@@ -541,9 +541,9 @@ export function RecordSplitPaymentModal({
           label="Payment reference"
           htmlFor="rsp-reference"
           hint={attachError
-            ? <span style={{ fontSize: '11px', color: colors.red }}>{attachError}</span>
+            ? <span style={{ fontSize: '12px', color: colors.red }}>{attachError}</span>
             : attachFile
-              ? <span style={{ fontSize: '11px', color: colors.muted }}>
+              ? <span style={{ fontSize: '12px', color: colors.muted }}>
                   Attached: {attachFile.name} — proof is optional and stored privately.
                 </span>
               : undefined}
@@ -579,7 +579,7 @@ export function RecordSplitPaymentModal({
               onClick={() => fileInputRef.current?.click()}
               disabled={saving}
               className="boe-btn boe-btn-ghost"
-              style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+              style={{ padding: '6px 10px', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               {attachFile
                 ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '')
@@ -832,7 +832,7 @@ function AllocationRow({
               type="button"
               onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null, clientName: null, reference: null }); setPosition(null); onPick() }}
               className="boe-btn boe-btn-ghost"
-              style={{ padding: '3px 9px', fontSize: '11px' }}
+              style={{ padding: '3px 9px', fontSize: '12px' }}
             >
               Change
             </button>
@@ -863,7 +863,7 @@ function AllocationRow({
           onClick={onRemove}
           className="boe-btn boe-btn-ghost"
           aria-label={`Remove allocation ${index + 1}`}
-          style={{ padding: '3px 9px', fontSize: '11px' }}
+          style={{ padding: '3px 9px', fontSize: '12px' }}
         >
           Remove
         </button>
@@ -874,7 +874,7 @@ function AllocationRow({
           and an empty one are different facts, and only one of them means the
           gap is still open. */}
       {row.targetId && position && (
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.secondary }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: colors.secondary }}>
           <span>
             Already received{' '}
             <strong style={{ color: colors.primary }}>
@@ -891,7 +891,7 @@ function AllocationRow({
       )}
 
       {duplicate && (
-        <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.5 }}>
+        <div style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
           This record is already named by another row. One payment holds one allocation per record —
           combine the two.
         </div>
@@ -913,7 +913,7 @@ function AllocationRow({
                 ? 'PI reference or customer name…' : 'Order number or customer name…'}
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
             />
-            {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
+            {searching && <span style={{ fontSize: '12px', color: colors.muted }}>Searching…</span>}
           </div>
 
           {results.length > 0 && (
@@ -939,7 +939,7 @@ function AllocationRow({
                       <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
                         {candidate.reference}
                       </span>
-                      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted }}>
                         {statusLabel(candidate.status)}
                       </span>
                     </span>
@@ -973,7 +973,7 @@ function AllocationRow({
 // ── Small pieces ──────────────────────────────────────────────────────────────
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.muted,
+  fontSize: '12px', fontWeight: 600, color: colors.muted,
   textTransform: 'uppercase', letterSpacing: '0.05em',
 }
 
@@ -998,7 +998,7 @@ function Figure({ label, value, strong, tone }: {
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
       <div style={{

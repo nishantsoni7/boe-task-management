@@ -225,7 +225,7 @@ export function CustomSubmissionTrail({
 
   return (
     <section aria-label="History" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <h3 style={{ margin: 0, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
+      <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
         History
       </h3>
       <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>

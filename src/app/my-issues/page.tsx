@@ -262,8 +262,8 @@ function MyIssues() {
       {error && (
         <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.08)', color: '#B42332',
-          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+          background: 'rgba(180,35,50,0.08)', color: '#B42332',
+          border: '1px solid rgba(180,35,50,0.2)', fontSize: 13,
         }}>
           {error}
         </div>
@@ -304,7 +304,7 @@ function MyIssues() {
               <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                 {['Record', 'What you reported', 'Last update', 'Status', ''].map((h, i) => (
                   <th key={h || `a${i}`} style={{
-                    textAlign: 'left', padding: '10px 14px', fontSize: 11, fontWeight: 600,
+                    textAlign: 'left', padding: '10px 14px', fontSize: 12, fontWeight: 600,
                     color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
                     whiteSpace: 'nowrap',
                   }}>
@@ -331,7 +331,7 @@ function MyIssues() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#303536' }}>
                         {issueSubjectLabel(latest)}
                       </div>
-                      <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
                         {kind === 'attendance' ? 'Attendance' : 'Payroll'}
                         {chain.length > 1 && ` · ${chain.length} submissions`}
                       </div>
@@ -345,7 +345,7 @@ function MyIssues() {
                     <td style={{ padding: '11px 14px' }}>
                       <span style={{
                         display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-                        fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                        fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
                         background: tone.bg, color: tone.fg,
                       }}>
                         {employeeStatusLabel(latest.status)}
@@ -472,7 +472,7 @@ function RaiseIssueDialog({
           {kind === 'attendance' ? (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{
-                fontSize: 11, fontWeight: 600, color: colors.muted,
+                fontSize: 12, fontWeight: 600, color: colors.muted,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 Which day?
@@ -489,7 +489,7 @@ function RaiseIssueDialog({
           ) : (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{
-                fontSize: 11, fontWeight: 600, color: colors.muted,
+                fontSize: 12, fontWeight: 600, color: colors.muted,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
               }}>
                 Which payslip?
@@ -506,7 +506,7 @@ function RaiseIssueDialog({
                 ))}
               </select>
               {results.length === 0 && (
-                <span style={{ fontSize: 11.5, color: colors.muted }}>
+                <span style={{ fontSize: 12, color: colors.muted }}>
                   No payslip has been generated for you yet.
                 </span>
               )}

@@ -187,7 +187,7 @@ const PANEL: React.CSSProperties = {
 }
 
 const KEY_STYLE: React.CSSProperties = {
-  color: colors.muted, fontSize: '11px', fontWeight: 600,
+  color: colors.muted, fontSize: '12px', fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
 }
 
@@ -470,8 +470,8 @@ function PaymentPositionPanel({
                 style={{
                   display: 'flex', alignItems: 'center', gap: '8px', cursor: disabled ? 'default' : 'pointer',
                   padding: '8px 10px', borderRadius: '6px', fontSize: '13px', color: colors.primary,
-                  border: `1px solid ${terms.reasonChoice === option.value ? colors.blue : colors.border}`,
-                  background: terms.reasonChoice === option.value ? colors.blueTint : colors.base,
+                  border: `1px solid ${terms.reasonChoice === option.value ? colors.brand : colors.border}`,
+                  background: terms.reasonChoice === option.value ? colors.brandTint : colors.base,
                 }}
               >
                 <input
@@ -490,7 +490,7 @@ function PaymentPositionPanel({
             'otherRemark', OTHER_REMARK_LABEL, OTHER_REMARK_PLACEHOLDER,
             PAYMENT_REASON_MAX_LENGTH - 'Other: '.length, 2,
           )}
-          <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
             {EXCEPTION_REASON_NOT_A_DECISION}
           </div>
         </div>
@@ -502,12 +502,12 @@ function PaymentPositionPanel({
           (Edit PI); billing terms are no longer edited anywhere. */}
 
       {invalid && (
-        <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }} role="alert">
+        <div style={{ fontSize: '12px', color: colors.red, lineHeight: 1.45 }} role="alert">
           {invalid}
         </div>
       )}
 
-      <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+      <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>
         {PAYMENT_NOT_A_DECLARATION}
       </div>
     </div>
@@ -853,7 +853,7 @@ export function PiSubmitConfirmModal({
               {offerReply && (
                 <label style={{
                   display: 'flex', flexDirection: 'column', gap: '4px',
-                  fontSize: '11px', fontWeight: 600, color: colors.muted,
+                  fontSize: '12px', fontWeight: 600, color: colors.muted,
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                 }}>
                   {RESUBMIT_NOTE_LABEL}
@@ -874,7 +874,7 @@ export function PiSubmitConfirmModal({
                   />
                   {(tooLong || remaining <= 100) && (
                     <span style={{
-                      fontSize: '11px', fontWeight: 500, textTransform: 'none', letterSpacing: 0,
+                      fontSize: '12px', fontWeight: 500, textTransform: 'none', letterSpacing: 0,
                       color: tooLong ? colors.red : colors.muted,
                     }}>
                       {tooLong
@@ -1031,7 +1031,7 @@ export function PiNoteModal({
 
           <label style={{
             display: 'flex', flexDirection: 'column', gap: '4px',
-            fontSize: '11px', fontWeight: 600, color: colors.muted,
+            fontSize: '12px', fontWeight: 600, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em',
           }}>
             {copy.label}
@@ -1160,7 +1160,7 @@ export function PiFinanceVerifyModal({
             <div style={{
               padding: '9px 11px', borderRadius: '8px',
               border: `1px solid ${colors.border}`, background: colors.raised,
-              fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55,
+              fontSize: '12px', color: colors.secondary, lineHeight: 1.55,
             }}>
               <strong style={{ color: colors.primary, fontWeight: 600 }}>
                 {incompleteSummary}
@@ -1176,7 +1176,7 @@ export function PiFinanceVerifyModal({
           <div style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',
             fontSize: '12px', lineHeight: 1.5, color: colors.primary,
-            background: colors.blueTint, border: '1px solid rgba(51,90,134,0.25)',
+            background: colors.brandTint, border: '1px solid rgba(51,90,134,0.25)',
             borderRadius: '6px', padding: '9px 12px',
           }}>
             <ShieldCheck size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -1397,11 +1397,11 @@ export function PiApproveOrderModal({
       <span className="boe-input-label">{ORDER_CONFIRMATION_LABEL[field]}</span>
       <span style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
         <strong style={{ fontSize: '13.5px', color: colors.primary, overflowWrap: 'anywhere' }}>{reviewText[field]}</strong>
-        <span style={{ fontSize: '11px', color: colors.muted }}>From the PI</span>
+        <span style={{ fontSize: '12px', color: colors.muted }}>From the PI</span>
         <button type="button" disabled={saving}
           onClick={() => setChanging(current => new Set(current).add(field))}
           aria-label={`Change ${ORDER_CONFIRMATION_LABEL[field].toLowerCase()}`}
-          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.blue, cursor: saving ? 'default' : 'pointer' }}>
+          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '12px', fontWeight: 600, color: colors.brand, cursor: saving ? 'default' : 'pointer' }}>
           Change
         </button>
       </span>
@@ -1480,7 +1480,7 @@ export function PiApproveOrderModal({
                     <option key={person.id} value={person.id}>{person.name}</option>
                   ))}
                 </select>
-                <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '11px', color: colors.muted }}>
+                <span data-testid="pi-approve-salesperson-note" style={{ fontSize: '12px', color: colors.muted }}>
                   {salespersonSelectorNote({ savedName: provided?.salesperson?.name ?? null, workbookName: workbookSalesperson ?? null })}
                 </span>
               </label>
@@ -2023,10 +2023,10 @@ export function PiBillingPercentageModal({
               </span>
             </div>
             {showError
-              ? <div id={errorId} role="alert" style={{ fontSize: '11.5px', color: '#B42332' }}>
+              ? <div id={errorId} role="alert" style={{ fontSize: '12px', color: '#B42332' }}>
                   {parsed.ok ? '' : parsed.message}
                 </div>
-              : <div style={{ fontSize: '11.5px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
+              : <div style={{ fontSize: '12px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
           </div>
 
           {/* ── The reason, when this is an amendment ──
@@ -2055,7 +2055,7 @@ export function PiBillingPercentageModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity against this PI{current !== null ? ' and its Order' : ''}. Required.
               </div>
             </div>
@@ -2081,7 +2081,7 @@ export function PiBillingPercentageModal({
                     type="button" className="boe-btn boe-btn-ghost"
                     disabled={saving || (requireReason && trimmedReason === '')}
                     onClick={() => onClear(requireReason ? trimmedReason : null)}
-                    style={{ color: '#b3541e' }}
+                    style={{ color: '#805B0D' }}
                   >
                     Confirm — return to {BILLING_UNDECLARED}
                   </button>
@@ -2347,7 +2347,7 @@ export function PiClientDetailsEditModal({
           {PI_CLIENT_GROUPS.map(group => (
             <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
               <div style={{
-                fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
+                fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em',
                 textTransform: 'uppercase', color: colors.muted,
               }}>
                 {group.title}
@@ -2369,10 +2369,10 @@ export function PiClientDetailsEditModal({
                         gridColumn: f.multiline ? '1 / -1' : undefined,
                       }}
                     >
-                      <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
                         {f.label}
                         {f.required && (
-                          <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+                          <span aria-hidden="true" style={{ color: '#805B0D' }}> *</span>
                         )}
                       </span>
                       {f.multiline ? (
@@ -2384,7 +2384,7 @@ export function PiClientDetailsEditModal({
                           maxLength={500}
                           style={{
                             padding: '7px 10px', fontSize: '13px', resize: 'vertical',
-                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            border: `1px solid ${isMissing ? '#805B0D' : colors.border}`,
                             borderRadius: '8px', background: colors.base,
                             color: colors.primary, fontFamily: 'inherit',
                           }}
@@ -2398,7 +2398,7 @@ export function PiClientDetailsEditModal({
                           maxLength={500}
                           style={{
                             padding: '7px 10px', fontSize: '13px',
-                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            border: `1px solid ${isMissing ? '#805B0D' : colors.border}`,
                             borderRadius: '8px', background: colors.base, color: colors.primary,
                           }}
                         />
@@ -2437,7 +2437,7 @@ export function PiClientDetailsEditModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity with what changed. Required.
               </div>
             </div>
@@ -2455,7 +2455,7 @@ export function PiClientDetailsEditModal({
               Cancel
             </button>
             {/* What will be written, before it is written. */}
-            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
               {changedCount === 0
                 ? 'No changes yet'
                 : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
@@ -2577,7 +2577,7 @@ export function PiScheduleTermsEditModal({
                   gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
                 }}
               >
-                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
                   {f.label}
                 </span>
                 {f.kind === 'textarea' ? (
@@ -2634,7 +2634,7 @@ export function PiScheduleTermsEditModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity with what changed. Required.
               </div>
             </div>
@@ -2651,7 +2651,7 @@ export function PiScheduleTermsEditModal({
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
               Cancel
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
               {changedCount === 0
                 ? 'No changes yet'
                 : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
@@ -2784,7 +2784,7 @@ export function PiTermsEditModal({
 
   /** A label that says so when the readiness list is waiting on this field. */
   const fieldLabel = (text: string, missing: boolean) => (
-    <span style={{ fontSize: '11.5px', fontWeight: 600, color: missing ? '#b3541e' : colors.primary }}>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: missing ? '#805B0D' : colors.primary }}>
       {text}{missing ? ' · needed' : ''}
     </span>
   )
@@ -2874,7 +2874,7 @@ export function PiTermsEditModal({
                 />
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                   <span style={{ fontWeight: 600 }}>{option.label}</span>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>{option.help}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{option.help}</span>
                 </span>
               </label>
             ))}
@@ -2919,7 +2919,7 @@ export function PiTermsEditModal({
             />
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'baseline',
-              fontSize: '11.5px', color: colors.muted,
+              fontSize: '12px', color: colors.muted,
             }}>
               <span style={{ flex: '1 1 200px', minWidth: 0 }}>
                 Printed on the PI. Change it where the agreement with this client
@@ -2962,7 +2962,7 @@ export function PiTermsEditModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity with what changed. Required.
               </div>
             </div>
@@ -2979,7 +2979,7 @@ export function PiTermsEditModal({
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
               Cancel
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
               {changedCount === 0
                 ? 'No changes yet'
                 : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
@@ -3098,7 +3098,7 @@ export function PiRequestCorrectionModal({
           </div>
 
           <label htmlFor={sectionId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
               Which part
             </span>
             <select
@@ -3119,9 +3119,9 @@ export function PiRequestCorrectionModal({
           </label>
 
           <label htmlFor={changeId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
               What should be corrected
-              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+              <span aria-hidden="true" style={{ color: '#805B0D' }}> *</span>
             </span>
             <textarea
               id={changeId}
@@ -3140,9 +3140,9 @@ export function PiRequestCorrectionModal({
           </label>
 
           <label htmlFor={reasonId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
               Why
-              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+              <span aria-hidden="true" style={{ color: '#805B0D' }}> *</span>
             </span>
             <textarea
               id={reasonId}
@@ -3301,7 +3301,7 @@ export function PiProductEditModal({
                   gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
                 }}
               >
-                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
                   {f.label}
                 </span>
                 {f.kind === 'textarea' ? (
@@ -3332,7 +3332,7 @@ export function PiProductEditModal({
                   />
                 )}
                 {f.hint !== '' && (
-                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.hint}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{f.hint}</span>
                 )}
               </label>
             ))}
@@ -3355,14 +3355,14 @@ export function PiProductEditModal({
                 { label: 'Line total', value: line.total },
               ].map(f => (
                 <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.label}</span>
+                  <span style={{ fontSize: '12px', color: colors.muted }}>{f.label}</span>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                     {f.value}
                   </span>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+            <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
               These come from the PI workbook’s own formulas. To change a quantity,
               a rate, or which products are on this PI, upload a corrected workbook.
             </div>
@@ -3398,7 +3398,7 @@ export function PiProductEditModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity with what changed. Required.
               </div>
             </div>
@@ -3415,7 +3415,7 @@ export function PiProductEditModal({
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
               Cancel
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
               {changedCount === 0
                 ? 'No changes yet'
                 : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
@@ -3521,7 +3521,7 @@ export function PiProductReorderModal({
             padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
           }}
         >
-          <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+          <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
             This changes the order the lines are printed in. It adds nothing,
             removes nothing, and moves no figure.
           </div>
@@ -3543,7 +3543,7 @@ export function PiProductReorderModal({
                   }}
                 >
                   <span style={{
-                    fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-body)',
+                    fontSize: '12px', color: colors.muted, fontFamily: 'var(--font-body)',
                     minWidth: '28px',
                   }}>
                     {i + 1}
@@ -3593,7 +3593,7 @@ export function PiProductReorderModal({
                   background: colors.base, color: colors.primary, fontFamily: 'inherit',
                 }}
               />
-              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+              <div style={{ fontSize: '12px', color: colors.muted }}>
                 Recorded in Activity. Required.
               </div>
             </div>
@@ -3610,7 +3610,7 @@ export function PiProductReorderModal({
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
               Cancel
             </button>
-            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ marginLeft: 'auto', fontSize: '12px', color: colors.muted }}>
               {moved ? 'The order will change' : 'No changes yet'}
             </span>
           </div>

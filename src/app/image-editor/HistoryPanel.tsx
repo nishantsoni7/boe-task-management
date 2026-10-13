@@ -37,7 +37,7 @@ function Countdown({ result }: { result: HistoryResult }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: '5px',
-      fontSize: '11px', fontWeight: 500,
+      fontSize: '12px', fontWeight: 500,
       color: kept ? colors.amber : urgent ? '#B42332' : colors.tertiary,
     }}>
       {kept ? <Star size={11} strokeWidth={2} fill="currentColor" /> : <Clock size={11} strokeWidth={2} />}
@@ -120,7 +120,7 @@ export function HistoryPanel({
               <div style={{
                 width: '100%', aspectRatio: '1 / 1', borderRadius: '8px',
                 background: colors.float, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: '11px', color: colors.tertiary,
+                justifyContent: 'center', fontSize: '12px', color: colors.tertiary,
                 textAlign: 'center', padding: '10px',
               }}>
                 This image could not be loaded just now.
@@ -141,7 +141,7 @@ export function HistoryPanel({
             {needsManualReview(result.verification) && (
               <div style={{
                 display: 'flex', gap: '5px', alignItems: 'flex-start', marginTop: '6px',
-                fontSize: '10px', lineHeight: 1.4, color: colors.tertiary,
+                fontSize: '12px', lineHeight: 1.4, color: colors.tertiary,
               }}>
                 <Eye size={11} strokeWidth={2} style={{ flexShrink: 0, marginTop: '2px' }} />
                 <span>{MANUAL_REVIEW_NOTE}</span>
@@ -150,13 +150,13 @@ export function HistoryPanel({
 
             {confirming ? (
               <div className="boe-alert-red" style={{ marginTop: '10px' }}>
-                <div style={{ fontSize: '11px', color: '#B42332', lineHeight: 1.4 }}>
+                <div style={{ fontSize: '12px', color: '#B42332', lineHeight: 1.4 }}>
                   Delete this result permanently?
                 </div>
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                   <button
                     className="boe-btn boe-btn-ghost"
-                    style={{ fontSize: '11px', padding: '4px 8px', color: '#B42332' }}
+                    style={{ fontSize: '12px', padding: '4px 8px', color: '#B42332' }}
                     onClick={() => { setConfirmingDelete(null); onDelete(result) }}
                     disabled={busy}
                   >
@@ -164,7 +164,7 @@ export function HistoryPanel({
                   </button>
                   <button
                     className="boe-btn boe-btn-ghost"
-                    style={{ fontSize: '11px', padding: '4px 8px' }}
+                    style={{ fontSize: '12px', padding: '4px 8px' }}
                     onClick={() => setConfirmingDelete(null)}
                     disabled={busy}
                   >
@@ -179,7 +179,7 @@ export function HistoryPanel({
               }}>
                 <button
                   className="boe-btn boe-btn-ghost"
-                  style={{ fontSize: '11px', padding: '4px 8px' }}
+                  style={{ fontSize: '12px', padding: '4px 8px' }}
                   onClick={() => onDownload(result)}
                   disabled={busy || !result.url}
                   title={result.url ? 'Download' : 'This image could not be loaded just now'}
@@ -191,7 +191,7 @@ export function HistoryPanel({
                 <button
                   className="boe-btn boe-btn-ghost"
                   style={{
-                    fontSize: '11px', padding: '4px 8px',
+                    fontSize: '12px', padding: '4px 8px',
                     color: result.kept ? colors.amber : undefined,
                   }}
                   onClick={() => {
@@ -212,7 +212,7 @@ export function HistoryPanel({
 
                 <button
                   className="boe-btn boe-btn-ghost"
-                  style={{ fontSize: '11px', padding: '4px 8px', marginLeft: 'auto' }}
+                  style={{ fontSize: '12px', padding: '4px 8px', marginLeft: 'auto' }}
                   onClick={() => setConfirmingDelete(result.id)}
                   disabled={busy}
                   aria-label={`Delete ${result.sourceFileName}`}

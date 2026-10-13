@@ -34,7 +34,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 .footnote { font-size: 12px; color: #686D6C; line-height: 1.5; }
 .alert {
   font-size: 13px; line-height: 1.45; color: #A12438;
-  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.28);
+  background: rgba(180,35,50,0.08); border: 1px solid rgba(180,35,50,0.28);
   border-radius: 8px; padding: 10px 12px;
 }
 .shiftNote {
@@ -51,7 +51,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 .table th {
   padding: 10px 14px;
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #686D6C;
   text-transform: uppercase;
@@ -80,7 +80,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 
 .badge {
   display: inline-block;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;

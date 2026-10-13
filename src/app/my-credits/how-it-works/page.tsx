@@ -53,10 +53,10 @@ function SectionHeading({ id, title, note }: { id: string; title: string; note?:
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div style={{ borderRadius: 8, padding: '10px 12px', background: 'rgba(79,111,208,0.06)', border: '1px solid rgba(79,111,208,0.18)', minWidth: 0 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>{label}</div>
+    <div style={{ borderRadius: 8, padding: '10px 12px', background: 'rgba(51,90,134,0.06)', border: '1px solid rgba(51,90,134,0.18)', minWidth: 0 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color: colors.primary, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {note && <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{note}</div>}
+      {note && <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{note}</div>}
     </div>
   )
 }
@@ -164,7 +164,7 @@ export default function HowCreditsWorkPage() {
             {fullDayOn && <Stat label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />}
             <Stat label="Monthly target" value={`${target} verified ${target === 1 ? 'review' : 'reviews'}`} />
           </div>
-          <p style={{ margin: '10px 0 0', fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>
+          <p style={{ margin: '10px 0 0', fontSize: 12, color: colors.muted, lineHeight: 1.5 }}>
             {live ? 'These are the current settings.' : 'These are the standard settings.'} An administrator can change them; a change applies
             to {attendanceOn ? 'future reviews, redemptions and payroll applications' : 'future reviews and payroll applications'} only.
           </p>
@@ -182,7 +182,7 @@ export default function HowCreditsWorkPage() {
           ].map((step, i, all) => (
             <div key={step.title} style={{ ...card, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 999, background: 'rgba(79,111,208,0.10)', color: ACCENT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 700 }}>{i + 1}</span>
+                <span style={{ width: 24, height: 24, borderRadius: 999, background: 'rgba(51,90,134,0.10)', color: ACCENT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{i + 1}</span>
                 <step.Icon size={15} strokeWidth={1.9} color={ACCENT} aria-hidden="true" />
                 <span style={{ fontSize: 13, fontWeight: 700, color: colors.primary }}>{step.title}</span>
               </div>
@@ -203,7 +203,7 @@ export default function HowCreditsWorkPage() {
         <SectionHeading id="target" title="The monthly target" note={`Until a month reaches ${target} verified ${target === 1 ? 'review' : 'reviews'}, its credits are pending. Reach it and they become available.`} />
         <div className="payroll-guide-grid-2">
           <div style={{ ...card, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>Example · target {target}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>Example · target {target}</div>
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {Array.from({ length: target }, (_, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4C5352' }}>
@@ -212,23 +212,23 @@ export default function HowCreditsWorkPage() {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(5,150,105,0.09)', color: GREEN, fontSize: 12.5, fontWeight: 600 }}>
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(39,98,71,0.09)', color: GREEN, fontSize: 12.5, fontWeight: 600 }}>
               Monthly target completed — {formatCredits(target * s.review_reward_credits)} now available
             </div>
-            <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
               Review {target + 1}, {target + 2}… in the same month are available straight away.
               {sameReward ? '' : ` Shown with the text review reward; an image review earns ${imageReward}.`}
             </div>
           </div>
           <div style={{ ...card, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>If the month closes below target</div>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>If the month closes below target</div>
             <Row label="Credits you already had" value="17" />
             <Row label="September review 1 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
             <Row label="September review 2 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
             <Row label="September earns nothing — no penalty" value={formatCredits(0)} tone="#B42332" />
             <div style={{ height: 1, background: 'rgba(0,0,0,0.12)', margin: '6px 0' }} />
             <Row label="Spendable after" value="17" strong />
-            <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
               Only that month&rsquo;s pending credits lapse. Everything you already had stays exactly as it was.
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function HowCreditsWorkPage() {
 
         {/* ── Carry forward + historical protection ──────────────────────── */}
         <div className="payroll-guide-grid-2" style={{ marginTop: 12 }}>
-          <div style={{ ...card, padding: '14px 16px', background: 'rgba(5,150,105,0.05)', border: '1px solid rgba(5,150,105,0.25)' }}>
+          <div style={{ ...card, padding: '14px 16px', background: 'rgba(39,98,71,0.05)', border: '1px solid rgba(39,98,71,0.25)' }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: GREEN }}>Unused available credits do not expire.</div>
             <div style={{ fontSize: 12.5, color: '#4C5352', marginTop: 4, lineHeight: 1.55 }}>
               They carry forward month after month until you use them. Only <em>pending</em> credits of a month that closes below target lapse.
@@ -315,7 +315,7 @@ export default function HowCreditsWorkPage() {
               </div>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 10, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: colors.muted, marginTop: 10, lineHeight: 1.5 }}>
             Every change shows in your history as its own line, with a reason. Nothing is ever edited or deleted.
           </div>
         </div>

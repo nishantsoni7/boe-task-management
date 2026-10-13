@@ -405,7 +405,7 @@ export default function PayrollSettingsPage() {
             {error ? (
               <span className={styles.problem}>Not saved. {error}</span>
             ) : okMsg && !dirty ? (
-              <span style={{ color: '#065F46', fontWeight: 600 }}>{okMsg}</span>
+              <span style={{ color: '#276247', fontWeight: 600 }}>{okMsg}</span>
             ) : dirty ? (
               <span className={styles.saveStatusDirty}>You have unsaved changes.</span>
             ) : (

@@ -38,7 +38,7 @@ import {
 /** One tone per phase, from the existing BOE palette. */
 const PHASE_TONE: Record<Phase['id'], { bg: string; border: string; color: string }> = {
   before: { bg: '#EAF0F8', border: '#C3D3E6', color: '#335A86' },
-  during: { bg: '#EAF0F8', border: '#DDD6FE', color: '#5B21B6' },
+  during: { bg: '#EAF0F8', border: '#C3D3E6', color: '#335A86' },
   after:  { bg: '#E8F2EC', border: '#BCD8C8', color: '#276247' },
 }
 
@@ -142,7 +142,7 @@ export function MeetingGuide({ onBack }: { onBack: () => void }) {
           }}>
             <h3 style={{ ...H3_STYLE, display: 'flex', alignItems: 'center', gap: '7px' }}>
               {side.id === 'meetings'
-                ? <MessageSquare size={14} strokeWidth={1.9} color={colors.blue} aria-hidden="true" />
+                ? <MessageSquare size={14} strokeWidth={1.9} color={colors.brand} aria-hidden="true" />
                 : <ListChecks size={14} strokeWidth={1.9} color={colors.green} aria-hidden="true" />}
               {side.label}
             </h3>
@@ -305,7 +305,7 @@ function PurposeMap() {
       <div className="meeting-guide-map-hub">
         <div style={{
           display: 'flex', alignItems: 'center', gap: '7px',
-          fontSize: '14px', fontWeight: 800, color: '#B01824', letterSpacing: '-0.01em',
+          fontSize: '14px', fontWeight: 800, color: '#B42332', letterSpacing: '-0.01em',
         }}>
           <Users size={15} strokeWidth={2} aria-hidden="true" />
           Meetings
@@ -318,7 +318,7 @@ function PurposeMap() {
       {PURPOSE_NODES.map(node => (
         <div key={node.id} className="meeting-guide-map-node">
           <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>{node.label}</div>
-          <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <p style={{ margin: '2px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             {node.detail}
           </p>
         </div>
@@ -370,7 +370,7 @@ function CategoryCardView({ card }: { card: (typeof CATEGORY_CARDS)[number] }) {
         {card.when}
       </p>
       <div style={{
-        fontSize: '11px', fontWeight: 700, color: colors.muted,
+        fontSize: '12px', fontWeight: 700, color: colors.muted,
         textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '11px',
       }}>
         Typical items
@@ -384,7 +384,7 @@ function CategoryCardView({ card }: { card: (typeof CATEGORY_CARDS)[number] }) {
         <div style={{ marginTop: '11px', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
           {card.tags.map(tag => (
             <span key={tag} style={{
-              padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
+              padding: '2px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
               background: colors.raised, color: colors.secondary, border: `1px solid ${colors.border}`,
             }}>
               {AFTER_SALES_TAG_LABEL[tag]}
@@ -415,7 +415,7 @@ function CaptureFlow() {
           )}
           <div className="meeting-guide-flow-step">
             <div style={{
-              fontSize: '11px', fontWeight: 700, color: colors.muted,
+              fontSize: '12px', fontWeight: 700, color: colors.muted,
               textTransform: 'uppercase', letterSpacing: '0.07em',
             }}>
               Step {index + 1}
@@ -423,7 +423,7 @@ function CaptureFlow() {
             <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary, marginTop: '3px' }}>
               {step.title}
             </div>
-            <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               {step.detail}
             </p>
           </div>
@@ -447,7 +447,7 @@ function LifecycleFlow() {
           )}
           <div className="meeting-guide-flow-step">
             <div style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>{stage.label}</div>
-            <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               {stage.detail}
             </p>
           </div>
@@ -459,7 +459,7 @@ function LifecycleFlow() {
 
 function BranchCard({ branch }: { branch: (typeof LIFECYCLE_BRANCHES)[number] }) {
   const Icon = branch.id === 'resolved' ? CheckCircle2 : branch.id === 'reopened' ? RotateCcw : AlertTriangle
-  const accent = branch.id === 'resolved' ? colors.green : branch.id === 'reopened' ? colors.blue : colors.amber
+  const accent = branch.id === 'resolved' ? colors.green : branch.id === 'reopened' ? colors.brand : colors.amber
   return (
     <section style={{
       background: colors.base, border: `1px solid ${colors.border}`,
@@ -493,7 +493,7 @@ function MultiMeetingTimeline() {
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 background: entry.state === 'resolved' ? 'rgba(39,98,71,0.14)' : 'rgba(51,90,134,0.12)',
                 color: entry.state === 'resolved' ? '#276247' : '#335A86',
-                fontSize: '11px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
               }}>
                 {index + 1}
               </span>
@@ -511,7 +511,7 @@ function MultiMeetingTimeline() {
               }}>
                 {entry.update}
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
                 {entry.note}
               </p>
             </div>

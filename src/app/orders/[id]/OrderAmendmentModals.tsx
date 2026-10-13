@@ -228,7 +228,7 @@ export function AmendOrderModal({
       </OrderField>
 
       <ChangedSummary changed={changed} />
-      {blocked && <div style={{ fontSize: '11.5px', color: colors.muted }}>{blocked}</div>}
+      {blocked && <div style={{ fontSize: '12px', color: colors.muted }}>{blocked}</div>}
 
       <OrderModalActions
         onClose={onClose}
@@ -312,7 +312,7 @@ export function RequestOrderChangeModal({
       </OrderField>
 
       <ChangedSummary changed={changed} />
-      {blocked && <div style={{ fontSize: '11.5px', color: colors.muted }}>{blocked}</div>}
+      {blocked && <div style={{ fontSize: '12px', color: colors.muted }}>{blocked}</div>}
 
       <OrderModalActions
         onClose={onClose}

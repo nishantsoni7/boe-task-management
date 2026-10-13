@@ -100,7 +100,7 @@ export function DeletePayrollModal({
       >
         <div role="alert" style={{
           display: 'flex', gap: 10, padding: '11px 12px', borderRadius: 8,
-          background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(192,57,43,0.25)',
+          background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(180,35,50,0.25)',
         }}>
           <AlertTriangle size={16} strokeWidth={2.2} color="#B42332" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
           <div style={{ fontSize: 12.5, color: colors.secondary, lineHeight: 1.55 }}>
@@ -150,7 +150,7 @@ export function DeletePayrollModal({
     >
       <div role="alert" style={{
         display: 'flex', gap: 10, padding: '11px 12px', borderRadius: 8,
-        background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(192,57,43,0.25)',
+        background: 'rgba(180,35,50,0.09)', border: '1px solid rgba(180,35,50,0.25)',
       }}>
         <AlertTriangle size={16} strokeWidth={2.2} color="#B42332" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
         <div style={{ fontSize: 12.5, color: colors.secondary, lineHeight: 1.55 }}>
@@ -222,7 +222,7 @@ export function DeletePayrollModal({
           aria-label={`Type ${preview.confirmation_text} to confirm deletion`}
           autoComplete="off"
           style={{
-            fontSize: 13, border: `1px solid ${typedMatches ? 'rgba(31,122,77,0.5)' : colors.border}`,
+            fontSize: 13, border: `1px solid ${typedMatches ? 'rgba(39,98,71,0.5)' : colors.border}`,
             borderRadius: 8, background: colors.base, color: colors.primary, outline: 'none',
             padding: '8px 10px', boxSizing: 'border-box', width: '100%',
           }}
@@ -262,7 +262,7 @@ function ScopeList({ heading, tone, items }: { heading: string; tone: string; it
   return (
     <div>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: tone,
+        fontSize: 12, fontWeight: 700, color: tone,
         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5,
       }}>
         {heading}

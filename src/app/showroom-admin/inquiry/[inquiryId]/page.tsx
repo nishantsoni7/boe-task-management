@@ -650,7 +650,7 @@ export default function InquiryDetailPage() {
           }}>
             {/* Header */}
             <div style={{
-              fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
+              fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
               textTransform: 'uppercase', color: '#686D6C',
               marginBottom: '16px',
             }}>
@@ -705,7 +705,7 @@ export default function InquiryDetailPage() {
                         width: '30px', height: '30px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: '#F1EEE9', borderRadius: '8px',
-                        fontSize: '10px', fontWeight: 700, color: '#686D6C',
+                        fontSize: '12px', fontWeight: 700, color: '#686D6C',
                         fontFamily: font.body, flexShrink: 0,
                       }}>
                         #{idx + 1}
@@ -719,7 +719,7 @@ export default function InquiryDetailPage() {
                         <span style={{
                           fontFamily: 'var(--font-body)',
                           fontFeatureSettings: '"tnum" 1',
-                          fontSize: '10px', fontWeight: 700,
+                          fontSize: '12px', fontWeight: 700,
                           color: '#4C5352', background: '#F1EEE9',
                           borderRadius: '6px', padding: '2px 8px',
                           letterSpacing: '0.05em',
@@ -736,7 +736,7 @@ export default function InquiryDetailPage() {
                             display: 'flex', alignItems: 'center', padding: '2px',
                             borderRadius: '6px',
                           }}
-                          onMouseEnter={e => { e.currentTarget.style.color = '#EF4444' }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#B42332' }}
                           onMouseLeave={e => { e.currentTarget.style.color = '#686D6C' }}
                         >
                           <Trash2 size={13} strokeWidth={1.8} />
@@ -828,7 +828,7 @@ export default function InquiryDetailPage() {
                                       Dimensions
                                     </div>
                                     <div style={{
-                                      fontSize: '11px', fontWeight: 600, color: '#4C5352',
+                                      fontSize: '12px', fontWeight: 600, color: '#4C5352',
                                       fontFamily: 'var(--font-body)',
                                       fontFeatureSettings: '"tnum" 1',
                                       whiteSpace: 'nowrap',
@@ -846,7 +846,7 @@ export default function InquiryDetailPage() {
                                     Dimensions
                                   </div>
                                   <div style={{
-                                    fontSize: '11px', fontWeight: 400, color: '#686D6C',
+                                    fontSize: '12px', fontWeight: 400, color: '#686D6C',
                                     fontFamily: 'var(--font-body)',
                                   }}>
                                     Not added
@@ -860,7 +860,7 @@ export default function InquiryDetailPage() {
                             {/* MRP / PC */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#686D6C',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 MRP / PC
@@ -879,7 +879,7 @@ export default function InquiryDetailPage() {
                             {/* QTY */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#686D6C',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 QTY
@@ -908,7 +908,7 @@ export default function InquiryDetailPage() {
                             {/* Line Total */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
-                                fontSize: '9px', fontWeight: 700, color: '#686D6C',
+                                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
                               }}>
                                 Line Total
@@ -936,7 +936,7 @@ export default function InquiryDetailPage() {
                             minHeight: '58px', maxHeight: '64px',
                           }}>
                             <div style={{
-                              fontSize: '9px', fontWeight: 700, color: '#686D6C',
+                              fontSize: '12px', fontWeight: 700, color: '#686D6C',
                               textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px',
                             }}>
                               Customization Note
@@ -1039,14 +1039,14 @@ export default function InquiryDetailPage() {
                         <span style={{
                           fontFamily: 'var(--font-body)',
                           fontFeatureSettings: '"tnum" 1',
-                          fontSize: '10px', fontWeight: 700,
+                          fontSize: '12px', fontWeight: 700,
                           color: '#4C5352', background: 'rgba(0,0,0,0.06)',
                           borderRadius: '6px', padding: '1px 6px', marginRight: '8px',
                         }}>
                           {prod.product_code}
                         </span>
                         <span style={{ fontSize: '13px', color: '#303536', fontWeight: 500 }}>{prod.name}</span>
-                        <span style={{ fontSize: '11px', color: '#686D6C', marginLeft: '6px' }}>{prod.category}</span>
+                        <span style={{ fontSize: '12px', color: '#686D6C', marginLeft: '6px' }}>{prod.category}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         <span style={{
@@ -1072,7 +1072,7 @@ export default function InquiryDetailPage() {
               }}>
                 {/* Section label */}
                 <div style={{
-                  fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
+                  fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em',
                   textTransform: 'uppercase', color: '#686D6C',
                   marginBottom: '20px',
                 }}>
@@ -1189,7 +1189,7 @@ export default function InquiryDetailPage() {
             {/* Quotation number — prominent */}
             <div style={{ marginBottom: '18px' }}>
               <div style={{
-                fontSize: '9.5px', fontWeight: 700, color: '#686D6C',
+                fontSize: '12px', fontWeight: 700, color: '#686D6C',
                 textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '5px',
               }}>
                 Quotation No.
@@ -1288,7 +1288,7 @@ export default function InquiryDetailPage() {
 
               {items.length > 0 && (
                 <p style={{
-                  margin: '0 0 2px', fontSize: '11.5px', color: '#686D6C', lineHeight: 1.5,
+                  margin: '0 0 2px', fontSize: '12px', color: '#686D6C', lineHeight: 1.5,
                 }}>
                   Preview does not change the status. Generating marks the quotation sent.
                 </p>
@@ -1321,7 +1321,7 @@ export default function InquiryDetailPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
                   background: copied ? '#E8F2EC' : '#fff',
-                  color: copied ? '#065F46' : '#4C5352',
+                  color: copied ? '#276247' : '#4C5352',
                   border: `1px solid ${copied ? '#A7F3D0' : '#CFC8BF'}`,
                   borderRadius: '8px',
                   fontSize: '13px', fontWeight: 600,
@@ -1392,7 +1392,7 @@ const sideCardStyle: React.CSSProperties = {
 function SideLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em',
+      fontSize: '12px', fontWeight: 800, letterSpacing: '0.1em',
       textTransform: 'uppercase', color: '#686D6C', marginBottom: '16px',
     }}>
       {children}
@@ -1406,7 +1406,7 @@ function IconDetailRow({ icon, label, value }: { icon: React.ReactNode; label: s
       <div style={{ marginTop: '1px', flexShrink: 0 }}>{icon}</div>
       <div>
         <div style={{
-          fontSize: '9.5px', fontWeight: 700, color: '#686D6C',
+          fontSize: '12px', fontWeight: 700, color: '#686D6C',
           textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '2px',
         }}>
           {label}
@@ -1468,7 +1468,7 @@ function TimelineRow({
           {label}
         </div>
         <div style={{
-          fontSize: '11px', marginTop: '2px',
+          fontSize: '12px', marginTop: '2px',
           color: filled ? '#686D6C' : '#CFC8BF',
           fontFamily: 'var(--font-body)',
         }}>

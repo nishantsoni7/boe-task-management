@@ -216,7 +216,7 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
       {files.length > 0 && (
         <div className="boe-task-gallery-files">
           {images.length > 0 && (
-            <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: 0 }}>
+            <p style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: 0 }}>
               Files
             </p>
           )}
@@ -228,18 +228,18 @@ export function TaskAttachmentGallery({ entries, taskTitle, supabase, onOpenFile
                 title={f.fileName}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px', minWidth: 0, maxWidth: '100%',
-                  fontSize: '11.5px', fontWeight: 500, fontFamily: font.body,
+                  fontSize: '12px', fontWeight: 500, fontFamily: font.body,
                   color: colors.brandInk, cursor: 'pointer',
                   padding: '4px 10px', borderRadius: '6px',
-                  border: `1px solid ${colors.blue}28`,
-                  background: colors.blueTint,
+                  border: `1px solid ${colors.brand}28`,
+                  background: colors.brandTint,
                 }}
               >
                 <Paperclip size={12} aria-hidden style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.fileName}</span>
               </button>
               <span style={{
-                fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+                fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase', color: colors.muted,
                 background: colors.float, border: `1px solid ${colors.border}`,
                 padding: '1px 7px', borderRadius: '12px', flexShrink: 0,

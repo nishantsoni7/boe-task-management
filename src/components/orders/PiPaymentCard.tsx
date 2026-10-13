@@ -55,7 +55,7 @@ function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap',
-      fontSize: '11px', fontWeight: 600,
+      fontSize: '12px', fontWeight: 600,
       color: t.fg, background: t.bg, border: `1px solid ${t.border}`,
     }}>
       {label}
@@ -205,14 +205,14 @@ export type PiPaymentStatusFigures = {
 // ── Add Payment ───────────────────────────────────────────────────────────────
 
 const LABEL: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: colors.secondary, marginBottom: '4px',
+  fontSize: '12px', fontWeight: 600, color: colors.secondary, marginBottom: '4px',
 }
 const INPUT: React.CSSProperties = {
   width: '100%', padding: '8px 10px', fontSize: '13px',
   border: `1px solid ${colors.borderSoft}`, borderRadius: '6px',
   background: colors.base, color: colors.primary, boxSizing: 'border-box',
 }
-const ERR: React.CSSProperties = { fontSize: '11px', color: colors.red, marginTop: '3px' }
+const ERR: React.CSSProperties = { fontSize: '12px', color: colors.red, marginTop: '3px' }
 
 export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   todayIso: string
@@ -312,7 +312,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
         )}
 
         <div style={{
-          fontSize: '11px', color: colors.muted, background: colors.raised,
+          fontSize: '12px', color: colors.muted, background: colors.raised,
           border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 10px',
         }}>
           This records that a payment was received. Finance verifies it separately —
@@ -389,7 +389,7 @@ const SMALL_BUTTON: React.CSSProperties = {
 function Figure({ label, value, tone }: { label: string; value: string; tone?: 'amber' | 'green' }) {
   return (
     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '11px', color: colors.muted }}>{label}</span>
+      <span style={{ fontSize: '12px', color: colors.muted }}>{label}</span>
       <span style={{
         fontSize: '16px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
         color: tone === 'amber' ? '#805B0D' : tone === 'green' ? '#276247' : colors.primary,
@@ -421,7 +421,7 @@ function FilteredTotal({ tone, label, amount, count, share, total }: {
       background: t.bg, border: `1px solid ${t.border}`,
     }}>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <span style={{ fontSize: '11.5px', fontWeight: 600, color: t.fg }}>{label}</span>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: t.fg }}>{label}</span>
         <span style={{
           fontSize: '20px', fontWeight: 700, color: colors.primary,
           fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
@@ -477,7 +477,7 @@ export function PiPaymentRow({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.tertiary }}>
+      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '12px', color: colors.tertiary }}>
         {row.reference && <span>Ref {row.reference}</span>}
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{row.requestNumber}</span>
         {row.recordedBy && <span>Recorded by {row.recordedBy}</span>}
@@ -489,7 +489,7 @@ export function PiPaymentRow({
             onClick={() => onOpenProof(row.paymentId)}
             style={{
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: '11.5px', color: colors.brandInk, textDecoration: 'underline',
+              fontSize: '12px', color: colors.brandInk, textDecoration: 'underline',
             }}
           >
             Proof
@@ -547,7 +547,7 @@ export function PiPaymentRow({
           background: colors.raised, border: `1px solid ${colors.border}`,
           display: 'flex', flexDirection: 'column', gap: '8px',
         }}>
-          <label htmlFor={noteId} style={{ fontSize: '11.5px', fontWeight: 600, color: colors.secondary }}>
+          <label htmlFor={noteId} style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
             {armed === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'}
           </label>
           <textarea
@@ -740,7 +740,7 @@ export function PiPaymentDetailsModal({
               thresholdPercent={status.thresholdPercent}
               label={`Received: ${status.receivedPercent} of the Total before GST, ${status.percent} confirmed`}
             />
-            <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: '12px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
               {status.receivedPercent} received of {status.total} · {status.percent} confirmed
             </div>
           </div>
@@ -804,7 +804,7 @@ export function PiPaymentDetailsModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
             {terms.map(t => (
               <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
+                <div style={{ fontSize: '12px', color: colors.muted }}>{t.label}</div>
                 <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.45 }}>{t.value}</div>
               </div>
             ))}

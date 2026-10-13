@@ -45,14 +45,14 @@ export type MyTaskViewTab = {
 export const ALL_ACTIVE_TASKS_LABEL = 'All Active Tasks'
 
 export const MY_TASK_VIEW_TABS: readonly MyTaskViewTab[] = [
-  { key: 'today_actionable',   label: 'Today Actionable',      accent: '#2F7A52' },
+  { key: 'today_actionable',   label: 'Today Actionable',      accent: '#276247' },
   { key: 'overdue_actionable', label: 'Overdue Actionable',    accent: '#C0551A' },
   { key: 'future_actionable',  label: 'Future Actionable',     accent: '#7C5CBF' },
   { key: 'waiting_blocked',    label: 'Waiting / Blocked',     accent: '#335A86' },
   // Work this user has FINISHED and handed to its creator. Not an actionable
   // tab — nothing here is theirs to move — and the only tab these tasks appear
   // in. The gold matches the pending_approval badge on the task detail page.
-  { key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL, accent: '#A57F14' },
+  { key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL, accent: '#805B0D' },
 ]
 
 export function MyTaskViewTabs({
@@ -114,7 +114,7 @@ export function MyTaskViewTabs({
           >
             {tab.label}
             <span style={{
-              fontSize: '11px', fontWeight: 700,
+              fontSize: '12px', fontWeight: 700,
               padding: '1px 7px', borderRadius: '8px',
               background: isActive ? `${tab.accent}18` : 'rgba(0,0,0,0.05)',
               color: isActive ? tab.accent : colors.muted,

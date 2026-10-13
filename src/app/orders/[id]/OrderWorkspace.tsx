@@ -273,9 +273,9 @@ export function OrderSummaryPanel({ view }: { view: OrderSummaryView }) {
  */
 export const STATUS_PILL_TONE: Record<WorkspaceTone, { bg: string; fg: string; border: string }> = {
   neutral: { bg: colors.raised,    fg: colors.secondary, border: colors.border },
-  blue:    { bg: colors.blueTint,  fg: colors.blue,      border: 'rgba(58,122,190,0.30)' },
+  blue:    { bg: colors.blueTint,  fg: colors.blue,      border: 'rgba(51,90,134,0.30)' },
   green:   { bg: colors.greenTint, fg: '#276247',        border: 'rgba(39,98,71,0.32)' },
-  amber:   { bg: colors.amberTint, fg: '#805B0D',        border: 'rgba(190,140,40,0.30)' },
+  amber:   { bg: colors.amberTint, fg: '#805B0D',        border: 'rgba(196,138,26,0.30)' },
   red:     { bg: colors.redTint,   fg: '#B42332',        border: 'rgba(180,35,50,0.32)' },
 }
 

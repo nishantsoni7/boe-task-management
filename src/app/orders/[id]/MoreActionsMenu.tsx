@@ -107,7 +107,7 @@ export function MoreActionsMenu<K extends string>({ items, onSelect, label, aria
           style={{
             position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100,
             background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: '8px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+            borderRadius: '8px', boxShadow: '0 8px 24px rgba(51,90,134,0.14)',
             minWidth: '224px', padding: '4px 0', overflow: 'hidden',
           }}
         >

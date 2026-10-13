@@ -127,14 +127,14 @@ export function ProjectGroupControl({
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
       <h4 style={{
-        margin: 0, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+        margin: 0, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.05em', color: colors.tertiary,
       }}>
         Project images
       </h4>
 
       {!editable ? (
-        <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
           {ready
             ? 'Project attached. A candidate has picked this review up, so it is now fixed.'
             : 'No project attached, and a candidate is already holding this review.'}
@@ -149,9 +149,9 @@ export function ProjectGroupControl({
           </p>
 
           {groups === null ? (
-            <p style={{ margin: 0, fontSize: '11px', color: colors.muted }}>Loading projects…</p>
+            <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>Loading projects…</p>
           ) : groups.length === 0 ? (
-            <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
               No project group has images yet. Add one in the Image Library, then attach it here.
             </p>
           ) : (

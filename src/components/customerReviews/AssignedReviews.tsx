@@ -51,7 +51,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
       }}>
         {value}
       </div>
-      <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '2px' }}>{label}</div>
+      <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>{label}</div>
     </div>
   )
 }

@@ -132,7 +132,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       padding: '3px 10px', borderRadius: '6px',
-      fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
       background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
     }}>
       {label}
@@ -491,8 +491,8 @@ function orderHeadline({ reservation, confirmedNumber, draftReference }: {
 const CONTEXT_DOT: Record<PiDetailTone, string> = {
   neutral: '#686D6C',
   blue: '#335A86',
-  amber: '#D9A552',
-  green: '#2F7A52',
+  amber: '#C48A1A',
+  green: '#276247',
   red: '#B42332',
 }
 
@@ -922,7 +922,7 @@ function QuotedNote({ heading, body, tone }: {
       padding: '9px 12px', borderRadius: '8px',
       background: ground, border: `1px solid ${border}`,
     }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: headingColor, marginBottom: '2px' }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: headingColor, marginBottom: '2px' }}>
         {heading}
       </div>
       <MultilineText style={{ fontSize: '12px', color: colors.primary, margin: 0 }}>
@@ -1141,7 +1141,7 @@ export function PiWorkflowPanel({
             {panel.heading}
           </div>
           {showMeta && (
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '3px' }}>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px' }}>
               {panel.meta}
             </div>
           )}
@@ -1163,7 +1163,7 @@ export function PiWorkflowPanel({
             </div>
             <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {readinessMissing.map(requirement => (
-                <li key={requirement.key} style={{ fontSize: '11.5px', color: colors.secondary }}>
+                <li key={requirement.key} style={{ fontSize: '12px', color: colors.secondary }}>
                   {requirement.label}
                   {requirement.needsReimport
                     ? ' — a corrected workbook is needed'
@@ -1370,7 +1370,7 @@ export function PiApprovedOrderStrip({ order, onOpen, href = null, acting }: {
       <CheckCircle2 size={16} strokeWidth={2} color={tone.color} />
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
         <span style={{
-          fontSize: '11px', fontWeight: 700, color: colors.muted,
+          fontSize: '12px', fontWeight: 700, color: colors.muted,
           textTransform: 'uppercase', letterSpacing: '0.05em',
         }}>
           {APPROVED_ORDER_HEADING}
@@ -1515,7 +1515,7 @@ export function PiBlockingPanel({ entries }: { entries: readonly PiDiagnosticEnt
       <PiDiagnosticList entries={entries} tone="red" />
       <div style={{
         padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
-        fontSize: '11px', color: colors.muted, lineHeight: 1.5,
+        fontSize: '12px', color: colors.muted, lineHeight: 1.5,
       }}>
         {BLOCKING_INSTRUCTION}
       </div>
@@ -1568,7 +1568,7 @@ export function PiWarningPanel({ entries }: { entries: readonly PiDiagnosticEntr
 const TIMELINE_MARKER: Record<PiActivityTone, string> = {
   neutral: '#686D6C',
   blue: '#C3D3E6',
-  amber: '#D9A552',
+  amber: '#C48A1A',
   green: '#6BB68C',
   red: '#CE7272',
 }
@@ -1653,11 +1653,11 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
                       white, and a muted grey on it would have fallen below the
                       contrast this text had before — quieter must not mean
                       harder to read. */}
-                  <span style={{ fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
                     {entry.at}
                   </span>
                 </div>
-                <div style={{ fontSize: '11.5px', color: colors.tertiary, marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: colors.tertiary, marginTop: '2px' }}>
                   {entry.actor}
                   {entry.figures && (
                     <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>
@@ -1722,7 +1722,7 @@ export function PiLowerGrid({ commercial, activity }: {
 
 export function PiStoredCopyNote() {
   return (
-    <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>
+    <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>
       {STORED_COPY_NOTE}
     </div>
   )

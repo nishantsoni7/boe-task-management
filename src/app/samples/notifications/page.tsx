@@ -22,13 +22,13 @@ import {
 // ─── Event label map ──────────────────────────────────────────────────────────
 
 const EVENT_META: Record<string, { label: string; color: string; bg: string }> = {
-  sample_request_created:   { label: 'New Request',  color: colors.blue,  bg: colors.blueTint  },
+  sample_request_created:   { label: 'New Request',  color: colors.brand,  bg: colors.brandTint  },
   sample_request_approved:  { label: 'Approved',     color: colors.green, bg: colors.greenTint },
   sample_request_rejected:  { label: 'Rejected',     color: colors.red,   bg: colors.redTint   },
-  sample_request_reapplied: { label: 'Reapplied',    color: colors.blue,  bg: colors.blueTint  },
+  sample_request_reapplied: { label: 'Reapplied',    color: colors.brand,  bg: colors.brandTint  },
   sample_request_edited:    { label: 'Edited',       color: colors.muted, bg: colors.float     },
   sample_request_deleted:   { label: 'Deleted',      color: colors.red,   bg: colors.redTint   },
-  sample_qr_submitted:      { label: 'QR Submitted', color: '#7C3AED',    bg: '#EDE9FE'        },
+  sample_qr_submitted:      { label: 'QR Submitted', color: '#335A86',    bg: '#EAF0F8'        },
   sample_dispatched:        { label: 'Dispatched',   color: '#303536',    bg: '#30353614'      },
   sample_followup:          { label: 'Follow-up',    color: colors.muted, bg: colors.float     },
   sample_returned:          { label: 'Returned',     color: colors.green, bg: colors.greenTint },
@@ -50,7 +50,7 @@ function formatTs(iso: string) {
 // blue treatment NotificationsView uses, so a selected row reads identically in
 // both modules. Unselected rows keep Sample Tracking's amber unread accent.
 const rowBackground = (isSelected: boolean, isRead: boolean, hover = false) => {
-  if (isSelected) return 'rgba(51,90,134,0.10)'
+  if (isSelected) return 'rgba(185,71,46,0.10)'
   if (isRead)     return hover ? colors.float : '#fff'
   return hover ? 'rgba(196,138,26,0.08)' : 'rgba(196,138,26,0.04)'
 }
@@ -195,7 +195,7 @@ export default function SampleNotificationsPage() {
     fontSize: '12px', fontWeight: 600,
     fontFamily: font.body,
     transition: 'all 0.15s',
-    border: `1.5px solid ${active ? (danger ? colors.red : colors.blue) : colors.border}`,
+    border: `1.5px solid ${active ? (danger ? colors.red : colors.brand) : colors.border}`,
     background: active && !danger ? colors.brand : 'transparent',
     color: active ? (danger ? colors.red : '#ffffff') : colors.muted,
     cursor: active ? 'pointer' : 'not-allowed',
@@ -305,7 +305,7 @@ export default function SampleNotificationsPage() {
                     display: 'flex', alignItems: 'flex-start',
                     background: rowBackground(isSelected, n.is_read),
                     borderLeft: isSelected
-                      ? `3px solid ${colors.blue}`
+                      ? `3px solid ${colors.brand}`
                       : n.is_read ? '3px solid transparent' : '3px solid #C48A1A',
                     borderBottom: i < rows.length - 1 ? `1px solid ${colors.border}` : 'none',
                     cursor: 'pointer',
@@ -356,7 +356,7 @@ export default function SampleNotificationsPage() {
                   <div style={{ flex: 1, minWidth: 0, padding: '13px 0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
                       <span style={{
-                        fontSize: '10px', fontWeight: 700,
+                        fontSize: '12px', fontWeight: 700,
                         color: em.color, background: em.bg,
                         padding: '1px 7px', borderRadius: '999px',
                         textTransform: 'uppercase', letterSpacing: '0.04em',
@@ -381,7 +381,7 @@ export default function SampleNotificationsPage() {
                         {n.body}
                       </div>
                     )}
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '5px' }}>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '5px' }}>
                       {formatTs(n.created_at)}
                     </div>
                   </div>

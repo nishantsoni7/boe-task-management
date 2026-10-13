@@ -89,8 +89,8 @@ export function ModuleMemberPicker({
               key={m.id}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: '#EAF0F8', color: '#5B21B6',
-                border: '1px solid #DDD6FE', borderRadius: 999,
+                background: '#EAF0F8', color: '#335A86',
+                border: '1px solid #C3D3E6', borderRadius: 999,
                 padding: '3px 6px 3px 10px', fontSize: 12.5, fontWeight: 600,
                 maxWidth: '100%',
               }}
@@ -105,7 +105,7 @@ export function ModuleMemberPicker({
                 title="Remove"
                 style={{
                   border: 'none', background: 'transparent', cursor: 'pointer',
-                  color: '#7C5CD6', fontSize: 13, lineHeight: 1, padding: '0 2px',
+                  color: '#963B27', fontSize: 13, lineHeight: 1, padding: '0 2px',
                 }}
               >
                 ✕
@@ -150,7 +150,7 @@ export function ModuleMemberPicker({
                   {m.full_name ?? m.email ?? m.id}
                 </span>
                 {m.team && (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#686D6C', flexShrink: 0 }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#686D6C', flexShrink: 0 }}>
                     {m.team}
                   </span>
                 )}
@@ -162,13 +162,13 @@ export function ModuleMemberPicker({
         {/* The cap, stated. Without this line a member beyond the eighth is
             indistinguishable from a member who does not exist. */}
         {hidden > 0 && (
-          <div style={{ fontSize: 11.5, color: '#686D6C', padding: '6px 4px 2px' }}>
+          <div style={{ fontSize: 12, color: '#686D6C', padding: '6px 4px 2px' }}>
             {hidden} more {hidden === 1 ? 'member' : 'members'} — type to narrow the list.
           </div>
         )}
       </div>
 
-      <div style={{ fontSize: 11.5, color: '#686D6C', marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: '#686D6C', marginBottom: 16 }}>
         {describeSelection(selected.length)}
       </div>
     </>

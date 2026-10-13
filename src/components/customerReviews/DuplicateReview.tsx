@@ -92,7 +92,7 @@ export function DuplicateBadge({ summary }: { summary: DuplicateSummary | undefi
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
-      fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+      fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
       background: t.bg, color: t.color, border: `1px solid ${t.border}`,
     }}>
       {badge.tone !== 'grey' && <AlertTriangle size={11} strokeWidth={2.4} aria-hidden="true" />}
@@ -192,7 +192,7 @@ export function DuplicatePanel({
 
   return (
     <section aria-label="Possible duplicates" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <h3 style={{ margin: 0, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
+      <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
         Duplicate check
       </h3>
 
@@ -502,7 +502,7 @@ function DuplicateCompareSheet({
                 </button>
               </div>
             )}
-            <p style={{ margin: 0, fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
               <strong>Duplicate</strong> rejects the review and reverses its credit once. <strong>Different review</strong>{' '}changes nothing
               about the review&apos;s status or credit; if it follows a Duplicate decision it removes the duplicate mark but restores no credit.
               A shared name alone cannot be confirmed as a duplicate. If the employee edits the review it is checked again and this decision does not carry over.

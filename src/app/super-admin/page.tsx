@@ -180,7 +180,7 @@ export default function SuperAdminPage() {
       {/* Filter card */}
       <div className="boe-card" style={{ padding: '20px 24px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
             Member
           </label>
           <select value={memberId} onChange={e => setMemberId(e.target.value)} className="boe-input" style={{ fontSize: '13px', width: '100%' }}>
@@ -192,7 +192,7 @@ export default function SuperAdminPage() {
         </div>
 
         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
             Period
           </label>
           <select value={period} onChange={e => setPeriod(e.target.value as PeriodFilter)} className="boe-input" style={{ fontSize: '13px', width: '100%' }}>
@@ -225,7 +225,7 @@ export default function SuperAdminPage() {
               <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, lineHeight: 1.3 }}>
                 Total tasks created: {tasks.length}
               </div>
-              <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+              <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
                 Member: {memberLabel} &bull; Period: {PERIOD_LABELS[period]}
               </div>
             </div>
@@ -274,7 +274,7 @@ export default function SuperAdminPage() {
             padding: '10px 20px',
             background: colors.raised,
             borderBottom: `1px solid ${colors.border}`,
-            fontSize: '10px', fontWeight: 700,
+            fontSize: '12px', fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '0.07em',
             color: colors.muted,
             alignItems: 'center',
@@ -329,7 +329,7 @@ export default function SuperAdminPage() {
                   </div>
                   {task.note && (
                     <div style={{
-                      fontSize: '11.5px', color: colors.muted, marginTop: '3px', lineHeight: 1.4,
+                      fontSize: '12px', color: colors.muted, marginTop: '3px', lineHeight: 1.4,
                       display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
                     }}>
@@ -350,13 +350,13 @@ export default function SuperAdminPage() {
 
                 {/* Status */}
                 <div>
-                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', textTransform: 'capitalize' }}>
+                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '12px', textTransform: 'capitalize' }}>
                     {task.status}
                   </span>
                 </div>
 
                 {/* Created Date */}
-                <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.35 }}>
+                <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.35 }}>
                   {formatDateTime(task.created_at ?? null)}
                 </div>
               </div>

@@ -93,7 +93,7 @@ export function PurgeTestRecord({
           }}>
             {resume ? PURGE_IN_PROGRESS_HEADING : 'Test data'}
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
             {resume
               ? 'Permanent deletion of this record started but did not finish. Continue it to remove the remaining files and the record.'
               : 'This draft has never left internal review. An administrator can remove it entirely.'}
@@ -169,7 +169,7 @@ export function PurgeTestRecord({
             Nothing is kept as a tombstone.
           </p>
 
-          <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
+          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
             Only a draft that was never approved, assigned, booked, shared or submitted can be
             removed this way. A review with BOE Credits attached is refused.
           </p>

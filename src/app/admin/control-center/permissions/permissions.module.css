@@ -31,7 +31,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -84,7 +84,7 @@
 
 .rowText { min-width: 0; flex: 1; }
 .rowName { font-size: 13px; font-weight: 600; color: #303536; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rowSub  { font-size: 11.5px; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowSub  { font-size: 12px; color: #686D6C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rowMuted { opacity: .6; }
 
 /* Workspace header card */
@@ -107,7 +107,7 @@
 .headerStats { display: flex; gap: 22px; }
 .headerStat  { text-align: right; }
 .headerStatValue { font-size: 18px; font-weight: 700; color: #303536; line-height: 1.1; }
-.headerStatLabel { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #686D6C; margin-top: 2px; }
+.headerStatLabel { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #686D6C; margin-top: 2px; }
 
 /* The switch cell: a real checkbox with a readable state word beside it */
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
@@ -117,8 +117,8 @@
 .switchOff { color: #686D6C; }
 
 .unsaved {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  color: #8C6D1F; margin-left: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #805B0D; margin-left: 8px;
 }
 
 /* Sticky save bar under the workspace */
@@ -147,7 +147,7 @@
 .levelOption:hover { border-color: rgba(0,0,0,.25); }
 .levelOptionActive { border-color: #303536; background: #F1EEE9; }
 .levelOptionLabel { font-size: 13px; font-weight: 700; color: #303536; margin-bottom: 2px; }
-.levelOptionDesc  { font-size: 11px; color: #686D6C; line-height: 1.35; }
+.levelOptionDesc  { font-size: 12px; color: #686D6C; line-height: 1.35; }
 
 /* Per-action rows under Custom */
 .actionRow {

@@ -120,7 +120,7 @@ export function OverduePrompt({
               Overdue · {currentIdx + 1} of {total}
             </span>
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               fontFamily: font.mono,
               color: colors.muted,
             }}>
@@ -146,7 +146,7 @@ export function OverduePrompt({
           }}>
             {task.due_date && (
               <span style={{
-                fontSize: '10px',
+                fontSize: '12px',
                 fontFamily: font.mono,
                 color: colors.red,
                 background: 'rgba(180,35,50,0.07)',
@@ -157,7 +157,7 @@ export function OverduePrompt({
               </span>
             )}
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               color: colors.tertiary,
               fontFamily: font.mono,
               textTransform: 'capitalize',
@@ -227,7 +227,7 @@ export function OverduePrompt({
                 autoFocus
               />
               {reasonText.trim().length === 0 && (
-                <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>
+                <p style={{ fontSize: '12px', color: colors.amber, marginTop: '4px' }}>
                   Required — who or what is blocking this task?
                 </p>
               )}
@@ -250,7 +250,7 @@ export function OverduePrompt({
                 autoFocus
               />
               {reasonText.trim().length === 0 && (
-                <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>
+                <p style={{ fontSize: '12px', color: colors.amber, marginTop: '4px' }}>
                   Required — what are you waiting on?
                 </p>
               )}

@@ -13,8 +13,8 @@ import { colors } from '@/lib/tokens'
 import { SUBMISSION_CONFIRM_LABEL } from '@/lib/orders/piInternalDetails'
 import { ORDER_DETAILS_TITLE, orderDetailsAbsent, type OrderDetailsReviewRow } from '@/lib/orders/salesOrderDetails'
 
-const label: React.CSSProperties = { fontSize: '11.5px', fontWeight: 600, color: colors.secondary }
-const fieldError: React.CSSProperties = { fontSize: '11.5px', color: colors.red }
+const label: React.CSSProperties = { fontSize: '12px', fontWeight: 600, color: colors.secondary }
+const fieldError: React.CSSProperties = { fontSize: '12px', color: colors.red }
 
 /** The deduction row's wording, flagged where a client would read it wrongly. */
 export function PiDiscountWordingNotice({ notice }: { notice: string | null }) {
@@ -107,7 +107,7 @@ export function PiSubmissionDetailsReview({ rows, missing, confirmation, confirm
           )}
         </div>
       ) : (
-        <p style={{ margin: '12px 0 0', fontSize: '11.5px', color: colors.secondary, display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <p style={{ margin: '12px 0 0', fontSize: '12px', color: colors.secondary, display: 'flex', gap: '6px', alignItems: 'center' }}>
           <CheckCircle2 size={13} aria-hidden style={{ flexShrink: 0, color: colors.green }} />
           <span>Confirmed{confirmation.confirmedOn ? ` ${confirmation.confirmedOn}` : ''} — nothing here will change.</span>
         </p>

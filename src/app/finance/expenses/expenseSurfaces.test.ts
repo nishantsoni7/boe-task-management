@@ -796,7 +796,50 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   const staged = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'],
     { cwd: process.cwd(), encoding: 'utf8' })
     .split('\n').map(s => unquote(s.slice(3).trim())).filter(Boolean)
-  const touched = new Set([...changed, ...staged])
+
+  /**
+   * THE BOE REBRAND (2026-10). A visual identity change recolours, re-types and
+   * re-rounds files all over the app without changing what any of them does, so
+   * it cannot be listed file by file the way a feature is. A file counts as
+   * PRESENTATION-ONLY when its diff against the base, once colours, token names,
+   * font families and (in style properties) sizes are blanked out, adds exactly
+   * the lines it removes. Such a file is not counted as "touched" here: the
+   * guards below are about behaviour reaching Finance and Orders, and a changed
+   * hex value is not behaviour. A file that adds, removes or rewrites anything
+   * else still counts — the files in ALLOWED_BOE_REBRAND are the hand-written
+   * ones, named one by one.
+   */
+  const STYLE_PROP = /(font-?size|border-?radius|padding|margin|gap|width|height|opacity|letter-?spacing|line-?height|font-?weight|min-|max-)/i
+  const normaliseStyleLine = (line: string, isCss: boolean) => {
+    let l = line.replace(/\r$/, '')
+      .replace(/#[0-9a-fA-F]{3,8}\b/g, '#')
+      .replace(/\b(?:rgba?|hsla?)\([^)]*\)/g, '#')
+      .replace(/\b(?:colors|status|font|radius)\.[A-Za-z]+/g, '#')
+      .replace(/var\(--[a-zA-Z0-9-]+(?:,[^)]*)?\)/g, '#')
+      .replace(/font-family:[^;}\n]*/g, 'fontFamily:')
+      .replace(/fontFamily:\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Za-z_.]+)/g, 'fontFamily:')
+    if (isCss || STYLE_PROP.test(l)) l = l.replace(/-?\d+(?:\.\d+)?(?:px|rem|em|%)?(?![\w])/g, '0')
+    return l.replace(/\s+/g, ' ').trim()
+  }
+  const presentationOnly = (file: string): boolean => {
+    if (!/^src\/.*\.(css|tsx?)$/.test(file)) return false
+    let diff = ''
+    try {
+      diff = execFileSync('git', ['diff', '-U0', '--no-color', 'origin/main', '--', file],
+        { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 1 << 26 })
+    } catch { return false }
+    const isCss = file.endsWith('.css')
+    const removed: string[] = []
+    const added: string[] = []
+    for (const line of diff.split('\n')) {
+      if (line.startsWith('---') || line.startsWith('+++')) continue
+      if (line.startsWith('-')) removed.push(normaliseStyleLine(line.slice(1), isCss))
+      else if (line.startsWith('+')) added.push(normaliseStyleLine(line.slice(1), isCss))
+    }
+    if (removed.length === 0 && added.length === 0) return false
+    return removed.filter(Boolean).sort().join('\n') === added.filter(Boolean).sort().join('\n')
+  }
+  const touched = new Set([...changed, ...staged].filter(f => !presentationOnly(f)))
 
   /** The six production files this feature touches, and why each one. */
   const ALLOWED_EXISTING = new Set([
@@ -3102,6 +3145,37 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/meetings/types.ts',
   ])
 
+  /**
+   * THE BOE REBRAND: the files that change more than a colour, a size or a font
+   * name. The logo assets, the self-hosted fonts and the pieces of the shell,
+   * launcher and shared primitives that were rewritten rather than recoloured.
+   * Everything the rebrand merely recoloured is handled by presentationOnly()
+   * above. Named files only — no Finance or Orders screen, no migration, no
+   * permission.
+   */
+  const ALLOWED_BOE_REBRAND = new Set([
+    'public/branding/boe-icon.png',
+    'public/branding/boe-logo-full.png',
+    'public/branding/boe-logo-white.png',
+    'public/branding/favicon.png',
+    'public/icons/icon-192.png',
+    'public/icons/icon-512.png',
+    'src/app/fonts/Inter-latin-ext-var.woff2',
+    'src/app/fonts/Inter-latin-var.woff2',
+    'src/app/fonts/Manrope-latin-ext-var.woff2',
+    'src/app/fonts/Manrope-latin-var.woff2',
+    'src/app/icon.png',
+    'src/app/layout.tsx',
+    'src/app/login/page.tsx',
+    'src/app/modules/modules.module.css',
+    'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/components/DailyQuoteLoader.tsx',
+    'src/components/layout/BoeBrandIcon.tsx',
+    'src/components/ui/atoms.tsx',
+    'src/components/ui/toast.tsx',
+    'src/lib/tokens.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -3143,6 +3217,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PROOF_VIEW.has(f) &&
     !ALLOWED_TASK_IMAGE_GALLERY.has(f) &&
     !ALLOWED_PERFORMANCE_PARALLEL_READS.has(f) &&
+    !ALLOWED_BOE_REBRAND.has(f) &&
     !ALLOWED_PI_LAYOUT.has(f) &&
     !ALLOWED_DRAWER_TAB_ORDER.has(f) &&
     !ALLOWED_PI_INTERNAL_DETAILS.has(f) &&

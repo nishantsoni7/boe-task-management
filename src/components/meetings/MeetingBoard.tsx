@@ -112,7 +112,7 @@ export function MeetingBoard({
                 {['Order', 'Dispatch', 'Position', 'Earlier meetings', 'This meeting', 'Products', 'Next review', ''].map(h => (
                   <th key={h} style={{
                     padding: '7px 12px', textAlign: 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    fontSize: '12px', fontWeight: 600, color: colors.muted,
                     textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                   }}>{h}</th>
                 ))}
@@ -137,7 +137,7 @@ export function MeetingBoard({
                       <div style={{ fontSize: '14px', fontWeight: 800, color: colors.primary, letterSpacing: '-0.01em' }}>
                         {order.order_number}
                       </div>
-                      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+                      <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
                         {order.customer_name ?? 'No customer recorded'}
                       </div>
                     </td>
@@ -194,7 +194,7 @@ function BoardCard({
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '15px', fontWeight: 800, color: colors.primary }}>{order.order_number}</div>
-          <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '1px' }}>
+          <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>
             {order.customer_name ?? 'No customer recorded'}
             {order.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(order.expected_dispatch_date)}`}
           </div>
@@ -206,7 +206,7 @@ function BoardCard({
       </div>
       <div style={{
         display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '7px',
-        fontSize: '11.5px', color: colors.muted,
+        fontSize: '12px', color: colors.muted,
       }}>
         <EarlierLine earlier={earlier} order={order} />
         <ProductsLine items={items} />
@@ -253,7 +253,7 @@ function TodayLine({ state, latestUpdate }: { state: DiscussionState | undefined
       </div>
       {latestUpdate && (
         <div style={{
-          fontSize: '11.5px', color: colors.secondary, marginTop: '3px', lineHeight: 1.4,
+          fontSize: '12px', color: colors.secondary, marginTop: '3px', lineHeight: 1.4,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>
           {latestUpdate}

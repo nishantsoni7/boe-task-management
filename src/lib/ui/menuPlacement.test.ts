@@ -1377,7 +1377,7 @@ describe('the allocation status reads as a status, not a button', () => {
     // competing with the figures beside it, in a table whose muted text is 11px
     // and whose cells are 12px.
     const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
-    assert.ok(chip.includes("fontSize: '10.5px'"), 'smaller than the row’s own text')
+    assert.ok(chip.includes("fontSize: '12px'"), 'smaller than the row’s own text')
     assert.ok(chip.includes("padding: '1px 6px'"), 'and barely padded')
     assert.ok(chip.includes("borderRadius: '6px'"))
   })

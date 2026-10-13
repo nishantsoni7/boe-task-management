@@ -27,7 +27,7 @@
 import { buildDateSummary, telLink } from './[submissionId]/piDetailView'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { UPLOAD_PI_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
@@ -1477,42 +1477,46 @@ describe('thumbnails are large enough to tell two chairs apart', () => {
 })
 
 // ── The font build fix ────────────────────────────────────────────────────────
+//
+// History: Syne was once fetched from Google at build time and the production
+// build failed to resolve it. The identity now uses Manrope (headings) and Inter
+// (everything else), both self-hosted variable fonts under src/app/fonts and
+// loaded through next/font/local, so the build never reaches the network for type.
 
-describe('no font is fetched from Google for the display face', () => {
+describe('type is self-hosted: nothing is fetched from Google at build time', () => {
   const layout = read(ROOT_LAYOUT)
   const css = read(GLOBALS_CSS)
 
-  test('Syne is no longer loaded through next/font/google', () => {
-    // This is the exact module the production build failed to resolve:
-    //   [next]/internal/font/google/syne_aea35505.module.css
-    assert.ok(!/import \{[^}]*\bSyne\b[^}]*\} from 'next\/font\/google'/.test(layout),
-      'the Syne loader must be gone from the import')
-    assert.ok(!layout.includes('Syne({'), 'and no loader call may remain')
-    assert.ok(!layout.includes('syne.variable'), 'nor the variable it produced')
+  test('no family is loaded through next/font/google', () => {
+    assert.ok(!layout.includes('next/font/google'),
+      'a build-time font fetch is the failure mode this guards against')
+    assert.ok(!layout.includes('Syne('), 'the Syne loader stays gone')
   })
 
-  test('the families that did build are untouched', () => {
-    assert.ok(layout.includes("import { DM_Sans, DM_Mono, Inter } from 'next/font/google'"),
-      'only the family that failed was removed')
-    for (const v of ['dmSans.variable', 'dmMono.variable', 'inter.variable']) {
-      assert.ok(layout.includes(v), `${v} must still be applied`)
+  test('Manrope and Inter are loaded locally and applied to the root element', () => {
+    assert.ok(layout.includes("import localFont from 'next/font/local'"))
+    assert.ok(layout.includes("'./fonts/Manrope-latin-var.woff2'"))
+    assert.ok(layout.includes("'./fonts/Inter-latin-var.woff2'"))
+    for (const v of ['manrope.variable', 'inter.variable']) {
+      assert.ok(layout.includes(v), v + ' must be applied')
     }
   })
 
-  test('display text falls back to a face the app actually loads', () => {
-    assert.ok(css.includes("--font-display: 'Syne', var(--font-body), sans-serif;"),
-      'a locally-installed Syne is still preferred; otherwise the app’s own body face')
-    const hardCoded = css.match(/font-family: 'Syne'/g) ?? []
-    assert.equal(hardCoded.length, 0,
-      'no rule may ask for a family name that nothing registers')
+  test('the only font binaries are the four committed variable fonts', () => {
+    const files = readdirSync(join(ROOT, 'src/app/fonts')).sort()
+    assert.deepEqual(files, [
+      'Inter-latin-ext-var.woff2', 'Inter-latin-var.woff2',
+      'Manrope-latin-ext-var.woff2', 'Manrope-latin-var.woff2',
+    ])
   })
 
-  test('no font binary was added to the repository', () => {
-    // Fetching a brand face from an unverified source is not a decision a build
-    // fix gets to make. If Syne is wanted back, a licensed file plus
-    // next/font/local is the supported route.
-    assert.ok(!layout.includes('next/font/local'),
-      'no local loader was introduced without a licensed file to point it at')
+  test('display text is Manrope and the rupee sign falls through to the latin-ext files', () => {
+    assert.ok(css.includes("--font-display: var(--boe-font-heading);"))
+    assert.ok(css.includes("font-family: 'BOE Inter Ext';"))
+    assert.ok(css.includes('unicode-range:'), 'the latin-ext files download only when a glyph needs them')
+    for (const gone of ["'DM Sans'", "'DM Mono'", "font-family: 'Syne'"]) {
+      assert.ok(!css.includes(gone), gone + ' is no longer a typeface of this app')
+    }
   })
 })
 

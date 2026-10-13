@@ -40,7 +40,7 @@ function PerformanceProgressLoader({ progress }: { progress: number }) {
         <div style={{ width: '100%', height: 6, background: '#F1EEE9', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{
             width: `${pct}%`, height: '100%',
-            background: 'linear-gradient(90deg, #335A86, #2F7A52)',
+            background: 'linear-gradient(90deg, #335A86, #276247)',
             borderRadius: 999, transition: 'width 0.25s ease',
           }} />
         </div>
@@ -57,11 +57,11 @@ function ScoreRing({ score, rating }: { score: number; rating: string }) {
   const dash = circ * (score / 100)
 
   const ringColor = {
-    excellent:         '#2F7A52',
+    excellent:         '#276247',
     good:              '#335A86',
     average:           '#C48A1A',
     needs_improvement: '#B42332',
-    critical:          '#B03030',
+    critical:          '#B42332',
   }[rating] ?? '#686D6C'
 
   const label = {
@@ -142,7 +142,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
     )
   }
 
-  const verdictColor = audit.progressive ? '#2F7A52' : audit.progressiveLabel === 'Moderate Day' ? '#C48A1A' : '#B42332'
+  const verdictColor = audit.progressive ? '#276247' : audit.progressiveLabel === 'Moderate Day' ? '#C48A1A' : '#B42332'
 
   return (
     <div style={{ background: '#fff', border: '1px solid #F1EEE9', borderRadius: 8, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -152,13 +152,13 @@ function AuditPanel({ audit, loading, onGenerate }: {
           <span style={{ fontSize: 13, fontWeight: 600, color: '#303536' }}>Today&apos;s Reflection</span>
         </div>
         <span style={{
-          fontSize: 11, fontWeight: 600, color: verdictColor,
+          fontSize: 12, fontWeight: 600, color: verdictColor,
           background: verdictColor + '18', padding: '3px 10px', borderRadius: 999,
         }}>{audit.progressiveLabel}</span>
       </div>
       <p style={{ margin: 0, fontSize: 13, color: '#4C5352', lineHeight: 1.6 }}>{audit.verdict}</p>
       <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Insights</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Insights</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {audit.insights.map((insight, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -169,12 +169,12 @@ function AuditPanel({ audit, loading, onGenerate }: {
         </div>
       </div>
       <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>How to improve</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>How to improve</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {audit.suggestions.map((s, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <div style={{
-                fontSize: 10, fontWeight: 700, color: '#C48A1A',
+                fontSize: 12, fontWeight: 700, color: '#C48A1A',
                 background: '#C48A1A18', borderRadius: 6,
                 padding: '1px 5px', marginTop: 2, flexShrink: 0,
               }}>{i + 1}</div>
@@ -187,7 +187,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
         onClick={onGenerate}
         style={{
           alignSelf: 'flex-start',
-          fontSize: 11, fontWeight: 500, color: '#686D6C',
+          fontSize: 12, fontWeight: 500, color: '#686D6C',
           background: 'transparent', border: '1px solid #F1EEE9',
           borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
         }}
@@ -250,7 +250,7 @@ function TodayCoach({ data }: { data: PerformanceData }) {
     }}>
       {/* Header row with score */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Today&apos;s Coach
         </div>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#303536' }}>{score}/100</div>
@@ -258,13 +258,13 @@ function TodayCoach({ data }: { data: PerformanceData }) {
 
       {strong.length > 0 && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#2F7A52', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Strong</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#276247', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Strong</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {strong.map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color: '#2F7A52',
-                  background: '#2F7A5218', borderRadius: 6, padding: '1px 5px', flexShrink: 0,
+                  fontSize: 12, fontWeight: 700, color: '#276247',
+                  background: '#27624718', borderRadius: 6, padding: '1px 5px', flexShrink: 0,
                 }}>✓</span>
                 <span style={{ fontSize: 12, color: '#4C5352', lineHeight: 1.5 }}>{s}</span>
               </div>
@@ -275,7 +275,7 @@ function TodayCoach({ data }: { data: PerformanceData }) {
 
       {improve.length > 0 ? (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Next Steps</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Next Steps</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {/* First item prominently styled */}
             <div style={{
@@ -288,7 +288,7 @@ function TodayCoach({ data }: { data: PerformanceData }) {
                 <span style={{ fontSize: 12.5, color: '#303536', fontWeight: 500, lineHeight: 1.5 }}>{improve[0].text}</span>
               </div>
               <span style={{
-                fontSize: 10, fontWeight: 700, color: '#335A86',
+                fontSize: 12, fontWeight: 700, color: '#335A86',
                 background: '#335A8618', borderRadius: 6, padding: '2px 6px', flexShrink: 0, marginTop: 2,
               }}>+{improve[0].pts}</span>
             </div>
@@ -296,7 +296,7 @@ function TodayCoach({ data }: { data: PerformanceData }) {
             {improve.slice(1).map((item, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingLeft: 2 }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color: '#335A86',
+                  fontSize: 12, fontWeight: 700, color: '#335A86',
                   background: '#335A8618', borderRadius: 6, padding: '1px 5px', flexShrink: 0, marginTop: 2,
                 }}>+{item.pts}</span>
                 <span style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.5 }}>{item.text}</span>
@@ -305,7 +305,7 @@ function TodayCoach({ data }: { data: PerformanceData }) {
           </div>
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: '#2F7A52', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 12, color: '#276247', lineHeight: 1.6 }}>
           You&apos;ve done everything right today. Nothing left to improve — great work.
         </div>
       )}
@@ -315,10 +315,10 @@ function TodayCoach({ data }: { data: PerformanceData }) {
         borderTop: '1px solid #F1EEE9', paddingTop: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontSize: 11, color: '#686D6C' }}>Potential score today</span>
+        <span style={{ fontSize: 12, color: '#686D6C' }}>Potential score today</span>
         <span style={{
           fontSize: 15, fontWeight: 700,
-          color: potentialScore > score ? '#335A86' : '#2F7A52',
+          color: potentialScore > score ? '#335A86' : '#276247',
         }}>{potentialScore}/100</span>
       </div>
 
@@ -346,13 +346,13 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
         }}
       >
         {compact
-          ? <span style={{ fontSize: 11, color: '#686D6C', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+          ? <span style={{ fontSize: 12, color: '#686D6C', textDecoration: 'underline', textUnderlineOffset: 2 }}>
               How scoring works {open ? '↑' : '→'}
             </span>
           : <>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: '#4C5352' }}>How is this score calculated?</span>
               <span style={{
-                fontSize: 11, color: '#686D6C',
+                fontSize: 12, color: '#686D6C',
                 transform: open ? 'rotate(180deg)' : 'none',
                 transition: 'transform 0.2s', display: 'inline-block',
               }}>▾</span>
@@ -362,7 +362,7 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
       {open && (
         <div style={{ padding: compact ? '10px 0 0' : '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16, borderTop: compact ? 'none' : '1px solid #F1EEE9' }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#2F7A52', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#276247', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, marginTop: 12 }}>
               ✓ You gain points when you…
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -375,14 +375,14 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
                 { pts: '+5',        text: 'Stay active — any task action counts' },
               ].map(({ pts, text }) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#2F7A52', background: '#2F7A5215', borderRadius: 6, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#276247', background: '#27624715', borderRadius: 6, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
                   <span style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.5 }}>{text}</span>
                 </div>
               ))}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#B42332', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#B42332', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
               ✗ You lose points when you have…
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -391,14 +391,14 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
                 { pts: '−8 each', text: 'A task stuck as Blocked for more than 2 days with no update' },
               ].map(({ pts, text }) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#B42332', background: '#B4233212', borderRadius: 6, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#B42332', background: '#B4233212', borderRadius: 6, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
                   <span style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.5 }}>{text}</span>
                 </div>
               ))}
             </div>
           </div>
           <div style={{ background: '#FBFAF8', borderRadius: 8, padding: '10px 14px', border: '1px solid #F1EEE9' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#335A86', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
               Daily habit to keep a good score
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -410,7 +410,7 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
                 'Submit your EOD log before you close your laptop.',
               ].map((tip, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 11, color: '#335A86', flexShrink: 0, marginTop: 2 }}>›</span>
+                  <span style={{ fontSize: 12, color: '#335A86', flexShrink: 0, marginTop: 2 }}>›</span>
                   <span style={{ fontSize: 12.5, color: '#4C5352', lineHeight: 1.5 }}>{tip}</span>
                 </div>
               ))}
@@ -484,16 +484,16 @@ function EodLogForm({ existing, token, onSaved, readOnly }: {
         <div style={{ fontSize: 13, fontWeight: 600, color: '#303536', display: 'flex', alignItems: 'center', gap: 8 }}>
           End-of-Day Log
           {isSaved && (
-            <span style={{ fontSize: 11, fontWeight: 500, color: '#2F7A52', background: '#2F7A5215', padding: '2px 8px', borderRadius: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: '#276247', background: '#27624715', padding: '2px 8px', borderRadius: 6 }}>
               ✓ Saved just now
             </span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: '#686D6C' }}>+12 pts discipline</div>
+        <div style={{ fontSize: 12, color: '#686D6C' }}>+12 pts discipline</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#686D6C', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#686D6C', display: 'block', marginBottom: 4 }}>
             Today&apos;s Key Work Done <span style={{ color: '#B42332' }}>*</span>
           </label>
           <textarea
@@ -512,7 +512,7 @@ function EodLogForm({ existing, token, onSaved, readOnly }: {
           />
         </div>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#686D6C', display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#686D6C', display: 'block', marginBottom: 6 }}>
             How was your day?
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -565,7 +565,7 @@ function DayScoreModal({ day, onClose }: { day: SelectedDay; onClose: () => void
   const hasBreakdown = !!trendDay
   const total = hasBreakdown ? trendDay!.breakdown.total : status === 'submitted' ? 12 : status === 'missed' ? -12 : 0
 
-  const scoreColor = total >= 70 ? '#2F7A52' : total >= 50 ? '#335A86' : total >= 30 ? '#C48A1A' : '#B42332'
+  const scoreColor = total >= 70 ? '#276247' : total >= 50 ? '#335A86' : total >= 30 ? '#C48A1A' : '#B42332'
 
   return (
     <div
@@ -615,7 +615,7 @@ function DayScoreModal({ day, onClose }: { day: SelectedDay; onClose: () => void
           const totalCompleted = inp.completedHigh + inp.completedMedium + inp.completedLow
           const rows: { label: string; value: string; max: string; sub: string; color: string }[] = [
             {
-              label: 'Output', value: String(bd.output), max: '50', color: bd.output >= 30 ? '#2F7A52' : '#686D6C',
+              label: 'Output', value: String(bd.output), max: '50', color: bd.output >= 30 ? '#276247' : '#686D6C',
               sub: totalCompleted > 0
                 ? `${inp.completedHigh}H · ${inp.completedMedium}M · ${inp.completedLow}L completed`
                 : 'No tasks completed',
@@ -625,27 +625,27 @@ function DayScoreModal({ day, onClose }: { day: SelectedDay; onClose: () => void
               sub: inp.statusUpdates > 0 ? `${inp.statusUpdates} task update${inp.statusUpdates > 1 ? 's' : ''}` : 'No task updates posted',
             },
             {
-              label: 'Discipline', value: String(bd.discipline), max: '20', color: inp.hasEodLog ? '#2F7A52' : '#B42332',
+              label: 'Discipline', value: String(bd.discipline), max: '20', color: inp.hasEodLog ? '#276247' : '#B42332',
               sub: inp.hasEodLog ? 'EOD log submitted' : 'EOD log not submitted',
             },
             {
-              label: 'Risk', value: bd.risk === 0 ? '✓' : String(bd.risk), max: '', color: bd.risk < 0 ? '#B42332' : '#2F7A52',
+              label: 'Risk', value: bd.risk === 0 ? '✓' : String(bd.risk), max: '', color: bd.risk < 0 ? '#B42332' : '#276247',
               sub: bd.risk === 0 ? 'No overdue or stale blocked tasks' : 'Overdue / stale blocked tasks',
             },
           ]
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Score Breakdown</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Score Breakdown</div>
               {rows.map(r => (
                 <div key={r.label} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '7px 0', borderBottom: '1px solid #F7F5F1',
                 }}>
-                  <div style={{ width: 72, fontSize: 11, color: '#686D6C', fontWeight: 500 }}>{r.label}</div>
+                  <div style={{ width: 72, fontSize: 12, color: '#686D6C', fontWeight: 500 }}>{r.label}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: r.color, width: 40 }}>
-                    {r.value}{r.max ? <span style={{ fontSize: 10, color: '#686D6C', fontWeight: 400 }}>/{r.max}</span> : ''}
+                    {r.value}{r.max ? <span style={{ fontSize: 12, color: '#686D6C', fontWeight: 400 }}>/{r.max}</span> : ''}
                   </div>
-                  <div style={{ fontSize: 11.5, color: '#686D6C', flex: 1 }}>{r.sub}</div>
+                  <div style={{ fontSize: 12, color: '#686D6C', flex: 1 }}>{r.sub}</div>
                 </div>
               ))}
             </div>
@@ -837,12 +837,12 @@ function MonthlyView({ token, which, viewAsUserId }: {
             label: 'Monthly Avg Score',
             value: monthlyAvgScore !== null ? String(monthlyAvgScore) : '—',
             valueColor: monthlyAvgScore === null ? '#686D6C'
-              : monthlyAvgScore >= 70 ? '#2F7A52'
+              : monthlyAvgScore >= 70 ? '#276247'
               : monthlyAvgScore >= 50 ? '#335A86'
               : monthlyAvgScore >= 35 ? '#C48A1A'
               : '#B42332',
           },
-          { label: 'Submitted', value: String(submittedDays.length), valueColor: '#2F7A52' },
+          { label: 'Submitted', value: String(submittedDays.length), valueColor: '#276247' },
           { label: 'Missed',    value: String(missedDays.length),    valueColor: missedDays.length > 0 ? '#B42332' : '#686D6C' },
         ].map(({ label, value, valueColor }, i) => (
           <div key={label} style={{
@@ -850,7 +850,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
             display: 'flex', alignItems: 'center', gap: 8,
             borderLeft: i > 0 ? '1px solid #F1EEE9' : 'none',
           }}>
-            <span style={{ fontSize: 11, color: '#686D6C', fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</span>
+            <span style={{ fontSize: 12, color: '#686D6C', fontWeight: 500, whiteSpace: 'nowrap' }}>{label}</span>
             <span style={{ fontSize: 16, fontWeight: 700, color: valueColor, lineHeight: 1 }}>{value}</span>
           </div>
         ))}
@@ -878,7 +878,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
                 ].map(({ label, width }) => (
                   <th key={label} style={{
                     padding: '9px 16px', textAlign: 'left', width,
-                    fontSize: 10, fontWeight: 600, color: '#686D6C',
+                    fontSize: 12, fontWeight: 600, color: '#686D6C',
                     textTransform: 'uppercase', letterSpacing: '0.06em',
                     whiteSpace: 'nowrap',
                   }}>{label}</th>
@@ -896,8 +896,8 @@ function MonthlyView({ token, which, viewAsUserId }: {
                 const result: { label: string; color: string; bg: string } =
                   status === 'pending'   ? { label: 'Today',            color: '#C48A1A', bg: '#C48A1A12' } :
                   status === 'missed'    ? { label: 'Missed EOD',       color: '#B42332', bg: '#B423320E' } :
-                  resultScore === null   ? { label: 'Submitted',        color: '#2F7A52', bg: '#2F7A5212' } :
-                  resultScore >= 70      ? { label: 'Great Day',        color: '#2F7A52', bg: '#2F7A5212' } :
+                  resultScore === null   ? { label: 'Submitted',        color: '#276247', bg: '#27624712' } :
+                  resultScore >= 70      ? { label: 'Great Day',        color: '#276247', bg: '#27624712' } :
                   resultScore >= 50      ? { label: 'Good Day',         color: '#335A86', bg: '#335A8612' } :
                   resultScore >= 35      ? { label: 'Low Activity',     color: '#C48A1A', bg: '#C48A1A12' } :
                                           { label: 'Needs Improvement', color: '#B42332', bg: '#B423320E' }
@@ -942,8 +942,8 @@ function MonthlyView({ token, which, viewAsUserId }: {
                           : null
                         if (scoreVal === null) return <span style={{ color: '#686D6C' }}>—</span>
                         const scoreColor = trendDay
-                          ? (scoreVal >= 70 ? '#2F7A52' : scoreVal >= 50 ? '#335A86' : scoreVal >= 35 ? '#C48A1A' : '#B42332')
-                          : (status === 'submitted' ? '#2F7A52' : '#B42332')
+                          ? (scoreVal >= 70 ? '#276247' : scoreVal >= 50 ? '#335A86' : scoreVal >= 35 ? '#C48A1A' : '#B42332')
+                          : (status === 'submitted' ? '#276247' : '#B42332')
                         const label = trendDay ? String(scoreVal) : scoreVal > 0 ? `+${scoreVal}` : String(scoreVal)
                         return (
                           <button
@@ -962,7 +962,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
                     <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
                       <span style={{
                         display: 'inline-block',
-                        fontSize: 11, fontWeight: 600,
+                        fontSize: 12, fontWeight: 600,
                         color: result.color, background: result.bg,
                         padding: '3px 9px', borderRadius: 6,
                         letterSpacing: '0.01em',
@@ -1291,8 +1291,8 @@ export default function PerformancePage() {
                         <ScoreRing score={perfTodayData.score} rating={perfTodayData.rating} />
                         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 10, color: '#686D6C' }}>EOD Submitted</span>
-                            <span style={{ fontSize: 10, fontWeight: 600, color: perfTodayData.inputs.hasEodLog ? '#2F7A52' : '#B42332' }}>
+                            <span style={{ fontSize: 12, color: '#686D6C' }}>EOD Submitted</span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: perfTodayData.inputs.hasEodLog ? '#276247' : '#B42332' }}>
                               {eodSubmittedTime ?? 'Not yet'}
                             </span>
                           </div>
@@ -1303,7 +1303,7 @@ export default function PerformancePage() {
 
                   {/* Breakdown */}
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#686D6C', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       Score Components
                     </div>
                     {(() => {
@@ -1321,7 +1321,7 @@ export default function PerformancePage() {
                           sub: outputGap > 0
                             ? `${totalCompleted} task${totalCompleted !== 1 ? 's' : ''} · ${outputGap} pts to max`
                             : `${totalCompleted} task${totalCompleted !== 1 ? 's' : ''} · full score`,
-                          color: perfTodayData.breakdown.output >= 30 ? '#2F7A52' : '#686D6C',
+                          color: perfTodayData.breakdown.output >= 30 ? '#276247' : '#686D6C',
                         },
                         {
                           label: 'Momentum',
@@ -1337,7 +1337,7 @@ export default function PerformancePage() {
                           sub: perfTodayData.inputs.hasEodLog
                             ? (eodTime ? `Submitted at ${eodTime}` : '✓ EOD submitted')
                             : 'Not submitted · +12 pts available',
-                          color: perfTodayData.inputs.hasEodLog ? '#2F7A52' : '#B42332',
+                          color: perfTodayData.inputs.hasEodLog ? '#276247' : '#B42332',
                         },
                         {
                           label: 'Risk',
@@ -1345,7 +1345,7 @@ export default function PerformancePage() {
                           sub: perfTodayData.breakdown.risk === 0
                             ? 'No overdue tasks'
                             : `${perfTodayData.inputs.overdueCount} overdue · ${perfTodayData.inputs.staleBlockedCount} stale`,
-                          color: perfTodayData.breakdown.risk < 0 ? '#B42332' : '#2F7A52',
+                          color: perfTodayData.breakdown.risk < 0 ? '#B42332' : '#276247',
                         },
                       ]
 
@@ -1358,9 +1358,9 @@ export default function PerformancePage() {
                         }}>
                           {rows.map(({ label, value, sub, color }) => (
                             <React.Fragment key={label}>
-                              <div style={{ fontSize: 11, color: '#686D6C' }}>{label}</div>
+                              <div style={{ fontSize: 12, color: '#686D6C' }}>{label}</div>
                               <div style={{ fontSize: 14, fontWeight: 700, color }}>{value}</div>
-                              {!isMobile && <div style={{ fontSize: 11, color: '#686D6C', lineHeight: 1.3 }}>{sub}</div>}
+                              {!isMobile && <div style={{ fontSize: 12, color: '#686D6C', lineHeight: 1.3 }}>{sub}</div>}
                             </React.Fragment>
                           ))}
                         </div>

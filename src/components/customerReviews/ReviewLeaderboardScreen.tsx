@@ -41,7 +41,7 @@ import {
 const TOP_ROWS = 10
 
 const th: React.CSSProperties = {
-  padding: '6px 8px', textAlign: 'right', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em',
+  padding: '6px 8px', textAlign: 'right', fontSize: '12px', fontWeight: 700, letterSpacing: '0.03em',
   textTransform: 'uppercase', color: colors.secondary, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
 }
 const td: React.CSSProperties = {
@@ -154,7 +154,7 @@ export function ReviewLeaderboardScreen() {
               <Table rows={data.rows} showAll={showAll} onToggle={() => setShowAll(v => !v)} />
             )}
 
-            <p style={{ margin: 0, fontSize: 11.5, color: colors.muted, lineHeight: 1.55 }}>
+            <p style={{ margin: 0, fontSize: 12, color: colors.muted, lineHeight: 1.55 }}>
               Ranked by reward-eligible reviews in {label}: approved reviews with a credit the ledger has not reversed — not deleted, rejected, confirmed duplicates, or edited reviews still awaiting re-approval. Equal counts share a rank.
               Review credits are shown separately from points; points are review credits ÷ {CREDITS_PER_POINT} for the month (10 credits = 1 point) and
               start again each month. They are not your performance score.
@@ -212,10 +212,10 @@ function Table({ rows, showAll, onToggle }: { rows: LeaderboardRow[]; showAll: b
 
 function Row({ row }: { row: LeaderboardRow }) {
   return (
-    <tr aria-current={row.is_me ? 'true' : undefined} style={{ background: row.is_me ? 'rgba(79,111,208,0.08)' : undefined }}>
+    <tr aria-current={row.is_me ? 'true' : undefined} style={{ background: row.is_me ? 'rgba(51,90,134,0.08)' : undefined }}>
       <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>
         {row.rank}
-        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: colors.muted }}>tied</span>}
+        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, color: colors.muted }}>tied</span>}
       </td>
       <td style={{ ...td, textAlign: 'left', fontWeight: row.is_me ? 700 : 500, overflowWrap: 'anywhere' }}>
         {row.name}{row.is_me ? ' (you)' : ''}

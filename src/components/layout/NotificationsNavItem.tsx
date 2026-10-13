@@ -53,7 +53,7 @@ export function NotificationsNavItem({
           aria-hidden="true"
           style={{
             marginLeft: 'auto',
-            fontSize: '10px', fontWeight: 700, color: '#fff',
+            fontSize: '12px', fontWeight: 700, color: '#fff',
             background: '#B9472E', borderRadius: '999px',
             padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
           }}

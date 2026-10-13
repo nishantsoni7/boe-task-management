@@ -997,7 +997,7 @@ const closedHtml = (over: Partial<StatusCardProps> = {}) =>
 // piPaymentDetails.render.test.tsx.
 const segment = (html: string, name: 'confirmed' | 'awaiting' | 'unpaid') =>
   html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
-const GREEN = 'background:#2F7A52'
+const GREEN = 'background:#276247'
 const AMBER = 'background:#C48A1A'
 const RED = 'background:#B42332'
 
@@ -2944,7 +2944,7 @@ describe('the commercial breakdown outranks the activity trail', () => {
 
   test('the money card is warm-bordered and softly raised; the trail is neither', () => {
     assert.ok(commercial.includes('border-color:rgba(196,138,26,0.30)'), 'a warm hairline')
-    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(16,24,40,0.05)'), 'shallow and low-opacity')
+    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(51,90,134,0.05)'), 'shallow and low-opacity')
     assert.ok(activity.includes('border-color:#E4DED7'), 'a neutral grey hairline')
     assert.ok(activity.includes('box-shadow:none'))
     // Restraint: no gradient, no filled bar, no decorative icon on the money card.
@@ -2995,7 +2995,7 @@ describe('the commercial breakdown outranks the activity trail', () => {
   })
 
   test('the markers are softened, and never the only channel', () => {
-    const softened = ['#686D6C', '#C3D3E6', '#D9A552', '#6BB68C', '#CE7272']
+    const softened = ['#686D6C', '#C3D3E6', '#C48A1A', '#6BB68C', '#CE7272']
     const sections = read(SECTIONS)
     for (const tone of softened) {
       assert.ok(sections.includes(tone), `${tone} must be one of the five markers`)
@@ -3216,9 +3216,9 @@ describe('the layout is CSS, at real breakpoints', () => {
       assert.ok(body.includes('color: #FFFFFF'), `white text and icon${state ? ` on ${state}` : ''}`)
     }
     assert.ok(rule('.boe-btn-primary.pi-approve-btn').includes('background: #276247'))
-    assert.ok(rule('.boe-btn-primary.pi-approve-btn:focus-visible').includes('outline: 2px solid #1F5A3A'))
+    assert.ok(rule('.boe-btn-primary.pi-approve-btn:focus-visible').includes('outline: 2px solid #276247'))
     const disabled = rule('.boe-btn-primary.pi-approve-btn:disabled')
-    assert.ok(disabled.includes('background: #E3F0E8') && disabled.includes('color: #1F5A3A'),
+    assert.ok(disabled.includes('background: #E3F0E8') && disabled.includes('color: #276247'),
       'disabled: pale green with dark-green text, never grey text on the green ground')
     assert.ok(css.indexOf('.boe-btn-primary.pi-approve-btn:disabled') > css.indexOf('.boe-btn-primary.pi-approve-btn:hover'),
       'the disabled rule comes last, so hovering a disabled control changes nothing')
