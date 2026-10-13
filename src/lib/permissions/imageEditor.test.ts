@@ -151,7 +151,7 @@ describe('the administrator convention is preserved', () => {
 describe('registration', () => {
   test('the module is engine-gated', () => {
     assert.ok((ENGINE_GATED_MODULE_KEYS as readonly string[]).includes(IMAGE_EDITOR_MODULE_KEY))
-    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 11)
+    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 12) // + inventory (20270313000000)
   })
 
   test('the key is spelled once and shared', () => {
@@ -192,7 +192,9 @@ describe('the Control Center label', () => {
     assert.ok(map.includes('image_editor'), 'the override must be module-scoped')
     // Exactly one module is overridden, and the fallback chain leaves every
     // other module reading permission_actions.display_name — 'Create'.
-    assert.equal((map.match(/create:/g) ?? []).length, 1)
+    // Two modules relabel `create`: this one ('Use') and Inventory ('Add products', 20270313000000).
+    assert.equal((map.match(/create:/g) ?? []).length, 2)
+    assert.match(map, /image_editor: { create: 'Use' }/)
     assert.match(API, /\?\? ACTION_DISPLAY_LABELS\[action\.action_key\]\s*\n?\s*\?\? action\.display_name/)
   })
 
@@ -351,7 +353,7 @@ describe('the /modules launcher card', () => {
     // fails — which is the whole point of pinning the set.
     assert.deepEqual(keys, [
       'assets', 'attendance_payroll', 'control_center', 'customer_reviews', 'exhibition_leads',
-      'finance', 'image_editor', 'meetings', 'members', 'orders', 'performance',
+      'finance', 'image_editor', 'inventory', 'meetings', 'members', 'orders', 'performance',
       'samples', 'showroom', 'tasks',
     ])
     // Exactly one Image Editor card. It no longer carries an accent colour of

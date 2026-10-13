@@ -24,7 +24,7 @@ import { buildQuickActions, QuickActionList } from '@/components/layout/QuickAct
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
 import Link from 'next/link'
-import { ArrowRight, ArrowUpRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
+import { Armchair, ArrowRight, ArrowUpRight, ContactRound, Image as ImageIcon, Megaphone } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
 import {
   IDLE_MODULE_ORDER_EDIT,
@@ -562,6 +562,15 @@ export default function BoeOsHomePage() {
       description: 'Capture visitors at an exhibition and follow them up afterwards.',
       href: '/exhibition-leads/add',
       icon: <ContactRound size={26} strokeWidth={1.8} />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenModule('inventory') ? [{
+      key: 'inventory',
+      title: 'Inventory',
+      // The registered module description, verbatim.
+      description: 'Furniture stock for sale: stage, condition, availability and booking requests.',
+      href: '/inventory',
+      icon: <Armchair size={26} strokeWidth={1.8} />,
       notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{

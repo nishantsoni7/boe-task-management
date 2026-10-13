@@ -566,6 +566,8 @@ describe('34/35. no regression into suppressed territory', () => {
       '20270311000000_exhibition_lead_duplicate_owner_name.sql',
 
       '20270312000000_exhibition_close_reopen.sql',
+
+      '20270313000000_inventory_module.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

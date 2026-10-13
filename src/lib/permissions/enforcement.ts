@@ -122,6 +122,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View is enforced in the screen and in the database; leads are scoped to their current owner, and Admin sees all. View All Leads is enforced in the database (read functions only; every write still needs Admin or ownership) and in the screens; a holder is left out of the ranking.',
   },
 
+  // Every read is the table RLS (RESTRICTIVE module_entry_open('inventory') plus per-table policies) or a
+  // SECURITY DEFINER function that calls inventory_actor(); every write is one of those functions, and the
+  // tables refuse direct writes. Entry: src/app/inventory/layout.tsx via ModuleGuard.
+  inventory: {
+    state: 'enforced',
+    detail: 'View is enforced in the screen and in the database (products and own requests). Create, Edit and Delete are enforced in the save/delete functions; Approve is enforced in the decision/reversal functions and in the RLS that exposes every request. The overbooking guard is a CHECK on the product row.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //

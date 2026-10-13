@@ -604,6 +604,8 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20270311000000_exhibition_lead_duplicate_owner_name.sql',
 
       '20270312000000_exhibition_close_reopen.sql',
+
+      '20270313000000_inventory_module.sql',
     ])
   })
 
