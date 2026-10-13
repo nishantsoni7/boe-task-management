@@ -363,6 +363,10 @@ describe('the read side excludes system types too', () => {
     // (order_update_production) in the transaction of the person's own write that left an aligned
     // Order short. No new type, no trigger on notifications, nothing scheduled.
     const ADVANCE_ON_BASE = '20270227000000_order_submission_advance_on_total_before_gst.sql'
+    // A fifteenth, 20270314000100, tells Inventory approvers that a PERSON asked to book units, and tells that person
+    // what an approver decided: an AFTER trigger on inventory_bookings — not on notifications — in the transaction of
+    // the person's own action, writing the two Inventory types only. Nothing is scheduled.
+    const INVENTORY_BOOKINGS = '20270314000100_inventory_booking_notifications.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
@@ -378,6 +382,7 @@ describe('the read side excludes system types too', () => {
       REVIEW_EDIT,
       REVIEW_DUPLICATE,
       ADVANCE_ON_BASE,
+      INVENTORY_BOOKINGS,
     ])
     {
       const sql = read(join(dir, ADVANCE_ON_BASE))

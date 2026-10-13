@@ -171,6 +171,9 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // which (approved or rejected) is stated in the title.
   attendance_request_submitted: { label: 'Request',         color: colors.amber, bg: colors.amberTint },
   attendance_request_decided:   { label: 'Request decided', color: colors.blue,  bg: colors.blueTint  },
+  // Inventory bookings. Amber = waiting for an approver; blue = the decision, whose outcome is in the title.
+  inventory_booking_requested:  { label: 'Needs a decision', color: colors.amber, bg: colors.amberTint },
+  inventory_booking_decided:    { label: 'Booking update',   color: colors.blue,  bg: colors.blueTint  },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -278,6 +281,21 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
         ? (n.entity_id ? `/attendance/requests?request=${n.entity_id}` : '/attendance/requests')
         : (n.entity_id ? `/my-attendance?request=${n.entity_id}#my-requests` : '/my-attendance#my-requests'),
       actionLabel: toAdmin ? 'Review request' : 'View request',
+    }
+  }
+
+  // ── Inventory ──────────────────────────────────────────────────────────────
+  // entity_id is the BOOKING. An approver lands on the queue, the salesperson on their own requests; the id
+  // grants nothing (the list is scoped by the database to what the caller may see).
+  if (type === 'inventory_booking_requested' || type === 'inventory_booking_decided') {
+    const toApprover = type === 'inventory_booking_requested'
+    return {
+      category: 'other',
+      heading: 'Inventory',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: n.entity_id ? `/inventory/requests?request=${n.entity_id}` : '/inventory/requests',
+      actionLabel: toApprover ? 'Review request' : 'View request',
     }
   }
 

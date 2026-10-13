@@ -423,6 +423,8 @@
 /* ── Requests ─────────────────────────────────────────────────────────── */
 .reqList { display: flex; flex-direction: column; gap: 10px; }
 .reqCard { background: #fff; border: 1px solid rgba(0, 0, 0, 0.09); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.reqFlash { border-color: #DC1F2E; box-shadow: 0 0 0 3px rgba(220, 31, 46, 0.18); animation: invFlash 2.4s ease-out 1; }
+@keyframes invFlash { 0% { background: #FFF1F2; } 100% { background: #fff; } }
 .reqTop { display: flex; gap: 12px; min-width: 0; }
 .reqThumb { width: 76px; height: 76px; border-radius: 10px; overflow: hidden; background: #EEF0F4; flex-shrink: 0; display: block; }
 .reqThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
