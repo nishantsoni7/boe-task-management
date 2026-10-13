@@ -368,7 +368,7 @@ export default function CreateSelfTaskPage() {
                   const selected = priority === p
                   const cfg = {
                     low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',  text: '#276247' },
-                    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#C48A1A' },
+                    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#805B0D' },
                     high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)',  text: '#B42332' },
                   }[p]!
                   return (
@@ -439,7 +439,7 @@ export default function CreateSelfTaskPage() {
               border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
             }}
           >
-            <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
+            <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
               {isUrgent ? 'Marked Important' : 'Mark Important'}
             </p>
             <div style={{

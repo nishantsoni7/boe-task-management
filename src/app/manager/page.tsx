@@ -406,8 +406,8 @@ export default function ManagerPage() {
           {/* Important panel */}
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
-              <span style={{ color: '#B7892A', fontSize: '13px' }}>⭐</span>
-              <span className="boe-panel-card-title" style={{ color: '#B7892A' }}>Important</span>
+              <span style={{ color: '#805B0D', fontSize: '13px' }}>⭐</span>
+              <span className="boe-panel-card-title" style={{ color: '#805B0D' }}>Important</span>
               <span className="boe-panel-card-count">{urgentTasks.length}</span>
             </div>
             <div className="boe-panel-card-body">

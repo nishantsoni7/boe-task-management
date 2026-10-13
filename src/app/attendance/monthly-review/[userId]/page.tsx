@@ -242,7 +242,7 @@ export default function EmployeeMonthlyDetailPage() {
           const absent = records.filter(r => r.status === 'absent').length
           const total_records = records.length
           const pct = total_records > 0 ? Math.round((present + half_day * 0.5) / total_records * 1000) / 10 : 0
-          const pctColor = pct >= 90 ? '#276247' : pct >= 75 ? '#C48A1A' : '#B42332'
+          const pctColor = pct >= 90 ? '#276247' : pct >= 75 ? '#805B0D' : '#B42332'
           const hrs = Math.floor(totalHours); const mins = Math.round((totalHours - hrs) * 60)
           const hoursLabel = totalHours <= 0 ? '—' : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`
           return (
@@ -252,7 +252,7 @@ export default function EmployeeMonthlyDetailPage() {
                 { label: 'Half Day',       value: String(half_day),      color: '#805B0D' },
                 { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#B42332' : '#686D6C' },
                 { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#335A86' : '#686D6C' },
-                { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#C48A1A' : '#686D6C' },
+                { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#805B0D' : '#686D6C' },
                 { label: 'Productive Hrs', value: hoursLabel,            color: '#276247' },
                 { label: 'Attendance %',   value: total_records === 0 ? '—' : `${pct}%`, color: pctColor },
               ].map(k => (

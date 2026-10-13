@@ -216,7 +216,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
               <div style={{
                 fontSize: '12px', fontWeight: 600,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
-                color: '#B7892A', marginBottom: '4px',
+                color: '#805B0D', marginBottom: '4px',
               }}>
                 Important
               </div>
@@ -316,7 +316,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPa
             {(() => {
               const aging = getTaskAging(task)
               if (!aging) return null
-              const color = aging.severity === 'danger' ? '#B42332' : '#C48A1A'
+              const color = aging.severity === 'danger' ? '#B42332' : '#805B0D'
               return (
                 <MetaRow label="Aging">
                   <span style={{

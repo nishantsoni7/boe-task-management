@@ -46,7 +46,7 @@ function formatDate(d: string | null) {
 
 const PRIORITY_PILL: Record<string, { label: string; fg: string; bg: string }> = {
   high:   { label: 'High',   fg: '#B42332', bg: 'rgba(180,35,50,0.09)'  },
-  medium: { label: 'Medium', fg: '#C48A1A', bg: 'rgba(196,138,26,0.09)' },
+  medium: { label: 'Medium', fg: '#805B0D', bg: 'rgba(196,138,26,0.09)' },
   low:    { label: 'Low',    fg: colors.muted, bg: 'rgba(0,0,0,0.04)'   },
 }
 
@@ -240,7 +240,7 @@ function ViewAllTasksContent() {
                   marginBottom: '8px', lineHeight: 1.4,
                   display: 'flex', alignItems: 'flex-start', gap: '5px',
                 }}>
-                  {task.is_urgent && <span style={{ color: '#B7892A', flexShrink: 0 }}>⭐</span>}
+                  {task.is_urgent && <span style={{ color: '#805B0D', flexShrink: 0 }}>⭐</span>}
                   {task.title}
                 </div>
                 {/* Row 2: meta */}
@@ -324,7 +324,7 @@ function ViewAllTasksContent() {
                   {/* Task name */}
                   <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {task.is_urgent && (
-                      <span style={{ fontSize: '12px', color: '#B7892A', flexShrink: 0 }}>⭐</span>
+                      <span style={{ fontSize: '12px', color: '#805B0D', flexShrink: 0 }}>⭐</span>
                     )}
                     <span style={{
                       fontSize: '13px', fontWeight: 500,

@@ -1402,7 +1402,7 @@ function QuotationRequestsSection({
         let dateColor = '#686D6C'
         if (dueDate) {
           if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#B42332' }
-          else if (isToday)    { dateText = 'Due today';               dateColor = '#C48A1A' }
+          else if (isToday)    { dateText = 'Due today';               dateColor = '#805B0D' }
           else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#686D6C' }
           else {
             const daysLeft = Math.round((dueDate.getTime() - todayStart.getTime()) / 86_400_000)
@@ -1501,7 +1501,7 @@ function UnacknowledgedTasksSection({
         let dateColor = '#686D6C'
         if (dueDate) {
           if (isDueOverdue) { dateText = `Overdue · ${dueDateStr}`; dateColor = '#B42332' }
-          else if (isToday) { dateText = 'Due today';               dateColor = '#C48A1A' }
+          else if (isToday) { dateText = 'Due today';               dateColor = '#805B0D' }
           else              { dateText = `Due ${dueDateStr}`;        dateColor = '#686D6C' }
         }
 
@@ -1825,7 +1825,7 @@ function EscalationListDrawer({
           {items.length === 0 ? (
             <div style={{ padding: '48px 24px', textAlign: 'center', color: '#686D6C', fontSize: '14px' }}>No escalations right now.</div>
           ) : items.map(({ task, owner, days, reason }) => {
-            const daysColor = days >= 10 ? '#B42332' : days >= 7 ? '#C48A1A' : '#4C5352'
+            const daysColor = days >= 10 ? '#B42332' : days >= 7 ? '#805B0D' : '#4C5352'
             return (
               <div
                 key={task.id}

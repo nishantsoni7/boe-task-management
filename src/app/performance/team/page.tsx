@@ -77,7 +77,7 @@ const C = {
   panel: '#FBFAF8',
   green: '#276247',
   red:   '#B42332',
-  amber: '#C48A1A',
+  amber: '#805B0D',
   blue:  '#335A86',
 } as const
 
@@ -1036,7 +1036,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
               <tbody>
                 {tasks.map((t, i) => {
                   const isWaiting   = t.status === 'waiting'
-                  const statusColor = isWaiting ? '#C48A1A' : '#B42332'
+                  const statusColor = isWaiting ? '#805B0D' : '#B42332'
                   const statusBg    = isWaiting ? '#C48A1A14' : '#B4233214'
                   const reason      = stuckReason(t)
                   const isOverdue   = !!t.due_date && t.due_date < todayStr

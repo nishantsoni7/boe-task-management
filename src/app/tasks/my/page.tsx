@@ -364,7 +364,7 @@ function TaskCard({
       }}>
         {task.due_date ? (() => {
           const isToday = task.due_date === TODAY_STR
-          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#C48A1A' : colors.secondary
+          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#805B0D' : colors.secondary
           return (
             <span style={{ fontSize: '12px', color: dueDateColor, whiteSpace: 'nowrap', fontWeight: isOverdue(task) || isToday ? 600 : 400 }}>
               {formatDate(task.due_date)}
@@ -435,7 +435,7 @@ function TaskCard({
                 : hoveredPin ? 'rgba(51,90,134,0.10)' : 'transparent',
               border: `1px solid ${isPinned ? 'rgba(183,137,42,0.3)' : hoveredPin ? 'rgba(51,90,134,0.30)' : 'transparent'}`,
               cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-              color: isPinned ? '#B7892A' : hoveredPin ? '#963B27' : colors.muted,
+              color: isPinned ? '#805B0D' : hoveredPin ? '#963B27' : colors.muted,
             }}
           >
             <Pin size={11} />
@@ -643,7 +643,7 @@ function CreateSelfTaskModal({
 
   const PRIORITY_CFG = {
     low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',   text: '#276247' },
-    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',   text: '#C48A1A' },
+    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',   text: '#805B0D' },
     high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)',   text: '#B42332' },
   } as const
 
@@ -835,7 +835,7 @@ function CreateSelfTaskModal({
             border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
             {isUrgent ? 'Marked Important' : 'Mark Important'}
           </span>
           <div style={{
@@ -1027,7 +1027,7 @@ function EditTaskModal({
             border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
             Mark Important
           </span>
           <div style={{

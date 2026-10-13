@@ -286,7 +286,7 @@ function TaskCard({
         {(() => {
           const aging = getTaskAging(task)
           if (!aging) return null
-          const color = aging.severity === 'danger' ? '#B42332' : '#C48A1A'
+          const color = aging.severity === 'danger' ? '#B42332' : '#805B0D'
           return (
             <span style={{
               display: 'inline-block', marginTop: '3px',
@@ -565,7 +565,7 @@ function DelegateTaskModal({
 
   const PRIORITY_CFG = {
     low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)',  text: '#276247' },
-    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#C48A1A' },
+    medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)',  text: '#805B0D' },
     high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)', text: '#B42332' },
   } as const
 
@@ -772,7 +772,7 @@ function DelegateTaskModal({
             border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>
             {isUrgent ? 'Marked Important' : 'Mark Important'}
           </span>
           <div style={{
@@ -936,7 +936,7 @@ function EditTaskModal({
             border: `1px solid ${isUrgent ? 'rgba(183,137,42,0.3)' : colors.border}`,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#B7892A' : colors.primary }}>Mark Important</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#805B0D' : colors.primary }}>Mark Important</span>
           <div style={{ width: '30px', height: '17px', borderRadius: '8px', background: isUrgent ? '#B7892A' : colors.float, position: 'relative', flexShrink: 0, transition: 'background 0.16s', border: `1px solid ${colors.border}` }}>
             <div style={{ position: 'absolute', top: '1.5px', left: isUrgent ? '12px' : '1.5px', width: '12px', height: '12px', borderRadius: '50%', background: '#fff', transition: 'left 0.16s' }} />
           </div>

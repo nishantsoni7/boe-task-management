@@ -19,7 +19,7 @@ const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
   Excel:   { fg: '#276247', bg: 'rgba(39,98,71,0.08)'  },
   Word:    { fg: '#335A86', bg: 'rgba(51,90,134,0.08)'  },
   CSV:     { fg: '#276247', bg: 'rgba(39,98,71,0.08)'  },
-  Archive: { fg: '#C48A1A', bg: 'rgba(196,138,26,0.08)'  },
+  Archive: { fg: '#805B0D', bg: 'rgba(196,138,26,0.08)'  },
   File:    { fg: '#686D6C', bg: 'rgba(104,109,108,0.08)' },
 }
 

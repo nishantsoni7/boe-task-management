@@ -232,7 +232,7 @@ export default function ViewUserPage() {
           <ViewSummaryCard
             onClick={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
             icon={<BellIcon />} iconBg="rgba(196,138,26,0.12)"
-            count={unacknowledgedForMe.length} countColor="#C48A1A"
+            count={unacknowledgedForMe.length} countColor="#805B0D"
             label="Total Unacknowledged Tasks" sublabel="Waiting for acknowledgement"
           />
           <ViewSummaryCard

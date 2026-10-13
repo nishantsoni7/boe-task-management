@@ -142,7 +142,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
     )
   }
 
-  const verdictColor = audit.progressive ? '#276247' : audit.progressiveLabel === 'Moderate Day' ? '#C48A1A' : '#B42332'
+  const verdictColor = audit.progressive ? '#276247' : audit.progressiveLabel === 'Moderate Day' ? '#805B0D' : '#B42332'
 
   return (
     <div style={{ background: '#fff', border: '1px solid #F1EEE9', borderRadius: 8, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -565,7 +565,7 @@ function DayScoreModal({ day, onClose }: { day: SelectedDay; onClose: () => void
   const hasBreakdown = !!trendDay
   const total = hasBreakdown ? trendDay!.breakdown.total : status === 'submitted' ? 12 : status === 'missed' ? -12 : 0
 
-  const scoreColor = total >= 70 ? '#276247' : total >= 50 ? '#335A86' : total >= 30 ? '#C48A1A' : '#B42332'
+  const scoreColor = total >= 70 ? '#276247' : total >= 50 ? '#335A86' : total >= 30 ? '#805B0D' : '#B42332'
 
   return (
     <div

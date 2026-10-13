@@ -40,7 +40,7 @@ type Priority = typeof PRIORITIES[number]
 
 const PRIORITY_STYLE: Record<Priority, { bg: string; border: string; text: string }> = {
   low:    { bg: '#276247', border: 'rgba(39,98,71,0.4)', text: '#276247' },
-  medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)', text: '#C48A1A' },
+  medium: { bg: '#C48A1A', border: 'rgba(196,138,26,0.4)', text: '#805B0D' },
   high:   { bg: '#B42332', border: 'rgba(180,35,50,0.4)', text: '#B42332' },
 }
 

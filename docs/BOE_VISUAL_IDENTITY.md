@@ -15,7 +15,7 @@ defined by the code and the module docs. Nothing in the rebrand changed the latt
 | Terracotta `#B9472E` (hover `#9E3B25`) | `--boe-brand` | Actions and selection: primary buttons, the selected nav item, focus rings, unread markers, links (ink `#963B27`). |
 | Charcoal `#303536` | `--boe-text` | Body and heading text. Secondary text `#4C5352` / `#686D6C`. |
 | Warm canvas `#F7F5F1` / white `#FFFFFF` | `--boe-canvas` / `--boe-surface` | The page, and every content surface on it. |
-| Borders `#E4DED7` · `#CFC8BF` · `#B9B2A9` | `--boe-border*` | Panels / secondary buttons / form controls (the last clears 3:1). |
+| Borders `#E4DED7` · `#CFC8BF` · `#B9B2A9` | `--boe-border*` | Panels / secondary buttons / form controls. The input border is the approved value and measures about 2.1:1 on white — below the 3:1 non-text target; see the note below. |
 | Status pairs | `--boe-<status>-fg/-bg` | Pending `#595D5B/#EEECE8`, Working `#335A86/#EAF0F8`, Waiting `#805B0D/#FAF0DA`, Blocked `#A12438/#FBE9EC`, Completed `#276247/#E8F2EC`. |
 | Error / destructive `#B42332` | `--boe-error` | Validation and delete. Never the brand colour. |
 
@@ -64,3 +64,22 @@ was added.
 `public/branding/boe-logo-full.png` is the supplied lockup, trimmed and with its white
 field made transparent; `boe-icon.png` is the symbol alone (sidebar, favicon, PWA icons).
 Neither recolours the logo.
+
+## Contrast (measured, WCAG relative luminance)
+
+| Pair | Ratio |
+| --- | --- |
+| Charcoal text on canvas / white | 11.4 / 12.4 |
+| Muted text `#686D6C` on white / canvas | 5.3 / 4.8 |
+| Placeholder `#6F7473` on white | 4.8 |
+| White on terracotta / terracotta hover | 5.3 / 6.8 |
+| Selected ink `#963B27` on selected tint | 6.1 |
+| Status text on its tint: Pending / Working / Waiting / Blocked / Completed | 5.7 / 6.2 / 5.4 / 6.4 / 6.3 |
+| Error `#B42332` on white | 6.5 |
+| Focus ring (terracotta) on white / canvas | 5.3 / 4.8 (needs 3) |
+
+**One approved value misses its target.** The brief fixes the input border at `#B9B2A9`
+and asks for control boundaries of at least 3:1. `#B9B2A9` is 2.1:1 on white (the
+secondary-button border `#CFC8BF` is 1.7:1). Controls are still identifiable — white
+fill, a visible label, a terracotta ring on focus — but if strict WCAG 1.4.11 is wanted,
+change `--boe-border-input` to about `#8C8379` (3.6:1). It is one token.

@@ -40,7 +40,7 @@
   /* Borders */
   --boe-border:         #E4DED7;   /* panels, dividers */
   --boe-border-strong:  #CFC8BF;   /* secondary button */
-  --boe-border-input:   #B9B2A9;   /* form controls (≥3:1 on white) */
+  --boe-border-input:   #B9B2A9;   /* form controls: the approved value; 2.1:1 on white (see docs/BOE_VISUAL_IDENTITY.md) */
 
   /* Status — foreground / background pairs */
   --boe-pending-fg:     #595D5B;  --boe-pending-bg:   #EEECE8;
@@ -221,6 +221,15 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 table th, [role="columnheader"] {
   text-transform: none !important;
   letter-spacing: 0.01em !important;
+}
+
+/* PHONE TOUCH TARGETS. Anything you press in the page header, the drawer or a dialog's footer is at least
+   44px tall on a phone. Page-body controls that are inline-styled keep their own size. */
+@media (max-width: 767px) {
+  .boe-header-actions > button, .boe-header-actions > a,
+  .boe-header-actions .boe-btn, .boe-page-header > button, .boe-menu-toggle { min-height: var(--boe-touch); min-width: var(--boe-touch); }
+  .boe-nav-item { min-height: var(--boe-touch); }
+  .boe-modal-sheet button { min-height: var(--boe-touch); }
 }
 
 /* An empty state: quiet, centred, one sentence and at most one action. */
