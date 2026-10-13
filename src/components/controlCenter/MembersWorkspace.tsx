@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
@@ -106,6 +107,45 @@ export function MembersWorkspace() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding,     setAdding]     = useState(false)
+
+  // Deep links from Find anything and Home:
+  //   ?member=<id>  open that person's record
+  //   ?q=<text>     start with the search filled in
+  //   ?new=1        open the Add employee dialog
+  // Each is applied when the value arrives or changes, then removed from the
+  // URL, so a refresh or Back does not re-open a dialog the admin has closed.
+  const router = useRouter()
+  const pathname = usePathname()
+  const params = useSearchParams()
+  const memberParam = params.get('member')
+  const qParam = params.get('q')
+  const newParam = params.get('new')
+
+  // Applied during render, not in an effect: the URL value is compared with the
+  // one last applied, so each arrival is consumed once. A param that has been
+  // removed (below) resets its marker, so the same link works again next time.
+  const [applied, setApplied] = useState<{ q: string | null; add: string | null; member: string | null }>(
+    { q: null, add: null, member: null },
+  )
+  const memberKnown = !!memberParam && !loading
+    && (members.some(m => m.id === memberParam) || deleted.some(m => m.id === memberParam))
+  if (qParam !== applied.q) {
+    setApplied(p => ({ ...p, q: qParam }))
+    if (qParam !== null) setSearch(qParam)
+  }
+  if (newParam !== applied.add) {
+    setApplied(p => ({ ...p, add: newParam }))
+    if (newParam === '1') setAdding(true)
+  }
+  if (memberParam !== applied.member && (memberParam === null || memberKnown)) {
+    setApplied(p => ({ ...p, member: memberParam }))
+    if (memberParam) setSelectedId(memberParam)
+  }
+
+  useEffect(() => {
+    if (loading || (!memberParam && qParam === null && newParam === null)) return
+    router.replace(pathname, { scroll: false })
+  }, [loading, memberParam, qParam, newParam, router, pathname])
   const [banner,     setBanner]     = useState('')
 
   const activeDepts = useMemo(() => depts.filter(d => d.is_active), [depts])

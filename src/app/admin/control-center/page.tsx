@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Users, ShieldCheck, Settings2 } from 'lucide-react'
+import { UserPlus, ShieldCheck, Megaphone, Hash, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { resolveControlCenterTab, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
+import { MAIN_PATH, resolveControlCenterTab, type ControlCenterTab } from '@/lib/controlCenter/navModel'
+import { CATEGORY_META, pendingAgeLabel } from '@/lib/controlCenter/actionQueue'
+import { useActionQueue } from '@/hooks/queries/useActionQueue'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { Avatar } from '@/components/ui/atoms'
 import {
@@ -60,7 +62,6 @@ type AppModule      = ControlCenterAppModule
 type Department     = ControlCenterDepartment
 type VisibilityType = AppModule['visibility_type']
 
-const MAIN_PATH = '/admin/control-center'
 
 // ── Order Update Notifications ───────────────────────────────────────────────
 //
@@ -595,6 +596,80 @@ function titleCase(key: string): string {
   return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
+// ── Home ──────────────────────────────────────────────────────────────────────
+//
+// What an administrator opens the Control Center to find out, in the order they
+// need it: what is waiting on THEM, what is wrong with the setup, and the few
+// jobs they do again and again. Counts of departments and modules are still
+// here, but at the bottom — they answer "how big is this", not "what do I do".
+
+const COMMON_JOBS: { href: string; icon: typeof UserPlus; label: string; sub: string }[] = [
+  { href: `${MAIN_PATH}/people?new=1`, icon: UserPlus, label: 'Add an employee', sub: 'Create an account' },
+  { href: `${MAIN_PATH}/permissions`, icon: ShieldCheck, label: 'Change someone’s access', sub: 'By employee, module by module' },
+  { href: `${MAIN_PATH}/announcements`, icon: Megaphone, label: 'Publish an announcement', sub: 'A notice for chosen employees' },
+  { href: `${MAIN_PATH}?tab=order-numbering`, icon: Hash, label: 'Set the next Order number', sub: 'Confirmed Order numbering' },
+  { href: `${MAIN_PATH}?tab=departments`, icon: Building2, label: 'Manage departments', sub: 'Add, rename, deactivate' },
+]
+
+function WaitingOnYou() {
+  const queue = useActionQueue()
+  const items = queue.data?.items ?? []
+
+  // One row per kind of work, oldest item first, so the row's link opens the
+  // thing that has waited longest.
+  const groups = (Object.keys(CATEGORY_META) as (keyof typeof CATEGORY_META)[])
+    .map(category => {
+      const rows = items.filter(i => i.category === category)
+      return { category, count: rows.length, oldest: rows[0] }
+    })
+    .filter(g => g.count > 0)
+    .sort((a, b) => new Date(a.oldest.pendingSince).getTime() - new Date(b.oldest.pendingSince).getTime())
+
+  return (
+    <CcSection
+      title="Waiting on you"
+      description="Finance and Orders work that needs an administrator, oldest first."
+      action={items.length > 0 ? <Link className={cc.linkBtn} href={`${MAIN_PATH}/action-queue`}>See all {items.length}</Link> : undefined}
+    >
+      <div className={cc.list}>
+        {queue.isPending ? (
+          <div className={cc.listRow}><span className={cc.muted}>Checking Finance and Orders…</span></div>
+        ) : queue.isError ? (
+          <div className={cc.listRow}>
+            <span className={cc.dot} />
+            <span className={cc.listMain}>Could not read the queue.</span>
+            <button className={cc.linkBtn} onClick={() => void queue.refetch()}>Retry</button>
+          </div>
+        ) : (
+          <>
+            {queue.data?.error && (
+              <div className={cc.listRow}>
+                <span className={cc.dot} />
+                <span className={cc.listMain}>{queue.data.error}</span>
+              </div>
+            )}
+            {groups.length === 0 && !queue.data?.error ? (
+              <div className={cc.listRow}>
+                <span className={`${cc.dot} ${cc.dotOk}`} />
+                Nothing is waiting on an administrator.
+              </div>
+            ) : groups.map(g => (
+              <Link key={g.category} className={cc.queueRow} href={g.oldest.href}>
+                <span className={cc.queueCount}>{g.count}</span>
+                <span className={cc.listMain}>
+                  <strong>{CATEGORY_META[g.category].label}</strong>
+                  <div className={cc.listDetail}>{g.oldest.clientName} · {g.oldest.module}{g.count > 1 ? ` and ${g.count - 1} more` : ''}</div>
+                </span>
+                <span className={cc.queueAge}>oldest {pendingAgeLabel(g.oldest.pendingSince)}</span>
+              </Link>
+            ))}
+          </>
+        )}
+      </div>
+    </CcSection>
+  )
+}
+
 function OverviewTab({
   members, depts, modules, peopleInDept,
 }: {
@@ -644,60 +719,7 @@ function OverviewTab({
 
   return (
     <>
-      <div className={cc.stats}>
-        <div className={cc.stat}>
-          <div className={cc.statValue}>{activeMembers.length}</div>
-          <div className={cc.statLabel}>Active employees</div>
-          <div className={cc.statMeta}>{live.length - activeMembers.length} deactivated</div>
-        </div>
-        <div className={cc.stat}>
-          <div className={cc.statValue}>{activeDepts.length}</div>
-          <div className={cc.statLabel}>Active departments</div>
-          <div className={cc.statMeta}>{depts.length} in total</div>
-        </div>
-        <div className={cc.stat}>
-          <div className={cc.statValue}>{launcherModules.length}</div>
-          <div className={cc.statLabel}>Modules in the launcher</div>
-          <div className={cc.statMeta}>{modules.length - launcherModules.length} hidden</div>
-        </div>
-        <div className={cc.stat}>
-          <div className={cc.statValue}>{enforcement.enforced.length}<span className={cc.muted} style={{ fontSize: 13, fontWeight: 500 }}> / {enforcementTotal}</span></div>
-          <div className={cc.statLabel}>Modules with enforced access</div>
-          <div className={cc.statMeta}>
-            {enforcement.partial.length > 0 && `${enforcement.partial.length} ${ENFORCEMENT_BADGE_LABEL.partial.toLowerCase()} · `}
-            {enforcement.prepared.length} {ENFORCEMENT_BADGE_LABEL.prepared.toLowerCase()}
-          </div>
-        </div>
-      </div>
-
-      <div className={cc.quick}>
-        <div className={cc.quickCard}>
-          <div className={cc.quickHead}><Users size={15} strokeWidth={1.9} />People</div>
-          <div className={cc.quickDesc}>Who has an account, which department, designation and level they hold, and whether the account is active.</div>
-          <div className={cc.quickLinks}>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/people`}>Employees</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=departments`}>Departments</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/positions`}>Designations</Link>
-          </div>
-        </div>
-        <div className={cc.quickCard}>
-          <div className={cc.quickHead}><ShieldCheck size={15} strokeWidth={1.9} />Access</div>
-          <div className={cc.quickDesc}>What each employee can open and do in every module: a level per module, with individual permissions underneath.</div>
-          <div className={cc.quickLinks}>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/permissions`}>By Employee</Link>
-          </div>
-        </div>
-        <div className={cc.quickCard}>
-          <div className={cc.quickHead}><Settings2 size={15} strokeWidth={1.9} />System</div>
-          <div className={cc.quickDesc}>Numbering, Order notifications and the test-data controls. Nothing here is routine, and each one explains itself before it acts.</div>
-          <div className={cc.quickLinks}>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=order-numbering`}>Order Numbering</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=order-notifications`}>Order Notifications</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/test-data-cleanup`}>Test Data Cleanup</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/data-management`}>Data Management</Link>
-          </div>
-        </div>
-      </div>
+      <WaitingOnYou />
 
       <CcSection title="Needs attention" description="Checked against the departments, employees and module settings already loaded.">
         <div className={cc.list}>
@@ -716,12 +738,58 @@ function OverviewTab({
         </div>
       </CcSection>
 
+      <CcSection title="Common jobs" description="Straight to the screen, with the dialog already open where there is one.">
+        <div className={cc.jobs}>
+          {COMMON_JOBS.map(job => (
+            <Link key={job.href} className={cc.job} href={job.href}>
+              <job.icon size={16} strokeWidth={1.9} />
+              <span>{job.label}<span className={cc.jobSub}>{job.sub}</span></span>
+            </Link>
+          ))}
+        </div>
+      </CcSection>
+
+      <CcSection title="At a glance">
+        <div className={cc.stats} style={{ marginBottom: 0 }}>
+          <div className={cc.stat}>
+            <div className={cc.statValue}>{activeMembers.length}</div>
+            <div className={cc.statLabel}>Active employees</div>
+            <div className={cc.statMeta}>{live.length - activeMembers.length} deactivated</div>
+          </div>
+          <div className={cc.stat}>
+            <div className={cc.statValue}>{activeDepts.length}</div>
+            <div className={cc.statLabel}>Active departments</div>
+            <div className={cc.statMeta}>{depts.length} in total</div>
+          </div>
+          <div className={cc.stat}>
+            <div className={cc.statValue}>{launcherModules.length}</div>
+            <div className={cc.statLabel}>Modules in the launcher</div>
+            <div className={cc.statMeta}>{modules.length - launcherModules.length} hidden</div>
+          </div>
+          <div className={cc.stat}>
+            <div className={cc.statValue}>{enforcement.enforced.length}<span className={cc.muted} style={{ fontSize: 13, fontWeight: 500 }}> / {enforcementTotal}</span></div>
+            <div className={cc.statLabel}>Modules with enforced access</div>
+            <div className={cc.statMeta}>
+              {enforcement.partial.length > 0 && `${enforcement.partial.length} ${ENFORCEMENT_BADGE_LABEL.partial.toLowerCase()} · `}
+              {enforcement.prepared.length} {ENFORCEMENT_BADGE_LABEL.prepared.toLowerCase()}
+            </div>
+          </div>
+        </div>
+      </CcSection>
+
       {/* Which modules the permission engine decides today, from the one
           source that answers it (src/lib/permissions/enforcement.ts). A grant
           in a module that is not enforced is saved but decides nothing, and an
           administrator handing out access deserves to know that here, not
-          only inside the Change Access dialog. */}
-      <CcSection title="Access enforcement" description="Modules where saved permissions are not yet fully applied by the engine. Every other module is enforced in the database and the screen.">
+          only inside the Change Access dialog. Folded away: it is reference,
+          not something to act on every day. */}
+      <details className={`${cc.section} ${cc.fold}`}>
+        <summary>
+          Access enforcement{notEnforced.length > 0 ? ` — ${notEnforced.length} not fully applied` : ''}
+        </summary>
+        <div className={cc.sectionDesc} style={{ marginTop: -6, marginBottom: 10 }}>
+          Modules where saved permissions are not yet fully applied by the engine. Every other module is enforced in the database and the screen.
+        </div>
         <div className={cc.list}>
           {notEnforced.length === 0 ? (
             <div className={cc.listRow}>
@@ -742,7 +810,7 @@ function OverviewTab({
             )
           })}
         </div>
-      </CcSection>
+      </details>
     </>
   )
 }
