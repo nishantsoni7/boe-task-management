@@ -321,6 +321,10 @@ describe('the file, and where it sits', () => {
       '20270312000000_exhibition_close_reopen.sql',
 
       '20270313000000_inventory_module.sql',
+
+      '20270314000000_inventory_notification_types.sql',
+
+      '20270314000100_inventory_booking_notifications.sql',
     ])
   })
 

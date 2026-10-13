@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ClipboardList, Loader2, MessageCircle, Phone, RotateCcw, X } from 'lucide-react'
 import { InventoryLayout } from '@/components/layout/InventoryLayout'
@@ -32,7 +33,11 @@ export default function RequestsScreen() {
   const { supabase, profile, loading, signOut, access, pending } = useInventory()
   const qc = useQueryClient()
   const { toast, show, dismiss } = useToast()
-  const [tab, setTab] = useState<Tab>('pending')
+  // A notification links here with ?request=<booking id>: open the tab that booking is in, scroll to it once,
+  // and flash it. The id grants nothing: the list is whatever the database lets this person see.
+  const target = useSearchParams().get('request')
+  const [tabPick, setTab] = useState<Tab | null>(null)
+  const scrolled = useRef(false)
   const [action, setAction] = useState<Action | null>(null)
 
   const scope = access.approve ? 'all' : 'mine'
@@ -47,6 +52,8 @@ export default function RequestsScreen() {
     confirmed: all.filter(b => inTab(b, 'confirmed')).length,
     closed: all.filter(b => inTab(b, 'closed')).length,
   }), [all])
+  const targetBooking = target ? all.find(b => b.id === target) : undefined
+  const tab: Tab = tabPick ?? (targetBooking ? (['pending', 'confirmed'] as const).find(t => inTab(targetBooking, t)) ?? 'closed' : 'pending')
   const shown = useMemo(() => all.filter(b => inTab(b, tab)), [all, tab])
 
   if (loading) return <LoadingScreen />
@@ -90,7 +97,8 @@ export default function RequestsScreen() {
         ) : (
           <div className={s.reqList}>
             {shown.map(b => (
-              <article key={b.id} className={s.reqCard} aria-label={`${b.qty} × ${b.item_name} for ${b.customer_name}`}>
+              <article key={b.id} id={`req-${b.id}`} className={`${s.reqCard}${b.id === target ? ` ${s.reqFlash}` : ''}`}
+                ref={el => { if (el && b.id === target && !scrolled.current) { scrolled.current = true; el.scrollIntoView({ block: 'center' }) } }} aria-label={`${b.qty} × ${b.item_name} for ${b.customer_name}`}>
                 <div className={s.reqTop}>
                   <Link href={`/inventory/${b.item_id}`} className={s.reqThumb} aria-label={`Open ${b.item_name}`}>
                     <Pic src={b.thumb_path ? toUrl(b.thumb_path) : null} alt={b.item_name} />

@@ -7,6 +7,8 @@ import { ClipboardList, Home, LayoutGrid, Plus } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import type { InventoryAccess } from '@/lib/inventory/constants'
 import { BoeBrandIcon } from './BoeBrandIcon'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadInventoryNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import s from '@/components/inventory/inventory.module.css'
 
@@ -33,6 +35,7 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  const unread = useUnreadInventoryNotifications()
 
   const items = [
     { href: BASE, label: 'Stock', icon: LayoutGrid, exact: true, badge: 0 },
@@ -89,6 +92,7 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
               </button>
             )
           })}
+          <NotificationsNavItem onNavigate={() => setSidebarOpen(false)} count={unread} href={`${BASE}/notifications`} />
         </div>
 
         <ViewModeSidebarSection profile={profile} onSignOut={onSignOut} accountSettingsHref={`/account?returnTo=${BASE}`} />

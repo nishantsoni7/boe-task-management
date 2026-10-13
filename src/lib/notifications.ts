@@ -207,10 +207,22 @@ export const REVIEW_NOTIFICATION_TYPES = [
   'customer_review_reapplied',
 ] as const
 
-export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review'
+// Inventory (20270314000000). Written by the database in the same transaction as the booking change:
+//
+//   inventory_booking_requested  a salesperson asked to book units. Addressed to every active approver.
+//   inventory_booking_decided    a confirm, reject, cancel or reversal by somebody else. Addressed to the
+//                                salesperson who asked.
+//
+// entity_id carries the BOOKING id; the link opens Booking Requests (approver) or My Requests (salesperson).
+export const INVENTORY_NOTIFICATION_TYPES = [
+  'inventory_booking_requested',
+  'inventory_booking_decided',
+] as const
+
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review' | 'inventory'
 
 const VALID_CATEGORIES: readonly NotificationCategory[] =
-  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review']
+  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory']
 
 /**
  * Categories only an admin may read. Currently none.
@@ -258,6 +270,8 @@ export function getNotificationCategoryFilter(category: NotificationCategory): s
       return typeInList(ATTENDANCE_PAYROLL_NOTIFICATION_TYPES)
     case 'review':
       return typeInList(REVIEW_NOTIFICATION_TYPES)
+    case 'inventory':
+      return typeInList(INVENTORY_NOTIFICATION_TYPES)
   }
 }
 

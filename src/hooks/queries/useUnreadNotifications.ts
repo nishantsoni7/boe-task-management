@@ -162,3 +162,11 @@ export function useUnreadAttendancePayrollNotifications(enabled = true): number 
 export function useUnreadReviewNotifications(enabled = true): number {
   return useUnreadCount('review', enabled)
 }
+
+/**
+ * Inventory unread count: booking requests waiting for an approver, and the decisions on a salesperson's own
+ * requests. Every row is addressed to the person reading it, so every Inventory user asks.
+ */
+export function useUnreadInventoryNotifications(enabled = true): number {
+  return useUnreadCount('inventory', enabled)
+}
