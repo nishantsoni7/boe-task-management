@@ -50,6 +50,10 @@ describe('navigation model', () => {
     assert.equal(activeHub({ pathname: `${MAIN_PATH}/action-queue`, tab: null }), null)
   })
 
+  test('every hub opens inside the Control Center, so the sidebar never disappears', () => {
+    for (const hub of NAV_HUBS) assert.ok(hubHref(hub).startsWith(MAIN_PATH), `${hub.label} opens outside the shell`)
+  })
+
   test('a hub opens on its first screen', () => {
     for (const hub of NAV_HUBS) assert.equal(hubHref(hub), hub.sections[0].href)
   })

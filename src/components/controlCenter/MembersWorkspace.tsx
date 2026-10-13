@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
@@ -114,7 +114,6 @@ export function MembersWorkspace() {
   //   ?new=1        open the Add employee dialog
   // Each is applied when the value arrives or changes, then removed from the
   // URL, so a refresh or Back does not re-open a dialog the admin has closed.
-  const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
   const memberParam = params.get('member')
@@ -144,8 +143,10 @@ export function MembersWorkspace() {
 
   useEffect(() => {
     if (loading || (!memberParam && qParam === null && newParam === null)) return
-    router.replace(pathname, { scroll: false })
-  }, [loading, memberParam, qParam, newParam, router, pathname])
+    // The History API, not router.replace: on a cold page load router.replace left
+    // the param in the address bar, and a refresh would then reopen the dialog.
+    window.history.replaceState(null, '', pathname)
+  }, [loading, memberParam, qParam, newParam, pathname])
   const [banner,     setBanner]     = useState('')
 
   const activeDepts = useMemo(() => depts.filter(d => d.is_active), [depts])

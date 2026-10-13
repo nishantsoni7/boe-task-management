@@ -144,11 +144,6 @@ export const NAV_HUBS: readonly NavHub[] = [
     danger: true,
     sections: [
       {
-        id: 'task-records', label: 'Task Records', href: '/super-admin',
-        description: 'Member-wise task reporting and permanent task deletion.',
-        keywords: ['tasks', 'delete task', 'super admin', 'task report'],
-      },
-      {
         id: 'test-data-cleanup', label: 'Test Data Cleanup', href: `${MAIN_PATH}/test-data-cleanup`,
         description: 'Remove one verified test transaction.',
         keywords: ['delete test order', 'remove test data', 'cleanup', 'purge', 'test order'],
@@ -157,6 +152,11 @@ export const NAV_HUBS: readonly NavHub[] = [
         id: 'data-management', label: 'Data Management', href: `${MAIN_PATH}/data-management`,
         description: 'Clear all operational Order and Finance data. Never reversible.',
         keywords: ['reset', 'wipe', 'clear data', 'delete all', 'orders data', 'finance data'],
+      },
+      {
+        id: 'task-records', label: 'Task Records', href: '/super-admin',
+        description: 'Member-wise task reporting and permanent task deletion.',
+        keywords: ['tasks', 'delete task', 'super admin', 'task report'],
       },
     ],
   },

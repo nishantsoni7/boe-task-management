@@ -738,7 +738,7 @@ function OverviewTab({
         </div>
       </CcSection>
 
-      <CcSection title="Common jobs" description="Straight to the screen, with the dialog already open where there is one.">
+      <CcSection title="Common jobs" description="Straight to the screen; Add an employee opens its dialog.">
         <div className={cc.jobs}>
           {COMMON_JOBS.map(job => (
             <Link key={job.href} className={cc.job} href={job.href}>
