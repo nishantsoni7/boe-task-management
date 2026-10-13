@@ -178,7 +178,7 @@ describe('the wiring', () => {
 
   test('Announcements is reachable from the BOE OS sidebar and Control Center', () => {
     assert.match(read('src/components/layout/BoeOsLayout.tsx'), /label="Announcements"[\s\S]{0,200}navTo\('\/announcements'\)/)
-    assert.match(read('src/components/layout/ControlCenterLayout.tsx'), /label="Announcements"[\s\S]{0,120}\/announcements`/)
+    assert.match(read('src/lib/controlCenter/navModel.ts'), /label: 'Announcements'[\s\S]{0,120}\/announcements`/)
   })
 
   test('the admin form uploads first, then calls the admin RPC, and cleans up on failure', () => {

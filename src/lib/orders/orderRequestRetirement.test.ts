@@ -121,7 +121,7 @@ describe('no Order Request navigation remains', () => {
   })
 
   test('the Admin action queue no longer asks anybody to convert one', () => {
-    const queue = read('src/app/admin/control-center/action-queue/page.tsx')
+    const queue = read('src/lib/controlCenter/actionQueue.ts')
     assert.equal(queue.includes('order_request_conversion'), false)
     assert.equal(queue.includes("from('order_requests')"), false)
     // What replaced it in the business: the PI review queue.

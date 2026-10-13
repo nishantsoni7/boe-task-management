@@ -380,7 +380,7 @@ describe('how a payment with no customer is written down', () => {
       REQUEST_FORM,
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/components/finance/DeletePaymentModal.tsx',
-      'src/app/admin/control-center/action-queue/page.tsx',
+      'src/lib/controlCenter/actionQueue.ts',
       // THE ORDER'S PAYMENT ROWS, which moved out of the page and into the
       // dialog its summary figures open. Same formatter, same rule.
       'src/app/orders/[id]/OrderWorkspace.tsx',

@@ -1046,7 +1046,7 @@ describe('the Finance linkage projection', () => {
     const readers = [
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/hooks/queries/useReceivedPaymentsCounts.ts',
-      'src/app/admin/control-center/action-queue/page.tsx',
+      'src/lib/controlCenter/actionQueue.ts',
     ]
     for (const file of readers) {
       assert.ok(existsSync(join(process.cwd(), file)), `${file} must exist`)

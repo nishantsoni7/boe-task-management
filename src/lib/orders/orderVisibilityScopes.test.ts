@@ -70,7 +70,7 @@ describe('the Control Center entry', () => {
     const layout = read('src/components/layout/ControlCenterLayout.tsx')
     const page = read('src/app/admin/control-center/page.tsx')
     assert.ok(layout.includes("'order-visibility'"))
-    assert.ok(layout.includes('label="Order Visibility"'))
+    assert.ok(read('src/lib/controlCenter/navModel.ts').includes("label: 'Order Visibility'"))
     assert.ok(page.includes("tab === 'order-visibility' && <OrderVisibilityTab />"))
   })
   test('the screen calls only the two owner-only RPCs, and touches no table', () => {

@@ -425,7 +425,7 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
   test('no interface tells a reader to link or unlink a payment', () => {
     // Copy, not code — the two are separate failures and this is the one a
     // user would actually see.
-    for (const path of [...SURFACES, 'src/app/admin/control-center/action-queue/page.tsx']) {
+    for (const path of [...SURFACES, 'src/app/admin/control-center/action-queue/page.tsx', 'src/lib/controlCenter/actionQueue.ts']) {
       const code = stripComments(readFileSync(join(process.cwd(), path), 'utf8'))
       for (const phrase of ['Link / Unlink', 'Link to an Order', 'Link suspense', 'Unlinking', 'Managed by Link']) {
         assert.equal(code.includes(phrase), false, `${path} must not say "${phrase}"`)
@@ -444,7 +444,7 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
   })
 
   test('the Action Queue generates ONLY action=allocate', () => {
-    const queue = readFileSync(join(process.cwd(), 'src/app/admin/control-center/action-queue/page.tsx'), 'utf8')
+    const queue = readFileSync(join(process.cwd(), 'src/lib/controlCenter/actionQueue.ts'), 'utf8')
     assert.equal(queue.includes('action=link'), false, 'the old deep link is gone')
     assert.ok(queue.includes('action=allocate'), 'and it points at allocation instead')
     assert.ok(queue.includes("actionLabel: 'Allocate suspense payment'"),

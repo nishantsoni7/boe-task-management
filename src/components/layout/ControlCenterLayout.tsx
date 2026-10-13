@@ -1,43 +1,35 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
-  Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, Layers, X, Hash, Eraser, DatabaseZap,
-  ClipboardList, BellRing, Megaphone,
+  Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, X,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { FindAnything } from '@/components/controlCenter/FindAnything'
+import {
+  MAIN_PATH, NAV_HUBS, activeHub, hubHref, isSectionActive, resolveControlCenterTab,
+  type ControlCenterTab, type HubId, type NavHub,
+} from '@/lib/controlCenter/navModel'
 import cc from '@/components/controlCenter/controlCenter.module.css'
 
-// 'modules' (Module Visibility) is retained so the existing ?tab=modules URL
-// still resolves for rollback, but it is not reachable from the sidebar — see
-// the note in ControlCenterNav.
-export type ControlCenterTab =
-  'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
-  | 'operations-handoff' | 'order-visibility'
-
-const MAIN_PATH = '/admin/control-center'
-
-/** The section the main page shows for a ?tab= value. Anything unknown is Overview. */
-export function resolveControlCenterTab(tabParam: string | null): ControlCenterTab {
-  return tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
-    || tabParam === 'order-numbering' || tabParam === 'order-notifications'
-    || tabParam === 'operations-handoff' || tabParam === 'order-visibility'
-    ? tabParam : 'overview'
-}
+// The map itself (hubs, sections, search keywords, which one is active) lives in
+// '@/lib/controlCenter/navModel'. This file draws it.
+export { resolveControlCenterTab }
+export type { ControlCenterTab }
 
 type Heading = { group?: string; title: string; subtitle?: string }
 
 // One heading per destination. The shell is mounted once by
 // control-center/layout.tsx and owns the header, so a section never hands over
-// its own title on mount.
+// its own title on mount. `group` is the hub the screen belongs to.
 const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
   overview: {
     title: 'Control Center',
-    subtitle: 'Administration workspace for people, access and system controls.',
+    subtitle: 'What is waiting on you, what needs attention, and the jobs you do most.',
   },
   // Retained so an old ?tab=people bookmark still names something while the
   // main page redirects it to /people, where employee administration now lives.
@@ -50,23 +42,23 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
     subtitle: 'Company departments used for assignment and access defaults.',
   },
   modules: {
-    group: 'System', title: 'Module Visibility',
+    group: 'Access', title: 'Module Visibility',
     subtitle: 'Control which modules appear in the app launcher, and to whom.',
   },
   'order-numbering': {
-    group: 'System', title: 'Order Numbering',
+    group: 'Order Setup', title: 'Numbering',
     subtitle: 'The number the next Confirmed Order will be given.',
   },
   'order-notifications': {
-    group: 'System', title: 'Order Notifications',
+    group: 'Order Setup', title: 'Notifications',
     subtitle: 'Which associated people are told when a Confirmed Order changes.',
   },
   'operations-handoff': {
-    group: 'System', title: 'Operations Handoff',
+    group: 'Order Setup', title: 'Operations Handoff',
     subtitle: 'Who reviews each approved PI version for production and accepts it, or asks for clarification.',
   },
   'order-visibility': {
-    group: 'System', title: 'Order Visibility',
+    group: 'Order Setup', title: 'Order Visibility',
     subtitle: 'Whose orders each sales candidate can see: their own, selected colleagues’, or all sales candidates’.',
   },
 }
@@ -89,19 +81,19 @@ const PATH_HEADINGS: Record<string, Heading> = {
     subtitle: 'One module across everyone — who can open it, at what level, and why',
   },
   [`${MAIN_PATH}/test-data-cleanup`]: {
-    group: 'System', title: 'Test Data Cleanup',
+    group: 'Records & Data', title: 'Test Data Cleanup',
     subtitle: 'Remove a complete verified test transaction while the system is in testing.',
   },
   [`${MAIN_PATH}/announcements`]: {
-    group: 'System', title: 'Announcements',
+    title: 'Announcements',
     subtitle: 'Publish a notice to chosen employees for a set of dates, and see who has read it.',
   },
   [`${MAIN_PATH}/data-management`]: {
-    group: 'System', title: 'Data Management',
+    group: 'Records & Data', title: 'Data Management',
     subtitle: 'Clear all operational Order and Finance data. Admin only, and never reversible.',
   },
   [`${MAIN_PATH}/action-queue`]: {
-    title: 'Action Queue',
+    group: 'Home', title: 'Action Queue',
     subtitle: 'Finance and Orders work currently waiting on an admin action',
   },
 }
@@ -109,6 +101,11 @@ const PATH_HEADINGS: Record<string, Heading> = {
 function headingFor(pathname: string, tab: ControlCenterTab | null): Heading {
   if (pathname === MAIN_PATH) return TAB_HEADINGS[tab ?? 'overview']
   return PATH_HEADINGS[pathname] ?? { title: 'Control Center' }
+}
+
+const HUB_ICON: Record<HubId, typeof Home> = {
+  home: LayoutGrid, people: Users, access: ShieldCheck, orders: Hash,
+  announcements: Megaphone, records: DatabaseZap,
 }
 
 type ControlCenterLayoutProps = {
@@ -119,11 +116,32 @@ type ControlCenterLayoutProps = {
 
 export function ControlCenterLayout({ profile, onSignOut, children }: ControlCenterLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [finding, setFinding] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
 
   const closeSidebar = () => setSidebarOpen(false)
   const goHome = () => { router.push('/modules'); closeSidebar() }
+  const openFind = () => { setFinding(true); closeSidebar() }
+
+  // Ctrl/Cmd+K from anywhere in the Control Center. "/" works too when the
+  // focus is not in a field, so typing into a form never opens the box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setFinding(f => !f)
+        return
+      }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const el = e.target as HTMLElement | null
+        const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+        if (!typing) { e.preventDefault(); setFinding(true) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="boe-app-shell">
@@ -158,6 +176,12 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
           </button>
         </div>
 
+        <button className={cc.navFind} onClick={openFind} aria-label="Find anything" aria-keyshortcuts="Control+K Meta+K">
+          <Search size={13} strokeWidth={2} />
+          <span className={cc.navFindText}>Find anything…</span>
+          <span className={cc.kbd}>Ctrl K</span>
+        </button>
+
         {/* Navigation. The active tab is read from the URL inside a Suspense
             boundary, as useSearchParams asks; the fallback is the same list
             with no tab known, which only ever renders during prerender. */}
@@ -181,10 +205,15 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
         <div className="boe-page-body">
           <div className={cc.content}>
             <ViewModeBanner />
+            <Suspense fallback={null}>
+              <SectionTabsWithTab pathname={pathname} />
+            </Suspense>
             {children}
           </div>
         </div>
       </div>
+
+      {finding && <FindAnything onClose={() => setFinding(false)} />}
     </div>
   )
 }
@@ -236,6 +265,41 @@ function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome }: H
   )
 }
 
+// ── Section tabs ─────────────────────────────────────────────────────────────
+//
+// The screens inside the hub on show, side by side. A hub with one screen
+// (Home, Announcements) shows nothing; Action Queue sits outside the map and
+// shows nothing either.
+
+function SectionTabsWithTab({ pathname }: { pathname: string }) {
+  const tab = resolveControlCenterTab(useSearchParams().get('tab'))
+  const loc = { pathname, tab }
+  const hub = activeHub(loc)
+  if (!hub || hub.sections.length < 2) return null
+  const onMain = pathname === MAIN_PATH
+
+  return (
+    <nav className={`${cc.sectionTabs}${hub.danger ? ` ${cc.sectionTabsDanger}` : ''}`} aria-label={hub.label}>
+      {hub.sections.map(s => {
+        const active = isSectionActive(s, loc) || (s.id === 'by-module' && pathname === MAIN_PATH && tab === 'modules')
+        return (
+          <Link
+            key={s.id}
+            href={s.href}
+            // Switching between two tabs of the main page replaces the history
+            // entry, as the in-place switch always did.
+            replace={onMain && !!s.tab}
+            className={`${cc.sectionTab}${active ? ` ${cc.sectionTabActive}` : ''}`}
+            aria-current={active ? 'page' : undefined}
+          >
+            {s.label}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
@@ -243,20 +307,18 @@ function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; o
   return <ControlCenterNav pathname={pathname} tab={tab} onNavigate={onNavigate} />
 }
 
-// Every entry is a real link, so Next prefetches it and Back/Forward walk
-// through sections. Overview, Departments and Order Numbering are tabs of the
-// main page: on that page a tab link REPLACES the history entry, exactly as the
-// in-place switch always did; from any other section it pushes.
+// Six entries, one per task area; each hub's other screens are the tabs above
+// its page. Every entry is a real link, so Next prefetches it and Back/Forward
+// walk through sections.
 //
 // What is deliberately NOT here:
 //   Roles              — nothing manages the three system roles; they are fixed
-//                        in code and set as a field on the employee, under
-//                        Access in the member dialog.
+//                        in code and set as a field on the employee.
 //   Module Visibility  — a second, parallel way to decide who sees a module,
-//                        retired from navigation in favour of Access Control.
-//                        ?tab=modules still resolves for rollback.
-//   Action Queue       — every row was a deep link into Finance or Orders; it
-//                        decided nothing. The route remains for old bookmarks.
+//                        retired in favour of Access. ?tab=modules still resolves.
+//   Action Queue       — it decided nothing itself (every row is a deep link into
+//                        Finance or Orders), so it is no sidebar entry; Home
+//                        shows its counts and links to the full list.
 //   Change History     — does not exist yet, so it is not offered.
 function ControlCenterNav({
   pathname, tab, onNavigate,
@@ -265,154 +327,40 @@ function ControlCenterNav({
   tab: ControlCenterTab | null
   onNavigate: () => void
 }) {
+  const loc = { pathname, tab }
+  const current = activeHub(loc)
   const onMain = pathname === MAIN_PATH
-  const tabHref = (t: ControlCenterTab) => `${MAIN_PATH}?tab=${t}`
-  const icon = (I: typeof Home) => <I size={15} strokeWidth={1.8} />
+  const everyday = NAV_HUBS.filter(h => !h.danger)
+  const danger = NAV_HUBS.filter(h => h.danger)
+
+  const item = (hub: NavHub) => {
+    const Icon = HUB_ICON[hub.id]
+    const active = current?.id === hub.id
+    return (
+      <NavItem
+        key={hub.id}
+        label={hub.label}
+        icon={<Icon size={15} strokeWidth={1.8} />}
+        href={hubHref(hub)}
+        replace={onMain && !!hub.sections[0].tab}
+        active={active}
+        danger={hub.danger}
+        onNavigate={onNavigate}
+      />
+    )
+  }
 
   return (
     <nav className="boe-sidebar-section" aria-label="Control Center">
-      <NavItem
-        label="Overview"
-        icon={icon(LayoutGrid)}
-        href={tabHref('overview')}
-        replace={onMain}
-        active={onMain && (tab === null || tab === 'overview')}
-        onNavigate={onNavigate}
-      />
-
-      <div className={cc.navGroup}>
-        <span className={cc.navGroupLabel}>People</span>
-        {/* Employee administration is a route of its own, not a tab: it is the
-            one Members area now, so it carries the `employee_records` module
-            gate its own segment layout applies. */}
-        <NavItem
-          label="Employees"
-          icon={icon(Users)}
-          href={`${MAIN_PATH}/people`}
-          active={pathname === `${MAIN_PATH}/people`}
-          onNavigate={onNavigate}
-        />
-        <NavItem
-          label="Departments"
-          icon={icon(Building2)}
-          href={tabHref('departments')}
-          replace={onMain}
-          active={onMain && tab === 'departments'}
-          onNavigate={onNavigate}
-        />
-        <NavItem
-          label="Designations"
-          icon={icon(Briefcase)}
-          href={`${MAIN_PATH}/positions`}
-          active={pathname === `${MAIN_PATH}/positions`}
-          onNavigate={onNavigate}
-        />
-      </div>
-
-      <div className={cc.navGroup}>
-        <span className={cc.navGroupLabel}>Access</span>
-        <NavItem
-          label="By Employee"
-          icon={icon(ShieldCheck)}
-          href={`${MAIN_PATH}/permissions`}
-          active={pathname === `${MAIN_PATH}/permissions`}
-          onNavigate={onNavigate}
-        />
-        <NavItem
-          label="By Module"
-          icon={icon(Layers)}
-          href={`${MAIN_PATH}/permissions/modules`}
-          active={pathname === `${MAIN_PATH}/permissions/modules`}
-          onNavigate={onNavigate}
-        />
-      </div>
-
-      <div className={cc.navGroup}>
-        <span className={cc.navGroupLabel}>System</span>
-        <NavItem
-          label="Order Numbering"
-          icon={icon(Hash)}
-          href={tabHref('order-numbering')}
-          replace={onMain}
-          active={onMain && tab === 'order-numbering'}
-          onNavigate={onNavigate}
-        />
-        {/* Which associated people are told when a Confirmed Order changes.
-            Its own entry for the same reason Order Numbering has one: a
-            control an admin cannot find is a control that does not exist. */}
-        <NavItem
-          label="Order Notifications"
-          icon={icon(BellRing)}
-          href={tabHref('order-notifications')}
-          replace={onMain}
-          active={onMain && tab === 'order-notifications'}
-          onNavigate={onNavigate}
-        />
-        {/* Who reviews each approved PI version for production
-            (20261229000000). One person, named here by an administrator;
-            without one, every new handoff waits unassigned. */}
-        <NavItem
-          label="Operations Handoff"
-          icon={icon(BellRing)}
-          href={tabHref('operations-handoff')}
-          replace={onMain}
-          active={onMain && tab === 'operations-handoff'}
-          onNavigate={onNavigate}
-        />
-        {/* Whose orders each sales candidate may see (20270221000000). Owner-only
-            in the database; the screen refuses anybody else. */}
-        <NavItem
-          label="Order Visibility"
-          icon={icon(Users)}
-          href={tabHref('order-visibility')}
-          replace={onMain}
-          active={onMain && tab === 'order-visibility'}
-          onNavigate={onNavigate}
-        />
-        {/* Company notices for chosen employees. Its own route, like
-            Test Data Cleanup: a list with its own create/edit dialogs. */}
-        <NavItem
-          label="Announcements"
-          icon={icon(Megaphone)}
-          href={`${MAIN_PATH}/announcements`}
-          active={pathname === `${MAIN_PATH}/announcements`}
-          onNavigate={onNavigate}
-        />
-        {/* Test Data Cleanup removes ONE transaction, found by searching for
-            it. Data Management clears a MODULE. Two entries, on purpose. */}
-        <NavItem
-          label="Test Data Cleanup"
-          icon={icon(Eraser)}
-          href={`${MAIN_PATH}/test-data-cleanup`}
-          active={pathname === `${MAIN_PATH}/test-data-cleanup`}
-          onNavigate={onNavigate}
-        />
-        <NavItem
-          label="Data Management"
-          icon={icon(DatabaseZap)}
-          href={`${MAIN_PATH}/data-management`}
-          active={pathname === `${MAIN_PATH}/data-management`}
-          onNavigate={onNavigate}
-        />
-        {/* Member-wise task reporting and permanent task deletion. It used to
-            be the "Super Admin" entry in the Task Management sidebar, which was
-            two things at once: administrative navigation inside a module that
-            should hold task work only, and a name that now collides with the
-            Super Admin designation level. The route and the page are unchanged. */}
-        <NavItem
-          label="Task Records"
-          icon={icon(ClipboardList)}
-          href="/super-admin"
-          active={pathname === '/super-admin'}
-          onNavigate={onNavigate}
-        />
-      </div>
+      {everyday.map(item)}
+      <div className={cc.navDivider} />
+      {danger.map(item)}
     </nav>
   )
 }
 
 function NavItem({
-  label, icon, active, href, replace, onNavigate,
+  label, icon, active, href, replace, danger, onNavigate,
 }: {
   label: string
   icon: React.ReactNode
@@ -420,6 +368,8 @@ function NavItem({
   href: string
   /** Replace the history entry instead of pushing one. */
   replace?: boolean
+  /** Records & Data: apart from the everyday entries, in the warning colour. */
+  danger?: boolean
   onNavigate?: () => void
 }) {
   return (
@@ -427,9 +377,12 @@ function NavItem({
       href={href}
       replace={replace}
       onClick={onNavigate}
-      className={`boe-nav-item${active ? ' active' : ''}`}
+      className={`boe-nav-item${active ? ' active' : ''}${danger ? ` ${cc.navDanger}` : ''}`}
       aria-current={active ? 'page' : undefined}
-      style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
+      style={{
+        fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none',
+        color: danger && !active ? '#B0364A' : undefined,
+      }}
     >
       <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
         {icon}

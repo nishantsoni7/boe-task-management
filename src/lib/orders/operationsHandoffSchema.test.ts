@@ -348,7 +348,7 @@ describe('the notifications reach the reader and open the Order at the card', ()
 describe('the queues and the Control Center', () => {
   const DASHBOARD = read('src/app/orders/page.tsx')
   const ALL = read('src/app/orders/all/page.tsx')
-  const QUEUE = read('src/app/admin/control-center/action-queue/page.tsx')
+  const QUEUE = read('src/lib/controlCenter/actionQueue.ts')
   const CC = read('src/app/admin/control-center/page.tsx')
   const LAYOUT = read('src/components/layout/ControlCenterLayout.tsx')
 

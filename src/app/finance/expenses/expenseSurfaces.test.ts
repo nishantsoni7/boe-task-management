@@ -3047,6 +3047,38 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/inventory/whatsapp.ts',
   ])
 
+  /**
+   * Control Center navigation redesign: six hubs instead of fourteen entries,
+   * section tabs, a Find-anything search and a Home that shows what is waiting
+   * on an administrator. The Action Queue's loader moves, unchanged, out of its
+   * page so Home reads the same rules. Control Center screens and their shared
+   * navigation only — no migration, no permission, no Finance or Orders rule.
+   * The suites that pinned the moved loader are re-pointed at its new home.
+   */
+  const ALLOWED_CONTROL_CENTER_NAV = new Set([
+    'src/app/admin/control-center/action-queue/page.tsx',
+    'src/app/admin/control-center/page.tsx',
+    'src/app/admin/control-center/people/page.tsx',
+    'src/components/controlCenter/FindAnything.tsx',
+    'src/components/controlCenter/MembersWorkspace.tsx',
+    'src/components/controlCenter/controlCenter.module.css',
+    'src/components/layout/ControlCenterLayout.tsx',
+    'src/components/layout/controlCenterNav.test.ts',
+    'src/hooks/queries/useActionQueue.ts',
+    'src/lib/controlCenter/actionQueue.ts',
+    'src/lib/controlCenter/navModel.ts',
+    'src/lib/controlCenter/navModel.test.ts',
+    'src/lib/announcementsMigration.test.ts',
+    'src/lib/finance/paymentEntry.test.ts',
+    'src/lib/orders/operationsHandoffSchema.test.ts',
+    'src/lib/orders/orderRequestRetirement.test.ts',
+    'src/lib/orders/orderVisibilityScopes.test.ts',
+    'src/lib/orders/verifiedPaymentGateSchema.test.ts',
+    'src/lib/ui/menuPlacement.test.ts',
+    'src/app/finance/paymentRouting.test.ts',
+    'src/app/finance/expenses/expenseSurfaces.test.ts',
+  ])
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -3100,6 +3132,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_EXPENSE_REIMBURSEMENTS.has(f) &&
     !ALLOWED_ATTENDANCE_REQUESTS.has(f) &&
     !ALLOWED_ASSET_CATALOGUE.has(f) &&
+    !ALLOWED_CONTROL_CENTER_NAV.has(f) &&
     !ALLOWED_NEW_TASK_SILENT.has(f) &&
     !ALLOWED_TASK_CHANGE_STATUS_RPC.has(f) &&
     !ALLOWED_NOTIFICATION_EVENT_ONCE.has(f) &&
@@ -3572,6 +3605,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
         || ALLOWED_ORDERS_SUMMARY_PI_HISTORY.has(file)
         || ALLOWED_PI_DRAFT_TOP_LAYOUT.has(file)
         || ALLOWED_PI_COMPLETION_FLOW.has(file)
+        || ALLOWED_CONTROL_CENTER_NAV.has(file)
         || ALLOWED_EXPENSE_REIMBURSEMENTS.has(file)
         || ALLOWED_ZERO_DISCOUNT_SUBTOTAL.has(file)
         || ALLOWED_LEGACY_ADVANCE_DOORS_CLOSED.has(file)
