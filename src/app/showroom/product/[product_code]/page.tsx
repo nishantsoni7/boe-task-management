@@ -120,7 +120,7 @@ export default function ProductPage() {
             style={{
               marginTop: '8px',
               padding: '11px 24px',
-              background: '#303536', color: '#fff',
+              background: '#B9472E', color: '#fff',
               border: 'none', borderRadius: '8px',
               fontSize: '14px', fontWeight: 600,
               cursor: 'pointer', fontFamily: font.body,

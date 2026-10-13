@@ -711,7 +711,7 @@ export function PiPaymentDetailsModal({
                   disabled={filterLocked && !selected}
                   onClick={() => showFilter(key)}
                   style={selected
-                    ? { background: colors.primary, borderColor: colors.primary, color: '#FFFFFF' }
+                    ? { background: colors.brand, borderColor: colors.primary, color: '#FFFFFF' }
                     : undefined}
                 >
                   {PAYMENT_FILTER_TAB[key]}

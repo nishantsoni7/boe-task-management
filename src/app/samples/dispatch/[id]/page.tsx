@@ -146,7 +146,7 @@ export default function DispatchPage() {
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Not authorized</div>
         <div style={{ fontSize: '13px' }}>You do not have permission to dispatch samples.</div>
-        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#B9472E', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           Go to Sample Tracking
         </button>
       </div>
@@ -159,7 +159,7 @@ export default function DispatchPage() {
         <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
         <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Request not found</div>
         <div style={{ fontSize: '13px' }}>This QR code may be invalid or the request was removed.</div>
-        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#B9472E', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
           Go to Sample Tracking
         </button>
       </div>
@@ -180,7 +180,7 @@ export default function DispatchPage() {
           {form.courier_name && <> Courier: <strong style={{ color: colors.secondary }}>{form.courier_name}</strong>.</>}
           {form.tracking_number && <> Tracking: <strong style={{ color: colors.secondary }}>{form.tracking_number}</strong>.</>}
         </div>
-        <button onClick={() => router.push('/samples')} style={{ padding: '9px 24px', borderRadius: '8px', border: 'none', background: '#303536', color: '#fff', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={() => router.push('/samples')} style={{ padding: '9px 24px', borderRadius: '8px', border: 'none', background: '#B9472E', color: '#fff', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer' }}>
           Back to Sample Tracking
         </button>
       </div>
@@ -322,7 +322,7 @@ export default function DispatchPage() {
                 disabled={saving}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                  background: '#303536', color: '#fff', border: 'none', borderRadius: '8px',
+                  background: '#B9472E', color: '#fff', border: 'none', borderRadius: '8px',
                   padding: '12px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.65 : 1, fontFamily: font.display,
                 }}

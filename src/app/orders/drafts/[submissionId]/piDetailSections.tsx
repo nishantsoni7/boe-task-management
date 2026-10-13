@@ -491,7 +491,7 @@ function orderHeadline({ reservation, confirmedNumber, draftReference }: {
 const CONTEXT_DOT: Record<PiDetailTone, string> = {
   neutral: '#686D6C',
   blue: '#335A86',
-  amber: '#805B0D',
+  amber: '#C48A1A',
   green: '#276247',
   red: '#B42332',
 }
@@ -1568,7 +1568,7 @@ export function PiWarningPanel({ entries }: { entries: readonly PiDiagnosticEntr
 const TIMELINE_MARKER: Record<PiActivityTone, string> = {
   neutral: '#686D6C',
   blue: '#C3D3E6',
-  amber: '#805B0D',
+  amber: '#C48A1A',
   green: '#6BB68C',
   red: '#CE7272',
 }

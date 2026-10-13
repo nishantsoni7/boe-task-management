@@ -224,7 +224,7 @@ function AccountPageInner() {
                 aria-busy={pwLoading}
                 style={{
                   padding: '9px 20px', fontSize: 13.5, fontWeight: 600,
-                  background: colors.primary, color: '#fff',
+                  background: colors.brand, color: '#fff',
                   border: 'none', borderRadius: 8,
                   cursor: pwLoading ? 'not-allowed' : 'pointer',
                   opacity: pwLoading ? 0.7 : 1,

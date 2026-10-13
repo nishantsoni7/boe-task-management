@@ -254,7 +254,7 @@ export default function ShowroomCategoriesPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: '7px',
             fontSize: '13px', fontWeight: 600,
-            color: '#fff', background: '#303536',
+            color: '#fff', background: '#B9472E',
             border: 'none', borderRadius: '8px',
             padding: '9px 16px', cursor: adding ? 'default' : 'pointer',
             opacity: adding ? 0.7 : 1, whiteSpace: 'nowrap', flexShrink: 0,

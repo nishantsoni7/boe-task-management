@@ -765,7 +765,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 fontSize: '14px', fontWeight: 600,
                 color: '#fff',
-                background: '#303536',
+                background: '#B9472E',
                 border: 'none', borderRadius: '8px',
                 padding: '11px 0',
                 cursor: downloadingFormat ? 'wait' : 'pointer',

@@ -234,7 +234,7 @@ function JoinForm() {
           style={{
             marginTop: '8px',
             width: '100%', padding: '14px',
-            background: '#303536', color: '#fff',
+            background: '#B9472E', color: '#fff',
             border: 'none', borderRadius: '8px',
             fontSize: '15px', fontWeight: 600,
             cursor: submitting ? 'default' : 'pointer',

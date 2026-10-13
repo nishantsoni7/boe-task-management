@@ -227,7 +227,7 @@ export default function SettingsPage() {
                   padding: '9px 20px',
                   fontSize: 13.5,
                   fontWeight: 600,
-                  background: colors.primary,
+                  background: colors.brand,
                   color: '#fff',
                   border: 'none',
                   borderRadius: 8,

@@ -129,7 +129,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
             onClick={onGenerate}
             style={{
               fontSize: 12, fontWeight: 600,
-              background: '#303536', color: '#fff',
+              background: '#B9472E', color: '#fff',
               border: 'none', borderRadius: 8,
               padding: '6px 14px', cursor: 'pointer',
             }}
@@ -545,7 +545,7 @@ function EodLogForm({ existing, token, onSaved, readOnly }: {
         style={{
           alignSelf: 'flex-start',
           fontSize: 13, fontWeight: 600,
-          background: '#303536', color: '#fff',
+          background: '#B9472E', color: '#fff',
           border: 'none', borderRadius: 8,
           padding: '9px 20px', cursor: readOnly || isSaving || !summary.trim() ? 'not-allowed' : 'pointer',
           opacity: readOnly || isSaving || !summary.trim() ? 0.5 : 1,

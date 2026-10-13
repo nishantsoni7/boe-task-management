@@ -210,7 +210,7 @@ export default function ShowroomInboxPage() {
             marginLeft: 'auto',
             display: 'inline-flex', alignItems: 'center', gap: '7px',
             padding: '10px 16px', minHeight: '40px',
-            background: '#303536', color: '#fff',
+            background: '#B9472E', color: '#fff',
             border: 'none', borderRadius: '8px',
             fontSize: '13px', fontWeight: 600,
             cursor: 'pointer', fontFamily: font.body,

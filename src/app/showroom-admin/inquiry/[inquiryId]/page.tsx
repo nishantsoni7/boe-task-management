@@ -1162,7 +1162,7 @@ export default function InquiryDetailPage() {
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                     padding: '12px 18px',
-                    background: savingQuotation ? '#4C5352' : '#303536', color: '#ffffff',
+                    background: savingQuotation ? '#4C5352' : '#B9472E', color: '#ffffff',
                     border: 'none', borderRadius: '8px',
                     fontSize: '13.5px', fontWeight: 600,
                     cursor: savingQuotation ? 'default' : 'pointer',

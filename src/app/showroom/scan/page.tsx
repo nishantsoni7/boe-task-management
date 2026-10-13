@@ -182,7 +182,7 @@ export default function ScanPage() {
                 disabled={checking}
                 style={{
                   flexShrink: 0, padding: '13px 20px',
-                  background: '#303536', color: '#fff',
+                  background: '#B9472E', color: '#fff',
                   border: 'none', borderRadius: '8px',
                   fontSize: '14px', fontWeight: 600,
                   cursor: checking ? 'default' : 'pointer',

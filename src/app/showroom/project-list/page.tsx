@@ -441,7 +441,7 @@ function Shell({ children, footer }: { children: React.ReactNode; footer?: React
 
 const primaryBtn: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  background: '#303536', color: '#fff',
+  background: '#B9472E', color: '#fff',
   border: 'none', borderRadius: '8px',
   fontSize: '14px', fontWeight: 600,
   cursor: 'pointer', fontFamily: font.body,
