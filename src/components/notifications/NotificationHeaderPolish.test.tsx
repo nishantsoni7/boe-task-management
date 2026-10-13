@@ -183,13 +183,13 @@ describe('1-5. who is handling this task, beside its name', () => {
 
   test('5. restrained blue, and secondary to the title', async () => {
     const head = headerOf(await one())
-    // The same blue as the card's unread accent — one accent colour, not two.
-    const CARD_BLUE = '#335A86'
+    // The same accent as the card's unread accent — one accent colour, not two.
+    const CARD_BLUE = '#B9472E'
     const chip = head.slice(head.indexOf('title="Assigned to Aditya"') - 400,
                             head.indexOf('title="Assigned to Aditya"') + 400)
-    assert.ok(chip.includes(`color:${CARD_BLUE}`), 'the assignee reads in the notification blue')
+    assert.ok(chip.includes(`color:${CARD_BLUE}`), 'the assignee reads in the notification accent')
     // Smaller and lighter than the title, which stays the strongest thing here.
-    assert.ok(chip.includes('font-size:11.5px'))
+    assert.ok(chip.includes('font-size:12px'))
     assert.ok(chip.includes('font-weight:500'))
     assert.ok(head.includes('font-size:13.5px') && head.includes('font-weight:700'),
       'the title keeps its own weight')
@@ -250,7 +250,7 @@ describe('7-11. one control, one destination', () => {
     assert.equal(SRC.includes('onKeyDown'), false, 'no hand-rolled keyboard handling is needed')
     // And it carries a visible focus ring rather than relying on nothing.
     const focus = CSS.slice(CSS.indexOf('.boe-notif-task-title:focus-visible'))
-    assert.match(focus.slice(0, 120), /outline:\s*2px solid #335A86/)
+    assert.match(focus.slice(0, 120), /outline:\s*2px solid #B9472E/)
     assert.match(focus.slice(0, 160), /outline-offset/)
   })
 
@@ -338,7 +338,7 @@ describe('13-15. desktop and mobile', () => {
     assert.equal(head.includes('title="Assigned to '), false, 'no tooltip for nobody')
     assert.equal(head.includes('lucide-user'), false, 'and no icon standing alone')
     // Muted, not the identity blue — it is an absence, not a person.
-    assert.equal(head.includes(`color:#335A86`), false)
+    assert.equal(head.includes(`color:#B9472E`), false)
     assert.ok(head.includes('Ertiga Service and Part Change'), 'the card still works')
   })
 

@@ -2421,7 +2421,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 // ── Payments table ────────────────────────────────────────────────────────────
 
 const TH_STYLE: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '8px 8px',
   textAlign: 'left',
   fontSize: '12px',
   fontWeight: 700,
@@ -2501,7 +2501,7 @@ export function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  const TD: React.CSSProperties = { padding: '8px 8px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
   // Money in the salesperson's list: right aligned, tabular digits, two decimals
   // (fmtAmount is formatMoney: ₹ + en-IN grouping + exactly two decimals).
   const TD_MONEY: React.CSSProperties = { ...TD, textAlign: 'right', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }

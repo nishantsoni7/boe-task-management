@@ -998,7 +998,7 @@ const closedHtml = (over: Partial<StatusCardProps> = {}) =>
 const segment = (html: string, name: 'confirmed' | 'awaiting' | 'unpaid') =>
   html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
 const GREEN = 'background:#276247'
-const AMBER = 'background:#C48A1A'
+const AMBER = 'background:#805B0D'
 const RED = 'background:#B42332'
 
 /** The element one part of the received figure was drawn as: button or div. */
@@ -1549,7 +1549,7 @@ describe('the overview states the two dates it has, large, and pauses the one it
     assert.ok(size('pi-detail-date-value') >= size('pi-detail-date-label') * 1.6,
       'the value, not the label, is what grew')
     assert.ok(weight('pi-detail-date-value') >= 700)
-    assert.ok(size('pi-detail-date-note') <= 11.5, 'the commitment stays secondary')
+    assert.ok(size('pi-detail-date-note') <= 12, 'the commitment stays secondary')
   })
 })
 
@@ -2969,8 +2969,8 @@ describe('the commercial breakdown outranks the activity trail', () => {
     // beside every other row's, one step up and no more.
     const css = read(GLOBAL_CSS)
     const rule = css.slice(css.indexOf('.pi-commercial-grand-total {'))
-    assert.ok(/background: rgba\(232, 160, 48, 0\.08\)/.test(rule), 'a pale warm highlight')
-    assert.ok(/border-top: 2px solid rgba\(232, 160, 48, 0\.42\)/.test(rule), 'a stronger top border')
+    assert.ok(/background: rgba\(185,71,46, 0\.07\)/.test(rule), 'a pale warm highlight')
+    assert.ok(/border-top: 2px solid rgba\(185,71,46, 0\.4\)/.test(rule), 'a stronger top border')
     const total = commercial.slice(commercial.indexOf('pi-commercial-grand-total'))
     assert.ok(total.includes('font-weight:700'), 'bold label and bold amount')
     assert.ok(total.includes('font-size:15px'), 'and the amount a single step larger')
@@ -3012,7 +3012,7 @@ describe('the commercial breakdown outranks the activity trail', () => {
   test('the connector is lighter than the card it sits in', () => {
     const css = read(GLOBAL_CSS)
     const line = css.slice(css.indexOf('.pi-detail-timeline-line {'))
-    assert.ok(/background: rgba\(0, 0, 0, 0\.07\)/.test(line.slice(0, 400)))
+    assert.ok(/background: #F1EEE9/.test(line.slice(0, 400)))
   })
 
   test('nobody lost contrast to the restyle', () => {
@@ -3157,7 +3157,7 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.ok(/\.pi-detail-figures-grid \{[^}]*flex: 1 1 auto/.test(css), 'the grid fills the container’s height')
     assert.ok(/\.pi-detail-figure \{[^}]*justify-content: center/.test(css))
     assert.ok(/\.pi-detail-figure-value,\s*\.pi-detail-figure-absent \{[^}]*font-size: 22px/.test(css), 'large values')
-    assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 11\.5px/.test(css), 'and muted labels')
+    assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 12px/.test(css), 'and muted labels')
   })
 
   test('payment status: headline beside its parts when wide, stacked when narrow, never wider than its column', () => {

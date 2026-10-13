@@ -33,7 +33,7 @@ export function ViewModeBanner() {
       marginBottom: '20px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Eye size={16} color="#C48A1A" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+        <Eye size={16} color="#805B0D" strokeWidth={2.2} style={{ flexShrink: 0 }} />
         <div>
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#78350F', letterSpacing: '-0.01em' }}>
             ADMIN VIEW MODE — Viewing as <strong>{viewAsProfile.full_name}</strong>
@@ -135,7 +135,7 @@ export function ViewModeSidebarSection({
         /* ── View mode active: show viewed-user chip + Exit button ── */
         <div style={{ padding: '8px 10px 6px' }}>
           <div style={{
-            fontSize: '12px', fontWeight: 700, color: '#C48A1A',
+            fontSize: '12px', fontWeight: 700, color: '#805B0D',
             textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px',
           }}>
             Viewing As
@@ -145,7 +145,7 @@ export function ViewModeSidebarSection({
               width: 28, height: 28, borderRadius: '8px',
               background: '#FAF0DA',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '12px', fontWeight: 700, color: '#C48A1A', flexShrink: 0,
+              fontSize: '12px', fontWeight: 700, color: '#805B0D', flexShrink: 0,
             }}>
               {initials(viewAsProfile?.full_name ?? '')}
             </div>
@@ -153,7 +153,7 @@ export function ViewModeSidebarSection({
               <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#303536', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {viewAsProfile?.full_name}
               </div>
-              <div style={{ fontSize: '12px', color: '#C48A1A' }}>
+              <div style={{ fontSize: '12px', color: '#805B0D' }}>
                 {viewAsProfile ? employeeSubtitle(viewAsProfile) : ''}
               </div>
             </div>

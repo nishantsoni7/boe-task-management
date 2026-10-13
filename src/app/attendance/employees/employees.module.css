@@ -87,7 +87,7 @@
 }
 .groupTitle { font-size: 13px; font-weight: 700; color: #303536; margin: 0; }
 .check { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 14px; color: #303536; cursor: pointer; }
-.check input { width: 18px; height: 18px; accent-color: #C48A1A; cursor: pointer; flex-shrink: 0; }
+.check input { width: 18px; height: 18px; accent-color: #805B0D; cursor: pointer; flex-shrink: 0; }
 .req { color: #B42332; }
 
 @media (max-width: 767px) {

@@ -2524,7 +2524,7 @@ export default function TaskDetailPage() {
                       cursor: commentSaving ? 'not-allowed' : 'pointer',
                       fontFamily: font.body,
                       opacity: commentSaving ? 0.6 : 1, transition: 'all 0.15s',
-                      boxShadow: '0 2px 6px rgba(51,90,134,0.25)',
+                      boxShadow: '0 2px 6px rgba(185,71,46,0.25)',
                       flexShrink: 0,
                     }}
                   >

@@ -487,9 +487,9 @@ table th, [role="columnheader"] {
    blue also clears AA comfortably (about 8:1), which the mid-blue on a tint
    would not have. */
 .boe-task-action-submit {
-  background: #EAF0F8;
-  color: #335A86;
-  border: 1.5px solid #C3D3E6;
+  background: #F8EAE4;
+  color: #963B27;
+  border: 1.5px solid #F1D5CB;
   box-shadow: none;          /* the strong blue glow is gone, deliberately */
 }
 
@@ -503,7 +503,7 @@ table th, [role="columnheader"] {
    rather than the `filter: brightness()` the solid fill used to need. It is a
    background rather than a filter because the fill no longer lives inline,
    which is what let a stylesheet rule win here at all. */
-.boe-task-action-submit:not(:disabled):hover  { background: #F8EAE4; }
+.boe-task-action-submit:not(:disabled):hover  { background: #F1D5CB; }
 .boe-task-action-submit:not(:disabled):active { transform: translateY(1px); }
 
 /* A pale button needs its own ring: the global amber default is faint against
@@ -971,7 +971,7 @@ table th, [role="columnheader"] {
 }
 
 .boe-kpi-red   .boe-kpi-value { color: #B42332; }
-.boe-kpi-amber .boe-kpi-value { color: #C48A1A; }
+.boe-kpi-amber .boe-kpi-value { color: #805B0D; }
 
 .boe-kpi-meta {
   font-size: 12px;
@@ -1611,7 +1611,7 @@ table th, [role="columnheader"] {
 
 .boe-escalation-label.overdue { color: #B42332; }
 .boe-escalation-label.danger  { color: #B42332; }
-.boe-escalation-label.caution { color: #C48A1A; }
+.boe-escalation-label.caution { color: #805B0D; }
 .boe-escalation-label.stale   { color: #4C5352; }
 
 /* ─────────────────────────────────────────────────────
@@ -2462,7 +2462,7 @@ table th, [role="columnheader"] {
   margin-left: auto;
   font-family: var(--boe-font-body);
   font-size: 12px;
-  color: #C48A1A;
+  color: #805B0D;
   opacity: 0.85;
   background: rgba(196,138,26,0.07);
   padding: 1px 5px;
@@ -6340,10 +6340,10 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
    the set of rows that carry the class grew. */
 
 .pi-commercial-grand-total {
-  /* The amber token at the alpha the rest of the page uses for a warm ground. */
-  background: rgba(196,138,26, 0.08);
+  /* The brand terracotta at a low alpha: a warm ground the eye stops on. */
+  background: rgba(185,71,46, 0.07);
   /* Heavier than the hairline between ordinary rows, so the eye stops here. */
-  border-top: 2px solid rgba(196,138,26, 0.42);
+  border-top: 2px solid rgba(185,71,46, 0.4);
 }
 
 /* ── The activity trail ───────────────────────────────────────────────────── */
@@ -6946,7 +6946,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
 .pi-detail-internal-status--ready svg { color: #276247; }
 /* NEEDED BEFORE REVIEW is the one thing here somebody must act on. */
 .pi-detail-internal-status--needed { color: #805B0D; font-weight: 600; }
-.pi-detail-internal-status--needed svg { color: #C48A1A; }
+.pi-detail-internal-status--needed svg { color: #805B0D; }
 .pi-detail-internal-status--neutral { color: #686D6C; }
 
 .pi-detail-internal-note {
@@ -7521,7 +7521,7 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
 /* Inset, so the ring sits inside the panel's 4px padding instead of spilling
    over its rounded edge. Outlines do not affect layout, so this costs no size. */
 .boe-menu-item:focus-visible {
-  outline: 2px solid rgba(196,138,26,0.45);
+  outline: 2px solid #B9472E;
   outline-offset: -1px;
 }
 
@@ -7533,7 +7533,7 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
 }
 .boe-menu-item--danger:hover:not(:disabled),
 .boe-menu-item--danger:focus-visible:not(:disabled) {
-  background: rgba(180,35,50,0.14);
+  background: var(--boe-error-bg);
 }
 
 /* A disabled entry must not look pressable. RowActionsMenu offers no disabled

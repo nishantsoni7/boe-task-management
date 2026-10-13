@@ -366,7 +366,7 @@ export default function SampleNotificationsPage() {
                       {!n.is_read && (
                         <span style={{
                           width: 7, height: 7, borderRadius: '50%',
-                          background: '#C48A1A', display: 'inline-block', flexShrink: 0,
+                          background: '#B9472E', display: 'inline-block', flexShrink: 0,
                         }} />
                       )}
                     </div>

@@ -544,7 +544,7 @@ function DuplicateWarning({ view }: { view: EmployeeDuplicateView }) {
         border: '1px solid #E6D2A0', background: '#FAF0DA', color: '#805B0D',
       }}
     >
-      <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px', color: '#C48A1A' }} />
+      <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: '1px', color: '#805B0D' }} />
       <div style={{ minWidth: 0, fontSize: '12.5px', lineHeight: 1.55 }}>
         <div id="duplicate-warning-title" style={{ fontWeight: 700 }}>
           {unavailable ? DUPLICATE_UNAVAILABLE_TITLE : DUPLICATE_WARNING_TITLE}

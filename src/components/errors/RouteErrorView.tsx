@@ -22,7 +22,7 @@ export function RouteErrorView({ error, retry }: { error: Error & { digest?: str
   const button = {
     minHeight: 44, padding: '0 18px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
   } as const
-  const primary = { ...button, background: '#303536', color: '#fff', border: '1px solid #303536' }
+  const primary = { ...button, background: '#B9472E', color: '#fff', border: '1px solid #B9472E' }
   const secondary = { ...button, background: '#fff', color: '#303536', border: '1px solid #CFC8BF' }
 
   return (
@@ -38,7 +38,7 @@ export function RouteErrorView({ error, retry }: { error: Error & { digest?: str
         width: '100%', maxWidth: 440, background: '#fff', border: '1px solid #E4DED7',
         borderRadius: 12, padding: '28px 24px', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
       }}>
-        <h1 style={{ fontSize: 20, margin: '0 0 8px', color: '#303536' }}>{copy.title}</h1>
+        <h1 style={{ fontSize: 20, margin: '0 0 8px', fontFamily: 'var(--font-display)', color: '#303536' }}>{copy.title}</h1>
         <p style={{ fontSize: 14, lineHeight: 1.5, margin: '0 0 20px', color: '#4C5352' }}>{copy.body}</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {copy.primary === 'reload'

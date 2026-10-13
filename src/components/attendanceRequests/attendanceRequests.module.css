@@ -202,7 +202,7 @@ textarea.input { resize: vertical; line-height: 1.45; min-height: 84px; }
 
 /* The request a notification or the salary review linked to. */
 .focusRow { background: rgba(196,138,26, 0.10); box-shadow: inset 3px 0 0 #C48A1A; }
-.focusCard { border-color: #C48A1A; box-shadow: 0 0 0 1px #C48A1A; }
+.focusCard { border-color: #805B0D; box-shadow: 0 0 0 1px #C48A1A; }
 
 @media (max-width: 767px) {
   .desktopOnly { display: none; }

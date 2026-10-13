@@ -739,7 +739,7 @@ describe('a menu entry shows which action is about to run', () => {
 
   test('and a focus ring that stays inside the panel', () => {
     const rule = ruleFor('.boe-menu-item:focus-visible {')
-    assert.ok(rule.includes('outline: 2px solid rgba(196,138,26,0.45)'),
+    assert.ok(rule.includes('outline: 2px solid #B9472E'),
       'the app-wide focus ring, not a new one')
     assert.ok(rule.includes('outline-offset: -1px'),
       'inset, so it does not spill over the panel’s rounded edge')
@@ -749,7 +749,7 @@ describe('a menu entry shows which action is about to run', () => {
     assert.ok(ruleFor('.boe-menu-item--danger {').includes('#B42332'),
       'colors.red, as before')
     const rule = ruleFor('.boe-menu-item--danger:hover:not(:disabled),')
-    assert.ok(rule.includes('rgba(180,35,50,0.14)'),
+    assert.ok(rule.includes('var(--boe-error-bg)'),
       'the value .boe-btn-danger:hover already uses — not a new red')
     assert.ok(!rule.includes('#ECE7E0'),
       'Delete Payment must never share the neutral highlight with an ordinary action')
@@ -760,7 +760,7 @@ describe('a menu entry shows which action is about to run', () => {
   test('the red hover is the one the buttons already use', () => {
     // Reuse, stated as an equality rather than a duplicated literal's comment:
     // if .boe-btn-danger:hover ever moves, this fails and the two are realigned.
-    assert.ok(css.includes('.boe-btn-danger:hover { background: rgba(180,35,50,0.14); }'),
+    assert.ok(css.includes('.boe-btn-danger:hover:not(:disabled) { background: var(--boe-error-bg); border-color: var(--boe-error); }'),
       'the established danger hover this borrows from')
   })
 

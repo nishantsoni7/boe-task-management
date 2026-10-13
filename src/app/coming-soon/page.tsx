@@ -35,7 +35,7 @@ export default function ComingSoonPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 24px',
         }}>
-          <Clock size={26} color="#C48A1A" strokeWidth={1.8} />
+          <Clock size={26} color="#963B27" strokeWidth={1.8} />
         </div>
 
         {/* Brand */}
@@ -45,7 +45,7 @@ export default function ComingSoonPage() {
             background: '#303536',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Briefcase size={12} color="#C48A1A" strokeWidth={2} />
+            <Briefcase size={12} color="#963B27" strokeWidth={2} />
           </div>
           <span style={{ fontSize: '12px', fontWeight: 700, color: colors.muted, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             BOE Internal Platform
@@ -68,7 +68,7 @@ export default function ComingSoonPage() {
         <div style={{
           display: 'inline-block',
           fontSize: '12px', fontWeight: 700,
-          color: '#C48A1A',
+          color: '#963B27',
           background: 'rgba(196,138,26,0.1)',
           border: '1px solid rgba(196,138,26,0.25)',
           borderRadius: '999px',

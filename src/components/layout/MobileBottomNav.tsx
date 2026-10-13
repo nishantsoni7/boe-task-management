@@ -61,7 +61,7 @@ function BottomNavItem({
           <span style={{
             position: 'absolute', top: -5, right: -8,
             minWidth: 16, height: 16,
-            background: '#C48A1A', color: '#fff',
+            background: '#B9472E', color: '#fff',
             fontSize: 12, fontWeight: 700,
             borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 3px', lineHeight: 1,

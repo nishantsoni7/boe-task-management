@@ -56,7 +56,7 @@ function StatusBadge({ status }: { status: string }) {
     present:       { bg: 'rgba(39,98,71,0.1)',  color: '#276247', label: 'Present' },
     checked_in:    { bg: 'rgba(51,90,134,0.1)',  color: '#335A86', label: 'Checked In' },
     absent:        { bg: 'rgba(180,35,50,0.1)',   color: '#B42332', label: 'Absent' },
-    half_day:      { bg: 'rgba(196,138,26,0.1)',  color: '#C48A1A', label: 'Half Day' },
+    half_day:      { bg: 'rgba(196,138,26,0.1)',  color: '#805B0D', label: 'Half Day' },
     late:          { bg: 'rgba(196,138,26,0.1)',  color: '#EA580C', label: 'Late' },
     missing_punch: { bg: 'rgba(139,92,246,0.1)',  color: '#335A86', label: 'Missing Punch' },
   }
@@ -249,7 +249,7 @@ export default function EmployeeMonthlyDetailPage() {
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
               {[
                 { label: 'Present',        value: String(present),       color: '#335A86' },
-                { label: 'Half Day',       value: String(half_day),      color: '#C48A1A' },
+                { label: 'Half Day',       value: String(half_day),      color: '#805B0D' },
                 { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#B42332' : '#686D6C' },
                 { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#335A86' : '#686D6C' },
                 { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#C48A1A' : '#686D6C' },

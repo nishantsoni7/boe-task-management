@@ -174,7 +174,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
           {audit.suggestions.map((s, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <div style={{
-                fontSize: 12, fontWeight: 700, color: '#C48A1A',
+                fontSize: 12, fontWeight: 700, color: '#805B0D',
                 background: '#C48A1A18', borderRadius: 6,
                 padding: '1px 5px', marginTop: 2, flexShrink: 0,
               }}>{i + 1}</div>
@@ -894,12 +894,12 @@ function MonthlyView({ token, which, viewAsUserId }: {
                 const resultScore = trendDay?.breakdown.total ?? null
 
                 const result: { label: string; color: string; bg: string } =
-                  status === 'pending'   ? { label: 'Today',            color: '#C48A1A', bg: '#C48A1A12' } :
+                  status === 'pending'   ? { label: 'Today',            color: '#805B0D', bg: '#C48A1A12' } :
                   status === 'missed'    ? { label: 'Missed EOD',       color: '#B42332', bg: '#B423320E' } :
                   resultScore === null   ? { label: 'Submitted',        color: '#276247', bg: '#27624712' } :
                   resultScore >= 70      ? { label: 'Great Day',        color: '#276247', bg: '#27624712' } :
                   resultScore >= 50      ? { label: 'Good Day',         color: '#335A86', bg: '#335A8612' } :
-                  resultScore >= 35      ? { label: 'Low Activity',     color: '#C48A1A', bg: '#C48A1A12' } :
+                  resultScore >= 35      ? { label: 'Low Activity',     color: '#805B0D', bg: '#C48A1A12' } :
                                           { label: 'Needs Improvement', color: '#B42332', bg: '#B423320E' }
 
                 const isSubmitted = status === 'submitted'
@@ -927,7 +927,7 @@ function MonthlyView({ token, which, viewAsUserId }: {
                     </td>
                     <td style={{
                       padding: '11px 16px', whiteSpace: 'nowrap',
-                      color: '#C48A1A', letterSpacing: 1.5, fontSize: 12,
+                      color: '#805B0D', letterSpacing: 1.5, fontSize: 12,
                     }}>
                       {log?.self_score
                         ? '★'.repeat(log.self_score)

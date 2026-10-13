@@ -159,7 +159,7 @@ export default function SettingsPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
             <span style={{
               width: 10, height: 10, borderRadius: '50%',
-              background: '#C48A1A', flexShrink: 0,
+              background: '#B9472E', flexShrink: 0,
             }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: colors.primary }}>
               Change My Password

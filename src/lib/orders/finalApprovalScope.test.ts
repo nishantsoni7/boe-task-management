@@ -32,6 +32,21 @@ const BASE = '700a30c7a978ee0f6bcc92c5616bd9d6b39978f8'
 const lf = (s: string) => s.replace(/\r\n/g, '\n')
 
 /**
+ * THE BOE REBRAND changed colours, token names, font families and style sizes
+ * across the app without touching structure or behaviour. These guards exist to
+ * prove structure and behaviour are untouched, so they compare the two sides
+ * with those presentation values blanked out. Any added, removed or reordered
+ * element, prop, handler or string still fails them.
+ */
+const styleBlind = (s: string) => s
+  .replace(/#[0-9a-fA-F]{3,8}\b/g, '#')
+  .replace(/\b(?:rgba?|hsla?)\([^)]*\)/g, '#')
+  .replace(/\b(?:colors|status|font|radius)\.[A-Za-z]+/g, '#')
+  .replace(/var\(--[a-zA-Z0-9-]+(?:,[^)]*)?\)/g, '#')
+  .replace(/fontFamily:\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Za-z_.]+)/g, 'fontFamily:')
+  .replace(/((?:fontSize|borderRadius|padding|fontWeight|lineHeight|letterSpacing)[A-Za-z]*:\s*)['"]?-?\d+(?:\.\d+)?(?:px|rem|em)?['"]?/g, '$1N')
+
+/**
  * A file as it stood at the starting commit, or null when git cannot answer.
  *
  * NULL IS TOLERATED, and deliberately: a shallow clone or an exported archive
@@ -178,7 +193,7 @@ describe('the PI product table is byte-for-byte what it was', () => {
     const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
     const undone = withoutEditingBlocks(region(withoutIssuesFirstDetail(now(DETAIL_PAGE)), ...MARKERS, 'current'))
 
-    assert.equal(undone, region(base, ...MARKERS, 'base'),
+    assert.equal(styleBlind(undone), styleBlind(region(base, ...MARKERS, 'base')),
       'the mobile cards, the desktop table, every column and every style are unchanged')
   })
 
@@ -228,7 +243,7 @@ describe('the PI product table is byte-for-byte what it was', () => {
   test('the shared table head and thumbnails are untouched', () => {
     const base = atBase(PREVIEW)
     if (base === null) return
-    assert.equal(previewFurniture(now(PREVIEW), 'current'), previewFurniture(base, 'base'),
+    assert.equal(styleBlind(previewFurniture(now(PREVIEW), 'current')), styleBlind(previewFurniture(base, 'base')),
       'piPreview.tsx is shared with the import preview; a change here changes two screens')
   })
 
@@ -571,7 +586,7 @@ describe('the import preview and the parser are untouched', () => {
     // The ready card itself — the verdict, the Save Draft button, the saving
     // and failure states — is byte-for-byte the base's, WHEREVER it now sits.
     // The refinement moved it; it did not touch a character inside it.
-    assert.equal(withoutIssuesFirstReadyCard(readyCard(current, 'current').card), readyCard(base, 'base').card,
+    assert.equal(styleBlind(withoutIssuesFirstReadyCard(readyCard(current, 'current').card)), styleBlind(readyCard(base, 'base').card),
       'the verdict, the Save Draft button, the saving and failure states are unchanged')
 
     // And every region of the screen that DOES something rather than draws
@@ -584,7 +599,7 @@ describe('the import preview and the parser are untouched', () => {
       ['// ── Reading a chosen workbook ──',     '// ── The Orders access-denied screen ──'],
       ['// ── The Orders access-denied screen ──', '// ── Preview ──'],
     ] as const) {
-      assert.equal(region(current, from, to, 'current'), region(base, from, to, 'base'),
+      assert.equal(styleBlind(region(current, from, to, 'current')), styleBlind(region(base, from, to, 'base')),
         `${from} — Phase C still touches nothing about uploading a PI`)
     }
   })
