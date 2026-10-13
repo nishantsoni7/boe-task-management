@@ -35,6 +35,7 @@ const item = (over: Partial<MeetingOrderItem> = {}): MeetingOrderItem => ({
   quantity: 4, current_stage: 'Polishing', latest_update: 'Frames done, polish starts Monday',
   issue: 'Fabric shade pending approval', responsible_department: 'operations',
   next_follow_up_date: '2026-08-12', status: 'open',
+  dimensions: null, spec_note: null, image_path: null,
   linked_task_id: null, linked_task_at: null, linked_task_by: null,
   created_by: 'u1', created_at: '', updated_at: '', ...over,
 })

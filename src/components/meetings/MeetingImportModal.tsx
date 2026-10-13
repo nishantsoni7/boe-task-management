@@ -22,7 +22,30 @@ import {
 // it does not delete. A line already in the meeting but absent from the sheet
 // is left alone, with its history and its linked task intact.
 
-type Step = 'choose' | 'preview'
+type Step = 'choose' | 'preview' | 'pi-preview'
+
+/**
+ * The PI preview, exactly as /api/meetings/import-pi returns it.
+ *
+ * Declared structurally rather than imported from the parser so nothing in the
+ * client bundle pulls in the workbook reader — and so it is impossible for a
+ * commercial field to arrive here by widening a shared type.
+ */
+type PiPreviewPayload = {
+  piNumber: string
+  productCount: number
+  distinctImageCount: number
+  products: {
+    row: number
+    code: string
+    name: string
+    quantity: number | null
+    dimensions: string | null
+    specNote: string | null
+    imageHash: string | null
+  }[]
+  warnings: { code: string; row?: number; message: string }[]
+}
 
 export function MeetingImportModal({
   supabase, meetingId, existingKeys, onClose, onImported,
@@ -39,7 +62,11 @@ export function MeetingImportModal({
   const [fileName, setFileName] = useState('')
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState<string | null>(null)
+  const [piPreview, setPiPreview] = useState<PiPreviewPayload | null>(null)
+  /** Kept so confirmation re-sends the FILE — the server re-parses it. */
+  const [piFile, setPiFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const piFileRef = useRef<HTMLInputElement>(null)
 
   const matches = useMemo(
     () => (preview ? summarizeImportMatches(preview.valid, existingKeys) : null),
@@ -129,6 +156,53 @@ export function MeetingImportModal({
     )
   }
 
+  // Parse only. The server writes nothing and returns no price, no total and
+  // no customer detail — the parser never reads them.
+  const handlePiFile = async (file: File) => {
+    setBusy(true); setError(null)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch('/api/meetings/import-pi', {
+        method: 'POST', headers: await authHeader(), body,
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'That PI could not be read.'); return }
+      setPiPreview(json as PiPreviewPayload)
+      setPiFile(file)
+      setFileName(file.name)
+      setStep('pi-preview')
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Confirmation is ONE server operation: it re-parses the file, creates the
+  // order and products atomically through the existing RPC, then uploads and
+  // attaches the photographs.
+  const confirmPi = async () => {
+    if (!piFile || busy) return
+    setBusy(true); setError(null)
+    try {
+      const body = new FormData()
+      body.append('file', piFile)
+      body.append('meeting_id', meetingId)
+      const res = await fetch('/api/meetings/import-pi/confirm', {
+        method: 'POST', headers: await authHeader(), body,
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'The PI could not be imported.'); return }
+      const images = json.imagesUploaded === 1 ? '1 photograph' : `${json.imagesUploaded} photographs`
+      onImported(`PI ${json.orderNumber} imported — ${json.itemsCreated} products, ${images}`)
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <MeetingModal
       title="Import from Spreadsheet"
@@ -187,11 +261,109 @@ export function MeetingImportModal({
             </span>
           </button>
 
+          <input
+            ref={piFileRef}
+            type="file"
+            accept=".xlsx"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) handlePiFile(file)
+              if (piFileRef.current) piFileRef.current.value = ''
+            }}
+          />
+
+          <button
+            onClick={() => piFileRef.current?.click()}
+            disabled={busy}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              width: '100%', padding: '18px 14px', borderRadius: '9px',
+              border: `1.5px dashed ${colors.borderMed}`, background: 'transparent',
+              cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Upload size={16} strokeWidth={1.9} color={colors.blue} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.blue }}>
+              {busy ? 'Reading the PI…' : 'Or import a BOE PI (.xlsx)'}
+            </span>
+          </button>
+
           <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
             Rows are matched on <strong>Order Number + SKU</strong>. A matching line is updated, a new
             one is added, and a blank cell leaves the existing value alone. Nothing is ever deleted,
             and no update history or linked task is touched.
           </div>
+        </>
+      ) : step === 'pi-preview' && piPreview ? (
+        <>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <PreviewStat label="PI number"   value={piPreview.piNumber} tone="primary" />
+            <PreviewStat label="Products"    value={piPreview.productCount} tone="green" />
+            <PreviewStat label="Photographs" value={piPreview.distinctImageCount} tone="primary" />
+          </div>
+
+          {piPreview.warnings.length > 0 && (
+            <div style={{
+              padding: '10px 12px', borderRadius: '8px',
+              background: colors.amberTint, border: `1px solid ${colors.amber}33`,
+            }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#8A5A12', marginBottom: '4px' }}>
+                Check before importing
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+                {piPreview.warnings.slice(0, 6).map((w, i) => <li key={i}>{w.message}</li>)}
+              </ul>
+              {piPreview.warnings.length > 6 && (
+                <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                  and {piPreview.warnings.length - 6} more
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{
+            maxHeight: '260px', overflowY: 'auto',
+            border: `1px solid ${colors.border}`, borderRadius: '8px',
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+              <tbody>
+                {piPreview.products.map(product => (
+                  <tr key={product.row} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '7px 10px', verticalAlign: 'top' }}>
+                      <div style={{ fontWeight: 700, color: colors.primary }}>{product.code}</div>
+                      <div style={{ color: colors.muted, marginTop: '1px' }}>{product.name}</div>
+                      {product.dimensions && (
+                        <div style={{ color: colors.tertiary, marginTop: '1px' }}>{product.dimensions}</div>
+                      )}
+                      {product.specNote && (
+                        <div style={{ color: colors.muted, marginTop: '1px', fontStyle: 'italic' }}>{product.specNote}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top', color: colors.secondary }}>
+                      {product.quantity ?? '—'}
+                      {!product.imageHash && (
+                        <div style={{ fontSize: '10px', color: colors.amber, fontWeight: 600 }}>no photo</div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
+            Nothing has been saved yet. Confirming creates one order for this PI with its products
+            and photographs. Importing the same PI again updates it rather than creating a second copy.
+          </div>
+
+          <MeetingModalActions
+            onClose={onClose}
+            onSave={confirmPi}
+            saving={busy}
+            disabled={piPreview.productCount === 0}
+            saveLabel={`Import ${piPreview.productCount} products`}
+          />
         </>
       ) : preview ? (
         <>
@@ -309,7 +481,7 @@ export function MeetingImportModal({
 
 function PreviewStat({
   label, value, tone,
-}: { label: string; value: number; tone: 'primary' | 'green' | 'blue' | 'red' | 'muted' }) {
+}: { label: string; value: number | string; tone: 'primary' | 'green' | 'blue' | 'red' | 'muted' }) {
   const color = {
     primary: colors.primary, green: '#166534', blue: '#1E40AF', red: '#991B1B', muted: colors.muted,
   }[tone]
