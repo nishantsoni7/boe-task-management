@@ -212,10 +212,10 @@ function QuoteOverlay({ visible }: { visible: boolean }) {
         <div style={{ marginBottom: '48px' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/branding/boe-logo-full.png"
+            src="/branding/boe-one-logo-full.png"
             alt="Best of Exports"
-            width={720}
-            height={543}
+            width={1080}
+            height={821}
             style={{ maxWidth: '168px', width: '100%', height: 'auto' }}
           />
         </div>

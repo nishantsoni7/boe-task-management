@@ -3137,6 +3137,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // logo, icons and the self-hosted fonts (binary assets)
     'public/branding/boe-icon.png',
     'public/branding/boe-logo-full.png',
+    'public/branding/boe-one-logo-full.png',
     'public/branding/boe-logo-white.png',
     'public/branding/favicon.png',
     'public/icons/icon-192.png',
