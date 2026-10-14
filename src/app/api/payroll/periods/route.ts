@@ -131,36 +131,46 @@ export async function GET(req: NextRequest) {
   if (isResponse(auth)) return auth
   const svc = auth.svc
 
-  const { data: periods, error: periodsErr } = await svc
-    .from('payroll_periods')
-    .select('*')
-    .order('payroll_year', { ascending: false })
-    .order('payroll_month', { ascending: false })
+  // THREE INDEPENDENT READS, ISSUED TOGETHER. None needs another's answer, and
+  // each is a separate server → database round trip (~0.45 s from iad1 to the
+  // database, measured in production). Their errors are still reported in the
+  // same order as before — periods, then generations, then results — so every
+  // response, success or failure, is the one this route always returned.
+  const [
+    { data: periods, error: periodsErr },
+    { data: generations, error: genErr },
+    resultRowsRead,
+  ] = await Promise.all([
+    svc
+      .from('payroll_periods')
+      .select('*')
+      .order('payroll_year', { ascending: false })
+      .order('payroll_month', { ascending: false }),
+
+    // Latest done generation per period, for the run metadata + timestamp.
+    svc
+      .from('payroll_generation')
+      .select('payroll_period_id, employee_count, completed_at')
+      .eq('status', 'done')
+      .order('completed_at', { ascending: false }),
+
+    // ── Period headcount ────────────────────────────────────────────────────
+    // Read from payroll_results, not from the generation run — see
+    // countResultsByPeriod above for why the two are not the same number.
+    // Paged: PostgREST silently caps a response at 1000 rows, and results grow
+    // as employees × months, so an unpaged read would quietly start
+    // under-counting the oldest periods once the table passes that mark.
+    fetchAllRows<{ payroll_period_id: string }>((from, to) =>
+      svc
+        .from('payroll_results')
+        .select('id, payroll_period_id')
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+  ])
 
   if (periodsErr) return NextResponse.json({ error: periodsErr.message }, { status: 500 })
-
-  // Fetch latest done generation per period for employee count + timestamp
-  const { data: generations, error: genErr } = await svc
-    .from('payroll_generation')
-    .select('payroll_period_id, employee_count, completed_at')
-    .eq('status', 'done')
-    .order('completed_at', { ascending: false })
-
   if (genErr) return NextResponse.json({ error: genErr.message }, { status: 500 })
-
-  // ── Period headcount ──────────────────────────────────────────────────────
-  // Read from payroll_results, not from the generation run — see
-  // countResultsByPeriod above for why the two are not the same number.
-  // Paged: PostgREST silently caps a response at 1000 rows, and results grow as
-  // employees × months, so an unpaged read would quietly start under-counting
-  // the oldest periods once the table passes that mark.
-  const resultRowsRead = await fetchAllRows<{ payroll_period_id: string }>((from, to) =>
-    svc
-      .from('payroll_results')
-      .select('id, payroll_period_id')
-      .order('id', { ascending: true })
-      .range(from, to),
-  )
 
   if (!resultRowsRead.ok || resultRowsRead.truncated) {
     const detail = resultRowsRead.ok ? 'exceeded the paged read cap' : resultRowsRead.error
@@ -169,6 +179,11 @@ export async function GET(req: NextRequest) {
   }
 
   const resultCounts = countResultsByPeriod(resultRowsRead.rows)
+
+  // The finalisation trail needs only the period ids, so it starts now and runs
+  // beside the (paged) attendance read below instead of after it. Awaited where
+  // it is used; fetchStatusEvents reports its own failure as empty maps.
+  const statusEvents = fetchStatusEvents(svc, (periods ?? []).map(p => p.id))
 
   // Keep only the first (latest) done generation per period
   const latestGen: Record<string, { employee_count: number; completed_at: string }> = {}
@@ -245,7 +260,7 @@ export async function GET(req: NextRequest) {
   // was (for "Last Activity") and, separately, the last time it was reopened
   // after being locked — with who did it and why. Both come from the same
   // append-only table, so the page never has a second source of truth for them.
-  const { latestEvent, latestUnlock } = await fetchStatusEvents(svc, (periods ?? []).map(p => p.id))
+  const { latestEvent, latestUnlock } = await statusEvents
 
   const result = (periods ?? []).map(p => ({
     ...p,
