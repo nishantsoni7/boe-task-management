@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="0" fill="#fff"/><g transform="translate(256 256) scale(0.58)">
-  <polygon points="0,-240 228,-120 228,120 0,240 -228,120 -228,-120" fill="#BE4631" stroke="#BE4631" stroke-width="80" stroke-linejoin="round"/>
-  <polygon points="0,-218 124,0 0,218 -124,0" fill="none" stroke="#fff" stroke-width="66" stroke-linejoin="round"/>
-  <path fill="#fff" stroke="#fff" stroke-width="4" stroke-linejoin="round" d="M-34 -48 L10 -84 H36 V78 H-2 V-36 L-34 -12 Z"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" rx="0" fill="#fff"/><g transform="translate(256 256) scale(0.62)"><polygon points="0,-239 229,-147 229,147 0,239 -229,147 -229,-147" fill="#BC4730" stroke="#BC4730" stroke-width="80" stroke-linejoin="round"/><polygon points="0,-251 147,0 0,251 -147,0" fill="#fff" stroke="#fff" stroke-width="24" stroke-linejoin="round"/><polygon points="0,-123 76,0 0,131 -76,0" fill="#BC4730" stroke="#BC4730" stroke-width="22" stroke-linejoin="round"/></g></svg>
