@@ -907,6 +907,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

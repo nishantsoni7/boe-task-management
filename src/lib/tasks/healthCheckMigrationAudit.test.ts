@@ -778,6 +778,7 @@ describe('the migration is placed correctly', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

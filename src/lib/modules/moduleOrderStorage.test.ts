@@ -675,6 +675,7 @@ describe('the database half of this verification', () => {
       '20270314000000_inventory_notification_types.sql',
 
       '20270314000100_inventory_booking_notifications.sql',
+      '20270315000000_meetings_rpcs_require_module_entry.sql',
     ], 'every migration after this one is accounted for')
   })
 })
