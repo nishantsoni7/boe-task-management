@@ -3141,6 +3141,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'public/branding/favicon.png',
     'public/icons/icon-192.png',
     'public/icons/icon-512.png',
+    'public/icons/icon-192.svg',
+    'public/icons/icon-512.svg',
     'src/app/fonts/Inter-latin-ext-var.woff2',
     'src/app/fonts/Inter-latin-var.woff2',
     'src/app/fonts/Manrope-latin-ext-var.woff2',

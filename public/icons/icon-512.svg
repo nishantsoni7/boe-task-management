@@ -1,5 +1,5 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'>
-  <rect width='512' height='512' rx='92' fill='#111318'/>
-  <text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle'
-    font-family='sans-serif' font-weight='700' font-size='230' fill='#FFFFFF'>B</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#111318"/><g transform="translate(256 256) scale(.62) translate(-256 -256)">
+  <g fill="none" stroke="#D71F2E" stroke-width="34" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M70 92 H226 L122 250 L226 408 H70 Z"/>
+    <path d="M442 92 H286 L390 250 L286 408 H442 Z"/>
+  </g><path fill="#FFFFFF" d="M214 224 L262 184 H292 V330 H258 V232 L214 262 Z" transform="translate(0 6)"/></g></svg>
