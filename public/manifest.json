@@ -1,7 +1,7 @@
 {
-  "name": "BOE Operating System",
-  "short_name": "BOE OS",
-  "description": "Best of Exports — Internal Operating System",
+  "name": "BOE One",
+  "short_name": "BOE One",
+  "description": "Best of Exports — BOE One",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F7F5F1",

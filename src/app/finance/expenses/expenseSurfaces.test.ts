@@ -3152,6 +3152,16 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     // hand-written: files whose diff is more than a colour, a size or a font (shell, primitives, tests that pin the design)
     'src/app/globals.css',
     'src/app/layout.tsx',
+    // BOE One rename (2026-10-14): visible name only
+    'src/app/api/performance-audit/route.ts',
+    'src/app/quick-start-guide/page.tsx',
+    'src/components/layout/ImageEditorLayout.tsx',
+    'src/components/layout/MeetingsLayout.tsx',
+    'src/components/layout/ModuleShellControls.tsx',
+    'src/components/layout/PerformanceLayout.tsx',
+    'src/components/layout/SamplesLayout.tsx',
+    'src/components/layout/ShowroomAdminLayout.tsx',
+    'src/lib/navigation/ordersFinanceUsability.test.tsx',
     'src/app/login/page.tsx',
     'src/app/modules/moduleCardSurface.test.ts',
     'src/app/modules/modules.module.css',

@@ -219,7 +219,7 @@ export default function QuickStartGuidePage() {
             margin: '0 0 10px',
             lineHeight: 1.2,
           }}>
-            BOE Task Management<br />Quick Start Guide
+            BOE One<br />Quick Start Guide
           </h1>
           <p style={{ margin: 0, fontSize: '14px', color: colors.tertiary, lineHeight: 1.65 }}>
             Version 1 guide for using tasks, updates, follow-ups, and daily work tracking correctly.
