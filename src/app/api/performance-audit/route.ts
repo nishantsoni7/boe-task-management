@@ -59,7 +59,7 @@ function buildPrompt(params: {
     ? `${(weeklyUpdates / (weeklyCompleted || 1)).toFixed(1)} updates per completed task`
     : `${weeklyUpdates} updates, 0 tasks completed`
 
-  return `You are a performance coach for BOE Task Management, an internal operations tool for a furniture manufacturing company in India. Be direct, specific, and constructive — not generic.
+  return `You are a performance coach for BOE One, an internal operations tool for a furniture manufacturing company in India. Be direct, specific, and constructive — not generic.
 
 === TEAM MEMBER ===
 Name: ${userName}

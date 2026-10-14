@@ -121,7 +121,7 @@ describe('sidebar destinations are real links that say which one is current', ()
   test('Home is a named link; Refresh is a named button', () => {
     const home = renderToStaticMarkup(createElement(ShellHomeLink))
     assert.match(home, /^<a [^>]*href="\/modules"/)
-    assert.ok(home.includes('aria-label="BOE OS Home"'))
+    assert.ok(home.includes('aria-label="BOE One Home"'))
     const refresh = renderToStaticMarkup(createElement(ShellRefreshButton, { refreshing: false, onRefresh: () => {} }))
     assert.ok(refresh.startsWith('<button') && refresh.includes('aria-label="Refresh"') && refresh.includes('type="button"'))
   })

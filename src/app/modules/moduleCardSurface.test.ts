@@ -517,9 +517,9 @@ describe('the header, and the latest announcement beneath it', () => {
     assert.ok(PAGE.includes('{!editingOrder && <QuickActionList actions={quickActions} variant="page" />}'))
   })
 
-  test('BOE Operating System is still the sidebar brand, untouched', () => {
-    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE</)
-    assert.match(LAYOUT, /boe-sidebar-brand-sub">Operating System</)
+  test('BOE One is still the sidebar brand, untouched', () => {
+    assert.match(LAYOUT, /boe-sidebar-brand-name">BOE One</)
+    assert.match(LAYOUT, /boe-sidebar-brand-sub">Best of Exports</)
   })
 })
 

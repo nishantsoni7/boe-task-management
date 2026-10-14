@@ -49,8 +49,8 @@ export function ShellHomeLink() {
   return (
     <Link
       href="/modules"
-      title="BOE OS Home"
-      aria-label="BOE OS Home"
+      title="BOE One Home"
+      aria-label="BOE One Home"
       className="boe-shell-home"
     >
       <Home size={14} strokeWidth={2} aria-hidden="true" />

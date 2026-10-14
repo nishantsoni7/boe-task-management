@@ -119,7 +119,7 @@ export function MeetingsLayout({
           </div>
           <button
             onClick={() => router.push('/modules')}
-            title="BOE OS Home"
+            title="BOE One Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',

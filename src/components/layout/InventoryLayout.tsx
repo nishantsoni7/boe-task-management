@@ -58,8 +58,8 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
           </div>
           <button
             onClick={() => router.push('/modules')}
-            title="BOE OS Home"
-            aria-label="BOE OS Home"
+            title="BOE One Home"
+            aria-label="BOE One Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '8px',
               background: 'rgba(185,71,46,0.08)', border: '1px solid rgba(185,71,46,0.20)', color: '#963B27', cursor: 'pointer', flexShrink: 0,

@@ -16,7 +16,7 @@ export default function GlobalError({
   return (
     <html lang="en">
       <body style={{ margin: 0 }}>
-        <title>BOE Operating System</title>
+        <title>BOE One</title>
         <RouteErrorView error={error} retry={unstable_retry} />
       </body>
     </html>

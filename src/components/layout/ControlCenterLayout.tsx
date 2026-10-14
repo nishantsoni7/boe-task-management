@@ -157,13 +157,13 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
             <BoeBrandIcon />
             <div style={{ minWidth: 0 }}>
               <div className="boe-sidebar-brand-name">Control Center</div>
-              <div className="boe-sidebar-brand-sub">BOE Operating System</div>
+              <div className="boe-sidebar-brand-sub">BOE One</div>
             </div>
           </div>
           <button
             onClick={goHome}
-            title="BOE OS Home"
-            aria-label="BOE OS Home"
+            title="BOE One Home"
+            aria-label="BOE One Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -248,8 +248,8 @@ function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome }: H
       <div className="boe-header-actions">
         <button
           onClick={onHome}
-          title="BOE OS Home"
-          aria-label="BOE OS Home"
+          title="BOE One Home"
+          aria-label="BOE One Home"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 32, height: 32, borderRadius: '8px',

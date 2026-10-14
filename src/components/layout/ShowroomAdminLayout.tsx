@@ -107,12 +107,12 @@ export function ShowroomAdminLayout({
             <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">Showroom QR</div>
-              <div className="boe-sidebar-brand-sub">BOE Operating System</div>
+              <div className="boe-sidebar-brand-sub">BOE One</div>
             </div>
           </div>
           <button
             onClick={() => navTo('/modules')}
-            title="BOE OS Home"
+            title="BOE One Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '8px',
@@ -196,7 +196,7 @@ export function ShowroomAdminLayout({
           <div className="boe-header-actions">
             <button
               onClick={() => router.push('/modules')}
-              title="BOE OS Home"
+              title="BOE One Home"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',

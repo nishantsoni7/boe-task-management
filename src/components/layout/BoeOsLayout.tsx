@@ -146,8 +146,8 @@ export function BoeOsLayout({
         <div className="boe-sidebar-brand">
           <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="boe-sidebar-brand-name">BOE</div>
-            <div className="boe-sidebar-brand-sub">Operating System</div>
+            <div className="boe-sidebar-brand-name">BOE One</div>
+            <div className="boe-sidebar-brand-sub">Best of Exports</div>
           </div>
         </div>
 

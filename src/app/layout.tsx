@@ -29,8 +29,8 @@ const inter = localFont({
 })
 
 export const metadata: Metadata = {
-  title: 'BOE Operating System',
-  description: 'Best of Exports — Internal Operating System',
+  title: 'BOE One',
+  description: 'Best of Exports — BOE One',
   manifest: '/manifest.json',
   icons: {
     icon: '/branding/favicon.png',
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'BOE Operating System',
+    title: 'BOE One',
   },
   other: {
     'mobile-web-app-capable': 'yes',
