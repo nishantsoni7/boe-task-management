@@ -3138,6 +3138,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'public/branding/boe-icon.png',
     'public/branding/boe-logo-full.png',
     'public/branding/boe-one-logo-full.png',
+    'public/branding/boe-one-logo-horizontal.png',
+    'src/lib/showroom/quotationPdf.ts',
     'public/branding/boe-logo-white.png',
     'public/branding/favicon.png',
     'public/icons/icon-192.png',

@@ -265,7 +265,7 @@ export async function buildEnhancedPdf(
   options: BuildOptions = {},
 ): Promise<Buffer> {
   // Load BOE logo from project public assets
-  const logoPath = path.join(process.cwd(), 'public', 'branding', 'boe-logo-full.png')
+  const logoPath = path.join(process.cwd(), 'public', 'branding', 'boe-one-logo-horizontal.png')
   let logoBuffer: Buffer | null = null
   try {
     logoBuffer = await fsPromises.readFile(logoPath)
@@ -333,7 +333,7 @@ export async function buildEnhancedPdf(
     // ── Header: logo left, quotation meta right ───────────────────────────────
     let y = 40
 
-    // Logo — natural ratio ~2.65:1, rendered at height 44 → width ≈ 117
+    // Logo — natural ratio ~4:1, rendered at height 44 → width ≈ 175
     if (logoBuffer) {
       try {
         doc.image(logoBuffer, L, y, { height: 44 })
