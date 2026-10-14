@@ -317,7 +317,7 @@ export async function buildEnhancedPdf(
     const R_EDGE   = pageW - 36       // 559
 
     // Brand palette — derived from BOE logo
-    const RED    = '#C41920'
+    const RED    = '#BC4B35'
     const DARK   = '#1F2937'
     const GRAY   = '#6B7280'
     const LGRAY  = '#9CA3AF'
