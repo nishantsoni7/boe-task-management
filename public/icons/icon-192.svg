@@ -1,5 +1,1 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'>
-  <rect width='192' height='192' rx='35' fill='#111318'/>
-  <text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle'
-    font-family='sans-serif' font-weight='700' font-size='86' fill='#FFFFFF'>B</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 512 512"><rect width="512" height="512" rx="0" fill="#fff"/><g transform="translate(256 256) scale(0.62)"><polygon points="0,-239 229,-147 229,147 0,239 -229,147 -229,-147" fill="#BC4730" stroke="#BC4730" stroke-width="80" stroke-linejoin="round"/><polygon points="0,-251 147,0 0,251 -147,0" fill="#fff" stroke="#fff" stroke-width="24" stroke-linejoin="round"/><polygon points="0,-123 76,0 0,131 -76,0" fill="#BC4730" stroke="#BC4730" stroke-width="22" stroke-linejoin="round"/></g></svg>

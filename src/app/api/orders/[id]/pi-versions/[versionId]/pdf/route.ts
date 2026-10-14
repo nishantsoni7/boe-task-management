@@ -39,7 +39,7 @@ const fail = (status: number, code: string, message: string) =>
 
 async function readLogo(): Promise<Uint8Array | null> {
   try {
-    return new Uint8Array(await readFile(join(process.cwd(), 'public', 'branding', 'boe-logo-full.png')))
+    return new Uint8Array(await readFile(join(process.cwd(), 'public', 'branding', 'boe-one-logo-horizontal.png')))
   } catch {
     return null
   }

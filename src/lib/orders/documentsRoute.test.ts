@@ -427,7 +427,7 @@ describe('the PDF the route produces', () => {
   })
 
   test('reads the BOE mark from the repository, and survives its absence', () => {
-    assert.ok(route.includes('boe-logo-full.png'))
+    assert.ok(route.includes('boe-one-logo-horizontal.png'))
     assert.match(raw, /A missing file\s*\n?\s*\*?\s*is not a failure/)
   })
 })

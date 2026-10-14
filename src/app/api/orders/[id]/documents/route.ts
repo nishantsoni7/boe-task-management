@@ -112,7 +112,7 @@ const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
  *  is not a failure: the renderer falls back to the wordmark. */
 async function readLogo(): Promise<Uint8Array | null> {
   try {
-    return new Uint8Array(await readFile(join(process.cwd(), 'public', 'branding', 'boe-logo-full.png')))
+    return new Uint8Array(await readFile(join(process.cwd(), 'public', 'branding', 'boe-one-logo-horizontal.png')))
   } catch {
     return null
   }
