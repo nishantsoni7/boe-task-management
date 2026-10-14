@@ -65,7 +65,7 @@ function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: 12,
       fontSize: 12, fontWeight: 600,
-      background: 'rgba(104,109,108,0.12)', color: '#686D6C',
+      background: 'rgba(104,109,108,0.12)', color: '#595D5B',
     }}>
       Pending Review
     </span>

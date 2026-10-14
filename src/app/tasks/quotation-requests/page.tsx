@@ -402,8 +402,8 @@ function QuotationRequestsContent() {
                   <span style={{
                     fontSize: '12px', fontWeight: 700,
                     padding: '1px 6px', borderRadius: '12px',
-                    background: active ? 'rgba(255,255,255,0.22)' : '#E4DED7',
-                    color: active ? '#fff' : '#686D6C',
+                    background: active ? 'rgba(0,0,0,0.2)' : '#E4DED7',
+                    color: active ? '#fff' : '#595D5B',
                   }}>
                     {tab.count}
                   </span>

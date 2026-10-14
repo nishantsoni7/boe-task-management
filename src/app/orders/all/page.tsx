@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
+import { legibleOn } from '@/components/ui/StatusTabs'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
@@ -678,7 +679,7 @@ export default function AllOrdersPage() {
                   <span style={{
                     minWidth: '18px', padding: '1px 5px', borderRadius: '999px',
                     background: active ? accent.badgeActive : accent.badge,
-                    color: accent.color, fontSize: '12px', fontWeight: 700,
+                    color: legibleOn(accent.color, active ? accent.badgeActive : accent.badge), fontSize: '12px', fontWeight: 700,
                     lineHeight: '15px', textAlign: 'center',
                   }}>
                     {tabCounts[key]}

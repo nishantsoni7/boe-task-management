@@ -283,16 +283,16 @@ function CheckList({
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '7px 10px', minHeight: '36px', borderRadius: '6px',
-              border: `1px solid ${on ? '#C4B5FD' : colors.border}`,
-              background: on ? '#EAF0F8' : '#FFFFFF',
-              color: on ? '#335A86' : colors.secondary,
+              border: `1px solid ${on ? '#F1D5CB' : colors.border}`,
+              background: on ? '#F8EAE4' : '#FFFFFF',
+              color: on ? '#963B27' : colors.secondary,
               fontSize: '12px', fontWeight: on ? 700 : 500,
               cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >
             {option.label}
             {option.note && (
-              <span style={{ fontWeight: 400, color: on ? '#335A86' : colors.muted }}>
+              <span style={{ fontWeight: 400, color: on ? '#963B27' : colors.muted }}>
                 {option.note}
               </span>
             )}

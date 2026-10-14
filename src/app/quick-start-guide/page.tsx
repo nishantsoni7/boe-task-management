@@ -311,7 +311,7 @@ export default function QuickStartGuidePage() {
             {[
               { label: 'Pending',    color: '#686D6C', bg: '#F1EEE9', desc: 'Task is assigned but not yet acknowledged.' },
               { label: 'Working',    color: '#335A86', bg: '#EAF0F8', desc: 'Work has started.' },
-              { label: 'Waiting On', color: '#F1D5CB', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
+              { label: 'Waiting On', color: '#805B0D', bg: '#FAF0DA', desc: 'Work is paused because input is needed from someone else. Examples: client, vendor, design, purchase, production, management, transport.' },
               { label: 'Blocked',    color: '#A12438', bg: '#FBE9EC', desc: 'Work cannot move forward because there is a serious issue that needs help or a decision.' },
               { label: 'Completed',  color: '#276247', bg: '#E8F2EC', desc: 'Task is fully done. Do not mark complete if only partially done.' },
             ].map(({ label, color, bg, desc }) => (
@@ -470,7 +470,7 @@ export default function QuickStartGuidePage() {
         {/* ── Section 11 ── */}
         <div style={{ ...card, background: '#303536', border: 'none' }}>
           <div style={{ ...sectionTitle, color: '#fff' }}>
-            <span style={{ ...sectionNumber, background: '#B9472E', color: '#303536' }}>11</span>
+            <span style={{ ...sectionNumber, background: '#B9472E', color: '#FFFFFF' }}>11</span>
             Launch Week Focus
           </div>
           <p style={{ ...bodyText, color: 'rgba(255,255,255,0.65)', marginBottom: '16px' }}>

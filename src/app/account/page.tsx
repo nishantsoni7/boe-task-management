@@ -141,9 +141,9 @@ function AccountPageInner() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
               <div style={{
                 width: 48, height: 48, borderRadius: 12,
-                background: '#303536',
+                background: '#F8EAE4',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, fontWeight: 700, color: '#B9472E',
+                fontSize: 16, fontWeight: 700, color: '#963B27',
                 flexShrink: 0, letterSpacing: '0.02em',
               }}>
                 {initials(profile.full_name)}

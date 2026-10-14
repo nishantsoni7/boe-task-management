@@ -39,7 +39,7 @@ export function legibleOn(fg: string, fill: string): string {
   for (let t = 0; t <= 1.0001; t += 0.1) {
     const c = [0, 1, 2].map((i) => Math.round(f[i] * (1 - t) + ink[i] * t)) as [number, number, number]
     const l1 = luminance(c), l2 = luminance(bg)
-    if ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) >= 4.5) return t === 0 ? fg : `rgb(${c[0]}, ${c[1]}, ${c[2]})`
+    if ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) >= 5.2) return t === 0 ? fg : `rgb(${c[0]}, ${c[1]}, ${c[2]})`
   }
   return fg
 }

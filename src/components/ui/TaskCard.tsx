@@ -205,7 +205,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   const cfg: Record<string, { label: string; color: string; bg: string; border: string }> = {
     high:   { label: 'High',   color: '#B42332', bg: 'rgba(180,35,50,0.12)',  border: 'rgba(180,35,50,0.30)' },
     medium: { label: 'Medium', color: '#805B0D', bg: 'rgba(196,138,26,0.12)', border: 'rgba(196,138,26,0.30)' },
-    low:    { label: 'Low',    color: '#686D6C', bg: '#E4DED7',       border: '#CFC8BF'     },
+    low:    { label: 'Low',    color: '#595D5B', bg: '#E4DED7',       border: '#CFC8BF'     },
   }
   const { label, color, bg, border } = cfg[priority] ?? cfg.low
   return (

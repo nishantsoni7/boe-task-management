@@ -287,7 +287,7 @@ export default function SamplesPage() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: '#303536', color: '#fff',
+              background: '#B9472E', color: '#fff',
               fontSize: '12px', fontWeight: 600, cursor: 'pointer',
               transition: 'opacity 0.12s', whiteSpace: 'nowrap',
               opacity: inViewMode ? 0.6 : 1,
@@ -782,7 +782,7 @@ function RequestCard({
                 <button
                   onClick={handleDispatchWithDetails}
                   disabled={busy === 'dispatch_details' || !dispatchForm.courier_name.trim()}
-                  style={{ background: dispatchForm.courier_name.trim() ? '#303536' : colors.muted, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: dispatchForm.courier_name.trim() && busy !== 'dispatch_details' ? 'pointer' : 'not-allowed', opacity: busy === 'dispatch_details' || !dispatchForm.courier_name.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
+                  style={{ background: dispatchForm.courier_name.trim() ? '#B9472E' : colors.muted, color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: dispatchForm.courier_name.trim() && busy !== 'dispatch_details' ? 'pointer' : 'not-allowed', opacity: busy === 'dispatch_details' || !dispatchForm.courier_name.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
                 >
                   <Truck size={13} strokeWidth={2.5} />{busy === 'dispatch_details' ? 'Saving…' : 'Confirm Dispatch'}
                 </button>
@@ -956,7 +956,7 @@ function RequestCard({
             />
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button onClick={handleSaveFollowup} disabled={busy === 'followup' || !followupNote.trim()}
-                style={{ background: '#303536', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 600, cursor: followupNote.trim() ? 'pointer' : 'not-allowed', opacity: busy === 'followup' || !followupNote.trim() ? 0.5 : 1 }}>
+                style={{ background: '#B9472E', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 600, cursor: followupNote.trim() ? 'pointer' : 'not-allowed', opacity: busy === 'followup' || !followupNote.trim() ? 0.5 : 1 }}>
                 {busy === 'followup' ? 'Saving…' : 'Save'}
               </button>
               <button onClick={() => setFollowupOpen(false)}
@@ -1167,19 +1167,19 @@ function NewRequestModal({ currentUserId, supabase, onClose, onSaved }: {
   }
 
   const inp: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: '7px',
+    width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: '8px',
     fontSize: '13.5px', border: `1.5px solid ${colors.border}`, background: '#fff',
     color: colors.primary, outline: 'none', fontFamily: 'inherit',
   }
   const lbl: React.CSSProperties = {
-    fontSize: '11.5px', fontWeight: 700, color: colors.secondary,
+    fontSize: '12px', fontWeight: 700, color: colors.secondary,
     textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '5px',
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 40px' }}>
+      <div style={{ background: '#fff', borderRadius: '12px 12px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 40px' }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border, margin: '0 auto 20px' }} />
         <div style={{ fontSize: '17px', fontWeight: 700, color: colors.primary, fontFamily: font.display, marginBottom: '20px', letterSpacing: '-0.01em' }}>New Sample Request</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1219,14 +1219,14 @@ function NewRequestModal({ currentUserId, supabase, onClose, onSaved }: {
             <label style={lbl}>Notes / Reason</label>
             <textarea placeholder="Why this catalog is needed, any special instructions…" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
           </div>
-          {error && <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px' }}>{error}</div>}
+          {error && <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px' }}>{error}</div>}
           <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
             <button onClick={handleSubmit} disabled={saving}
-              style={{ flex: 1, background: '#1A2035', color: '#fff', border: 'none', borderRadius: '9px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
+              style={{ flex: 1, background: '#303536', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
               {saving ? 'Submitting…' : 'Submit Request'}
             </button>
             <button onClick={onClose}
-              style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '9px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '8px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -1281,19 +1281,19 @@ function EditRequestModal({ request, supabase, onClose, onSaved }: {
   }
 
   const inp: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: '7px',
+    width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: '8px',
     fontSize: '13.5px', border: `1.5px solid ${colors.border}`, background: '#fff',
     color: colors.primary, outline: 'none', fontFamily: 'inherit',
   }
   const lbl: React.CSSProperties = {
-    fontSize: '11.5px', fontWeight: 700, color: colors.secondary,
+    fontSize: '12px', fontWeight: 700, color: colors.secondary,
     textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '5px',
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 40px' }}>
+      <div style={{ background: '#fff', borderRadius: '12px 12px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 40px' }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border, margin: '0 auto 20px' }} />
         <div style={{ fontSize: '17px', fontWeight: 700, color: colors.primary, fontFamily: font.display, marginBottom: '20px', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Pencil size={16} strokeWidth={2.2} />
@@ -1336,14 +1336,14 @@ function EditRequestModal({ request, supabase, onClose, onSaved }: {
             <label style={lbl}>Notes / Reason</label>
             <textarea placeholder="Why this catalog is needed, any special instructions…" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
           </div>
-          {error && <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px' }}>{error}</div>}
+          {error && <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px' }}>{error}</div>}
           <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
             <button onClick={handleSave} disabled={saving}
-              style={{ flex: 1, background: '#1A2035', color: '#fff', border: 'none', borderRadius: '9px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
+              style={{ flex: 1, background: '#303536', color: '#fff', border: 'none', borderRadius: '8px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
             <button onClick={onClose}
-              style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '9px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '8px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -1381,9 +1381,9 @@ function DeleteConfirmModal({ requestId, requestedBy, sampleLabel, supabase, onC
       style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '9px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '8px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Trash2 size={16} strokeWidth={2.2} color={colors.red} />
           </div>
           <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Delete Sample Request</span>
@@ -1392,7 +1392,7 @@ function DeleteConfirmModal({ requestId, requestedBy, sampleLabel, supabase, onC
           Delete <strong style={{ color: colors.primary }}>{sampleLabel}</strong>? This action cannot be undone.
         </p>
         {error && (
-          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
+          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '8px', marginBottom: '14px' }}>{error}</div>
         )}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} disabled={busy}

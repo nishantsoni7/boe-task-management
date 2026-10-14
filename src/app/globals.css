@@ -40,7 +40,7 @@
   /* Borders */
   --boe-border:         #E4DED7;   /* panels, dividers */
   --boe-border-strong:  #CFC8BF;   /* secondary button */
-  --boe-border-input:   #B9B2A9;   /* form controls: the approved value; 2.1:1 on white (see docs/BOE_VISUAL_IDENTITY.md) */
+  --boe-border-input:   #686D6C;   /* form controls: 3.7:1 on white, 3.4:1 on the canvas (WCAG 1.4.11) */
 
   /* Status — foreground / background pairs */
   --boe-pending-fg:     #595D5B;  --boe-pending-bg:   #EEECE8;
@@ -218,9 +218,12 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
   outline: 2px solid var(--boe-brand) !important;
   outline-offset: 2px !important;
 }
-table th, [role="columnheader"] {
-  text-transform: none !important;
-  letter-spacing: 0.01em !important;
+/* Screen only: the printed hand-over sheet and QR sheet keep their own table headings. */
+@media screen {
+  table th, [role="columnheader"] {
+    text-transform: none !important;
+    letter-spacing: 0.01em !important;
+  }
 }
 
 /* PHONE TOUCH TARGETS. Anything you press in the page header, the drawer or a dialog's footer is at least
@@ -230,6 +233,17 @@ table th, [role="columnheader"] {
   .boe-header-actions .boe-btn, .boe-page-header > button, .boe-menu-toggle { min-height: var(--boe-touch); min-width: var(--boe-touch); }
   .boe-nav-item { min-height: var(--boe-touch); }
   .boe-modal-sheet button { min-height: var(--boe-touch); }
+}
+
+/* FORM CONTROL BOUNDARIES (screen only — a printed form keeps its own borders). The edge of a text field, select or textarea is what tells you it is one, so it
+   must clear 3:1 (WCAG 1.4.11). Many fields set their own light border inline; this wins over them, except
+   while focused (the ring takes over) and where a field marks itself invalid with a red border. */
+@media screen {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not(:focus):not([aria-invalid="true"]):not([style*="B42332"]):not([style*="180,35,50"]):not([style*="180, 35, 50"]),
+  select:not(:focus):not([aria-invalid="true"]):not([style*="B42332"]):not([style*="180,35,50"]):not([style*="180, 35, 50"]),
+  textarea:not(:focus):not([aria-invalid="true"]):not([style*="B42332"]):not([style*="180,35,50"]):not([style*="180, 35, 50"]) {
+    border-color: var(--boe-border-input) !important;
+  }
 }
 
 /* An empty state: quiet, centred, one sentence and at most one action. */
@@ -595,7 +609,7 @@ table th, [role="columnheader"] {
   font-size: 12px;
   line-height: 1.45;
   color: #B43C3C;
-  background: rgba(251,250,248,0.07);
+  background: rgba(196,138,26,0.07);
   border: 1px solid rgba(180,35,50,0.22);
   border-radius: 6px;
 }
@@ -3349,7 +3363,7 @@ table th, [role="columnheader"] {
 .pi-edit-intro-text { flex: 1 1 320px; min-width: 0; }
 .pi-edit-context { margin: 0; font-size: 15px; font-weight: 700; color: #303536; letter-spacing: -0.01em; }
 .pi-edit-note { margin: 3px 0 0; font-size: 12.5px; color: #686D6C; line-height: 1.5; max-width: 760px; }
-.pi-edit-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 4px; overflow-x: auto; padding: 6px; border-radius: 8px; background: rgba(51,90,134,0.92); backdrop-filter: blur(6px); border: 1px solid #E4DED7; scrollbar-width: none; }
+.pi-edit-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 4px; overflow-x: auto; padding: 6px; border-radius: 8px; background: rgba(251,250,248,0.92); backdrop-filter: blur(6px); border: 1px solid #E4DED7; scrollbar-width: none; }
 .pi-edit-nav::-webkit-scrollbar { display: none; }
 .pi-edit-nav a { flex: 0 0 auto; padding: 5px 11px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: #4C5352; text-decoration: none; white-space: nowrap; }
 .pi-edit-nav a:hover { background: #FFFFFF; color: #303536; }
@@ -4850,7 +4864,7 @@ button.order-pay-metric--awaiting:hover { background: rgba(196,138,26,0.12); }
     display: block;
     opacity: 0;
     pointer-events: none;
-    background: rgba(104,109,108,0.52);
+    background: rgba(32,35,36,0.52);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
   }
@@ -7823,7 +7837,7 @@ h1.boe-page-title { margin-top: 0; }
 }
 .boe-list-search {
   display: flex; align-items: center; gap: 6px;
-  background: #FFFFFF; border: 1px solid #CFC8BF;
+  background: #FFFFFF; border: 1px solid var(--boe-border-input);
   border-radius: 8px; padding: 0 10px; height: 32px;
   flex: 1 1 220px; min-width: 0; max-width: 340px;
   cursor: text;

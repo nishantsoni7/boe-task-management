@@ -536,7 +536,7 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
           {label}
           {count != null && count > 0 && (
             <span style={{
-              fontSize: '12px', fontWeight: 600, color: '#686D6C',
+              fontSize: '12px', fontWeight: 600, color: '#595D5B',
               background: '#E4DED7', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
             }}>{count}</span>
           )}
@@ -565,7 +565,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
       {badge != null && badge > 0 && (
         <span style={{
           marginLeft: 'auto',
-          fontSize: '12px', fontWeight: 600, color: '#686D6C',
+          fontSize: '12px', fontWeight: 600, color: '#595D5B',
           background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
         }}>
@@ -598,7 +598,7 @@ function NavChild({ label, active, onClick, count }: NavChildProps) {
       <span style={{ flex: 1 }}>{label}</span>
       {count != null && count > 0 && (
         <span style={{
-          fontSize: '12px', fontWeight: 600, color: '#686D6C',
+          fontSize: '12px', fontWeight: 600, color: '#595D5B',
           background: '#E4DED7', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', marginLeft: 'auto',
         }}>{count}</span>

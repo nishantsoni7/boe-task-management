@@ -64,7 +64,7 @@
 .st_in_production { background: #F1EEE9; color: #335A86; }
 .st_finishing { background: #EFE8FD; color: #335A86; }
 .st_awaiting_upholstery { background: #FEF1CF; color: #A15207; }
-.st_under_repair { background: #FFE9D5; color: #C2410C; }
+.st_under_repair { background: #FFE9D5; color: #8A3410; }
 .st_ready { background: #E8F2EC; color: #276247; }
 .cond { background: #fff; color: #303536; border: 1px solid #CFC8BF; }
 .stockIn { background: #E8F2EC; color: #276247; }
@@ -346,7 +346,7 @@
 .adorn .input { padding-left: 32px; }
 .mono { text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
 
-.stepper { display: inline-flex; align-items: stretch; border: 1px solid #CFC8BF; border-radius: 12px; overflow: hidden; background: #fff; align-self: flex-start; }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid #8C8379; border-radius: 12px; overflow: hidden; background: #fff; align-self: flex-start; }
 .stepBtn { width: 52px; min-height: 52px; border: 0; background: #F1EEE9; font-size: 24px; font-weight: 700; color: #303536; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; touch-action: manipulation; }
 .stepBtn:hover { background: #F1EEE9; }
 .stepBtn:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -410,7 +410,7 @@
   font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
 }
 .photoBusy { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.75); display: flex; align-items: center; justify-content: center; color: #303536; }
-.photoFail { position: absolute; inset: 0; background: rgba(251,250,248,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #8E1620; font-size: 12px; font-weight: 700; text-align: center; padding: 6px; }
+.photoFail { position: absolute; inset: 0; background: rgba(251,233,236,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #8E1620; font-size: 12px; font-weight: 700; text-align: center; padding: 6px; }
 .addTiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .addTile {
   min-height: 84px; border-radius: 12px; border: 2px dashed #CFC8BF; background: #FBFAF8; color: #303536; cursor: pointer;

@@ -136,7 +136,7 @@ export function ReviewLeaderboardScreen() {
                     : data.me ? `You finished ${label} on rank ${data.me.rank}` : `${label}: you were not taking part`}
                 </div>
                 {data.month === data.current_month && (data.state === 'behind' || data.state === 'no_activity') && (
-                  <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
+                  <div style={{ fontSize: 12, color: colors.secondary, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
                 )}
                 {data.me && (
                   <div style={{ fontSize: 12.5, color: colors.secondary, marginTop: 4 }}>

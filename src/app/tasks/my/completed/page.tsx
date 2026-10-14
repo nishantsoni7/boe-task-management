@@ -40,7 +40,7 @@ const NO_TASKS: Task[] = []
 const NO_NAMES: Record<string, string> = {}
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#805B0D'    },
+  high:   { label: 'High', color: '#A12438'    },
   medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
@@ -239,7 +239,7 @@ function CompletedTaskCard({
             fontSize: '12px', fontWeight: 600,
             padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
-              ? { color: colors.muted, background: 'rgba(0,0,0,0.05)' }
+              ? { color: colors.secondary, background: 'rgba(0,0,0,0.05)' }
               : { color: '#335A86', background: 'rgba(155,111,212,0.10)' }
             ),
           }}
@@ -483,7 +483,7 @@ function CompletedTasksContent() {
         {/* Search + filter toolbar */}
         <div style={{
           background: colors.raised,
-          border: `1.5px solid ${colors.border}`,
+          border: `1.5px solid ${colors.borderInput}`,
           borderRadius: '8px',
           padding: '8px 10px',
           marginBottom: '10px',

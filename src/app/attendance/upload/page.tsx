@@ -654,7 +654,7 @@ export default function AttendanceUploadPage() {
                 <div className={`${ui.surfaceBody} ${ui.stack}`} style={{ gap: 10 }}>
                   <div className={styles.stats}>
                     <Stat label="New records" value={preview.newCount} color={preview.newCount > 0 ? '#335A86' : '#686D6C'} />
-                    <Stat label="Modified records" value={preview.modifiedCount} color={preview.modifiedCount > 0 ? '#335A86' : '#686D6C'} />
+                    <Stat label="Modified records" value={preview.modifiedCount} color={preview.modifiedCount > 0 ? '#805B0D' : '#686D6C'} />
                     <Stat label="Unchanged" value={preview.unchangedCount} color={preview.unchangedCount > 0 ? '#276247' : '#686D6C'} />
                   </div>
                   {preview.allUnchanged && (

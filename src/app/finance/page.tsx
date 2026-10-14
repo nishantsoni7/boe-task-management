@@ -3433,7 +3433,7 @@ function FinancePageInner() {
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
+          background: colors.raised, border: '1px solid var(--boe-border-input)',
           borderRadius: '8px', padding: '6px 10px',
           flex: 1, minWidth: '180px', maxWidth: '320px',
         }}>

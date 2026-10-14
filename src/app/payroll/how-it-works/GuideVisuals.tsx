@@ -91,7 +91,7 @@ export function PayableDaysWeek() {
               minWidth: 0,
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#686D6C', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#595D5B', letterSpacing: '0.05em' }}>
               {cell.day.toUpperCase()}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '5px 0 4px' }}>
@@ -194,7 +194,7 @@ export function PaidLeaveAbsorption() {
             }}
           >
             <span style={{
-              fontSize: 12, fontWeight: 700, color: '#686D6C',
+              fontSize: 12, fontWeight: 700, color: '#595D5B',
               fontVariantNumeric: 'tabular-nums', minWidth: 46,
             }}>
               {item.date}

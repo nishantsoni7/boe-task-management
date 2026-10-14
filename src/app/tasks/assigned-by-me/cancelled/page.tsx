@@ -48,7 +48,7 @@ const LIST_PARAMS = {
 }
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#805B0D'    },
+  high:   { label: 'High', color: '#A12438'    },
   medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
@@ -352,7 +352,7 @@ function AssignedByMeCancelledContent() {
 
         {/* Search + filter toolbar */}
         <div style={{
-          background: colors.raised, border: `1.5px solid ${colors.border}`,
+          background: colors.raised, border: `1.5px solid ${colors.borderInput}`,
           borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
           display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
         }}>

@@ -75,7 +75,7 @@ type TaskType = MyTaskType
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#805B0D'    },
+  high:   { label: 'High', color: '#A12438'    },
   medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
@@ -349,7 +349,7 @@ function TaskCard({
             fontSize: '12px', fontWeight: 600,
             padding: '1px 7px', borderRadius: '12px',
             ...(isSelf
-              ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'       }
+              ? { color: colors.secondary,  background: 'rgba(0,0,0,0.05)'       }
               : { color: '#335A86',     background: 'rgba(155,111,212,0.10)' }
             ),
           }}
@@ -1669,7 +1669,7 @@ function MyTasksContent() {
                         <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary, whiteSpace: 'nowrap' }}>
                           {item.label}
                         </span>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.8)' : colors.muted }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: isActive ? '#FFFFFF' : colors.secondary }}>
                           {typeCounts[item.key]}
                         </span>
                       </button>
@@ -1832,7 +1832,7 @@ function MyTasksContent() {
               <div style={{
                 marginLeft: 'auto',
                 display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.raised, border: `1px solid ${colors.border}`,
+                background: colors.raised, border: `1px solid ${colors.borderInput}`,
                 borderRadius: '6px', padding: '6px 10px',
                 minWidth: '160px',
               }}>

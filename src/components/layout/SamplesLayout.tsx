@@ -127,7 +127,7 @@ export function SamplesLayout({
                 {count > 0 && (
                   <span style={{
                     marginLeft: 'auto',
-                    fontSize: '12px', fontWeight: 600, color: '#686D6C',
+                    fontSize: '12px', fontWeight: 600, color: '#595D5B',
                     background: '#E4DED7', borderRadius: '999px',
                     padding: '1px 6px', lineHeight: '15px',
                   }}>

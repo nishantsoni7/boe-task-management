@@ -15,7 +15,7 @@ defined by the code and the module docs. Nothing in the rebrand changed the latt
 | Terracotta `#B9472E` (hover `#9E3B25`) | `--boe-brand` | Actions and selection: primary buttons, the selected nav item, focus rings, unread markers, links (ink `#963B27`). |
 | Charcoal `#303536` | `--boe-text` | Body and heading text. Secondary text `#4C5352` / `#686D6C`. |
 | Warm canvas `#F7F5F1` / white `#FFFFFF` | `--boe-canvas` / `--boe-surface` | The page, and every content surface on it. |
-| Borders `#E4DED7` · `#CFC8BF` · `#B9B2A9` | `--boe-border*` | Panels / secondary buttons / form controls. The input border is the approved value and measures about 2.1:1 on white — below the 3:1 non-text target; see the note below. |
+| Borders `#E4DED7` · `#CFC8BF` · `#8C8379` | `--boe-border*` | Panels / secondary buttons / form controls. The input border was `#B9B2A9` (2.1:1 on white) and is now `#8C8379` (3.7:1 on white, 3.4:1 on the canvas) to meet WCAG 1.4.11; see the note below. |
 | Status pairs | `--boe-<status>-fg/-bg` | Pending `#595D5B/#EEECE8`, Working `#335A86/#EAF0F8`, Waiting `#805B0D/#FAF0DA`, Blocked `#A12438/#FBE9EC`, Completed `#276247/#E8F2EC`. |
 | Error / destructive `#B42332` | `--boe-error` | Validation and delete. Never the brand colour. |
 
@@ -78,8 +78,18 @@ Neither recolours the logo.
 | Error `#B42332` on white | 6.5 |
 | Focus ring (terracotta) on white / canvas | 5.3 / 4.8 (needs 3) |
 
-**One approved value misses its target.** The brief fixes the input border at `#B9B2A9`
-and asks for control boundaries of at least 3:1. `#B9B2A9` is 2.1:1 on white (the
-secondary-button border `#CFC8BF` is 1.7:1). Controls are still identifiable — white
-fill, a visible label, a terracotta ring on focus — but if strict WCAG 1.4.11 is wanted,
-change `--boe-border-input` to about `#8C8379` (3.6:1). It is one token.
+**Corrected value (authorised accessibility change).** The brief fixed the input border at
+`#B9B2A9`, which is 2.1:1 on white and fails the 3:1 control-boundary target of WCAG 1.4.11.
+`--boe-border-input` is now `#8C8379`: 3.7:1 on white, 3.4:1 on the canvas. One global rule
+(`globals.css`, screen only) applies it to every text input, select and textarea that is not
+focused or in error, so wrapper-less fields and fields that carried their own pale border are
+covered together. Error (`#B42332`) and focus (terracotta) borders are left alone. Search
+boxes built as a bordered wrapper around a borderless input use the same token on the wrapper.
+
+**Still below 3:1, by design.** The secondary-button border `#CFC8BF` stays at the approved
+1.7:1. A secondary button is identified by its text label and fill, not by its outline alone.
+
+**Small text on tinted chips.** Count chips and badges on tinted fills are held to 4.5:1:
+`StatusTabs` darkens the chip text against its real (blended) fill, the `Low` priority chip
+uses `#595D5B`, the Under-repair status uses `#8A3410` on `#FFE9D5`, and secondary notes on
+tinted panels use `#4C5352`. `#686D6C` is for text on white or the canvas only.

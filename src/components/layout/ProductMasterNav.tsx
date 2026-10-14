@@ -105,7 +105,7 @@ function CountBadge({
 }: { value: number; suffix?: string; style?: React.CSSProperties }) {
   return (
     <span style={{
-      fontSize: '12px', fontWeight: 600, color: '#686D6C',
+      fontSize: '12px', fontWeight: 600, color: '#595D5B',
       fontFamily: 'var(--font-body)',
       background: '#E4DED7', borderRadius: '999px',
       padding: '1px 6px', lineHeight: '15px',

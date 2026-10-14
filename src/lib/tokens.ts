@@ -33,6 +33,7 @@ export const colors = {
   border:     '#E4DED7',
   borderSoft: '#CFC8BF',
   borderMed:  '#B9B2A9',
+  borderInput: '#8C8379',  // form-control boundary, 3:1 on white and canvas (--boe-border-input)
 
   // Status backgrounds
   amberTint: '#FAF0DA',

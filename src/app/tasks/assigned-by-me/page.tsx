@@ -73,7 +73,7 @@ const TABS: { key: TabKey; label: string; color: string }[] = [
 ]
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#805B0D'    },
+  high:   { label: 'High', color: '#A12438'    },
   medium: { label: 'Med',  color: '#805B0D'    },
   low:    { label: 'Low',  color: colors.muted },
 }
@@ -1274,7 +1274,7 @@ function AssignedByMeContent() {
                           fontSize: '12px', fontWeight: 700,
                           padding: '1px 7px', borderRadius: '8px',
                           background: standOut ? `${item.color}18` : 'rgba(0,0,0,0.05)',
-                          color: standOut ? item.color : colors.muted,
+                          color: standOut ? item.color : colors.secondary,
                           minWidth: '20px', textAlign: 'center',
                         }}>
                           {counts[item.key]}
@@ -1295,7 +1295,7 @@ function AssignedByMeContent() {
               {/* Search */}
               <div style={{
                 flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.base, border: `1px solid ${colors.border}`,
+                background: colors.base, border: `1px solid ${colors.borderInput}`,
                 borderRadius: '6px', padding: '6px 10px',
               }}>
                 <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />

@@ -120,7 +120,7 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
             {firstPlaceMessage(data.state, data.need, data.leaders)}
           </div>
           {(data.state === 'behind' || data.state === 'no_activity') && (
-            <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
+            <div style={{ fontSize: 12, color: colors.secondary, marginTop: 2 }}>{FIRST_PLACE_FOOTNOTE}</div>
           )}
         </div>
       ) : null}

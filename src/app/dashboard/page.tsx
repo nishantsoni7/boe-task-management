@@ -1768,7 +1768,7 @@ function StatusChip({ status }: { status: string }) {
     working:          { color: '#335A86', bg: '#EAF0F8' },
     waiting:          { color: '#805B0D', bg: '#FAF0DA' },
     blocked:          { color: '#A12438', bg: '#FBE9EC' },
-    pending_approval: { color: '#805B0D', bg: '#FBF6E6' },
+    pending_approval: { color: '#6B4F0A', bg: '#F3E4B8' },
     completed:        { color: '#276247', bg: '#E8F2EC' },
   }
   const s = map[status] ?? { color: '#4C5352', bg: '#F1EEE9' }
