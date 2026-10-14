@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { TabRecovery } from '@/components/layout/TabRecovery'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
 
@@ -50,6 +51,9 @@ export function Providers({ children }: { children: ReactNode }) {
           <ViewAsProvider>{children}</ViewAsProvider>
         </RefreshProvider>
       </AuthIdentityBoundary>
+      {/* Refreshes a tab left open across a deploy before its next click, and
+          offers Retry for a link that stalls. See src/lib/navigation/tabRecovery.ts. */}
+      <TabRecovery />
     </QueryClientProvider>
   )
 }
