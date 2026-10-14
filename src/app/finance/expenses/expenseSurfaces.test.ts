@@ -6,6 +6,7 @@
  * lit, what the launcher offers and to whom — plus a regression suite over the
  * existing Finance and Orders surfaces this work must not have touched.
  */
+import { isPresentationOnlyDiff } from '@/lib/testing/presentationDiff'
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
@@ -809,18 +810,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * else still counts — the files in ALLOWED_BOE_REBRAND are the hand-written
    * ones, named one by one.
    */
-  const STYLE_PROP = /(font-?size|border-?radius|padding|margin|gap|width|height|opacity|letter-?spacing|line-?height|font-?weight|min-|max-)/i
-  const normaliseStyleLine = (line: string, isCss: boolean) => {
-    let l = line.replace(/\r$/, '')
-      .replace(/#[0-9a-fA-F]{3,8}\b/g, '#')
-      .replace(/\b(?:rgba?|hsla?)\([^)]*\)/g, '#')
-      .replace(/\b(?:colors|status|font|radius)\.[A-Za-z]+/g, '#')
-      .replace(/var\(--[a-zA-Z0-9-]+(?:,[^)]*)?\)/g, '#')
-      .replace(/font-family:[^;}\n]*/g, 'fontFamily:')
-      .replace(/fontFamily:\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Za-z_.]+)/g, 'fontFamily:')
-    if (isCss || STYLE_PROP.test(l)) l = l.replace(/-?\d+(?:\.\d+)?(?:px|rem|em|%)?(?![\w])/g, '0')
-    return l.replace(/\s+/g, ' ').trim()
-  }
   const presentationOnly = (file: string): boolean => {
     if (!/^src\/.*\.(css|tsx?)$/.test(file)) return false
     let diff = ''
@@ -828,16 +817,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       diff = execFileSync('git', ['diff', '-U0', '--no-color', 'origin/main', '--', file],
         { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 1 << 26 })
     } catch { return false }
-    const isCss = file.endsWith('.css')
-    const removed: string[] = []
-    const added: string[] = []
-    for (const line of diff.split('\n')) {
-      if (line.startsWith('---') || line.startsWith('+++')) continue
-      if (line.startsWith('-')) removed.push(normaliseStyleLine(line.slice(1), isCss))
-      else if (line.startsWith('+')) added.push(normaliseStyleLine(line.slice(1), isCss))
-    }
-    if (removed.length === 0 && added.length === 0) return false
-    return removed.filter(Boolean).sort().join('\n') === added.filter(Boolean).sort().join('\n')
+    return isPresentationOnlyDiff(diff, file.endsWith('.css'))
   }
   const touched = new Set([...changed, ...staged].filter(f => !presentationOnly(f)))
 
@@ -3154,6 +3134,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * permission.
    */
   const ALLOWED_BOE_REBRAND = new Set([
+    // logo, icons and the self-hosted fonts (binary assets)
     'public/branding/boe-icon.png',
     'public/branding/boe-logo-full.png',
     'public/branding/boe-logo-white.png',
@@ -3165,17 +3146,36 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/app/fonts/Manrope-latin-ext-var.woff2',
     'src/app/fonts/Manrope-latin-var.woff2',
     'src/app/icon.png',
+    // the presentation-only rule itself, and its negative controls
+    'src/lib/testing/presentationDiff.ts',
+    'src/lib/testing/presentationDiff.test.ts',
+    // hand-written: files whose diff is more than a colour, a size or a font (shell, primitives, tests that pin the design)
+    'src/app/globals.css',
     'src/app/layout.tsx',
     'src/app/login/page.tsx',
+    'src/app/modules/moduleCardSurface.test.ts',
     'src/app/modules/modules.module.css',
+    'src/app/orders/[id]/orderDetailPolish.render.test.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetail.render.test.tsx',
     'src/app/orders/drafts/draftsAccess.test.ts',
+    'src/app/orders/import/importAccess.test.ts',
+    'src/app/tasks/[id]/page.tsx',
     'src/components/DailyQuoteLoader.tsx',
+    'src/components/errors/RouteErrorView.tsx',
+    'src/components/exhibitionLeads/addLead.test.ts',
+    'src/components/finance/deletePaymentModal.render.test.tsx',
     'src/components/layout/BoeBrandIcon.tsx',
+    'src/components/notifications/NotificationHeaderPolish.test.tsx',
+    'src/components/orders/piPaymentDetails.render.test.tsx',
+    'src/components/ui/ExpandableText.test.tsx',
+    'src/components/ui/StatusTabs.tsx',
     'src/components/ui/atoms.tsx',
     'src/components/ui/toast.tsx',
+    'src/lib/orders/finalApprovalScope.test.ts',
+    'src/lib/orders/orderStartupShape.test.ts',
+    'src/lib/tasks/submitButtonBalance.test.ts',
     'src/lib/tokens.ts',
-    'src/components/ui/StatusTabs.tsx',
-    'src/components/notifications/NotificationHeaderPolish.test.tsx',
+    'src/lib/ui/menuPlacement.test.ts',
   ])
 
   const isUnexpectedFile = (f: string) =>

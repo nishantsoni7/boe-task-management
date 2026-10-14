@@ -33,26 +33,13 @@
  *   npx tsx --test src/lib/orders/orderStartupShape.test.ts
  */
 
+import { styleBlind } from '@/lib/testing/presentationDiff'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/**
- * THE BOE REBRAND changed colours, token names, font families and style sizes
- * across the app without touching structure or behaviour. These guards exist to
- * prove structure and behaviour are untouched, so they compare the two sides
- * with those presentation values blanked out. Any added, removed or reordered
- * element, prop, handler or string still fails them.
- */
-const styleBlind = (s: string) => s
-  .replace(/#[0-9a-fA-F]{3,8}\b/g, '#')
-  .replace(/\b(?:rgba?|hsla?)\([^)]*\)/g, '#')
-  .replace(/\b(?:colors|status|font|radius)\.[A-Za-z]+/g, '#')
-  .replace(/var\(--[a-zA-Z0-9-]+(?:,[^)]*)?\)/g, '#')
-  .replace(/fontFamily:\s*(?:'[^']*'|"[^"]*"|`[^`]*`|[A-Za-z_.]+)/g, 'fontFamily:')
-  .replace(/((?:fontSize|borderRadius|padding|fontWeight|lineHeight|letterSpacing)[A-Za-z]*:\s*)['"]?-?\d+(?:\.\d+)?(?:px|rem|em)?['"]?/g, '$1N')
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
